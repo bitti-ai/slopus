@@ -11,5 +11,6 @@ export default defineConfig({
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   build: { target: ["es2021", "chrome100", "safari13"] },
+  test: { exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/worktrees/**"] },
 });
 
