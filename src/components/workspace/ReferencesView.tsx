@@ -15,9 +15,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const selected = config.references.find((ref) => ref.id === selectedId);
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => onChange({ ...config, references: config.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
-  const addTextReference = (name = "New definition", description = "Describe the traits Pol should keep consistent across generated clips.") => {
+  // Starts empty on purpose. Seeding it with the instruction text meant an
+  // unedited definition shipped "Describe the traits…" to the model as if the
+  // user had written it. The guidance lives in the field's placeholder instead.
+  const addTextReference = (name = "New definition", description = "") => {
     const id = `ref-${Date.now()}`;
-    const reference: ProjectReference = { id, kind: "text", name, description, content: description, intendedUse: ["style"], createdAt: new Date().toISOString() };
+    const reference: ProjectReference = { id, kind: "text", name, description, content: description || null, intendedUse: ["style"], createdAt: new Date().toISOString() };
     onChange({ ...config, references: [reference, ...config.references] });
     setSelectedId(id);
   };
@@ -68,7 +71,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide generation, not your timeline</b><p>Attach them to any job so characters, products, and art direction stay coherent. All files are copied into the project’s <code>references/</code> folder.</p></div></div>
+        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide generation, not your timeline</b><p>Every new shot automatically uses the first two references in this list, so characters, products, and art direction stay coherent. Newest additions go to the top. All files are copied into the project’s <code>references/</code> folder.</p></div></div>
       </section>
 
       <aside className="reference-inspector">
@@ -77,16 +80,16 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           <div className={`reference-detail-art reference-detail-art--${selected.kind}`}><span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span><em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em></div>
           <div className="reference-fields">
             <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
-            <label><span>Definition</span><textarea value={selected.description} onChange={(event) => update(selected.id, { description: event.target.value || "Add a reference description." })} /></label>
+            <label><span>Definition</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Pol Studio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label>
           </div>
           <section className="intended-use">
             <h3>Intended use</h3>
-            <p>Tell Pol what must stay consistent. Tap any that apply.</p>
+            <p>Tell Pol Studio what must stay consistent. Select any that apply.</p>
             <div>{uses.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No generations use this reference yet. Attach it to a scene in the Generator and Pol will keep it consistent.</p>}
+            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two references in this list, so it will be used once it reaches the top two.</p>}
           </section>
           <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}

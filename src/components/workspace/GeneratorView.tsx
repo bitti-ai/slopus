@@ -79,7 +79,10 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
   };
 
   const createJob = async () => {
-    const cleanPrompt = prompt.trim() || `A new scene for ${config.name}.`;
+    // Never synthesise a prompt: a shot must only ever describe what the user
+    // actually typed, or it gets read back to them as their own request.
+    const cleanPrompt = prompt.trim();
+    if (!cleanPrompt) return;
     const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: config.references.slice(0, 2).map((ref) => ref.id) });
     const job: GenerationJob = runtimeReady ? { ...draft, status: "queued" } : draft;
     const next = { ...config, generationJobs: [job, ...jobs] };
@@ -182,7 +185,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
             <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
             <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
           </div>
-          <button className="primary-button generation-composer__submit" onClick={() => void createJob()}>
+          <button className="primary-button generation-composer__submit" onClick={() => void createJob()} disabled={!prompt.trim()}>
             <WandSparkles size={17} /> {submitLabel}
           </button>
         </div>
@@ -195,8 +198,10 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
           {runtimeReady
             ? "Shots render one at a time, so a new shot joins the queue behind anything already running."
             : "Nothing renders on this computer yet, so your shot is saved as a draft you can run later."}
+          {/* There is no attach control: shots bind the first two references by
+              list order. Say so, rather than implying a choice the user has. */}
           {config.references.length > 0
-            ? ` ${config.references.length} project ${config.references.length === 1 ? "reference is" : "references are"} available to guide it.`
+            ? ` It will automatically use ${config.references.slice(0, 2).map((ref) => ref.name).join(" and ")}${config.references.length > 2 ? `, the first two of your ${config.references.length} references.` : "."}`
             : " No references added yet — add characters, places, or looks to keep shots consistent."}
         </p>
       </section>

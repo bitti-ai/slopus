@@ -2,7 +2,7 @@ import { BookImage, FolderOpen, Grid2X2, List, Search, Sparkles } from "lucide-r
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyPlaceholder } from "./components/EmptyPlaceholder";
 import { ProjectCard } from "./components/ProjectCard";
-import { ProjectWorkspace } from "./components/ProjectWorkspace";
+import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { Sidebar, type WorkspaceView } from "./components/Sidebar";
 import { chooseAndOpenProject, createProject, listRecentProjects, saveProject } from "./lib/persistence";
@@ -28,7 +28,7 @@ function App() {
   const [view, setView] = useState<WorkspaceView>("library");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
-  const [activeProjectInitialView, setActiveProjectInitialView] = useState<"timeline" | "generator">("timeline");
+  const [activeProjectInitialView, setActiveProjectInitialView] = useState<ProjectView>("timeline");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -92,6 +92,16 @@ function App() {
   };
 
   const navigate = (nextView: WorkspaceView) => {
+    // Generating and references only exist inside a project. Rather than
+    // dead-ending on a placeholder, open the most recent project on that tab.
+    // With no projects yet, the placeholder is the honest answer.
+    const projectTab = nextView === "generate" ? "generator" : nextView === "references" ? "references" : null;
+    if (projectTab && projects.length > 0) {
+      setActiveProjectInitialView(projectTab);
+      setActiveProject(projects[0]);
+      setView("library");
+      return;
+    }
     setActiveProject(null);
     setView(nextView);
   };

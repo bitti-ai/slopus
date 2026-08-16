@@ -6,8 +6,29 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { createDraftGenerationJob, type ProjectConfig, type TimelineClip } from "../../lib/project";
 
-const DURATION = 34_000;
+const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
+
+/* The canvas used to be a hard-coded 34s — the seeded fixture's exact length —
+   so a 60-second project still got a 34-second ruler. Derive it from the real
+   content, falling back to the duration the user actually asked for. */
+const canvasDuration = (config: ProjectConfig) => {
+  const lastClipEnd = config.timeline.tracks.reduce(
+    (end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clip.startMs + clip.durationMs), end),
+    0,
+  );
+  return Math.max(lastClipEnd, config.brief.targetDurationSeconds * 1000, MIN_DURATION);
+};
+
+/* Roughly seven labels regardless of length, snapped to a readable interval. */
+const rulerTicks = (durationMs: number) => {
+  const totalSeconds = Math.ceil(durationMs / 1000);
+  const step = [1, 2, 5, 10, 15, 30, 60, 120].find((candidate) => totalSeconds / candidate <= 7) ?? 300;
+  return Array.from({ length: Math.floor(totalSeconds / step) + 1 }, (_, index) => index * step);
+};
+
+const rulerLabel = (seconds: number) =>
+  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 const timecode = (ms: number) => {
   const seconds = Math.floor(ms / 1000);
   const frames = Math.floor((ms % 1000) / (1000 / 30));
@@ -27,12 +48,18 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   const sceneClips = tracks.filter((track) => track.kind === "video").flatMap((track) => track.clips);
   const hasVisualOutput = config.assets.some((asset) => asset.kind === "video" || asset.kind === "image" || asset.kind === "generated")
     || config.generationJobs.some((job) => Boolean(job.outputRelativePath));
+  const duration = useMemo(() => canvasDuration(config), [config]);
+  const ticks = useMemo(() => rulerTicks(duration), [duration]);
 
   useEffect(() => {
-    if (!playing) return;
-    const timer = window.setInterval(() => setPlayhead((current) => current >= DURATION ? 0 : current + 100), 100);
+    // Playing an empty timeline would run the clock over nothing, which reads
+    // as playback of footage that does not exist.
+    if (!playing || clipCount === 0) return;
+    const timer = window.setInterval(() => setPlayhead((current) => current >= duration ? 0 : current + 100), 100);
     return () => window.clearInterval(timer);
-  }, [playing]);
+  }, [playing, clipCount, duration]);
+
+  useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
 
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) => onChange({ ...config, timeline: { tracks: nextTracks } });
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
@@ -44,7 +71,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   };
   const duplicateSelected = () => {
     if (!selected || !selectedTrack || selectedTrack.locked) return;
-    const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, startMs: Math.min(DURATION - selected.durationMs, selected.startMs + selected.durationMs), label: `${selected.label} copy` };
+    const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, startMs: Math.min(duration - selected.durationMs, selected.startMs + selected.durationMs), label: `${selected.label} copy` };
     updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: [...track.clips, copy] } : track));
     setSelectedId(copy.id);
   };
@@ -56,7 +83,15 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
     setSelectedId(right.id);
   };
   const addScene = () => {
-    const job = createDraftGenerationJob(`A new scene for ${config.name}. ${config.brief.prompt}`, {
+    // A new project already carries an unstarted draft made from the user's own
+    // words. Opening that beats stacking a second near-identical shot they have
+    // no way to tell apart — and it never re-describes their idea back at them.
+    const unstarted = config.generationJobs.find((job) => job.status === "draft");
+    if (unstarted) {
+      onOpenGenerator(unstarted.id);
+      return;
+    }
+    const job = createDraftGenerationJob(config.brief.prompt, {
       title: "New scene draft",
       referenceIds: config.references.slice(0, 2).map((reference) => reference.id),
     });
@@ -67,7 +102,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   return (
     <div className="timeline-view" tabIndex={0} onKeyDown={(event) => {
       if ((event.key === "Delete" || event.key === "Backspace") && event.target === event.currentTarget) removeSelected();
-      if (event.code === "Space" && event.target === event.currentTarget) { event.preventDefault(); setPlaying((value) => !value); }
+      if (event.code === "Space" && event.target === event.currentTarget && clipCount > 0) { event.preventDefault(); setPlaying((value) => !value); }
     }}>
       {/* The view had no top-level heading at all, so screen-reader users had
           no landmark for it. Sighted users already see the project topbar. */}
@@ -87,13 +122,13 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
                   <span><b>{clip.label.replace(/^\d+ · /, "")}</b><small>{clip.status === "generated" ? "Needs review" : "In timeline"}</small></span>
                 </button>
               ))}
-              {sceneClips.length === 0 && <p className="panel-hint">No scenes yet. Start with the button below — Pol will draft one from your project brief.</p>}
+              {sceneClips.length === 0 && <p className="panel-hint">No scenes yet. Use the button below to open your shot in the Generator — scenes appear here once they land on the timeline.</p>}
               <button className="scene-add" onClick={addScene}><Plus size={18} /> Add or generate a scene</button>
             </div>
           ) : (
             <div className="media-grid">
               {config.assets.map((asset) => <button key={asset.id}><span className="media-thumb">{asset.kind === "audio" ? <Music2 size={22} /> : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />}</span><b>{asset.name}</b><small>{asset.kind} · {asset.durationMs ? `${(asset.durationMs / 1000).toFixed(1)}s` : "still"}</small></button>)}
-              {config.assets.length === 0 && <p className="panel-hint">No media in this project yet. Scenes you generate are saved here automatically.</p>}
+              {config.assets.length === 0 && <p className="panel-hint">No media in this project yet. Pol Studio can’t save generated shots as files yet, so nothing lands here.</p>}
               <button className="media-import" disabled title="Importing your own files isn’t available yet. Generate a scene instead.">
                 <Upload size={20} /><b>Import media</b><small>Not available yet</small>
               </button>
@@ -123,9 +158,11 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           <div className="monitor-transport">
             <strong>{timecode(playhead)}</strong>
             <div>
-              <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title="Go to beginning"><SkipBack size={18} /></button>
-              <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} title={playing ? "Pause" : "Play"}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
-              <button onClick={() => setPlayhead(Math.min(DURATION, playhead + 1000))} aria-label="Step forward one second" title="Step forward one second"><SkipForward size={18} /></button>
+              <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title="Go to beginning" disabled={clipCount === 0}><SkipBack size={18} /></button>
+              {/* Nothing to play means nothing to play: running the clock over
+                  an empty timeline reads as playback of footage that isn't there. */}
+              <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={clipCount === 0} title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : playing ? "Pause" : "Play"}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
+              <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title="Step forward one second" disabled={clipCount === 0}><SkipForward size={18} /></button>
             </div>
             <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>
@@ -159,7 +196,9 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
               <label className="range-field"><span>Opacity <b>100%</b></span><input type="range" defaultValue="100" disabled title={NOT_YET} /></label>
               <label className="range-field"><span>Temperature <b>+4</b></span><input type="range" defaultValue="54" disabled title={NOT_YET} /></label>
             </section>
-          </> : <div className="inspector-empty"><MouseSelection /><b>Select a clip to edit it</b><span>Pick any clip on the timeline below to rename it, check its timing, and see how it was made.</span></div>}
+          </> : clipCount === 0
+            ? <div className="inspector-empty"><MouseSelection /><b>Nothing to edit yet</b><span>Once a scene lands on the timeline, select it here to rename it and check its timing.</span></div>
+            : <div className="inspector-empty"><MouseSelection /><b>Select a clip to edit it</b><span>Pick any clip on the timeline below to rename it, check its timing, and see how it was made.</span></div>}
         </aside>
       </div>
 
@@ -175,18 +214,18 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
         </header>
         <div className="timeline-grid">
           <div className="track-corner"><span>Tracks</span></div>
-          <div className="time-ruler" onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPlayhead(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * DURATION)); }}>
-            {[0, 5, 10, 15, 20, 25, 30].map((second) => <span key={second} style={{ left: `${second / 34 * 100}%` }}><i />00:{String(second).padStart(2, "0")}</span>)}
+          <div className="time-ruler" onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPlayhead(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration)); }}>
+            {ticks.map((second) => <span key={second} style={{ left: `${second * 1000 / duration * 100}%` }}><i />{rulerLabel(second)}</span>)}
           </div>
-          {tracks.map((track) => <TrackRow key={track.id} track={track} selectedId={selectedId} onSelect={setSelectedId} onToggle={toggleTrack} />)}
-          <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / DURATION})` }}><span /><i /></div>
+          {tracks.map((track) => <TrackRow key={track.id} track={track} duration={duration} selectedId={selectedId} onSelect={setSelectedId} onToggle={toggleTrack} />)}
+          <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
         </div>
       </section>
     </div>
   );
 }
 
-function TrackRow({ track, selectedId, onSelect, onToggle }: { track: ProjectConfig["timeline"]["tracks"][number]; selectedId: string; onSelect: (id: string) => void; onToggle: (id: string, key: "muted" | "locked") => void }) {
+function TrackRow({ track, duration, selectedId, onSelect, onToggle }: { track: ProjectConfig["timeline"]["tracks"][number]; duration: number; selectedId: string; onSelect: (id: string) => void; onToggle: (id: string, key: "muted" | "locked") => void }) {
   return <>
     <div className="track-head">
       <span className={`track-kind track-kind--${track.kind}`}>{track.kind === "audio" ? <Music2 size={16} /> : <Video size={16} />}</span>
@@ -195,7 +234,7 @@ function TrackRow({ track, selectedId, onSelect, onToggle }: { track: ProjectCon
       <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${track.name}`} title={`${track.locked ? "Unlock" : "Lock"} ${track.name}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
     <div className={`track-lane ${track.muted ? "muted" : ""}`}>
-      {track.clips.map((clip) => <button key={clip.id} className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""}`} style={{ left: `${clip.startMs / DURATION * 100}%`, width: `${clip.durationMs / DURATION * 100}%`, "--clip-color": clip.color } as React.CSSProperties} onClick={() => onSelect(clip.id)} title={`${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds`}><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></button>)}
+      {track.clips.map((clip) => <button key={clip.id} className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""}`} style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties} onClick={() => onSelect(clip.id)} title={`${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds`}><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></button>)}
     </div>
   </>;
 }

@@ -32,7 +32,7 @@ describe("project workspace timecode", () => {
     expect(alert.textContent).toContain("The original project file is locked.");
   });
 
-  it("creates and selects a draft job from Add or generate a scene", async () => {
+  it("opens the existing unstarted draft instead of duplicating it", async () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     render(createElement(ProjectWorkspace, {
       project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "timeline",
@@ -40,8 +40,12 @@ describe("project workspace timecode", () => {
     }));
     fireEvent.click(screen.getByRole("button", { name: "Add or generate a scene" }));
     await screen.findByRole("heading", { name: "Generator" });
-    expect(screen.getByRole("heading", { name: "New scene draft" })).not.toBeNull();
-    expect(screen.getAllByText("DRAFT").length).toBeGreaterThan(0);
+    // A new project already carries one draft made from the user's own words.
+    // "Add or generate a scene" must open that, not stack a second near-identical
+    // shot the user has no way to tell apart.
+    expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "New scene draft" })).toBeNull();
+    expect(screen.getAllByText("DRAFT").length).toBe(1);
   });
 
   it("shows a project-specific empty monitor without unrelated demo preview", () => {

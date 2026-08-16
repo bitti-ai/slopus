@@ -563,7 +563,8 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  outline: 0;
+  /* No outline reset here: the Name field is the only editable control in the
+     inspector, and base.css's :focus-visible ring is its sole focus signal. */
   color: var(--text-primary);
   background: var(--bg);
   font-family: var(--font-sans);
