@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
+import createdFixture from "../../fixtures/project-v1-created.json";
 import {
   compileMiniMaxH3Prompt,
   createProjectConfig,
@@ -242,6 +243,44 @@ describe("project schema", () => {
     expect(deriveH3Style("A 2D anime chase across rooftops")).toBe("2D-animated");
     expect(compileMiniMaxH3Prompt("A 2D anime chase across rooftops", [textReference()]))
       .toContain("The target video is in a 2D-animated style.");
+  });
+
+  it("accepts a freshly created project exactly as createProjectConfig writes it", () => {
+    // This fixture is the byte-exact output of createProjectConfig. Its first
+    // job has NO clipId key at all, which is what every real project looks like.
+    expect(parseProjectConfig(createdFixture)).toBeTruthy();
+    expect("clipId" in createdFixture.generationJobs[0]).toBe(false);
+  });
+
+  it("accepts an explicit null for every optional the backend can serialise as null", () => {
+    // Rust serialises Option::None as JSON null unless the field carries
+    // skip_serializing_if, and zod's bare .optional() REJECTS null. That
+    // mismatch made create_project, open_project and every recent-projects row
+    // fail in the desktop app while the browser preview stayed green.
+    const config = structuredClone(completeFixture) as Record<string, any>;
+    config.assets[0].durationMs = null;
+    config.assets[0].width = null;
+    config.assets[0].height = null;
+    config.timeline.tracks[0].clips[0].color = null;
+    config.generationJobs[0].clipId = null;
+    const parsed = parseProjectConfig(config);
+    expect(parsed.assets[0].durationMs ?? null).toBeNull();
+    expect(parsed.generationJobs[0].clipId ?? null).toBeNull();
+    expect(parsed.timeline.tracks[0].clips[0].color ?? null).toBeNull();
+  });
+
+  it("still rejects a wrongly typed value in those same optional fields", () => {
+    // Tolerating null must not turn into tolerating anything.
+    for (const mutate of [
+      (config: any) => { config.assets[0].width = 0; },
+      (config: any) => { config.assets[0].durationMs = -1; },
+      (config: any) => { config.generationJobs[0].clipId = ""; },
+      (config: any) => { config.timeline.tracks[0].clips[0].color = 7; },
+    ]) {
+      const config = structuredClone(completeFixture) as any;
+      mutate(config);
+      expect(() => parseProjectConfig(config)).toThrow();
+    }
   });
 
   it("resolves project-relative reference paths to absolute for the engine", () => {

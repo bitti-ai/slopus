@@ -92,6 +92,14 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
       : playhead <= selected.startMs || playhead >= selected.startMs + selected.durationMs
         ? "Move the playhead inside the selected clip to split it"
         : null;
+  /* Same rule as Split: a disabled control says why it is disabled, and the
+     predicate is the handler's own guard rather than a looser approximation. */
+  const duplicateBlockedBy = !selected
+    ? "Select a clip to duplicate it"
+    : !selectedTrack || selectedTrack.locked ? "This clip’s track is locked" : null;
+  const deleteBlockedBy = !selected
+    ? "Select a clip to delete it"
+    : !selectedTrack || selectedTrack.locked ? "This clip’s track is locked" : null;
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
@@ -180,7 +188,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
         <aside className="clip-inspector">
           <div className="panel-chrome"><h2>Clip details</h2></div>
           {selected ? <>
-            <div className="inspector-summary"><span className="clip-chip" style={{ background: selected.color }}><Film size={18} /></span><div><b>{selected.label}</b><small>{selectedTrack?.name} · {selected.status}</small></div></div>
+            <div className="inspector-summary"><span className="clip-chip" style={{ background: selected.color ?? undefined }}><Film size={18} /></span><div><b>{selected.label}</b><small>{selectedTrack?.name} · {selected.status}</small></div></div>
             <section className="inspector-section">
               <h3>Clip</h3>
               <label><span>Name</span><input value={selected.label} onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })} /></label>
@@ -217,8 +225,8 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           <div className="timeline-tools">
             <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
             <button onClick={splitSelected} disabled={splitBlockedBy !== null} title={splitBlockedBy ?? "Split at playhead"}><Scissors size={16} /> Split</button>
-            <button onClick={duplicateSelected} disabled={!selected || selectedTrack?.locked} title="Duplicate clip"><Copy size={16} /> Duplicate</button>
-            <button onClick={removeSelected} disabled={!selected || selectedTrack?.locked} title="Delete selected clip"><Trash2 size={16} /> Delete</button>
+            <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} title={duplicateBlockedBy ?? "Duplicate clip"}><Copy size={16} /> Duplicate</button>
+            <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
           </div>
         </header>
         <div className="timeline-grid">

@@ -69,7 +69,11 @@ describe("project workspace timecode", () => {
     const timeline = container.querySelector(".timeline-view")!;
     fireEvent.keyDown(timeline, { key: "Delete" });
     expect(onChange).not.toHaveBeenCalled();
-    expect((screen.getByTitle("Delete selected clip") as HTMLButtonElement).disabled).toBe(true);
+    // Still disabled — and now it says why, rather than keeping the enabled
+    // wording while being unclickable.
+    const deleteButton = screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement;
+    expect(deleteButton.disabled).toBe(true);
+    expect(deleteButton.title).toBe("This clip’s track is locked");
   });
 
   it("inserts only a completed job with a real output into Story", () => {
@@ -130,6 +134,61 @@ describe("project workspace timecode", () => {
     fireEvent.click(container.querySelector(".scene-card")!);
     expect(split().disabled).toBe(false);
     expect(split().title).toBe("Split at playhead");
+  });
+
+  it("keeps half-written composer text when you visit another tab and come back", async () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const { container } = render(createElement(ProjectWorkspace, {
+      project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "generator",
+      onBack: () => undefined, onSave: async () => undefined,
+    }));
+    const composer = () => container.querySelector(".generation-composer textarea") as HTMLTextAreaElement;
+    fireEvent.change(composer(), { target: { value: "a slow push across the launch pad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    await screen.findByRole("heading", { name: "Timeline", level: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Generator" }));
+    await screen.findByRole("heading", { name: "Generator" });
+    // Switching tabs unmounts the generator. Losing the user's own half-written
+    // words is the one thing this app must never do.
+    expect(composer().value).toBe("a slow push across the launch pad");
+  });
+
+  it("does not bind an audio-tagged reference a new shot's prompt would drop", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const config = parseProjectConfig({ ...fresh, references: [
+      { id: "ref-audio", kind: "text", name: "Score idea", description: "Sparse piano.", content: "Sparse piano.", intendedUse: ["audio"], createdAt: fresh.createdAt },
+    ] });
+    const onChange = vi.fn();
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
+    fireEvent.change(container.querySelector(".generation-composer textarea")!, { target: { value: "a slow push across the pad" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save as a draft|Generate/ }));
+    // It would take a binding slot and then be dropped by the compiler, so the
+    // shot would claim a reference its prompt never mentions.
+    expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual([]);
+  });
+
+  it("describes only the route the bound references actually take", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const config = parseProjectConfig({
+      ...fresh,
+      references: [{ id: "ref-text", kind: "text", name: "Mara", description: "Calm architect.", content: "Calm architect.", intendedUse: ["character"], createdAt: fresh.createdAt }],
+      generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-text"] }],
+    });
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
+    const refs = document.querySelector(".job-refs")!.textContent ?? "";
+    expect(refs).toContain("The text definition is written into this shot’s prompt.");
+    // No image is bound, so nothing is sent to the engine as an asset.
+    expect(refs).not.toContain("Images are sent to the video engine");
+  });
+
+  it("says why Duplicate and Delete are unavailable, not just that they are", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    render(createElement(TimelineView, { config, onChange: () => undefined, onOpenGenerator: () => undefined }));
+    for (const label of ["Duplicate", "Delete"]) {
+      const button = screen.getByRole("button", { name: label }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.title).toBe(`Select a clip to ${label.toLowerCase()} it`);
+    }
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {
