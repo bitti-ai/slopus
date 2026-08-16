@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, type GenerationJob, type ProjectAsset, type ProjectConfig, type TimelineClip, type TimelineTrack } from "../../lib/project";
@@ -19,6 +19,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
   const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
   const [prompt, setPrompt] = useState("");
   const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const configRef = useRef(config);
   configRef.current = config;
   const jobs = config.generationJobs;
@@ -117,13 +118,22 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
     onOpenTimeline();
   };
 
+  // "Keep drafting other shots" has to be a real control, not advice, so the
+  // ready state always has somewhere to go.
+  const focusComposer = () => {
+    const node = composerRef.current;
+    if (!node) return;
+    if (typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "center" });
+    node.focus();
+  };
+
   const cancelJob = (job: GenerationJob) => {
     if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
     updateJob(job.id, { status: "cancelled", stage: "failed", updatedAt: new Date().toISOString() });
   };
 
   return <div className="generator-view">
-    <aside className="queue-panel">
+    <aside className="queue-panel" aria-label="Your shots">
       <div className="queue-panel__title">
         <span>Your shots</span>
         <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
@@ -135,10 +145,12 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
         <QueueGroup title="Already run" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
         {jobs.length === 0 && <p className="queue-empty">No shots yet. Describe one in the box on the right and it will appear here.</p>}
       </div>
+      {/* The pill is the last thing a user reads before committing to a render,
+          so the "frames, not a video file" limit is disclosed here too. */}
       <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`}>
         <span className="queue-runtime__state"><i /> {runtimeHeadline(runtime)}</span>
         <p>{runtimeExplainer(runtime)}</p>
-        {!runtimeReady && <small>You can still write and save shot drafts.</small>}
+        <small>{runtimeReady ? "A finished shot stays as frames — saving a video file isn’t built yet." : "You can still write and save shot drafts."}</small>
       </div>
     </aside>
 
@@ -156,6 +168,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
         <label className="generation-composer__field">
           <span className="generation-composer__label"><Sparkles size={17} /> Describe the shot you want</span>
           <textarea
+            ref={composerRef}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="Example: a close shot of hands shaping wet clay on a spinning wheel, warm window light, the camera pushes in slowly, quiet room tone."
@@ -173,6 +186,11 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
             <WandSparkles size={17} /> {submitLabel}
           </button>
         </div>
+        {/* Disclosed at the point of commitment, not after an expensive run. */}
+        {runtimeReady && <p className="generation-composer__limit">
+          <Info size={16} />
+          <span>A finished shot renders frames into memory. Pol Studio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
+        </p>}
         <p className="generation-composer__hint">
           {runtimeReady
             ? "Shots render one at a time, so a new shot joins the queue behind anything already running."
@@ -185,11 +203,13 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
 
       {selected ? <section className="job-detail">
         <div className="job-detail__visual">
+          {/* A labelled placeholder, never invented art — the same rule the scene
+              thumb, media thumb and reference cards follow. Pol Studio cannot
+              display real frames yet, so it shows none. */}
           <div className={`generation-preview generation-preview--${selected.status}`}>
-            <span className="generation-preview__flare" />
-            <div className="generation-preview__model"><i /><i /><i /><i /></div>
-            {selected.status === "generating" && <div className="generation-scanner" />}
+            {selected.status === "generating" && <span className="generation-scanner" aria-hidden="true" />}
             <span className="preview-status">{previewStatus(selected)}</span>
+            <p className="generation-preview__caption">{previewCaption(selected)}</p>
           </div>
           <div className="job-progress-block">
             <div className="job-progress-block__head">
@@ -270,11 +290,20 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
               {!runtimeReady && <p className="job-actions__note">Pol Studio needs a working video engine before it can run this shot again.</p>}
             </>}
 
-            {selected.status === "ready" && <div className="job-actions__blocked">
-              <b>There is nothing to open yet</b>
-              <p>The frames and sound were rendered and are held in memory, but Pol Studio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
-              <small>Keep drafting other shots in the meantime.</small>
-            </div>}
+            {selected.status === "ready" && <>
+              <div className="job-actions__blocked">
+                <b>There is nothing to open yet</b>
+                <p>The frames and sound were rendered and are held in memory, but Pol Studio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
+              </div>
+              <div className="job-actions__choices">
+                <button className="primary-button" disabled={!runtimeReady} onClick={() => void prepareOrRetry(selected)}>
+                  <RefreshCw size={15} /> {runtimeReady ? "Run this shot again" : "Can’t run it again yet"}
+                </button>
+                <button className="secondary-button" onClick={focusComposer}>
+                  <Sparkles size={15} /> Write another shot
+                </button>
+              </div>
+            </>}
 
             {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Story</button>}
 
@@ -302,10 +331,14 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
   </div>;
 }
 
+/* The rail sits before the <h1> in the DOM, so its group titles are labelled
+   groups rather than headings — otherwise the document outline would start
+   mid-tree with an <h3>. */
 function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs: GenerationJob[]; selectedId?: string; onSelect: (id: string) => void }) {
   if (jobs.length === 0) return null;
-  return <section className="queue-group">
-    <h3>{title}<span>{jobs.length}</span></h3>
+  const labelId = `queue-group-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  return <section className="queue-group" role="group" aria-labelledby={labelId}>
+    <p className="queue-group__label" id={labelId}>{title}<span>{jobs.length}</span></p>
     {jobs.map((job) => <button key={job.id} className={selectedId === job.id ? "selected" : ""} onClick={() => onSelect(job.id)}>
       <span className={`queue-thumb queue-thumb--${job.status}`}>{statusIcon(job.status)}</span>
       <span className="queue-row__text">
@@ -398,6 +431,20 @@ const previewStatus = (job: GenerationJob) => {
     case "completed": return job.outputRelativePath ? <><Check size={15} /> Ready for your edit</> : <><AlertCircle size={15} /> No video file was saved</>;
     case "failed": return <><AlertCircle size={15} /> Generation failed</>;
     case "cancelled": return <><Ban size={15} /> Generation cancelled</>;
+  }
+};
+
+/* Says out loud why the placeholder is empty, so the blank surface is never
+   read as "the picture failed to load". */
+const previewCaption = (job: GenerationJob): string => {
+  switch (job.status) {
+    case "generating": return "Frames are being built now. Pol Studio can’t show them while they are still in memory.";
+    case "queued": return "This shot hasn’t started, so there is no picture to show.";
+    case "draft": return "Nothing has been rendered, so there is no picture to show.";
+    case "ready": return "The frames exist in memory only. Pol Studio can’t display or save them yet.";
+    case "completed": return job.outputRelativePath ? "A video file was saved. Open it in the timeline to watch it." : "This run ended without a video file, so there is no picture to show.";
+    case "failed": return "The run stopped before any frames were kept.";
+    case "cancelled": return "You stopped this run, so no frames were kept.";
   }
 };
 
