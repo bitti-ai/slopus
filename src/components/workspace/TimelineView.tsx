@@ -82,6 +82,16 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
     updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: track.clips.flatMap((clip) => clip.id === selected.id ? [{ ...clip, durationMs: leftDuration, label: `${clip.label} · A` }, right] : [clip]) } : track));
     setSelectedId(right.id);
   };
+  /* Mirrors splitSelected's own guard, one condition for one condition. The
+     button used to stay live with the playhead outside the clip, so pressing it
+     silently did nothing. Null means Split will actually cut. */
+  const splitBlockedBy = !selected
+    ? "Select a clip to split it"
+    : !selectedTrack || selectedTrack.locked
+      ? "This clip’s track is locked"
+      : playhead <= selected.startMs || playhead >= selected.startMs + selected.durationMs
+        ? "Move the playhead inside the selected clip to split it"
+        : null;
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
@@ -158,6 +168,10 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
             </div>
             <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>
+          {/* Browsers don't reliably fire hover on a disabled control, so the
+              title attributes above may never render. The reason the transport
+              is dead has to be readable without hovering anything. */}
+          {clipCount === 0 && <p className="transport-note">Nothing can be played yet — add or generate a scene and it will land on the timeline below.</p>}
         </main>
 
         <aside className="clip-inspector">
@@ -199,7 +213,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           <div><h2>Timeline</h2><span>{timecode(playhead)}</span></div>
           <div className="timeline-tools">
             <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
-            <button onClick={splitSelected} disabled={!selected || selectedTrack?.locked} title="Split at playhead"><Scissors size={16} /> Split</button>
+            <button onClick={splitSelected} disabled={splitBlockedBy !== null} title={splitBlockedBy ?? "Split at playhead"}><Scissors size={16} /> Split</button>
             <button onClick={duplicateSelected} disabled={!selected || selectedTrack?.locked} title="Duplicate clip"><Copy size={16} /> Duplicate</button>
             <button onClick={removeSelected} disabled={!selected || selectedTrack?.locked} title="Delete selected clip"><Trash2 size={16} /> Delete</button>
           </div>

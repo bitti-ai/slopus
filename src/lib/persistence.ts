@@ -14,6 +14,24 @@ const WEB_PROJECTS_KEY = "polstudio.web-projects.v1";
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
+/** A project the library knows about but could not read back. */
+export interface UnreadableProject {
+  folderPath: string;
+  /** The underlying message, kept verbatim so it stays diagnosable. */
+  detail: string;
+}
+
+/** Everything the library loaded, plus everything it failed to load. One bad
+ *  project must never hide the good ones, and it must never vanish silently:
+ *  the Rust validator is looser than the zod schema here, so a config the
+ *  backend happily wrote can still fail to parse on the next launch. */
+export interface RecentProjects {
+  projects: ProjectRecord[];
+  unreadable: UnreadableProject[];
+}
+
+const describeReason = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
+
 function readJson<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(key);
@@ -71,42 +89,51 @@ function webSeedProjects(): ProjectRecord[] {
   });
 }
 
-function getWebProjects(): ProjectRecord[] {
+function getWebProjects(): RecentProjects {
   const stored = readJson<ProjectRecord[] | null>(WEB_PROJECTS_KEY, null);
   if (stored) {
-    return stored.flatMap((record) => {
+    const projects: ProjectRecord[] = [];
+    const unreadable: UnreadableProject[] = [];
+    for (const record of stored) {
       try {
         const parsed = parseProjectConfig(record.config);
         const sampleIndex = /^sample-(\d+)$/.exec(parsed.id);
-        return [{ ...record, config: sampleIndex ? seedProjectWorkspace(parsed, Number(sampleIndex[1]) - 1) : parsed }];
-      } catch {
-        return [];
+        projects.push({ ...record, config: sampleIndex ? seedProjectWorkspace(parsed, Number(sampleIndex[1]) - 1) : parsed });
+      } catch (reason) {
+        unreadable.push({ folderPath: record.folderPath || "(unknown folder)", detail: describeReason(reason) });
       }
-    });
+    }
+    return { projects, unreadable };
   }
   const seeded = webSeedProjects();
   localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify(seeded));
-  return seeded;
+  return { projects: seeded, unreadable: [] };
 }
 
-export async function listRecentProjects(): Promise<ProjectRecord[]> {
+export async function listRecentProjects(): Promise<RecentProjects> {
   if (!isTauri()) return getWebProjects();
   const paths = readJson<string[]>(RECENTS_KEY, []);
-  const records = await Promise.all(
+  const rows = await Promise.all(
     paths.map(async (folderPath) => {
       try {
         const value = await invoke<ProjectRecord>("open_project", { folderPath });
-        return { ...value, config: parseProjectConfig(value.config) };
-      } catch {
-        return null;
+        return { ok: true as const, record: { ...value, config: parseProjectConfig(value.config) } };
+      } catch (reason) {
+        // Swallowing this made the project disappear from the library with no
+        // message at all — the worst failure mode in the app. Report it and
+        // keep every row that did load.
+        return { ok: false as const, failure: { folderPath, detail: describeReason(reason) } };
       }
     }),
   );
-  return records.filter((record): record is ProjectRecord => record !== null);
+  return {
+    projects: rows.flatMap((row) => (row.ok ? [row.record] : [])),
+    unreadable: rows.flatMap((row) => (row.ok ? [] : [row.failure])),
+  };
 }
 
 export async function chooseAndOpenProject(): Promise<ProjectRecord | null> {
-  if (!isTauri()) return getWebProjects()[0] ?? null;
+  if (!isTauri()) return getWebProjects().projects[0] ?? null;
   const value = await invoke<ProjectRecord | null>("choose_project_folder");
   if (!value) return null;
   const record = { ...value, config: parseProjectConfig(value.config) };
@@ -134,7 +161,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
   }
   const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const record = { folderPath: `~/Pol Studio/${slug || config.id}`, config };
-  const projects = [record, ...getWebProjects()];
+  const projects = [record, ...getWebProjects().projects];
   localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify(projects));
   return record;
 }
@@ -147,7 +174,7 @@ export async function saveProject(record: ProjectRecord): Promise<ProjectRecord>
   if (isTauri()) {
     await invoke("save_project", { folderPath: next.folderPath, config: next.config });
   } else {
-    const projects = getWebProjects().filter((project) => project.config.id !== next.config.id);
+    const projects = getWebProjects().projects.filter((project) => project.config.id !== next.config.id);
     localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify([next, ...projects]));
   }
   rememberPath(next.folderPath);

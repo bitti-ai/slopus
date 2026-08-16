@@ -85,6 +85,53 @@ describe("project workspace timecode", () => {
     expect(onOpenTimeline).toHaveBeenCalledOnce();
   });
 
+  it("counts only the references that actually reach the compiled prompt", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const createdAt = fresh.createdAt;
+    const references = [
+      { id: "ref-lamp", kind: "text", name: "Lamp silhouette", description: "Matte cream ceramic, tapered neck.", content: "Matte cream ceramic, tapered neck.", intendedUse: ["product"], createdAt },
+      // Described, then cleared to be rewritten — compileMiniMaxH3Prompt skips it.
+      { id: "ref-blank", kind: "text", name: "Lead character", description: "", content: null, intendedUse: ["character"], createdAt },
+      // Audio-only, so isVisualReference skips it too.
+      { id: "ref-score", kind: "text", name: "Score idea", description: "Sparse piano.", content: "Sparse piano.", intendedUse: ["audio"], createdAt },
+    ];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect(screen.getByText("1 reference guides this shot")).not.toBeNull();
+    expect(screen.queryByText("3 references guide this shot")).toBeNull();
+    // Skipped references stay visible, each with its reason.
+    expect(screen.getByText("Lead character")).not.toBeNull();
+    expect(screen.getByText("Not described yet — not used by this shot")).not.toBeNull();
+    expect(screen.getByText(/sound note/)).not.toBeNull();
+  });
+
+  it("tells the user the engine only follows the words when every bound reference is skipped", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const references = [{ id: "ref-blank", kind: "text", name: "Lead character", description: "", content: null, intendedUse: ["character"], createdAt: fresh.createdAt }];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-blank"] }] });
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect(screen.queryByText("1 reference guides this shot")).toBeNull();
+    expect(screen.getByText("No references used by this shot")).not.toBeNull();
+    expect(screen.getByText("The video engine only follows the words above.")).not.toBeNull();
+    // The claim that a text definition is written into the prompt must not
+    // appear when nothing is written into it.
+    expect(screen.queryByText(/text definitions are written into this shot/)).toBeNull();
+  });
+
+  it("disables Split while the playhead sits outside the selected clip", () => {
+    const config = parseProjectConfig(completeFixture);
+    const { container } = render(createElement(TimelineView, { config, onChange: () => undefined, onOpenGenerator: () => undefined }));
+    const split = () => screen.getByRole("button", { name: "Split" }) as HTMLButtonElement;
+    // The playhead starts at the head of the first clip, where splitSelected
+    // returns early — so the button must not look live.
+    expect(split().disabled).toBe(true);
+    expect(split().title).toBe("Move the playhead inside the selected clip to split it");
+    // Choosing a scene puts the playhead inside it, which is a real split.
+    fireEvent.click(container.querySelector(".scene-card")!);
+    expect(split().disabled).toBe(false);
+    expect(split().title).toBe("Split at playhead");
+  });
+
   it("labels a cancelled preview as cancelled instead of queued", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "cancelled", stage: "failed" }] });

@@ -314,8 +314,13 @@
   line-height: var(--leading-snug);
 }
 
+/* An unreadable project reports the validator's message verbatim, which can run
+   long. Bound it here so the toast can never grow past the viewport. */
 .toast span {
   grid-column: 1;
+  max-height: 40vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   color: #c0a4ab;
   font-size: var(--text-sm);
   line-height: var(--leading-normal);

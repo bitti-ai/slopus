@@ -38,7 +38,17 @@ function App() {
 
   useEffect(() => {
     void listRecentProjects()
-      .then(setProjects)
+      .then(({ projects: loaded, unreadable }) => {
+        // Keep everything that loaded: one unreadable project must not hide the
+        // rest. But it must not disappear in silence either — it used to be
+        // dropped from this list with no message at all.
+        setProjects(loaded);
+        if (unreadable.length === 0) return;
+        setError({
+          title: unreadable.length === 1 ? "This project file couldn’t be read" : `${unreadable.length} project files couldn’t be read`,
+          detail: unreadable.map((item) => `${item.folderPath} — ${item.detail}`).join(" · "),
+        });
+      })
       .catch((reason: unknown) => setError({ title: "Couldn’t load your projects", detail: describe(reason) }))
       .finally(() => setLoading(false));
   }, []);
