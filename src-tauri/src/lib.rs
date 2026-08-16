@@ -100,6 +100,14 @@ struct TimelineClip {
     duration_ms: u64,
     source_start_ms: u64,
     label: String,
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default = "default_clip_status")]
+    status: String,
+}
+
+fn default_clip_status() -> String {
+    "approved".into()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -108,8 +116,14 @@ struct ReusableReference {
     id: String,
     kind: String,
     name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
     relative_path: Option<String>,
+    #[serde(default)]
+    intended_use: Vec<String>,
     created_at: String,
 }
 
@@ -117,13 +131,25 @@ struct ReusableReference {
 #[serde(rename_all = "camelCase")]
 struct GenerationJob {
     id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    prompt: String,
     status: String,
+    #[serde(default)]
+    stage: String,
+    #[serde(default)]
+    progress: f64,
     provider_id: Option<String>,
     creative_brief: String,
     compiled_prompt: String,
     #[serde(default)]
     reference_ids: Vec<String>,
+    #[serde(default)]
+    clip_id: Option<String>,
+    #[serde(default)]
     output_relative_path: Option<String>,
+    #[serde(default)]
     error: Option<String>,
     created_at: String,
     updated_at: String,
@@ -234,10 +260,11 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .transpose()?;
         match reference.kind.as_str() {
             "text"
-                if reference
-                    .content
-                    .as_deref()
-                    .is_some_and(|value| !value.is_empty()) => {}
+                if !reference.description.trim().is_empty()
+                    || reference
+                        .content
+                        .as_deref()
+                        .is_some_and(|value| !value.trim().is_empty()) => {}
             "image" if reference.relative_path.is_some() => {}
             "text" => return Err("Text references require content.".into()),
             "image" => return Err("Image references require a relative path.".into()),
@@ -246,21 +273,30 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
     }
     for job in &mut config.generation_jobs {
         if job.id.trim().is_empty()
+            || job.title.trim().is_empty()
+            || job.prompt.trim().is_empty()
             || job.creative_brief.trim().is_empty()
             || job.compiled_prompt.trim().is_empty()
         {
             return Err(
-                "Generation job id, creative brief, and compiled prompt cannot be empty.".into(),
+                "Generation job id, title, prompt, creative brief, and compiled prompt cannot be empty.".into(),
             );
         }
         if !matches!(
             job.status.as_str(),
-            "draft" | "queued" | "generating" | "ready" | "failed" | "cancelled"
+            "draft" | "queued" | "generating" | "ready" | "completed" | "failed" | "cancelled"
         ) {
             return Err(format!(
                 "Unsupported generation job status '{}'.",
                 job.status
             ));
+        }
+        if !matches!(
+            job.stage.as_str(),
+            "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed"
+        ) || !(0.0..=1.0).contains(&job.progress)
+        {
+            return Err(format!("Invalid generation stage or progress for job '{}'.", job.id));
         }
         job.output_relative_path = job
             .output_relative_path

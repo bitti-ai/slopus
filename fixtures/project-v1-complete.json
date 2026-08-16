@@ -58,7 +58,8 @@
             "startMs": 0,
             "durationMs": 8000,
             "sourceStartMs": 0,
-            "label": "Opening shot"
+            "label": "Opening shot",
+            "status": "approved"
           }
         ]
       }
@@ -69,23 +70,31 @@
       "id": "reference-tone",
       "kind": "text",
       "name": "Tone",
+      "description": "Precise, tactile, quietly optimistic.",
       "content": "Precise, tactile, quietly optimistic.",
       "relativePath": null,
+      "intendedUse": ["style"],
       "createdAt": "2026-01-01T00:05:00.000Z"
     },
     {
       "id": "reference-product",
       "kind": "image",
       "name": "Product hero",
+      "description": "The product hero image defines the product's shape, materials, and markings.",
       "content": null,
       "relativePath": "references/product-hero.png",
+      "intendedUse": ["product"],
       "createdAt": "2026-01-01T00:06:00.000Z"
     }
   ],
   "generationJobs": [
     {
       "id": "job-opener",
+      "title": "Generated opener",
+      "prompt": "Reveal the product through a slow macro push.",
       "status": "ready",
+      "stage": "completed",
+      "progress": 1.0,
       "providerId": "minimax-h3",
       "creativeBrief": "Reveal the product through a slow macro push.",
       "compiledPrompt": "integrated_multimodal_description: [Shot 1] Slow macro push toward the product.",
