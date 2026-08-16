@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
@@ -30,6 +30,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   const drafts = jobs.filter((job) => job.status === "draft");
   const completed = jobs.filter((job) => ["ready", "completed", "failed", "cancelled"].includes(job.status));
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
+  // Bound is not the same as used. compileMiniMaxH3Prompt drops a reference that
+  // isn't described yet, and isVisualReference drops an audio-only one, so a
+  // count taken from the IDs alone told the user a definition was steering the
+  // shot when the compiled prompt never mentioned it.
+  const promptRefs = useMemo(() => boundRefs.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)), [boundRefs]);
   const usableReferences = useMemo(() => config.references.filter(isReferenceUsable), [config.references]);
   const runtimeReady = runtime?.state === "ready";
   const submitLabel = runtimeReady ? "Generate this shot" : "Save as a draft";
@@ -244,15 +249,22 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           </dl>
 
           <div className="job-refs">
-            <span>{boundRefs.length === 0 ? "No references used by this shot" : boundRefs.length === 1 ? "1 reference guides this shot" : `${boundRefs.length} references guide this shot`}</span>
-            {boundRefs.length === 0
-              ? <p className="job-refs__empty">The video engine only follows the words above.</p>
-              : boundRefs.map((ref, index) => <div key={ref.id}>
+            <span>{promptRefs.length === 0 ? "No references used by this shot" : promptRefs.length === 1 ? "1 reference guides this shot" : `${promptRefs.length} references guide this shot`}</span>
+            {/* A bound reference the prompt skips is still listed — hiding it
+                would leave the user wondering where their reference went. */}
+            {boundRefs.map((ref, index) => {
+              const skipped = skipReason(ref);
+              return <div key={ref.id}>
                 <i className={`ref-mini ref-mini--${index}`} />
                 <b>{ref.name}</b>
-                <small>{ref.intendedUse.join(", ")}</small>
-              </div>)}
-            {boundRefs.length > 0 && <p className="job-refs__empty">Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt.</p>}
+                {skipped
+                  ? <p className="job-refs__reason">{skipped}</p>
+                  : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
+              </div>;
+            })}
+            {promptRefs.length === 0
+              ? <p className="job-refs__empty">The video engine only follows the words above.</p>
+              : <p className="job-refs__empty">Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt. The tags are your own notes and don’t change what is sent.</p>}
           </div>
 
           <div className="job-actions">
@@ -376,6 +388,15 @@ function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs
     </button>)}
   </section>;
 }
+
+/* Why a reference that is bound to this shot never reaches its prompt, or null
+   when it does. The wording mirrors the References card so the two screens
+   describe the same state in the same words. */
+const skipReason = (reference: ProjectReference): string | null => {
+  if (!isReferenceUsable(reference)) return "Not described yet — not used by this shot";
+  if (!isVisualReference(reference)) return "Tagged as a sound note, so it isn’t sent to the video engine.";
+  return null;
+};
 
 const STAGES: Array<{ label: string; at: number }> = [
   { label: "Prepare", at: 0.01 },

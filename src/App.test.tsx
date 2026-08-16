@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { createProjectConfig } from "./lib/project";
 
 describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
@@ -35,5 +36,21 @@ describe("project library controls", () => {
     await screen.findByRole("heading", { name: "Generator" });
     expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
     expect(screen.getByText("You can still write and save shot drafts.")).not.toBeNull();
+  });
+
+  it("reports a project it can’t read instead of dropping it from the library", async () => {
+    const readable = createProjectConfig({ name: "Readable film", prompt: "A calm kitchen scene", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    localStorage.setItem("polstudio.web-projects.v1", JSON.stringify([
+      { folderPath: "~/Pol Studio/Readable", config: readable },
+      // Written by a looser validator than the zod schema, so it fails to parse.
+      { folderPath: "~/Pol Studio/Broken", config: { ...readable, schemaVersion: 99 } },
+    ]));
+    render(<App />);
+    // The good row still loads…
+    expect(await screen.findByText("Readable film")).not.toBeNull();
+    // …and the bad one is named rather than silently vanishing.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("couldn’t be read");
+    expect(alert.textContent).toContain("~/Pol Studio/Broken");
   });
 });

@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import { isReferenceUsable, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 
-const uses = ["character", "product", "location", "style", "audio"] as const;
+type ReferenceUse = ProjectReference["intendedUse"][number];
+
+/* No "audio" here on purpose: references in this app are visual only. Images are
+   the only assets sent to the video engine, and the H3 prompt's two audio fields
+   (overall_soundscape, non_diegetic_music) are not reference-driven — so an
+   audio tag promised a route that never existed. It stays in the zod enum so
+   projects saved with it still load. */
+const uses: readonly ReferenceUse[] = ["character", "product", "location", "style"];
 
 export function ReferencesView({ config, folderPath, onChange }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
@@ -13,6 +20,10 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const [definitionDescription, setDefinitionDescription] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
   const selected = config.references.find((ref) => ref.id === selectedId);
+  // A reference saved before the audio tag was withdrawn still carries it, so
+  // keep the chip on that one reference — it can be seen and cleared, never
+  // added fresh.
+  const useOptions: readonly ReferenceUse[] = selected?.intendedUse.includes("audio") ? [...uses, "audio"] : uses;
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => onChange({ ...config, references: config.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
   // Starts empty on purpose. Seeding it with the instruction text meant an
@@ -52,7 +63,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <div>
         <span className="eyebrow">Consistency library</span>
         <h1>References</h1>
-        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two.</p>
+        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two you’ve described.</p>
       </div>
       <div>
         <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
@@ -71,7 +82,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b><p>Each new shot uses the first two references in this list. Image files are copied into the project’s <code>references/</code> folder and sent to the video engine; text definitions are written into the shot’s prompt. Newest additions go to the top.</p></div></div>
+        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b><p>Each new shot uses the first two references in this list that you’ve described — an empty one is skipped until you write its definition. Image files are copied into the project’s <code>references/</code> folder and sent to the video engine; text definitions are written into the shot’s prompt. Newest additions go to the top.</p></div></div>
       </section>
 
       <aside className="reference-inspector">
@@ -84,12 +95,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </div>
           <section className="intended-use">
             <h3>Intended use</h3>
-            <p>Note what this reference is for. Select any that apply.</p>
-            <div>{uses.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
+            <p>These tags are your own notes for keeping the library tidy. They don’t change what is sent to the video engine. Select any that apply.</p>
+            <div>{useOptions.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two in this list, so it will be used once it reaches the top two.</p>}
+            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two described references in this list, so it will be used once it reaches the top two of those.</p>}
           </section>
           <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
