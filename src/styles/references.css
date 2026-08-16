@@ -79,6 +79,19 @@
   line-height: var(--leading-snug);
 }
 
+/* A real <h2> in the chrome (the outline used to jump h1 → h3), styled to look
+   exactly like the <span> it replaced. */
+.reference-inspector > .panel-chrome h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
 .reference-inspector > .panel-chrome button {
   width: var(--control-sm);
   height: var(--control-sm);
@@ -504,6 +517,12 @@
   color: var(--accent-bright);
 }
 
+/* Without min-width:0 the nowrap path below sets a min-content floor that
+   pushed the inspector wider than its column at narrow window sizes. */
+.portable-path > div {
+  min-width: 0;
+}
+
 .portable-path b,
 .portable-path code {
   display: block;
@@ -517,7 +536,7 @@
 }
 
 .portable-path code {
-  max-width: 280px;
+  max-width: 100%;
   margin-top: var(--space-1);
   overflow: hidden;
   white-space: nowrap;
@@ -644,9 +663,17 @@
 
 /* --- Responsive ------------------------------------------------------------ */
 
+/* The window can be dragged to 900px (see tauri.conf.json). The old
+   `minmax(600px, 1fr) 368px` library minimum alone put the floor at 968px
+   before page padding, so the view scrolled sideways well before 900px.
+
+   1180px  drop the library's fixed minimum so it can actually flex
+   1040px  stack: the inspector moves under the library instead of squeezing it
+    900px  reference cards go single-column and the header stacks */
+
 @media (max-width: 1180px) {
   .reference-layout {
-    grid-template-columns: minmax(520px, 1fr) 328px;
+    grid-template-columns: minmax(0, 1fr) 328px;
   }
 
   .reference-grid > button {
@@ -658,9 +685,35 @@
   }
 }
 
+@media (max-width: 1040px) {
+  .reference-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  /* Stacked, the divider belongs between the rows, and the inspector scrolls
+     with the page rather than inside its own box. */
+  .reference-library {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .reference-inspector {
+    overflow-y: visible;
+  }
+}
+
 @media (max-width: 900px) {
   .references-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .references-view {
+    padding-inline: var(--space-4);
+  }
+
+  .reference-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

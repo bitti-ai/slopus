@@ -80,6 +80,24 @@
   background: var(--accent-bright);
 }
 
+/* --- Region headings -------------------------------------------------------
+   The edit view now carries a real heading outline (sr-only h1 → h2 per region
+   → h3 inside the inspector). These h2s replace the plain <span>/<strong> that
+   used to sit in the panel chrome, so they inherit the exact same look. */
+
+.scene-panel__head h2,
+.program-panel > .panel-chrome h2,
+.clip-inspector > .panel-chrome h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
 /* --- Scene panel ----------------------------------------------------------- */
 
 .scene-panel__head {
@@ -225,6 +243,14 @@
   overflow-y: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* The height above is DEFINITE, so the default `grid-auto-rows: auto` divided
+     it between the rows instead of letting them size to their content — every
+     media card collapsed to a ~29px striped slab with its name, kind and
+     duration clipped away by the `overflow: hidden` below. `max-content` makes
+     each row as tall as the card it holds and lets the container scroll.
+     `align-content: start` alone does NOT fix this; the row sizing does. */
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: var(--space-2);
   padding: 0 var(--space-2) var(--space-3);
 }
@@ -235,6 +261,8 @@
 
 .media-grid button {
   min-width: 0;
+  /* Floor the hit target even if a card ever renders without its labels. */
+  min-height: var(--control-sm);
   padding: 0 0 var(--space-2);
   overflow: hidden;
   border: 1px solid var(--line);
@@ -653,7 +681,8 @@
   gap: var(--space-4);
 }
 
-.timeline-toolbar strong {
+.timeline-toolbar h2 {
+  margin: 0;
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
@@ -942,9 +971,19 @@
 
 /* --- Responsive ------------------------------------------------------------ */
 
+/* The Tauri window may be resized down to 900px (see tauri.conf.json), so the
+   editor has to survive 900–1180px without ever scrolling sideways. The old
+   `minmax(460px, 1fr)` centre column alone forced a 1036px floor. Each step
+   below drops the least essential column; the program monitor always survives.
+
+   1180px  three columns, narrower sides, monitor floor removed
+   1040px  two columns — the clip inspector goes first
+    840px  one column — the scene panel goes too (below the 900px window
+           minimum, kept so an odd DPI/zoom combination still lays out) */
+
 @media (max-width: 1180px) {
   .edit-panels {
-    grid-template-columns: 264px minmax(460px, 1fr) 312px;
+    grid-template-columns: 256px minmax(0, 1fr) 300px;
   }
 
   .scene-card {
@@ -955,5 +994,47 @@
      positions the playhead with calc(var(--track-column) + …). */
   .timeline-grid {
     --track-column: 200px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .edit-panels {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  /* Everything here is either read-only or already disabled, and the clip name
+     stays editable from the timeline clip itself, so this is the safe cut. */
+  .clip-inspector {
+    display: none;
+  }
+
+  .timeline-grid {
+    --track-column: 184px;
+  }
+
+  .monitor-transport {
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
+  .monitor-transport > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 840px) {
+  .edit-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scene-panel {
+    display: none;
+  }
+
+  .timeline-grid {
+    --track-column: 168px;
   }
 }

@@ -69,13 +69,16 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
       if ((event.key === "Delete" || event.key === "Backspace") && event.target === event.currentTarget) removeSelected();
       if (event.code === "Space" && event.target === event.currentTarget) { event.preventDefault(); setPlaying((value) => !value); }
     }}>
+      {/* The view had no top-level heading at all, so screen-reader users had
+          no landmark for it. Sighted users already see the project topbar. */}
+      <h1 className="sr-only">Timeline editor</h1>
       <div className="edit-panels">
         <aside className="scene-panel">
           <div className="panel-tabs">
             <button className={panelTab === "scenes" ? "active" : ""} onClick={() => setPanelTab("scenes")}><Layers3 size={16} /> Scenes</button>
             <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
           </div>
-          <div className="scene-panel__head"><span>{panelTab === "scenes" ? "Story sequence" : "Project media"}</span></div>
+          <div className="scene-panel__head"><h2>{panelTab === "scenes" ? "Story sequence" : "Project media"}</h2></div>
           {panelTab === "scenes" ? (
             <div className="scene-list">
               {sceneClips.map((clip, index) => (
@@ -99,7 +102,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
         </aside>
 
         <main className="program-panel">
-          <div className="panel-chrome"><span><i className="live-dot" /> Program monitor</span></div>
+          <div className="panel-chrome"><h2><i className="live-dot" /> Program monitor</h2></div>
           <div className="program-canvas">
             {hasVisualOutput ? (
               <div className="program-empty program-empty--footage">
@@ -129,7 +132,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
         </main>
 
         <aside className="clip-inspector">
-          <div className="panel-chrome"><span>Clip details</span></div>
+          <div className="panel-chrome"><h2>Clip details</h2></div>
           {selected ? <>
             <div className="inspector-summary"><span className="clip-chip" style={{ background: selected.color }}><Film size={18} /></span><div><b>{selected.label}</b><small>{selectedTrack?.name} · {selected.status}</small></div></div>
             <section className="inspector-section">
@@ -162,7 +165,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
 
       <section className="pro-timeline">
         <header className="timeline-toolbar">
-          <div><strong>Timeline</strong><span>{timecode(playhead)}</span></div>
+          <div><h2>Timeline</h2><span>{timecode(playhead)}</span></div>
           <div className="timeline-tools">
             <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
             <button onClick={splitSelected} disabled={!selected || selectedTrack?.locked} title="Split at playhead"><Scissors size={16} /> Split</button>

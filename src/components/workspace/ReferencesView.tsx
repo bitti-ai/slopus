@@ -57,7 +57,9 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </div>
     </header>
     <div className="reference-layout">
-      <section className="reference-library">
+      <section className="reference-library" aria-labelledby="reference-library-heading">
+        {/* Both regions used to start at h3, so the outline jumped h1 → h3. */}
+        <h2 className="sr-only" id="reference-library-heading">Reference library</h2>
         <div className="reference-library__toolbar"><span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span></div>
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
@@ -70,7 +72,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </section>
 
       <aside className="reference-inspector">
-        <div className="panel-chrome"><span>Reference details</span>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
+        <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
         {selected ? <>
           <div className={`reference-detail-art reference-detail-art--${selected.kind}`}><span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span><em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em></div>
           <div className="reference-fields">
