@@ -5,6 +5,7 @@ import {
   normalizeProjectPath,
   parseProjectConfig,
   projectNameFromPrompt,
+  seedProjectWorkspace,
 } from "./project";
 
 describe("project schema", () => {
@@ -69,5 +70,20 @@ describe("project schema", () => {
     expect(projectNameFromPrompt("Create a cinematic film about a midnight train through Europe")).toBe(
       "Cinematic film about a midnight train through",
     );
+  });
+
+  it("seeds a portable, screenshot-ready editing workspace", () => {
+    const project = seedProjectWorkspace(createProjectConfig({
+      name: "Northern Light",
+      prompt: "A brand film about humane architecture",
+      aspectRatio: "16:9",
+      resolution: "4k",
+      targetDurationSeconds: 34,
+    }));
+    expect(project.timeline.tracks).toHaveLength(4);
+    expect(project.generationJobs.some((job) => job.status === "generating")).toBe(true);
+    expect(project.references.some((reference) => reference.kind === "image")).toBe(true);
+    expect(project.assets.every((asset) => !asset.relativePath.match(/^([a-z]:|[/\\])/i))).toBe(true);
+    expect(project.generationJobs.filter((job) => job.outputRelativePath).every((job) => !job.outputRelativePath!.match(/^([a-z]:|[/\\])/i))).toBe(true);
   });
 });

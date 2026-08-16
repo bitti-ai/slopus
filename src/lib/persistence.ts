@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   createProjectConfig,
   parseProjectConfig,
+  seedProjectWorkspace,
   type CreateProjectInput,
   type ProjectConfig,
   type ProjectRecord,
@@ -65,7 +66,7 @@ function webSeedProjects(): ProjectRecord[] {
     config.id = `sample-${index + 1}`;
     config.createdAt = new Date(now.getTime() - seed.offset * 86_400_000).toISOString();
     config.updatedAt = new Date(now.getTime() - (index * 22 + 3) * 3_600_000).toISOString();
-    return { folderPath: seed.path, config };
+    return { folderPath: seed.path, config: seedProjectWorkspace(config, index) };
   });
 }
 
@@ -74,7 +75,9 @@ function getWebProjects(): ProjectRecord[] {
   if (stored) {
     return stored.flatMap((record) => {
       try {
-        return [{ ...record, config: parseProjectConfig(record.config) }];
+        const parsed = parseProjectConfig(record.config);
+        const sampleIndex = /^sample-(\d+)$/.exec(parsed.id);
+        return [{ ...record, config: sampleIndex ? seedProjectWorkspace(parsed, Number(sampleIndex[1]) - 1) : parsed }];
       } catch {
         return [];
       }
