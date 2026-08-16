@@ -3,10 +3,12 @@
 
    This is the ONLY file imported by the app (src/main.tsx). Everything else is
    pulled in from here, in cascade order. Keep the font @import first: CSS
-   requires all @import rules to precede any other rule.
+   requires all @import rules to precede any other rule. The fonts are
+   self-hosted (see fonts.css) — a local-first desktop app must not need a CDN
+   to paint its own type, and offline it silently fell back to system metrics.
    ========================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap");
+@import "./fonts.css";
 
 /* Foundation */
 @import "./tokens.css";
