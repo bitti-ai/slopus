@@ -192,6 +192,21 @@ export function isReferenceUsable(reference: ProjectReference): boolean {
     : Boolean(reference.description.trim() || reference.content?.trim());
 }
 
+/** Reference guide §2.1: `<Subject N>` is VISIBLE content. A reference tagged
+ *  only "audio" is a note about sound, so compiling it into subject_definitions
+ *  announced a soundtrack as something on screen ("<Subject 1> is Score idea.
+ *  Sparse piano." … "The shot features <Subject 1>").
+ *
+ *  It is left out of the prompt rather than rerouted: base guide §4.6 wants
+ *  ambience in `overall_soundscape` and §4.7 wants instrumentation, tempo and
+ *  dynamics — and nothing on the reference says which the user meant, so a
+ *  route would be a guess. The tag is no longer offered in the UI; this only
+ *  meets references saved before that. A reference carrying any other tag, or
+ *  no tag at all, is visible content as before. */
+export function isVisualReference(reference: ProjectReference): boolean {
+  return reference.intendedUse.length === 0 || reference.intendedUse.some((use) => use !== "audio");
+}
+
 /* ---------------------------------------------------------------------------
    MiniMax H3 prompt compilation.
 
