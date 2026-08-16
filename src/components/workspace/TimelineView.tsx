@@ -4,7 +4,7 @@ import {
   Volume2, VolumeX, WandSparkles, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ProjectConfig, TimelineClip } from "../../lib/project";
+import { createDraftGenerationJob, type ProjectConfig, type TimelineClip } from "../../lib/project";
 
 const DURATION = 34_000;
 const timecode = (ms: number) => {
@@ -13,14 +13,17 @@ const timecode = (ms: number) => {
   return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 };
 
-export function TimelineView({ config, onChange }: { config: ProjectConfig; onChange: (next: ProjectConfig) => void }) {
-  const [selectedId, setSelectedId] = useState("clip-02");
-  const [playhead, setPlayhead] = useState(10_800);
+export function TimelineView({ config, onChange, onOpenGenerator }: { config: ProjectConfig; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId: string) => void }) {
+  const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
+  const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
+  const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
+  const hasVisualOutput = config.assets.some((asset) => asset.kind === "video" || asset.kind === "image" || asset.kind === "generated")
+    || config.generationJobs.some((job) => Boolean(job.outputRelativePath));
 
   useEffect(() => {
     if (!playing) return;
@@ -32,7 +35,7 @@ export function TimelineView({ config, onChange }: { config: ProjectConfig; onCh
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   const removeSelected = () => {
-    if (!selected) return;
+    if (!selected || selectedTrack?.locked) return;
     updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.id !== selected.id) })));
     setSelectedId("");
   };
@@ -50,12 +53,12 @@ export function TimelineView({ config, onChange }: { config: ProjectConfig; onCh
     setSelectedId(right.id);
   };
   const addScene = () => {
-    const track = tracks.find((item) => item.kind === "video" && !item.locked);
-    if (!track) return;
-    const id = `clip-new-${Date.now()}`;
-    const clip: TimelineClip = { id, assetId: "asset-establishing", trackId: track.id, startMs: 26_000, durationMs: 4_000, sourceStartMs: 0, label: "New generated scene", color: "#4f6ba8", status: "draft" };
-    updateTracks(tracks.map((item) => item.id === track.id ? { ...item, clips: [...item.clips, clip] } : item));
-    setSelectedId(id);
+    const job = createDraftGenerationJob(`A new scene for ${config.name}. ${config.brief.prompt}`, {
+      title: "New scene draft",
+      referenceIds: config.references.slice(0, 2).map((reference) => reference.id),
+    });
+    onChange({ ...config, generationJobs: [job, ...config.generationJobs] });
+    onOpenGenerator(job.id);
   };
 
   return (
@@ -91,11 +94,11 @@ export function TimelineView({ config, onChange }: { config: ProjectConfig; onCh
         <main className="program-panel">
           <div className="panel-chrome"><span><i className="live-dot" /> Program monitor</span><div><button>Fit</button><button aria-label="Fullscreen"><Maximize2 size={14} /></button></div></div>
           <div className="program-canvas">
-            <div className={`program-image program-image--${Math.min(4, Math.floor(playhead / 8000) + 1)}`}>
+            {hasVisualOutput ? <div className={`program-image program-image--${Math.min(4, Math.floor(playhead / 8000) + 1)}`}>
               <div className="program-image__architecture"><i /><i /><i /><i /><i /></div>
               <div className="program-image__caption"><span>NORTHERN LIGHT</span><small>Architecture for a more human city</small></div>
               <span className="safe-frame" />
-            </div>
+            </div> : <div className="program-empty" data-testid="project-empty-monitor"><Film size={28} /><strong>{config.name}</strong><span>{config.brief.prompt}</span><small>Generated or imported footage will appear here.</small></div>}
           </div>
           <div className="monitor-transport">
             <strong>{timecode(playhead)}</strong>
@@ -118,7 +121,7 @@ export function TimelineView({ config, onChange }: { config: ProjectConfig; onCh
       <section className="pro-timeline">
         <header className="timeline-toolbar">
           <div><strong>Timeline</strong><span>{timecode(playhead)}</span></div>
-          <div className="timeline-tools"><button onClick={addScene} title="Add scene"><Plus size={14} /> Add</button><button onClick={splitSelected} disabled={!selected} title="Split at playhead (S)"><Scissors size={14} /> Split</button><button onClick={duplicateSelected} disabled={!selected} title="Duplicate clip"><Copy size={14} /></button><button onClick={removeSelected} disabled={!selected} title="Delete selected clip"><Trash2 size={14} /></button><i /><button title="Zoom out"><ZoomOut size={14} /></button><input type="range" min="50" max="150" defaultValue="90" aria-label="Timeline zoom" /><button title="Zoom in"><ZoomIn size={14} /></button></div>
+          <div className="timeline-tools"><button onClick={addScene} title="Add scene"><Plus size={14} /> Add</button><button onClick={splitSelected} disabled={!selected || selectedTrack?.locked} title="Split at playhead (S)"><Scissors size={14} /> Split</button><button onClick={duplicateSelected} disabled={!selected || selectedTrack?.locked} title="Duplicate clip"><Copy size={14} /></button><button onClick={removeSelected} disabled={!selected || selectedTrack?.locked} title="Delete selected clip"><Trash2 size={14} /></button><i /><button title="Zoom out"><ZoomOut size={14} /></button><input type="range" min="50" max="150" defaultValue="90" aria-label="Timeline zoom" /><button title="Zoom in"><ZoomIn size={14} /></button></div>
         </header>
         <div className="timeline-grid">
           <div className="track-corner"><span>TRACKS</span></div>

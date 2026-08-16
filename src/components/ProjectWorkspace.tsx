@@ -6,7 +6,7 @@ import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
 
-type ProjectView = "timeline" | "generator" | "references";
+export type ProjectView = "timeline" | "generator" | "references";
 
 export function formatDurationTimecode(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -16,13 +16,15 @@ export function formatDurationTimecode(totalSeconds: number): string {
   return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-export function ProjectWorkspace({ project, onBack, onSave }: {
+export function ProjectWorkspace({ project, initialView = "timeline", onBack, onSave }: {
   project: ProjectRecord;
+  initialView?: ProjectView;
   onBack: () => void;
   onSave: (project: ProjectRecord) => Promise<void>;
 }) {
   const [config, setConfig] = useState(project.config);
-  const [view, setView] = useState<ProjectView>("timeline");
+  const [view, setView] = useState<ProjectView>(initialView);
+  const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -59,9 +61,9 @@ export function ProjectWorkspace({ project, onBack, onSave }: {
     </nav>
 
     <div className={`project-content project-content--${view}`}>
-      {view === "timeline" && <TimelineView config={config} onChange={changeConfig} />}
-      {view === "generator" && <GeneratorView config={config} onChange={changeConfig} onOpenTimeline={() => setView("timeline")} />}
-      {view === "references" && <ReferencesView config={config} onChange={changeConfig} />}
+      {view === "timeline" && <TimelineView config={config} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "generator" && <GeneratorView config={config} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
     </div>
     <footer className="project-agent-row"><AgentDock context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : "project references"} /></footer>
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}

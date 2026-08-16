@@ -19,11 +19,32 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
-    expect(project.timeline.tracks).toEqual([]);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Story", "Voice-over", "Music"]);
+    expect(project.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
     expect(project.references).toEqual([]);
-    expect(project.generationJobs).toEqual([]);
+    expect(project.generationJobs).toHaveLength(1);
+    expect(project.generationJobs[0].creativeBrief).toBe("A tactile product launch");
+    expect(project.generationJobs[0].status).toBe("draft");
     expect(project.agentConversation).toEqual({ messages: [] });
     expect(project.providerSettings).toEqual({});
+  });
+
+  it("compiles the initial brief into exactly the three MiniMax H3 core fields", () => {
+    const project = createProjectConfig({
+      name: "Launch film",
+      prompt: "A tactile product launch with rain and close macro camera moves",
+      aspectRatio: "16:9",
+      resolution: "1080p",
+      targetDurationSeconds: 30,
+    });
+    const job = project.generationJobs[0];
+    expect(job.creativeBrief).toBe(project.brief.prompt);
+    expect(job.compiledPrompt.match(/^[a-z_]+:/gm)).toEqual([
+      "integrated_multimodal_description:",
+      "overall_soundscape:",
+      "non_diegetic_music:",
+    ]);
+    expect(job.compiledPrompt).toContain(project.brief.prompt);
   });
 
   it("parses the complete cross-layer fixture without losing data", () => {

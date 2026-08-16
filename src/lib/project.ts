@@ -168,8 +168,40 @@ export interface CreateProjectInput {
   parentDirectory?: string;
 }
 
+export function compileMiniMaxH3Prompt(creativeBrief: string): string {
+  const brief = creativeBrief.trim();
+  return [
+    `integrated_multimodal_description: [Shot 1] ${brief}`,
+    "overall_soundscape: Natural location ambience shaped to the action in the scene.",
+    "non_diegetic_music: A restrained cinematic score that supports the story without overpowering it.",
+  ].join("\n\n");
+}
+
+export function createDraftGenerationJob(
+  creativeBrief: string,
+  options: { id?: string; title?: string; referenceIds?: string[]; now?: string } = {},
+): GenerationJob {
+  const brief = creativeBrief.trim();
+  const now = options.now ?? new Date().toISOString();
+  return generationJobSchema.parse({
+    id: options.id ?? crypto.randomUUID(),
+    title: options.title ?? brief.split(/\s+/).slice(0, 6).join(" "),
+    prompt: brief,
+    status: "draft",
+    stage: "queued",
+    progress: 0,
+    providerId: "minimax-h3",
+    creativeBrief: brief,
+    compiledPrompt: compileMiniMaxH3Prompt(brief),
+    referenceIds: options.referenceIds ?? [],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
   const now = new Date().toISOString();
+  const brief = input.prompt.trim();
   return projectConfigSchema.parse({
     schemaVersion: CURRENT_SCHEMA_VERSION,
     id: crypto.randomUUID(),
@@ -179,10 +211,17 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
     thumbnail: null,
     settings: { aspectRatio: input.aspectRatio, resolution: input.resolution, frameRate: 30, backgroundColor: "#10131a" },
     brief: {
-      prompt: input.prompt.trim(), status: "draft", targetDurationSeconds: input.targetDurationSeconds,
+      prompt: brief, status: "draft", targetDurationSeconds: input.targetDurationSeconds,
       aspectRatio: input.aspectRatio, resolution: input.resolution,
     },
-    assets: [], timeline: { tracks: [] }, references: [], generationJobs: [],
+    assets: [],
+    timeline: { tracks: [
+      { id: "track-story", kind: "video", name: "Story", locked: false, muted: false, clips: [] },
+      { id: "track-voice-over", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [] },
+      { id: "track-music", kind: "audio", name: "Music", locked: false, muted: false, clips: [] },
+    ] },
+    references: [],
+    generationJobs: [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })],
     agentConversation: { messages: [] }, providerSettings: {},
   });
 }
@@ -191,7 +230,7 @@ const h3Prompt = (description: string, sound = "Quiet room tone.") =>
   `integrated_multimodal_description: [Shot 1] ${description}\n\noverall_soundscape: ${sound}\n\nnon_diegetic_music: N/A`;
 
 export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectConfig {
-  if (config.timeline.tracks.length > 0) return config;
+  if (config.assets.length > 0 || config.timeline.tracks.some((track) => track.clips.length > 0)) return config;
   const createdAt = config.createdAt;
   const hues = seed % 2 === 0 ? ["#516fba", "#8b5d74", "#90734e"] : ["#4f7a72", "#8a654a", "#665b91"];
   const assets: ProjectAsset[] = [

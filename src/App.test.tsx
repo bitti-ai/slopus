@@ -24,4 +24,14 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
     await waitFor(() => expect(screen.getByRole("menuitem", { name: "Open project" })).not.toBeNull());
   });
+
+  it("opens a prompt-created project in Generator with its initial draft selected", async () => {
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    fireEvent.change(screen.getByRole("textbox", { name: "Describe your video" }), { target: { value: "A quiet product film for a ceramic lamp" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    await screen.findByRole("heading", { name: "Generator" });
+    expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
+    expect(screen.getByText("Generation runtime unavailable")).not.toBeNull();
+  });
 });

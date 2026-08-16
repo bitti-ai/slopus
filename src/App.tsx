@@ -12,6 +12,7 @@ function App() {
   const [view, setView] = useState<WorkspaceView>("library");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
+  const [activeProjectInitialView, setActiveProjectInitialView] = useState<"timeline" | "generator">("timeline");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -51,6 +52,7 @@ function App() {
       const project = await chooseAndOpenProject();
       if (!project) return;
       setProjects((current) => [project, ...current.filter((item) => item.config.id !== project.config.id)]);
+      setActiveProjectInitialView("timeline");
       setActiveProject(project);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -64,6 +66,7 @@ function App() {
       const project = await createProject(input);
       if (!project) return;
       setProjects((current) => [project, ...current]);
+      setActiveProjectInitialView("generator");
       setActiveProject(project);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -78,7 +81,7 @@ function App() {
   };
 
   if (activeProject) {
-    return <ProjectWorkspace project={activeProject} onBack={() => setActiveProject(null)} onSave={async (project) => {
+    return <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} onBack={() => setActiveProject(null)} onSave={async (project) => {
       const saved = await saveProject(project);
       setActiveProject(saved);
       setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
@@ -108,7 +111,7 @@ function App() {
               {loading ? (
                 <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
               ) : filteredProjects.length ? (
-                <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={setActiveProject} />)}</div>
+                <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} />)}</div>
               ) : (
                 <div className="library-empty"><FolderOpen size={24} /><h3>{query ? "No projects match your search" : "Your library is ready"}</h3><p>{query ? "Try a project name, prompt, or folder." : "Describe a video above or open an existing Pol Studio project folder."}</p>{!query && <button className="secondary-button" onClick={() => void openFromFolder()}>Open project folder</button>}</div>
               )}

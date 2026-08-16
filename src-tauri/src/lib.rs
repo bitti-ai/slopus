@@ -193,6 +193,14 @@ struct ProjectRecord {
     config: ProjectConfig,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportedReferenceImage {
+    name: String,
+    relative_path: String,
+    mime_type: String,
+}
+
 fn normalize_project_path(value: &str) -> Result<String, String> {
     if value.is_empty() || value.contains('\0') {
         return Err("Project paths cannot be empty or contain null bytes.".into());
@@ -296,7 +304,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed"
         ) || !(0.0..=1.0).contains(&job.progress)
         {
-            return Err(format!("Invalid generation stage or progress for job '{}'.", job.id));
+            return Err(format!(
+                "Invalid generation stage or progress for job '{}'.",
+                job.id
+            ));
         }
         job.output_relative_path = job
             .output_relative_path
@@ -481,6 +492,65 @@ fn choose_project_folder(app: AppHandle) -> Result<Option<ProjectRecord>, String
 }
 
 #[tauri::command]
+fn choose_reference_image(
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Option<ImportedReferenceImage>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Add an image reference")
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let source = selected
+        .into_path()
+        .map_err(|error| format!("Could not access selected image: {error}"))?;
+    if !source.is_file() {
+        return Err("The selected image does not exist.".into());
+    }
+    let project_folder = PathBuf::from(folder_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    let references_folder = project_folder.join("references");
+    fs::create_dir_all(&references_folder)
+        .map_err(|error| format!("Could not prepare references folder: {error}"))?;
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| "The selected image needs a file extension.".to_string())?;
+    let mime_type = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => return Err("Choose a PNG, JPEG, or WebP image.".into()),
+    };
+    let display_name = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Image reference");
+    let base_name = safe_folder_name(display_name);
+    let mut file_name = format!("{base_name}.{extension}");
+    let mut destination = references_folder.join(&file_name);
+    let mut suffix = 2;
+    while destination.exists() {
+        file_name = format!("{base_name}-{suffix}.{extension}");
+        destination = references_folder.join(&file_name);
+        suffix += 1;
+    }
+    fs::copy(&source, &destination)
+        .map_err(|error| format!("Could not copy image into this project: {error}"))?;
+    Ok(Some(ImportedReferenceImage {
+        name: display_name.to_string(),
+        relative_path: format!("references/{file_name}"),
+        mime_type: mime_type.into(),
+    }))
+}
+
+#[tauri::command]
 fn create_project(
     app: AppHandle,
     parent_directory: Option<String>,
@@ -544,6 +614,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_project,
             choose_project_folder,
+            choose_reference_image,
             create_project,
             save_project
         ])
