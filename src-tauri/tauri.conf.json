@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pol Studio",
+  "version": "0.1.0",
+  "identifier": "studio.pol.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Pol Studio",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 900,
+        "minHeight": 650,
+        "center": true,
+        "decorations": true,
+        "resizable": true,
+        "backgroundColor": "#080A0F"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "shortDescription": "Agentic video creation workspace",
+    "longDescription": "Pol Studio keeps professional AI-assisted video projects in folders you control."
+  }
+}
+
