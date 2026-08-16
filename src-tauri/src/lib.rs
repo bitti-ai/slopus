@@ -8,6 +8,9 @@ use std::{
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+mod agent;
+mod vidfab;
+
 const PROJECT_FILE_NAME: &str = "polstudio.project.json";
 const PROJECT_DIRECTORIES: [&str; 6] = [
     "media/imported",
@@ -607,16 +610,84 @@ fn save_project(folder_path: String, config: ProjectConfig) -> Result<(), String
     write_project(&folder, &config)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeStatus {
+    providers: Vec<agent::ProviderStatus>,
+    vidfab: vidfab::VidfabStatus,
+}
+
+#[tauri::command]
+fn runtime_status(config: ProjectConfig) -> Result<RuntimeStatus, String> {
+    let config = validate_and_normalize_config(config)?;
+    Ok(RuntimeStatus {
+        providers: agent::provider_statuses(&config.provider_settings),
+        vidfab: vidfab::status(&config.provider_settings),
+    })
+}
+
+#[tauri::command]
+async fn run_agent_turn(
+    state: tauri::State<'_, agent::AgentRuntime>,
+    request: agent::AgentTurnRequest,
+) -> Result<agent::AgentTurnResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || runtime.run(request))
+        .await
+        .map_err(|error| format!("Agent task failed: {error}"))?
+}
+
+#[tauri::command]
+fn cancel_agent_turn(state: tauri::State<'_, agent::AgentRuntime>, request_id: String) -> bool {
+    state.cancel(&request_id)
+}
+
+#[tauri::command]
+fn resolve_vidfab_plan(
+    request: vidfab::GenerationRequest,
+    config: ProjectConfig,
+) -> Result<vidfab::ResolvedPlan, String> {
+    let config = validate_and_normalize_config(config)?;
+    vidfab::resolve_plan(&request, &config.provider_settings)
+}
+
+#[tauri::command]
+fn enqueue_vidfab_generation(
+    app: AppHandle,
+    state: tauri::State<'_, vidfab::VidfabRuntime>,
+    request: vidfab::GenerationRequest,
+    config: ProjectConfig,
+) -> Result<(), String> {
+    let config = validate_and_normalize_config(config)?;
+    state.enqueue(app, request, &config.provider_settings)
+}
+
+#[tauri::command]
+fn cancel_vidfab_generation(
+    state: tauri::State<'_, vidfab::VidfabRuntime>,
+    job_id: String,
+) -> bool {
+    state.cancel(&job_id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(agent::AgentRuntime::default())
+        .manage(vidfab::VidfabRuntime::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             open_project,
             choose_project_folder,
             choose_reference_image,
             create_project,
-            save_project
+            save_project,
+            runtime_status,
+            run_agent_turn,
+            cancel_agent_turn,
+            resolve_vidfab_plan,
+            enqueue_vidfab_generation,
+            cancel_vidfab_generation
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pol Studio");
