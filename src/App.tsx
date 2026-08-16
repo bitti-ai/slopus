@@ -1,5 +1,5 @@
 import { BookImage, FolderOpen, Grid2X2, List, Search, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EmptyPlaceholder } from "./components/EmptyPlaceholder";
 import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace } from "./components/ProjectWorkspace";
@@ -15,13 +15,26 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
+  const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
   const [error, setError] = useState<string | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listRecentProjects()
       .then(setProjects)
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInput.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
   }, []);
 
   const filteredProjects = useMemo(() => {
@@ -80,7 +93,7 @@ function App() {
       {view === "library" && (
         <main className="library">
           <header className="library__topbar">
-            <div className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>⌘ K</kbd></div>
+            <div className="search-field"><Search size={16} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
             <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={15} /> Open project folder</button>
           </header>
           <div className="library__content">
@@ -91,11 +104,11 @@ function App() {
             <PromptComposer busy={busy} onCreate={createFromPrompt} />
 
             <section className="recent-projects" aria-labelledby="recent-heading">
-              <div className="section-heading"><div><h2 id="recent-heading">Recent projects</h2><span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span></div><div className="view-controls"><button className="icon-button icon-button--active" aria-label="Grid view"><Grid2X2 size={15} /></button><button className="icon-button" aria-label="List view"><List size={16} /></button></div></div>
+              <div className="section-heading"><div><h2 id="recent-heading">Recent projects</h2><span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span></div><div className="view-controls" aria-label="Project layout"><button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={15} /></button><button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={16} /></button></div></div>
               {loading ? (
                 <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
               ) : filteredProjects.length ? (
-                <div className="project-grid">{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={setActiveProject} />)}</div>
+                <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={setActiveProject} />)}</div>
               ) : (
                 <div className="library-empty"><FolderOpen size={24} /><h3>{query ? "No projects match your search" : "Your library is ready"}</h3><p>{query ? "Try a project name, prompt, or folder." : "Describe a video above or open an existing Pol Studio project folder."}</p>{!query && <button className="secondary-button" onClick={() => void openFromFolder()}>Open project folder</button>}</div>
               )}

@@ -1,4 +1,5 @@
 import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles } from "lucide-react";
+import { useState } from "react";
 import type { ProjectRecord } from "../lib/project";
 
 interface ProjectCardProps {
@@ -18,11 +19,12 @@ function relativeDate(iso: string) {
 }
 
 export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const { config } = project;
   const style = config.thumbnail ? { backgroundImage: `url(${JSON.stringify(config.thumbnail).slice(1, -1)})` } : undefined;
   return (
     <article className="project-card" tabIndex={0} onDoubleClick={() => onOpen(project)} onKeyDown={(event) => {
-      if (event.key === "Enter") onOpen(project);
+      if (event.key === "Enter" && event.currentTarget === event.target) onOpen(project);
     }}>
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}`} style={style}>
@@ -35,7 +37,18 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
       <div className="project-card__body">
         <div className="project-card__title-row">
           <h3 title={config.name}>{config.name}</h3>
-          <button className="icon-button" aria-label={`More options for ${config.name}`}><MoreHorizontal size={17} /></button>
+          <button
+            className="icon-button"
+            aria-label={`More options for ${config.name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          ><MoreHorizontal size={17} /></button>
+          {menuOpen && (
+            <div className="project-card__menu" role="menu">
+              <button role="menuitem" onClick={() => onOpen(project)}><Folder size={13} /> Open project</button>
+            </div>
+          )}
         </div>
         <p className="project-card__path" title={project.folderPath}><Folder size={12} /> {project.folderPath}</p>
         <div className="project-card__meta">

@@ -112,6 +112,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .section-heading > div:first-child { display: flex; align-items: baseline; gap: 9px; }.section-heading h2 { margin: 0; font-size: 14px; font-weight: 600; }.section-heading span { color: #5f6674; font-size: 9px; }
 .view-controls { display: flex; gap: 2px; }
 .project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.project-grid--list { grid-template-columns: 1fr; }
+.project-grid--list .project-card { display: grid; grid-template-columns: minmax(180px, 24%) 1fr; }
+.project-grid--list .project-card__art, .project-grid--list .project-card__art-button { height: 100%; }
+.project-grid--list .project-card__art { aspect-ratio: auto; min-height: 112px; }
+.project-grid--list .project-card__body { align-self: center; }
 .project-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: #0e1117; overflow: hidden; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
 .project-card:hover, .project-card:focus { transform: translateY(-2px); border-color: rgba(117, 137, 198, .28); box-shadow: 0 15px 35px rgba(0,0,0,.28); outline: none; }
 .project-card__art-button { display: block; width: 100%; padding: 0; border: 0; background: none; }
@@ -134,7 +139,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .project-card__art-copy { position: absolute; z-index: 2; inset: auto 10px 9px; display: flex; gap: 6px; align-items: center; color: rgba(255,255,255,.75); text-shadow: 0 1px 5px #000; font-size: 8px; text-align: left; }
 .project-card__art-copy svg { flex: 0 0 auto; }.project-card__art-copy span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .project-card__body { padding: 11px 12px 10px; }
-.project-card__title-row { display: flex; align-items: center; gap: 4px; }.project-card__title-row h3 { min-width: 0; flex: 1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d9dce3; font-size: 11px; font-weight: 600; }
+.project-card__title-row { position: relative; display: flex; align-items: center; gap: 4px; }.project-card__title-row h3 { min-width: 0; flex: 1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d9dce3; font-size: 11px; font-weight: 600; }
+.project-card__menu { position: absolute; z-index: 5; top: 27px; right: 0; min-width: 120px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 6px; background: #171b24; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+.project-card__menu button { width: 100%; height: 28px; padding: 0 7px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 4px; color: #c8cdd7; background: transparent; font-size: 9px; text-align: left; }
+.project-card__menu button:hover { background: rgba(255,255,255,.06); }
 .project-card__path { margin: 3px 0 10px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #555d6b; font: 400 8px "DM Mono", monospace; }
 .project-card__path svg { flex: 0 0 auto; }.project-card__meta { border-top: 1px solid var(--line); padding-top: 8px; display: flex; justify-content: space-between; color: #676e7b; font-size: 8px; }.project-card__meta span { display: flex; align-items: center; gap: 4px; }
 .project-skeleton { height: 225px; border-radius: 10px; padding: 10px; border: 1px solid var(--line); background: #0e1117; }.project-skeleton i { display: block; height: 145px; border-radius: 6px; background: #151922; }.project-skeleton span, .project-skeleton small { display: block; height: 8px; margin-top: 14px; border-radius: 4px; background: #181c24; }.project-skeleton small { width: 60%; margin-top: 8px; }

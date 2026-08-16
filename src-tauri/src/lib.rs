@@ -1,14 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
+    collections::BTreeMap,
+    fs, io,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 const PROJECT_FILE_NAME: &str = "polstudio.project.json";
+const PROJECT_DIRECTORIES: [&str; 6] = [
+    "media/imported",
+    "media/generated",
+    "references",
+    "thumbnails",
+    "cache",
+    "exports",
+];
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectConfig {
     schema_version: u32,
@@ -21,9 +32,17 @@ struct ProjectConfig {
     brief: GenerationBrief,
     assets: Vec<ProjectAsset>,
     timeline: Timeline,
+    #[serde(default)]
+    references: Vec<ReusableReference>,
+    #[serde(default)]
+    generation_jobs: Vec<GenerationJob>,
+    #[serde(default)]
+    agent_conversation: AgentConversation,
+    #[serde(default)]
+    provider_settings: BTreeMap<String, ProviderSetting>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectSettings {
     aspect_ratio: String,
@@ -32,7 +51,7 @@ struct ProjectSettings {
     background_color: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerationBrief {
     prompt: String,
@@ -42,7 +61,7 @@ struct GenerationBrief {
     resolution: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectAsset {
     id: String,
@@ -56,12 +75,12 @@ struct ProjectAsset {
     created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Timeline {
     tracks: Vec<TimelineTrack>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct TimelineTrack {
     id: String,
     kind: String,
@@ -71,7 +90,7 @@ struct TimelineTrack {
     clips: Vec<TimelineClip>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TimelineClip {
     id: String,
@@ -83,6 +102,64 @@ struct TimelineClip {
     label: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReusableReference {
+    id: String,
+    kind: String,
+    name: String,
+    content: Option<String>,
+    relative_path: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationJob {
+    id: String,
+    status: String,
+    provider_id: Option<String>,
+    creative_brief: String,
+    compiled_prompt: String,
+    #[serde(default)]
+    reference_ids: Vec<String>,
+    output_relative_path: Option<String>,
+    error: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+struct AgentConversation {
+    #[serde(default)]
+    messages: Vec<AgentMessage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentMessage {
+    id: String,
+    role: String,
+    content: String,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct ProviderSetting {
+    enabled: bool,
+    model: Option<String>,
+    #[serde(default)]
+    options: BTreeMap<String, ProviderOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum ProviderOption {
+    String(String),
+    Number(f64),
+    Boolean(bool),
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectRecord {
@@ -90,7 +167,39 @@ struct ProjectRecord {
     config: ProjectConfig,
 }
 
-fn validate_config(config: &ProjectConfig) -> Result<(), String> {
+fn normalize_project_path(value: &str) -> Result<String, String> {
+    if value.is_empty() || value.contains('\0') {
+        return Err("Project paths cannot be empty or contain null bytes.".into());
+    }
+    let scheme_or_drive_prefix = value
+        .find(':')
+        .map(|colon| {
+            colon > 0
+                && value.as_bytes()[0].is_ascii_alphabetic()
+                && value.as_bytes()[..colon]
+                    .iter()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'+' | b'-' | b'.'))
+        })
+        .unwrap_or(false);
+    if value.starts_with('/') || value.starts_with('\\') || scheme_or_drive_prefix {
+        return Err("Project paths must be relative to the project root.".into());
+    }
+    let mut normalized = Vec::new();
+    let portable = value.replace('\\', "/");
+    for component in portable.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => return Err("Project paths cannot traverse outside the project root.".into()),
+            value => normalized.push(value),
+        }
+    }
+    if normalized.is_empty() {
+        return Err("Project paths must point to an item below the project root.".into());
+    }
+    Ok(normalized.join("/"))
+}
+
+fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectConfig, String> {
     if config.schema_version != 1 {
         return Err(format!(
             "Unsupported project schema version {}. This build supports version 1.",
@@ -103,7 +212,86 @@ fn validate_config(config: &ProjectConfig) -> Result<(), String> {
     if config.brief.prompt.trim().is_empty() {
         return Err("Project brief cannot be empty.".into());
     }
-    Ok(())
+    config.thumbnail = config
+        .thumbnail
+        .as_deref()
+        .map(normalize_project_path)
+        .transpose()?;
+    for asset in &mut config.assets {
+        if asset.id.trim().is_empty() || asset.name.trim().is_empty() {
+            return Err("Asset id and name cannot be empty.".into());
+        }
+        asset.relative_path = normalize_project_path(&asset.relative_path)?;
+    }
+    for reference in &mut config.references {
+        if reference.id.trim().is_empty() || reference.name.trim().is_empty() {
+            return Err("Reference id and name cannot be empty.".into());
+        }
+        reference.relative_path = reference
+            .relative_path
+            .as_deref()
+            .map(normalize_project_path)
+            .transpose()?;
+        match reference.kind.as_str() {
+            "text"
+                if reference
+                    .content
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty()) => {}
+            "image" if reference.relative_path.is_some() => {}
+            "text" => return Err("Text references require content.".into()),
+            "image" => return Err("Image references require a relative path.".into()),
+            _ => return Err(format!("Unsupported reference kind '{}'.", reference.kind)),
+        }
+    }
+    for job in &mut config.generation_jobs {
+        if job.id.trim().is_empty()
+            || job.creative_brief.trim().is_empty()
+            || job.compiled_prompt.trim().is_empty()
+        {
+            return Err(
+                "Generation job id, creative brief, and compiled prompt cannot be empty.".into(),
+            );
+        }
+        if !matches!(
+            job.status.as_str(),
+            "draft" | "queued" | "generating" | "ready" | "failed" | "cancelled"
+        ) {
+            return Err(format!(
+                "Unsupported generation job status '{}'.",
+                job.status
+            ));
+        }
+        job.output_relative_path = job
+            .output_relative_path
+            .as_deref()
+            .map(normalize_project_path)
+            .transpose()?;
+    }
+    for message in &config.agent_conversation.messages {
+        if message.id.trim().is_empty() || message.content.trim().is_empty() {
+            return Err("Agent message id and content cannot be empty.".into());
+        }
+        if !matches!(message.role.as_str(), "user" | "assistant" | "system") {
+            return Err(format!(
+                "Unsupported agent message role '{}'.",
+                message.role
+            ));
+        }
+    }
+    for (provider_id, setting) in &config.provider_settings {
+        if provider_id.trim().is_empty() {
+            return Err("Provider setting ids cannot be empty.".into());
+        }
+        if setting
+            .model
+            .as_deref()
+            .is_some_and(|model| model.trim().is_empty())
+        {
+            return Err("Provider setting models cannot be empty.".into());
+        }
+    }
+    Ok(config)
 }
 
 fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
@@ -114,15 +302,11 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
     let config_path = canonical_folder.join(PROJECT_FILE_NAME);
-    let json = fs::read_to_string(&config_path).map_err(|error| {
-        format!(
-            "Could not read {}: {error}",
-            config_path.to_string_lossy()
-        )
-    })?;
+    let json = fs::read_to_string(&config_path)
+        .map_err(|error| format!("Could not read {}: {error}", config_path.to_string_lossy()))?;
     let config: ProjectConfig = serde_json::from_str(&json)
         .map_err(|error| format!("Project config is not valid: {error}"))?;
-    validate_config(&config)?;
+    let config = validate_and_normalize_config(config)?;
     Ok(ProjectRecord {
         folder_path: canonical_folder.to_string_lossy().into_owned(),
         config,
@@ -130,23 +314,96 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
 }
 
 fn write_project(folder: &Path, config: &ProjectConfig) -> Result<(), String> {
-    validate_config(config)?;
+    write_project_with_replacer(folder, config, atomic_replace)
+}
+
+fn write_project_with_replacer<F>(
+    folder: &Path,
+    config: &ProjectConfig,
+    replacer: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&Path, &Path) -> io::Result<()>,
+{
+    let config = validate_and_normalize_config(config.clone())?;
     if !folder.is_dir() {
         return Err("Project folder does not exist.".into());
     }
-    let json = serde_json::to_string_pretty(config)
+    let json = serde_json::to_string_pretty(&config)
         .map_err(|error| format!("Could not serialize project: {error}"))?;
     let destination = folder.join(PROJECT_FILE_NAME);
-    let temporary = folder.join(format!("{PROJECT_FILE_NAME}.tmp"));
-    fs::write(&temporary, format!("{json}\n"))
-        .map_err(|error| format!("Could not write project config: {error}"))?;
-    if destination.exists() {
-        fs::remove_file(&destination)
-            .map_err(|error| format!("Could not replace existing project config: {error}"))?;
+    let sequence = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let temporary = folder.join(format!(
+        ".{PROJECT_FILE_NAME}.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    ));
+    let write_result = (|| -> io::Result<()> {
+        use io::Write;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(format!("{json}\n").as_bytes())?;
+        file.sync_all()
+    })();
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Could not write project config: {error}"));
     }
-    fs::rename(&temporary, &destination)
-        .map_err(|error| format!("Could not finalize project config: {error}"))?;
+    if let Err(error) = replacer(&temporary, &destination) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Could not finalize project config: {error}"));
+    }
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
+    fs::rename(temporary, destination)?;
+    fs::File::open(destination.parent().expect("project file has a parent"))?.sync_all()
+}
+
+#[cfg(windows)]
+fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        Foundation::GetLastError,
+        Storage::FileSystem::{
+            MoveFileExW, ReplaceFileW, MOVEFILE_WRITE_THROUGH, REPLACEFILE_WRITE_THROUGH,
+        },
+    };
+
+    let temporary_wide: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination_wide: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let succeeded = unsafe {
+        if destination.exists() {
+            ReplaceFileW(
+                destination_wide.as_ptr(),
+                temporary_wide.as_ptr(),
+                std::ptr::null(),
+                REPLACEFILE_WRITE_THROUGH,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        } else {
+            MoveFileExW(
+                temporary_wide.as_ptr(),
+                destination_wide.as_ptr(),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        }
+    };
+    if succeeded == 0 {
+        let code = unsafe { GetLastError() };
+        Err(io::Error::from_raw_os_error(code as i32))
+    } else {
+        Ok(())
+    }
 }
 
 fn safe_folder_name(name: &str) -> String {
@@ -193,7 +450,7 @@ fn create_project(
     parent_directory: Option<String>,
     config: ProjectConfig,
 ) -> Result<Option<ProjectRecord>, String> {
-    validate_config(&config)?;
+    let config = validate_and_normalize_config(config)?;
     let parent = match parent_directory {
         Some(path) => PathBuf::from(path),
         None => match app
@@ -208,6 +465,11 @@ fn create_project(
             None => return Ok(None),
         },
     };
+    create_project_in(&parent, &config).map(Some)
+}
+
+fn create_project_in(parent: &Path, config: &ProjectConfig) -> Result<ProjectRecord, String> {
+    let config = validate_and_normalize_config(config.clone())?;
     if !parent.is_dir() {
         return Err("The selected parent folder does not exist.".into());
     }
@@ -220,22 +482,19 @@ fn create_project(
     }
     fs::create_dir(&project_folder)
         .map_err(|error| format!("Could not create project folder: {error}"))?;
-    for child in ["assets", "generated", "exports", "cache"] {
-        fs::create_dir(project_folder.join(child))
+    for child in PROJECT_DIRECTORIES {
+        fs::create_dir_all(project_folder.join(child))
             .map_err(|error| format!("Could not create {child} folder: {error}"))?;
     }
     if let Err(error) = write_project(&project_folder, &config) {
         let _ = fs::remove_dir_all(&project_folder);
         return Err(error);
     }
-    read_project(&project_folder).map(Some)
+    read_project(&project_folder)
 }
 
 #[tauri::command]
-fn save_project(
-    folder_path: String,
-    config: ProjectConfig,
-) -> Result<(), String> {
+fn save_project(folder_path: String, config: ProjectConfig) -> Result<(), String> {
     let folder = PathBuf::from(folder_path)
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
@@ -261,27 +520,149 @@ mod tests {
     use super::*;
 
     fn fixture() -> ProjectConfig {
-        serde_json::from_value(serde_json::json!({
-            "schemaVersion": 1,
-            "id": "project-1",
-            "name": "Launch Film",
-            "createdAt": "2026-01-01T00:00:00.000Z",
-            "updatedAt": "2026-01-01T00:00:00.000Z",
-            "thumbnail": null,
-            "settings": { "aspectRatio": "16:9", "resolution": "4k", "frameRate": 30, "backgroundColor": "#10131a" },
-            "brief": { "prompt": "A product launch", "status": "draft", "targetDurationSeconds": 60, "aspectRatio": "16:9", "resolution": "4k" },
-            "assets": [],
-            "timeline": { "tracks": [] }
-        })).unwrap()
+        serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap()
     }
 
     #[test]
-    fn project_round_trip_uses_stable_file_name() {
+    fn complete_project_create_open_save_reopen_is_lossless() {
         let root = tempfile::tempdir().unwrap();
-        write_project(root.path(), &fixture()).unwrap();
-        let record = read_project(root.path()).unwrap();
-        assert_eq!(record.config.name, "Launch Film");
-        assert!(root.path().join(PROJECT_FILE_NAME).is_file());
+        let expected = validate_and_normalize_config(fixture()).unwrap();
+        let created = create_project_in(root.path(), &expected).unwrap();
+        assert_eq!(created.config, expected);
+
+        let project_folder = PathBuf::from(&created.folder_path);
+        let opened = read_project(&project_folder).unwrap();
+        assert_eq!(opened.config, expected);
+
+        let mut saved = opened.config.clone();
+        saved.updated_at = "2026-02-03T04:05:06.000Z".into();
+        saved.agent_conversation.messages.push(AgentMessage {
+            id: "message-save".into(),
+            role: "user".into(),
+            content: "Save this portable project.".into(),
+            created_at: "2026-02-03T04:05:06.000Z".into(),
+        });
+        write_project(&project_folder, &saved).unwrap();
+        assert_eq!(read_project(&project_folder).unwrap().config, saved);
+
+        let mut directories = Vec::new();
+        fn collect_directories(root: &Path, current: &Path, output: &mut Vec<String>) {
+            for entry in fs::read_dir(current).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    output.push(
+                        path.strip_prefix(root)
+                            .unwrap()
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                    );
+                    collect_directories(root, &path, output);
+                }
+            }
+        }
+        collect_directories(&project_folder, &project_folder, &mut directories);
+        directories.sort();
+        assert_eq!(
+            directories,
+            [
+                "cache",
+                "exports",
+                "media",
+                "media/generated",
+                "media/imported",
+                "references",
+                "thumbnails",
+            ]
+        );
+        let files: Vec<_> = fs::read_dir(&project_folder)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_file())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(files, [PROJECT_FILE_NAME]);
+    }
+
+    #[test]
+    fn old_v1_documents_receive_empty_persistence_containers() {
+        let mut value = serde_json::to_value(fixture()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("references");
+        object.remove("generationJobs");
+        object.remove("agentConversation");
+        object.remove("providerSettings");
+        let config: ProjectConfig = serde_json::from_value(value).unwrap();
+        assert!(config.references.is_empty());
+        assert!(config.generation_jobs.is_empty());
+        assert!(config.agent_conversation.messages.is_empty());
+        assert!(config.provider_settings.is_empty());
+    }
+
+    #[test]
+    fn stored_paths_are_normalized_and_escaping_paths_are_rejected() {
+        let mut normalized = fixture();
+        normalized.assets[0].relative_path = ".\\media\\imported//macro.mp4".into();
+        assert_eq!(
+            validate_and_normalize_config(normalized).unwrap().assets[0].relative_path,
+            "media/imported/macro.mp4"
+        );
+
+        for path in [
+            "/etc/passwd",
+            "\\Windows\\system.ini",
+            "C:\\Users\\creator\\clip.mp4",
+            "https://example.com/clip.mp4",
+            "media/../../outside.mp4",
+            "references/../outside.png",
+        ] {
+            let mut escaping = fixture();
+            escaping.assets[0].relative_path = path.into();
+            assert!(
+                validate_and_normalize_config(escaping).is_err(),
+                "accepted escaping path {path}"
+            );
+        }
+
+        let mut thumbnail = fixture();
+        thumbnail.thumbnail = Some("../thumbnail.webp".into());
+        let mut reference = fixture();
+        reference.references[1].relative_path = Some("../product.png".into());
+        let mut job = fixture();
+        job.generation_jobs[0].output_relative_path = Some("C:\\output.mp4".into());
+        for config in [thumbnail, reference, job] {
+            assert!(validate_and_normalize_config(config).is_err());
+        }
+    }
+
+    #[test]
+    fn replacement_failure_preserves_original_project_json() {
+        let root = tempfile::tempdir().unwrap();
+        let original = fixture();
+        write_project(root.path(), &original).unwrap();
+        let destination = root.path().join(PROJECT_FILE_NAME);
+        let original_bytes = fs::read(&destination).unwrap();
+
+        let mut changed = original.clone();
+        changed.name = "This must not replace the original".into();
+        let error = write_project_with_replacer(root.path(), &changed, |_, _| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "simulated replacement failure",
+            ))
+        })
+        .unwrap_err();
+
+        assert!(error.contains("simulated replacement failure"));
+        assert_eq!(fs::read(&destination).unwrap(), original_bytes);
+        assert_eq!(read_project(root.path()).unwrap().config, original);
+        assert_eq!(
+            fs::read_dir(root.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().is_file())
+                .count(),
+            1
+        );
     }
 
     #[test]

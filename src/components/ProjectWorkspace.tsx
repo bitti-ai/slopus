@@ -20,17 +20,33 @@ import {
 import { useState } from "react";
 import type { ProjectRecord } from "../lib/project";
 
+export function formatDurationTimecode(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 export function ProjectWorkspace({ project, onBack, onSave }: {
   project: ProjectRecord;
   onBack: () => void;
   onSave: (project: ProjectRecord) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [agentPrompt, setAgentPrompt] = useState("");
   const { config } = project;
   const save = async () => {
     setSaving(true);
-    try { await onSave(project); } finally { setSaving(false); }
+    setSaveError(null);
+    try {
+      await onSave(project);
+    } catch (reason) {
+      setSaveError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -85,7 +101,7 @@ export function ProjectWorkspace({ project, onBack, onSave }: {
               <button className="primary-button"><Sparkles size={15} /> Plan first cut</button>
             </div>
           </div>
-          <div className="transport"><span>00:00:00</span><button><Play size={17} fill="currentColor" /></button><span>00:{String(config.brief.targetDurationSeconds).padStart(2, "0")}:00</span></div>
+          <div className="transport"><span>00:00:00</span><button><Play size={17} fill="currentColor" /></button><span>{formatDurationTimecode(config.brief.targetDurationSeconds)}</span></div>
           <div className="workspace-prompt">
             <Sparkles size={15} />
             <input
@@ -103,6 +119,7 @@ export function ProjectWorkspace({ project, onBack, onSave }: {
         <div className="timeline-placeholder__top"><div><strong>Timeline</strong><span>Scene-based editing will appear here</span></div><button className="secondary-button"><Plus size={14} /> Add scene</button></div>
         <div className="timeline-placeholder__track"><span>V1</span><div><i /><i /><i /><p>Drop media or generate a first cut to begin</p></div></div>
       </section>
+      {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}
     </div>
   );
 }

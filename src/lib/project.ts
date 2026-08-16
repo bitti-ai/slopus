@@ -6,6 +6,36 @@ export const CURRENT_SCHEMA_VERSION = 1 as const;
 const idSchema = z.string().min(1);
 const isoDateSchema = z.string().datetime();
 
+export function normalizeProjectPath(value: string): string {
+  if (!value || value.includes("\0")) {
+    throw new Error("Project paths cannot be empty or contain null bytes.");
+  }
+  if (/^[\\/]/.test(value) || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+    throw new Error("Project paths must be relative to the project root.");
+  }
+  const parts = value.replace(/\\/g, "/").split("/");
+  if (parts.includes("..")) {
+    throw new Error("Project paths cannot traverse outside the project root.");
+  }
+  const normalized = parts.filter((part) => part && part !== ".").join("/");
+  if (!normalized) {
+    throw new Error("Project paths must point to an item below the project root.");
+  }
+  return normalized;
+}
+
+export const projectRelativePathSchema = z.string().transform((value, context) => {
+  try {
+    return normalizeProjectPath(value);
+  } catch (error) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: error instanceof Error ? error.message : "Invalid project path.",
+    });
+    return z.NEVER;
+  }
+});
+
 export const aspectRatioSchema = z.enum(["16:9", "9:16", "1:1", "4:5"]);
 export const resolutionSchema = z.enum(["720p", "1080p", "4k"]);
 
@@ -13,7 +43,7 @@ export const projectAssetSchema = z.object({
   id: idSchema,
   kind: z.enum(["video", "audio", "image", "caption", "generated"]),
   name: z.string().min(1),
-  relativePath: z.string().min(1),
+  relativePath: projectRelativePathSchema,
   mimeType: z.string().min(1),
   durationMs: z.number().int().nonnegative().optional(),
   width: z.number().int().positive().optional(),
@@ -48,13 +78,62 @@ export const generationBriefSchema = z.object({
   resolution: resolutionSchema,
 });
 
+export const reusableReferenceSchema = z.object({
+  id: idSchema,
+  kind: z.enum(["text", "image"]),
+  name: z.string().min(1),
+  content: z.string().min(1).nullable(),
+  relativePath: projectRelativePathSchema.nullable(),
+  createdAt: isoDateSchema,
+}).superRefine((reference, context) => {
+  if (reference.kind === "text" && !reference.content) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["content"], message: "Text references require content." });
+  }
+  if (reference.kind === "image" && !reference.relativePath) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["relativePath"], message: "Image references require a relative path." });
+  }
+});
+
+export const generationJobSchema = z.object({
+  id: idSchema,
+  status: z.enum(["draft", "queued", "generating", "ready", "failed", "cancelled"]),
+  providerId: idSchema.nullable(),
+  creativeBrief: z.string().min(1),
+  compiledPrompt: z.string().min(1),
+  referenceIds: z.array(idSchema).default([]),
+  outputRelativePath: projectRelativePathSchema.nullable(),
+  error: z.string().min(1).nullable(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+});
+
+export const agentMessageSchema = z.object({
+  id: idSchema,
+  role: z.enum(["user", "assistant", "system"]),
+  content: z.string().min(1),
+  createdAt: isoDateSchema,
+});
+
+export const agentConversationSchema = z.object({
+  messages: z.array(agentMessageSchema).default([]),
+});
+
+const providerOptionSchema = z.union([z.string(), z.number(), z.boolean()]);
+export const providerSettingSchema = z.object({
+  enabled: z.boolean(),
+  model: z.string().min(1).nullable(),
+  options: z.record(providerOptionSchema).default({}),
+});
+
+export const providerSettingsSchema = z.record(idSchema, providerSettingSchema);
+
 export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   id: idSchema,
   name: z.string().min(1).max(120),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
-  thumbnail: z.string().nullable(),
+  thumbnail: projectRelativePathSchema.nullable(),
   settings: z.object({
     aspectRatio: aspectRatioSchema,
     resolution: resolutionSchema,
@@ -64,6 +143,10 @@ export const projectConfigSchema = z.object({
   brief: generationBriefSchema,
   assets: z.array(projectAssetSchema),
   timeline: z.object({ tracks: z.array(timelineTrackSchema) }),
+  references: z.array(reusableReferenceSchema).default([]),
+  generationJobs: z.array(generationJobSchema).default([]),
+  agentConversation: agentConversationSchema.default({ messages: [] }),
+  providerSettings: providerSettingsSchema.default({}),
 });
 
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
@@ -72,6 +155,11 @@ export type ProjectAsset = z.infer<typeof projectAssetSchema>;
 export type TimelineClip = z.infer<typeof timelineClipSchema>;
 export type TimelineTrack = z.infer<typeof timelineTrackSchema>;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
+export type ReusableReference = z.infer<typeof reusableReferenceSchema>;
+export type GenerationJob = z.infer<typeof generationJobSchema>;
+export type AgentMessage = z.infer<typeof agentMessageSchema>;
+export type AgentConversation = z.infer<typeof agentConversationSchema>;
+export type ProviderSetting = z.infer<typeof providerSettingSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 
 export interface ProjectRecord {
@@ -112,6 +200,10 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
     },
     assets: [],
     timeline: { tracks: [] },
+    references: [],
+    generationJobs: [],
+    agentConversation: { messages: [] },
+    providerSettings: {},
   });
 }
 
