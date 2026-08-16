@@ -279,30 +279,28 @@ fn days_in_month(year: u32, month: u32) -> u32 {
 }
 
 /// Every date in the schema is validated on the frontend with zod's
-/// `z.string().datetime()`, which accepts ONLY `YYYY-MM-DDTHH:MM:SS`, an
-/// optional `.` plus one or more fractional digits, and a literal `Z` — no
-/// timezone offsets, no lowercase `t`/`z`, no missing `Z`, and no impossible
-/// calendar date. A value Rust accepts but zod does not is written to disk and
-/// then makes the project unopenable on the next launch, so the two layers have
-/// to agree here.
+/// `z.string().datetime()`. This mirrors zod 3.25's `datetimeRegex` exactly:
+/// `YYYY-MM-DD`, a literal `T`, `HH:MM`, OPTIONAL `:SS` which may itself carry
+/// an optional `.` plus one or more fractional digits, and a mandatory literal
+/// `Z` — no timezone offsets, no lowercase `t`/`z`, and no impossible calendar
+/// date (the regex spells out month lengths and the leap-year branch).
+///
+/// Both directions matter. A value Rust accepts but zod rejects is written to
+/// disk and then makes the project unopenable on the next launch; a value zod
+/// accepts but Rust rejects makes a legitimate file unsavable. The seconds are
+/// genuinely optional in zod, so they are optional here — verified against the
+/// installed zod, not assumed.
 fn is_iso_datetime(value: &str) -> bool {
     let bytes = value.as_bytes();
-    // `YYYY-MM-DDTHH:MM:SSZ` is the shortest accepted form.
-    if bytes.len() < 20 {
+    // `YYYY-MM-DDTHH:MMZ` is the shortest accepted form.
+    if bytes.len() < 17 {
         return false;
     }
-    if bytes[4] != b'-'
-        || bytes[7] != b'-'
-        || bytes[10] != b'T'
-        || bytes[13] != b':'
-        || bytes[16] != b':'
-    {
+    if bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' || bytes[13] != b':' {
         return false;
     }
     let digits = |range: std::ops::Range<usize>| bytes[range].iter().all(u8::is_ascii_digit);
-    if !(digits(0..4) && digits(5..7) && digits(8..10) && digits(11..13) && digits(14..16))
-        || !digits(17..19)
-    {
+    if !(digits(0..4) && digits(5..7) && digits(8..10) && digits(11..13) && digits(14..16)) {
         return false;
     }
     let number = |start: usize, end: usize| {
@@ -314,24 +312,30 @@ fn is_iso_datetime(value: &str) -> bool {
     if day == 0 || day > days_in_month(year, month) {
         return false;
     }
-    if number(11, 13) > 23 || number(14, 16) > 59 || number(17, 19) > 59 {
+    if number(11, 13) > 23 || number(14, 16) > 59 {
         return false;
     }
-    // Optional fractional seconds — at least one digit if the dot is there —
-    // and then nothing but the mandatory `Z`.
-    let tail = &bytes[19..];
-    let tail = match tail.split_first() {
-        Some((&b'.', fraction)) => {
-            let length = fraction
-                .iter()
-                .take_while(|byte| byte.is_ascii_digit())
-                .count();
-            if length == 0 {
-                return false;
-            }
-            &fraction[length..]
+    // Seconds are optional. Fractional digits are part of the seconds group, so
+    // `...T00:00.5Z` is invalid however tempting it looks.
+    let tail = if bytes[16] == b':' {
+        if bytes.len() < 20 || !digits(17..19) || number(17, 19) > 59 {
+            return false;
         }
-        _ => tail,
+        match bytes[19..].split_first() {
+            Some((&b'.', fraction)) => {
+                let length = fraction
+                    .iter()
+                    .take_while(|byte| byte.is_ascii_digit())
+                    .count();
+                if length == 0 {
+                    return false;
+                }
+                &fraction[length..]
+            }
+            _ => &bytes[19..],
+        }
+    } else {
+        &bytes[16..]
     };
     matches!(tail, b"Z")
 }
@@ -1330,6 +1334,11 @@ mod tests {
             "2024-02-29T23:59:59Z",
             "2000-02-29T00:00:00Z",
             "2026-12-31T23:59:59.9Z",
+            // zod's seconds group is optional: `(:[0-5]\d(\.\d+)?)?`. Verified
+            // against the installed zod 3.25.76, which accepts this. Rejecting
+            // it would make a legitimate file unsavable in the desktop app.
+            "2026-01-01T00:00Z",
+            "2026-12-31T23:59Z",
         ] {
             assert!(is_iso_datetime(value), "rejected valid date-time '{value}'");
         }
@@ -1355,6 +1364,13 @@ mod tests {
             "2026-01-01T00:00:60Z",
             "2026-01-01 00:00:00Z",
             "20260101T000000Z",
+            // The fraction belongs to the seconds group, so it cannot follow
+            // bare minutes.
+            "2026-01-01T00:00.5Z",
+            "2026-01-01T00:00",
+            "2026-01-01T00:60Z",
+            "2026-01-01T24:00Z",
+            "2026-01-01T00:00:Z",
         ] {
             assert!(
                 !is_iso_datetime(value),
