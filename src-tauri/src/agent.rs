@@ -224,38 +224,50 @@ pub fn provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<Pr
                     detail: format!("{} was not found on PATH.", provider.executable_name()),
                 };
             };
-            match probe_command(&executable, provider.version_args(), Duration::from_secs(3)) {
-                Ok(version) => {
-                    match probe_command(&executable, provider.auth_args(), Duration::from_secs(4)) {
-                        Ok(_) => ProviderStatus {
-                            id,
-                            label: provider.label(),
-                            state: "ready",
-                            executable: Some(executable.to_string_lossy().into_owned()),
-                            version: Some(version),
-                            detail: "Installed and authenticated.".into(),
-                        },
-                        Err(error) => ProviderStatus {
-                            id,
-                            label: provider.label(),
-                            state: "authRequired",
-                            executable: Some(executable.to_string_lossy().into_owned()),
-                            version: Some(version),
-                            detail: format!("Authentication is required: {error}"),
-                        },
-                    }
-                }
-                Err(error) => ProviderStatus {
-                    id,
-                    label: provider.label(),
-                    state: "unavailable",
-                    executable: Some(executable.to_string_lossy().into_owned()),
-                    version: None,
-                    detail: error,
-                },
-            }
+            installed_provider_status(id, provider, executable, probe_command)
         })
         .collect()
+}
+
+fn installed_provider_status<F>(
+    id: ProviderId,
+    provider: &dyn AgentProvider,
+    executable: PathBuf,
+    mut probe: F,
+) -> ProviderStatus
+where
+    F: FnMut(&Path, &[&str], Duration) -> Result<String, String>,
+{
+    match probe(&executable, provider.version_args(), Duration::from_secs(3)) {
+        Ok(version) => match probe(&executable, provider.auth_args(), Duration::from_secs(4)) {
+            Ok(_) => ProviderStatus {
+                id,
+                label: provider.label(),
+                state: "ready",
+                executable: Some(executable.to_string_lossy().into_owned()),
+                version: Some(version),
+                detail: "Installed and authenticated for the configured execution mode.".into(),
+            },
+            Err(error) => ProviderStatus {
+                id,
+                label: provider.label(),
+                state: "authRequired",
+                executable: Some(executable.to_string_lossy().into_owned()),
+                version: Some(version),
+                detail: format!(
+                    "Authentication is required for the configured execution mode: {error}"
+                ),
+            },
+        },
+        Err(error) => ProviderStatus {
+            id,
+            label: provider.label(),
+            state: "unavailable",
+            executable: Some(executable.to_string_lossy().into_owned()),
+            version: None,
+            detail: error,
+        },
+    }
 }
 
 fn confined_project_root(folder: &Path) -> Result<PathBuf, String> {
@@ -311,7 +323,7 @@ impl AgentProvider for ClaudeProvider {
         "claude"
     }
     fn auth_args(&self) -> &'static [&'static str] {
-        &["auth", "status"]
+        &["--bare", "auth", "status"]
     }
     fn command_spec(
         &self,
@@ -760,5 +772,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn claude_readiness_requires_auth_at_the_bare_execution_boundary() {
+        let mut probes = Vec::new();
+        let status = installed_provider_status(
+            ProviderId::Claude,
+            &ClaudeProvider,
+            PathBuf::from("claude"),
+            |_, args, _| {
+                probes.push(
+                    args.iter()
+                        .map(|arg| (*arg).to_string())
+                        .collect::<Vec<_>>(),
+                );
+                match args {
+                    ["--version"] => Ok("Claude Code fixture".into()),
+                    ["auth", "status"] => Ok("ordinary session is logged in".into()),
+                    ["--bare", "auth", "status"] => {
+                        Err("bare-compatible credentials are missing".into())
+                    }
+                    _ => Err(format!("unexpected probe: {args:?}")),
+                }
+            },
+        );
+
+        assert_eq!(status.state, "authRequired");
+        assert!(status
+            .detail
+            .contains("bare-compatible credentials are missing"));
+        assert_eq!(
+            probes,
+            vec![vec!["--version"], vec!["--bare", "auth", "status"]]
+        );
     }
 }
