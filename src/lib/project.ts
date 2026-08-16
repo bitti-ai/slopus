@@ -172,18 +172,140 @@ export interface CreateProjectInput {
   referenceImages?: PendingReferenceImage[];
 }
 
-export function compileMiniMaxH3Prompt(creativeBrief: string): string {
+/** Absolute on-disk path for a project-relative file.
+ *  The generation backend uses `reference_paths` verbatim (vidfab.rs:339 calls
+ *  Path::new on each string) and enqueue_vidfab_generation is never told the
+ *  project folder, so a relative path would resolve against the process working
+ *  directory. Callers must resolve to absolute before sending. */
+export function projectFilePath(folderPath: string, relativePath: string): string {
+  const windowsStyle = folderPath.includes("\\") && !folderPath.includes("/");
+  const separator = windowsStyle ? "\\" : "/";
+  const root = folderPath.replace(/[\\/]+$/, "");
+  return `${root}${separator}${relativePath.split(/[\\/]/).join(separator)}`;
+}
+
+/** A reference the user has actually filled in. Blank ones are a legitimate
+ *  in-progress state, but they must not take a binding slot from a real one. */
+export function isReferenceUsable(reference: ProjectReference): boolean {
+  return reference.kind === "image"
+    ? Boolean(reference.relativePath)
+    : Boolean(reference.description.trim() || reference.content?.trim());
+}
+
+/* ---------------------------------------------------------------------------
+   MiniMax H3 prompt compilation.
+
+   Two shapes, both defined by the official guides. Do not "simplify" them into
+   one — the field names and their order are part of the contract:
+
+   - No references  -> T2VA, three fields, `integrated_multimodal_description`
+     first and no timestamp on [Shot 1].            (base guide §2.2, §4.2)
+   - Any reference  -> full-reference mode, SIX sections in a fixed order, and
+     `detailed_description` REPLACES the T2VA main field. (ref guide §1, §5.2)
+   --------------------------------------------------------------------------- */
+
+/** Base guide §4.1: [Shot 1] opens with the overall style. For T2VA the style is
+ *  selected from the user's own text, so match on what they actually wrote and
+ *  fall back to the guide's own default rather than inventing a look. */
+const STYLE_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\bclaymation\b|\bstop[-\s]?motion\b/i, "Claymation"],
+  [/\bwater[-\s]?colou?r\b/i, "Watercolor"],
+  [/\b(2d|hand[-\s]?drawn|anime|cartoon)\b/i, "2D-animated"],
+  [/\b(3d|cgi?|computer[-\s]?animated)\b/i, "3D CG"],
+  [/\b(vintage|super\s?8|8\s?mm|16\s?mm|grainy film)\b/i, "Vintage film"],
+  [/\bdocumentary\b/i, "Live-action, documentary"],
+];
+const DEFAULT_STYLE = "Live-action, cinematic";
+
+export function deriveH3Style(creativeBrief: string): string {
+  return STYLE_PATTERNS.find(([pattern]) => pattern.test(creativeBrief))?.[1] ?? DEFAULT_STYLE;
+}
+
+/* Base guide §4.6: `overall_soundscape` may only be N/A when the user asks for
+   complete silence, so a generic ambience line is emitted instead. §4.7: music
+   must be instrumentation/tempo/dynamics and never abstract mood or emotional
+   function — we emit N/A because the user never asked for a score, and
+   inventing one is a fabrication of its own. */
+const DEFAULT_SOUNDSCAPE = "Ambient room tone continues throughout, along with the incidental sounds of the action described above.";
+const DEFAULT_MUSIC = "N/A";
+
+const referenceLabel = (reference: ProjectReference, index: number) => `<Subject ${index + 1}>`;
+
+/** Image references are the only ones that can be sent to the engine as assets,
+ *  so they carry the <Picture N> numbering. That numbering MUST match the order
+ *  of `reference_paths` in the generation request: vidfab.rs iterates the array
+ *  and calls add_reference sequentially, so index 0 is <Picture 1>. */
+export function usableImageReferences(references: ProjectReference[]): ProjectReference[] {
+  return references.filter((reference) => reference.kind === "image" && isReferenceUsable(reference));
+}
+
+export function compileMiniMaxH3Prompt(creativeBrief: string, references: ProjectReference[] = []): string {
   const brief = creativeBrief.trim();
+  const style = deriveH3Style(brief);
+  const usable = references.filter(isReferenceUsable);
+
+  if (usable.length === 0) {
+    // T2VA — base guide §2.2 field list and order.
+    return [
+      `integrated_multimodal_description: [Shot 1] ${style}, ${brief}`,
+      `overall_soundscape: ${DEFAULT_SOUNDSCAPE}`,
+      `non_diegetic_music: ${DEFAULT_MUSIC}`,
+    ].join("\n\n");
+  }
+
+  const images = usableImageReferences(references);
+  const pictureNumber = new Map(images.map((reference, index) => [reference.id, index + 1]));
+
+  // §2.2: an image that only defines a character, scene, costume or style is
+  // cited INSIDE its <Subject N> definition — it never becomes a standalone
+  // <Picture N> entry. This app cannot express a first/last/key frame, so no
+  // standalone picture entry is ever correct here.
+  // No <Audio N> is emitted either: §2.4 defines it as an actual audio asset,
+  // and every reference in this app is text or image. An "audio" intendedUse
+  // is a note about desired sound, not a signal to copy.
+  const definitions = usable.map((reference, index) => {
+    const detail = (reference.description.trim() || reference.content?.trim() || "").replace(/\s+/g, " ");
+    const picture = pictureNumber.get(reference.id);
+    const source = picture ? `, shown in <Picture ${picture}>` : "";
+    return `${referenceLabel(reference, index)} is ${reference.name.trim()}${source}.${detail ? ` ${detail}` : ""}`;
+  });
+
+  const labels = usable.map((reference, index) => referenceLabel(reference, index));
+  const labelList = labels.length === 1
+    ? labels[0]
+    : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+
+  // §3: task-type prefix. Every reference here provides generation guidance
+  // without acting as a concrete frame or an edited source video, which is
+  // exactly `reference generation`. The summary reuses existing labels only.
+  const summary = `[reference generation] ${brief} ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`;
+
+  // §4.1: one line per label using the fixed marker vocabulary. Their defined
+  // role is carried through unchanged, so fully_preserved is the honest marker.
+  // §5.4: never write (Sx) in retention_analysis.
+  const retention = usable.map((reference, index) =>
+    `${referenceLabel(reference, index)} (appears in [Shot 1]): fully_preserved - the defined characteristics of ${reference.name.trim()} are retained.`);
+
+  // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
+  // after it. §5.3: cite each <Subject N> where it appears in the shot.
+  const detailed = [
+    `The target video is in a ${style.toLowerCase()} style.`,
+    `[Shot 1] ${brief} The shot features ${labelList}, matching the definitions above.`,
+  ].join("\n");
+
   return [
-    `integrated_multimodal_description: [Shot 1] ${brief}`,
-    "overall_soundscape: Natural location ambience shaped to the action in the scene.",
-    "non_diegetic_music: A restrained cinematic score that supports the story without overpowering it.",
+    `subject_definitions:\n${definitions.join("\n")}`,
+    `summary:\n${summary}`,
+    `retention_analysis:\n${retention.join("\n")}`,
+    `detailed_description:\n${detailed}`,
+    `overall_soundscape:\n${DEFAULT_SOUNDSCAPE}`,
+    `non_diegetic_music:\n${DEFAULT_MUSIC}`,
   ].join("\n\n");
 }
 
 export function createDraftGenerationJob(
   creativeBrief: string,
-  options: { id?: string; title?: string; referenceIds?: string[]; now?: string } = {},
+  options: { id?: string; title?: string; referenceIds?: string[]; references?: ProjectReference[]; now?: string } = {},
 ): GenerationJob {
   const brief = creativeBrief.trim();
   const now = options.now ?? new Date().toISOString();
@@ -196,7 +318,7 @@ export function createDraftGenerationJob(
     progress: 0,
     providerId: "minimax-h3",
     creativeBrief: brief,
-    compiledPrompt: compileMiniMaxH3Prompt(brief),
+    compiledPrompt: compileMiniMaxH3Prompt(brief, options.references ?? []),
     referenceIds: options.referenceIds ?? [],
     createdAt: now,
     updatedAt: now,

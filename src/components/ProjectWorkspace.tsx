@@ -91,7 +91,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
     </div>
     <footer className="project-agent-row"><AgentDock

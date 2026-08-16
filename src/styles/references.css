@@ -715,3 +715,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* A blank reference is a legitimate in-progress state, but it must be visibly
+   inert: binding skips it, so the card says so rather than looking finished. */
+.reference-card__incomplete {
+  color: var(--warning);
+}
