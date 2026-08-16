@@ -1,16 +1,33 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { createProjectConfig, parseProjectConfig } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
+import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
 
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
 afterEach(cleanup);
+
+/** Runs `body` with the app believing it is inside the desktop shell, so the
+ *  REAL Tauri import path executes instead of the browser fallback. */
+async function asDesktopApp(importedImage: { name: string; relativePath: string }, body: () => void | Promise<void>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.mocked(invoke).mockResolvedValue(importedImage);
+  try {
+    await body();
+  } finally {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.mocked(invoke).mockReset();
+  }
+}
 
 describe("project workspace timecode", () => {
   it("formats project duration as valid hours, minutes, and seconds", () => {
@@ -174,11 +191,15 @@ describe("project workspace timecode", () => {
       references: [{ id: "ref-text", kind: "text", name: "Mara", description: "Calm architect.", content: "Calm architect.", intendedUse: ["character"], createdAt: fresh.createdAt }],
       generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-text"] }],
     });
-    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
-    const refs = document.querySelector(".job-refs")!.textContent ?? "";
-    expect(refs).toContain("The text definition is written into this shot’s prompt.");
-    // No image is bound, so nothing is sent to the engine as an asset.
-    expect(refs).not.toContain("Images are sent to the video engine");
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
+    expect(document.querySelector(".job-refs")!.textContent).toContain("The text definition is written into this shot’s prompt.");
+    // The composer hint says the same thing about the same references. Scoping
+    // this to .job-refs hid a second copy of the claim that was still wrong.
+    expect(container.querySelector(".generation-composer__hint")!.textContent).toContain("The text definition is written into the prompt.");
+    // No image exists anywhere in this project, so NOTHING on the screen may
+    // claim something is sent to the engine as an asset.
+    expect(container.textContent).not.toContain("images are sent to the video engine");
+    expect(container.textContent).not.toContain("Images are sent to the video engine");
   });
 
   it("says why Duplicate and Delete are unavailable, not just that they are", () => {
@@ -189,6 +210,36 @@ describe("project workspace timecode", () => {
       expect(button.disabled).toBe(true);
       expect(button.title).toBe(`Select a clip to ${label.toLowerCase()} it`);
     }
+  });
+
+  it("sends no filename and no app boilerplate to the model for a really imported image", async () => {
+    // Built the way the PRODUCT builds it — the actual "Add image" button and
+    // the actual Tauri import path — not a hand-written reference with a tidy
+    // name and description. Every earlier compiler test supplied both by hand,
+    // which is exactly why this shipped.
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const onChange = vi.fn();
+    await asDesktopApp({ name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }, async () => {
+      render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
+      fireEvent.click(screen.getByRole("button", { name: "Add image" }));
+      await waitFor(() => expect(onChange).toHaveBeenCalled());
+    });
+
+    const imported = onChange.mock.calls[0][0].references[0];
+    expect(imported.relativePath).toBe("references/IMG_4821.jpg");
+    // The import writes no prose: description is what the compiler hands the
+    // model as the user's own account of the picture.
+    expect(imported.description).toBe("");
+
+    const compiled = compileMiniMaxH3Prompt("a cat walking across a sunny kitchen floor", [imported]);
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 1>.");
+    for (const line of compiled.split("\n").filter((row) => row.startsWith("<Subject "))) {
+      expect(line).not.toContain("IMG_4821");
+      expect(line).not.toContain("Visual reference");
+    }
+    expect(compiled).not.toContain("IMG_4821");
+    expect(compiled).not.toContain("Visual reference");
+    expect(compiled).toContain("fully_preserved - the referenced characteristics are retained.");
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {

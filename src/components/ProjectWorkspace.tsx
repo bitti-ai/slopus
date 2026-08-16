@@ -45,11 +45,11 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
     setDirty(true);
   };
 
-  const save = async () => {
+  const save = async (record?: ProjectRecord) => {
     setSaving(true);
     setSaveError(null);
     try {
-      await onSave({ ...project, config });
+      await onSave(record ?? { ...project, config });
       setDirty(false);
     } catch (reason) {
       setSaveError(reason instanceof Error ? reason.message : String(reason));
@@ -105,7 +105,11 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
         { id: "codex", label: "Codex", state: "unavailable", executable: null, version: null, detail: "Checking provider…" },
       ]}
       onProviderChange={selectProvider}
-      onRecord={(record) => { setConfig(record.config); setDirty(false); void onSave(record); }}
+      /* Routed through the same save() as the Save button. Clearing `dirty`
+         up front showed "All changes saved" even when the write then failed,
+         and swallowed the reason; save() clears only on success and surfaces
+         the failure in the toast. */
+      onRecord={(record) => { setConfig(record.config); void save(record); }}
     /></footer>
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}
   </div>;

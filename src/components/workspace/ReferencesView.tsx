@@ -1,7 +1,7 @@
 import { BookOpen, Check, FileText, Image, Link2, Plus, Sparkles, Trash2, Upload, Users } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
-import { isReferenceUsable, type ProjectConfig, type ProjectReference } from "../../lib/project";
+import { isReferenceDescribed, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 
 type ReferenceUse = ProjectReference["intendedUse"][number];
@@ -45,7 +45,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       const imported = await invoke<{ name: string; relativePath: string } | null>("choose_reference_image", { folderPath });
       if (!imported) return;
       const id = `ref-${Date.now()}`;
-      const reference: ProjectReference = { id, kind: "image", name: imported.name, description: "Visual reference copied into this portable project.", relativePath: imported.relativePath, intendedUse: ["style"], createdAt: new Date().toISOString() };
+      // Empty on purpose, exactly like addTextReference. This field is compiled
+      // into the prompt as the user's own account of the picture, so a filing
+      // note here ("Visual reference copied into this portable project.") was
+      // shipped to the model as if they had written it. The card says the
+      // definition is missing instead of faking one.
+      const reference: ProjectReference = { id, kind: "image", name: imported.name, description: "", relativePath: imported.relativePath, intendedUse: ["style"], createdAt: new Date().toISOString() };
       onChange({ ...config, references: [reference, ...config.references] });
       setSelectedId(id);
     } catch (reason) {
@@ -78,7 +83,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {ref.kind === "image" ? <span className="reference-art"><Image size={26} /><em>Image file</em></span> : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span>{isReferenceUsable(ref) ? <p>{ref.description}</p> : <p className="reference-card__incomplete">Not described yet — it won’t be used until you add a definition.</p>}<span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
+            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span>{isReferenceDescribed(ref)
+              ? <p>{ref.description}</p>
+              : <p className="reference-card__incomplete">{ref.kind === "image"
+                ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
+                : "Not described yet — it won’t be used until you add a definition."}</p>}<span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>

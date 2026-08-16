@@ -53,6 +53,9 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const promptInput = useRef<HTMLTextAreaElement>(null);
 
   const referencesAvailable = isTauri();
+  /* The box holds words the user typed, not an untouched example, so a chip
+     click would throw them away. */
+  const replacesUserText = prompt.trim().length > 0 && !ideas.some((idea) => idea.prompt === prompt);
 
   /* The description box is the first thing you use, so start in it — saving a
      click on the headline flow. Runs once, and only while focus is still on the
@@ -169,9 +172,15 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
         </div>
       </div>
 
+      {/* Clicking a chip overwrites the box. That is the right idiom while the
+          box is empty or still holds an example, but silently discarding words
+          the user typed is not — a controlled textarea gives no usable undo
+          after a programmatic set. Rather than disable the chips (which would
+          block the common "try another example" flow), say plainly what the
+          click will do. */}
       <div className="idea-row">
-        <span className="idea-row__label">Not sure where to start?</span>
-        {ideas.map((idea) => <button key={idea.label} onClick={() => setPrompt(idea.prompt)}>{idea.label}</button>)}
+        <span className="idea-row__label">{replacesUserText ? "Replace what you’ve written with an example" : "Not sure where to start?"}</span>
+        {ideas.map((idea) => <button key={idea.label} onClick={() => setPrompt(idea.prompt)} title={replacesUserText ? `Replace your description with the “${idea.label}” example` : `Use the “${idea.label}” example`}>{idea.label}</button>)}
       </div>
     </section>
   );
