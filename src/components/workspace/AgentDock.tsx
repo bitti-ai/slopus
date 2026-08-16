@@ -1,7 +1,8 @@
-import { ArrowUp, Command, LoaderCircle, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Command, LoaderCircle, Square } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cancelAgentTurn, runAgentTurn, type ProviderId, type ProviderStatus } from "../../lib/runtime";
 import type { ProjectRecord } from "../../lib/project";
+import { PolStudioLogo } from "../PolStudioLogo";
 
 export function AgentDock({ context, record, providers, onRecord, onProviderChange }: {
   context: string;
@@ -44,7 +45,7 @@ export function AgentDock({ context, record, providers, onRecord, onProviderChan
         {error && <p className="agent-conversation__error"><b>Provider unavailable</b>{error}</p>}
       </div>}
       <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-        <span className="agent-dock__identity"><Sparkles size={15} /><b>Pol</b></span>
+        <span className="agent-dock__identity"><PolStudioLogo compact decorative /><b>Pol</b></span>
         <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={selected?.detail}>
           <i />
           <select aria-label="Agent provider" value={provider} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); onProviderChange(next); }}>

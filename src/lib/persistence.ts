@@ -4,6 +4,7 @@ import {
   parseProjectConfig,
   seedProjectWorkspace,
   type CreateProjectInput,
+  type PendingReferenceImage,
   type ProjectConfig,
   type ProjectRecord,
 } from "./project";
@@ -113,12 +114,18 @@ export async function chooseAndOpenProject(): Promise<ProjectRecord | null> {
   return record;
 }
 
+export async function chooseInitialReferenceImages(): Promise<PendingReferenceImage[]> {
+  if (!isTauri()) return [];
+  return invoke<PendingReferenceImage[]>("choose_initial_reference_images");
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectRecord | null> {
   const config = createProjectConfig(input);
   if (isTauri()) {
     const value = await invoke<ProjectRecord | null>("create_project", {
       parentDirectory: input.parentDirectory ?? null,
       config,
+      initialReferencePaths: input.referenceImages?.map((image) => image.sourcePath) ?? [],
     });
     if (!value) return null;
     const record = { ...value, config: parseProjectConfig(value.config) };

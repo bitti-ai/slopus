@@ -1,7 +1,9 @@
-import { ArrowUp, Clapperboard, Clock3, Monitor, Sparkles, WandSparkles } from "lucide-react";
+import { ArrowUp, Clapperboard, Clock3, ImagePlus, Monitor, WandSparkles, X } from "lucide-react";
 import { useState } from "react";
+import { chooseInitialReferenceImages, isTauri } from "../lib/persistence";
 import type { AspectRatio, CreateProjectInput, Resolution } from "../lib/project";
 import { projectNameFromPrompt } from "../lib/project";
+import { PolStudioLogo } from "./PolStudioLogo";
 
 interface PromptComposerProps {
   busy: boolean;
@@ -19,6 +21,18 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [resolution, setResolution] = useState<Resolution>("1080p");
   const [duration, setDuration] = useState(60);
+  const [referenceImages, setReferenceImages] = useState<NonNullable<CreateProjectInput["referenceImages"]>>([]);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+
+  const addReferenceImages = async () => {
+    setReferenceError(null);
+    try {
+      const selected = await chooseInitialReferenceImages();
+      setReferenceImages((current) => [...current, ...selected.filter((image) => !current.some((item) => item.sourcePath === image.sourcePath))]);
+    } catch (reason) {
+      setReferenceError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
 
   const submit = async () => {
     if (!prompt.trim() || busy) return;
@@ -28,6 +42,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
       aspectRatio,
       resolution,
       targetDurationSeconds: duration,
+      referenceImages,
     });
   };
 
@@ -41,7 +56,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
       </div>
       <div className="composer">
         <div className="composer__input-row">
-          <Sparkles className="composer__spark" size={19} />
+          <PolStudioLogo compact decorative className="composer__brand-mark" />
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
@@ -57,6 +72,10 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
             <span className="sr-only">Create project</span>
           </button>
         </div>
+        {(referenceImages.length > 0 || referenceError) && <div className="composer__references" aria-label="Initial reference images">
+          {referenceImages.map((image) => <span className="composer__reference" key={image.sourcePath}><ImagePlus size={12} /><b>{image.name}</b><button onClick={() => setReferenceImages((current) => current.filter((item) => item.sourcePath !== image.sourcePath))} aria-label={`Remove ${image.name}`}><X size={11} /></button></span>)}
+          {referenceError && <small role="alert">{referenceError}</small>}
+        </div>}
         <div className="composer__settings">
           <label><Monitor size={14} /><span>Format</span>
             <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
@@ -75,6 +94,8 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
               <option value={15}>15 sec</option><option value={30}>30 sec</option><option value={60}>1 min</option><option value={90}>90 sec</option>
             </select>
           </label>
+          <span className="composer__divider" />
+          <button className="composer__attach" onClick={() => void addReferenceImages()} disabled={busy || !isTauri()} title={isTauri() ? "Add PNG, JPEG, or WebP references" : "Reference image import is available in the desktop app"}><ImagePlus size={13} /> References{referenceImages.length > 0 && <b>{referenceImages.length}</b>}</button>
           <span className="composer__hint">⌘ Enter to create</span>
         </div>
       </div>

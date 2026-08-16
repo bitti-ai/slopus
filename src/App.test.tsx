@@ -11,6 +11,8 @@ describe("project library controls", () => {
   it("focuses search with Ctrl/Cmd+K and switches between grid and list", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
+    expect(container.querySelector(".brand .pol-logo")).not.toBeNull();
+    expect(container.querySelector(".brand img")).toBeNull();
 
     const search = screen.getByRole("textbox", { name: "Search projects" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });

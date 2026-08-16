@@ -33,8 +33,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .app-shell { display: grid; grid-template-columns: 218px minmax(0, 1fr); min-height: 100vh; background: radial-gradient(circle at 72% -20%, rgba(49, 76, 153, 0.11), transparent 37%), var(--bg); }
 .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: 218px; padding: 22px 14px 16px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: rgba(9, 11, 16, 0.96); }
 .brand { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 7px; }
-.brand__lens { width: 114px; height: 29px; overflow: hidden; border-radius: 5px; background: #fafafa; position: relative; }
-.brand__lens img { position: absolute; width: 150px; max-width: none; height: 150px; object-fit: cover; left: -19px; top: -60px; }
+.pol-logo { width: 114px; height: 29px; flex: 0 0 auto; display: inline-flex; align-items: center; overflow: hidden; padding: 4px 5px; border: 1px solid rgba(7,18,46,.09); border-radius: 5px; color: #07132f; background: linear-gradient(180deg,#fff,#f5f7fb); box-shadow: inset 0 1px #fff, 0 2px 8px #0002; white-space: nowrap; }
+.pol-logo__ticket { position: relative; z-index: 1; width: 51px; height: 21px; flex: 0 0 51px; display: flex; align-items: center; border-radius: 4px 1px 1px 4px; color: white; background: linear-gradient(145deg,#0878f5 0%,#075be3 48%,#153bc5 100%); box-shadow: inset 0 1px #ffffff35,0 1px 3px #123cac55; }
+.pol-logo__ticket::after { content: ""; position: absolute; z-index: -1; width: 15px; height: 15px; right: -7px; top: 3px; border-radius: 2px; background: linear-gradient(135deg,#075be3,#153bc5); transform: rotate(45deg); }
+.pol-logo__perforations { width: 5px; height: 16px; margin-left: 3px; display: grid; grid-template-rows: repeat(4,3px); gap: 1px; align-content: center; }
+.pol-logo__perforations i { width: 4px; height: 3px; display: block; border-radius: 1px; background: #fff; box-shadow: inset 0 -1px #dfe8ff; }
+.pol-logo__pols { position: relative; z-index: 2; margin-left: 3px; font-size: 15px; font-weight: 800; line-height: 1; letter-spacing: -1.5px; }
+.pol-logo__tudio { position: relative; z-index: 2; margin-left: 8px; color: #07132f; font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: -1.3px; }
+.pol-logo--compact { width: 32px; height: 19px; padding: 3px; border-radius: 4px; }
+.pol-logo--compact .pol-logo__ticket { width: 25px; height: 13px; flex-basis: 25px; border-radius: 3px 1px 1px 3px; }
+.pol-logo--compact .pol-logo__ticket::after { width: 9px; height: 9px; right: -4px; top: 2px; border-radius: 1px; }
+.pol-logo--compact .pol-logo__perforations { width: 3px; height: 10px; margin-left: 2px; grid-template-rows: repeat(4,1.5px); gap: 1px; }
+.pol-logo--compact .pol-logo__perforations i { width: 2.5px; height: 1.5px; border-radius: .5px; }
+.pol-logo--compact .pol-logo__pols { margin-left: 2px; font-size: 7.5px; letter-spacing: -.7px; }
 .brand__edition { font: 500 8px/1 "DM Mono", monospace; letter-spacing: .12em; color: #737b8b; border: 1px solid var(--line-strong); border-radius: 3px; padding: 3px 4px; }
 .sidebar__nav { margin-top: 37px; }
 .sidebar__label { padding: 0 10px; margin: 0 0 8px; color: #59606e; font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
@@ -89,7 +100,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .composer { position: relative; border: 1px solid rgba(114, 139, 218, .27); border-radius: 10px; background: rgba(7,9,14,.72); box-shadow: inset 0 1px rgba(255,255,255,.025), 0 10px 25px rgba(0,0,0,.2); }
 .composer:focus-within { border-color: rgba(103, 138, 245, .55); box-shadow: 0 0 0 3px rgba(52, 89, 203, .08), 0 12px 30px rgba(0,0,0,.25); }
 .composer__input-row { min-height: 70px; display: flex; align-items: flex-start; gap: 10px; padding: 15px; }
-.composer__spark { flex: 0 0 auto; color: #6e90ff; margin-top: 2px; }
+.composer__brand-mark { margin-top: 1px; }
+.composer__references { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 0 14px 10px 56px; }
+.composer__references > small { color: #c9868e; font-size: 8px; }
+.composer__reference { max-width: 190px; height: 24px; display: inline-flex; align-items: center; gap: 5px; padding: 0 3px 0 7px; border: 1px solid rgba(91,121,211,.26); border-radius: 5px; color: #7792df; background: rgba(45,67,130,.15); }
+.composer__reference b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #9da9cf; font-size: 7px; font-weight: 600; }
+.composer__reference button { width: 17px; height: 17px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px; color: #667394; background: transparent; }
+.composer__reference button:hover { color: #e0e5f4; background: rgba(255,255,255,.06); }
 .composer textarea { min-width: 0; width: 100%; resize: none; border: 0; outline: 0; color: #e9ebf1; background: transparent; font-size: 13px; line-height: 1.5; }
 .composer textarea::placeholder { color: #59606e; }
 .composer__submit { flex: 0 0 auto; width: 35px; height: 35px; display: grid; place-items: center; border: 1px solid #6382e9; border-radius: 8px; color: white; background: linear-gradient(180deg, #5f82f3, #345bd6); box-shadow: 0 5px 16px rgba(44,80,198,.35); }
@@ -98,6 +115,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .composer__settings label { display: flex; align-items: center; gap: 5px; color: #667080; font-size: 9px; }
 .composer__settings label > span { color: #777f8d; }
 .composer__settings select { border: 0; outline: 0; padding: 3px 14px 3px 4px; color: #c4c9d4; background: transparent; font-size: 9px; font-weight: 600; }
+.composer__attach { height: 25px; display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; border: 0; border-radius: 4px; color: #7f8aaa; background: transparent; font-size: 8px; }
+.composer__attach:hover:not(:disabled) { color: #aebbe3; background: rgba(73,99,174,.12); }
+.composer__attach:disabled { cursor: not-allowed; color: #4e5564; }
+.composer__attach b { min-width: 14px; padding: 1px 4px; border-radius: 7px; color: #9badde; background: #26345c; font: 500 7px "DM Mono",monospace; }
 .composer__divider { width: 1px; height: 14px; margin: 0 7px; background: var(--line); }
 .composer__hint { margin-left: auto; color: #4f5664; font: 400 8px "DM Mono", monospace; }
 .idea-row { position: relative; display: flex; align-items: center; gap: 7px; margin-top: 13px; }
@@ -161,7 +182,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .timeline-placeholder { border-top: 1px solid var(--line); padding: 10px 13px; background: #0c0f14; }.timeline-placeholder__top { height: 33px; display: flex; justify-content: space-between; align-items: flex-start; }.timeline-placeholder__top div { display: flex; gap: 9px; align-items: baseline; }.timeline-placeholder__top strong { font-size: 9px; }.timeline-placeholder__top span { color: #525a67; font-size: 7px; }.timeline-placeholder__top .secondary-button { min-height: 26px; font-size: 8px; }.timeline-placeholder__track { display: grid; grid-template-columns: 32px 1fr; height: 95px; border-top: 1px solid var(--line); }.timeline-placeholder__track > span { padding-top: 11px; color: #505865; font: 500 8px "DM Mono", monospace; }.timeline-placeholder__track > div { position: relative; margin-top: 8px; border: 1px solid var(--line); border-radius: 5px; display: flex; gap: 4px; align-items: center; justify-content: center; background: repeating-linear-gradient(90deg, rgba(255,255,255,.01) 0 50px, transparent 50px 51px); }.timeline-placeholder__track i { width: 46px; height: 34px; border: 1px solid rgba(73,95,159,.12); border-radius: 3px; background: rgba(46,64,119,.08); }.timeline-placeholder__track p { color: #505866; font-size: 8px; margin-left: 8px; }
 
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 74px minmax(0,1fr); }.sidebar { width: 74px; padding-inline: 8px; }.brand { padding: 0; justify-content: center; }.brand__lens { width: 43px; }.brand__lens img { left: -19px; }.brand__edition, .sidebar__label, .nav-item span:not(.nav-item__badge), .sidebar__status, .utility-button, .profile-button > span:not(.profile-button__avatar), .profile-button > svg { display: none; }.nav-item { justify-content: center; padding: 0; }.nav-item__badge { position: absolute; margin: -22px 0 0 27px; }.library { grid-column: 2; }.library__content { width: calc(100% - 36px); }.project-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.workspace__body { grid-template-columns: 55px 210px 1fr; }.workspace__project-name { width: 210px; }
+  .app-shell { grid-template-columns: 74px minmax(0,1fr); }.sidebar { width: 74px; padding-inline: 8px; }.brand { padding: 0; justify-content: center; }.brand .pol-logo { width: 43px; }.brand__edition, .sidebar__label, .nav-item span:not(.nav-item__badge), .sidebar__status, .utility-button, .profile-button > span:not(.profile-button__avatar), .profile-button > svg { display: none; }.nav-item { justify-content: center; padding: 0; }.nav-item__badge { position: absolute; margin: -22px 0 0 27px; }.library { grid-column: 2; }.library__content { width: calc(100% - 36px); }.project-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.workspace__body { grid-template-columns: 55px 210px 1fr; }.workspace__project-name { width: 210px; }
 }
 
 .stage .transport { bottom: 62px; }

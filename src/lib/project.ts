@@ -159,6 +159,7 @@ export type ProviderSetting = z.infer<typeof providerSettingSchema>;
 export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 
 export interface ProjectRecord { folderPath: string; config: ProjectConfig }
+export interface PendingReferenceImage { sourcePath: string; name: string }
 export interface CreateProjectInput {
   name: string;
   prompt: string;
@@ -166,6 +167,7 @@ export interface CreateProjectInput {
   resolution: Resolution;
   targetDurationSeconds: number;
   parentDirectory?: string;
+  referenceImages?: PendingReferenceImage[];
 }
 
 export function compileMiniMaxH3Prompt(creativeBrief: string): string {
