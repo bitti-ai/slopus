@@ -24,6 +24,7 @@
 .primary-button {
   min-height: var(--control-lg);
   padding: 0 var(--space-5);
+  font-size: var(--text-base);
   border: 1px solid #5578ed;
   color: #fff;
   background: linear-gradient(180deg, #5279f4, #3159d4);
@@ -170,7 +171,7 @@
   align-items: center;
   min-height: var(--control-sm);
   color: var(--text-muted);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  font: var(--weight-medium) var(--text-xs) / var(--leading-snug) var(--font-sans);
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
   padding: var(--space-2) var(--space-3);
