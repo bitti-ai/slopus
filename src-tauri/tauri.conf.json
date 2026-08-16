@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "icon": ["icons/icon.ico"],
     "shortDescription": "Agentic video creation workspace",
     "longDescription": "Pol Studio keeps professional AI-assisted video projects in folders you control."
   }
