@@ -88,8 +88,11 @@ struct TimelineTrack {
     id: String,
     kind: String,
     name: String,
+    #[serde(default)]
     locked: bool,
+    #[serde(default)]
     muted: bool,
+    // The frontend schema has no default for clips, so it stays required here.
     clips: Vec<TimelineClip>,
 }
 
@@ -101,6 +104,7 @@ struct TimelineClip {
     track_id: String,
     start_ms: u64,
     duration_ms: u64,
+    #[serde(default)]
     source_start_ms: u64,
     label: String,
     #[serde(default)]
@@ -243,6 +247,14 @@ fn normalize_project_path(value: &str) -> Result<String, String> {
     Ok(normalized.join("/"))
 }
 
+fn is_supported_aspect_ratio(value: &str) -> bool {
+    matches!(value, "16:9" | "9:16" | "1:1" | "4:5")
+}
+
+fn is_supported_resolution(value: &str) -> bool {
+    matches!(value, "720p" | "1080p" | "4k")
+}
+
 fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectConfig, String> {
     if config.schema_version != 1 {
         return Err(format!(
@@ -253,8 +265,73 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
     if config.id.trim().is_empty() || config.name.trim().is_empty() {
         return Err("Project id and name cannot be empty.".into());
     }
+    // The frontend caps the name with zod's .max(120), which counts UTF-16 code
+    // units, so count the same way here or the two layers disagree on emoji.
+    let name_length = config.name.encode_utf16().count();
+    if name_length > 120 {
+        return Err(format!(
+            "Project names cannot be longer than 120 characters, received {name_length}."
+        ));
+    }
     if config.brief.prompt.trim().is_empty() {
         return Err("Project brief cannot be empty.".into());
+    }
+    if !is_supported_aspect_ratio(&config.settings.aspect_ratio) {
+        return Err(format!(
+            "Unsupported aspect ratio '{}'.",
+            config.settings.aspect_ratio
+        ));
+    }
+    if !is_supported_resolution(&config.settings.resolution) {
+        return Err(format!(
+            "Unsupported resolution '{}'.",
+            config.settings.resolution
+        ));
+    }
+    if !matches!(config.settings.frame_rate, 24 | 25 | 30 | 60) {
+        return Err(format!(
+            "Unsupported frame rate {}. Use 24, 25, 30, or 60.",
+            config.settings.frame_rate
+        ));
+    }
+    let background_color = config.settings.background_color.as_bytes();
+    if background_color.len() != 7
+        || background_color[0] != b'#'
+        || !background_color[1..]
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(format!(
+            "Background color must be a #rrggbb hex value, received '{}'.",
+            config.settings.background_color
+        ));
+    }
+    if !matches!(
+        config.brief.status.as_str(),
+        "draft" | "queued" | "generating" | "ready" | "failed"
+    ) {
+        return Err(format!(
+            "Unsupported project brief status '{}'.",
+            config.brief.status
+        ));
+    }
+    if !(5..=600).contains(&config.brief.target_duration_seconds) {
+        return Err(format!(
+            "Target duration must be between 5 and 600 seconds, received {}.",
+            config.brief.target_duration_seconds
+        ));
+    }
+    if !is_supported_aspect_ratio(&config.brief.aspect_ratio) {
+        return Err(format!(
+            "Unsupported project brief aspect ratio '{}'.",
+            config.brief.aspect_ratio
+        ));
+    }
+    if !is_supported_resolution(&config.brief.resolution) {
+        return Err(format!(
+            "Unsupported project brief resolution '{}'.",
+            config.brief.resolution
+        ));
     }
     config.thumbnail = config
         .thumbnail
@@ -264,6 +341,21 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
     for asset in &mut config.assets {
         if asset.id.trim().is_empty() || asset.name.trim().is_empty() {
             return Err("Asset id and name cannot be empty.".into());
+        }
+        if !matches!(
+            asset.kind.as_str(),
+            "video" | "audio" | "image" | "caption" | "generated"
+        ) {
+            return Err(format!("Unsupported asset kind '{}'.", asset.kind));
+        }
+        if asset.mime_type.is_empty() {
+            return Err(format!("Asset '{}' is missing a mime type.", asset.id));
+        }
+        if asset.width == Some(0) || asset.height == Some(0) {
+            return Err(format!(
+                "Asset '{}' cannot have a zero width or height.",
+                asset.id
+            ));
         }
         asset.relative_path = normalize_project_path(&asset.relative_path)?;
     }
@@ -285,6 +377,48 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             "image" if reference.relative_path.is_some() => {}
             "image" => return Err("Image references require a relative path.".into()),
             _ => return Err(format!("Unsupported reference kind '{}'.", reference.kind)),
+        }
+        // Absent content is fine; present-but-empty content is not, matching
+        // zod's `z.string().min(1).nullable().optional()`.
+        if reference
+            .content
+            .as_deref()
+            .is_some_and(|content| content.is_empty())
+        {
+            return Err(format!(
+                "Reference '{}' cannot have empty content.",
+                reference.id
+            ));
+        }
+        for intent in &reference.intended_use {
+            if !matches!(
+                intent.as_str(),
+                "character" | "product" | "location" | "style" | "audio"
+            ) {
+                return Err(format!("Unsupported reference intended use '{intent}'."));
+            }
+        }
+    }
+    for track in &config.timeline.tracks {
+        if !matches!(track.kind.as_str(), "video" | "audio" | "caption") {
+            return Err(format!("Unsupported track kind '{}'.", track.kind));
+        }
+        if track.name.is_empty() {
+            return Err(format!("Track '{}' cannot have an empty name.", track.id));
+        }
+        for clip in &track.clips {
+            if clip.label.is_empty() {
+                return Err(format!("Clip '{}' cannot have an empty label.", clip.id));
+            }
+            if clip.duration_ms == 0 {
+                return Err(format!(
+                    "Clip '{}' must have a duration greater than zero.",
+                    clip.id
+                ));
+            }
+            if !matches!(clip.status.as_str(), "draft" | "generated" | "approved") {
+                return Err(format!("Unsupported clip status '{}'.", clip.status));
+            }
         }
     }
     for job in &mut config.generation_jobs {
@@ -314,6 +448,26 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         {
             return Err(format!(
                 "Invalid generation stage or progress for job '{}'.",
+                job.id
+            ));
+        }
+        if job
+            .provider_id
+            .as_deref()
+            .is_some_and(|provider_id| provider_id.is_empty())
+        {
+            return Err(format!(
+                "Generation job '{}' cannot have an empty provider id.",
+                job.id
+            ));
+        }
+        if job
+            .error
+            .as_deref()
+            .is_some_and(|message| message.is_empty())
+        {
+            return Err(format!(
+                "Generation job '{}' cannot have an empty error message.",
                 job.id
             ));
         }
@@ -1049,5 +1203,250 @@ mod tests {
     fn sanitizes_folder_names() {
         assert_eq!(safe_folder_name("  Launch: Film?  "), "Launch- Film-");
         assert_eq!(safe_folder_name("..."), "Untitled video");
+    }
+
+    #[test]
+    fn blank_text_references_never_block_a_project_save() {
+        // The workspace creates an empty text reference the instant "New
+        // definition" is clicked, before the user has typed anything. Rejecting
+        // it here failed the whole save and blocked every unrelated edit in the
+        // project — a regression that shipped once already. A blank text
+        // reference must stay valid; do not tighten this without a UI change.
+        let mut config = fixture();
+        config.references.push(ReusableReference {
+            id: "reference-blank".into(),
+            kind: "text".into(),
+            name: "New definition".into(),
+            description: String::new(),
+            content: None,
+            relative_path: None,
+            intended_use: Vec::new(),
+            created_at: "2026-01-01T00:07:00.000Z".into(),
+        });
+        assert!(
+            validate_and_normalize_config(config).is_ok(),
+            "a blank text reference must never block saving the project"
+        );
+    }
+
+    #[test]
+    fn validator_rejects_what_the_frontend_schema_rejects() {
+        // Configs arriving from the agent subprocess are written to disk before
+        // the frontend ever parses them, so anything zod refuses has to be
+        // refused here too or a project lands on disk that cannot be reopened.
+        fn rejects(case: &str, break_config: impl FnOnce(&mut ProjectConfig)) {
+            let mut config = fixture();
+            break_config(&mut config);
+            assert!(
+                validate_and_normalize_config(config).is_err(),
+                "accepted a config the frontend schema rejects: {case}"
+            );
+        }
+
+        rejects("name longer than 120 characters", |config| {
+            config.name = "n".repeat(200);
+        });
+        rejects("unsupported settings aspect ratio", |config| {
+            config.settings.aspect_ratio = "21:9".into();
+        });
+        rejects("unsupported settings resolution", |config| {
+            config.settings.resolution = "8k".into();
+        });
+        rejects("unsupported frame rate", |config| {
+            config.settings.frame_rate = 48;
+        });
+        rejects("named background color", |config| {
+            config.settings.background_color = "black".into();
+        });
+        rejects("shorthand background color", |config| {
+            config.settings.background_color = "#fff".into();
+        });
+        rejects("non-hex digit in background color", |config| {
+            config.settings.background_color = "#10131g".into();
+        });
+        rejects("unsupported brief status", |config| {
+            config.brief.status = "done".into();
+        });
+        rejects("target duration above 600 seconds", |config| {
+            config.brief.target_duration_seconds = 900;
+        });
+        rejects("target duration below 5 seconds", |config| {
+            config.brief.target_duration_seconds = 4;
+        });
+        rejects("unsupported brief aspect ratio", |config| {
+            config.brief.aspect_ratio = "21:9".into();
+        });
+        rejects("unsupported brief resolution", |config| {
+            config.brief.resolution = "8k".into();
+        });
+        rejects("unsupported asset kind", |config| {
+            config.assets[0].kind = "clip".into();
+        });
+        rejects("empty asset mime type", |config| {
+            config.assets[0].mime_type = String::new();
+        });
+        rejects("zero asset width", |config| {
+            config.assets[0].width = Some(0);
+        });
+        rejects("zero asset height", |config| {
+            config.assets[0].height = Some(0);
+        });
+        rejects("unsupported track kind", |config| {
+            config.timeline.tracks[0].kind = "text".into();
+        });
+        rejects("empty track name", |config| {
+            config.timeline.tracks[0].name = String::new();
+        });
+        rejects("empty clip label", |config| {
+            config.timeline.tracks[0].clips[0].label = String::new();
+        });
+        rejects("zero clip duration", |config| {
+            config.timeline.tracks[0].clips[0].duration_ms = 0;
+        });
+        rejects("unsupported clip status", |config| {
+            config.timeline.tracks[0].clips[0].status = "final".into();
+        });
+        rejects("empty reference content", |config| {
+            config.references[0].content = Some(String::new());
+        });
+        rejects("unsupported reference intended use", |config| {
+            config.references[0].intended_use = vec!["mood".into()];
+        });
+        rejects("empty generation job provider id", |config| {
+            config.generation_jobs[0].provider_id = Some(String::new());
+        });
+        rejects("empty generation job error", |config| {
+            config.generation_jobs[0].error = Some(String::new());
+        });
+    }
+
+    #[test]
+    fn validator_accepts_every_boundary_the_frontend_schema_allows() {
+        for aspect_ratio in ["16:9", "9:16", "1:1", "4:5"] {
+            let mut config = fixture();
+            config.settings.aspect_ratio = aspect_ratio.into();
+            config.brief.aspect_ratio = aspect_ratio.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid aspect ratio {aspect_ratio}"
+            );
+        }
+        for resolution in ["720p", "1080p", "4k"] {
+            let mut config = fixture();
+            config.settings.resolution = resolution.into();
+            config.brief.resolution = resolution.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid resolution {resolution}"
+            );
+        }
+        for frame_rate in [24u32, 25, 30, 60] {
+            let mut config = fixture();
+            config.settings.frame_rate = frame_rate;
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid frame rate {frame_rate}"
+            );
+        }
+        for background_color in ["#000000", "#FFFFFF", "#abcdef", "#ABCDEF", "#10131a"] {
+            let mut config = fixture();
+            config.settings.background_color = background_color.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid background color {background_color}"
+            );
+        }
+        for seconds in [5u32, 60, 600] {
+            let mut config = fixture();
+            config.brief.target_duration_seconds = seconds;
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid target duration {seconds}"
+            );
+        }
+        for status in ["draft", "queued", "generating", "ready", "failed"] {
+            let mut config = fixture();
+            config.brief.status = status.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid brief status {status}"
+            );
+        }
+        for kind in ["video", "audio", "image", "caption", "generated"] {
+            let mut config = fixture();
+            config.assets[0].kind = kind.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid asset kind {kind}"
+            );
+        }
+        for kind in ["video", "audio", "caption"] {
+            let mut config = fixture();
+            config.timeline.tracks[0].kind = kind.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid track kind {kind}"
+            );
+        }
+        for status in ["draft", "generated", "approved"] {
+            let mut config = fixture();
+            config.timeline.tracks[0].clips[0].status = status.into();
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid clip status {status}"
+            );
+        }
+        for intent in ["character", "product", "location", "style", "audio"] {
+            let mut config = fixture();
+            config.references[0].intended_use = vec![intent.into()];
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected valid reference intended use {intent}"
+            );
+        }
+
+        let mut longest_name = fixture();
+        longest_name.name = "n".repeat(120);
+        assert!(
+            validate_and_normalize_config(longest_name).is_ok(),
+            "rejected a 120 character project name"
+        );
+
+        let mut sparse = fixture();
+        sparse.assets[0].width = None;
+        sparse.assets[0].height = None;
+        sparse.assets[0].duration_ms = None;
+        sparse.references[0].content = None;
+        sparse.references[0].intended_use = Vec::new();
+        sparse.generation_jobs[0].provider_id = None;
+        sparse.generation_jobs[0].error = None;
+        assert!(
+            validate_and_normalize_config(sparse).is_ok(),
+            "rejected a config whose optional fields are absent"
+        );
+    }
+
+    #[test]
+    fn timeline_flags_fall_back_to_the_frontend_defaults() {
+        let mut value = serde_json::to_value(fixture()).unwrap();
+        value["timeline"]["tracks"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("locked");
+        value["timeline"]["tracks"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("muted");
+        value["timeline"]["tracks"][0]["clips"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("sourceStartMs");
+
+        let config: ProjectConfig = serde_json::from_value(value).unwrap();
+        let track = &config.timeline.tracks[0];
+        assert!(!track.locked);
+        assert!(!track.muted);
+        assert_eq!(track.clips[0].source_start_ms, 0);
+        assert!(validate_and_normalize_config(config.clone()).is_ok());
     }
 }
