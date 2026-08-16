@@ -96,7 +96,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             whether or not it has been described. Saying it was "skipped until
             you write its definition" contradicted the card 30px away, which
             correctly says the picture is sent. */}
-        <p>Each new shot uses the first two references in this list. An image counts as soon as you import it: its file is copied into the project’s <code>references/</code> folder and sent to the video engine, and describing it tells the engine what to keep about it. A text definition isn’t used until you write it, and then it reaches the engine as words in the shot’s prompt. Newest additions go to the top.</p></div></div>
+        <p>Each new shot uses the first two it can use from this list. An image counts as soon as you import it: its file is copied into the project’s <code>references/</code> folder and sent to the video engine, and describing it tells the engine what to keep about it. A text definition isn’t used until you write it, and then it reaches the engine as words in the shot’s prompt. Newest additions go to the top.</p></div></div>
       </section>
 
       <aside className="reference-inspector">

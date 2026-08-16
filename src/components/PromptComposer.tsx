@@ -58,8 +58,12 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const replacesUserText = prompt.trim().length > 0 && !ideas.some((idea) => idea.prompt === prompt);
   /* What a chip click overwrote, kept so it can be put back. The textarea is
      React-controlled, so Ctrl+Z cannot recover a programmatic set — without
-     this, the words are simply gone. Held until the user types again or
-     submits, rather than on a timer that could expire mid-read. */
+     this, the words are simply gone. Held until the user types again, or
+     until this composer unmounts on navigation into the project — never on a
+     timer that could expire mid-read. Note submit does NOT clear it: on
+     success App swaps the library for the workspace and takes this component
+     with it, and on failure the composer stays mounted, so the words and the
+     offer both survive the error. That is the behaviour we want; keep it. */
   const [replacedText, setReplacedText] = useState<string | null>(null);
   const useIdea = (ideaPrompt: string) => {
     /* Keep the EARLIEST stash, not the latest. After the first chip click the
