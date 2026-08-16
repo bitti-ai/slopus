@@ -78,7 +78,9 @@ export const projectReferenceSchema = z.object({
   id: idSchema,
   kind: z.enum(["text", "image"]),
   name: z.string().min(1),
-  description: z.string().min(1),
+  // May be empty: a reference can exist before the user has described it, and
+  // pre-filling it with instruction text would feed that text to the model.
+  description: z.string(),
   content: z.string().min(1).nullable().optional(),
   relativePath: projectRelativePathSchema.nullable().optional(),
   intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
