@@ -97,7 +97,7 @@ select:focus-visible,
 summary:focus-visible,
 a:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--accent-bright);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
 }
 

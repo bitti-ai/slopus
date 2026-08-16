@@ -49,10 +49,10 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
     };
   }, [menuOpen]);
 
+  // The card itself is not a tab stop: the art button below already opens the
+  // project from the keyboard, so a focusable card only added a duplicate stop.
   return (
-    <article className="project-card" tabIndex={0} onDoubleClick={() => onOpen(project)} onKeyDown={(event) => {
-      if (event.key === "Enter" && event.currentTarget === event.target) onOpen(project);
-    }}>
+    <article className="project-card" onDoubleClick={() => onOpen(project)}>
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}`} style={style}>
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
@@ -77,7 +77,7 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
             </div>
           )}
         </div>
-        <p className="project-card__path" title={project.folderPath}><Folder size={13} /> {project.folderPath}</p>
+        <p className="project-card__path" title={project.folderPath}><Folder size={13} /><span>{project.folderPath}</span></p>
         <div className="project-card__meta">
           <span><Clock3 size={14} /> Edited {relativeDate(config.updatedAt)}</span>
           <span>{durationLabel(config.brief.targetDurationSeconds)}</span>

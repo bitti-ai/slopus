@@ -132,6 +132,15 @@
     0 12px 30px rgba(0, 0, 0, 0.25);
 }
 
+/* The textarea fills the box, so a ring on it alone would float inside the
+   padding. Put the app's ring on the wrapper instead. Scoped with :has() so
+   the buttons and <summary> inside the composer — which draw their own rings —
+   never get a second one around the whole box. */
+.composer:has(textarea:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
 /* The description box is the hero: give it room to think in. */
 .composer__input-row {
   display: flex;
@@ -150,7 +159,7 @@
   min-height: calc(var(--space-9) + var(--space-5));
   resize: none;
   border: 0;
-  outline: 0;
+  outline: 0;                          /* .composer:has(…) draws the ring */
   color: var(--text-primary);
   background: transparent;
   font-size: var(--text-md);
@@ -240,7 +249,7 @@
 
 /* base.css gives focus rings to buttons/fields; <summary> is not in that list. */
 .composer__options > summary:focus-visible {
-  outline: 2px solid var(--accent-bright);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: -2px;
 }
 
@@ -309,7 +318,6 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  outline: 0;
   color: var(--text-primary);
   background: var(--panel-2);
   font-size: var(--text-sm);
@@ -502,11 +510,10 @@
 }
 
 .project-card:hover,
-.project-card:focus {
+.project-card:focus-within {
   transform: translateY(-2px);
   border-color: rgba(117, 137, 198, 0.28);
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.28);
-  outline: none;
 }
 
 .project-card__art-button {
@@ -514,7 +521,15 @@
   width: 100%;
   padding: 0;
   border: 0;
+  border-radius: var(--radius-lg);
   background: none;
+}
+
+/* The card clips its children, so the default outset ring on this button would
+   be cut off on three sides. Draw the same ring just inside the artwork. */
+.project-card__art-button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -4px;
 }
 
 .project-card__art {
@@ -684,6 +699,7 @@
 }
 
 .project-card__body {
+  min-width: 0;                        /* lets the title/path ellipsize in list layout */
   padding: var(--space-4);
 }
 
@@ -743,19 +759,26 @@
 }
 
 .project-card__path {
+  min-width: 0;
   margin: var(--space-1) 0 var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--text-faint);
   font: var(--weight-regular) var(--text-2xs) / var(--leading-snug) var(--font-mono);
 }
 
 .project-card__path svg {
   flex: 0 0 auto;
+}
+
+/* text-overflow does nothing on the flex container itself, so the path has to
+   truncate on its own flex item — same pattern as the card title above. */
+.project-card__path span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .project-card__meta {
