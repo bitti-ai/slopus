@@ -193,9 +193,13 @@
 
 /* --- Content region -------------------------------------------------------- */
 
+/* The chrome (topbar, nav, agent dock) stays put while the active view scrolls.
+   Without this the timeline clips on windows shorter than ~920px instead of
+   giving the user a way to reach the rest of it. */
 .project-content {
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* --- Agent dock ------------------------------------------------------------ */

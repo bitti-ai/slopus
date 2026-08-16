@@ -79,16 +79,6 @@
   line-height: var(--leading-snug);
 }
 
-/* Inspector chrome is a panel title, not an eyebrow — undo the uppercase
-   micro-label styling controls.css applies to .panel-chrome. */
-.reference-inspector > .panel-chrome {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
 .reference-inspector > .panel-chrome button {
   width: var(--control-sm);
   height: var(--control-sm);
