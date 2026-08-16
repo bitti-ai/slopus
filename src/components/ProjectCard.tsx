@@ -1,5 +1,5 @@
 import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ProjectRecord } from "../lib/project";
 
 interface ProjectCardProps {
@@ -18,24 +18,51 @@ function relativeDate(iso: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(iso));
 }
 
+function durationLabel(seconds: number) {
+  if (seconds < 60) return `${seconds} sec`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes} min ${rest} sec` : `${minutes} min`;
+}
+
 export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuAnchor = useRef<HTMLDivElement>(null);
   const { config } = project;
   const style = config.thumbnail ? { backgroundImage: `url(${JSON.stringify(config.thumbnail).slice(1, -1)})` } : undefined;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuAnchor.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
   return (
     <article className="project-card" tabIndex={0} onDoubleClick={() => onOpen(project)} onKeyDown={(event) => {
       if (event.key === "Enter" && event.currentTarget === event.target) onOpen(project);
     }}>
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}`} style={style}>
-          <span className="project-card__format"><Ratio size={12} /> {config.settings.aspectRatio}</span>
+          <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
           <span className="project-card__quality">{config.settings.resolution.toUpperCase()}</span>
-          <span className="project-card__play"><Play size={17} fill="currentColor" /></span>
-          <div className="project-card__art-copy"><Sparkles size={14} /><span>{config.brief.prompt}</span></div>
+          <span className="project-card__play"><Play size={18} fill="currentColor" /></span>
+          <div className="project-card__art-copy"><Sparkles size={15} /><span>{config.brief.prompt}</span></div>
         </div>
       </button>
       <div className="project-card__body">
-        <div className="project-card__title-row">
+        <div className="project-card__title-row" ref={menuAnchor}>
           <h3 title={config.name}>{config.name}</h3>
           <button
             className="icon-button"
@@ -43,20 +70,19 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-          ><MoreHorizontal size={17} /></button>
+          ><MoreHorizontal size={18} /></button>
           {menuOpen && (
             <div className="project-card__menu" role="menu">
-              <button role="menuitem" onClick={() => onOpen(project)}><Folder size={13} /> Open project</button>
+              <button role="menuitem" onClick={() => onOpen(project)}><Folder size={16} /> Open project</button>
             </div>
           )}
         </div>
-        <p className="project-card__path" title={project.folderPath}><Folder size={12} /> {project.folderPath}</p>
+        <p className="project-card__path" title={project.folderPath}><Folder size={13} /> {project.folderPath}</p>
         <div className="project-card__meta">
-          <span><Clock3 size={12} /> Edited {relativeDate(config.updatedAt)}</span>
-          <span>{config.brief.targetDurationSeconds}s</span>
+          <span><Clock3 size={14} /> Edited {relativeDate(config.updatedAt)}</span>
+          <span>{durationLabel(config.brief.targetDurationSeconds)}</span>
         </div>
       </div>
     </article>
   );
 }
-

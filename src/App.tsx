@@ -8,6 +8,22 @@ import { Sidebar, type WorkspaceView } from "./components/Sidebar";
 import { chooseAndOpenProject, createProject, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
 
+interface LibraryError {
+  /** What failed, in the user's terms. */
+  title: string;
+  /** The underlying message, kept verbatim so it stays diagnosable. */
+  detail: string;
+}
+
+const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning.";
+  if (hour < 18) return "Good afternoon.";
+  return "Good evening.";
+}
+
 function App() {
   const [view, setView] = useState<WorkspaceView>("library");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -17,13 +33,13 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LibraryError | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listRecentProjects()
       .then(setProjects)
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
+      .catch((reason: unknown) => setError({ title: "Couldn’t load your projects", detail: describe(reason) }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -55,7 +71,7 @@ function App() {
       setActiveProjectInitialView("timeline");
       setActiveProject(project);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError({ title: "Couldn’t open that folder", detail: describe(reason) });
     }
   };
 
@@ -69,7 +85,7 @@ function App() {
       setActiveProjectInitialView("generator");
       setActiveProject(project);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError({ title: "Couldn’t create that project", detail: describe(reason) });
     } finally {
       setBusy(false);
     }
@@ -96,31 +112,57 @@ function App() {
       {view === "library" && (
         <main className="library">
           <header className="library__topbar">
-            <div className="search-field"><Search size={16} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
-            <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={15} /> Open project folder</button>
+            <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
+            <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
           </header>
           <div className="library__content">
             <div className="library__intro">
-              <div><p className="eyebrow">Project library</p><h1>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}.</h1><p>Turn an idea into a polished edit, with every asset kept in your own project folder.</p></div>
-              <span className="storage-pill"><i /> Local-first</span>
+              <div>
+                <p className="eyebrow">Project library</p>
+                <h1>{greeting()}</h1>
+                <p>Describe the video you want below. Pol Studio sets up a project you can edit, and keeps every file in a folder you own.</p>
+              </div>
+              <span className="storage-pill"><i /> Saved on this computer</span>
             </div>
             <PromptComposer busy={busy} onCreate={createFromPrompt} />
 
             <section className="recent-projects" aria-labelledby="recent-heading">
-              <div className="section-heading"><div><h2 id="recent-heading">Recent projects</h2><span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span></div><div className="view-controls" aria-label="Project layout"><button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={15} /></button><button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={16} /></button></div></div>
+              <div className="section-heading">
+                <div>
+                  <h2 id="recent-heading">Your projects</h2>
+                  <span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
+                </div>
+                <div className="view-controls" aria-label="Project layout">
+                  <button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={17} /></button>
+                  <button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={17} /></button>
+                </div>
+              </div>
               {loading ? (
                 <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
               ) : filteredProjects.length ? (
                 <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} />)}</div>
+              ) : query ? (
+                <div className="library-empty">
+                  <FolderOpen size={28} />
+                  <h3>Nothing matches “{query}”</h3>
+                  <p>Search looks at project names, descriptions, and folder paths. Try a shorter word, or clear the search to see everything.</p>
+                  <button className="secondary-button" onClick={() => setQuery("")}>Clear search</button>
+                </div>
               ) : (
-                <div className="library-empty"><FolderOpen size={24} /><h3>{query ? "No projects match your search" : "Your library is ready"}</h3><p>{query ? "Try a project name, prompt, or folder." : "Describe a video above or open an existing Pol Studio project folder."}</p>{!query && <button className="secondary-button" onClick={() => void openFromFolder()}>Open project folder</button>}</div>
+                <div className="library-empty">
+                  <FolderOpen size={28} />
+                  <h3>No projects yet</h3>
+                  <p>Describe your video in the box above and press <strong>Create project</strong>. Pol Studio makes the folder, the settings, and a first scene for you.</p>
+                  <p className="library-empty__aside">Already made one on this computer?</p>
+                  <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
+                </div>
               )}
             </section>
-            <footer className="library__footer"><span>Projects are folders you control</span><i /> <span>Config: polstudio.project.json</span><i /><span>Autosave ready</span></footer>
+            <footer className="library__footer">Every project is an ordinary folder on this computer — you can move, copy, or back it up like any other files.</footer>
           </div>
         </main>
       )}
-      {error && <div className="toast" role="alert"><strong>Couldn’t complete that action</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
+      {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
   );
 }
