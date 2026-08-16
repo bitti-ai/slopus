@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs, io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -341,7 +341,73 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             return Err("Provider setting models cannot be empty.".into());
         }
     }
+    let asset_ids = unique_ids(config.assets.iter().map(|asset| asset.id.as_str()), "asset")?;
+    let reference_ids = unique_ids(
+        config
+            .references
+            .iter()
+            .map(|reference| reference.id.as_str()),
+        "reference",
+    )?;
+    let track_ids = unique_ids(
+        config.timeline.tracks.iter().map(|track| track.id.as_str()),
+        "track",
+    )?;
+    let clip_ids = unique_ids(
+        config
+            .timeline
+            .tracks
+            .iter()
+            .flat_map(|track| track.clips.iter().map(|clip| clip.id.as_str())),
+        "clip",
+    )?;
+    for track in &config.timeline.tracks {
+        for clip in &track.clips {
+            if clip.track_id != track.id || !track_ids.contains(clip.track_id.as_str()) {
+                return Err(format!(
+                    "Clip '{}' is attached to an invalid track.",
+                    clip.id
+                ));
+            }
+            if !asset_ids.contains(clip.asset_id.as_str()) {
+                return Err(format!("Clip '{}' references an unknown asset.", clip.id));
+            }
+        }
+    }
+    for job in &config.generation_jobs {
+        if let Some(clip_id) = &job.clip_id {
+            if !clip_ids.contains(clip_id.as_str()) {
+                return Err(format!(
+                    "Generation job '{}' references an unknown clip.",
+                    job.id
+                ));
+            }
+        }
+        if let Some(reference_id) = job
+            .reference_ids
+            .iter()
+            .find(|reference_id| !reference_ids.contains(reference_id.as_str()))
+        {
+            return Err(format!(
+                "Generation job '{}' references unknown reference '{}'.",
+                job.id, reference_id
+            ));
+        }
+    }
     Ok(config)
+}
+
+fn unique_ids<'a>(
+    ids: impl Iterator<Item = &'a str>,
+    kind: &str,
+) -> Result<BTreeSet<&'a str>, String> {
+    let mut unique = BTreeSet::new();
+    for id in ids {
+        if !unique.insert(id) {
+            return Err(format!("Duplicate {kind} id '{id}'."));
+        }
+    }
+    Ok(unique)
 }
 
 fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
@@ -841,6 +907,17 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn project_mutation_rejects_broken_relational_ids() {
+        let mut config = fixture();
+        config.generation_jobs[0]
+            .reference_ids
+            .push("missing-reference".into());
+        assert!(validate_and_normalize_config(config)
+            .unwrap_err()
+            .contains("unknown reference"));
     }
 
     #[test]
