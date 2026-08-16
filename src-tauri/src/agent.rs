@@ -747,4 +747,18 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn installed_provider_probes_end_in_ready_or_auth_required() {
+        for status in provider_statuses(&BTreeMap::new()) {
+            if status.executable.is_some() {
+                assert!(
+                    matches!(status.state, "ready" | "authRequired"),
+                    "{}: {}",
+                    status.label,
+                    status.detail
+                );
+            }
+        }
+    }
 }
