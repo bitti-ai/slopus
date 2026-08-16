@@ -1,6 +1,7 @@
 import { ArrowLeft, BookOpen, ChevronDown, Cloud, Film, Play, Redo2, Save, Share2, Sparkles, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProjectConfig, ProjectRecord } from "../lib/project";
+import { getRuntimeStatus, type ProviderId, type RuntimeStatus } from "../lib/runtime";
 import { AgentDock } from "./workspace/AgentDock";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
@@ -28,6 +29,13 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+
+  useEffect(() => {
+    void getRuntimeStatus(config).then(setRuntime).catch(() => setRuntime(null));
+    // Runtime configuration only needs reprobe when provider settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.providerSettings]);
 
   const changeConfig = (next: ProjectConfig) => {
     setConfig(next);
@@ -47,6 +55,13 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
     }
   };
 
+  const selectProvider = (provider: ProviderId) => {
+    changeConfig({ ...config, providerSettings: {
+      ...config.providerSettings,
+      agent: { enabled: true, model: null, options: { ...(config.providerSettings.agent?.options ?? {}), selectedProvider: provider } },
+    } });
+  };
+
   return <div className="project-shell">
     <header className="project-topbar">
       <button className="icon-button icon-button--strong" onClick={onBack} aria-label="Back to project library"><ArrowLeft size={18} /></button>
@@ -62,10 +77,19 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "generator" && <GeneratorView config={config} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
     </div>
-    <footer className="project-agent-row"><AgentDock context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : "project references"} /></footer>
+    <footer className="project-agent-row"><AgentDock
+      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : "project references"}
+      record={{ ...project, config }}
+      providers={runtime?.providers ?? [
+        { id: "claude", label: "Claude Code", state: "unavailable", executable: null, version: null, detail: "Checking provider…" },
+        { id: "codex", label: "Codex", state: "unavailable", executable: null, version: null, detail: "Checking provider…" },
+      ]}
+      onProviderChange={selectProvider}
+      onRecord={(record) => { setConfig(record.config); setDirty(false); void onSave(record); }}
+    /></footer>
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}
   </div>;
 }
