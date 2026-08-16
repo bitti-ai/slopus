@@ -240,6 +240,22 @@ describe("project workspace timecode", () => {
     expect(compiled).not.toContain("IMG_4821");
     expect(compiled).not.toContain("Visual reference");
     expect(compiled).toContain("fully_preserved - the referenced characteristics are retained.");
+
+    // The screen must describe the rule the code implements. isReferenceUsable
+    // qualifies an image on its FILE alone, so this imported picture IS bound
+    // and IS sent — nothing on the page may say it is skipped or waiting on a
+    // definition. Three sentences here once said exactly that while the card
+    // beside them correctly said the file was sent.
+    cleanup();
+    const withImport = onChange.mock.calls[0][0];
+    expect(withImport.references[0].relativePath).toBeTruthy();
+    const { container } = render(createElement(ReferencesView, { config: withImport, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined }));
+    const screenText = container.textContent ?? "";
+    for (const staleRule of ["you’ve described", "described references", "skipped", "is skipped until you write"]) {
+      expect(screenText, `stale binding rule on screen: ${staleRule}`).not.toContain(staleRule);
+    }
+    expect(screenText).toContain("An image counts as soon as you import it");
+    expect(screenText).toContain("Not described yet — the picture is sent, but nothing tells the engine what to keep.");
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {

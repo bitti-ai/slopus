@@ -265,10 +265,18 @@ describe("project schema", () => {
     // nine rounds. A diff in `git status` after cargo test means the wire
     // format moved and this test is the frontend's verdict on it.
     for (const [name, wire] of Object.entries(wireFixtures)) {
-      const parsed = parseProjectConfig(wire);
-      expect(parsed.schemaVersion, name).toBe(1);
-      // No `null` may reach a field zod spells `.optional()` without `.nullable()`.
-      expect(JSON.stringify(wire), name).not.toMatch(/"(clipId|durationMs|width|height|color)":\s*null/);
+      // Deep equality, not a hand-maintained key list. This closes THREE
+      // directions at once and needs no upkeep:
+      //   - a null reaching a field zod spells bare `.optional()` throws here;
+      //   - a field Rust writes that zod does not know is silently STRIPPED by
+      //     the non-strict schema, so `parsed` loses it and this comparison
+      //     fails — previously nothing caught that, and the frontend would then
+      //     re-save and quietly drop the field from the user's file;
+      //   - a default zod applies that Rust does not send shows up as an added
+      //     key and fails too.
+      // The previous version listed five key names by hand, which is exactly
+      // the kind of remembering this fixture pair was introduced to replace.
+      expect(parseProjectConfig(wire), name).toEqual(wire);
     }
   });
 

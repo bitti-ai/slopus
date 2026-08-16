@@ -68,7 +68,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <div>
         <span className="eyebrow">Consistency library</span>
         <h1>References</h1>
-        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two you’ve described.</p>
+        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two in this list.</p>
       </div>
       <div>
         <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
@@ -91,7 +91,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b><p>Each new shot uses the first two references in this list that you’ve described — an empty one is skipped until you write its definition. Image files are copied into the project’s <code>references/</code> folder and sent to the video engine; text definitions are written into the shot’s prompt. Newest additions go to the top.</p></div></div>
+        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b>{/* The rule the code actually implements: isReferenceUsable qualifies an
+            image on its FILE alone, so an imported picture is bound and sent
+            whether or not it has been described. Saying it was "skipped until
+            you write its definition" contradicted the card 30px away, which
+            correctly says the picture is sent. */}
+        <p>Each new shot uses the first two references in this list. An image counts as soon as you import it: its file is copied into the project’s <code>references/</code> folder and sent to the video engine, and describing it tells the engine what to keep about it. A text definition isn’t used until you write it, and then it reaches the engine as words in the shot’s prompt. Newest additions go to the top.</p></div></div>
       </section>
 
       <aside className="reference-inspector">
@@ -109,7 +114,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two described references in this list, so it will be used once it reaches the top two of those.</p>}
+            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
           </section>
           <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}

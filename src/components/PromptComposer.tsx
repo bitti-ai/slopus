@@ -1,4 +1,4 @@
-import { ChevronDown, Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, WandSparkles, X } from "lucide-react";
+import { ChevronDown, Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, Undo2, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { chooseInitialReferenceImages, isTauri } from "../lib/persistence";
 import type { AspectRatio, CreateProjectInput, Resolution } from "../lib/project";
@@ -56,6 +56,15 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   /* The box holds words the user typed, not an untouched example, so a chip
      click would throw them away. */
   const replacesUserText = prompt.trim().length > 0 && !ideas.some((idea) => idea.prompt === prompt);
+  /* What a chip click overwrote, kept so it can be put back. The textarea is
+     React-controlled, so Ctrl+Z cannot recover a programmatic set — without
+     this, the words are simply gone. Held until the user types again or
+     submits, rather than on a timer that could expire mid-read. */
+  const [replacedText, setReplacedText] = useState<string | null>(null);
+  const useIdea = (ideaPrompt: string) => {
+    setReplacedText(replacesUserText ? prompt : null);
+    setPrompt(ideaPrompt);
+  };
 
   /* The description box is the first thing you use, so start in it — saving a
      click on the headline flow. Runs once, and only while focus is still on the
@@ -104,7 +113,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           <textarea
             ref={promptInput}
             value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(event) => { setPrompt(event.target.value); setReplacedText(null); }}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void submit();
             }}
@@ -180,7 +189,10 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           click will do. */}
       <div className="idea-row">
         <span className="idea-row__label">{replacesUserText ? "Replace what you’ve written with an example" : "Not sure where to start?"}</span>
-        {ideas.map((idea) => <button key={idea.label} onClick={() => setPrompt(idea.prompt)} title={replacesUserText ? `Replace your description with the “${idea.label}” example` : `Use the “${idea.label}” example`}>{idea.label}</button>)}
+        {ideas.map((idea) => <button key={idea.label} onClick={() => useIdea(idea.prompt)} title={replacesUserText ? `Replace your description with the “${idea.label}” example` : `Use the “${idea.label}” example`}>{idea.label}</button>)}
+        {replacedText !== null && <button className="idea-row__undo" onClick={() => { setPrompt(replacedText); setReplacedText(null); }}>
+          <Undo2 size={15} /> Undo — put my words back
+        </button>}
       </div>
     </section>
   );
