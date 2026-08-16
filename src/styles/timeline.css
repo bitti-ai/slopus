@@ -457,8 +457,24 @@
   background: var(--accent);
 }
 
-.monitor-transport .play-button:hover {
+.monitor-transport .play-button:hover:not(:disabled) {
   background: var(--accent-bright);
+}
+
+/* An empty timeline has nothing to play. A full-brightness Play button would
+   invite a click that does nothing, so the transport reads as disabled. */
+.monitor-transport button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.monitor-transport button:disabled:hover {
+  color: var(--text-secondary);
+  background: none;
+}
+
+.monitor-transport .play-button:disabled:hover {
+  background: var(--accent);
 }
 
 .monitor-transport > span {
