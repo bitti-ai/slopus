@@ -39,9 +39,14 @@ export const projectAssetSchema = z.object({
   name: z.string().min(1),
   relativePath: projectRelativePathSchema,
   mimeType: z.string().min(1),
-  durationMs: z.number().int().nonnegative().optional(),
-  width: z.number().int().positive().optional(),
-  height: z.number().int().positive().optional(),
+  // `.nullish()`, not `.optional()`. Rust serialises a `None` as an explicit
+  // JSON `null` unless the field carries skip_serializing_if, and a bare
+  // `.optional()` REJECTS null — which made every desktop create/open fail.
+  // Both layers are fixed; this side stays tolerant so a hand-edited file or a
+  // future struct without the attribute cannot resurrect that failure.
+  durationMs: z.number().int().nonnegative().nullish(),
+  width: z.number().int().positive().nullish(),
+  height: z.number().int().positive().nullish(),
   createdAt: isoDateSchema,
 });
 
@@ -53,7 +58,8 @@ export const timelineClipSchema = z.object({
   durationMs: z.number().int().positive(),
   sourceStartMs: z.number().int().nonnegative().default(0),
   label: z.string().min(1),
-  color: z.string().optional(),
+  // See the note on projectAssetSchema.durationMs — nullish, never bare optional.
+  color: z.string().nullish(),
   status: z.enum(["draft", "generated", "approved"]).default("approved"),
 });
 
@@ -106,7 +112,10 @@ export const generationJobSchema = z.object({
   // change. Never treat it as the authoritative prompt.
   compiledPrompt: z.string().min(1),
   referenceIds: z.array(idSchema).default([]),
-  clipId: idSchema.optional(),
+  // The one that broke the desktop app outright: createDraftGenerationJob never
+  // sets clipId, so EVERY project has a job without it. See the note on
+  // projectAssetSchema.durationMs.
+  clipId: idSchema.nullish(),
   outputRelativePath: projectRelativePathSchema.nullable().optional(),
   error: z.string().min(1).nullable().optional(),
   createdAt: isoDateSchema,

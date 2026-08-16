@@ -26,6 +26,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
   const [config, setConfig] = useState(project.config);
   const [view, setView] = useState<ProjectView>(initialView);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
+  /* Switching tabs unmounts the generator, so its composer text lives here.
+     Half a shot description used to vanish on a trip to the timeline and back. */
+  const [generatorPrompt, setGeneratorPrompt] = useState("");
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -91,7 +94,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} draftPrompt={generatorPrompt} onDraftPromptChange={setGeneratorPrompt} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
     </div>
     <footer className="project-agent-row"><AgentDock

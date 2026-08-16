@@ -12,13 +12,21 @@ interface GeneratorViewProps {
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
   selectedJobId?: string;
+  /** Composer text, held by the parent. Switching tabs unmounts this view, and
+   *  keeping the half-written shot in local state threw the user's own words
+   *  away — the one thing this app is not allowed to do. Optional so the view
+   *  still works standalone; it falls back to its own state. */
+  draftPrompt?: string;
+  onDraftPromptChange?: (value: string) => void;
 }
 
 type JobStatus = GenerationJob["status"];
 
-export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId, draftPrompt, onDraftPromptChange }: GeneratorViewProps) {
   const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
-  const [prompt, setPrompt] = useState("");
+  const [ownPrompt, setOwnPrompt] = useState("");
+  const prompt = draftPrompt ?? ownPrompt;
+  const setPrompt: (value: string) => void = onDraftPromptChange ?? setOwnPrompt;
   const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const configRef = useRef(config);
@@ -35,7 +43,13 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   // count taken from the IDs alone told the user a definition was steering the
   // shot when the compiled prompt never mentioned it.
   const promptRefs = useMemo(() => boundRefs.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)), [boundRefs]);
-  const usableReferences = useMemo(() => config.references.filter(isReferenceUsable), [config.references]);
+  // The references a NEW shot would bind and the compiler would then keep. Both
+  // filters, or the hint promises a reference the prompt drops and a legacy
+  // audio-only one eats a binding slot a real reference should have had.
+  const usableReferences = useMemo(
+    () => config.references.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)),
+    [config.references],
+  );
   const runtimeReady = runtime?.state === "ready";
   const submitLabel = runtimeReady ? "Generate this shot" : "Save as a draft";
 
@@ -101,7 +115,9 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     // actually typed, or it gets read back to them as their own request.
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
-    const bound = config.references.filter(isReferenceUsable).slice(0, 2);
+    // Same pair the compiler applies, so a bound reference is always one that
+    // actually reaches the prompt.
+    const bound = config.references.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)).slice(0, 2);
     const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: bound.map((ref) => ref.id), references: bound });
     const job: GenerationJob = runtimeReady ? { ...draft, status: "queued" } : draft;
     const next = { ...config, generationJobs: [job, ...jobs] };
@@ -264,7 +280,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
             })}
             {promptRefs.length === 0
               ? <p className="job-refs__empty">The video engine only follows the words above.</p>
-              : <p className="job-refs__empty">Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt. The tags are your own notes and don’t change what is sent.</p>}
+              : <p className="job-refs__empty">{referenceRouting(promptRefs)} The tags are your own notes and don’t change what is sent.</p>}
           </div>
 
           <div className="job-actions">
@@ -388,6 +404,21 @@ function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs
     </button>)}
   </section>;
 }
+
+/* Only claim the route the bound references actually take. Saying "images are
+   sent … text definitions are written into the prompt" for a shot that has only
+   one of the two describes something that isn't happening. */
+const referenceRouting = (references: ProjectReference[]): string => {
+  const hasImage = references.some((reference) => reference.kind === "image");
+  const hasText = references.some((reference) => reference.kind !== "image");
+  if (hasImage && hasText) return "Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt.";
+  if (hasImage) return references.length === 1
+    ? "The image is sent to the video engine as a reference asset."
+    : "The images are sent to the video engine as reference assets.";
+  return references.length === 1
+    ? "The text definition is written into this shot’s prompt."
+    : "The text definitions are written into this shot’s prompt.";
+};
 
 /* Why a reference that is bound to this shot never reaches its prompt, or null
    when it does. The wording mirrors the References card so the two screens
