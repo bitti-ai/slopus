@@ -174,7 +174,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
               mouse-only — a disabled button cannot take focus, so keyboard and
               touch users have no way to reach it. The reason the transport is
               dead is stated here so it needs no pointer at all. */}
-          {clipCount === 0 && <p className="transport-note">Nothing can be played yet — add or generate a scene and it will land on the timeline below.</p>}
+          {clipCount === 0 && <p className="transport-note">These controls stay off until there is a scene to play.</p>}
         </main>
 
         <aside className="clip-inspector">
