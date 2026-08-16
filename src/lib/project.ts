@@ -197,12 +197,32 @@ export function projectFilePath(folderPath: string, relativePath: string): strin
   return `${root}${separator}${relativePath.split(/[\\/]/).join(separator)}`;
 }
 
+/** The words the USER wrote about a reference, or "" — never a library label
+ *  and never anything this app authored. Both import paths used to seed
+ *  `description` with filing boilerplate ("Visual reference copied into this
+ *  portable project."), which the compiler then handed to the model as the
+ *  user's own account of the picture. Both now write an empty string, and this
+ *  is the single place that decides what counts as the user's description. */
+export function referenceDefinition(reference: ProjectReference): string {
+  return (reference.description.trim() || reference.content?.trim() || "").trim();
+}
+
+/** Whether the user has said anything about this reference yet. An IMAGE is
+ *  still usable without it — the picture itself is real payload — but it is not
+ *  complete, and the UI has to say so rather than letting an empty definition
+ *  look finished. */
+export function isReferenceDescribed(reference: ProjectReference): boolean {
+  return referenceDefinition(reference) !== "";
+}
+
 /** A reference the user has actually filled in. Blank ones are a legitimate
- *  in-progress state, but they must not take a binding slot from a real one. */
+ *  in-progress state, but they must not take a binding slot from a real one.
+ *  An image qualifies on its file alone: it can be sent to the engine and cited
+ *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
   return reference.kind === "image"
     ? Boolean(reference.relativePath)
-    : Boolean(reference.description.trim() || reference.content?.trim());
+    : isReferenceDescribed(reference);
 }
 
 /** Reference guide §2.1: `<Subject N>` is VISIBLE content. A reference tagged
@@ -334,11 +354,20 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // No <Audio N> is emitted either: §2.4 defines it as an actual audio asset,
   // and every reference in this app is text or image. An "audio" intendedUse
   // is a note about desired sound, not a signal to copy.
+  // The identity slot carries ONLY what the user wrote. `name` is a library
+  // label, not a description: for an imported image it is the source file's
+  // stem, so using it here shipped "<Subject 1> is IMG_4821, shown in
+  // <Picture 1>." and a retention line promising to retain "the defined
+  // characteristics of IMG_4821". Neither names anything visible, and both
+  // present an app-generated string to the model as the user's own words.
+  // An image with no definition still belongs in the prompt — the picture is
+  // real payload — so it is cited without any claim about what it contains.
   const definitions = usable.map((reference, index) => {
-    const detail = (reference.description.trim() || reference.content?.trim() || "").replace(/\s+/g, " ");
+    const detail = endSentence(referenceDefinition(reference).replace(/\s+/g, " "));
     const picture = pictureNumber.get(reference.id);
-    const source = picture ? `, shown in <Picture ${picture}>` : "";
-    return `${referenceLabel(reference, index)} is ${reference.name.trim()}${source}.${detail ? ` ${detail}` : ""}`;
+    const label = referenceLabel(reference, index);
+    if (!picture) return `${label}: ${detail}`;
+    return `${label} is the content shown in <Picture ${picture}>.${detail ? ` ${detail}` : ""}`;
   });
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
@@ -354,8 +383,11 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // §4.1: one line per label using the fixed marker vocabulary. Their defined
   // role is carried through unchanged, so fully_preserved is the honest marker.
   // §5.4: never write (Sx) in retention_analysis.
+  // No `name` here either: "the defined characteristics of IMG_4821 are
+  // retained" names nothing to retain. The label already points at the
+  // definition above, which is where the characteristics actually live.
   const retention = usable.map((reference, index) =>
-    `${referenceLabel(reference, index)} (appears in [Shot 1]): fully_preserved - the defined characteristics of ${reference.name.trim()} are retained.`);
+    `${referenceLabel(reference, index)} (appears in [Shot 1]): fully_preserved - the referenced characteristics are retained.`);
 
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.

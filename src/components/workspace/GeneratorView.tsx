@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceDescribed, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
@@ -275,7 +275,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                 <b>{ref.name}</b>
                 {skipped
                   ? <p className="job-refs__reason">{skipped}</p>
-                  : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
+                  : !isReferenceDescribed(ref)
+                    // Used, but incomplete: the picture goes to the engine while
+                    // nothing tells it what to keep. Silence here let a
+                    // boilerplate-filled card look finished.
+                    ? <p className="job-refs__reason">Not described yet — the picture is sent, but nothing tells the engine what to keep.</p>
+                    : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
               </div>;
             })}
             {promptRefs.length === 0
@@ -364,9 +369,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
             : "Nothing renders on this computer yet, so your shot is saved as a draft you can run later."}
           {/* Images are sent as real assets (referencePaths) AND cited as
               <Picture N>; text definitions reach the engine only as prose
-              inside <Subject N>. Say exactly that — no more. */}
+              inside <Subject N>. Say exactly that — no more, and only about the
+              references actually in hand: the same referenceRouting the shot
+              panel uses, so the two places cannot drift apart. */}
           {usableReferences.length > 0
-            ? ` It will use ${usableReferences.length === 1 ? "your reference" : `the first ${Math.min(2, usableReferences.length)} of your ${usableReferences.length} references`}: images are sent to the video engine, and text definitions are written into the prompt.`
+            ? ` It will use ${usableReferences.length === 1 ? "your reference" : `the first ${Math.min(2, usableReferences.length)} of your ${usableReferences.length} references`}. ${referenceRouting(usableReferences.slice(0, 2), "the prompt")}`
             : ""}
         </p>
       </section>
@@ -408,16 +415,16 @@ function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs
 /* Only claim the route the bound references actually take. Saying "images are
    sent … text definitions are written into the prompt" for a shot that has only
    one of the two describes something that isn't happening. */
-const referenceRouting = (references: ProjectReference[]): string => {
+const referenceRouting = (references: ProjectReference[], prompt = "this shot’s prompt"): string => {
   const hasImage = references.some((reference) => reference.kind === "image");
   const hasText = references.some((reference) => reference.kind !== "image");
-  if (hasImage && hasText) return "Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt.";
+  if (hasImage && hasText) return `Images are sent to the video engine as reference assets; text definitions are written into ${prompt}.`;
   if (hasImage) return references.length === 1
     ? "The image is sent to the video engine as a reference asset."
     : "The images are sent to the video engine as reference assets.";
   return references.length === 1
-    ? "The text definition is written into this shot’s prompt."
-    : "The text definitions are written into this shot’s prompt.";
+    ? `The text definition is written into ${prompt}.`
+    : `The text definitions are written into ${prompt}.`;
 };
 
 /* Why a reference that is bound to this shot never reaches its prompt, or null

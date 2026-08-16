@@ -109,10 +109,13 @@ describe("project schema", () => {
 
     // §2.2: an image defining a character/scene/style is cited INSIDE its
     // <Subject N> line and never becomes a standalone <Picture N> entry.
-    expect(compiled).toContain("<Subject 1> is Harbor facade, shown in <Picture 1>.");
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 1>. Pale stone fins.");
     expect(compiled).not.toMatch(/^<Picture \d+> is /m);
     // A text reference has no asset, so it cites no picture.
-    expect(compiled).toContain("<Subject 2> is Mara.");
+    expect(compiled).toContain("<Subject 2>: Calm architect in charcoal wool.");
+    // The library label is never asserted as the subject's identity.
+    expect(compiled).not.toContain("Harbor facade");
+    expect(compiled).not.toContain("Mara");
 
     // §3: task-type prefix; no <Audio N> because no audio asset exists (§2.4).
     expect(compiled).toContain("summary:\n[reference generation] ");
@@ -135,8 +138,10 @@ describe("project schema", () => {
     const first = img("a", "Alpha", "references/a.jpg");
     const second = img("b", "Beta", "references/b.jpg");
     const compiled = compileMiniMaxH3Prompt("A shot", [first, second]);
-    expect(compiled).toContain("<Subject 1> is Alpha, shown in <Picture 1>.");
-    expect(compiled).toContain("<Subject 2> is Beta, shown in <Picture 2>.");
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 1>.");
+    expect(compiled).toContain("<Subject 2> is the content shown in <Picture 2>.");
+    expect(compiled).not.toContain("Alpha");
+    expect(compiled).not.toContain("Beta");
     expect(usableImageReferences([first, second]).map((r) => r.relativePath)).toEqual([
       "references/a.jpg", "references/b.jpg",
     ]);
@@ -214,7 +219,7 @@ describe("project schema", () => {
   it("still compiles a reference that carries a visual tag alongside audio", () => {
     const narrator = textReference({ id: "ref-narrator", name: "Narrator", description: "On-camera, warm low voice.", intendedUse: ["character", "audio"] });
     const compiled = compileMiniMaxH3Prompt("A quiet lighthouse at dawn", [narrator]);
-    expect(compiled).toContain("<Subject 1> is Narrator.");
+    expect(compiled).toContain("<Subject 1>: On-camera, warm low voice.");
     expect(compiled).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved - ");
   });
 
@@ -228,7 +233,7 @@ describe("project schema", () => {
 
     expect(usableImageReferences(references).map((reference) => reference.id)).toEqual(["img-visual"]);
     const compiled = compileMiniMaxH3Prompt("A shot", references);
-    expect(compiled).toContain("<Subject 1> is Harbor facade, shown in <Picture 1>.");
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 1>.");
     expect(compiled).not.toContain("<Picture 2>");
     expect(compiled).not.toContain("<Subject 2>");
     expect(compiled).not.toContain("Waveform note");
