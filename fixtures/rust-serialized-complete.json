@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "id": "project-complete",
+  "name": "Portable Launch Film",
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-02T03:04:05.000Z",
+  "thumbnail": "thumbnails/launch.webp",
+  "settings": {
+    "aspectRatio": "16:9",
+    "resolution": "4k",
+    "frameRate": 30,
+    "backgroundColor": "#10131a"
+  },
+  "brief": {
+    "prompt": "A tactile product launch",
+    "status": "ready",
+    "targetDurationSeconds": 60,
+    "aspectRatio": "16:9",
+    "resolution": "4k"
+  },
+  "assets": [
+    {
+      "id": "asset-imported",
+      "kind": "video",
+      "name": "Macro footage",
+      "relativePath": "media/imported/macro.mp4",
+      "mimeType": "video/mp4",
+      "durationMs": 12000,
+      "width": 3840,
+      "height": 2160,
+      "createdAt": "2026-01-01T00:10:00.000Z"
+    },
+    {
+      "id": "asset-generated",
+      "kind": "generated",
+      "name": "Generated opener",
+      "relativePath": "media/generated/opener.mp4",
+      "mimeType": "video/mp4",
+      "durationMs": 8000,
+      "width": 3840,
+      "height": 2160,
+      "createdAt": "2026-01-01T00:20:00.000Z"
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "id": "track-video",
+        "kind": "video",
+        "name": "Video 1",
+        "locked": false,
+        "muted": false,
+        "clips": [
+          {
+            "id": "clip-opener",
+            "assetId": "asset-generated",
+            "trackId": "track-video",
+            "startMs": 0,
+            "durationMs": 8000,
+            "sourceStartMs": 0,
+            "label": "Opening shot",
+            "status": "approved"
+          }
+        ]
+      }
+    ]
+  },
+  "references": [
+    {
+      "id": "reference-tone",
+      "kind": "text",
+      "name": "Tone",
+      "description": "Precise, tactile, quietly optimistic.",
+      "content": "Precise, tactile, quietly optimistic.",
+      "relativePath": null,
+      "intendedUse": [
+        "style"
+      ],
+      "createdAt": "2026-01-01T00:05:00.000Z"
+    },
+    {
+      "id": "reference-product",
+      "kind": "image",
+      "name": "Product hero",
+      "description": "The product hero image defines the product's shape, materials, and markings.",
+      "content": null,
+      "relativePath": "references/product-hero.png",
+      "intendedUse": [
+        "product"
+      ],
+      "createdAt": "2026-01-01T00:06:00.000Z"
+    }
+  ],
+  "generationJobs": [
+    {
+      "id": "job-opener",
+      "title": "Generated opener",
+      "prompt": "Reveal the product through a slow macro push.",
+      "status": "ready",
+      "stage": "completed",
+      "progress": 1.0,
+      "providerId": "minimax-h3",
+      "creativeBrief": "Reveal the product through a slow macro push.",
+      "compiledPrompt": "integrated_multimodal_description: [Shot 1] Slow macro push toward the product.",
+      "referenceIds": [
+        "reference-product",
+        "reference-tone"
+      ],
+      "outputRelativePath": "media/generated/opener.mp4",
+      "error": null,
+      "createdAt": "2026-01-01T00:15:00.000Z",
+      "updatedAt": "2026-01-01T00:20:00.000Z"
+    }
+  ],
+  "agentConversation": {
+    "messages": [
+      {
+        "id": "message-user",
+        "role": "user",
+        "content": "Make the opening feel more tactile.",
+        "createdAt": "2026-01-01T00:11:00.000Z"
+      },
+      {
+        "id": "message-assistant",
+        "role": "assistant",
+        "content": "I will use a slower macro push and restrained highlights.",
+        "createdAt": "2026-01-01T00:12:00.000Z"
+      }
+    ]
+  },
+  "providerSettings": {
+    "minimax-h3": {
+      "enabled": true,
+      "model": "MiniMax-H3",
+      "options": {
+        "includeAudio": true,
+        "quality": "high",
+        "seed": 42.0
+      }
+    }
+  }
+}
