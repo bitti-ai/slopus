@@ -26,6 +26,16 @@ describe("project library controls", () => {
     expect(box.value).toBe("a rocket launch over the ocean at dawn");
     expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
 
+    // Browsing several examples is the ordinary way the row is used, so the
+    // offer must survive it — and must put back the ORIGINAL words, not the
+    // example the previous click left behind.
+    fireEvent.change(box, { target: { value: "a rocket launch over the ocean at dawn" } });
+    fireEvent.click(screen.getByRole("button", { name: "Product reveal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Social ad" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mini documentary" }));
+    fireEvent.click(screen.getByRole("button", { name: /put my words back/ }));
+    expect(box.value).toBe("a rocket launch over the ocean at dawn");
+
     // Replacing an untouched example is not a loss, so nothing is offered.
     fireEvent.change(box, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Social ad" }));

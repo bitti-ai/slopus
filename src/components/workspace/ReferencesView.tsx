@@ -68,7 +68,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <div>
         <span className="eyebrow">Consistency library</span>
         <h1>References</h1>
-        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two in this list.</p>
+        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two it can use from this list.</p>
       </div>
       <div>
         <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>

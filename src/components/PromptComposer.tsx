@@ -62,7 +62,13 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
      submits, rather than on a timer that could expire mid-read. */
   const [replacedText, setReplacedText] = useState<string | null>(null);
   const useIdea = (ideaPrompt: string) => {
-    setReplacedText(replacesUserText ? prompt : null);
+    /* Keep the EARLIEST stash, not the latest. After the first chip click the
+       box holds an example, so replacesUserText is false — clearing here would
+       withdraw the undo offer the moment the user clicks a second chip to
+       compare examples, which is the ordinary way the chip row is used. An
+       undo that quietly stops being true is worse than none, because it is
+       what convinced them not to copy their text first. */
+    setReplacedText(replacesUserText ? prompt : replacedText);
     setPrompt(ideaPrompt);
   };
 
