@@ -116,12 +116,11 @@
   --shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
   --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.28);
 
-  /* --- Legacy aliases ------------------------------------------------------
-     Kept so in-flight work that still references the old names keeps working.
-     Do not use these in new rules. */
-  --muted: var(--text-muted);
-  --soft: var(--text-secondary);
-  --blue: var(--accent);
-  --blue-bright: var(--accent-bright);
-  --blue-dark: var(--accent-dark);
+  /* --- Focus --------------------------------------------------------------
+     One ring for the whole app. base.css applies it to focusable elements;
+     composite controls (search field, composer) apply it to the wrapper that
+     reads as the control, and suppress the inner element's own ring so the
+     two never stack. */
+  --focus-ring-width: 2px;
+  --focus-ring-color: var(--accent-bright);
 }

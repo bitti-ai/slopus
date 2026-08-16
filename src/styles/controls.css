@@ -123,8 +123,13 @@
   border-radius: var(--radius-md);
 }
 
+/* The bordered wrapper IS the control, so it carries the focus ring — Ctrl+K
+   has to land somewhere obvious. The input's own ring is suppressed just below
+   so the two never stack. */
 .search-field:focus-within {
   border-color: rgba(92, 127, 236, 0.6);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
 }
 
 .search-field input {
@@ -133,7 +138,7 @@
   height: 100%;
   background: none;
   border: 0;
-  outline: none;
+  outline: none;                       /* .search-field:focus-within draws it */
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }

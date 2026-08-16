@@ -1,5 +1,5 @@
 import { ChevronDown, Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, WandSparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { chooseInitialReferenceImages, isTauri } from "../lib/persistence";
 import type { AspectRatio, CreateProjectInput, Resolution } from "../lib/project";
 import { projectNameFromPrompt } from "../lib/project";
@@ -50,8 +50,19 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const [duration, setDuration] = useState(60);
   const [referenceImages, setReferenceImages] = useState<NonNullable<CreateProjectInput["referenceImages"]>>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
+  const promptInput = useRef<HTMLTextAreaElement>(null);
 
   const referencesAvailable = isTauri();
+
+  /* The description box is the first thing you use, so start in it — saving a
+     click on the headline flow. Runs once, and only while focus is still on the
+     document body, so it never yanks focus off a field the user already picked
+     (Ctrl+K search included). */
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    promptInput.current?.focus({ preventScroll: true });
+  }, []);
 
   const addReferenceImages = async () => {
     setReferenceError(null);
@@ -88,6 +99,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
         <div className="composer__input-row">
           <PolStudioLogo compact decorative className="composer__brand-mark" />
           <textarea
+            ref={promptInput}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
