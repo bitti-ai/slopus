@@ -315,7 +315,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             config.brief.status
         ));
     }
-    if !(5..=600).contains(&config.brief.target_duration_seconds) {
+    // The bounds are spelled u32 so the range's element type cannot fall back
+    // to i32 — `u32: PartialOrd<i32>` does not exist, and this file cannot be
+    // compiled on this machine to catch it.
+    if !(5u32..=600u32).contains(&config.brief.target_duration_seconds) {
         return Err(format!(
             "Target duration must be between 5 and 600 seconds, received {}.",
             config.brief.target_duration_seconds
