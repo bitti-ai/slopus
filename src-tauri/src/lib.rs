@@ -72,8 +72,13 @@ struct ProjectAsset {
     name: String,
     relative_path: String,
     mime_type: String,
+    // zod spells these `.optional()` with no `.nullable()`, so an explicit
+    // `null` is REJECTED by the frontend parser. The key has to stay absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<u32>,
     created_at: String,
 }
@@ -107,7 +112,8 @@ struct TimelineClip {
     #[serde(default)]
     source_start_ms: u64,
     label: String,
-    #[serde(default)]
+    // `.optional()` without `.nullable()` on the frontend — see ProjectAsset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     color: Option<String>,
     #[serde(default = "default_clip_status")]
     status: String,
@@ -152,7 +158,10 @@ struct GenerationJob {
     compiled_prompt: String,
     #[serde(default)]
     reference_ids: Vec<String>,
-    #[serde(default)]
+    // `clipId` is `.optional()` and NOT `.nullable()` on the frontend, and no
+    // freshly created job ever has one, so emitting `"clipId": null` made every
+    // create_project / open_project response fail zod. Keep the key absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     clip_id: Option<String>,
     #[serde(default)]
     output_relative_path: Option<String>,
@@ -255,6 +264,88 @@ fn is_supported_resolution(value: &str) -> bool {
     matches!(value, "720p" | "1080p" | "4k")
 }
 
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        // The same leap rule zod's date regex spells out branch by branch.
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        // Month 0 and anything past 12 have no days, which rejects the date.
+        _ => 0,
+    }
+}
+
+/// Every date in the schema is validated on the frontend with zod's
+/// `z.string().datetime()`, which accepts ONLY `YYYY-MM-DDTHH:MM:SS`, an
+/// optional `.` plus one or more fractional digits, and a literal `Z` — no
+/// timezone offsets, no lowercase `t`/`z`, no missing `Z`, and no impossible
+/// calendar date. A value Rust accepts but zod does not is written to disk and
+/// then makes the project unopenable on the next launch, so the two layers have
+/// to agree here.
+fn is_iso_datetime(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    // `YYYY-MM-DDTHH:MM:SSZ` is the shortest accepted form.
+    if bytes.len() < 20 {
+        return false;
+    }
+    if bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
+        return false;
+    }
+    let digits = |range: std::ops::Range<usize>| bytes[range].iter().all(u8::is_ascii_digit);
+    if !(digits(0..4) && digits(5..7) && digits(8..10) && digits(11..13) && digits(14..16))
+        || !digits(17..19)
+    {
+        return false;
+    }
+    let number = |start: usize, end: usize| {
+        bytes[start..end]
+            .iter()
+            .fold(0u32, |total, byte| total * 10 + u32::from(byte - b'0'))
+    };
+    let (year, month, day) = (number(0, 4), number(5, 7), number(8, 10));
+    if day == 0 || day > days_in_month(year, month) {
+        return false;
+    }
+    if number(11, 13) > 23 || number(14, 16) > 59 || number(17, 19) > 59 {
+        return false;
+    }
+    // Optional fractional seconds — at least one digit if the dot is there —
+    // and then nothing but the mandatory `Z`.
+    let tail = &bytes[19..];
+    let tail = match tail.split_first() {
+        Some((&b'.', fraction)) => {
+            let length = fraction
+                .iter()
+                .take_while(|byte| byte.is_ascii_digit())
+                .count();
+            if length == 0 {
+                return false;
+            }
+            &fraction[length..]
+        }
+        _ => tail,
+    };
+    matches!(tail, b"Z")
+}
+
+fn check_iso_datetime(label: &str, value: &str) -> Result<(), String> {
+    if is_iso_datetime(value) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} must be an ISO date-time like 2026-01-01T00:00:00.000Z, received '{value}'."
+        ))
+    }
+}
+
 fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectConfig, String> {
     if config.schema_version != 1 {
         return Err(format!(
@@ -273,6 +364,8 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             "Project names cannot be longer than 120 characters, received {name_length}."
         ));
     }
+    check_iso_datetime("Project createdAt", &config.created_at)?;
+    check_iso_datetime("Project updatedAt", &config.updated_at)?;
     if config.brief.prompt.trim().is_empty() {
         return Err("Project brief cannot be empty.".into());
     }
@@ -316,8 +409,7 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         ));
     }
     // The bounds are spelled u32 so the range's element type cannot fall back
-    // to i32 — `u32: PartialOrd<i32>` does not exist, and this file cannot be
-    // compiled on this machine to catch it.
+    // to i32 — `u32: PartialOrd<i32>` does not exist.
     if !(5u32..=600u32).contains(&config.brief.target_duration_seconds) {
         return Err(format!(
             "Target duration must be between 5 and 600 seconds, received {}.",
@@ -360,6 +452,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 asset.id
             ));
         }
+        check_iso_datetime(
+            &format!("Asset '{}' createdAt", asset.id),
+            &asset.created_at,
+        )?;
         asset.relative_path = normalize_project_path(&asset.relative_path)?;
     }
     for reference in &mut config.references {
@@ -393,6 +489,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 reference.id
             ));
         }
+        check_iso_datetime(
+            &format!("Reference '{}' createdAt", reference.id),
+            &reference.created_at,
+        )?;
         for intent in &reference.intended_use {
             if !matches!(
                 intent.as_str(),
@@ -474,6 +574,14 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 job.id
             ));
         }
+        check_iso_datetime(
+            &format!("Generation job '{}' createdAt", job.id),
+            &job.created_at,
+        )?;
+        check_iso_datetime(
+            &format!("Generation job '{}' updatedAt", job.id),
+            &job.updated_at,
+        )?;
         job.output_relative_path = job
             .output_relative_path
             .as_deref()
@@ -490,6 +598,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 message.role
             ));
         }
+        check_iso_datetime(
+            &format!("Agent message '{}' createdAt", message.id),
+            &message.created_at,
+        )?;
     }
     for (provider_id, setting) in &config.provider_settings {
         if provider_id.trim().is_empty() {
@@ -1016,6 +1128,281 @@ mod tests {
 
     fn fixture() -> ProjectConfig {
         serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap()
+    }
+
+    /// Byte-exact output of the frontend's `createProjectConfig` — what a real
+    /// newly created project looks like before anything has been edited. The
+    /// complete fixture cannot stand in for it: it has no draft job without a
+    /// clip, which is the shape that broke every create and open.
+    fn created_fixture() -> ProjectConfig {
+        serde_json::from_str(include_str!("../../fixtures/project-v1-created.json")).unwrap()
+    }
+
+    /// The keys the frontend schema spells `.optional()` with NO `.nullable()`
+    /// (src/lib/project.ts lines 42-44, 56, 109). zod's `.optional()` rejects
+    /// `null`, so an explicit null under any of these names makes the whole
+    /// config unparseable in the UI — the key has to be absent instead.
+    const NON_NULLABLE_OPTIONAL_KEYS: [&str; 5] =
+        ["clipId", "durationMs", "width", "height", "color"];
+
+    fn collect_forbidden_nulls(value: &serde_json::Value, path: &str, found: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                for (key, child) in fields {
+                    let child_path = format!("{path}.{key}");
+                    if child.is_null() && NON_NULLABLE_OPTIONAL_KEYS.contains(&key.as_str()) {
+                        found.push(child_path.clone());
+                    }
+                    collect_forbidden_nulls(child, &child_path, found);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for (index, item) in items.iter().enumerate() {
+                    collect_forbidden_nulls(item, &format!("{path}[{index}]"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn forbidden_nulls(config: &ProjectConfig) -> Vec<String> {
+        let json = serde_json::to_string_pretty(config).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let mut found = Vec::new();
+        collect_forbidden_nulls(&value, "config", &mut found);
+        found
+    }
+
+    fn object_of<'a>(
+        value: &'a serde_json::Value,
+        path: &str,
+    ) -> &'a serde_json::Map<String, serde_json::Value> {
+        value
+            .as_object()
+            .unwrap_or_else(|| panic!("{path} is not a JSON object"))
+    }
+
+    #[test]
+    fn rust_never_emits_a_null_the_frontend_schema_refuses() {
+        // The cross-layer direction that went unchecked for nine rounds: Rust
+        // WRITING something zod cannot read. Browser mode never touches Rust,
+        // so nothing else catches it.
+        for (name, config) in [("created", created_fixture()), ("complete", fixture())] {
+            let config = validate_and_normalize_config(config).unwrap();
+            let found = forbidden_nulls(&config);
+            assert!(
+                found.is_empty(),
+                "{name} fixture serialized nulls that zod's .optional() rejects: {found:?}"
+            );
+        }
+
+        // Positively: a freshly created draft job carries no clip, and the key
+        // must be missing rather than null. `createDraftGenerationJob` never
+        // sets clipId, so this is every project that has ever been created.
+        let created = validate_and_normalize_config(created_fixture()).unwrap();
+        let json = serde_json::to_string_pretty(&created).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let job = object_of(&value["generationJobs"][0], "generationJobs[0]");
+        assert!(
+            !job.contains_key("clipId"),
+            "clipId must be absent, not null: {job:?}"
+        );
+        assert!(!json.contains("\"clipId\""), "clipId leaked into {json}");
+    }
+
+    #[test]
+    fn both_fixtures_round_trip_losslessly_through_json() {
+        for (name, config) in [("created", created_fixture()), ("complete", fixture())] {
+            let normalized = validate_and_normalize_config(config).unwrap();
+            let json = serde_json::to_string_pretty(&normalized).unwrap();
+            let reparsed: ProjectConfig = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                reparsed, normalized,
+                "{name} fixture lost data in a round trip"
+            );
+            assert_eq!(
+                validate_and_normalize_config(reparsed).unwrap(),
+                normalized,
+                "{name} fixture failed to re-validate after a round trip"
+            );
+        }
+    }
+
+    #[test]
+    fn absent_non_nullable_optionals_are_omitted_entirely() {
+        let mut config = fixture();
+        config.assets[0].duration_ms = None;
+        config.assets[0].width = None;
+        config.assets[0].height = None;
+        config.timeline.tracks[0].clips[0].color = None;
+        config.generation_jobs[0].clip_id = None;
+        let config = validate_and_normalize_config(config).unwrap();
+
+        let found = forbidden_nulls(&config);
+        assert!(found.is_empty(), "emitted forbidden nulls: {found:?}");
+
+        let value = serde_json::to_value(&config).unwrap();
+        let asset = object_of(&value["assets"][0], "assets[0]");
+        for key in ["durationMs", "width", "height"] {
+            assert!(!asset.contains_key(key), "assets[0].{key} must be omitted");
+        }
+        let clip = object_of(&value["timeline"]["tracks"][0]["clips"][0], "clips[0]");
+        assert!(!clip.contains_key("color"), "clip color must be omitted");
+        // The clip's OWN durationMs is required and must survive — the omission
+        // is per field, not per key name.
+        assert_eq!(clip["durationMs"], serde_json::json!(8000));
+        let job = object_of(&value["generationJobs"][0], "generationJobs[0]");
+        assert!(!job.contains_key("clipId"), "job clipId must be omitted");
+
+        let reparsed: ProjectConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            reparsed, config,
+            "omitted optionals did not come back as None"
+        );
+    }
+
+    #[test]
+    fn nullable_optionals_still_serialize_as_explicit_null() {
+        // The guard against "fixing" the clipId break by blanket-adding
+        // skip_serializing_if: every field below is `.nullable()` on the
+        // frontend, so an explicit null is what zod expects. Dropping the key
+        // breaks the other direction just as badly.
+        fn assert_explicit_null(parent: &serde_json::Value, path: &str, key: &str) {
+            let fields = object_of(parent, path);
+            assert!(
+                fields.contains_key(key),
+                "{path}.{key} is .nullable() on the frontend and must stay present"
+            );
+            assert!(
+                fields[key].is_null(),
+                "{path}.{key} must serialize as null when None, got {}",
+                fields[key]
+            );
+        }
+
+        let mut config = fixture();
+        config.thumbnail = None;
+        config.references[0].content = None;
+        config.references[0].relative_path = None;
+        config.generation_jobs[0].provider_id = None;
+        config.generation_jobs[0].output_relative_path = None;
+        config.generation_jobs[0].error = None;
+        config
+            .provider_settings
+            .get_mut("minimax-h3")
+            .unwrap()
+            .model = None;
+        let config = validate_and_normalize_config(config).unwrap();
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        assert!(
+            json.contains("\"thumbnail\": null"),
+            "thumbnail must serialize as an explicit null: {json}"
+        );
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_explicit_null(&value, "config", "thumbnail");
+        assert_explicit_null(&value["references"][0], "references[0]", "content");
+        assert_explicit_null(&value["references"][0], "references[0]", "relativePath");
+        assert_explicit_null(
+            &value["generationJobs"][0],
+            "generationJobs[0]",
+            "providerId",
+        );
+        assert_explicit_null(
+            &value["generationJobs"][0],
+            "generationJobs[0]",
+            "outputRelativePath",
+        );
+        assert_explicit_null(&value["generationJobs"][0], "generationJobs[0]", "error");
+        assert_explicit_null(
+            &value["providerSettings"]["minimax-h3"],
+            "providerSettings['minimax-h3']",
+            "model",
+        );
+    }
+
+    #[test]
+    fn iso_datetime_matches_the_frontend_datetime_rules() {
+        for value in [
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00Z",
+            "2026-01-01T00:00:00.123456789Z",
+            "2024-02-29T23:59:59Z",
+            "2000-02-29T00:00:00Z",
+            "2026-12-31T23:59:59.9Z",
+        ] {
+            assert!(is_iso_datetime(value), "rejected valid date-time '{value}'");
+        }
+        for value in [
+            "2026-01-01",
+            "2026-01-01T00:00:00",
+            "2026-01-01T00:00:00+01:00",
+            "2026-01-01t00:00:00z",
+            "2026-01-01T00:00:00.Z",
+            "",
+            "not a date",
+            "2026-01-01T00:00:00.000Z ",
+            " 2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000ZZ",
+            "2026-13-01T00:00:00Z",
+            "2026-00-01T00:00:00Z",
+            "2026-02-30T00:00:00Z",
+            "2026-01-00T00:00:00Z",
+            "2025-02-29T00:00:00Z",
+            "1900-02-29T00:00:00Z",
+            "2026-01-01T24:00:00Z",
+            "2026-01-01T00:60:00Z",
+            "2026-01-01T00:00:60Z",
+            "2026-01-01 00:00:00Z",
+            "20260101T000000Z",
+        ] {
+            assert!(
+                !is_iso_datetime(value),
+                "accepted invalid date-time '{value}'"
+            );
+        }
+    }
+
+    #[test]
+    fn every_date_field_is_checked_the_way_the_frontend_checks_it() {
+        // A date Rust accepts and zod refuses is written to disk and the project
+        // disappears from the library on the next launch, so every date field
+        // has to be covered — not just the two on the config root.
+        assert!(validate_and_normalize_config(fixture()).is_ok());
+        assert!(validate_and_normalize_config(created_fixture()).is_ok());
+
+        fn rejects(field: &str, break_config: impl FnOnce(&mut ProjectConfig)) {
+            let mut config = fixture();
+            break_config(&mut config);
+            let error = validate_and_normalize_config(config)
+                .expect_err(&format!("accepted a {field} the frontend schema rejects"));
+            assert!(
+                error.contains("ISO date-time"),
+                "unexpected error for {field}: {error}"
+            );
+        }
+
+        rejects("project createdAt", |config| {
+            config.created_at = "2026-01-01".into();
+        });
+        rejects("project updatedAt", |config| {
+            config.updated_at = "2026-01-02T03:04:05".into();
+        });
+        rejects("asset createdAt", |config| {
+            config.assets[0].created_at = "2026-01-01T00:10:00+01:00".into();
+        });
+        rejects("reference createdAt", |config| {
+            config.references[0].created_at = "2026-01-01t00:05:00.000z".into();
+        });
+        rejects("job createdAt", |config| {
+            config.generation_jobs[0].created_at = String::new();
+        });
+        rejects("job updatedAt", |config| {
+            config.generation_jobs[0].updated_at = "not a date".into();
+        });
+        rejects("agent message createdAt", |config| {
+            config.agent_conversation.messages[0].created_at = "2026-01-01T00:11:00".into();
+        });
     }
 
     #[test]
