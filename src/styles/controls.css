@@ -1,0 +1,348 @@
+/* ============================================================================
+   controls.css — shared UI primitives used by every surface.
+   Buttons, icon buttons, fields, pills, toasts, progress bars, panel chrome.
+   ========================================================================== */
+
+/* --- Buttons --------------------------------------------------------------- */
+
+.primary-button,
+.secondary-button {
+  min-height: var(--control-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  transition: 0.18s ease;
+}
+
+/* Primary actions are the hero control size. */
+.primary-button {
+  min-height: var(--control-lg);
+  padding: 0 var(--space-5);
+  border: 1px solid #5578ed;
+  color: #fff;
+  background: linear-gradient(180deg, #5279f4, #3159d4);
+  box-shadow:
+    0 5px 18px rgba(31, 70, 196, 0.26),
+    inset 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.primary-button:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.secondary-button {
+  border: 1px solid var(--line-strong);
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.danger-button {
+  width: 100%;
+  min-height: var(--control-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  border: 1px solid #65363e;
+  border-radius: var(--radius-md);
+  color: var(--danger);
+  background: #26171b;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #7d434c;
+  background: #2e1b20;
+}
+
+/* --- Icon buttons ---------------------------------------------------------- */
+
+.icon-button {
+  width: var(--icon-button);
+  height: var(--icon-button);
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: transparent;
+  transition: 0.16s ease;
+}
+
+.icon-button:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.icon-button--active {
+  color: #c7d2ff;
+  border-color: rgba(88, 119, 218, 0.25);
+  background: var(--accent-soft);
+}
+
+.icon-button--strong {
+  color: var(--text-secondary);
+  border-color: var(--line);
+}
+
+/* --- Search field ---------------------------------------------------------- */
+
+.search-field {
+  height: var(--field-height);
+  width: 260px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--text-muted);
+  background: #0e1117;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.search-field:focus-within {
+  border-color: rgba(92, 127, 236, 0.6);
+}
+
+.search-field input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.search-field input::placeholder {
+  color: var(--text-faint);
+}
+
+.search-field kbd {
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+/* --- Eyebrow / pills ------------------------------------------------------- */
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: #8fa0d8;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.storage-pill {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--control-sm);
+  color: var(--text-muted);
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-3);
+}
+
+.storage-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(110, 207, 149, 0.6);
+}
+
+/* --- Back link ------------------------------------------------------------- */
+
+.back-link {
+  min-height: var(--control-sm);
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 0 var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.back-link:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* --- Panel chrome (shared header strip inside editor panels) ---------------- */
+
+.panel-chrome {
+  height: var(--control-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.panel-chrome > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.panel-chrome button {
+  min-height: var(--control-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: none;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
+}
+
+.panel-chrome button:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+/* --- Progress -------------------------------------------------------------- */
+
+.progress-track {
+  height: 6px;
+  margin: var(--space-3) 0;
+  border-radius: var(--radius-xs);
+  background: #20252e;
+}
+
+.progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg, #4468db, #7d9aff);
+  box-shadow: 0 0 8px rgba(91, 126, 224, 0.53);
+}
+
+.mini-progress {
+  display: block;
+  height: 4px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: #242a35;
+}
+
+.mini-progress em {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: #637fe0;
+}
+
+/* --- Toast ----------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  z-index: 100;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  width: 380px;
+  padding: var(--space-4);
+  border: 1px solid rgba(244, 104, 104, 0.25);
+  border-radius: var(--radius-lg);
+  background: #171116;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-4);
+}
+
+.toast strong {
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.toast span {
+  grid-column: 1;
+  color: #c0a4ab;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.toast button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: #e1939f;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.toast button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 650px) {
+  .search-field {
+    flex: 1;
+    width: auto;
+  }
+
+  .toast {
+    right: var(--space-3);
+    left: var(--space-3);
+    width: auto;
+  }
+}

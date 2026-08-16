@@ -1,0 +1,127 @@
+/* ============================================================================
+   Pol Studio — design tokens
+   ----------------------------------------------------------------------------
+   This file is the contract. Every other stylesheet consumes these variables
+   and MUST NOT introduce raw px type sizes, raw greys, or off-grid spacing.
+
+   RULES
+   1. Body copy is 15px (--text-base). Prose never goes below it.
+   2. 12px (--text-2xs) is the ABSOLUTE FLOOR, reserved for mono micro-labels
+      (timecodes, badges, uppercase eyebrows). Nothing in the app is smaller.
+   3. Spacing follows an 8px rhythm with 4px half-steps. Use --space-*, never
+      arbitrary values.
+   4. Every interactive control is at least 36px (--control-sm) in its smallest
+      interactive dimension. 32px is tolerated ONLY for icon buttons packed into
+      a dense grid that cannot grow.
+   5. Primary actions are at least 40px (--control-md); hero CTAs 48px
+      (--control-lg). Text fields and selects are --field-height (40px).
+   6. Prose uses line-height 1.5 (--leading-normal). Tight UI labels may use
+      --leading-snug (1.35); only display type uses --leading-tight.
+   7. The dimmest text allowed anywhere is --text-faint, which clears 4.5:1 on
+      --panel / --panel-3. Never hand-write a grey below it.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* --- Font families ------------------------------------------------------ */
+  --font-sans: "Manrope", Inter, system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* --- Type scale (base body = 15px, floor = 12px) ------------------------ */
+  --text-2xs: 12px;                    /* absolute floor — mono micro-labels only */
+  --text-xs: 13px;                     /* secondary text, captions, dense panel labels */
+  --text-sm: 14px;
+  --text-base: 15px;                   /* body / default */
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  --text-3xl: clamp(30px, 3vw, 40px);  /* page hero */
+
+  /* --- Line height -------------------------------------------------------- */
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+
+  /* --- Weight ------------------------------------------------------------- */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* --- Letter spacing ----------------------------------------------------- */
+  --tracking-tight: -0.02em;
+  --tracking-hero: -0.03em;
+  --tracking-label: 0.08em;
+
+  /* --- Spacing (8px rhythm, 4px half-steps) ------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 64px;
+
+  /* --- Radii -------------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* --- Control sizing (minimum hit targets — never go under) -------------- */
+  --control-sm: 36px;                  /* dense/secondary controls, minimum hit target */
+  --control-md: 40px;                  /* default control + icon buttons */
+  --control-lg: 48px;                  /* primary actions */
+  --icon-button: 40px;                 /* square icon buttons */
+  --field-height: 40px;                /* text inputs, selects */
+
+  /* --- Layout ------------------------------------------------------------- */
+  --sidebar-width: 252px;
+  --topbar-height: 72px;
+  --content-max: 1180px;
+
+  /* --- Surfaces ----------------------------------------------------------- */
+  --bg: #080a0f;
+  --panel: #0d1016;
+  --panel-2: #12151d;
+  --panel-3: #171b24;
+  --line: rgba(255, 255, 255, 0.085);
+  --line-strong: rgba(255, 255, 255, 0.14);
+
+  /* --- Text (contrast-checked against --panel / --panel-3) ---------------- */
+  --text-primary: #eff1f7;
+  --text-secondary: #c5cbd7;
+  --text-muted: #9aa2b1;               /* replaces every #86..#9x grey */
+  --text-faint: #838b9a;               /* DIMMEST text allowed — ~5:1 on --panel */
+
+  /* --- Accent ------------------------------------------------------------- */
+  --accent: #3d6df2;
+  --accent-bright: #6b8dff;
+  --accent-dark: #173ca6;
+  --accent-soft: rgba(60, 105, 239, 0.15);
+
+  /* --- Status ------------------------------------------------------------- */
+  --success: #6ecf95;
+  --warning: #e3a862;
+  --danger: #ec7d86;
+
+  /* --- Elevation ---------------------------------------------------------- */
+  --shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
+  --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.28);
+
+  /* --- Legacy aliases ------------------------------------------------------
+     Kept so in-flight work that still references the old names keeps working.
+     Do not use these in new rules. */
+  --muted: var(--text-muted);
+  --soft: var(--text-secondary);
+  --blue: var(--accent);
+  --blue-bright: var(--accent-bright);
+  --blue-dark: var(--accent-dark);
+}

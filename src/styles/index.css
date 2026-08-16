@@ -1,0 +1,22 @@
+/* ============================================================================
+   Pol Studio — stylesheet entry point.
+
+   This is the ONLY file imported by the app (src/main.tsx). Everything else is
+   pulled in from here, in cascade order. Keep the font @import first: CSS
+   requires all @import rules to precede any other rule.
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap");
+
+/* Foundation */
+@import "./tokens.css";
+@import "./base.css";
+@import "./controls.css";
+
+/* Application surfaces */
+@import "./shell.css";
+@import "./library.css";
+@import "./workspace.css";
+@import "./generator.css";
+@import "./timeline.css";
+@import "./references.css";

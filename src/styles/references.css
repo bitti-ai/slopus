@@ -1,0 +1,651 @@
+/* ============================================================================
+   references.css — reference library, reference inspector, add-reference dialog.
+   ========================================================================== */
+
+.references-view {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-7) var(--space-7);
+  background:
+    radial-gradient(circle at 20% -20%, #2f456b22, transparent 35%),
+    #0a0d12;
+}
+
+.references-heading {
+  max-width: var(--content-max);
+  margin: 0 auto var(--space-5);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.references-heading > div:last-child {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.references-heading h1 {
+  margin: var(--space-1) 0 var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-hero);
+}
+
+.references-heading p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* --- Layout ---------------------------------------------------------------- */
+
+.reference-layout {
+  max-width: var(--content-max);
+  min-height: 640px;
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(600px, 1fr) 340px;
+  overflow: hidden;
+  border: 1px solid #292e38;
+  border-radius: var(--radius-lg);
+  background: #0e1117;
+}
+
+.reference-library {
+  min-width: 0;
+  padding-bottom: var(--space-5);
+  border-right: 1px solid #292e38;
+}
+
+.reference-library__toolbar {
+  height: var(--control-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.reference-library__toolbar button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: none;
+}
+
+.reference-library__toolbar button:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* --- Reference cards ------------------------------------------------------- */
+
+.reference-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.reference-grid > button {
+  min-width: 0;
+  height: 180px;
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid #272d37;
+  border-radius: var(--radius-md);
+  text-align: left;
+  color: var(--text-muted);
+  background: #11151c;
+}
+
+.reference-grid > button:hover {
+  border-color: #3a4353;
+}
+
+.reference-grid > button.selected {
+  border-color: #647fdb;
+  box-shadow: 0 0 0 2px #4e69bd33;
+}
+
+.reference-art,
+.reference-copy-art {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(155deg, #24344e, #9f735a);
+}
+
+.reference-art i {
+  position: absolute;
+  width: 70%;
+  height: 82%;
+  left: 18%;
+  bottom: -8%;
+  background: repeating-linear-gradient(90deg, #17202c 0 12px, #8c684f 13px 15px);
+  transform: perspective(200px) rotateY(-16deg);
+}
+
+.reference-art em {
+  position: absolute;
+  z-index: 2;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-xs);
+  color: #d8dee9;
+  background: rgba(9, 11, 15, 0.72);
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  font-style: normal;
+}
+
+.reference-copy-art {
+  color: #94a8ea;
+  background: radial-gradient(circle at 50% 40%, #33436b, #171c2a);
+}
+
+.reference-copy-art i {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #6681d64d;
+  border-radius: 50%;
+  color: #bfccf5;
+  background: #34436a;
+  font-size: var(--text-lg);
+  font-style: normal;
+}
+
+.reference-copy-art svg {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+}
+
+.reference-card__body {
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.reference-card__body > span:first-child b,
+.reference-card__body > span:first-child small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.reference-card__body b {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.reference-card__body small {
+  margin-top: var(--space-1);
+  color: var(--text-faint);
+  font: var(--weight-medium) var(--text-2xs) / var(--leading-snug) var(--font-mono);
+}
+
+.reference-card__body p {
+  height: 66px;
+  overflow: hidden;
+  margin: var(--space-3) 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.use-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.use-tags i {
+  padding: 2px var(--space-1);
+  border: 1px solid #303744;
+  border-radius: var(--radius-xs);
+  color: #8d9dcb;
+  background: #171d2b;
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.reference-grid .reference-add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--text-muted);
+  background: var(--panel);
+}
+
+.reference-add-card > span {
+  width: var(--control-md);
+  height: var(--control-md);
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-2);
+  border: 1px solid #333a46;
+  border-radius: var(--radius-md);
+  color: #97a9e0;
+  background: #151c2d;
+}
+
+.reference-add-card b {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.reference-add-card small {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.reference-explainer {
+  display: flex;
+  gap: var(--space-3);
+  margin: var(--space-1) var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid rgba(83, 111, 199, 0.22);
+  border-radius: var(--radius-md);
+  color: #8ea6f2;
+  background: rgba(40, 61, 124, 0.1);
+}
+
+.reference-explainer b {
+  display: block;
+  color: #b9c4e4;
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.reference-explainer p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.reference-explainer code {
+  font: var(--weight-medium) var(--text-sm) / 1 var(--font-mono);
+}
+
+/* --- Reference inspector --------------------------------------------------- */
+
+.reference-inspector {
+  min-width: 0;
+  overflow-y: auto;
+  background: #0c0f14;
+}
+
+.reference-detail-art {
+  height: 140px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(150deg, #263957, #997057);
+}
+
+.reference-detail-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #ffffff13, transparent);
+  transform: skew(-20deg);
+}
+
+.reference-detail-art > span {
+  position: relative;
+  z-index: 2;
+  width: var(--space-9);
+  height: var(--space-9);
+  display: grid;
+  place-items: center;
+  border: 1px solid #ffffff24;
+  border-radius: 50%;
+  color: #d8e0ed;
+  background: #12182470;
+}
+
+.reference-detail-art em {
+  position: absolute;
+  z-index: 3;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #d4dae5;
+  font: var(--weight-medium) var(--text-2xs) / var(--leading-snug) var(--font-mono);
+  font-style: normal;
+  text-shadow: 0 1px 4px #000;
+}
+
+.reference-detail-art--text {
+  background: radial-gradient(circle at 50% 40%, #34456f, #171d2c);
+}
+
+.reference-fields {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.reference-fields label {
+  display: block;
+  margin-bottom: var(--space-3);
+}
+
+.reference-fields label > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.reference-fields input,
+.reference-fields textarea {
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid #262b35;
+  border-radius: var(--radius-sm);
+  outline: 0;
+  color: var(--text-secondary);
+  background: #0a0d12;
+  font-size: var(--text-sm);
+}
+
+.reference-fields input:focus,
+.reference-fields textarea:focus {
+  border-color: #536fca;
+}
+
+.reference-fields textarea {
+  height: 112px;
+  padding: var(--space-2) var(--space-3);
+  resize: none;
+  line-height: var(--leading-normal);
+}
+
+/* --- Intended use / usage list --------------------------------------------- */
+
+.intended-use,
+.reference-used-by {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.intended-use h3,
+.reference-used-by h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-snug);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.intended-use h3 {
+  margin-bottom: var(--space-1);
+}
+
+.intended-use p {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.intended-use > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.intended-use button {
+  min-height: var(--control-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border: 1px solid #2b313b;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: #11151b;
+  font-size: var(--text-xs);
+  text-transform: capitalize;
+}
+
+.intended-use button.active {
+  color: #aebce8;
+  border-color: #485b99;
+  background: #1b2540;
+}
+
+.reference-used-by h3 span {
+  float: right;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: #1a2029;
+}
+
+.reference-used-by > div {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.job-link-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5d7edf;
+}
+
+.job-link-dot--completed {
+  background: var(--success);
+}
+
+.reference-used-by b,
+.reference-used-by small {
+  display: block;
+}
+
+.reference-used-by b {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.reference-used-by small {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.reference-used-by > p {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* --- Portable path --------------------------------------------------------- */
+
+.portable-path {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: #8ea6f2;
+}
+
+.portable-path b,
+.portable-path code {
+  display: block;
+}
+
+.portable-path b {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.portable-path code {
+  max-width: 280px;
+  margin-top: var(--space-1);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-faint);
+  font: var(--weight-medium) var(--text-2xs) / var(--leading-snug) var(--font-mono);
+}
+
+/* --- Empty state ----------------------------------------------------------- */
+
+.reference-empty {
+  height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.reference-empty b {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.reference-empty p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* --- Add-reference dialog -------------------------------------------------- */
+
+.reference-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 7, 10, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.reference-dialog {
+  width: min(520px, calc(100vw - var(--space-6)));
+  padding: var(--space-6);
+  border: 1px solid #343b49;
+  border-radius: var(--radius-lg);
+  background: #11151c;
+  box-shadow: 0 24px 70px #000b;
+}
+
+.reference-dialog h2 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.reference-dialog p {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.reference-dialog label {
+  display: block;
+  margin-top: var(--space-4);
+}
+
+.reference-dialog label > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.reference-dialog input,
+.reference-dialog textarea {
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid #2c323e;
+  border-radius: var(--radius-sm);
+  outline: 0;
+  color: var(--text-secondary);
+  background: #0a0d12;
+  font-size: var(--text-base);
+}
+
+.reference-dialog textarea {
+  height: 120px;
+  padding: var(--space-2) var(--space-3);
+  resize: none;
+  line-height: var(--leading-normal);
+}
+
+.reference-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.reference-dialog .primary-button:disabled {
+  opacity: 0.4;
+}
+
+/* --- Responsive ------------------------------------------------------------ */
+
+@media (max-width: 1180px) {
+  .reference-layout {
+    grid-template-columns: minmax(540px, 1fr) 300px;
+  }
+
+  .references-view {
+    padding-inline: var(--space-5);
+  }
+}
