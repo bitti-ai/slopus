@@ -6,13 +6,25 @@ export function EmptyPlaceholder({ title, copy, icon: Icon = Construction, onBac
 }) {
   return (
     <main className="placeholder-view">
-      <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Project library</button>
+      <button className="back-link" type="button" onClick={onBack}>
+        <ArrowLeft size={16} aria-hidden="true" /> Project library
+      </button>
       <div className="placeholder-view__card">
-        <span><Icon size={24} /></span>
-        <p className="eyebrow">Workspace preview</p>
+        <span aria-hidden="true"><Icon size={28} /></span>
+        <p className="eyebrow">Lives inside a project</p>
         <h1>{title}</h1>
         <p>{copy}</p>
-        <button className="primary-button" onClick={onBack}>Return to projects</button>
+        <ol className="placeholder-view__steps">
+          <li>
+            <b>Open or create a project</b>
+            <span>Describe the video you want in the project library, or open a project folder you already have.</span>
+          </li>
+          <li>
+            <b>Work from the project tabs</b>
+            <span>Timeline, Generator, and References all open along the top of a project, with your files kept together in its folder.</span>
+          </li>
+        </ol>
+        <button className="primary-button" type="button" onClick={onBack}>Go to Projects</button>
       </div>
     </main>
   );

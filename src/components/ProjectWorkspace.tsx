@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, ChevronDown, Cloud, Film, Play, Redo2, Save, Share2, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Cloud, Download, Film, Save, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ProjectConfig, ProjectRecord } from "../lib/project";
 import { getRuntimeStatus, type ProviderId, type RuntimeStatus } from "../lib/runtime";
@@ -65,14 +65,26 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
   return <div className="project-shell">
     <header className="project-topbar">
       <button className="icon-button icon-button--strong" onClick={onBack} aria-label="Back to project library"><ArrowLeft size={18} /></button>
-      <div className="project-title"><strong>{config.name}</strong><span><Cloud size={11} /> Local project <i>•</i> {dirty ? "Unsaved changes" : "All changes saved"}</span></div>
-      <div className="project-history"><button className="icon-button" aria-label="Undo"><Undo2 size={15} /></button><button className="icon-button" aria-label="Redo"><Redo2 size={15} /></button></div>
-      <div className="project-topbar__actions"><button className="secondary-button" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? "Saving…" : "Save"}</button><button className="secondary-button"><Share2 size={14} /> Share</button><button className="primary-button"><Play size={14} fill="currentColor" /> Export <ChevronDown size={12} /></button></div>
+      <div className="project-title"><strong>{config.name}</strong><span><Cloud size={13} aria-hidden="true" /> Local project</span></div>
+      <p className={`save-state save-state--${dirty ? "dirty" : "saved"}`} aria-live="polite"><i aria-hidden="true" />{dirty ? "Unsaved changes" : "All changes saved"}</p>
+      <div className="project-topbar__actions">
+        {/* Export is not wired to anything yet, so it must not look like a working action. */}
+        <button className="secondary-button" type="button" disabled title="Export isn’t available yet. Finished clips are already written into your project folder.">
+          <Download size={16} aria-hidden="true" /> Export <span className="project-topbar__soon">Soon</span>
+        </button>
+        <button className="primary-button" onClick={() => void save()} disabled={saving}><Save size={16} aria-hidden="true" /> {saving ? "Saving…" : "Save"}</button>
+      </div>
     </header>
 
     <nav className="project-nav" aria-label="Project views">
-      <div>{([ ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const).map(([id, Icon, label]) => <button key={id} className={view === id ? "active" : ""} onClick={() => setView(id)}><Icon size={14} /> {label}{id === "generator" && <span>{config.generationJobs.filter((job) => job.status === "generating" || job.status === "queued").length}</span>}</button>)}</div>
-      <span className="project-nav__meta">{config.settings.aspectRatio} · {config.settings.resolution.toUpperCase()} · {config.settings.frameRate} FPS</span>
+      <div>{([ ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const).map(([id, Icon, label]) => {
+        const running = id === "generator" ? config.generationJobs.filter((job) => job.status === "generating" || job.status === "queued").length : 0;
+        return <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
+          <Icon size={18} aria-hidden="true" /> {label}
+          {running > 0 && <span title={`${running} generation${running === 1 ? "" : "s"} running or queued`}>{running}</span>}
+        </button>;
+      })}</div>
+      <span className="project-nav__meta" title="Aspect ratio, resolution, and frame rate for this project">{config.settings.aspectRatio} · {config.settings.resolution.toUpperCase()} · {config.settings.frameRate} FPS</span>
     </nav>
 
     <div className={`project-content project-content--${view}`}>
