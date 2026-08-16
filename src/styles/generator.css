@@ -17,6 +17,7 @@
 /* --- Queue rail ------------------------------------------------------------ */
 
 .queue-panel {
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -68,7 +69,9 @@
   padding: var(--space-4) var(--space-3) 0;
 }
 
-.queue-group h3 {
+/* Not a heading: the rail precedes the page <h1> in the DOM, so these are
+   labelled groups. See QueueGroup in GeneratorView.tsx. */
+.queue-group__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -83,7 +86,7 @@
   text-transform: none;
 }
 
-.queue-group h3 span {
+.queue-group__label span {
   min-width: var(--space-5);
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
@@ -287,6 +290,7 @@
 /* --- Main column ----------------------------------------------------------- */
 
 .generator-main {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-6) var(--space-7) var(--space-8);
@@ -394,6 +398,30 @@
   font-size: var(--text-base);
 }
 
+/* Expectation-setting, not an alarm: sits directly under the generate button
+   so the limit is known before an expensive render, never after it. */
+
+.generation-composer__limit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 78ch;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--panel);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.generation-composer__limit svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
 .generation-composer__hint {
   max-width: 78ch;
   margin: var(--space-4) 0 0;
@@ -462,57 +490,45 @@
   border-right: 1px solid var(--line);
 }
 
+/* Same rule as the scene thumb, the media thumb and the reference card: a
+   labelled placeholder, never invented art. Pol Studio cannot display a
+   rendered frame yet, so this surface must never imply one exists. The state
+   chip and the caption below it are the only content. */
+
 .generation-preview {
   position: relative;
-  height: 340px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
   overflow: hidden;
+  text-align: center;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
-  background: linear-gradient(150deg, #26374f 0 48%, #ca8b60 49% 51%, #171c24 52%);
+  background-color: var(--panel-3);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0 6px,
+    transparent 6px 12px
+  );
 }
 
-.generation-preview__flare {
-  position: absolute;
-  width: 250px;
-  height: 250px;
-  right: -80px;
-  top: -110px;
-  border-radius: 50%;
-  background: rgba(239, 177, 117, 0.27);
-  filter: blur(25px);
-}
-
-.generation-preview__model {
-  position: absolute;
-  inset: 18% 12% 0 30%;
-  display: flex;
-  align-items: flex-end;
-  gap: 5px;
-  transform: perspective(500px) rotateY(-12deg);
-}
-
-.generation-preview__model i {
-  flex: 1;
-  height: 70%;
-  background: linear-gradient(90deg, #101722, #747c87 20%, #b77d5d 23%, #1d2530 27%);
-}
-
-.generation-preview__model i:nth-child(2) { height: 100%; }
-.generation-preview__model i:nth-child(3) { height: 84%; }
-.generation-preview__model i:nth-child(4) { height: 55%; }
+/* Activity indicator only, and only while rendering — a soft band travelling
+   over the hatch, never anything that could be mistaken for picture. */
 
 .generation-scanner {
   position: absolute;
   inset: -40% 0 auto;
-  height: 50%;
-  background: linear-gradient(transparent, rgba(145, 168, 255, 0.15), transparent);
+  height: 40%;
+  background: linear-gradient(transparent, color-mix(in srgb, var(--accent-bright) 14%, transparent), transparent);
   animation: scan 2.5s ease-in-out infinite;
 }
 
 .preview-status {
-  position: absolute;
-  left: var(--space-3);
-  bottom: var(--space-3);
+  position: relative;
   min-height: var(--control-sm);
   display: inline-flex;
   align-items: center;
@@ -521,8 +537,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   color: var(--text-primary);
-  background: rgba(9, 12, 18, 0.82);
-  backdrop-filter: blur(6px);
+  background: var(--panel);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   line-height: var(--leading-snug);
@@ -531,6 +546,15 @@
 .preview-status svg {
   flex: 0 0 auto;
   color: var(--accent-bright);
+}
+
+.generation-preview__caption {
+  position: relative;
+  max-width: 48ch;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .generation-preview--generating .preview-status svg {
@@ -550,6 +574,12 @@
 .generation-preview--draft .preview-status svg,
 .generation-preview--queued .preview-status svg {
   color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generation-scanner {
+    display: none;
+  }
 }
 
 /* --- Progress block -------------------------------------------------------- */
@@ -844,6 +874,21 @@
   font-size: var(--text-base);
 }
 
+.job-actions .secondary-button {
+  width: 100%;
+  min-height: var(--control-md);
+  font-size: var(--text-base);
+}
+
+/* The states that cannot produce a file still get real controls, so the user
+   is never left with prose and no way forward. */
+
+.job-actions__choices {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
 .job-actions .primary-button:disabled {
   cursor: not-allowed;
   color: var(--text-muted);
@@ -881,14 +926,6 @@
   margin: var(--space-2) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-.job-actions__blocked small {
-  display: block;
-  margin-top: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
   line-height: var(--leading-normal);
 }
 
@@ -963,7 +1000,11 @@
   background: var(--accent-bright);
 }
 
-/* --- Responsive ------------------------------------------------------------ */
+/* --- Responsive -------------------------------------------------------------
+   The window can be resized down to 900px (tauri.conf.json minWidth), so the
+   320px rail + main column has to keep working the whole way down without a
+   horizontal scrollbar. The rail narrows in two steps and the job detail is
+   already single-column well before 1180px. */
 
 @media (max-width: 1280px) {
   .job-detail {
@@ -997,5 +1038,67 @@
 
   .generation-composer__submit {
     width: 100%;
+  }
+}
+
+@media (max-width: 1040px) {
+  .generator-view {
+    grid-template-columns: 256px minmax(0, 1fr);
+  }
+
+  .generator-main {
+    padding: var(--space-5) var(--space-4) var(--space-7);
+  }
+
+  .generation-composer {
+    padding: var(--space-4);
+  }
+
+  .job-detail__visual,
+  .job-detail__info {
+    padding: var(--space-4);
+  }
+
+  .stage-rail {
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .stage-rail__blocked {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .generator-view {
+    grid-template-columns: 228px minmax(0, 1fr);
+  }
+
+  .queue-panel__title,
+  .queue-runtime {
+    padding: var(--space-3);
+  }
+
+  .queue-group {
+    padding-inline: var(--space-2);
+  }
+
+  .queue-group > button {
+    grid-template-columns: 40px minmax(0, 1fr) 16px;
+    gap: var(--space-2);
+    padding-inline: var(--space-2);
+  }
+
+  .queue-thumb {
+    width: 40px;
+    height: 40px;
+  }
+
+  .job-meta {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .generation-preview {
+    padding: var(--space-4);
   }
 }
