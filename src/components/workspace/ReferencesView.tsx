@@ -1,7 +1,7 @@
 import { BookOpen, Check, FileText, Image, Link2, Plus, Sparkles, Trash2, Upload, Users } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
-import type { ProjectConfig, ProjectReference } from "../../lib/project";
+import { isReferenceUsable, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 
 const uses = ["character", "product", "location", "style", "audio"] as const;
@@ -52,7 +52,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <div>
         <span className="eyebrow">Consistency library</span>
         <h1>References</h1>
-        <p>Define the people, places, products, and visual rules Pol should preserve across every generation.</p>
+        <p>Keep the people, places, products, and visual rules for this project in one place. Each new shot uses the first two.</p>
       </div>
       <div>
         <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
@@ -67,11 +67,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {ref.kind === "image" ? <span className="reference-art"><Image size={26} /><em>Image file</em></span> : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span><p>{ref.description}</p><span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
+            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span>{isReferenceUsable(ref) ? <p>{ref.description}</p> : <p className="reference-card__incomplete">Not described yet — it won’t be used until you add a definition.</p>}<span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide generation, not your timeline</b><p>Every new shot automatically uses the first two references in this list, so characters, products, and art direction stay coherent. Newest additions go to the top. All files are copied into the project’s <code>references/</code> folder.</p></div></div>
+        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b><p>Each new shot uses the first two references in this list. Image files are copied into the project’s <code>references/</code> folder and sent to the video engine; text definitions are written into the shot’s prompt. Newest additions go to the top.</p></div></div>
       </section>
 
       <aside className="reference-inspector">
@@ -84,12 +84,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </div>
           <section className="intended-use">
             <h3>Intended use</h3>
-            <p>Tell Pol Studio what must stay consistent. Select any that apply.</p>
+            <p>Note what this reference is for. Select any that apply.</p>
             <div>{uses.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two references in this list, so it will be used once it reaches the top two.</p>}
+            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two in this list, so it will be used once it reaches the top two.</p>}
           </section>
           <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}

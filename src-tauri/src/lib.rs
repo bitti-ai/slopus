@@ -277,14 +277,12 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .map(normalize_project_path)
             .transpose()?;
         match reference.kind.as_str() {
-            "text"
-                if !reference.description.trim().is_empty()
-                    || reference
-                        .content
-                        .as_deref()
-                        .is_some_and(|value| !value.trim().is_empty()) => {}
+            // A text reference may legitimately be blank: the UI creates one the
+            // moment "New definition" is clicked, before the user has typed. It
+            // is marked incomplete there rather than failing the whole save —
+            // refusing here blocked every unrelated edit in the project.
+            "text" => {}
             "image" if reference.relative_path.is_some() => {}
-            "text" => return Err("Text references require content.".into()),
             "image" => return Err("Image references require a relative path.".into()),
             _ => return Err(format!("Unsupported reference kind '{}'.", reference.kind)),
         }

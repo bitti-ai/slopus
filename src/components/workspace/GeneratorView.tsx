@@ -2,11 +2,12 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { createDraftGenerationJob, type GenerationJob, type ProjectAsset, type ProjectConfig, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
   config: ProjectConfig;
+  folderPath: string;
   runtime?: VidfabStatus | null;
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
@@ -15,7 +16,7 @@ interface GeneratorViewProps {
 
 type JobStatus = GenerationJob["status"];
 
-export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
   const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
   const [prompt, setPrompt] = useState("");
   const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
@@ -29,6 +30,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
   const drafts = jobs.filter((job) => job.status === "draft");
   const completed = jobs.filter((job) => ["ready", "completed", "failed", "cancelled"].includes(job.status));
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
+  const usableReferences = useMemo(() => config.references.filter(isReferenceUsable), [config.references]);
   const runtimeReady = runtime?.state === "ready";
   const submitLabel = runtimeReady ? "Generate this shot" : "Save as a draft";
 
@@ -38,15 +40,26 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
     const current = configRef.current;
     onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) });
   };
-  const requestFor = (job: GenerationJob): VidfabGenerationRequest => ({
-    jobId: job.id,
-    prompt: job.compiledPrompt,
-    frames: Math.round(6 * config.settings.frameRate),
-    steps: 50,
-    seed: 482091,
-    aspectRatio: config.settings.aspectRatio,
-    referencePaths: [],
-  });
+  const requestFor = (job: GenerationJob): VidfabGenerationRequest => {
+    // Only the references actually bound to this job, in list order. The same
+    // ordered list drives the <Picture N> numbering inside the compiled prompt,
+    // because vidfab.rs adds reference_paths sequentially — so array index 0
+    // must be the asset the prompt calls <Picture 1>.
+    const bound = configRef.current.references.filter((reference) => job.referenceIds.includes(reference.id));
+    return {
+      jobId: job.id,
+      // Recompiled from current state so edits to a bound reference reach the
+      // engine, rather than sending a prompt frozen at draft-creation time.
+      prompt: compileMiniMaxH3Prompt(job.creativeBrief, bound),
+      frames: Math.round(6 * config.settings.frameRate),
+      steps: 50,
+      seed: 482091,
+      aspectRatio: config.settings.aspectRatio,
+      referencePaths: usableImageReferences(bound)
+        .map((reference) => projectFilePath(folderPath, reference.relativePath ?? ""))
+        .filter((path) => path.length > 0),
+    };
+  };
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -83,7 +96,8 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
     // actually typed, or it gets read back to them as their own request.
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
-    const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: config.references.slice(0, 2).map((ref) => ref.id) });
+    const bound = config.references.filter(isReferenceUsable).slice(0, 2);
+    const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: bound.map((ref) => ref.id), references: bound });
     const job: GenerationJob = runtimeReady ? { ...draft, status: "queued" } : draft;
     const next = { ...config, generationJobs: [job, ...jobs] };
     onChange(next);
@@ -167,46 +181,10 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
         <button className="secondary-button" onClick={onOpenTimeline}><Film size={16} /> View timeline</button>
       </header>
 
-      <section className="generation-composer">
-        <label className="generation-composer__field">
-          <span className="generation-composer__label"><Sparkles size={17} /> Describe the shot you want</span>
-          <textarea
-            ref={composerRef}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Example: a close shot of hands shaping wet clay on a spinning wheel, warm window light, the camera pushes in slowly, quiet room tone."
-          />
-        </label>
-        <div className="generation-composer__foot">
-          <div className="generation-settings">
-            <span className="generation-settings__lead">Every shot is made as</span>
-            <span className="setting-chip"><em>Length</em><b>6 seconds</b></span>
-            <span className="setting-chip"><em>Shape</em><b>{config.settings.aspectRatio}</b></span>
-            <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
-            <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
-          </div>
-          <button className="primary-button generation-composer__submit" onClick={() => void createJob()} disabled={!prompt.trim()}>
-            <WandSparkles size={17} /> {submitLabel}
-          </button>
-        </div>
-        {/* Disclosed at the point of commitment, not after an expensive run. */}
-        {runtimeReady && <p className="generation-composer__limit">
-          <Info size={16} />
-          <span>A finished shot renders frames into memory. Pol Studio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
-        </p>}
-        <p className="generation-composer__hint">
-          {runtimeReady
-            ? "Shots render one at a time, so a new shot joins the queue behind anything already running."
-            : "Nothing renders on this computer yet, so your shot is saved as a draft you can run later."}
-          {/* There is no attach control: shots bind the first two references by
-              list order. Say so, rather than implying a choice the user has. */}
-          {config.references.length > 0
-            ? ` It will automatically use ${config.references.slice(0, 2).map((ref) => ref.name).join(" and ")}${config.references.length > 2 ? `, the first two of your ${config.references.length} references.` : "."}`
-            : " No references added yet — add characters, places, or looks to keep shots consistent."}
-        </p>
-      </section>
-
-      {selected ? <section className="job-detail">
+      {/* The draft made from the user's own words leads the screen: they
+          just described their video, so the next step is running that shot,
+          not describing it again in a different unit. */}
+      {selected && <section className="job-detail">
         <div className="job-detail__visual">
           {/* A labelled placeholder, never invented art — the same rule the scene
               thumb, media thumb and reference cards follow. Pol Studio cannot
@@ -266,14 +244,15 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
           </dl>
 
           <div className="job-refs">
-            <span>{boundRefs.length === 0 ? "No references pinned to this shot" : boundRefs.length === 1 ? "1 reference guides this shot" : `${boundRefs.length} references guide this shot`}</span>
+            <span>{boundRefs.length === 0 ? "No references used by this shot" : boundRefs.length === 1 ? "1 reference guides this shot" : `${boundRefs.length} references guide this shot`}</span>
             {boundRefs.length === 0
-              ? <p className="job-refs__empty">The video engine only follows the words above. Add characters, places, or looks in References to keep shots consistent.</p>
+              ? <p className="job-refs__empty">The video engine only follows the words above.</p>
               : boundRefs.map((ref, index) => <div key={ref.id}>
                 <i className={`ref-mini ref-mini--${index}`} />
                 <b>{ref.name}</b>
                 <small>{ref.intendedUse.join(", ")}</small>
               </div>)}
+            {boundRefs.length > 0 && <p className="job-refs__empty">Images are sent to the video engine as reference assets; text definitions are written into this shot’s prompt.</p>}
           </div>
 
           <div className="job-actions">
@@ -283,7 +262,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
 
             {selected.status === "draft" && <>
               <button className="primary-button" disabled={!runtimeReady} onClick={() => void startDraft(selected)}>
-                <WandSparkles size={15} /> {runtimeReady ? "Generate this shot" : "Can’t generate yet"}
+                <WandSparkles size={15} /> {runtimeReady ? (jobs.length === 1 ? "Generate your first shot" : "Generate this shot") : "Can’t generate yet"}
               </button>
               {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. Pol Studio needs a working video engine before it can render it.</p>}
             </>}
@@ -322,7 +301,49 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
             </>}
           </div>
         </aside>
-      </section> : <div className="job-empty">
+      </section>}
+
+      <section className="generation-composer">
+        <label className="generation-composer__field">
+          <span className="generation-composer__label"><Sparkles size={17} /> {selected ? "Write another shot" : "Describe the shot you want"}</span>
+          <textarea
+            ref={composerRef}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Example: a close shot of hands shaping wet clay on a spinning wheel, warm window light, the camera pushes in slowly, quiet room tone."
+          />
+        </label>
+        <div className="generation-composer__foot">
+          <div className="generation-settings">
+            <span className="generation-settings__lead">Every shot is made as</span>
+            <span className="setting-chip"><em>Length</em><b>6 seconds</b></span>
+            <span className="setting-chip"><em>Shape</em><b>{config.settings.aspectRatio}</b></span>
+            <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
+            <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
+          </div>
+          <button className={`${selected ? "secondary-button" : "primary-button"} generation-composer__submit`} onClick={() => void createJob()} disabled={!prompt.trim()}>
+            <WandSparkles size={17} /> {submitLabel}
+          </button>
+        </div>
+        {/* Disclosed at the point of commitment, not after an expensive run. */}
+        {runtimeReady && <p className="generation-composer__limit">
+          <Info size={16} />
+          <span>A finished shot renders frames into memory. Pol Studio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
+        </p>}
+        <p className="generation-composer__hint">
+          {runtimeReady
+            ? "Shots render one at a time, so a new shot joins the queue behind anything already running."
+            : "Nothing renders on this computer yet, so your shot is saved as a draft you can run later."}
+          {/* Images are sent as real assets (referencePaths) AND cited as
+              <Picture N>; text definitions reach the engine only as prose
+              inside <Subject N>. Say exactly that — no more. */}
+          {usableReferences.length > 0
+            ? ` It will use ${usableReferences.length === 1 ? "your reference" : `the first ${Math.min(2, usableReferences.length)} of your ${usableReferences.length} references`}: images are sent to the video engine, and text definitions are written into the prompt.`
+            : ""}
+        </p>
+      </section>
+
+      {!selected && <div className="job-empty">
         <span className="job-empty__icon"><Sparkles size={26} /></span>
         <h2>Start with one shot</h2>
         <p>Write what should happen on screen in the box above — who or what is in frame, how the camera moves, the light, the sound. Then choose “{submitLabel}”.</p>

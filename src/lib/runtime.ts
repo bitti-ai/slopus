@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, saveProject } from "./persistence";
-import { parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
+import { compileMiniMaxH3Prompt, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
 
 export type ProviderId = "claude" | "codex";
 export interface ProviderStatus {
@@ -133,11 +133,13 @@ function demoTurn(config: ProjectConfig, prompt: string): AgentTurnResult {
     const job: GenerationJob = {
       id: `job-demo-${Date.now()}`, title: clean.split(/\s+/).slice(0, 5).join(" "), prompt: clean,
       status: "draft", stage: "queued", progress: 0, providerId: "minimax-h3", creativeBrief: clean,
-      compiledPrompt: `integrated_multimodal_description: [Shot 1] ${clean}\n\noverall_soundscape: Quiet environmental ambience.\n\nnon_diegetic_music: N/A`,
+      // Share the one compiler so the demo agent cannot drift from the guides.
+      // Bound to no references, so it compiles to the T2VA three-field shape.
+      compiledPrompt: compileMiniMaxH3Prompt(clean, []),
       referenceIds: [], createdAt: now, updatedAt: now,
     };
     const project = parseProjectConfig({ ...config, generationJobs: [job, ...config.generationJobs] });
-    return { kind: "mutation", summary: "Added a schema-valid draft shot with an official three-field H3 prompt. No media was generated.", project };
+    return { kind: "mutation", summary: "Added a schema-valid draft shot using the official MiniMax H3 prompt format. No media was generated.", project };
   }
   return { kind: "answer", content: `I reviewed the project context. A safe next step is to refine “${clean.slice(0, 72)}” into a shot brief before generation.` };
 }

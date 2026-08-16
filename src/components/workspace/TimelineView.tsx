@@ -4,7 +4,7 @@ import {
   Volume2, VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { createDraftGenerationJob, type ProjectConfig, type TimelineClip } from "../../lib/project";
+import type { ProjectConfig, TimelineClip } from "../../lib/project";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
@@ -35,7 +35,7 @@ const timecode = (ms: number) => {
   return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 };
 
-export function TimelineView({ config, onChange, onOpenGenerator }: { config: ProjectConfig; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId: string) => void }) {
+export function TimelineView({ config, onChange, onOpenGenerator }: { config: ProjectConfig; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId?: string) => void }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
@@ -84,19 +84,11 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   };
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
-    // words. Opening that beats stacking a second near-identical shot they have
-    // no way to tell apart — and it never re-describes their idea back at them.
-    const unstarted = config.generationJobs.find((job) => job.status === "draft");
-    if (unstarted) {
-      onOpenGenerator(unstarted.id);
-      return;
-    }
-    const job = createDraftGenerationJob(config.brief.prompt, {
-      title: "New scene draft",
-      referenceIds: config.references.slice(0, 2).map((reference) => reference.id),
-    });
-    onChange({ ...config, generationJobs: [job, ...config.generationJobs] });
-    onOpenGenerator(job.id);
+    // words, so open that rather than stacking a near-identical second shot.
+    // With none left, go to an empty composer: synthesising a shot from
+    // config.brief.prompt would describe the whole VIDEO as if it were a single
+    // shot and hand it back as words the user never wrote.
+    onOpenGenerator(config.generationJobs.find((job) => job.status === "draft")?.id);
   };
 
   return (
@@ -158,11 +150,11 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           <div className="monitor-transport">
             <strong>{timecode(playhead)}</strong>
             <div>
-              <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title="Go to beginning" disabled={clipCount === 0}><SkipBack size={18} /></button>
+              <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : "Go to beginning"} disabled={clipCount === 0}><SkipBack size={18} /></button>
               {/* Nothing to play means nothing to play: running the clock over
                   an empty timeline reads as playback of footage that isn't there. */}
               <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={clipCount === 0} title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : playing ? "Pause" : "Play"}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
-              <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title="Step forward one second" disabled={clipCount === 0}><SkipForward size={18} /></button>
+              <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : "Step forward one second"} disabled={clipCount === 0}><SkipForward size={18} /></button>
             </div>
             <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>

@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
 import {
+  compileMiniMaxH3Prompt,
   createProjectConfig,
+  deriveH3Style,
+  isReferenceUsable,
   normalizeProjectPath,
   parseProjectConfig,
+  projectFilePath,
   projectNameFromPrompt,
+  projectReferenceSchema,
   seedProjectWorkspace,
+  usableImageReferences,
+  type ProjectReference,
 } from "./project";
 
 describe("project schema", () => {
@@ -45,6 +52,93 @@ describe("project schema", () => {
       "non_diegetic_music:",
     ]);
     expect(job.compiledPrompt).toContain(project.brief.prompt);
+    // Base guide §4.1: [Shot 1] opens with the style, and carries no timestamp (§4.2).
+    expect(job.compiledPrompt).toMatch(/integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, /);
+    expect(job.compiledPrompt).not.toMatch(/\[Shot 1\] At \d/);
+    // §4.7: no abstract mood words or statements of emotional function.
+    expect(job.compiledPrompt).toContain("non_diegetic_music: N/A");
+  });
+
+  it("selects the H3 style from the user's own words rather than inventing one", () => {
+    // Base guide §4.1: "for T2VA, select it from the user's text".
+    expect(deriveH3Style("A watercolour short about a heron")).toBe("Watercolor");
+    expect(deriveH3Style("A 2D animated title sequence")).toBe("2D-animated");
+    expect(deriveH3Style("A claymation breakfast scene")).toBe("Claymation");
+    expect(deriveH3Style("A documentary about harbour pilots")).toBe("Live-action, documentary");
+    expect(deriveH3Style("A quiet lighthouse at dawn")).toBe("Live-action, cinematic");
+  });
+
+  it("switches to the six-section full-reference shape when references are bound", () => {
+    const reference = (over: Partial<ProjectReference>): ProjectReference => projectReferenceSchema.parse({
+      id: "ref-1", kind: "text", name: "Mara", description: "Calm architect in charcoal wool.",
+      intendedUse: ["character"], createdAt: new Date().toISOString(), ...over,
+    });
+    const image = reference({ id: "ref-2", kind: "image", name: "Harbor facade", relativePath: "references/harbor.jpg", description: "Pale stone fins." });
+    const compiled = compileMiniMaxH3Prompt("A quiet lighthouse at dawn", [image, reference({})]);
+
+    // Ref guide §1: six sections, this exact order. detailed_description
+    // REPLACES integrated_multimodal_description (§5.2).
+    expect(compiled.match(/^[a-z_]+:/gm)).toEqual([
+      "subject_definitions:",
+      "summary:",
+      "retention_analysis:",
+      "detailed_description:",
+      "overall_soundscape:",
+      "non_diegetic_music:",
+    ]);
+    expect(compiled).not.toContain("integrated_multimodal_description");
+
+    // §2.2: an image defining a character/scene/style is cited INSIDE its
+    // <Subject N> line and never becomes a standalone <Picture N> entry.
+    expect(compiled).toContain("<Subject 1> is Harbor facade, shown in <Picture 1>.");
+    expect(compiled).not.toMatch(/^<Picture \d+> is /m);
+    // A text reference has no asset, so it cites no picture.
+    expect(compiled).toContain("<Subject 2> is Mara.");
+
+    // §3: task-type prefix; no <Audio N> because no audio asset exists (§2.4).
+    expect(compiled).toContain("summary:\n[reference generation] ");
+    expect(compiled).not.toContain("<Audio");
+
+    // §4.1: fixed relationship markers, one line per label. §5.4: no (Sx) here.
+    expect(compiled).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved - ");
+    expect(compiled).toContain("<Subject 2> (appears in [Shot 1]): fully_preserved - ");
+
+    // §5.2: the style opening precedes [Shot 1] in full-reference mode.
+    expect(compiled).toMatch(/detailed_description:\nThe target video is in a live-action, cinematic style\.\n\[Shot 1\] /);
+  });
+
+  it("numbers <Picture N> in the order the engine consumes reference_paths", () => {
+    // vidfab.rs iterates reference_paths sequentially, so index 0 is <Picture 1>.
+    const img = (id: string, name: string, path: string): ProjectReference => projectReferenceSchema.parse({
+      id, kind: "image", name, description: "A reference.", relativePath: path,
+      intendedUse: ["style"], createdAt: new Date().toISOString(),
+    });
+    const first = img("a", "Alpha", "references/a.jpg");
+    const second = img("b", "Beta", "references/b.jpg");
+    const compiled = compileMiniMaxH3Prompt("A shot", [first, second]);
+    expect(compiled).toContain("<Subject 1> is Alpha, shown in <Picture 1>.");
+    expect(compiled).toContain("<Subject 2> is Beta, shown in <Picture 2>.");
+    expect(usableImageReferences([first, second]).map((r) => r.relativePath)).toEqual([
+      "references/a.jpg", "references/b.jpg",
+    ]);
+  });
+
+  it("ignores blank references so they cannot take a binding slot", () => {
+    const blank = projectReferenceSchema.parse({
+      id: "blank", kind: "text", name: "New definition", description: "",
+      intendedUse: ["style"], createdAt: new Date().toISOString(),
+    });
+    expect(isReferenceUsable(blank)).toBe(false);
+    // With only a blank reference, the prompt stays in T2VA shape.
+    expect(compileMiniMaxH3Prompt("A shot", [blank])).toContain("integrated_multimodal_description:");
+  });
+
+  it("resolves project-relative reference paths to absolute for the engine", () => {
+    // enqueue_vidfab_generation never receives the project folder and vidfab.rs
+    // uses the string verbatim, so the frontend must send an absolute path.
+    expect(projectFilePath("C:\\Projects\\Lighthouse", "references/a.jpg")).toBe("C:\\Projects\\Lighthouse\\references\\a.jpg");
+    expect(projectFilePath("/home/nn/lighthouse", "references/a.jpg")).toBe("/home/nn/lighthouse/references/a.jpg");
+    expect(projectFilePath("/home/nn/lighthouse/", "references/a.jpg")).toBe("/home/nn/lighthouse/references/a.jpg");
   });
 
   it("parses the complete cross-layer fixture without losing data", () => {

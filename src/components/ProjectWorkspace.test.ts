@@ -77,7 +77,7 @@ describe("project workspace timecode", () => {
     const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "completed", stage: "completed", progress: 1, outputRelativePath: "media/generated/first-scene.mp4" }] });
     const onChange = vi.fn();
     const onOpenTimeline = vi.fn();
-    render(createElement(GeneratorView, { config, onChange, onOpenTimeline, selectedJobId: config.generationJobs[0].id }));
+    render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline, selectedJobId: config.generationJobs[0].id }));
     fireEvent.click(screen.getByRole("button", { name: "Insert into Story" }));
     const next = onChange.mock.calls[0][0];
     expect(next.assets[0].relativePath).toBe("media/generated/first-scene.mp4");
@@ -88,7 +88,7 @@ describe("project workspace timecode", () => {
   it("labels a cancelled preview as cancelled instead of queued", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "cancelled", stage: "failed" }] });
-    render(createElement(GeneratorView, { config, onChange: () => undefined, onOpenTimeline: () => undefined }));
+    render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
     expect(screen.getByText("Generation cancelled")).not.toBeNull();
     expect(screen.queryByText("Waiting in queue")).toBeNull();
   });
