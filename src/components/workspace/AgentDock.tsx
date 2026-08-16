@@ -26,6 +26,13 @@ export function AgentDock({ context, record, providers, onRecord, onProviderChan
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
 
+  // The dock is one line tall, so on a narrow window the placeholder gets an
+  // ellipsis (see .agent-dock input in workspace.css). Keep the full sentence
+  // reachable on hover so nothing that matters is lost to the truncation.
+  const placeholder = ready
+    ? `Ask Pol to refine ${context}, generate a shot, or make an edit…`
+    : blockedDetail ?? "No agent provider is available";
+
   const send = async () => {
     const clean = prompt.trim();
     if (!clean || !ready || requestId) return;
@@ -61,7 +68,8 @@ export function AgentDock({ context, record, providers, onRecord, onProviderChan
           aria-label={`Ask Pol about ${context}`}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
-          placeholder={ready ? `Ask Pol to refine ${context}, generate a shot, or make an edit…` : blockedDetail ?? "No agent provider is available"}
+          placeholder={placeholder}
+          title={placeholder}
           disabled={!ready || Boolean(requestId)}
         />
         {requestId ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button> : <>
