@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, LoaderCircle, MoreHorizontal, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, type GenerationJob, type ProjectAsset, type ProjectConfig, type TimelineClip, type TimelineTrack } from "../../lib/project";
@@ -12,6 +12,8 @@ interface GeneratorViewProps {
   onOpenTimeline: () => void;
   selectedJobId?: string;
 }
+
+type JobStatus = GenerationJob["status"];
 
 export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
   const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
@@ -27,6 +29,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
   const completed = jobs.filter((job) => ["ready", "completed", "failed", "cancelled"].includes(job.status));
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
   const runtimeReady = runtime?.state === "ready";
+  const submitLabel = runtimeReady ? "Generate this shot" : "Save as a draft";
 
   useEffect(() => { if (selectedJobId) setSelectedId(selectedJobId); }, [selectedJobId]);
 
@@ -70,7 +73,7 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
 
   const prepareOrRetry = async (job: GenerationJob) => {
     const now = new Date().toISOString();
-    updateJob(job.id, { status: runtimeReady ? "queued" : "draft", stage: "queued", progress: 0, error: runtimeReady ? null : runtime?.detail ?? "Runtime unavailable.", updatedAt: now });
+    updateJob(job.id, { status: runtimeReady ? "queued" : "draft", stage: "queued", progress: 0, error: runtimeReady ? null : runtime?.detail ?? "The video engine isn’t available on this computer right now.", updatedAt: now });
     if (runtimeReady) await enqueueVidfabGeneration(requestFor(job), configRef.current);
   };
 
@@ -85,9 +88,9 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
     try {
       const request = requestFor(job);
       const plan = await resolveVidfabPlan(request, next);
-      setPlanNotes((current) => ({ ...current, [job.id]: `${plan.alignedFrames} frames · ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
+      setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
       if (runtimeReady) await enqueueVidfabGeneration(request, next);
-      else updateJob(job.id, { error: runtime?.detail ?? "Generator runtime is unavailable; the editable draft remains saved." });
+      else updateJob(job.id, { error: runtime?.detail ?? "The video engine isn’t available, so this was kept as an editable draft." });
     } catch (reason) {
       updateJob(job.id, { error: reason instanceof Error ? reason.message : String(reason) });
     }
@@ -121,54 +124,301 @@ export function GeneratorView({ config, runtime = null, onChange, onOpenTimeline
 
   return <div className="generator-view">
     <aside className="queue-panel">
-      <div className="queue-panel__title"><div><span>GENERATION QUEUE</span><b>{active.length} active · {queued.length} waiting</b></div><button><MoreHorizontal size={16} /></button></div>
-      <QueueGroup title="Active" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
-      <QueueGroup title="Up next" jobs={queued} selectedId={selectedId} onSelect={setSelectedId} />
-      <QueueGroup title="Drafts" jobs={drafts} selectedId={selectedId} onSelect={setSelectedId} />
-      <QueueGroup title="History" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
-      <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`} title={runtime?.detail}><span><i /> {runtimeLabel(runtime)}</span><small>{runtimeReady ? "One raw-buffer job at a time" : "Generation runtime unavailable"}</small></div>
+      <div className="queue-panel__title">
+        <span>Your shots</span>
+        <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
+      </div>
+      <div className="queue-panel__scroll">
+        <QueueGroup title="Rendering now" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
+        <QueueGroup title="Waiting to render" jobs={queued} selectedId={selectedId} onSelect={setSelectedId} />
+        <QueueGroup title="Drafts" jobs={drafts} selectedId={selectedId} onSelect={setSelectedId} />
+        <QueueGroup title="Already run" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
+        {jobs.length === 0 && <p className="queue-empty">No shots yet. Describe one in the box on the right and it will appear here.</p>}
+      </div>
+      <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`}>
+        <span className="queue-runtime__state"><i /> {runtimeHeadline(runtime)}</span>
+        <p>{runtimeExplainer(runtime)}</p>
+        {!runtimeReady && <small>You can still write and save shot drafts.</small>}
+      </div>
     </aside>
 
     <main className="generator-main">
-      <header className="generator-heading"><div><span className="eyebrow">Create shots</span><h1>Generator</h1><p>Turn a scene idea into an editable plan. Runtime availability is reported before costly generation.</p></div><button className="secondary-button" onClick={onOpenTimeline}><Film size={15} /> View timeline</button></header>
+      <header className="generator-heading">
+        <div>
+          <span className="eyebrow">Create shots</span>
+          <h1>Generator</h1>
+          <p>Describe a shot in your own words and Pol Studio turns it into a scene you can keep editing. You always see what the video engine can actually do before anything starts.</p>
+        </div>
+        <button className="secondary-button" onClick={onOpenTimeline}><Film size={16} /> View timeline</button>
+      </header>
+
       <section className="generation-composer">
-        <div className="generation-composer__top"><Sparkles size={17} /><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the next shot — subject, action, camera movement, light, and sound…" /><button onClick={() => void createJob()}><WandSparkles size={15} /> {runtimeReady ? "Add to queue" : "Save draft"}</button></div>
-        <div className="generation-settings"><span>H3 VIDEO</span><button>6 seconds <ChevronRight size={12} /></button><button>{config.settings.aspectRatio} <ChevronRight size={12} /></button><button>{config.settings.resolution.toUpperCase()} <ChevronRight size={12} /></button><i /><span>{config.references.length} project references available</span></div>
+        <label className="generation-composer__field">
+          <span className="generation-composer__label"><Sparkles size={17} /> Describe the shot you want</span>
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Example: a close shot of hands shaping wet clay on a spinning wheel, warm window light, the camera pushes in slowly, quiet room tone."
+          />
+        </label>
+        <div className="generation-composer__foot">
+          <div className="generation-settings">
+            <span className="generation-settings__lead">Every shot is made as</span>
+            <span className="setting-chip"><em>Length</em><b>6 seconds</b></span>
+            <span className="setting-chip"><em>Shape</em><b>{config.settings.aspectRatio}</b></span>
+            <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
+            <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
+          </div>
+          <button className="primary-button generation-composer__submit" onClick={() => void createJob()}>
+            <WandSparkles size={17} /> {submitLabel}
+          </button>
+        </div>
+        <p className="generation-composer__hint">
+          {runtimeReady
+            ? "Shots render one at a time, so a new shot joins the queue behind anything already running."
+            : "Nothing renders on this computer yet, so your shot is saved as a draft you can run later."}
+          {config.references.length > 0
+            ? ` ${config.references.length} project ${config.references.length === 1 ? "reference is" : "references are"} available to guide it.`
+            : " No references added yet — add characters, places, or looks to keep shots consistent."}
+        </p>
       </section>
 
       {selected ? <section className="job-detail">
         <div className="job-detail__visual">
-          <div className={`generation-preview generation-preview--${selected.status}`}><span className="generation-preview__flare" /><div className="generation-preview__model"><i /><i /><i /><i /></div>{selected.status === "generating" && <div className="generation-scanner" />}<span className="preview-status">{previewStatus(selected)}</span></div>
-          <div className="job-progress-block"><div><b>{progressTitle(selected)}</b><span>{selected.stage === "generating" ? "vidfab is synthesizing raw motion and sound" : stageCopy(selected)}</span></div><div className="progress-track"><i style={{ width: `${selected.progress * 100}%` }} /></div><div className="stage-rail">{["Prepare", "Generate", "Deliver", "Encode later"].map((stage, index) => <span key={stage} className={selected.progress > 0 && selected.progress >= index / 3 ? "done" : ""}><i>{selected.progress > 0 && selected.progress >= index / 3 ? <Check size={9} /> : index + 1}</i>{stage}</span>)}</div></div>
+          <div className={`generation-preview generation-preview--${selected.status}`}>
+            <span className="generation-preview__flare" />
+            <div className="generation-preview__model"><i /><i /><i /><i /></div>
+            {selected.status === "generating" && <div className="generation-scanner" />}
+            <span className="preview-status">{previewStatus(selected)}</span>
+          </div>
+          <div className="job-progress-block">
+            <div className="job-progress-block__head">
+              <b>{progressTitle(selected)}</b>
+              <span>{stageCopy(selected)}</span>
+            </div>
+            <div className="progress-track"><i style={{ width: `${selected.progress * 100}%` }} /></div>
+            <ol className="stage-rail">
+              {STAGES.map((stage, index) => {
+                const done = selected.progress > 0 && selected.progress >= stage.at;
+                return <li key={stage.label} className={done ? "done" : ""}>
+                  <i>{done ? <Check size={14} /> : index + 1}</i>
+                  <span>{stage.label}</span>
+                </li>;
+              })}
+              <li className="stage-rail__blocked">
+                <i><Ban size={14} /></i>
+                <span>Save as a video file<small>Not built yet</small></span>
+              </li>
+            </ol>
+          </div>
         </div>
+
         <aside className="job-detail__info">
-          <div className="job-title"><span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span><div><span>{selected.status.toUpperCase()}</span><h2>{selected.title}</h2></div></div>
-          <div className="job-prompt"><span>CREATIVE BRIEF</span><p>{selected.creativeBrief}</p></div>
-          {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note"><span>RUNTIME BOUNDARY</span><p>{planNotes[selected.id] ?? selected.error}</p></div>}
-          <div className="job-meta"><label><span>MODEL</span><b>MiniMax H3</b></label><label><span>DELIVERY</span><b>{selected.outputRelativePath ?? "Raw buffers"}</b></label><label><span>CONTAINER</span><b>{selected.outputRelativePath ? "Project asset" : "Not encoded"}</b></label><label><span>STATUS</span><b>{selected.status}</b></label></div>
-          <div className="job-refs"><span>REFERENCES · {boundRefs.length}</span>{boundRefs.map((ref, index) => <div key={ref.id}><i className={`ref-mini ref-mini--${index}`} /> <b>{ref.name}</b><small>{ref.intendedUse.join(", ")}</small></div>)}</div>
+          <div className="job-title">
+            <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>
+            <div>
+              <span className="job-title__badge">{STATUS_BADGE[selected.status]}</span>
+              <h2>{selected.title}</h2>
+            </div>
+          </div>
+
+          <div className="job-prompt">
+            <span>What you asked for</span>
+            <p>{selected.creativeBrief}</p>
+          </div>
+
+          {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note">
+            <span>What actually happened</span>
+            <p>{planNotes[selected.id] ?? selected.error}</p>
+            <small>Reported by the video engine (vidfab).</small>
+          </div>}
+
+          <dl className="job-meta">
+            <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
+            <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
+            <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
+            <div><dt>Video file</dt><dd>{selected.outputRelativePath ? "Ready to use in your edit" : "Not created yet"}</dd></div>
+          </dl>
+
+          <div className="job-refs">
+            <span>{boundRefs.length === 0 ? "No references pinned to this shot" : boundRefs.length === 1 ? "1 reference guides this shot" : `${boundRefs.length} references guide this shot`}</span>
+            {boundRefs.length === 0
+              ? <p className="job-refs__empty">The video engine only follows the words above. Add characters, places, or looks in References to keep shots consistent.</p>
+              : boundRefs.map((ref, index) => <div key={ref.id}>
+                <i className={`ref-mini ref-mini--${index}`} />
+                <b>{ref.name}</b>
+                <small>{ref.intendedUse.join(", ")}</small>
+              </div>)}
+          </div>
+
           <div className="job-actions">
-            {selected.status === "generating" && <button className="danger-button" onClick={() => cancelJob(selected)}><Square size={13} /> Cancel generation</button>}
-            {(selected.status === "failed" || selected.status === "cancelled") && <button className="primary-button" onClick={() => void prepareOrRetry(selected)}><RefreshCw size={13} /> {runtimeReady ? "Retry generation" : "Prepare retry"}</button>}
-            {selected.status === "draft" && <button className="primary-button" disabled={!runtimeReady} onClick={() => void startDraft(selected)}><WandSparkles size={13} /> {runtimeReady ? "Generate with vidfab" : "Runtime unavailable — draft saved"}</button>}
-            {selected.status === "ready" && <button className="primary-button" disabled>Raw frames ready — encoding not implemented</button>}
-            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={13} /> Insert into Story</button>}
-            {selected.status === "completed" && selected.clipId && <button className="primary-button" onClick={onOpenTimeline}><Play size={13} /> Open in timeline</button>}
-            {selected.status === "completed" && !selected.outputRelativePath && <button className="primary-button" disabled>Output unavailable</button>}
-            {selected.status === "queued" && <button className="danger-button" onClick={() => cancelJob(selected)}><X size={13} /> Remove from queue</button>}
+            {selected.status === "generating" && <button className="danger-button" onClick={() => cancelJob(selected)}><Square size={14} /> Stop this shot</button>}
+
+            {selected.status === "queued" && <button className="danger-button" onClick={() => cancelJob(selected)}><X size={14} /> Take out of the queue</button>}
+
+            {selected.status === "draft" && <>
+              <button className="primary-button" disabled={!runtimeReady} onClick={() => void startDraft(selected)}>
+                <WandSparkles size={15} /> {runtimeReady ? "Generate this shot" : "Can’t generate yet"}
+              </button>
+              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. Pol Studio needs a working video engine before it can render it.</p>}
+            </>}
+
+            {(selected.status === "failed" || selected.status === "cancelled") && <>
+              <button className="primary-button" disabled={!runtimeReady} onClick={() => void prepareOrRetry(selected)}>
+                <RefreshCw size={15} /> {runtimeReady ? "Try this shot again" : "Can’t try again yet"}
+              </button>
+              {!runtimeReady && <p className="job-actions__note">Pol Studio needs a working video engine before it can run this shot again.</p>}
+            </>}
+
+            {selected.status === "ready" && <div className="job-actions__blocked">
+              <b>There is nothing to open yet</b>
+              <p>The frames and sound were rendered and are held in memory, but Pol Studio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
+              <small>Keep drafting other shots in the meantime.</small>
+            </div>}
+
+            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Story</button>}
+
+            {selected.status === "completed" && selected.clipId && <button className="primary-button" onClick={onOpenTimeline}><Play size={15} /> Open in timeline</button>}
+
+            {selected.status === "completed" && !selected.outputRelativePath && <>
+              <button className="primary-button" disabled={!runtimeReady} onClick={() => void prepareOrRetry(selected)}>
+                <RefreshCw size={15} /> {runtimeReady ? "Run this shot again" : "Can’t run it again yet"}
+              </button>
+              <p className="job-actions__note">This run finished without saving a video file, so there is nothing to add to your edit.</p>
+            </>}
           </div>
         </aside>
-      </section> : <div className="job-empty"><Sparkles size={25} /><h2>Draft your first shot</h2><p>Describe it above and Pol Studio will keep it connected to your edit.</p></div>}
+      </section> : <div className="job-empty">
+        <span className="job-empty__icon"><Sparkles size={26} /></span>
+        <h2>Start with one shot</h2>
+        <p>Write what should happen on screen in the box above — who or what is in frame, how the camera moves, the light, the sound. Then choose “{submitLabel}”.</p>
+        <ul className="job-empty__tips">
+          <li>One moment per shot works better than a whole scene.</li>
+          <li>Say what the camera does: holds still, pushes in, follows.</li>
+          <li>Every shot stays editable, so you can rewrite and run it again.</li>
+        </ul>
+      </div>}
     </main>
   </div>;
 }
 
 function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs: GenerationJob[]; selectedId?: string; onSelect: (id: string) => void }) {
-  return <section className="queue-group"><h3>{title}<span>{jobs.length}</span></h3>{jobs.map((job) => <button key={job.id} className={selectedId === job.id ? "selected" : ""} onClick={() => onSelect(job.id)}><span className={`queue-thumb queue-thumb--${job.status}`}>{statusIcon(job.status)}</span><span><b>{job.title}</b><small>{job.status === "generating" ? `${Math.round(job.progress * 100)}% · ${job.stage}` : job.status === "completed" ? job.outputRelativePath ? "Project asset · 6 seconds" : "Output unavailable" : job.status === "ready" ? "Raw buffers · encoding pending" : job.status}</small>{job.status === "generating" && <i className="mini-progress"><em style={{ width: `${job.progress * 100}%` }} /></i>}</span><ChevronRight size={13} /></button>)}</section>;
+  if (jobs.length === 0) return null;
+  return <section className="queue-group">
+    <h3>{title}<span>{jobs.length}</span></h3>
+    {jobs.map((job) => <button key={job.id} className={selectedId === job.id ? "selected" : ""} onClick={() => onSelect(job.id)}>
+      <span className={`queue-thumb queue-thumb--${job.status}`}>{statusIcon(job.status)}</span>
+      <span className="queue-row__text">
+        <b>{job.title}</b>
+        <small>{queueLine(job)}</small>
+        {job.status === "generating" && <i className="mini-progress"><em style={{ width: `${job.progress * 100}%` }} /></i>}
+      </span>
+      <ChevronRight size={16} />
+    </button>)}
+  </section>;
 }
 
-const statusIcon = (status: GenerationJob["status"]) => status === "generating" ? <LoaderCircle size={14} /> : status === "completed" || status === "ready" ? <Check size={14} /> : status === "failed" ? <AlertCircle size={14} /> : status === "cancelled" ? <Ban size={14} /> : <Clock3 size={14} />;
-const progressTitle = (job: GenerationJob) => job.status === "generating" ? `${Math.round(job.progress * 100)}%` : job.status === "ready" ? "Frames ready" : job.status === "completed" ? "Complete" : job.status === "failed" ? "Generation failed" : job.status === "cancelled" ? "Cancelled" : job.status === "draft" ? "Draft" : "Queued";
-const stageCopy = (job: GenerationJob) => job.status === "draft" ? "Draft saved — connect a compatible runtime to render" : job.status === "queued" ? "Waiting for the active vidfab job" : job.status === "ready" ? "Raw frames delivered; host encoding is not implemented" : job.status === "completed" ? job.outputRelativePath ? "Encoded project asset" : "Completed without a saved output" : job.error ?? "This job can be retried when the runtime is ready";
-const previewStatus = (job: GenerationJob) => job.status === "generating" ? <><LoaderCircle size={14} /> vidfab · {Math.round(job.progress * 100)}%</> : job.status === "ready" ? <><Check size={14} /> Raw frames ready</> : job.status === "completed" && job.outputRelativePath ? <><Check size={14} /> Ready for timeline</> : job.status === "completed" ? <><AlertCircle size={14} /> Output unavailable</> : job.status === "cancelled" ? <><Ban size={14} /> Generation cancelled</> : job.status === "failed" ? <><AlertCircle size={14} /> Generation failed</> : job.status === "draft" ? <><Clock3 size={14} /> Draft saved — runtime unavailable</> : <><Clock3 size={14} /> Waiting in queue</>;
-const runtimeLabel = (runtime: VidfabStatus | null) => !runtime ? "Checking generator…" : runtime.state === "ready" ? "vidfab ready" : runtime.state === "modelsMissing" ? "Models not configured" : runtime.state === "demo" ? "Browser demo" : runtime.state === "incompatible" ? "Incompatible vidfab" : "vidfab unavailable";
+const STAGES: Array<{ label: string; at: number }> = [
+  { label: "Prepare", at: 0.01 },
+  { label: "Render", at: 0.5 },
+  { label: "Frames ready", at: 1 },
+];
+
+const STATUS_BADGE: Record<JobStatus, string> = {
+  draft: "DRAFT",
+  queued: "IN QUEUE",
+  generating: "RENDERING",
+  ready: "FRAMES RENDERED",
+  completed: "FINISHED",
+  failed: "FAILED",
+  cancelled: "CANCELLED",
+};
+
+const STATUS_WORD: Record<JobStatus, string> = {
+  draft: "Saved as a draft",
+  queued: "Waiting to render",
+  generating: "Rendering now",
+  ready: "Frames rendered, held in memory",
+  completed: "Finished",
+  failed: "Stopped by an error",
+  cancelled: "Stopped by you",
+};
+
+const queueSummary = (active: number, waiting: number, total: number) => {
+  if (total === 0) return "Nothing here yet";
+  if (active > 0) return `${active} rendering · ${waiting} waiting`;
+  if (waiting > 0) return `${waiting} waiting to render`;
+  return total === 1 ? "1 shot" : `${total} shots`;
+};
+
+const queueLine = (job: GenerationJob) => {
+  switch (job.status) {
+    case "generating": return `Rendering · ${Math.round(job.progress * 100)}%`;
+    case "queued": return "Waiting its turn";
+    case "draft": return "Draft — not started";
+    case "ready": return "Frames rendered · no video file";
+    case "completed": return job.outputRelativePath ? "Ready to use · 6 seconds" : "Finished with no file";
+    case "failed": return "Didn’t finish";
+    case "cancelled": return "Cancelled";
+  }
+};
+
+const statusIcon = (status: JobStatus) => status === "generating" ? <LoaderCircle size={16} /> : status === "completed" || status === "ready" ? <Check size={16} /> : status === "failed" ? <AlertCircle size={16} /> : status === "cancelled" ? <Ban size={16} /> : <Clock3 size={16} />;
+
+const progressTitle = (job: GenerationJob) => {
+  switch (job.status) {
+    case "generating": return `${Math.round(job.progress * 100)}% rendered`;
+    case "queued": return "Waiting to start";
+    case "draft": return "Draft saved";
+    case "ready": return "Frames rendered";
+    case "completed": return job.outputRelativePath ? "Ready for your edit" : "Finished with no file";
+    case "failed": return "Didn’t finish";
+    case "cancelled": return "Generation stopped";
+  }
+};
+
+const stageCopy = (job: GenerationJob) => {
+  switch (job.status) {
+    case "generating": return "The video engine is building the motion and the sound.";
+    case "queued": return "Waiting for the shot ahead of it to finish.";
+    case "draft": return "Saved with your project. Nothing has been rendered yet.";
+    case "ready": return "The frames and sound exist in memory. Pol Studio can’t package them into a video file yet.";
+    case "completed": return job.outputRelativePath ? "Saved in your project and ready to drop into the timeline." : "This run ended without saving a video file.";
+    case "failed": return "The run stopped before it finished. You can try it again.";
+    case "cancelled": return "You stopped this one. You can run it again.";
+  }
+};
+
+const previewStatus = (job: GenerationJob) => {
+  switch (job.status) {
+    case "generating": return <><LoaderCircle size={15} /> Rendering {Math.round(job.progress * 100)}%</>;
+    case "queued": return <><Clock3 size={15} /> Waiting in queue</>;
+    case "draft": return <><Clock3 size={15} /> Draft — nothing rendered</>;
+    case "ready": return <><Check size={15} /> Frames rendered</>;
+    case "completed": return job.outputRelativePath ? <><Check size={15} /> Ready for your edit</> : <><AlertCircle size={15} /> No video file was saved</>;
+    case "failed": return <><AlertCircle size={15} /> Generation failed</>;
+    case "cancelled": return <><Ban size={15} /> Generation cancelled</>;
+  }
+};
+
+const runtimeHeadline = (runtime: VidfabStatus | null) => {
+  if (!runtime) return "Checking for the video engine…";
+  switch (runtime.state) {
+    case "ready": return "Video generator ready";
+    case "demo": return "Preview mode";
+    case "modelsMissing": return "Video model files missing";
+    case "runtimeMissing": return "Video engine not installed";
+    case "incompatible": return "Video engine doesn’t match";
+  }
+};
+
+const runtimeExplainer = (runtime: VidfabStatus | null) => {
+  if (!runtime) return "Pol Studio is looking for the video engine on this computer.";
+  switch (runtime.state) {
+    case "ready": return "It renders one shot at a time.";
+    case "demo": return "Pol Studio plans the shot but doesn’t render it.";
+    case "modelsMissing": return "The video model files aren’t set up yet.";
+    case "runtimeMissing": return "The video engine isn’t installed on this computer.";
+    case "incompatible": return "This version of the video engine doesn’t work with Pol Studio.";
+  }
+};
