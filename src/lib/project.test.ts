@@ -15,6 +15,24 @@ import {
   type ProjectReference,
 } from "./project";
 
+/** Body of one compiled section, for both prompt shapes: T2VA writes
+ *  `name: value` on one line, full-reference mode writes `name:\nvalue`, and in
+ *  both cases sections are separated by a blank line. */
+const section = (compiled: string, name: string): string =>
+  // No "m" flag on purpose: detailed_description spans two lines, and a
+  // multiline `$` would end the capture at the first line break.
+  compiled.match(new RegExp(`(?:^|\\n\\n)${name}:[ \\n]([\\s\\S]*?)(?=\\n\\n|$)`))?.[1] ?? "";
+
+const now = "2026-01-01T00:00:00.000Z";
+const textReference = (over: Partial<ProjectReference> = {}): ProjectReference => projectReferenceSchema.parse({
+  id: "ref-1", kind: "text", name: "Mara", description: "Calm architect in charcoal wool.",
+  intendedUse: ["character"], createdAt: now, ...over,
+});
+const imageReference = (over: Partial<ProjectReference> = {}): ProjectReference => projectReferenceSchema.parse({
+  id: "ref-img", kind: "image", name: "Harbor facade", description: "Pale stone fins.",
+  relativePath: "references/harbor.jpg", intendedUse: ["location"], createdAt: now, ...over,
+});
+
 describe("project schema", () => {
   it("creates a versioned, validated project", () => {
     const project = createProjectConfig({
@@ -131,6 +149,99 @@ describe("project schema", () => {
     expect(isReferenceUsable(blank)).toBe(false);
     // With only a blank reference, the prompt stays in T2VA shape.
     expect(compileMiniMaxH3Prompt("A shot", [blank])).toContain("integrated_multimodal_description:");
+  });
+
+  it("terminates the brief so it cannot fuse into the sentence that follows", () => {
+    const compiled = compileMiniMaxH3Prompt(
+      "a cat walking across a sunny kitchen floor",
+      [imageReference(), textReference()],
+    );
+    // summary: "... floor <Subject 1> and <Subject 2> provide ..." was one
+    // fused sentence before the terminal stop was added.
+    const summary = section(compiled, "summary");
+    expect(summary).not.toContain("floor <Subject 1>");
+    expect(summary).toContain("floor. <Subject 1>");
+    // detailed_description: "... floor The shot features ..." likewise.
+    const detailed = section(compiled, "detailed_description");
+    expect(detailed).not.toContain("floor The shot features");
+    expect(detailed).toContain("floor. The shot features");
+  });
+
+  it("never gives an already-punctuated brief a second terminal mark", () => {
+    for (const [brief, tail] of [
+      ["A cat naps on the sill.", "sill."],
+      ["Watch the cat leap!", "leap!"],
+      ["Where did the cat go?", "go?"],
+      ["The cat pauses…", "pauses…"],
+    ]) {
+      const compiled = compileMiniMaxH3Prompt(brief, [textReference()]);
+      expect(section(compiled, "summary")).toContain(`${tail} <Subject 1>`);
+      expect(section(compiled, "detailed_description")).toContain(`${tail} The shot features`);
+      expect(compiled).not.toContain(`${tail}.`);
+    }
+  });
+
+  it("keeps the default soundscape free of any ambience the user never described", () => {
+    // Base guide §4.6: N/A only on an explicit request for silence, so a line
+    // must still be emitted — but it may not invent a place or a weather.
+    const soundscape = section(compileMiniMaxH3Prompt("a rocket launch over the ocean"), "overall_soundscape");
+    expect(soundscape.trim().length).toBeGreaterThan(0);
+    expect(soundscape.trim()).not.toBe("N/A");
+    for (const invented of ["room tone", "wind", "rain", "traffic", "birds", "indoor", "street"]) {
+      expect(soundscape.toLowerCase()).not.toContain(invented);
+    }
+  });
+
+  it("never compiles an audio-tagged reference as a visible subject", () => {
+    // Ref guide §2.1: <Subject N> is VISIBLE content, so a note about sound is
+    // dropped rather than announced on screen — and no <Audio N> is invented
+    // for it either (§2.5).
+    const audioOnly = textReference({ id: "ref-score", name: "Score idea", description: "Sparse piano.", intendedUse: ["audio"] });
+    const compiled = compileMiniMaxH3Prompt("A quiet lighthouse at dawn", [audioOnly]);
+    expect(compiled).not.toContain("<Subject");
+    expect(compiled).not.toContain("<Audio");
+    expect(compiled).not.toContain("Score idea");
+    expect(compiled).not.toContain("Sparse piano");
+    // With no usable visual reference left, the prompt falls back to T2VA.
+    expect(compiled.match(/^[a-z_]+:/gm)).toEqual([
+      "integrated_multimodal_description:",
+      "overall_soundscape:",
+      "non_diegetic_music:",
+    ]);
+  });
+
+  it("still compiles a reference that carries a visual tag alongside audio", () => {
+    const narrator = textReference({ id: "ref-narrator", name: "Narrator", description: "On-camera, warm low voice.", intendedUse: ["character", "audio"] });
+    const compiled = compileMiniMaxH3Prompt("A quiet lighthouse at dawn", [narrator]);
+    expect(compiled).toContain("<Subject 1> is Narrator.");
+    expect(compiled).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved - ");
+  });
+
+  it("drops an audio-tagged image from both the prompt and reference_paths together", () => {
+    // The two filters must agree: GeneratorView builds referencePaths from
+    // usableImageReferences while the prompt numbers <Picture N> from the
+    // compiler's list, and vidfab.rs consumes the array positionally.
+    const audioImage = imageReference({ id: "img-audio", name: "Waveform note", relativePath: "references/waveform.png", intendedUse: ["audio"] });
+    const visualImage = imageReference({ id: "img-visual", name: "Harbor facade", relativePath: "references/harbor.jpg", intendedUse: ["location"] });
+    const references = [audioImage, visualImage];
+
+    expect(usableImageReferences(references).map((reference) => reference.id)).toEqual(["img-visual"]);
+    const compiled = compileMiniMaxH3Prompt("A shot", references);
+    expect(compiled).toContain("<Subject 1> is Harbor facade, shown in <Picture 1>.");
+    expect(compiled).not.toContain("<Picture 2>");
+    expect(compiled).not.toContain("<Subject 2>");
+    expect(compiled).not.toContain("Waveform note");
+  });
+
+  it("keeps canonical style casing in the detailed-description opening", () => {
+    // Base guide §4.1 names them "3D CG" and "2D-animated"; toLowerCase()
+    // turned those into "3d cg" and "2d-animated".
+    expect(deriveH3Style("A 3D CGI creature short")).toBe("3D CG");
+    expect(compileMiniMaxH3Prompt("A 3D CGI creature short", [textReference()]))
+      .toContain("The target video is in a 3D CG style.");
+    expect(deriveH3Style("A 2D anime chase across rooftops")).toBe("2D-animated");
+    expect(compileMiniMaxH3Prompt("A 2D anime chase across rooftops", [textReference()]))
+      .toContain("The target video is in a 2D-animated style.");
   });
 
   it("resolves project-relative reference paths to absolute for the engine", () => {
