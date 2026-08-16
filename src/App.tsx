@@ -107,8 +107,8 @@ function App() {
   return (
     <div className="app-shell">
       <Sidebar view={view} onNavigate={navigate} />
-      {view === "generate" && <EmptyPlaceholder title="Generation workspace" copy="Model controls, generation jobs, and variation review are coming into focus. Start from a project brief today." icon={Sparkles} onBack={() => navigate("library")} />}
-      {view === "references" && <EmptyPlaceholder title="Reference library" copy="Keep visual references, characters, products, and style guides consistent across every shot." icon={BookImage} onBack={() => navigate("library")} />}
+      {view === "generate" && <EmptyPlaceholder title="Generation workspace" copy="Generating shots happens inside a project, so every clip, prompt, and setting stays with the footage it belongs to." icon={Sparkles} onBack={() => navigate("library")} />}
+      {view === "references" && <EmptyPlaceholder title="Reference library" copy="References live inside a project, keeping characters, products, and style consistent across every shot in it." icon={BookImage} onBack={() => navigate("library")} />}
       {view === "library" && (
         <main className="library">
           <header className="library__topbar">
