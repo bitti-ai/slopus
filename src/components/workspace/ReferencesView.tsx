@@ -1,4 +1,4 @@
-import { BookOpen, Check, FileText, Image, Link2, MoreHorizontal, Plus, Sparkles, Trash2, Upload, Users } from "lucide-react";
+import { BookOpen, Check, FileText, Image, Link2, Plus, Sparkles, Trash2, Upload, Users } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import type { ProjectConfig, ProjectReference } from "../../lib/project";
@@ -45,32 +45,61 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   };
 
   return <div className="references-view">
-    <header className="references-heading"><div><span className="eyebrow">Consistency library</span><h1>References</h1><p>Define the people, places, products, and visual rules Pol should preserve across every generation.</p></div><div><button className="secondary-button" onClick={() => addTextReference()}><FileText size={14} /> New definition</button><button className="primary-button" onClick={() => void addImage()}><Upload size={14} /> Add image</button></div></header>
+    <header className="references-heading">
+      <div>
+        <span className="eyebrow">Consistency library</span>
+        <h1>References</h1>
+        <p>Define the people, places, products, and visual rules Pol should preserve across every generation.</p>
+      </div>
+      <div>
+        <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
+        <button className="primary-button" onClick={() => void addImage()}><Upload size={16} /> Add image</button>
+      </div>
+    </header>
     <div className="reference-layout">
       <section className="reference-library">
-        <div className="reference-library__toolbar"><span>{config.references.length} REFERENCES</span><button><MoreHorizontal size={15} /></button></div>
+        <div className="reference-library__toolbar"><span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span></div>
         <div className="reference-grid">
-          {config.references.map((ref, index) => <button key={ref.id} className={`${selectedId === ref.id ? "selected" : ""} ref-card--${ref.kind}`} onClick={() => setSelectedId(ref.id)}>
-            {ref.kind === "image" ? <span className={`reference-art reference-art--${index}`}><i /><em><Image size={14} /> IMAGE</em></span> : <span className="reference-copy-art"><i>{index === 0 ? "M" : "Aa"}</i><FileText size={14} /></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "TEXT DEFINITION" : ref.relativePath}</small></span><p>{ref.description}</p><span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
+          {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
+            {ref.kind === "image" ? <span className="reference-art"><Image size={26} /><em>Image file</em></span> : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
+            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span><p>{ref.description}</p><span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
           </button>)}
-          <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={20} /></span><b>Add a reference</b><small>Import an image or define it in text</small></button>
+          <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={17} /><div><b>References guide generation, not your timeline</b><p>Attach them to any job so characters, products, and art direction stay coherent. All files are copied into the project’s <code>references/</code> folder.</p></div></div>
+        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide generation, not your timeline</b><p>Attach them to any job so characters, products, and art direction stay coherent. All files are copied into the project’s <code>references/</code> folder.</p></div></div>
       </section>
 
       <aside className="reference-inspector">
-        <div className="panel-chrome"><span>Reference details</span>{selected && <button onClick={remove} aria-label="Delete reference"><Trash2 size={13} /></button>}</div>
+        <div className="panel-chrome"><span>Reference details</span>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
         {selected ? <>
-          <div className={`reference-detail-art reference-detail-art--${selected.kind}`}><span>{selected.kind === "image" ? <Image size={28} /> : <Users size={28} />}</span><em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em></div>
-          <div className="reference-fields"><label><span>NAME</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label><label><span>DEFINITION</span><textarea value={selected.description} onChange={(event) => update(selected.id, { description: event.target.value || "Add a reference description." })} /></label></div>
-          <section className="intended-use"><h3>INTENDED USE</h3><p>Tell Pol what must remain consistent.</p><div>{uses.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={11} />}{use}</button>)}</div></section>
-          <section className="reference-used-by"><h3>USED BY <span>{jobs.length}</span></h3>{jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={13} /></div>) : <p>No generation jobs use this reference yet.</p>}</section>
-          <section className="portable-path"><BookOpen size={14} /><div><b>Portable project path</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
-        </> : <div className="reference-empty"><BookOpen size={23} /><b>Select a reference</b><p>Its definition, intended use, and connected jobs will appear here.</p></div>}
+          <div className={`reference-detail-art reference-detail-art--${selected.kind}`}><span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span><em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em></div>
+          <div className="reference-fields">
+            <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
+            <label><span>Definition</span><textarea value={selected.description} onChange={(event) => update(selected.id, { description: event.target.value || "Add a reference description." })} /></label>
+          </div>
+          <section className="intended-use">
+            <h3>Intended use</h3>
+            <p>Tell Pol what must stay consistent. Tap any that apply.</p>
+            <div>{uses.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
+          </section>
+          <section className="reference-used-by">
+            <h3>Used by <span>{jobs.length}</span></h3>
+            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No generations use this reference yet. Attach it to a scene in the Generator and Pol will keep it consistent.</p>}
+          </section>
+          <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in polstudio.project.json"}</code></div></section>
+        </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </aside>
     </div>
-    {definitionDialog && <div className="reference-dialog-backdrop"><div className="reference-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-dialog-title"><h2 id="reference-dialog-title">Define a visual reference</h2><p>Image import is available in the desktop app. This browser preview will save an honest text definition without inventing a file path.</p><label><span>NAME</span><input value={definitionName} onChange={(event) => setDefinitionName(event.target.value)} /></label><label><span>DEFINITION</span><textarea value={definitionDescription} onChange={(event) => setDefinitionDescription(event.target.value)} placeholder="Describe the composition, materials, colors, or character traits to preserve." /></label><div><button className="secondary-button" onClick={() => setDefinitionDialog(false)}>Cancel</button><button className="primary-button" disabled={!definitionName.trim() || !definitionDescription.trim()} onClick={() => { addTextReference(definitionName.trim(), definitionDescription.trim()); setDefinitionDialog(false); setDefinitionDescription(""); }}>Save text definition</button></div></div></div>}
+    {definitionDialog && <div className="reference-dialog-backdrop"><div className="reference-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-dialog-title">
+      <h2 id="reference-dialog-title">Define a visual reference</h2>
+      <p>Image import is available in the desktop app. This browser preview will save an honest text definition without inventing a file path.</p>
+      <label><span>Name</span><input value={definitionName} onChange={(event) => setDefinitionName(event.target.value)} /></label>
+      <label><span>Definition</span><textarea value={definitionDescription} onChange={(event) => setDefinitionDescription(event.target.value)} placeholder="Describe the composition, materials, colors, or character traits to preserve." /></label>
+      <div>
+        <button className="secondary-button" onClick={() => setDefinitionDialog(false)}>Cancel</button>
+        <button className="primary-button" disabled={!definitionName.trim() || !definitionDescription.trim()} onClick={() => { addTextReference(definitionName.trim(), definitionDescription.trim()); setDefinitionDialog(false); setDefinitionDescription(""); }}>Save text definition</button>
+      </div>
+    </div></div>}
     {importError && <div className="toast" role="alert"><strong>Couldn’t add image</strong><span>{importError}</span><button onClick={() => setImportError(null)}>Dismiss</button></div>}
   </div>;
 }
