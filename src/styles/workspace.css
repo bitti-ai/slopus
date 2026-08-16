@@ -384,6 +384,16 @@
   animation: spin 1.2s linear infinite;
 }
 
+.agent-dock:has(input:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.agent-provider:has(select:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
 /* --- Provider selector ----------------------------------------------------- */
 
 .agent-provider {

@@ -13,7 +13,14 @@
   /* 372px = toolbar 48 + ruler 36 + four 72px track rows. The grid scrolls
      vertically if a project carries more tracks than that. */
   grid-template-rows: minmax(340px, 1fr) 372px;
-  outline: none;
+}
+
+/* The view itself is focusable (tabIndex={0}) so Space and Delete reach the
+   editor. It has to SHOW that focus, or the shortcuts are invisible: there is
+   no inner control that stands in for it. Inset so the ring is not clipped. */
+.timeline-view:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: -2px;
 }
 
 .edit-panels {

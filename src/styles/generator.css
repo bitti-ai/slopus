@@ -367,7 +367,6 @@
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  outline: 0;
   color: var(--text-primary);
   background: var(--panel);
   font-family: var(--font-sans);

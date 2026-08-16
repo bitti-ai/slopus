@@ -375,7 +375,6 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  outline: 0;
   color: var(--text-primary);
   background: var(--bg);
   font-family: var(--font-sans);
@@ -631,7 +630,6 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  outline: 0;
   color: var(--text-primary);
   background: var(--bg);
   font-family: var(--font-sans);
