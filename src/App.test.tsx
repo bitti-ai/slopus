@@ -34,6 +34,6 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
     await screen.findByRole("heading", { name: "Generator" });
     expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
-    expect(screen.getByText("Generation runtime unavailable")).not.toBeNull();
+    expect(screen.getByText("You can still write and save shot drafts.")).not.toBeNull();
   });
 });
