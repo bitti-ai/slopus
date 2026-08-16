@@ -1,0 +1,7 @@
+# fixtures/rust-serialized-*.json are rewritten by `cargo test` (which always
+# writes LF) and read back by the frontend test suite. The repo has
+# core.autocrlf=true, so without this a fresh checkout would hand those files
+# CRLF working copies until the next cargo run. Pin them to LF so the generated
+# bytes are the same everywhere and a dirty `git status` after a test run means
+# the wire format genuinely changed.
+fixtures/*.json text eol=lf
