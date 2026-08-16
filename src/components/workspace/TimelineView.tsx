@@ -168,9 +168,12 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
             </div>
             <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>
-          {/* Browsers don't reliably fire hover on a disabled control, so the
-              title attributes above may never render. The reason the transport
-              is dead has to be readable without hovering anything. */}
+          {/* Measured in Chromium (the engine behind the WebView2 runtime this
+              ships in): a disabled button DOES receive hover and DOES paint its
+              title tooltip, so the titles above are not dead. But a tooltip is
+              mouse-only — a disabled button cannot take focus, so keyboard and
+              touch users have no way to reach it. The reason the transport is
+              dead is stated here so it needs no pointer at all. */}
           {clipCount === 0 && <p className="transport-note">Nothing can be played yet — add or generate a scene and it will land on the timeline below.</p>}
         </main>
 
