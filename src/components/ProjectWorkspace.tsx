@@ -65,7 +65,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
   return <div className="project-shell">
     <header className="project-topbar">
       <button className="icon-button icon-button--strong" onClick={onBack} aria-label="Back to project library"><ArrowLeft size={18} /></button>
-      <div className="project-title"><strong>{config.name}</strong><span><Cloud size={13} aria-hidden="true" /> Local project</span></div>
+      {/* The name column is the topbar's elastic column and truncates on narrow
+          windows, so the full name stays available on hover. */}
+      <div className="project-title"><strong title={config.name}>{config.name}</strong><span><Cloud size={13} aria-hidden="true" /> Local project</span></div>
       <p className={`save-state save-state--${dirty ? "dirty" : "saved"}`} aria-live="polite"><i aria-hidden="true" />{dirty ? "Unsaved changes" : "All changes saved"}</p>
       <div className="project-topbar__actions">
         {/* Export is not wired to anything yet, so it must not look like a working action. */}
