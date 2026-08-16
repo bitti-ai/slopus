@@ -9,6 +9,30 @@ describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
+  it("can put back words an example chip overwrote", async () => {
+    const { container } = render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    const box = screen.getByRole("textbox", { name: "Describe your video" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "a rocket launch over the ocean at dawn" } });
+    // While the box holds the user's own words the row says what a click costs.
+    expect(container.querySelector(".idea-row__label")!.textContent).toBe("Replace what you’ve written with an example");
+    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Product reveal" }));
+    expect(box.value).toContain("wristwatch");
+    // A controlled textarea gives no native undo after a programmatic set, so
+    // the only route back is the one the app offers.
+    fireEvent.click(screen.getByRole("button", { name: /put my words back/ }));
+    expect(box.value).toBe("a rocket launch over the ocean at dawn");
+    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
+
+    // Replacing an untouched example is not a loss, so nothing is offered.
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Social ad" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mini documentary" }));
+    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
+  });
+
   it("focuses search with Ctrl/Cmd+K and switches between grid and list", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");

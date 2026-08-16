@@ -414,6 +414,18 @@
   font-size: var(--text-sm);
 }
 
+/* Offered only after a chip overwrote words the user typed. It is the recovery
+   path a controlled textarea takes away from Ctrl+Z, so it reads as an action
+   rather than another example. */
+.idea-row__undo {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-left: auto;
+  border-color: var(--accent) !important;
+  color: var(--text-primary) !important;
+}
+
 .idea-row button {
   min-height: var(--control-sm);
   padding: 0 var(--space-4);
