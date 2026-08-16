@@ -100,6 +100,10 @@ export const generationJobSchema = z.object({
   progress: z.number().min(0).max(1),
   providerId: idSchema.nullable(),
   creativeBrief: z.string().min(1),
+  // Snapshot of the compiled prompt taken when the draft was created. NOT what
+  // gets sent: GeneratorView.requestFor recompiles from live state at send
+  // time, so this copy goes stale as soon as the brief or the bound references
+  // change. Never treat it as the authoritative prompt.
   compiledPrompt: z.string().min(1),
   referenceIds: z.array(idSchema).default([]),
   clipId: idSchema.optional(),
@@ -236,12 +240,43 @@ export function deriveH3Style(creativeBrief: string): string {
   return STYLE_PATTERNS.find(([pattern]) => pattern.test(creativeBrief))?.[1] ?? DEFAULT_STYLE;
 }
 
+/** Base guide §4.1 spells the canonical style names with deliberate casing —
+ *  `3D CG` and `2D-animated` among them — so lowercasing a style to drop it
+ *  into a sentence produced "3d cg" and "2d-animated". Each style this module
+ *  can produce gets an explicit mid-sentence form instead; anything not listed
+ *  is returned UNCHANGED so a future style name can never be mangled. */
+const MID_SENTENCE_STYLES: ReadonlyMap<string, string> = new Map([
+  ["Claymation", "claymation"],
+  ["Watercolor", "watercolor"],
+  ["2D-animated", "2D-animated"],
+  ["3D CG", "3D CG"],
+  ["Vintage film", "vintage film"],
+  ["Live-action, documentary", "live-action, documentary"],
+  ["Live-action, cinematic", "live-action, cinematic"],
+]);
+
+function midSentenceStyle(style: string): string {
+  return MID_SENTENCE_STYLES.get(style) ?? style;
+}
+
+/** The brief is the user's own text and often arrives without a final stop.
+ *  Where it is interpolated ahead of another sentence, the missing stop fuses
+ *  the two ("...kitchen floor <Subject 1> and <Subject 2> provide generation
+ *  guidance..."). Add a period only when there is none; never touch wording. */
+function endSentence(text: string): string {
+  return !text || /[.!?…]$/.test(text) ? text : `${text}.`;
+}
+
 /* Base guide §4.6: `overall_soundscape` may only be N/A when the user asks for
-   complete silence, so a generic ambience line is emitted instead. §4.7: music
-   must be instrumentation/tempo/dynamics and never abstract mood or emotional
+   complete silence, so a line is always emitted instead. That line is
+   deliberately CONTENT-NEUTRAL: it names no ambience, location or weather and
+   only points back at what the description already established, because the
+   user never told us where the scene is — the previous "Ambient room tone"
+   wording put a room around a rocket launch. §4.7: music must be
+   instrumentation/tempo/dynamics and never abstract mood or emotional
    function — we emit N/A because the user never asked for a score, and
    inventing one is a fabrication of its own. */
-const DEFAULT_SOUNDSCAPE = "Ambient room tone continues throughout, along with the incidental sounds of the action described above.";
+const DEFAULT_SOUNDSCAPE = "The ambient sound and physical action sounds are those the scene and actions described above naturally produce. Nothing beyond what that description already establishes is added.";
 const DEFAULT_MUSIC = "N/A";
 
 const referenceLabel = (reference: ProjectReference, index: number) => `<Subject ${index + 1}>`;
@@ -249,15 +284,27 @@ const referenceLabel = (reference: ProjectReference, index: number) => `<Subject
 /** Image references are the only ones that can be sent to the engine as assets,
  *  so they carry the <Picture N> numbering. That numbering MUST match the order
  *  of `reference_paths` in the generation request: vidfab.rs iterates the array
- *  and calls add_reference sequentially, so index 0 is <Picture 1>. */
+ *  and calls add_reference sequentially, so index 0 is <Picture 1>.
+ *
+ *  The filter pair below is therefore load-bearing and must stay identical to
+ *  the one `compileMiniMaxH3Prompt` applies to `usable`. GeneratorView builds
+ *  `referencePaths` from this function while the prompt numbers pictures from
+ *  the compiler's list; if one of them drops a reference the other keeps, every
+ *  <Picture N> citation silently points at the wrong image. */
 export function usableImageReferences(references: ProjectReference[]): ProjectReference[] {
-  return references.filter((reference) => reference.kind === "image" && isReferenceUsable(reference));
+  return references.filter((reference) => reference.kind === "image")
+    .filter(isReferenceUsable)
+    .filter(isVisualReference);
 }
 
 export function compileMiniMaxH3Prompt(creativeBrief: string, references: ProjectReference[] = []): string {
   const brief = creativeBrief.trim();
   const style = deriveH3Style(brief);
-  const usable = references.filter(isReferenceUsable);
+  // Same filter pair as `usableImageReferences`, in the same order — see the
+  // <Picture N> / reference_paths lockstep note on that function. An
+  // audio-only-tagged reference is dropped here (ref guide §2.1), so a project
+  // whose only reference is audio-tagged correctly falls back to T2VA.
+  const usable = references.filter(isReferenceUsable).filter(isVisualReference);
 
   if (usable.length === 0) {
     // T2VA — base guide §2.2 field list and order.
@@ -293,7 +340,7 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // §3: task-type prefix. Every reference here provides generation guidance
   // without acting as a concrete frame or an edited source video, which is
   // exactly `reference generation`. The summary reuses existing labels only.
-  const summary = `[reference generation] ${brief} ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`;
+  const summary = `[reference generation] ${endSentence(brief)} ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`;
 
   // §4.1: one line per label using the fixed marker vocabulary. Their defined
   // role is carried through unchanged, so fully_preserved is the honest marker.
@@ -304,8 +351,8 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.
   const detailed = [
-    `The target video is in a ${style.toLowerCase()} style.`,
-    `[Shot 1] ${brief} The shot features ${labelList}, matching the definitions above.`,
+    `The target video is in a ${midSentenceStyle(style)} style.`,
+    `[Shot 1] ${endSentence(brief)} The shot features ${labelList}, matching the definitions above.`,
   ].join("\n");
 
   return [
@@ -333,6 +380,11 @@ export function createDraftGenerationJob(
     progress: 0,
     providerId: "minimax-h3",
     creativeBrief: brief,
+    // Draft-time snapshot only — it is NOT the prompt that gets sent.
+    // GeneratorView.requestFor recompiles from live state at send time, so this
+    // value is stale the moment the brief or the bound references change (a
+    // project created with reference images keeps a T2VA snapshot here while
+    // the job later holds bound image references). Do not read it as current.
     compiledPrompt: compileMiniMaxH3Prompt(brief, options.references ?? []),
     referenceIds: options.referenceIds ?? [],
     createdAt: now,
