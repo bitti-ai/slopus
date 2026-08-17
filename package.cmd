@@ -7,7 +7,6 @@ set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\pol-studio.exe"
-set "STAGE_DIR=%ROOT_DIR%\src-tauri\target\release\package-stage"
 
 rem The generation runtime is built by a separate project. Override with
 rem   set VIDFAB_DIR=...\build-shared\Release
@@ -54,10 +53,13 @@ set "PACKAGE_ARCH=%PROCESSOR_ARCHITECTURE%"
 if /I "%PACKAGE_ARCH%"=="AMD64" set "PACKAGE_ARCH=x64"
 if /I "%PACKAGE_ARCH%"=="ARM64" set "PACKAGE_ARCH=arm64"
 if /I "%PACKAGE_ARCH%"=="x86" set "PACKAGE_ARCH=x86"
-set "OUTPUT_STEM=Pol-Studio-%APP_VERSION%-windows-%PACKAGE_ARCH%"
+set "OUTPUT_STEM=Pol Studio-%APP_VERSION%-windows-%PACKAGE_ARCH%"
 set "OUTPUT_SETUP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-setup.exe"
 set "OUTPUT_MSI=%ARTIFACTS_DIR%\%OUTPUT_STEM%.msi"
 set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
+rem The portable layout is staged straight into the folder the zip is named
+rem after, and kept there afterwards so the build is runnable without unpacking.
+set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
 
 echo.
 echo [1/5] Installing locked frontend dependencies...
@@ -111,19 +113,25 @@ if defined MSI_SRC (
   echo        MSI:       not produced - skipping.
 )
 
-rem Portable layout: the executable plus the generation runtime beside it.
-if exist "%STAGE_DIR%" rd /s /q "%STAGE_DIR%"
-mkdir "%STAGE_DIR%" || goto :fail
-copy /Y "%RELEASE_EXE%" "%STAGE_DIR%\Pol Studio.exe" >nul || goto :fail
+rem Portable layout: the executable plus the generation runtime beside it. The
+rem previous folder is removed first so it never mixes two builds.
+if exist "%OUTPUT_DIR%" rd /s /q "%OUTPUT_DIR%"
+if exist "%OUTPUT_DIR%" (
+  echo ERROR: could not clear %OUTPUT_DIR%.
+  echo        Close anything running out of that folder and retry.
+  goto :fail
+)
+mkdir "%OUTPUT_DIR%" || goto :fail
+copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Pol Studio.exe" >nul || goto :fail
 
 set "VIDFAB_BUNDLED=no"
 if exist "%VIDFAB_DIR%\vidfab_c.dll" (
-  mkdir "%STAGE_DIR%\vidfab-runtime" || goto :fail
+  mkdir "%OUTPUT_DIR%\vidfab-runtime" || goto :fail
   rem vidfab_c.dll is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its
   rem dependencies must sit in the same folder as it.
-  copy /Y "%VIDFAB_DIR%\vidfab_c.dll" "%STAGE_DIR%\vidfab-runtime\" >nul || goto :fail
-  if exist "%VIDFAB_DIR%\vidfab_core.dll" copy /Y "%VIDFAB_DIR%\vidfab_core.dll" "%STAGE_DIR%\vidfab-runtime\" >nul
-  if exist "%VIDFAB_DIR%\vidfab_cuda.dll" copy /Y "%VIDFAB_DIR%\vidfab_cuda.dll" "%STAGE_DIR%\vidfab-runtime\" >nul
+  copy /Y "%VIDFAB_DIR%\vidfab_c.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul || goto :fail
+  if exist "%VIDFAB_DIR%\vidfab_core.dll" copy /Y "%VIDFAB_DIR%\vidfab_core.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul
+  if exist "%VIDFAB_DIR%\vidfab_cuda.dll" copy /Y "%VIDFAB_DIR%\vidfab_cuda.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul
   set "VIDFAB_BUNDLED=yes"
   echo        Runtime:   vidfab DLLs included.
 ) else (
@@ -131,18 +139,23 @@ if exist "%VIDFAB_DIR%\vidfab_c.dll" (
   echo                   The app still runs; it reports the generator as unavailable.
 )
 
-call :write_readme "%STAGE_DIR%\README.txt"
+call :write_readme "%OUTPUT_DIR%\README.txt"
+echo        Folder:    %OUTPUT_STEM%-portable\
 
 echo.
 echo [5/5] Creating the portable archive...
-powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:STAGE_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
-rd /s /q "%STAGE_DIR%"
+rem Zips the folder that stays behind next to it, under the same name.
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
 
 echo.
 echo Package complete.
 echo   %OUTPUT_SETUP%
 if defined MSI_SRC echo   %OUTPUT_MSI%
 echo   %OUTPUT_ZIP%
+echo   %OUTPUT_DIR%\
+echo.
+echo The unpacked folder beside the zip is this build - run it straight from
+echo there. It is rebuilt from scratch on every package run.
 echo.
 echo Install with the setup executable - it installs the WebView2 runtime if the
 echo machine does not already have it. The portable archive assumes WebView2 is
