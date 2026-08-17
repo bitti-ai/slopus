@@ -114,7 +114,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
       <div className="composer-heading">
         <span className="eyebrow"><Sparkles size={14} /> New project</span>
         <h2 id="create-heading">What do you want to make?</h2>
-        <p>Write it the way you would say it out loud. Pol Studio turns your description into a real project you can edit — nothing here is final.</p>
+        <p>Write it the way you would say it out loud. PolStudio turns your description into a real project you can edit — nothing here is final.</p>
       </div>
 
       <div className="composer">

@@ -1,5 +1,5 @@
 /* ============================================================================
-   Pol Studio — design tokens
+   PolStudio — design tokens
    ----------------------------------------------------------------------------
    This file is the contract. Every other stylesheet consumes these variables
    and MUST NOT introduce raw px type sizes, raw greys, or off-grid spacing.

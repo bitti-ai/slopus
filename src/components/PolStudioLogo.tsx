@@ -11,7 +11,7 @@ export function PolStudioLogo({ compact = false, decorative = false, className =
     <span
       className={classes}
       role={decorative ? undefined : "img"}
-      aria-label={decorative ? undefined : "Pol Studio"}
+      aria-label={decorative ? undefined : "PolStudio"}
       aria-hidden={decorative || undefined}
     >
       <span className="pol-logo__ticket">

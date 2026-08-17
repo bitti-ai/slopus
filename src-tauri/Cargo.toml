@@ -2,7 +2,7 @@
 name = "pol-studio"
 version = "0.1.0"
 description = "Agentic video creation workspace"
-authors = ["Pol Studio"]
+authors = ["PolStudio"]
 edition = "2021"
 # `u32::is_multiple_of` (used by the date validator) stabilised in 1.87; an
 # older toolchain otherwise fails with a confusing "no method named".

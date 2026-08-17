@@ -490,7 +490,7 @@
 }
 
 /* Same rule as the scene thumb, the media thumb and the reference card: a
-   labelled placeholder, never invented art. Pol Studio cannot display a
+   labelled placeholder, never invented art. PolStudio cannot display a
    rendered frame yet, so this surface must never imply one exists. The state
    chip and the caption below it are the only content. */
 
@@ -615,7 +615,7 @@
 }
 
 /* The rail shows the three steps that can actually happen today, plus the one
-   step Pol Studio cannot do at all — drawn as blocked, never as "pending". */
+   step PolStudio cannot do at all — drawn as blocked, never as "pending". */
 
 .stage-rail {
   display: flex;

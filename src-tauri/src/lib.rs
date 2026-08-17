@@ -827,7 +827,7 @@ fn choose_project_folder(app: AppHandle) -> Result<Option<ProjectRecord>, String
     let selected = app
         .dialog()
         .file()
-        .set_title("Open a Pol Studio project folder")
+        .set_title("Open a PolStudio project folder")
         .blocking_pick_folder();
     selected
         .map(|path| {
@@ -1128,7 +1128,7 @@ pub fn run() {
             cancel_vidfab_generation
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Pol Studio");
+        .expect("error while running PolStudio");
 }
 
 #[cfg(test)]

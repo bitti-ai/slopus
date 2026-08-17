@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pol Studio",
+  "productName": "PolStudio",
   "version": "0.1.0",
   "identifier": "studio.pol.desktop",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Pol Studio",
+        "title": "PolStudio",
         "width": 1440,
         "height": 920,
         "minWidth": 900,
@@ -32,7 +32,7 @@
     "targets": "all",
     "icon": ["icons/icon.ico"],
     "shortDescription": "Agentic video creation workspace",
-    "longDescription": "Pol Studio keeps professional AI-assisted video projects in folders you control."
+    "longDescription": "PolStudio keeps professional AI-assisted video projects in folders you control."
   }
 }
 

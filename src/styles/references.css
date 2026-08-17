@@ -131,7 +131,7 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-/* Pol Studio cannot render image previews yet, so a reference shows a labelled
+/* PolStudio cannot render image previews yet, so a reference shows a labelled
    placeholder rather than a stand-in picture of someone else's subject. */
 .reference-art,
 .reference-copy-art {

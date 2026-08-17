@@ -5,7 +5,7 @@ import { createProjectConfig } from "./project";
 import { getRuntimeStatus, resolveVidfabPlan, runAgentTurn } from "./runtime";
 
 const project = () => ({
-  folderPath: "~/Pol Studio/runtime-test",
+  folderPath: "~/PolStudio/runtime-test",
   config: createProjectConfig({
     name: "Runtime test",
     prompt: "A quiet architectural film",

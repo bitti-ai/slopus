@@ -2,7 +2,7 @@ import { PolStudioLogo } from "./PolStudioLogo";
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "brand brand--compact" : "brand"} role="img" aria-label="Pol Studio">
+    <div className={compact ? "brand brand--compact" : "brand"} role="img" aria-label="PolStudio">
       <PolStudioLogo compact={compact} decorative />
       {!compact && <span className="brand__edition">BETA</span>}
     </div>
