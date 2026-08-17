@@ -53,7 +53,7 @@ set "PACKAGE_ARCH=%PROCESSOR_ARCHITECTURE%"
 if /I "%PACKAGE_ARCH%"=="AMD64" set "PACKAGE_ARCH=x64"
 if /I "%PACKAGE_ARCH%"=="ARM64" set "PACKAGE_ARCH=arm64"
 if /I "%PACKAGE_ARCH%"=="x86" set "PACKAGE_ARCH=x86"
-set "OUTPUT_STEM=Pol Studio-%APP_VERSION%-windows-%PACKAGE_ARCH%"
+set "OUTPUT_STEM=PolStudio-%APP_VERSION%-windows-%PACKAGE_ARCH%"
 set "OUTPUT_SETUP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-setup.exe"
 set "OUTPUT_MSI=%ARTIFACTS_DIR%\%OUTPUT_STEM%.msi"
 set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
@@ -122,7 +122,7 @@ if exist "%OUTPUT_DIR%" (
   goto :fail
 )
 mkdir "%OUTPUT_DIR%" || goto :fail
-copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Pol Studio.exe" >nul || goto :fail
+copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\PolStudio.exe" >nul || goto :fail
 
 set "VIDFAB_BUNDLED=no"
 if exist "%VIDFAB_DIR%\vidfab_c.dll" (
@@ -165,9 +165,9 @@ popd
 exit /b 0
 
 :write_readme
-> "%~1" echo Pol Studio %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
+> "%~1" echo PolStudio %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
 >>"%~1" echo.
->>"%~1" echo Run "Pol Studio.exe". Projects are ordinary folders you choose on disk.
+>>"%~1" echo Run "PolStudio.exe". Projects are ordinary folders you choose on disk.
 >>"%~1" echo.
 >>"%~1" echo REQUIREMENTS
 >>"%~1" echo   Microsoft Edge WebView2 runtime. Most Windows 11 machines have it

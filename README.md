@@ -1,6 +1,6 @@
-# Pol Studio
+# PolStudio
 
-Pol Studio is a local-first, agentic video editor foundation built with React, TypeScript, and Tauri 2.
+PolStudio is a local-first, agentic video editor foundation built with React, TypeScript, and Tauri 2.
 
 ## Run it
 

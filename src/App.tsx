@@ -140,7 +140,7 @@ function App() {
               <div>
                 <p className="eyebrow">Project library</p>
                 <h1>{greeting()}</h1>
-                <p>Describe the video you want below. Pol Studio sets up a project you can edit, and keeps every file in a folder you own.</p>
+                <p>Describe the video you want below. PolStudio sets up a project you can edit, and keeps every file in a folder you own.</p>
               </div>
               <span className="storage-pill"><i /> Saved on this computer</span>
             </div>
@@ -172,7 +172,7 @@ function App() {
                 <div className="library-empty">
                   <FolderOpen size={28} />
                   <h3>No projects yet</h3>
-                  <p>Describe your video in the box above and press <strong>Create project</strong>. Pol Studio makes the folder, the settings, and a first scene for you.</p>
+                  <p>Describe your video in the box above and press <strong>Create project</strong>. PolStudio makes the folder, the settings, and a first scene for you.</p>
                   <p className="library-empty__aside">Already made one on this computer?</p>
                   <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
                 </div>

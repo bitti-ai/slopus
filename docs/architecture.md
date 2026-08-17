@@ -1,8 +1,8 @@
-# Pol Studio architecture contract
+# PolStudio architecture contract
 
 ## Product bar
 
-In a blind side-by-side evaluation, a first-time creator should pick Pol Studio over a conventional professional editor shell as the clearer path from an idea to an editable, generated timeline, without losing credible project, queue, reference, and editing controls.
+In a blind side-by-side evaluation, a first-time creator should pick PolStudio over a conventional professional editor shell as the clearer path from an idea to an editable, generated timeline, without losing credible project, queue, reference, and editing controls.
 
 ## Project boundary
 
@@ -23,9 +23,9 @@ The JSON document is versioned and includes project metadata, canvas settings, o
 
 ## Agent boundary
 
-Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--bare --print --output-format stream-json`; Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. Pol Studio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Provider output is treated as an untrusted proposal until it validates against the project schema.
+Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--bare --print --output-format stream-json`; Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. PolStudio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Provider output is treated as an untrusted proposal until it validates against the project schema.
 
-An agent can answer, ask the user a question, or propose a full project mutation. Every mutation is applied by Pol Studio and persisted atomically; providers never receive authority to write arbitrary files directly.
+An agent can answer, ask the user a question, or propose a full project mutation. Every mutation is applied by PolStudio and persisted atomically; providers never receive authority to write arbitrary files directly.
 
 ## MiniMax H3 prompt contract
 
@@ -43,7 +43,7 @@ Shots are sequential, later shots carry increasing cut timestamps, camera moves 
 
 ## Generation boundary
 
-The vidfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. Pol Studio therefore owns:
+The vidfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. PolStudio therefore owns:
 
 - a serial generation queue and cancellation;
 - thread-safe progress marshaling into Tauri events;

@@ -197,7 +197,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         <div>
           <span className="eyebrow">Create shots</span>
           <h1>Generator</h1>
-          <p>Describe a shot in your own words and Pol Studio turns it into a scene you can keep editing. You always see what the video engine can actually do before anything starts.</p>
+          <p>Describe a shot in your own words and PolStudio turns it into a scene you can keep editing. You always see what the video engine can actually do before anything starts.</p>
         </div>
         <button className="secondary-button" onClick={onOpenTimeline}><Film size={16} /> View timeline</button>
       </header>
@@ -208,7 +208,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       {selected && <section className="job-detail">
         <div className="job-detail__visual">
           {/* A labelled placeholder, never invented art — the same rule the scene
-              thumb, media thumb and reference cards follow. Pol Studio cannot
+              thumb, media thumb and reference cards follow. PolStudio cannot
               display real frames yet, so it shows none. */}
           <div className={`generation-preview generation-preview--${selected.status}`}>
             {selected.status === "generating" && <span className="generation-scanner" aria-hidden="true" />}
@@ -297,20 +297,20 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               <button className="primary-button" disabled={!runtimeReady} onClick={() => void startDraft(selected)}>
                 <WandSparkles size={15} /> {runtimeReady ? (jobs.length === 1 ? "Generate your first shot" : "Generate this shot") : "Can’t generate yet"}
               </button>
-              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. Pol Studio needs a working video engine before it can render it.</p>}
+              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
             </>}
 
             {(selected.status === "failed" || selected.status === "cancelled") && <>
               <button className="primary-button" disabled={!runtimeReady} onClick={() => void prepareOrRetry(selected)}>
                 <RefreshCw size={15} /> {runtimeReady ? "Try this shot again" : "Can’t try again yet"}
               </button>
-              {!runtimeReady && <p className="job-actions__note">Pol Studio needs a working video engine before it can run this shot again.</p>}
+              {!runtimeReady && <p className="job-actions__note">PolStudio needs a working video engine before it can run this shot again.</p>}
             </>}
 
             {selected.status === "ready" && <>
               <div className="job-actions__blocked">
                 <b>There is nothing to open yet</b>
-                <p>The frames and sound were rendered and are held in memory, but Pol Studio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
+                <p>The frames and sound were rendered and are held in memory, but PolStudio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
               </div>
               <div className="job-actions__choices">
                 <button className="primary-button" disabled={!runtimeReady} onClick={() => void prepareOrRetry(selected)}>
@@ -361,7 +361,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         {/* Disclosed at the point of commitment, not after an expensive run. */}
         {runtimeReady && <p className="generation-composer__limit">
           <Info size={16} />
-          <span>A finished shot renders frames into memory. Pol Studio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
+          <span>A finished shot renders frames into memory. PolStudio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
         </p>}
         <p className="generation-composer__hint">
           {runtimeReady
@@ -500,7 +500,7 @@ const stageCopy = (job: GenerationJob) => {
     case "generating": return "The video engine is building the motion and the sound.";
     case "queued": return "Waiting for the shot ahead of it to finish.";
     case "draft": return "Saved with your project. Nothing has been rendered yet.";
-    case "ready": return "The frames and sound exist in memory. Pol Studio can’t package them into a video file yet.";
+    case "ready": return "The frames and sound exist in memory. PolStudio can’t package them into a video file yet.";
     case "completed": return job.outputRelativePath ? "Saved in your project and ready to drop into the timeline." : "This run ended without saving a video file.";
     case "failed": return "The run stopped before it finished. You can try it again.";
     case "cancelled": return "You stopped this one. You can run it again.";
@@ -523,10 +523,10 @@ const previewStatus = (job: GenerationJob) => {
    read as "the picture failed to load". */
 const previewCaption = (job: GenerationJob): string => {
   switch (job.status) {
-    case "generating": return "Frames are being built now. Pol Studio can’t show them while they are still in memory.";
+    case "generating": return "Frames are being built now. PolStudio can’t show them while they are still in memory.";
     case "queued": return "This shot hasn’t started, so there is no picture to show.";
     case "draft": return "Nothing has been rendered, so there is no picture to show.";
-    case "ready": return "The frames exist in memory only. Pol Studio can’t display or save them yet.";
+    case "ready": return "The frames exist in memory only. PolStudio can’t display or save them yet.";
     case "completed": return job.outputRelativePath ? "A video file was saved. Open it in the timeline to watch it." : "This run ended without a video file, so there is no picture to show.";
     case "failed": return "The run stopped before any frames were kept.";
     case "cancelled": return "You stopped this run, so no frames were kept.";
@@ -545,12 +545,12 @@ const runtimeHeadline = (runtime: VidfabStatus | null) => {
 };
 
 const runtimeExplainer = (runtime: VidfabStatus | null) => {
-  if (!runtime) return "Pol Studio is looking for the video engine on this computer.";
+  if (!runtime) return "PolStudio is looking for the video engine on this computer.";
   switch (runtime.state) {
     case "ready": return "It renders one shot at a time.";
-    case "demo": return "Pol Studio plans the shot but doesn’t render it.";
+    case "demo": return "PolStudio plans the shot but doesn’t render it.";
     case "modelsMissing": return "The video model files aren’t set up yet.";
     case "runtimeMissing": return "The video engine isn’t installed on this computer.";
-    case "incompatible": return "This version of the video engine doesn’t work with Pol Studio.";
+    case "incompatible": return "This version of the video engine doesn’t work with PolStudio.";
   }
 };

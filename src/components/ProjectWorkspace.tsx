@@ -74,7 +74,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", onBack, on
       <p className={`save-state save-state--${dirty ? "dirty" : "saved"}`} aria-live="polite"><i aria-hidden="true" />{dirty ? "Unsaved changes" : "All changes saved"}</p>
       <div className="project-topbar__actions">
         {/* Export is not wired to anything yet, so it must not look like a working action. */}
-        <button className="secondary-button" type="button" disabled title="Export isn’t available yet. Pol Studio can’t save generated shots as video files yet, so there is nothing to export.">
+        <button className="secondary-button" type="button" disabled title="Export isn’t available yet. PolStudio can’t save generated shots as video files yet, so there is nothing to export.">
           <Download size={16} aria-hidden="true" /> Export <span className="project-topbar__soon">Soon</span>
         </button>
         <button className="primary-button" onClick={() => void save()} disabled={saving}><Save size={16} aria-hidden="true" /> {saving ? "Saving…" : "Save"}</button>

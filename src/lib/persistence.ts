@@ -50,7 +50,7 @@ function webSeedProjects(): ProjectRecord[] {
   const now = new Date();
   const seeds = [
     {
-      path: "~/Pol Studio/Northern Light",
+      path: "~/PolStudio/Northern Light",
       prompt: "A cinematic brand film following an architect from sketch to skyline",
       name: "Northern Light — Brand Film",
       ratio: "16:9" as const,
@@ -58,7 +58,7 @@ function webSeedProjects(): ProjectRecord[] {
       offset: 12,
     },
     {
-      path: "~/Pol Studio/Field Notes",
+      path: "~/PolStudio/Field Notes",
       prompt: "A warm vertical travel journal through Helsinki's hidden cafés",
       name: "Helsinki Field Notes",
       ratio: "9:16" as const,
@@ -66,7 +66,7 @@ function webSeedProjects(): ProjectRecord[] {
       offset: 46,
     },
     {
-      path: "~/Pol Studio/Aether Launch",
+      path: "~/PolStudio/Aether Launch",
       prompt: "A crisp product launch teaser with macro details and kinetic typography",
       name: "Aether Product Reveal",
       ratio: "16:9" as const,
@@ -160,7 +160,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
     return record;
   }
   const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const record = { folderPath: `~/Pol Studio/${slug || config.id}`, config };
+  const record = { folderPath: `~/PolStudio/${slug || config.id}`, config };
   const projects = [record, ...getWebProjects().projects];
   localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify(projects));
   return record;

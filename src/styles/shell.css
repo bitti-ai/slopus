@@ -195,6 +195,9 @@
 
 /* --- Logo mark (decorative artwork — proportions preserved) ----------------- */
 
+/* No plate behind the mark: it sits directly on whatever surface hosts it —
+   the sidebar and the composer, both near-black. The wordmark therefore takes
+   the app's own text colour rather than the ink-on-white it used to need. */
 .pol-logo {
   width: 114px;
   height: 29px;
@@ -203,11 +206,8 @@
   align-items: center;
   overflow: hidden;
   padding: 4px 5px;
-  border: 1px solid rgba(7, 18, 46, 0.09);
-  border-radius: 5px;
-  color: #07132f;
-  background: linear-gradient(180deg, #fff, #f5f7fb);
-  box-shadow: inset 0 1px #fff, 0 2px 8px #0002;
+  color: var(--text-primary);
+  background: transparent;
   white-space: nowrap;
 }
 
@@ -271,7 +271,7 @@
   position: relative;
   z-index: 2;
   margin-left: var(--space-2);
-  color: #07132f;
+  color: var(--text-primary);
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
   line-height: 1;
@@ -283,7 +283,6 @@
   width: 51px;
   height: 29px;
   padding: 4px 5px;
-  border-radius: 5px;
 }
 
 .pol-logo--compact .pol-logo__ticket {

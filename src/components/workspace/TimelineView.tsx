@@ -138,7 +138,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           ) : (
             <div className="media-grid">
               {config.assets.map((asset) => <button key={asset.id}><span className="media-thumb">{asset.kind === "audio" ? <Music2 size={22} /> : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />}</span><b>{asset.name}</b><small>{asset.kind} · {asset.durationMs ? `${(asset.durationMs / 1000).toFixed(1)}s` : "still"}</small></button>)}
-              {config.assets.length === 0 && <p className="panel-hint">No media in this project yet. Pol Studio can’t save generated shots as files yet, so nothing lands here.</p>}
+              {config.assets.length === 0 && <p className="panel-hint">No media in this project yet. PolStudio can’t save generated shots as files yet, so nothing lands here.</p>}
               <button className="media-import" disabled title="Importing your own files isn’t available yet. Generate a scene instead.">
                 <Upload size={20} /><b>Import media</b><small>Not available yet</small>
               </button>
@@ -154,7 +154,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
                 <Film size={30} />
                 <strong>{config.name}</strong>
                 <span>{config.brief.prompt}</span>
-                <small>Pol Studio can’t play this footage back yet. {clipCount === 1 ? "1 clip is" : `${clipCount} clips are`} arranged on the timeline below and nothing has been lost.</small>
+                <small>PolStudio can’t play this footage back yet. {clipCount === 1 ? "1 clip is" : `${clipCount} clips are`} arranged on the timeline below and nothing has been lost.</small>
               </div>
             ) : (
               <div className="program-empty" data-testid="project-empty-monitor">
