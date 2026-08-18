@@ -11,7 +11,10 @@ use tauri_plugin_dialog::DialogExt;
 mod agent;
 mod vidfab;
 
-const PROJECT_FILE_NAME: &str = "polstudio.project.json";
+const PROJECT_FILE_NAME: &str = "pols.json";
+/// What the file was called before. Folders written by earlier builds still
+/// open; the next save writes `pols.json` and leaves the old file alone.
+const LEGACY_PROJECT_FILE_NAME: &str = "polstudio.project.json";
 const PROJECT_DIRECTORIES: [&str; 6] = [
     "media/imported",
     "media/generated",
@@ -696,6 +699,12 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
     let config_path = canonical_folder.join(PROJECT_FILE_NAME);
+    let legacy_path = canonical_folder.join(LEGACY_PROJECT_FILE_NAME);
+    let config_path = if !config_path.is_file() && legacy_path.is_file() {
+        legacy_path
+    } else {
+        config_path
+    };
     let json = fs::read_to_string(&config_path)
         .map_err(|error| format!("Could not read {}: {error}", config_path.to_string_lossy()))?;
     let config: ProjectConfig = serde_json::from_str(&json)
@@ -1054,6 +1063,43 @@ struct RuntimeStatus {
     vidfab: vidfab::VidfabStatus,
 }
 
+/// Probes the video engine from provider settings alone. The settings screen
+/// has no project in hand — engine paths belong to the machine, not to a
+/// project file — so it cannot go through `runtime_status`.
+#[tauri::command]
+fn vidfab_status(settings: BTreeMap<String, ProviderSetting>) -> vidfab::VidfabStatus {
+    vidfab::status(&settings)
+}
+
+/// One OS picker for one engine path. `directory` picks a folder (the
+/// tokenizer is one); `extensions` filters the file picker and an empty list
+/// means any file.
+#[tauri::command]
+fn choose_engine_path(
+    app: AppHandle,
+    title: String,
+    directory: bool,
+    extensions: Vec<String>,
+) -> Result<Option<String>, String> {
+    let mut dialog = app.dialog().file().set_title(title);
+    if !directory && !extensions.is_empty() {
+        let filters = extensions.iter().map(String::as_str).collect::<Vec<_>>();
+        dialog = dialog.add_filter("Supported files", &filters);
+    }
+    let selected = if directory {
+        dialog.blocking_pick_folder()
+    } else {
+        dialog.blocking_pick_file()
+    };
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|error| format!("Could not access the selected path: {error}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 fn runtime_status(config: ProjectConfig) -> Result<RuntimeStatus, String> {
     let config = validate_and_normalize_config(config)?;
@@ -1121,6 +1167,8 @@ pub fn run() {
             create_project,
             save_project,
             runtime_status,
+            vidfab_status,
+            choose_engine_path,
             run_agent_turn,
             cancel_agent_turn,
             resolve_vidfab_plan,

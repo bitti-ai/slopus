@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, saveProject } from "./persistence";
 import { compileMiniMaxH3Prompt, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
+import { engineProviderSetting, loadEngineSettings, withEngineSettings, type EnginePathField } from "./settings";
 
 export type ProviderId = "claude" | "codex";
 export interface ProviderStatus {
@@ -64,8 +65,28 @@ const DEMO_STATUS: RuntimeStatus = {
   vidfab: { state: "demo", dllPath: "Browser demo", version: null, detail: "Deterministic plans only. No model runs or media files are created in the browser.", models: [] },
 };
 
+/* Every vidfab command is handed the project config with THIS machine's engine
+   paths merged in (see lib/settings.ts). The merged copy is passed straight to
+   the command and dropped; it is never the config that gets saved. */
 export async function getRuntimeStatus(config: ProjectConfig): Promise<RuntimeStatus> {
-  return isTauri() ? invoke<RuntimeStatus>("runtime_status", { config }) : DEMO_STATUS;
+  return isTauri() ? invoke<RuntimeStatus>("runtime_status", { config: withEngineSettings(config) }) : DEMO_STATUS;
+}
+
+/** Probes the engine paths on their own, with no project in hand — what the
+ *  settings screen shows. */
+export async function getEngineStatus(): Promise<VidfabStatus> {
+  if (!isTauri()) return DEMO_STATUS.vidfab;
+  return invoke<VidfabStatus>("vidfab_status", { settings: { vidfab: engineProviderSetting(loadEngineSettings()) } });
+}
+
+/** Opens the OS picker for one engine path. Returns null when the user cancels. */
+export async function chooseEnginePath(field: EnginePathField): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("choose_engine_path", {
+    title: `Select ${field.label}`,
+    directory: field.directory,
+    extensions: field.extensions,
+  });
 }
 
 export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string): Promise<AgentTurnResponse> {
@@ -98,7 +119,7 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
 }
 
 export async function resolveVidfabPlan(request: VidfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
-  if (isTauri()) return invoke<ResolvedPlan>("resolve_vidfab_plan", { request, config });
+  if (isTauri()) return invoke<ResolvedPlan>("resolve_vidfab_plan", { request, config: withEngineSettings(config) });
   const [ratioWidth, ratioHeight] = request.aspectRatio.split(":").map(Number);
   const vertical = ratioHeight > ratioWidth;
   const alignedFrames = Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
@@ -116,7 +137,7 @@ export async function resolveVidfabPlan(request: VidfabGenerationRequest, config
 }
 
 export async function enqueueVidfabGeneration(request: VidfabGenerationRequest, config: ProjectConfig): Promise<void> {
-  if (isTauri()) await invoke("enqueue_vidfab_generation", { request, config });
+  if (isTauri()) await invoke("enqueue_vidfab_generation", { request, config: withEngineSettings(config) });
 }
 
 export async function cancelVidfabGeneration(jobId: string): Promise<boolean> {

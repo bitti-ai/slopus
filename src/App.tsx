@@ -1,15 +1,15 @@
-import { BookImage, FolderOpen, Grid2X2, List, Search, Sparkles } from "lucide-react";
+import { FolderOpen, Grid2X2, List, Search, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EmptyPlaceholder } from "./components/EmptyPlaceholder";
+import { Brand } from "./components/Brand";
 import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
-import { Sidebar, type WorkspaceView } from "./components/Sidebar";
+import { SettingsView } from "./components/SettingsView";
 import { chooseAndOpenProject, createProject, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
 
 interface LibraryError {
-  /** What failed, in the user's terms. */
+  /** What failed, in the user’s terms. */
   title: string;
   /** The underlying message, kept verbatim so it stays diagnosable. */
   detail: string;
@@ -17,15 +17,7 @@ interface LibraryError {
 
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning.";
-  if (hour < 18) return "Good afternoon.";
-  return "Good evening.";
-}
-
 function App() {
-  const [view, setView] = useState<WorkspaceView>("library");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
   const [activeProjectInitialView, setActiveProjectInitialView] = useState<ProjectView>("timeline");
@@ -34,6 +26,15 @@ function App() {
   const [query, setQuery] = useState("");
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
   const [error, setError] = useState<LibraryError | null>(null);
+  /* Settings is an overlay rather than a view of its own so opening it from
+     inside a project cannot unmount the editor and throw away unsaved edits.
+     Closing it bumps `settingsRevision`, which is what tells an open project to
+     look for the video engine again — the whole point of the screen is fixing
+     the engine paths, and the Generator would otherwise go on reporting the
+     missing weights the user just pointed it at until they reopened it. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsRevision, setSettingsRevision] = useState(0);
+  const closeSettings = () => { setSettingsOpen(false); setSettingsRevision((value) => value + 1); };
   const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -101,87 +102,74 @@ function App() {
     }
   };
 
-  const navigate = (nextView: WorkspaceView) => {
-    // Generating and references only exist inside a project. Rather than
-    // dead-ending on a placeholder, open the most recent project on that tab.
-    // With no projects yet, the placeholder is the honest answer.
-    const projectTab = nextView === "generate" ? "generator" : nextView === "references" ? "references" : null;
-    if (projectTab && projects.length > 0) {
-      setActiveProjectInitialView(projectTab);
-      setActiveProject(projects[0]);
-      setView("library");
-      return;
-    }
-    setActiveProject(null);
-    setView(nextView);
-  };
+  /* Anchored bottom-left in every view, project editor included: the engine
+     paths it holds are what makes generation work at all, and finding out they
+     are wrong happens inside a project, not in the library. */
+  const settingsLauncher = (
+    <button className="settings-launcher" type="button" onClick={() => setSettingsOpen(true)} title="Settings">
+      <Settings size={18} aria-hidden="true" /> <span>Settings</span>
+    </button>
+  );
 
   if (activeProject) {
-    return <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} onBack={() => setActiveProject(null)} onSave={async (project) => {
-      const saved = await saveProject(project);
-      setActiveProject(saved);
-      setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
-    }} />;
+    return <>
+      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} settingsRevision={settingsRevision} onBack={() => setActiveProject(null)} onSave={async (project) => {
+        const saved = await saveProject(project);
+        setActiveProject(saved);
+        setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
+      }} />
+      {settingsLauncher}
+      {settingsOpen && <SettingsView onClose={closeSettings} />}
+    </>;
   }
 
   return (
     <div className="app-shell">
-      <Sidebar view={view} onNavigate={navigate} />
-      {view === "generate" && <EmptyPlaceholder title="Generation workspace" copy="Generating shots happens inside a project, so every clip, prompt, and setting stays with the footage it belongs to." icon={Sparkles} onBack={() => navigate("library")} />}
-      {view === "references" && <EmptyPlaceholder title="Reference library" copy="References live inside a project, keeping characters, products, and style consistent across every shot in it." icon={BookImage} onBack={() => navigate("library")} />}
-      {view === "library" && (
-        <main className="library">
-          <header className="library__topbar">
-            <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
-            <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
-          </header>
-          <div className="library__content">
-            <div className="library__intro">
-              <div>
-                <p className="eyebrow">Project library</p>
-                <h1>{greeting()}</h1>
-                <p>Describe the video you want below. PolStudio sets up a project you can edit, and keeps every file in a folder you own.</p>
-              </div>
-              <span className="storage-pill"><i /> Saved on this computer</span>
-            </div>
-            <PromptComposer busy={busy} onCreate={createFromPrompt} />
+      <main className="library">
+        <header className="library__topbar">
+          <Brand />
+          <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
+          <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
+        </header>
+        <div className="library__content">
+          <PromptComposer busy={busy} onCreate={createFromPrompt} />
 
-            <section className="recent-projects" aria-labelledby="recent-heading">
-              <div className="section-heading">
-                <div>
-                  <h2 id="recent-heading">Your projects</h2>
-                  <span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
-                </div>
-                <div className="view-controls" aria-label="Project layout">
-                  <button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={17} /></button>
-                  <button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={17} /></button>
-                </div>
+          <section className="recent-projects" aria-labelledby="recent-heading">
+            <div className="section-heading">
+              <div>
+                <h2 id="recent-heading">Your projects</h2>
+                <span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
               </div>
-              {loading ? (
-                <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
-              ) : filteredProjects.length ? (
-                <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} />)}</div>
-              ) : query ? (
-                <div className="library-empty">
-                  <FolderOpen size={28} />
-                  <h3>Nothing matches “{query}”</h3>
-                  <p>Search looks at project names, descriptions, and folder paths. Try a shorter word, or clear the search to see everything.</p>
-                  <button className="secondary-button" onClick={() => setQuery("")}>Clear search</button>
-                </div>
-              ) : (
-                <div className="library-empty">
-                  <FolderOpen size={28} />
-                  <h3>No projects yet</h3>
-                  <p>Describe your video in the box above and press <strong>Create project</strong>. PolStudio makes the folder, the settings, and a first scene for you.</p>
-                  <p className="library-empty__aside">Already made one on this computer?</p>
-                  <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
-                </div>
-              )}
-            </section>
-            <footer className="library__footer">Every project is an ordinary folder on this computer — you can move, copy, or back it up like any other files.</footer>
-          </div>
-        </main>
-      )}
+              <div className="view-controls" aria-label="Project layout">
+                <button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={17} /></button>
+                <button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={17} /></button>
+              </div>
+            </div>
+            {loading ? (
+              <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
+            ) : filteredProjects.length ? (
+              <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} />)}</div>
+            ) : query ? (
+              <div className="library-empty">
+                <FolderOpen size={28} />
+                <h3>Nothing matches “{query}”</h3>
+                <p>Search looks at project names, descriptions, and folder paths. Try a shorter word, or clear the search to see everything.</p>
+                <button className="secondary-button" onClick={() => setQuery("")}>Clear search</button>
+              </div>
+            ) : (
+              <div className="library-empty">
+                <FolderOpen size={28} />
+                <h3>No projects yet</h3>
+                <p>Describe your video in the box above and press <strong>Create project</strong>. PolStudio makes the folder, the settings, and a first scene for you.</p>
+                <p className="library-empty__aside">Already made one on this computer?</p>
+                <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+      {settingsLauncher}
+      {settingsOpen && <SettingsView onClose={closeSettings} />}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
   );

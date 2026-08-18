@@ -9,15 +9,15 @@
    ========================================================================== */
 
 .library {
-  grid-column: 2;
   min-width: 0;
 }
 
+/* The brand sits at the left of this row now that there is no rail to hold it.
+   The gap between it and the controls is where the row's spare width goes. */
 .library__topbar {
   height: var(--topbar-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-3);
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--line);
@@ -25,45 +25,15 @@
   backdrop-filter: blur(16px);
 }
 
+.library__topbar .search-field {
+  margin-left: auto;
+}
+
 .library__content {
   width: min(var(--content-max), calc(100% - var(--space-9)));
   margin: 0 auto;
-  padding: var(--space-8) 0;
-}
-
-.library__intro {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: var(--space-5);
-  margin-bottom: var(--space-6);
-}
-
-.library__intro h1 {
-  margin: var(--space-2) 0 var(--space-3);
-  font-size: var(--text-3xl);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-hero);
-}
-
-.library__intro > div > p:last-child {
-  max-width: 62ch;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-}
-
-/* One plain-English reassurance, not a strip of developer trivia. */
-.library__footer {
-  max-width: 70ch;
-  margin-top: var(--space-8);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  /* Bottom padding clears the fixed settings launcher. */
+  padding: var(--space-7) 0 var(--space-9);
 }
 
 /* --- Prompt composer ------------------------------------------------------- */
@@ -100,19 +70,11 @@
 }
 
 .composer-heading h2 {
-  margin: var(--space-3) 0 var(--space-2);
+  margin: var(--space-3) 0 var(--space-5);
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
-}
-
-.composer-heading p {
-  max-width: 68ch;
-  margin: 0 0 var(--space-5);
-  color: var(--text-muted);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
 }
 
 .composer {
@@ -374,26 +336,11 @@
   text-align: center;
 }
 
-.composer__hint {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.composer__hint kbd {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  color: var(--text-secondary);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-}
-
-/* Inherits the app's hero CTA from controls.css; only the fit is local. */
+/* Inherits the app's hero CTA from controls.css; only the fit is local. The
+   auto margin was the hint's job before the hint moved onto this button. */
 .composer__submit {
   flex: 0 0 auto;
+  margin-left: auto;
   font-size: var(--text-base);
 }
 
@@ -890,10 +837,6 @@
 /* --- Responsive ------------------------------------------------------------ */
 
 @media (max-width: 900px) {
-  .library {
-    grid-column: 2;
-  }
-
   .library__content {
     width: calc(100% - var(--space-6));
   }
@@ -908,24 +851,12 @@
 }
 
 @media (max-width: 650px) {
-  .library {
-    grid-column: 1;
-  }
-
   .library__topbar {
     padding: 0 var(--space-4);
   }
 
   .library__content {
     padding-top: var(--space-6);
-  }
-
-  .library__intro {
-    align-items: flex-start;
-  }
-
-  .storage-pill {
-    margin-top: var(--space-3);
   }
 
   .project-grid {
@@ -954,10 +885,6 @@
 
   .composer__actions {
     padding: var(--space-3) var(--space-4);
-  }
-
-  .composer__hint {
-    display: none;
   }
 
   .composer__submit {

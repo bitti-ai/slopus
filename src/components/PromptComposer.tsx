@@ -114,7 +114,6 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
       <div className="composer-heading">
         <span className="eyebrow"><Sparkles size={14} /> New project</span>
         <h2 id="create-heading">What do you want to make?</h2>
-        <p>Write it the way you would say it out loud. PolStudio turns your description into a real project you can edit — nothing here is final.</p>
       </div>
 
       <div className="composer">
@@ -183,8 +182,9 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           >
             <ImagePlus size={16} /> Add reference images{referenceImages.length > 0 && <b>{referenceImages.length}</b>}
           </button>
-          <span className="composer__hint">Or press <kbd>{modifierKey}</kbd><kbd>Enter</kbd></span>
-          <button className="primary-button composer__submit" disabled={!prompt.trim() || busy} aria-busy={busy} onClick={() => void submit()}>
+          {/* The shortcut rides on the button it triggers rather than holding a
+              permanent line of its own in the action row. */}
+          <button className="primary-button composer__submit" disabled={!prompt.trim() || busy} aria-busy={busy} onClick={() => void submit()} title={`Create project — or press ${modifierKey}+Enter`}>
             {busy ? <span className="spinner" /> : <WandSparkles size={18} />}
             Create project
           </button>

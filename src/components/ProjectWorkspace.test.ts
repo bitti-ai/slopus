@@ -43,6 +43,10 @@ describe("project workspace timecode", () => {
       onBack: () => undefined,
       onSave: async () => { throw new Error("The original project file is locked."); },
     }));
+    // Save is the only save state left in the topbar — the standing "All
+    // changes saved" pill is gone — so it is off until there is something to
+    // write. Make an edit first, or the click lands on a disabled button.
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Opening shot, retimed" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Couldn’t save project");
