@@ -15,16 +15,21 @@
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--topbar-height) 56px minmax(0, 1fr) 80px;
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr) 80px;
   color: var(--text-secondary);
   background: #080a0e;
 }
 
 /* --- Topbar ---------------------------------------------------------------- */
 
+/* Three columns, not a flex row: the tabs are centred on the WINDOW rather
+   than on whatever space the project name and the actions happen to leave, so
+   they do not drift sideways as the name gets longer. The outer two columns
+   are equal and elastic; the name inside the left one truncates. */
 .project-topbar {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-4);
@@ -32,8 +37,14 @@
   background: var(--panel);
 }
 
-/* The title is the only elastic column in the topbar: it gives its width up
-   first so the save state and the actions never have to squash. */
+.project-topbar__lead {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The title gives its width up first so the tabs and the actions never squash. */
 .project-title {
   flex: 0 1 320px;
   min-width: 0;
@@ -63,48 +74,6 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
-}
-
-/* Save feedback is the one piece of state the user needs at a glance. */
-.save-state {
-  flex: 0 0 auto;
-  margin: 0;
-  min-height: var(--control-sm);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  white-space: nowrap;
-}
-
-.save-state i {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-}
-
-.save-state--saved {
-  color: var(--text-secondary);
-}
-
-.save-state--saved i {
-  background: var(--success);
-}
-
-.save-state--dirty {
-  color: var(--warning);
-  border-color: rgba(227, 168, 98, 0.35);
-  background: rgba(227, 168, 98, 0.08);
-}
-
-.save-state--dirty i {
-  background: var(--warning);
 }
 
 /* Never let the action buttons shrink — a squashed Save is worse than a
@@ -137,48 +106,37 @@
   text-transform: uppercase;
 }
 
-/* --- View navigation ------------------------------------------------------- */
+/* --- View navigation --------------------------------------------------------
+   The tabs used to own a 56px band under the topbar, alongside a read-out of
+   the project's aspect ratio, resolution and frame rate. Both are gone: the
+   tabs are a segmented control in the middle column of the topbar, and the
+   format numbers live in the project's settings and on the program monitor. */
 
 .project-nav {
+  justify-self: center;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-5) 0 var(--space-8);
-  border-bottom: 1px solid #262934;
-  background: #0b0e13;
-}
-
-/* Safety net: if the three tabs ever out-measure the row they scroll inside it
-   rather than widening the shell. The scrollbar is suppressed because the row
-   is only 56px tall — at every supported width the tabs simply fit. */
-.project-nav > div {
-  min-width: 0;
-  height: 100%;
   display: flex;
   gap: var(--space-1);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.project-nav > div::-webkit-scrollbar {
-  display: none;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .project-nav button {
   position: relative;
-  height: 100%;
-  min-height: var(--control-lg);
-  min-width: 136px;
+  min-height: var(--control-sm);
+  min-width: 128px;
   padding: 0 var(--space-4);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
   border: 0;
+  border-radius: var(--radius-md);
   color: var(--text-muted);
   background: transparent;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   white-space: nowrap;
@@ -191,25 +149,16 @@
 
 .project-nav button:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .project-nav button.active {
   color: var(--text-primary);
-  background: rgba(60, 105, 239, 0.09);
+  background: rgba(60, 105, 239, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(107, 141, 255, 0.28);
 }
 
-.project-nav button.active::after {
-  content: "";
-  position: absolute;
-  height: 3px;
-  /* Sits at bottom 0, not -1px, so the tab strip's scroll container cannot
-     clip it. */
-  inset: auto var(--space-3) 0;
-  border-radius: 3px 3px 0 0;
-  background: var(--accent-bright);
-}
-
+/* Running-generation count. */
 .project-nav button span {
   flex: 0 0 auto;
   min-width: 22px;
@@ -219,21 +168,6 @@
   color: var(--accent-bright);
   background: rgba(70, 99, 194, 0.15);
   font: var(--weight-medium) var(--text-2xs) / 1.4 var(--font-mono);
-}
-
-/* Reference info, not a control: it truncates before the tabs give ground, and
-   disappears entirely on the narrowest windows. The full value stays in the
-   title attribute and in project settings. */
-.project-nav__meta {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
-  padding-left: var(--space-4);
-  color: var(--text-muted);
-  font: var(--weight-medium) var(--text-xs) / var(--leading-snug) var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* --- Content region -------------------------------------------------------- */
@@ -262,9 +196,13 @@
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.2);
 }
 
+/* The settings launcher is fixed over the bottom-left corner, which is this
+   row. The dock stays CENTRED and gives up width instead of shifting right —
+   an off-centre dock reads as a layout bug, a narrower one does not. 256px is
+   twice the launcher's widest measure, so the reserve is symmetric. */
 .agent-dock-wrap {
   position: relative;
-  width: min(880px, calc(100% - var(--space-7)));
+  width: min(880px, calc(100% - 256px));
 }
 
 .agent-dock {
@@ -323,17 +261,6 @@
   color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-dock__hint {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  line-height: var(--leading-snug);
   white-space: nowrap;
 }
 
@@ -513,9 +440,9 @@
 
 /* The window minimum is 900px (tauri.conf.json), so the chrome has to reach
    900px with nothing clipped and nothing scrolling sideways. Each step spends
-   the width it frees on the elements that carry the least information:
-   the project name column shortens first, then the row padding and the
-   keyboard hint, and only at the very bottom does the format read-out go. */
+   the width it frees on the elements that carry the least information: the
+   project name column shortens first, then the row padding, and only at the
+   very bottom do the tabs tighten. */
 
 @media (max-width: 1180px) {
   .project-topbar {
@@ -526,12 +453,8 @@
     max-width: 240px;
   }
 
-  .project-nav {
-    padding-left: var(--space-5);
-  }
-
   .project-nav button {
-    min-width: 120px;
+    min-width: 116px;
     padding: 0 var(--space-3);
   }
 
@@ -549,30 +472,18 @@
     max-width: 176px;
   }
 
-  .project-nav {
-    padding-inline: var(--space-3);
-  }
-
   .project-nav button {
-    min-width: 104px;
-  }
-
-  .project-nav__meta {
-    padding-left: var(--space-3);
+    min-width: 96px;
   }
 
   .project-agent-row {
     padding-inline: var(--space-3);
   }
 
-  /* The dock stops being a centred 880px island and just uses the row. */
+  /* The dock stops being an 880px island and takes what the row has left
+     after the settings launcher's reserve. */
   .agent-dock-wrap {
-    width: 100%;
-  }
-
-  /* Enter still sends — the hint is the reminder, not the mechanism. */
-  .agent-dock__hint {
-    display: none;
+    width: calc(100% - 256px);
   }
 
   .agent-dock__blocked {
@@ -585,15 +496,13 @@
     max-width: 160px;
   }
 
+  /* Tabs shed their labels before they shed their reachability: the icon and
+     the aria-current state carry the view at this width. */
   .project-nav button {
-    min-width: 0;
+    min-width: var(--control-sm);
+    padding: 0 var(--space-3);
   }
 
-  /* Aspect ratio, resolution and frame rate stay one click away in project
-     settings; the tabs are navigation and outrank them. */
-  .project-nav__meta {
-    display: none;
-  }
 
   .agent-dock__identity b {
     display: none;

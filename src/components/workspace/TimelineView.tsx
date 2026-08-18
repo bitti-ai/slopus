@@ -3,7 +3,7 @@ import {
   Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload, Video,
   Volume2, VolumeX,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectConfig, TimelineClip } from "../../lib/project";
 
 const MIN_DURATION = 10_000;
@@ -41,6 +41,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
+  const timelineGrid = useRef<HTMLDivElement>(null);
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
@@ -60,6 +61,30 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   }, [playing, clipCount, duration]);
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
+
+  /* Wheel over the timeline scrubs it. Registered by hand rather than with
+     React's onWheel because React attaches wheel listeners passively, and a
+     passive listener cannot preventDefault — without that the project content
+     scrolls away under the pointer while the playhead moves.
+
+     A notch is one second; hold Shift for one frame. deltaMode says what the
+     browser's numbers mean (pixels, lines, or pages), so normalise to notches
+     instead of treating a trackpad's pixel deltas as a thousand of them. */
+  useEffect(() => {
+    const grid = timelineGrid.current;
+    if (!grid) return;
+    const onWheel = (event: WheelEvent) => {
+      const raw = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (raw === 0) return;
+      event.preventDefault();
+      const notches = event.deltaMode === 0 ? raw / 100 : event.deltaMode === 1 ? raw / 3 : raw;
+      const stepMs = event.shiftKey ? 1000 / config.settings.frameRate : 1000;
+      setPlaying(false);
+      setPlayhead((current) => Math.round(Math.max(0, Math.min(duration, current + notches * stepMs))));
+    };
+    grid.addEventListener("wheel", onWheel, { passive: false });
+    return () => grid.removeEventListener("wheel", onWheel);
+  }, [duration, config.settings.frameRate]);
 
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) => onChange({ ...config, timeline: { tracks: nextTracks } });
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
@@ -176,13 +201,6 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
             </div>
             <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>
-          {/* Measured in Chromium (the engine behind the WebView2 runtime this
-              ships in): a disabled button DOES receive hover and DOES paint its
-              title tooltip, so the titles above are not dead. But a tooltip is
-              mouse-only — a disabled button cannot take focus, so keyboard and
-              touch users have no way to reach it. The reason the transport is
-              dead is stated here so it needs no pointer at all. */}
-          {clipCount === 0 && <p className="transport-note">These controls stay off until there is a scene to play.</p>}
         </main>
 
         <aside className="clip-inspector">
@@ -229,7 +247,7 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
             <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
           </div>
         </header>
-        <div className="timeline-grid">
+        <div className="timeline-grid" ref={timelineGrid} title="Scroll to scrub. Hold Shift for one frame at a time.">
           <div className="track-corner"><span>Tracks</span></div>
           <div className="time-ruler" onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPlayhead(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration)); }}>
             {ticks.map((second) => <span key={second} style={{ left: `${second * 1000 / duration * 100}%` }}><i />{rulerLabel(second)}</span>)}

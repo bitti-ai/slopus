@@ -1,170 +1,14 @@
 /* ============================================================================
-   shell.css — application frame: grid shell, sidebar, brand mark, placeholders.
+   shell.css — application frame: grid shell, brand mark, settings surface.
    ========================================================================== */
 
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
   background:
     radial-gradient(circle at 72% -20%, rgba(49, 76, 153, 0.11), transparent 37%),
     var(--bg);
-}
-
-/* --- Sidebar --------------------------------------------------------------- */
-
-.sidebar {
-  position: fixed;
-  z-index: 20;
-  inset: 0 auto 0 0;
-  width: var(--sidebar-width);
-  padding: var(--space-5) var(--space-4) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--line);
-  background: rgba(9, 11, 16, 0.96);
-}
-
-.sidebar__nav {
-  margin-top: var(--space-6);
-}
-
-.sidebar__label {
-  padding: 0 var(--space-3);
-  margin: 0 0 var(--space-3);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.nav-item,
-.utility-button {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  text-align: left;
-  color: var(--text-muted);
-}
-
-.nav-item {
-  position: relative;
-  height: var(--control-lg);
-  border-radius: var(--radius-md);
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  margin-bottom: var(--space-1);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  transition: 0.18s ease;
-}
-
-.nav-item:hover {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.nav-item--active {
-  color: var(--text-primary);
-  background: linear-gradient(
-    90deg,
-    rgba(60, 105, 239, 0.19),
-    rgba(60, 105, 239, 0.075)
-  );
-  box-shadow: inset 2px 0 var(--accent-bright);
-}
-
-.nav-item__badge {
-  margin-left: auto;
-  color: var(--accent-bright);
-  font: var(--weight-semibold) var(--text-2xs) / 1 var(--font-mono);
-  border: 1px solid rgba(85, 124, 245, 0.3);
-  background: rgba(50, 87, 199, 0.13);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-xs);
-}
-
-.sidebar__status {
-  margin: auto var(--space-1) var(--space-5);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent);
-}
-
-.sidebar__status-icon {
-  width: var(--control-md);
-  height: var(--control-md);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--accent-bright);
-  background: rgba(58, 99, 224, 0.13);
-}
-
-.sidebar__status strong,
-.sidebar__status span {
-  display: block;
-}
-
-.sidebar__status strong {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  color: var(--text-primary);
-}
-
-.sidebar__status span {
-  margin-top: var(--space-1);
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  color: var(--text-muted);
-}
-
-.sidebar__bottom {
-  border-top: 1px solid var(--line);
-  padding-top: var(--space-3);
-}
-
-.utility-button {
-  min-height: var(--control-md);
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-snug);
-  border-radius: var(--radius-sm);
-}
-
-.utility-button:hover:not(:disabled) {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-/* Not built yet — greyed out and labelled rather than pretending to work. */
-.utility-button:disabled {
-  color: var(--text-faint);
-  background: transparent;
-}
-
-.utility-button__soon {
-  margin-left: auto;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  color: var(--text-faint);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 /* --- Brand ----------------------------------------------------------------- */
@@ -196,10 +40,14 @@
 /* --- Logo mark (decorative artwork — proportions preserved) ----------------- */
 
 /* No plate behind the mark: it sits directly on whatever surface hosts it —
-   the sidebar and the composer, both near-black. The wordmark therefore takes
-   the app's own text colour rather than the ink-on-white it used to need. */
+   the topbar and the composer, both near-black. The wordmark therefore takes
+   the app's own text colour rather than the ink-on-white it used to need.
+
+   Every horizontal size here is intrinsic. The ticket used to be a fixed 51px
+   while "PolS" only measures ~36px, so the mark carried ~15px of dead blue
+   between the S and the wordmark; the box around it was fixed too, adding more
+   dead space on the right. Both now size to the artwork. */
 .pol-logo {
-  width: 114px;
   height: 29px;
   flex: 0 0 auto;
   display: inline-flex;
@@ -214,9 +62,9 @@
 .pol-logo__ticket {
   position: relative;
   z-index: 1;
-  width: 51px;
   height: 21px;
-  flex: 0 0 51px;
+  flex: 0 0 auto;
+  padding-right: var(--space-1);
   display: flex;
   align-items: center;
   border-radius: 4px 1px 1px 4px;
@@ -229,10 +77,10 @@
   content: "";
   position: absolute;
   z-index: -1;
-  width: 15px;
-  height: 15px;
-  right: -7px;
-  top: 3px;
+  width: 13px;
+  height: 13px;
+  right: -6px;
+  top: 4px;
   border-radius: 2px;
   background: linear-gradient(135deg, #075be3, #153bc5);
   transform: rotate(45deg);
@@ -271,6 +119,7 @@
   position: relative;
   z-index: 2;
   margin-left: var(--space-2);
+  padding-left: 1px;
   color: var(--text-primary);
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
@@ -280,14 +129,8 @@
 
 /* Compact mark: the ticket only. Scaled so the wordmark clears the 12px floor. */
 .pol-logo--compact {
-  width: 51px;
   height: 29px;
   padding: 4px 5px;
-}
-
-.pol-logo--compact .pol-logo__ticket {
-  width: 40px;
-  flex-basis: 40px;
 }
 
 .pol-logo--compact .pol-logo__pols {
@@ -295,174 +138,276 @@
   letter-spacing: -1.1px;
 }
 
-/* --- Placeholder views ----------------------------------------------------- */
+/* --- Settings launcher ------------------------------------------------------
+   Fixed bottom-left in every view, project editor included: the engine paths
+   behind it are what makes generation work at all, and finding out they are
+   wrong happens inside a project. It sits above the agent dock, which is why
+   the dock reserves room for it (see .agent-dock-wrap in workspace.css). */
 
-.placeholder-view {
-  grid-column: 2;
-  min-height: 100vh;
-  padding: var(--space-7);
-  background: radial-gradient(
-    circle at 50% 30%,
-    rgba(51, 82, 177, 0.12),
-    transparent 35%
-  );
+.settings-launcher {
+  position: fixed;
+  z-index: 40;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  min-height: var(--control-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  background: rgba(13, 16, 22, 0.92);
+  backdrop-filter: blur(12px);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  box-shadow: var(--shadow-sm);
+  transition: 0.16s ease;
 }
 
-.placeholder-view__card {
-  width: min(620px, 100%);
-  margin: clamp(var(--space-7), 9vh, var(--space-9)) auto 0;
-  text-align: center;
+.settings-launcher:hover {
+  color: var(--text-primary);
+  border-color: rgba(107, 141, 255, 0.4);
+  background: rgba(20, 26, 40, 0.96);
 }
 
-.placeholder-view__card > span {
-  width: var(--space-9);
-  height: var(--space-9);
-  margin: 0 auto var(--space-5);
-  display: grid;
-  place-items: center;
-  color: var(--accent-bright);
-  border: 1px solid rgba(91, 126, 231, 0.27);
+/* --- Settings ---------------------------------------------------------------
+   An overlay rather than a route: opening it from inside a project must not
+   unmount the editor and throw away unsaved edits. */
+
+.settings-overlay {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  overflow-y: auto;
+  padding: var(--space-7) var(--space-5);
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.settings-view {
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: var(--space-6);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-xl);
-  background: rgba(44, 76, 177, 0.13);
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
-.placeholder-view__card h1 {
+.settings-view__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.settings-view__head h1 {
+  margin: var(--space-2) 0 0;
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
   letter-spacing: var(--tracking-hero);
-  margin: var(--space-2) 0 var(--space-3);
 }
 
-.placeholder-view__card > p:not(.eyebrow) {
-  color: var(--text-secondary);
+.settings-view__lead {
+  max-width: 70ch;
+  margin: var(--space-4) 0 var(--space-5);
+  color: var(--text-muted);
   font-size: var(--text-base);
-  line-height: var(--leading-relaxed);
-  margin: 0 auto var(--space-5);
-  max-width: 480px;
+  line-height: var(--leading-normal);
 }
 
-/* The route is project-scoped: spell out how to actually get there. */
-.placeholder-view__steps {
-  max-width: 480px;
-  margin: 0 auto var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  list-style: none;
-  counter-reset: placeholder-step;
-  text-align: left;
+.settings-status {
+  padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.02);
 }
 
-.placeholder-view__steps li {
-  display: grid;
-  grid-template-columns: var(--space-5) minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-1) var(--space-3);
-  counter-increment: placeholder-step;
-}
-
-.placeholder-view__steps li + li {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
-}
-
-.placeholder-view__steps li::before {
-  content: counter(placeholder-step);
-  grid-row: 1 / span 2;
-  width: var(--space-5);
-  height: var(--space-5);
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--accent-bright);
-  background: var(--accent-soft);
-  font: var(--weight-bold) var(--text-2xs) / 1 var(--font-mono);
-}
-
-.placeholder-view__steps b {
+.settings-status span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
 }
 
-.placeholder-view__steps span {
+.settings-status i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.settings-status p {
+  margin: var(--space-2) 0 0;
   color: var(--text-muted);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: var(--leading-normal);
+}
+
+.settings-status--ready {
+  border-color: rgba(110, 207, 149, 0.3);
+  background: rgba(110, 207, 149, 0.07);
+}
+
+.settings-status--ready i {
+  background: var(--success);
+}
+
+.settings-status--modelsMissing i,
+.settings-status--incompatible i {
+  background: var(--warning);
+}
+
+.settings-status--runtimeMissing i {
+  background: var(--danger);
+}
+
+.settings-section {
+  margin-top: var(--space-6);
+}
+
+.settings-section h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
+}
+
+.settings-path {
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-path label {
+  display: block;
+  cursor: pointer;
+}
+
+.settings-path label b {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+/* "Optional" is a qualifier on the label, not a status — keep it quiet. */
+.settings-path label b em {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--text-faint);
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.settings-path label small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.settings-path__row {
+  margin-top: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.settings-path__row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: rgba(7, 9, 14, 0.72);
+  font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
+}
+
+.settings-path__row .secondary-button {
+  flex: 0 0 auto;
+}
+
+.settings-path__state {
+  margin-top: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.settings-path--found .settings-path__state {
+  color: var(--success);
+}
+
+.settings-path--missing .settings-path__state {
+  color: var(--danger);
+}
+
+.settings-path--missing .settings-path__row input {
+  border-color: rgba(236, 125, 134, 0.45);
+}
+
+.settings-view__foot {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.settings-view__foot span {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
 }
 
 /* --- Responsive ------------------------------------------------------------ */
 
-@media (max-width: 900px) {
-  .app-shell {
-    grid-template-columns: 88px minmax(0, 1fr);
-  }
-
-  .sidebar {
-    width: 88px;
-    padding-inline: var(--space-2);
-  }
-
-  .brand {
-    padding: 0;
-    justify-content: center;
-  }
-
-  /* Swap to the ticket-only mark instead of clipping the wordmark. */
-  .brand .pol-logo {
-    width: 51px;
-  }
-
-  .brand .pol-logo__ticket {
-    width: 40px;
-    flex-basis: 40px;
-  }
-
-  .brand .pol-logo__pols {
-    font-size: var(--text-2xs);
-    letter-spacing: -1.1px;
-  }
-
-  .brand .pol-logo__tudio {
-    display: none;
-  }
-
-  .brand__edition,
-  .sidebar__label,
-  .nav-item span:not(.nav-item__badge),
-  .sidebar__status,
-  .sidebar__bottom {
-    display: none;
-  }
-
-  .nav-item {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .nav-item__badge {
-    position: absolute;
-    top: var(--space-1);
-    right: var(--space-1);
-    margin: 0;
-    padding: 1px var(--space-1);
-  }
-}
-
 @media (max-width: 650px) {
-  .app-shell {
-    display: block;
+  .settings-overlay {
+    padding: var(--space-4) var(--space-3);
   }
 
-  .sidebar {
+  .settings-view {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .settings-path__row {
+    flex-direction: column;
+  }
+
+  .settings-view__foot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* The launcher shares the bottom edge with the agent dock on small windows,
+     so it drops to the mark alone rather than stacking on top of it. */
+  .settings-launcher span {
     display: none;
   }
 
-  .placeholder-view {
-    grid-column: 1;
-    padding: var(--space-5);
+  .settings-launcher {
+    padding: 0 var(--space-2);
   }
 }

@@ -6,11 +6,11 @@ In a blind side-by-side evaluation, a first-time creator should pick PolStudio o
 
 ## Project boundary
 
-A project is a portable folder. Its source of truth is `polstudio.project.json`; every path stored in that file is relative to the project root. Generated and imported content lives below that root so moving or archiving the folder does not break it.
+A project is a portable folder. Its source of truth is `pols.json`; every path stored in that file is relative to the project root. Generated and imported content lives below that root so moving or archiving the folder does not break it.
 
 ```text
 project-folder/
-  polstudio.project.json
+  pols.json
   media/imported/
   media/generated/
   references/

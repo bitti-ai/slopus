@@ -170,26 +170,6 @@
   letter-spacing: var(--tracking-label);
 }
 
-.storage-pill {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  min-height: var(--control-sm);
-  color: var(--text-muted);
-  font: var(--weight-medium) var(--text-xs) / var(--leading-snug) var(--font-sans);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  padding: var(--space-2) var(--space-3);
-}
-
-.storage-pill i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 8px rgba(110, 207, 149, 0.6);
-}
-
 /* --- Back link ------------------------------------------------------------- */
 
 .back-link {

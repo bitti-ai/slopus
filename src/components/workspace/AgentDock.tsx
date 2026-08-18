@@ -1,17 +1,21 @@
-import { ArrowUp, CornerDownLeft, LoaderCircle, Square, TriangleAlert } from "lucide-react";
+import { ArrowUp, LoaderCircle, Square, TriangleAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cancelAgentTurn, runAgentTurn, type ProviderId, type ProviderStatus } from "../../lib/runtime";
+import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import { PolStudioLogo } from "../PolStudioLogo";
 
-export function AgentDock({ context, record, providers, onRecord, onProviderChange }: {
+export function AgentDock({ context, record, providers, onRecord }: {
   context: string;
   record: ProjectRecord;
   providers: ProviderStatus[];
   onRecord: (record: ProjectRecord) => void;
-  onProviderChange: (provider: ProviderId) => void;
 }) {
-  const configured = record.config.providerSettings.agent?.options.selectedProvider;
+  /* Which agent drives Pol depends on what is installed and signed in on THIS
+     computer, so the choice is remembered per machine and survives a restart.
+     Projects written before that existed still carry their own choice; it is
+     read once as a seed and the stored preference takes over from there. */
+  const configured = loadAgentProvider() ?? record.config.providerSettings.agent?.options.selectedProvider;
   const initial = configured === "codex" || configured === "claude" ? configured : providers.find((item) => item.state === "ready")?.id ?? "claude";
   const [provider, setProvider] = useState<ProviderId>(initial);
   const [prompt, setPrompt] = useState("");
@@ -60,7 +64,7 @@ export function AgentDock({ context, record, providers, onRecord, onProviderChan
         <span className="agent-dock__identity"><PolStudioLogo compact decorative /><b>Pol</b></span>
         <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={blockedDetail ?? selected?.detail}>
           <i />
-          <select aria-label="Agent provider" value={provider} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); onProviderChange(next); }}>
+          <select aria-label="Agent provider" value={provider} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); saveAgentProvider(next); }}>
             {providers.map((item) => <option value={item.id} key={item.id}>{item.label} · {providerStateLabel(item.state)}</option>)}
           </select>
         </label>
@@ -73,10 +77,12 @@ export function AgentDock({ context, record, providers, onRecord, onProviderChan
           disabled={!ready || Boolean(requestId)}
         />
         {requestId ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button> : <>
-          {ready
-            ? <span className="agent-dock__hint"><CornerDownLeft size={14} aria-hidden="true" /> Enter to send</span>
-            : <span className="agent-dock__blocked"><TriangleAlert size={14} aria-hidden="true" /> {selected ? providerStateLabel(selected.state) : "Unavailable"}</span>}
-          <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Pol"><ArrowUp size={16} /></button>
+          {/* The keyboard shortcut is a hint, not news: it lives on the button
+              it describes rather than taking a permanent slice of a one-line
+              dock. Why Pol CANNOT run still gets its own visible label — that
+              is a state the user has to act on. */}
+          {!ready && <span className="agent-dock__blocked"><TriangleAlert size={14} aria-hidden="true" /> {selected ? providerStateLabel(selected.state) : "Unavailable"}</span>}
+          <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Pol" title={ready ? "Send to Pol — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>
         </>}
         {requestId && <LoaderCircle className="agent-busy" size={16} />}
       </form>

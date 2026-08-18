@@ -1,6 +1,6 @@
 use crate::{
     read_project, validate_and_normalize_config, write_project, AgentMessage, ProjectConfig,
-    ProjectRecord, ProviderSetting, PROJECT_FILE_NAME,
+    ProjectRecord, ProviderSetting, LEGACY_PROJECT_FILE_NAME, PROJECT_FILE_NAME,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -274,7 +274,10 @@ fn confined_project_root(folder: &Path) -> Result<PathBuf, String> {
     let canonical = folder
         .canonicalize()
         .map_err(|error| format!("Could not resolve project root: {error}"))?;
-    if !canonical.is_dir() || !canonical.join(PROJECT_FILE_NAME).is_file() {
+    if !canonical.is_dir()
+        || !(canonical.join(PROJECT_FILE_NAME).is_file()
+            || canonical.join(LEGACY_PROJECT_FILE_NAME).is_file())
+    {
         return Err("Agent turns require a valid PolStudio project root.".into());
     }
     Ok(canonical)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROJECT_FILE_NAME = "polstudio.project.json";
+export const PROJECT_FILE_NAME = "pols.json";
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 
 const idSchema = z.string().min(1);
