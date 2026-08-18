@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Cloud, Download, Film, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, Film, Save, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ProjectConfig, ProjectRecord } from "../lib/project";
 import { getRuntimeStatus, type RuntimeStatus } from "../lib/runtime";
@@ -69,7 +69,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", settingsRe
         <button className="icon-button icon-button--strong" onClick={onBack} aria-label="Back to project library"><ArrowLeft size={18} /></button>
         {/* The name column is the topbar's elastic column and truncates on narrow
             windows, so the full name stays available on hover. */}
-        <div className="project-title"><strong title={config.name}>{config.name}</strong><span><Cloud size={13} aria-hidden="true" /> Local project</span></div>
+        <div className="project-title"><strong title={config.name}>{config.name}</strong></div>
       </div>
 
       <nav className="project-nav" aria-label="Project views">
