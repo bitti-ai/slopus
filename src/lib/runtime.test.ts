@@ -20,7 +20,7 @@ describe("deterministic browser runtime", () => {
 
   it("reports explicit demo status and a plan-only generation boundary", async () => {
     const record = project();
-    const status = await getRuntimeStatus(record.config);
+    const status = await getRuntimeStatus();
     expect(status.vidfab.state).toBe("demo");
     const plan = await resolveVidfabPlan({
       jobId: "job-plan", prompt: "three field prompt", frames: 180, steps: 50,

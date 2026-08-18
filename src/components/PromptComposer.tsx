@@ -44,6 +44,7 @@ const modifierKey =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
 export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
+  const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [resolution, setResolution] = useState<Resolution>("1080p");
@@ -76,15 +77,18 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
     setPrompt(ideaPrompt);
   };
 
-  /* The description box is the first thing you use, so start in it — saving a
-     click on the headline flow. Runs once, and only while focus is still on the
-     document body, so it never yanks focus off a field the user already picked
-     (Ctrl+K search included). */
+  /* Focus the box when the section is opened — that click is a statement of
+     intent, so landing in the field saves a second one. It used to fire on
+     mount, which is wrong now that the section starts closed: there would be
+     nothing to focus. Focus still moves only from the summary that was just
+     activated or from nowhere, so it never yanks focus off a field the user
+     already picked (Ctrl+K search included). */
   useEffect(() => {
+    if (!open) return;
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    if (active && active !== document.body && !(active instanceof HTMLElement && active.tagName === "SUMMARY")) return;
     promptInput.current?.focus({ preventScroll: true });
-  }, []);
+  }, [open]);
 
   const addReferenceImages = async () => {
     setReferenceError(null);
@@ -109,12 +113,17 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   };
 
   return (
-    <section className="composer-shell" aria-labelledby="create-heading">
-      <div className="composer-shell__glow" />
-      <div className="composer-heading">
+    /* Collapsed by default. The library's job on open is to show you your
+       projects; starting a new one is deliberate, so it asks for one click
+       rather than taking the top of the page every time. <details> carries the
+       open/closed state and the keyboard behaviour natively. */
+    <details className="composer-shell" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="composer-heading">
         <span className="eyebrow"><Sparkles size={14} /> New project</span>
         <h2 id="create-heading">What do you want to make?</h2>
-      </div>
+        <ChevronDown className="composer-heading__chevron" size={20} aria-hidden="true" />
+      </summary>
+      <div className="composer-shell__glow" />
 
       <div className="composer">
         <div className="composer__input-row">
@@ -204,6 +213,6 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           <Undo2 size={15} /> Undo — put my words back
         </button>}
       </div>
-    </section>
+    </details>
   );
 }

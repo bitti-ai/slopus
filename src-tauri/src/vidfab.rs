@@ -15,7 +15,26 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 
-pub const DEFAULT_DLL_PATH: &str = r"D:\Projects\vidfab\build-shared\Release\vidfab_c.dll";
+const DLL_FILE_NAME: &str = "vidfab_c.dll";
+/// Where the packaged build puts the runtime while it is being developed. Used
+/// only when the DLL is NOT beside the executable, so a `cargo run` out of the
+/// source tree still finds it.
+const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\vidfab\build-shared\Release\vidfab_c.dll";
+
+/// The runtime ships beside PolStudio.exe and is loaded from there — there is
+/// no path for anyone to configure and no way for one to go stale. vidfab_c.dll
+/// is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its own dependencies sit in
+/// that folder too, which is the same reason a subfolder never bought anything.
+pub fn default_dll_path() -> PathBuf {
+    if let Some(beside_exe) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(DLL_FILE_NAME)))
+        .filter(|path| path.is_file())
+    {
+        return beside_exe;
+    }
+    DEVELOPMENT_DLL_PATH.into()
+}
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;
 const CANCELLED: i32 = -8;
@@ -217,7 +236,10 @@ impl Configuration {
             })
         };
         Self {
-            dll_path: option("dllPath").unwrap_or_else(|| DEFAULT_DLL_PATH.into()),
+            // `dllPath` is no longer written by the app and has no settings UI.
+            // It is still READ so a project or a test that carries one keeps
+            // working; with none, the runtime is found beside the executable.
+            dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             models: [
                 (0, "transformer", option("transformer")),
                 (1, "textEncoder", option("textEncoder")),
@@ -864,9 +886,12 @@ mod tests {
         assert_eq!(packed >> 24, EXPECTED_CAPI_MAJOR);
     }
 
+    /// Under `cargo test` the executable is a test harness in target/debug, so
+    /// this resolves to the development path — which is exactly the build this
+    /// test is here to check.
     #[test]
     fn installed_development_dll_reports_a_compatible_api_when_present() {
-        if Path::new(DEFAULT_DLL_PATH).is_file() {
+        if default_dll_path().is_file() {
             let runtime = status(&BTreeMap::new());
             assert_ne!(runtime.state, "runtimeMissing", "{}", runtime.detail);
             assert_ne!(runtime.state, "incompatible", "{}", runtime.detail);

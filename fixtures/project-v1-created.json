@@ -22,6 +22,14 @@
   "timeline": {
     "tracks": [
       {
+        "id": "track-overlay",
+        "kind": "video",
+        "name": "Overlays",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
         "id": "track-story",
         "kind": "video",
         "name": "Story",

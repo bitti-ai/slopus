@@ -144,24 +144,24 @@
    wrong happens inside a project. It sits above the agent dock, which is why
    the dock reserves room for it (see .agent-dock-wrap in workspace.css). */
 
+/* The gear alone — the word "Settings" told nobody anything the icon did not.
+   Round and a step larger than a normal icon button so it reads as its own
+   thing floating over the corner rather than as part of the row behind it. */
 .settings-launcher {
   position: fixed;
   z-index: 40;
   left: var(--space-4);
   bottom: var(--space-4);
-  min-height: var(--control-sm);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
+  border-radius: 50%;
   color: var(--text-muted);
   background: rgba(13, 16, 22, 0.92);
   backdrop-filter: blur(12px);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
   box-shadow: var(--shadow-sm);
   transition: 0.16s ease;
 }
@@ -401,13 +401,4 @@
     align-items: flex-start;
   }
 
-  /* The launcher shares the bottom edge with the agent dock on small windows,
-     so it drops to the mark alone rather than stacking on top of it. */
-  .settings-launcher span {
-    display: none;
-  }
-
-  .settings-launcher {
-    padding: 0 var(--space-2);
-  }
 }

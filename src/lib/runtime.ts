@@ -7,7 +7,11 @@ export type ProviderId = "claude" | "codex";
 export interface ProviderStatus {
   id: ProviderId;
   label: string;
-  state: "ready" | "disabled" | "notInstalled" | "authRequired" | "unavailable";
+  /* "checking" is FRONTEND-ONLY and never comes back from Rust: it is what the
+     dock shows while the probe is in flight. It used to borrow "unavailable"
+     for that, so a slow or failed probe left every provider reading
+     "Unavailable" — including a Claude Code that was installed and working. */
+  state: "checking" | "ready" | "disabled" | "notInstalled" | "authRequired" | "unavailable";
   executable: string | null;
   version: string | null;
   detail: string;
@@ -68,9 +72,20 @@ const DEMO_STATUS: RuntimeStatus = {
 /* Every vidfab command is handed the project config with THIS machine's engine
    paths merged in (see lib/settings.ts). The merged copy is passed straight to
    the command and dropped; it is never the config that gets saved. */
-export async function getRuntimeStatus(config: ProjectConfig): Promise<RuntimeStatus> {
-  return isTauri() ? invoke<RuntimeStatus>("runtime_status", { config: withEngineSettings(config) }) : DEMO_STATUS;
+
+/** What is installed on this computer. Takes no project: the agent CLIs and
+ *  the video engine belong to the machine, so the app probes this ONCE at
+ *  startup and every project shares the answer. */
+export async function getRuntimeStatus(): Promise<RuntimeStatus> {
+  if (!isTauri()) return DEMO_STATUS;
+  return invoke<RuntimeStatus>("runtime_status", { settings: { vidfab: engineProviderSetting(loadEngineSettings()) } });
 }
+
+/** The placeholder every caller shows until the startup probe lands. */
+export const CHECKING_PROVIDERS: ProviderStatus[] = [
+  { id: "claude", label: "Claude Code", state: "checking", executable: null, version: null, detail: "Looking for Claude Code on this computer…" },
+  { id: "codex", label: "Codex", state: "checking", executable: null, version: null, detail: "Looking for Codex on this computer…" },
+];
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */

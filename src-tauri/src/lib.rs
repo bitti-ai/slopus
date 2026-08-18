@@ -220,6 +220,18 @@ struct ImportedReferenceImage {
     mime_type: String,
 }
 
+/// One file copied into the project's `media/` folder. Deliberately carries no
+/// duration or dimensions: PolStudio has no decoder yet, and a made-up number
+/// here would be indistinguishable from a measured one everywhere downstream.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportedMediaFile {
+    kind: &'static str,
+    name: String,
+    relative_path: String,
+    mime_type: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PendingReferenceImage {
@@ -711,7 +723,7 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
         .map_err(|error| format!("Project config is not valid: {error}"))?;
     let config = validate_and_normalize_config(config)?;
     Ok(ProjectRecord {
-        folder_path: canonical_folder.to_string_lossy().into_owned(),
+        folder_path: display_path(&canonical_folder),
         config,
     })
 }
@@ -807,6 +819,19 @@ fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// `Path::canonicalize` returns a Windows *verbatim* path — `\?\D:\tmp\news`.
+/// That prefix is an OS-level escape hatch, not something to show anybody, and
+/// it was being rendered verbatim under every project in the library. Strip it
+/// for the path that leaves this process. Every command re-canonicalizes what
+/// it is given, so the stripped form is still a valid round trip.
+fn display_path(path: &Path) -> String {
+    let text = path.to_string_lossy().into_owned();
+    if let Some(rest) = text.strip_prefix(r"\?\UNC\") {
+        return format!(r"\{rest}");
+    }
+    text.strip_prefix(r"\?\").unwrap_or(&text).to_string()
 }
 
 fn safe_folder_name(name: &str) -> String {
@@ -948,6 +973,122 @@ fn choose_reference_image(
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
     copy_reference_image(&source, &project_folder).map(Some)
+}
+
+/// Extensions PolStudio will copy into a project, and what each one is.
+/// Anything not listed is refused rather than imported as an unknown blob.
+fn media_kind_and_mime(extension: &str) -> Option<(&'static str, &'static str)> {
+    Some(match extension {
+        "mp4" | "m4v" => ("video", "video/mp4"),
+        "mov" => ("video", "video/quicktime"),
+        "webm" => ("video", "video/webm"),
+        "mkv" => ("video", "video/x-matroska"),
+        "mp3" => ("audio", "audio/mpeg"),
+        "m4a" | "aac" => ("audio", "audio/mp4"),
+        "wav" => ("audio", "audio/wav"),
+        "flac" => ("audio", "audio/flac"),
+        "ogg" | "oga" => ("audio", "audio/ogg"),
+        "png" => ("image", "image/png"),
+        "jpg" | "jpeg" => ("image", "image/jpeg"),
+        "webp" => ("image", "image/webp"),
+        "gif" => ("image", "image/gif"),
+        _ => return None,
+    })
+}
+
+const MEDIA_EXTENSIONS: &[&str] = &[
+    "mp4", "m4v", "mov", "webm", "mkv", "mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "png",
+    "jpg", "jpeg", "webp", "gif",
+];
+
+fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
+    if !source.is_file() {
+        return Err(format!("{} does not exist.", source.to_string_lossy()));
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| "The selected file needs a file extension.".to_string())?;
+    let (kind, mime_type) = media_kind_and_mime(&extension)
+        .ok_or_else(|| format!("PolStudio cannot import .{extension} files yet."))?;
+    let media_folder = project_folder.join("media");
+    fs::create_dir_all(&media_folder)
+        .map_err(|error| format!("Could not prepare media folder: {error}"))?;
+    let display_name = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Imported media");
+    let base_name = safe_folder_name(display_name);
+    let mut file_name = format!("{base_name}.{extension}");
+    let mut destination = media_folder.join(&file_name);
+    let mut suffix = 2;
+    // Never overwrite: two different files with the same name are two files.
+    while destination.exists() {
+        file_name = format!("{base_name}-{suffix}.{extension}");
+        destination = media_folder.join(&file_name);
+        suffix += 1;
+    }
+    fs::copy(source, &destination)
+        .map_err(|error| format!("Could not copy {display_name} into this project: {error}"))?;
+    Ok(ImportedMediaFile {
+        kind,
+        name: display_name.to_string(),
+        relative_path: format!("media/{file_name}"),
+        mime_type: mime_type.into(),
+    })
+}
+
+/// Hands the webview the bytes of one file inside a project, so it can show a
+/// reference image the user imported. Confined to the project folder: the
+/// relative path goes through the same normaliser every stored path does, and
+/// the result is checked to still sit under the canonical root, so a crafted
+/// `..` in a hand-edited pols.json cannot read the rest of the disk.
+#[tauri::command]
+fn read_project_file(folder_path: String, relative_path: String) -> Result<tauri::ipc::Response, String> {
+    let root = PathBuf::from(folder_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    let relative = normalize_project_path(&relative_path)?;
+    let target = root
+        .join(&relative)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve {relative}: {error}"))?;
+    if !target.starts_with(&root) || !target.is_file() {
+        return Err(format!("{relative} is not a file inside this project."));
+    }
+    let bytes = fs::read(&target).map_err(|error| format!("Could not read {relative}: {error}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Copies the chosen files into the project so the folder stays portable — the
+/// same rule references already follow. An empty list means the user cancelled.
+#[tauri::command]
+fn import_media_files(
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Vec<ImportedMediaFile>, String> {
+    let project_folder = PathBuf::from(folder_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Import media into this project")
+        .add_filter("Media", MEDIA_EXTENSIONS)
+        .blocking_pick_files();
+    let Some(selected) = selected else {
+        return Ok(Vec::new());
+    };
+    selected
+        .into_iter()
+        .map(|path| {
+            let source = path
+                .into_path()
+                .map_err(|error| format!("Could not access the selected file: {error}"))?;
+            copy_media_file(&source, &project_folder)
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -1100,13 +1241,25 @@ fn choose_engine_path(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+/// What is installed on this computer: the two agent CLIs and the video engine.
+///
+/// Async on purpose — this launches two CLIs (up to 7s each) and loads the
+/// engine DLL. Run inline on the main thread it froze the window for as long
+/// as that took, which is what it was doing.
+///
+/// Takes provider settings rather than a whole project: what is installed here
+/// is a property of the machine, so the frontend probes it ONCE at startup and
+/// every project shares the answer.
 #[tauri::command]
-fn runtime_status(config: ProjectConfig) -> Result<RuntimeStatus, String> {
-    let config = validate_and_normalize_config(config)?;
-    Ok(RuntimeStatus {
-        providers: agent::provider_statuses(&config.provider_settings),
-        vidfab: vidfab::status(&config.provider_settings),
+async fn runtime_status(
+    settings: BTreeMap<String, ProviderSetting>,
+) -> Result<RuntimeStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
+        providers: agent::provider_statuses(&settings),
+        vidfab: vidfab::status(&settings),
     })
+    .await
+    .map_err(|error| format!("Could not probe this computer: {error}"))
 }
 
 #[tauri::command]
@@ -1164,6 +1317,8 @@ pub fn run() {
             choose_project_folder,
             choose_initial_reference_images,
             choose_reference_image,
+            import_media_files,
+            read_project_file,
             create_project,
             save_project,
             runtime_status,

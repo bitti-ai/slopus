@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
+import { ReferenceImage } from "./ReferenceImage";
 
 type ReferenceUse = ProjectReference["intendedUse"][number];
 
@@ -82,7 +83,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
         <div className="reference-library__toolbar"><span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span></div>
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
-            {ref.kind === "image" ? <span className="reference-art"><Image size={26} /><em>Image file</em></span> : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
+            {ref.kind === "image" && ref.relativePath
+              ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} alt={ref.name} /></span>
+              : ref.kind === "image"
+                ? <span className="reference-art"><Image size={26} /><em>Image file</em></span>
+                : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
             <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
               : <p className="reference-card__incomplete">{ref.kind === "image"
@@ -102,7 +107,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <aside className="reference-inspector">
         <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
         {selected ? <>
-          <div className={`reference-detail-art reference-detail-art--${selected.kind}`}><span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span><em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em></div>
+          <div className={`reference-detail-art reference-detail-art--${selected.kind}${selected.kind === "image" && selected.relativePath ? " reference-detail-art--photo" : ""}`}>
+            {selected.kind === "image" && selected.relativePath
+              ? <ReferenceImage folderPath={folderPath} relativePath={selected.relativePath} alt={selected.name} />
+              : <span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span>}
+            <em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em>
+          </div>
           <div className="reference-fields">
             <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
             <label><span>Definition</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label>

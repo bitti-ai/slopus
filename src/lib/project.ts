@@ -449,7 +449,11 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       aspectRatio: input.aspectRatio, resolution: input.resolution,
     },
     assets: [],
+    /* Two video layers, not one: an overlay, a title card, or a cutaway has
+       to sit ABOVE the story track, and with a single layer the only way to
+       get one there was to displace the shot underneath it. */
     timeline: { tracks: [
+      { id: "track-overlay", kind: "video", name: "Overlays", locked: false, muted: false, clips: [] },
       { id: "track-story", kind: "video", name: "Story", locked: false, muted: false, clips: [] },
       { id: "track-voice-over", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [] },
       { id: "track-music", kind: "audio", name: "Music", locked: false, muted: false, clips: [] },

@@ -90,7 +90,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
   );
 }
 
-const providerStateLabel = (state: ProviderStatus["state"]) => state === "ready" ? "Ready" : state === "notInstalled" ? "Not installed" : state === "authRequired" ? "Sign in required" : state === "disabled" ? "Disabled" : "Unavailable";
+const providerStateLabel = (state: ProviderStatus["state"]) => state === "checking" ? "Checking…" : state === "ready" ? "Ready" : state === "notInstalled" ? "Not installed" : state === "authRequired" ? "Sign in required" : state === "disabled" ? "Disabled" : "Unavailable";
 
 /* Only states with a genuine user action get a next step — never invent one. */
 const providerNextStep = ({ state, label }: ProviderStatus): string => {
@@ -101,6 +101,7 @@ const providerNextStep = ({ state, label }: ProviderStatus): string => {
       return `Sign in to ${label} in your terminal, then reopen this project.`;
     case "disabled":
       return `${label} is switched off for this project.`;
+    case "checking":
     case "ready":
     case "unavailable":
       return "";

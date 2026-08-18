@@ -83,6 +83,21 @@ select {
   color: var(--text-primary);
 }
 
+/* The dropdown list a <select> opens is painted by the platform, not by this
+   stylesheet, and it takes its colours from the select itself. A select with a
+   transparent background got a white menu with grey text on Windows. Both
+   sides are now stated outright, and color-scheme tells the platform which
+   scrollbars and highlight to use inside it. */
+select {
+  color-scheme: dark;
+  background-color: var(--panel-2);
+}
+
+option {
+  color: var(--text-primary);
+  background-color: var(--panel-2);
+}
+
 ::placeholder {
   color: var(--text-faint);
   opacity: 1;

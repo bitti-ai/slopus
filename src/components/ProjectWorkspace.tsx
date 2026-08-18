@@ -1,7 +1,7 @@
 import { ArrowLeft, BookOpen, Download, Film, Save, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ProjectConfig, ProjectRecord } from "../lib/project";
-import { getRuntimeStatus, type RuntimeStatus } from "../lib/runtime";
+import { CHECKING_PROVIDERS, type RuntimeStatus } from "../lib/runtime";
 import { AgentDock } from "./workspace/AgentDock";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
@@ -17,13 +17,12 @@ export function formatDurationTimecode(totalSeconds: number): string {
   return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-export function ProjectWorkspace({ project, initialView = "timeline", settingsRevision = 0, onBack, onSave }: {
+export function ProjectWorkspace({ project, initialView = "timeline", runtime = null, onBack, onSave }: {
   project: ProjectRecord;
   initialView?: ProjectView;
-  /** Bumped when the settings overlay closes, so edits to this machine's
-   *  engine paths reach an already-open project instead of waiting for a
-   *  reopen. */
-  settingsRevision?: number;
+  /** What is installed on this computer, probed once at startup by App. Null
+   *  while that probe is still in flight — not "nothing is installed". */
+  runtime?: RuntimeStatus | null;
   onBack: () => void;
   onSave: (project: ProjectRecord) => Promise<void>;
 }) {
@@ -36,14 +35,6 @@ export function ProjectWorkspace({ project, initialView = "timeline", settingsRe
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
-
-  useEffect(() => {
-    void getRuntimeStatus(config).then(setRuntime).catch(() => setRuntime(null));
-    // Reprobe when the project's own provider settings change, and when the
-    // machine's engine paths have just been edited.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.providerSettings, settingsRevision]);
 
   const changeConfig = (next: ProjectConfig) => {
     setConfig(next);
@@ -97,17 +88,14 @@ export function ProjectWorkspace({ project, initialView = "timeline", settingsRe
     </header>
 
     <div className={`project-content project-content--${view}`}>
-      {view === "timeline" && <TimelineView config={config} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} draftPrompt={generatorPrompt} onDraftPromptChange={setGeneratorPrompt} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
     </div>
     <footer className="project-agent-row"><AgentDock
       context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : "project references"}
       record={{ ...project, config }}
-      providers={runtime?.providers ?? [
-        { id: "claude", label: "Claude Code", state: "unavailable", executable: null, version: null, detail: "Checking provider…" },
-        { id: "codex", label: "Codex", state: "unavailable", executable: null, version: null, detail: "Checking provider…" },
-      ]}
+      providers={runtime?.providers ?? CHECKING_PROVIDERS}
       /* Routed through the same save() as the Save button. Clearing `dirty`
          up front reported a saved project even when the write then failed,
          and swallowed the reason; save() clears only on success and surfaces

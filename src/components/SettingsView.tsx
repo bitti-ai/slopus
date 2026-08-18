@@ -10,12 +10,9 @@ import {
 
 type PathState = "unset" | "checking" | "found" | "missing";
 
-/* The backend reports the DLL separately from the five model paths, so one
-   lookup answers "is this path actually there?" for either kind. */
 function pathState(field: EnginePathField, value: string, status: VidfabStatus | null): PathState {
   if (!value.trim()) return "unset";
   if (!status) return "checking";
-  if (field.id === "dllPath") return status.state === "runtimeMissing" ? "missing" : "found";
   const model: ModelStatus | undefined = status.models.find((item) => item.id === field.id);
   if (!model) return "checking";
   /* `available` is a file test on the Rust side, so a tokenizer FOLDER reads
@@ -94,8 +91,9 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
         </header>
 
         <p className="settings-view__lead">
-          PolStudio needs the engine library and its model files to render a shot. These paths belong to
-          this computer, not to a project — they are remembered here and used by every project you open.
+          PolStudio needs the model files to render a shot. Where they live is a property of this
+          computer, not of a project, so the paths are remembered here and used by every project you
+          open. The engine itself ships with the app and needs no setting.
         </p>
 
         <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
@@ -104,7 +102,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
         </div>
 
         <section className="settings-section" aria-labelledby="paths-heading">
-          <h2 id="paths-heading">Engine and model paths</h2>
+          <h2 id="paths-heading">Model weights</h2>
           {ENGINE_PATH_FIELDS.map((field) => {
             const value = settings[field.id];
             const state = pathState(field, value, status);
@@ -159,7 +157,7 @@ const engineHeadline = (status: VidfabStatus | null, desktop: boolean) => {
   switch (status.state) {
     case "ready": return "Engine ready";
     case "modelsMissing": return "Model files missing";
-    case "runtimeMissing": return "Engine not found";
+    case "runtimeMissing": return "Engine missing from this install";
     case "incompatible": return "Engine version not supported";
     case "demo": return "Browser preview";
   }
@@ -167,7 +165,8 @@ const engineHeadline = (status: VidfabStatus | null, desktop: boolean) => {
 
 const engineDetail = (status: VidfabStatus | null, desktop: boolean, missing: number) => {
   if (!desktop) return "Paths are saved here, but only the desktop app can check them or render with them.";
-  if (!status) return "Looking for the engine library and the model files.";
+  if (!status) return "Looking for the engine and the model files.";
+  if (status.state === "runtimeMissing") return `${status.detail} vidfab_c.dll should sit next to PolStudio.exe.`;
   if (status.state === "ready") return "Everything PolStudio needs to render a shot is in place.";
   if (missing > 0) return `${status.detail} ${missing === 1 ? "One path" : `${missing} paths`} still need setting below.`;
   return status.detail;
