@@ -129,7 +129,7 @@ function App() {
         <header className="library__topbar">
           <Brand />
           <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
-          <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
+          <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
         </header>
         <div className="library__content">
           <PromptComposer busy={busy} onCreate={createFromPrompt} />
@@ -162,7 +162,7 @@ function App() {
                 <h3>No projects yet</h3>
                 <p>Describe your video in the box above and press <strong>Create project</strong>. PolStudio makes the folder, the settings, and a first scene for you.</p>
                 <p className="library-empty__aside">Already made one on this computer?</p>
-                <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project folder</button>
+                <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
               </div>
             )}
           </section>
