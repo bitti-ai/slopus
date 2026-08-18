@@ -51,7 +51,9 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Story", "Voice-over", "Music"]);
+    // Two video layers: an overlay or title card has to be able to sit above
+    // the story track without displacing the shot underneath it.
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Overlays", "Story", "Voice-over", "Music"]);
     expect(project.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
     expect(project.references).toEqual([]);
     expect(project.generationJobs).toHaveLength(1);

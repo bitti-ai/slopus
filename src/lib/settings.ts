@@ -16,7 +16,7 @@ import type { ProjectConfig, ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
 
-export type EnginePathId = "dllPath" | "transformer" | "textEncoder" | "tokenizer" | "videoVae" | "audioVae";
+export type EnginePathId = "transformer" | "textEncoder" | "tokenizer" | "videoVae" | "audioVae";
 
 export interface EnginePathField {
   id: EnginePathId;
@@ -31,8 +31,11 @@ export interface EnginePathField {
   required: boolean;
 }
 
+/* No entry for the engine library itself: it ships beside PolStudio.exe and is
+   loaded from there, so there was never a path worth asking anyone for — only
+   one that could be set wrong. Weights are different: they are large, they are
+   downloaded separately, and they live wherever the user put them. */
 export const ENGINE_PATH_FIELDS: EnginePathField[] = [
-  { id: "dllPath", label: "Video engine (vidfab_c.dll)", hint: "The engine library PolStudio loads to render shots.", directory: false, extensions: ["dll"], required: true },
   { id: "transformer", label: "Transformer weights", hint: "The main model that turns your description into moving pictures.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
   { id: "textEncoder", label: "Text encoder weights", hint: "Reads your prompt so the transformer can act on it.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
   { id: "tokenizer", label: "Tokenizer", hint: "Splits your prompt into pieces the text encoder understands. Usually a folder.", directory: true, extensions: [], required: false },
@@ -43,7 +46,7 @@ export const ENGINE_PATH_FIELDS: EnginePathField[] = [
 export type EngineSettings = Record<EnginePathId, string>;
 
 export const EMPTY_ENGINE_SETTINGS: EngineSettings = {
-  dllPath: "", transformer: "", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "",
+  transformer: "", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "",
 };
 
 const ENGINE_KEY = "polstudio.engine-paths.v1";

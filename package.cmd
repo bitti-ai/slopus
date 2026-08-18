@@ -126,12 +126,13 @@ copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\PolStudio.exe" >nul || goto :fail
 
 set "VIDFAB_BUNDLED=no"
 if exist "%VIDFAB_DIR%\vidfab_c.dll" (
-  mkdir "%OUTPUT_DIR%\vidfab-runtime" || goto :fail
-  rem vidfab_c.dll is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its
-  rem dependencies must sit in the same folder as it.
-  copy /Y "%VIDFAB_DIR%\vidfab_c.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul || goto :fail
-  if exist "%VIDFAB_DIR%\vidfab_core.dll" copy /Y "%VIDFAB_DIR%\vidfab_core.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul
-  if exist "%VIDFAB_DIR%\vidfab_cuda.dll" copy /Y "%VIDFAB_DIR%\vidfab_cuda.dll" "%OUTPUT_DIR%\vidfab-runtime\" >nul
+  rem Beside PolStudio.exe, not in a subfolder. That is where the app looks,
+  rem so there is nothing left for anyone to configure - and vidfab_c.dll is
+  rem loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its dependencies have to
+  rem sit in the same folder as it anyway.
+  copy /Y "%VIDFAB_DIR%\vidfab_c.dll" "%OUTPUT_DIR%\" >nul || goto :fail
+  if exist "%VIDFAB_DIR%\vidfab_core.dll" copy /Y "%VIDFAB_DIR%\vidfab_core.dll" "%OUTPUT_DIR%\" >nul
+  if exist "%VIDFAB_DIR%\vidfab_cuda.dll" copy /Y "%VIDFAB_DIR%\vidfab_cuda.dll" "%OUTPUT_DIR%\" >nul
   set "VIDFAB_BUNDLED=yes"
   echo        Runtime:   vidfab DLLs included.
 ) else (
@@ -176,10 +177,9 @@ exit /b 0
 >>"%~1" echo.
 >>"%~1" echo GENERATION RUNTIME
 if /I "%VIDFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The vidfab DLLs are in vidfab-runtime\ next to this file. The app does
-  >>"%~1" echo   NOT find them there on its own yet: point it at
-  >>"%~1" echo   vidfab-runtime\vidfab_c.dll in the provider settings, or it will
-  >>"%~1" echo   report the generator as unavailable.
+  >>"%~1" echo   The vidfab DLLs sit beside PolStudio.exe. The app loads them from
+  >>"%~1" echo   there on its own - there is nothing to configure. Keep them next to
+  >>"%~1" echo   the executable if you move this folder.
 ) else (
   >>"%~1" echo   Not included in this build. The app runs and saves projects, and
   >>"%~1" echo   reports the generator as unavailable.

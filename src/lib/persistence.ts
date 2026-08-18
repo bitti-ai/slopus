@@ -146,6 +146,34 @@ export async function chooseInitialReferenceImages(): Promise<PendingReferenceIm
   return invoke<PendingReferenceImage[]>("choose_initial_reference_images");
 }
 
+/** A file the user picked, already copied into the project's `media/` folder.
+ *  No duration or dimensions: PolStudio has no decoder yet, and a guessed
+ *  number would be indistinguishable from a measured one downstream. */
+export interface ImportedMediaFile {
+  kind: "video" | "audio" | "image";
+  name: string;
+  relativePath: string;
+  mimeType: string;
+}
+
+/** Opens the picker and copies what was chosen into the project. Returns an
+ *  empty list when the user cancels — and in the browser, where there is no
+ *  project folder to copy into. */
+export async function importMediaFiles(folderPath: string): Promise<ImportedMediaFile[]> {
+  if (!isTauri()) return [];
+  return invoke<ImportedMediaFile[]>("import_media_files", { folderPath });
+}
+
+/** The bytes of one file inside a project folder, as a blob URL the webview
+ *  can point an <img> at. Null in the browser, where there is no folder to
+ *  read from. CALLERS MUST revokeObjectURL when done — a leaked blob URL pins
+ *  the whole image in memory for the life of the document. */
+export async function readProjectFileUrl(folderPath: string, relativePath: string, mimeType: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const bytes = await invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath });
+  return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectRecord | null> {
   const config = createProjectConfig(input);
   if (isTauri()) {

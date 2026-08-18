@@ -4,10 +4,19 @@ import {
   Volume2, VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ProjectConfig, TimelineClip } from "../../lib/project";
+import { importMediaFiles, isTauri } from "../../lib/persistence";
+import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
+/* What a dropped media file is worth on the timeline until PolStudio can read
+   its real length. Imported assets carry no duration — nothing has decoded
+   them — so the clip starts at a stated default and the inspector's Lasts
+   field is editable so the user can set the truth. */
+const DROPPED_CLIP_MS = 5_000;
+/* The drag payload is the asset id. A custom type keeps files dragged in from
+   the desktop, and text dragged from anywhere else, out of the drop handler. */
+const ASSET_DRAG_TYPE = "application/x-polstudio-asset";
 
 /* The canvas used to be a hard-coded 34s — the seeded fixture's exact length —
    so a 60-second project still got a 34-second ruler. Derive it from the real
@@ -35,13 +44,24 @@ const timecode = (ms: number) => {
   return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 };
 
-export function TimelineView({ config, onChange, onOpenGenerator }: { config: ProjectConfig; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId?: string) => void }) {
+export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId?: string) => void }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
   const timelineGrid = useRef<HTMLDivElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  /* Which track the pointer is currently over with a compatible asset, so the
+     lane can light up. A drop target the user cannot see is a drop target the
+     user will not find. */
+  const [dropTrackId, setDropTrackId] = useState<string | null>(null);
+  /* The asset currently under the pointer. Browsers withhold dataTransfer's
+     payload until the drop event, so a dragover handler cannot read the id it
+     is being offered — it can only see the TYPE. Remembering what dragstart
+     put there is the only way to know whether this lane can take it. */
+  const [draggedAsset, setDraggedAsset] = useState<ProjectAsset | undefined>(undefined);
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
@@ -125,6 +145,65 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   const deleteBlockedBy = !selected
     ? "Select a clip to delete it"
     : !selectedTrack || selectedTrack.locked ? "This clip’s track is locked" : null;
+  const importMedia = async () => {
+    setImportError(null);
+    setImporting(true);
+    try {
+      const imported = await importMediaFiles(folderPath);
+      if (imported.length === 0) return;
+      const now = new Date().toISOString();
+      const assets: ProjectAsset[] = imported.map((file) => ({
+        id: `asset-${crypto.randomUUID()}`,
+        kind: file.kind,
+        name: file.name,
+        relativePath: file.relativePath,
+        mimeType: file.mimeType,
+        // Genuinely unknown until something decodes the file. Left null rather
+        // than filled with a plausible number.
+        durationMs: null,
+        width: null,
+        height: null,
+        createdAt: now,
+      }));
+      onChange({ ...config, assets: [...config.assets, ...assets] });
+      setPanelTab("media");
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  /* A video or image belongs on a video track and a sound on an audio track;
+     dropping either on the other would make a clip nothing can ever play. */
+  const acceptsAsset = (track: ProjectConfig["timeline"]["tracks"][number], asset: ProjectAsset | undefined) => {
+    if (!asset || track.locked) return false;
+    return track.kind === "audio" ? asset.kind === "audio" : asset.kind !== "audio";
+  };
+
+  const assetById = (id: string) => config.assets.find((asset) => asset.id === id);
+
+  const dropAsset = (trackId: string, assetId: string, ratio: number) => {
+    const track = tracks.find((item) => item.id === trackId);
+    const asset = assetById(assetId);
+    if (!track || !acceptsAsset(track, asset) || !asset) return;
+    // Clamp so a drop near the right edge still lands a whole clip on the ruler.
+    const startMs = Math.round(Math.max(0, Math.min(duration - DROPPED_CLIP_MS, ratio * duration)));
+    const clip: TimelineClip = {
+      id: `clip-${crypto.randomUUID()}`,
+      assetId: asset.id,
+      trackId: track.id,
+      startMs,
+      durationMs: asset.durationMs && asset.durationMs > 0 ? asset.durationMs : DROPPED_CLIP_MS,
+      sourceStartMs: 0,
+      label: asset.name,
+      color: null,
+      status: "approved",
+    };
+    updateTracks(tracks.map((item) => item.id === track.id ? { ...item, clips: [...item.clips, clip] } : item));
+    setSelectedId(clip.id);
+  };
+
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
@@ -157,22 +236,44 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
                   <span><b>{clip.label.replace(/^\d+ · /, "")}</b><small>{clip.status === "generated" ? "Needs review" : "In timeline"}</small></span>
                 </button>
               ))}
-              {sceneClips.length === 0 && <p className="panel-hint">No scenes yet. Use the button below to open your shot in the Generator — scenes appear here once they land on the timeline.</p>}
               <button className="scene-add" onClick={addScene}><Plus size={18} /> Add or generate a scene</button>
             </div>
           ) : (
             <div className="media-grid">
-              {config.assets.map((asset) => <button key={asset.id}><span className="media-thumb">{asset.kind === "audio" ? <Music2 size={22} /> : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />}</span><b>{asset.name}</b><small>{asset.kind} · {asset.durationMs ? `${(asset.durationMs / 1000).toFixed(1)}s` : "still"}</small></button>)}
-              {config.assets.length === 0 && <p className="panel-hint">No media in this project yet. PolStudio can’t save generated shots as files yet, so nothing lands here.</p>}
-              <button className="media-import" disabled title="Importing your own files isn’t available yet. Generate a scene instead.">
-                <Upload size={20} /><b>Import media</b><small>Not available yet</small>
+              {/* Draggable onto the timeline. `draggable` on a <button> is the
+                  whole mechanism — the button still clicks and still takes
+                  focus, so keyboard users are not shut out of selecting it. */}
+              {config.assets.map((asset) => <button
+                key={asset.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
+                  event.dataTransfer.effectAllowed = "copy";
+                  setDraggedAsset(asset);
+                }}
+                onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
+                title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
+              >
+                <span className="media-thumb">{asset.kind === "audio" ? <Music2 size={22} /> : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />}</span>
+                <b>{asset.name}</b>
+                {/* Duration is only claimed when something actually measured it. */}
+                <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
+              </button>)}
+              <button
+                className="media-import"
+                onClick={() => void importMedia()}
+                disabled={importing || !isTauri()}
+                title={isTauri() ? "Copy video, sound, or image files into this project" : "Importing files is available in the desktop app"}
+              >
+                <Upload size={20} /><b>{importing ? "Importing…" : "Import media"}</b><small>Video, sound, or images</small>
               </button>
+              {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
           )}
         </aside>
 
         <main className="program-panel">
-          <div className="panel-chrome"><h2><i className="live-dot" /> Program monitor</h2></div>
+          <h2 className="sr-only">Program monitor</h2>
           <div className="program-canvas">
             {hasVisualOutput ? (
               <div className="program-empty program-empty--footage">
@@ -252,7 +353,31 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
           <div className="time-ruler" onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPlayhead(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration)); }}>
             {ticks.map((second) => <span key={second} style={{ left: `${second * 1000 / duration * 100}%` }}><i />{rulerLabel(second)}</span>)}
           </div>
-          {tracks.map((track) => <TrackRow key={track.id} track={track} duration={duration} selectedId={selectedId} onSelect={setSelectedId} onToggle={toggleTrack} />)}
+          {tracks.map((track) => <TrackRow
+            key={track.id}
+            track={track}
+            duration={duration}
+            selectedId={selectedId}
+            dropActive={dropTrackId === track.id}
+            onSelect={setSelectedId}
+            onToggle={toggleTrack}
+            onDragOverLane={(event) => {
+              if (!event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) return;
+              if (!acceptsAsset(track, draggedAsset)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setDropTrackId(track.id);
+            }}
+            onDragLeaveLane={() => setDropTrackId((current) => current === track.id ? null : current)}
+            onDropLane={(event) => {
+              event.preventDefault();
+              setDropTrackId(null);
+              const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
+              if (!assetId) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              dropAsset(track.id, assetId, (event.clientX - rect.left) / rect.width);
+            }}
+          />)}
           <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
         </div>
       </section>
@@ -260,7 +385,17 @@ export function TimelineView({ config, onChange, onOpenGenerator }: { config: Pr
   );
 }
 
-function TrackRow({ track, duration, selectedId, onSelect, onToggle }: { track: ProjectConfig["timeline"]["tracks"][number]; duration: number; selectedId: string; onSelect: (id: string) => void; onToggle: (id: string, key: "muted" | "locked") => void }) {
+function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle, onDragOverLane, onDragLeaveLane, onDropLane }: {
+  track: ProjectConfig["timeline"]["tracks"][number];
+  duration: number;
+  selectedId: string;
+  dropActive: boolean;
+  onSelect: (id: string) => void;
+  onToggle: (id: string, key: "muted" | "locked") => void;
+  onDragOverLane: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeaveLane: () => void;
+  onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
+}) {
   return <>
     <div className="track-head">
       <span className={`track-kind track-kind--${track.kind}`}>{track.kind === "audio" ? <Music2 size={16} /> : <Video size={16} />}</span>
@@ -268,7 +403,12 @@ function TrackRow({ track, duration, selectedId, onSelect, onToggle }: { track: 
       <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} ${track.name}`} title={`${track.muted ? "Unmute" : "Mute"} ${track.name}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
       <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${track.name}`} title={`${track.locked ? "Unlock" : "Lock"} ${track.name}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
-    <div className={`track-lane ${track.muted ? "muted" : ""}`}>
+    <div
+      className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""}`}
+      onDragOver={onDragOverLane}
+      onDragLeave={onDragLeaveLane}
+      onDrop={onDropLane}
+    >
       {track.clips.map((clip) => <button key={clip.id} className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""}`} style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties} onClick={() => onSelect(clip.id)} title={`${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds`}><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></button>)}
     </div>
   </>;

@@ -86,7 +86,7 @@ describe("project workspace timecode", () => {
     const firstTrackWithClip = config.timeline.tracks.find((track) => track.clips.length > 0)!;
     const locked = { ...config, timeline: { tracks: config.timeline.tracks.map((track) => track.id === firstTrackWithClip.id ? { ...track, locked: true } : track) } };
     const onChange = vi.fn();
-    const { container } = render(createElement(TimelineView, { config: locked, onChange, onOpenGenerator: () => undefined }));
+    const { container } = render(createElement(TimelineView, { config: locked, folderPath: "C:\Locked Project", onChange, onOpenGenerator: () => undefined }));
     const timeline = container.querySelector(".timeline-view")!;
     fireEvent.keyDown(timeline, { key: "Delete" });
     expect(onChange).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe("project workspace timecode", () => {
 
   it("disables Split while the playhead sits outside the selected clip", () => {
     const config = parseProjectConfig(completeFixture);
-    const { container } = render(createElement(TimelineView, { config, onChange: () => undefined, onOpenGenerator: () => undefined }));
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\Timeline Project", onChange: () => undefined, onOpenGenerator: () => undefined }));
     const split = () => screen.getByRole("button", { name: "Split" }) as HTMLButtonElement;
     // The playhead starts at the head of the first clip, where splitSelected
     // returns early — so the button must not look live.
@@ -208,7 +208,7 @@ describe("project workspace timecode", () => {
 
   it("says why Duplicate and Delete are unavailable, not just that they are", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    render(createElement(TimelineView, { config, onChange: () => undefined, onOpenGenerator: () => undefined }));
+    render(createElement(TimelineView, { config, folderPath: "C:\Timeline Project", onChange: () => undefined, onOpenGenerator: () => undefined }));
     for (const label of ["Duplicate", "Delete"]) {
       const button = screen.getByRole("button", { name: label }) as HTMLButtonElement;
       expect(button.disabled).toBe(true);

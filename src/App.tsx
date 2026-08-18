@@ -7,6 +7,7 @@ import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
 import { chooseAndOpenProject, createProject, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
+import { getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
 interface LibraryError {
   /** What failed, in the user’s terms. */
@@ -35,6 +36,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsRevision, setSettingsRevision] = useState(0);
   const closeSettings = () => { setSettingsOpen(false); setSettingsRevision((value) => value + 1); };
+  /* What is installed on this computer. Probed ONCE here rather than every
+     time a project opens: it launches two agent CLIs and loads the engine DLL,
+     which is seconds of work, and the answer is the same for every project.
+     Null means the probe has not landed yet — never "nothing is installed". */
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -53,6 +59,20 @@ function App() {
       .catch((reason: unknown) => setError({ title: "Couldn’t load your projects", detail: describe(reason) }))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    // Re-probed when the settings overlay closes, because that is where the
+    // engine paths get fixed.
+    let live = true;
+    setRuntime(null);
+    void getRuntimeStatus()
+      .then((status) => { if (live) setRuntime(status); })
+      .catch((reason: unknown) => {
+        if (!live) return;
+        setError({ title: "Couldn’t check what’s installed on this computer", detail: describe(reason) });
+      });
+    return () => { live = false; };
+  }, [settingsRevision]);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -106,14 +126,14 @@ function App() {
      paths it holds are what makes generation work at all, and finding out they
      are wrong happens inside a project, not in the library. */
   const settingsLauncher = (
-    <button className="settings-launcher" type="button" onClick={() => setSettingsOpen(true)} title="Settings">
-      <Settings size={18} aria-hidden="true" /> <span>Settings</span>
+    <button className="settings-launcher" type="button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">
+      <Settings size={22} aria-hidden="true" />
     </button>
   );
 
   if (activeProject) {
     return <>
-      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} settingsRevision={settingsRevision} onBack={() => setActiveProject(null)} onSave={async (project) => {
+      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onBack={() => setActiveProject(null)} onSave={async (project) => {
         const saved = await saveProject(project);
         setActiveProject(saved);
         setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
