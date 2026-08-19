@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
 import { compileMiniMaxH3Prompt, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
@@ -178,8 +178,14 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   return <div className="generator-view">
     <aside className="queue-panel" aria-label="Shots">
       <div className="queue-panel__title">
-        <span>Shots</span>
-        <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
+        <div>
+          <span>Shots</span>
+          <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
+        </div>
+        {/* A shot is its words, and PolStudio never writes those for anyone —
+            so this opens the composer rather than adding an empty job to the
+            list. Same destination as "Write another shot" below. */}
+        <button className="queue-panel__new" onClick={focusComposer} aria-label="Write a new shot" title="Write a new shot"><Plus size={18} /></button>
       </div>
       <div className="queue-panel__scroll">
         <QueueGroup title="Rendering now" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
