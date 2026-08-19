@@ -140,6 +140,8 @@
   --wash-3: rgba(255, 255, 255, 0.06);  /* hover on an already-tinted row */
   --hairline-hi: rgba(255, 255, 255, 0.025); /* 1px top sheen on raised chrome */
   --hatch: rgba(255, 255, 255, 0.03);   /* diagonal placeholder hatching */
+  --hatch-strong: rgba(255, 255, 255, 0.09); /* the "cannot drop here" hatch */
+  --grid-line: rgba(255, 255, 255, 0.14);    /* beat grid + empty-stage dots, on --bg */
 
   /* --- Translucent chrome (always paired with backdrop-filter) ------------ */
   --glass: rgba(13, 16, 22, 0.92);     /* floating control / overlay panel */
@@ -178,6 +180,18 @@
   --on-accent-dim: rgba(255, 255, 255, 0.35);
   --sheen: rgba(255, 255, 255, 0.15);
 
+  /* --- The export stage -----------------------------------------------------
+     The stage behind the picture stays BLACK in both themes on purpose: a
+     surround that matched the page would hide where the frame ends. That makes
+     everything sitting on it theme-independent too — a themed --text-muted on
+     this ground is 2.6:1 in light, which is exactly how the caption went
+     unreadable. These five are the only ink allowed on the stage. */
+  --stage-bg: #05070b;
+  --on-stage: #c9cfdb;                 /* 12.6:1 on --stage-bg, both themes */
+  --stage-alert-bg: rgba(12, 8, 10, 0.9);
+  --stage-alert-ink: #f19aa1;          /* 8.9:1 on --stage-alert-bg over the stage */
+  --stage-alert-line: rgba(236, 125, 134, 0.45);
+
   /* --- Primary button ----------------------------------------------------- */
   --button-primary-bg: linear-gradient(180deg, #5279f4, #3159d4);
   --button-primary-border: #5578ed;
@@ -197,6 +211,7 @@
 
   --warning: #e3a862;
   --warning-line: rgba(227, 168, 98, 0.32);
+  --warning-soft: rgba(227, 168, 98, 0.1);
 
   --danger: #ec7d86;
   --danger-line: rgba(236, 125, 134, 0.3);
@@ -204,6 +219,29 @@
   --danger-soft: #26171b;              /* opaque: destructive button, error toast */
   --danger-soft-strong: #2e1b20;
   --danger-text-soft: #c0a4ab;         /* body copy inside a danger surface */
+
+  /* --- Audio ---------------------------------------------------------------
+     The second hue in the app. Audio is teal everywhere it appears: the track
+     badge, the clip, the waveform. */
+  --audio: #7cc3bc;
+  --audio-soft: rgba(124, 195, 188, 0.16);
+
+  /* --- Timeline clips -------------------------------------------------------
+     --clip-color comes from the MEDIA, not the palette, so a clip stays a
+     saturated block in both themes. What is mixed INTO it must still flip:
+     dark shades a clip down, light shades it up, or every clip on a white
+     timeline reads as a hole punched through the lane. */
+  --clip-video-default: #516fba;
+  --clip-audio-default: #3d817c;
+  --clip-shade-top: #27303f;
+  --clip-shade-bottom: #11151d;
+  --clip-audio-shade-top: #1d3032;
+  --clip-audio-shade-bottom: #10191b;
+  --clip-edge: #ffffff;                /* mixed into --clip-color for the border */
+  --clip-selected-edge: #bdcaff;
+  --clip-sheen: rgba(255, 255, 255, 0.08);
+  --clip-sheen-strong: rgba(255, 255, 255, 0.17);
+  --clip-stripe: rgba(255, 255, 255, 0.04);
 
   /* --- Composer / dock surfaces ------------------------------------------- */
   --composer-bg: linear-gradient(
@@ -260,6 +298,8 @@
     --wash-3: rgba(15, 23, 42, 0.075);
     --hairline-hi: rgba(255, 255, 255, 0.9);
     --hatch: rgba(15, 23, 42, 0.045);
+    --hatch-strong: rgba(15, 23, 42, 0.1);
+    --grid-line: rgba(15, 23, 42, 0.16);
 
     --glass: rgba(255, 255, 255, 0.92);
     --glass-hover: rgba(245, 248, 255, 0.97);
@@ -295,6 +335,7 @@
 
     --warning: #8a5a09;                /* 5.9:1 */
     --warning-line: rgba(138, 90, 9, 0.35);
+    --warning-soft: rgba(138, 90, 9, 0.08);
 
     --danger: #c02c3a;                 /* 5.7:1 */
     --danger-line: rgba(192, 44, 58, 0.3);
@@ -302,6 +343,21 @@
     --danger-soft: #fdf1f2;
     --danger-soft-strong: #fbe4e6;
     --danger-text-soft: #7a4a52;       /* 6.3:1 on --danger-soft */
+
+    --audio: #10706a;                  /* 5.3:1 on --panel */
+    --audio-soft: rgba(16, 112, 106, 0.14);
+
+    --clip-video-default: #516fba;     /* the media's own hue: unchanged */
+    --clip-audio-default: #3d817c;
+    --clip-shade-top: #ffffff;
+    --clip-shade-bottom: #d7deea;
+    --clip-audio-shade-top: #ffffff;
+    --clip-audio-shade-bottom: #d2e2df;
+    --clip-edge: #0f172a;
+    --clip-selected-edge: #16307d;
+    --clip-sheen: rgba(255, 255, 255, 0.55);
+    --clip-sheen-strong: rgba(255, 255, 255, 0.85);
+    --clip-stripe: rgba(15, 23, 42, 0.05);
 
     --composer-bg: linear-gradient(
       135deg,
@@ -341,6 +397,8 @@
   --wash-3: rgba(15, 23, 42, 0.075);
   --hairline-hi: rgba(255, 255, 255, 0.9);
   --hatch: rgba(15, 23, 42, 0.045);
+  --hatch-strong: rgba(15, 23, 42, 0.1);
+  --grid-line: rgba(15, 23, 42, 0.16);
 
   --glass: rgba(255, 255, 255, 0.92);
   --glass-hover: rgba(245, 248, 255, 0.97);
@@ -376,6 +434,7 @@
 
   --warning: #8a5a09;
   --warning-line: rgba(138, 90, 9, 0.35);
+  --warning-soft: rgba(138, 90, 9, 0.08);
 
   --danger: #c02c3a;
   --danger-line: rgba(192, 44, 58, 0.3);
@@ -383,6 +442,21 @@
   --danger-soft: #fdf1f2;
   --danger-soft-strong: #fbe4e6;
   --danger-text-soft: #7a4a52;
+
+  --audio: #10706a;                  /* 5.3:1 on --panel */
+  --audio-soft: rgba(16, 112, 106, 0.14);
+
+  --clip-video-default: #516fba;     /* the media's own hue: unchanged */
+  --clip-audio-default: #3d817c;
+  --clip-shade-top: #ffffff;
+  --clip-shade-bottom: #d7deea;
+  --clip-audio-shade-top: #ffffff;
+  --clip-audio-shade-bottom: #d2e2df;
+  --clip-edge: #0f172a;
+  --clip-selected-edge: #16307d;
+  --clip-sheen: rgba(255, 255, 255, 0.55);
+  --clip-sheen-strong: rgba(255, 255, 255, 0.85);
+  --clip-stripe: rgba(15, 23, 42, 0.05);
 
   --composer-bg: linear-gradient(
     135deg,
