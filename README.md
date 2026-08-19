@@ -29,13 +29,13 @@ Each project is a normal folder owned by the user:
 
 ```text
 My project/
-├── pols.json
+├── polstudio.json
 ├── assets/
 ├── generated/
 ├── exports/
 └── cache/
 ```
 
-`pols.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback.
+`polstudio.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback.
 
 The web fallback seeds three deterministic showcase projects on first launch. Remove the `polstudio.web-projects.v1` local-storage entry to restore that initial demo library.
