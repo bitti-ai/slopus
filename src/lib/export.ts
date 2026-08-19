@@ -181,7 +181,7 @@ export const AUDIO_CHANNELS = 2;
  *  The mix is one Float32 per channel per sample and it is built BEFORE the
  *  muxer opens — an .mp4's track list is fixed the moment the file is created,
  *  so whether there is sound has to be settled first — and then held until the
- *  last video frame has been encoded. That is 11.5 MB a minute, so a five
+ *  last video frame has been encoded. That is 23 MB a minute, so a five
  *  minute cut holds 115 MB across the whole render and an hour holds 1.4 GB,
  *  roughly three times that at the peak of mixing while the decoded sources are
  *  still alive. Nobody should meet that number by running out of memory. */
