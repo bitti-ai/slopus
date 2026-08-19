@@ -1,11 +1,14 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, Search, Settings } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brand } from "./components/Brand";
+import { ExitGuardDialog, type OngoingGeneration } from "./components/ExitGuardDialog";
 import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
-import { chooseAndOpenProject, createProject, listRecentProjects, saveProject } from "./lib/persistence";
+import { chooseAndOpenProject, createProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
 import { getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
@@ -42,6 +45,43 @@ function App() {
      Null means the probe has not landed yet — never "nothing is installed". */
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+
+  /* ── Exit guard: the window's close button ───────────────────────────────
+     The video engine runs inside this process, so closing the window ends a
+     generation outright, and nothing partial is written on the way. The open
+     project reports what it has running; Rust holds the close request back
+     only while that list is non-empty, and this is where the question is put
+     and answered. See the fenced block in src-tauri/src/lib.rs. */
+  const [ongoingGenerations, setOngoingGenerations] = useState<OngoingGeneration[]>([]);
+  const [closeRequested, setCloseRequested] = useState(false);
+
+  const answerClose = useCallback((confirmed: boolean) => {
+    setCloseRequested(false);
+    if (isTauri()) void invoke("answer_app_close", { confirmed }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_generation_active", { active: ongoingGenerations.length > 0 }).catch(() => undefined);
+  }, [ongoingGenerations.length]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    const subscription = listen("app-close-requested", () => { if (!disposed) setCloseRequested(true); });
+    return () => { disposed = true; void subscription.then((stop) => stop()).catch(() => undefined); };
+  }, []);
+
+  /* The last shot can finish between the click on the close button and this
+     question reaching the screen. There is then nothing to warn about, and a
+     dialog listing no shots would be the app refusing to close for no reason. */
+  useEffect(() => {
+    if (closeRequested && ongoingGenerations.length === 0) answerClose(true);
+  }, [closeRequested, ongoingGenerations.length, answerClose]);
+
+  const exitGuard = closeRequested && ongoingGenerations.length > 0
+    ? <ExitGuardDialog jobs={ongoingGenerations} destination="quit" onConfirm={() => answerClose(true)} onCancel={() => answerClose(false)} />
+    : null;
 
   useEffect(() => {
     void listRecentProjects()
@@ -133,13 +173,14 @@ function App() {
 
   if (activeProject) {
     return <>
-      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onBack={() => setActiveProject(null)} onSave={async (project) => {
+      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
         const saved = await saveProject(project);
         setActiveProject(saved);
         setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
       }} />
       {settingsLauncher}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {exitGuard}
     </>;
   }
 
@@ -190,6 +231,7 @@ function App() {
       </main>
       {settingsLauncher}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {exitGuard}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
   );
