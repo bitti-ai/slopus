@@ -9,6 +9,7 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
 mod agent;
+mod export;
 mod vidfab;
 
 const PROJECT_FILE_NAME: &str = "polstudio.json";
@@ -1714,7 +1715,9 @@ pub fn run() {
             cancel_agent_turn,
             resolve_vidfab_plan,
             enqueue_vidfab_generation,
-            cancel_vidfab_generation
+            cancel_vidfab_generation,
+            export::choose_export_destination,
+            export::write_export_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running PolStudio");
