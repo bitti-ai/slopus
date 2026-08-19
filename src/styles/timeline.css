@@ -465,11 +465,11 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  /* Two rows, not three: the "Program monitor" header is gone (its heading
-     survives for screen readers as .sr-only, which takes no space), and the
-     transport under the video is 44px rather than 64. Every pixel freed here
-     goes to the picture. */
-  grid-template-rows: minmax(0, 1fr) 44px;
+  /* One row now: the "Program monitor" header is gone (its heading survives for
+     screen readers as .sr-only, which takes no space) and the transport moved
+     down to the timeline toolbar, where the playhead it moves actually is.
+     Every pixel freed here goes to the picture. */
+  grid-template-rows: minmax(0, 1fr);
   background: var(--bg);
 }
 
@@ -528,79 +528,6 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
-}
-
-/* --- Monitor transport ----------------------------------------------------- */
-
-.monitor-transport {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.monitor-transport strong {
-  color: var(--text-primary);
-  font: var(--weight-medium) var(--text-sm) / 1 var(--font-mono);
-}
-
-.monitor-transport > div {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.monitor-transport button {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  background: none;
-}
-
-.monitor-transport button:hover {
-  background: var(--panel-3);
-  color: var(--text-primary);
-}
-
-.monitor-transport .play-button {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  color: #fff;
-  background: var(--accent);
-}
-
-.monitor-transport .play-button:hover:not(:disabled) {
-  background: var(--accent-bright);
-}
-
-/* An empty timeline has nothing to play. A full-brightness Play button would
-   invite a click that does nothing, so the transport reads as disabled. */
-.monitor-transport button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.monitor-transport button:disabled:hover {
-  color: var(--text-secondary);
-  background: none;
-}
-
-.monitor-transport .play-button:disabled:hover {
-  background: var(--accent);
-}
-
-.monitor-transport > span {
-  justify-self: end;
-  color: var(--text-muted);
-  font: var(--weight-medium) var(--text-xs) / 1 var(--font-mono);
 }
 
 /* --- Clip inspector -------------------------------------------------------- */
@@ -819,23 +746,88 @@
   border-bottom: 1px solid var(--line);
 }
 
-.timeline-toolbar > div:first-child {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
-}
-
 .timeline-toolbar h2 {
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
 }
 
-.timeline-toolbar span {
+/* --- Transport -------------------------------------------------------------
+   Moved here from under the program monitor. It drives the playhead, and the
+   playhead is drawn immediately below this row; keeping it two panels away
+   also meant printing the same timecode in two places. */
+
+.timeline-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 36px is the floor for a hit target and these are round, so the width is the
+   height. Play is a --control-md, the size of a default control. */
+.timeline-transport button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   color: var(--text-secondary);
+  background: none;
+}
+
+.timeline-transport button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--panel-3);
+}
+
+.timeline-transport .play-button {
+  width: var(--control-md);
+  height: var(--control-md);
+  color: #fff;
+  background: var(--accent);
+}
+
+.timeline-transport .play-button:hover:not(:disabled) {
+  background: var(--accent-bright);
+}
+
+/* An empty timeline has nothing to play. A full-brightness Play button would
+   invite a click that does nothing, so the transport reads as disabled — and
+   every one of these carries a title saying why. */
+.timeline-transport button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.timeline-transport .play-button:disabled {
+  background: var(--accent);
+}
+
+/* The only timecode on the screen. Tabular figures so the row does not twitch
+   as the digits change under playback. */
+.transport-time {
+  margin-left: var(--space-2);
+  color: var(--text-primary);
+  font: var(--weight-medium) var(--text-sm) / 1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.transport-format {
+  margin-left: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line);
+  color: var(--text-muted);
   font: var(--weight-medium) var(--text-xs) / 1 var(--font-mono);
+  white-space: nowrap;
 }
 
 .timeline-tools {
@@ -1186,17 +1178,7 @@
     --track-column: 184px;
   }
 
-  .monitor-transport {
-    gap: var(--space-2);
-    padding: 0 var(--space-3);
-  }
 
-  .monitor-transport > span {
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
 }
 
 @media (max-width: 840px) {

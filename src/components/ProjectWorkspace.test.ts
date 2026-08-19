@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, type ProjectConfig } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -165,16 +165,16 @@ describe("project workspace timecode", () => {
     expect(deleteButton.title).toBe("This clip’s track is locked");
   });
 
-  it("inserts only a completed job with a real output into Story", () => {
+  it("inserts only a completed job with a real output into the first video track", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "completed", stage: "completed", progress: 1, outputRelativePath: "media/generated/first-scene.mp4" }] });
     const onChange = vi.fn();
     const onOpenTimeline = vi.fn();
     render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline, selectedJobId: config.generationJobs[0].id }));
-    fireEvent.click(screen.getByRole("button", { name: "Insert into Story" }));
+    fireEvent.click(screen.getByRole("button", { name: "Insert into Track 1, Video" }));
     const next = onChange.mock.calls[0][0];
     expect(next.assets[0].relativePath).toBe("media/generated/first-scene.mp4");
-    expect(next.timeline.tracks.find((track: { name: string }) => track.name === "Story").clips).toHaveLength(1);
+    expect(next.timeline.tracks.find((track: { id: string }) => track.id === STORY_TRACK_ID).clips).toHaveLength(1);
     expect(onOpenTimeline).toHaveBeenCalledOnce();
   });
 
