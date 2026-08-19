@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
@@ -72,6 +72,73 @@ async function withFakeDecoder(file: { seconds: number; width: number; height: n
   });
   try {
     await body();
+  } finally {
+    spy.mockRestore();
+    HTMLMediaElement.prototype.load = media;
+    HTMLCanvasElement.prototype.getContext = canvas;
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.mocked(invoke).mockReset();
+  }
+}
+
+/** The same fake media stack as above, except that NOTHING settles on its own:
+ *  each <video>/<audio> the panel opens waits here until the test lands it.
+ *  That is what makes a staggered decode reproducible — two files finishing at
+ *  their own speeds, with a render and a flush in between, which is the window
+ *  the measurement race lives in and the reason a queue alone never closed it. */
+async function withStagedDecoder(file: { seconds: number; width: number; height: number }, body: (stage: {
+  /** Resolves once the panel has opened at least this many media elements. */
+  opened: (count: number) => Promise<void>;
+  /** Land one decode: metadata arrives, the poster seek answers, effects run. */
+  settle: (index: number) => Promise<void>;
+}) => Promise<void>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(8));
+  URL.createObjectURL = () => "blob:polstudio-test";
+  URL.revokeObjectURL = () => undefined;
+  const media = HTMLMediaElement.prototype.load;
+  const canvas = HTMLCanvasElement.prototype.getContext;
+  HTMLMediaElement.prototype.load = () => undefined;
+  HTMLCanvasElement.prototype.getContext = () => null;
+  const create = document.createElement.bind(document);
+  const waiting: HTMLElement[] = [];
+  const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string, options?: ElementCreationOptions) => {
+    const element = create(tag, options);
+    if (tag === "video" || tag === "audio") {
+      for (const [name, value] of [["duration", file.seconds], ["videoWidth", file.width], ["videoHeight", file.height]] as const) {
+        Object.defineProperty(element, name, { value, configurable: true });
+      }
+      let currentTime = 0;
+      Object.defineProperty(element, "currentTime", {
+        configurable: true,
+        get: () => currentTime,
+        set: (value: number) => { currentTime = value; setTimeout(() => element.dispatchEvent(new Event("seeked")), 0); },
+      });
+      waiting.push(element);
+    }
+    return element;
+  });
+  // One macrotask turn, with React's queues drained around it.
+  const turn = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  try {
+    await body({
+      opened: async (count) => {
+        for (let attempt = 0; attempt < 50 && waiting.length < count; attempt += 1) await turn();
+        if (waiting.length < count) throw new Error(`Only ${waiting.length} of ${count} files were opened.`);
+      },
+      settle: async (index) => {
+        const element = waiting[index];
+        await act(async () => {
+          element.dispatchEvent(new Event("loadeddata"));
+          element.dispatchEvent(new Event("loadedmetadata"));
+        });
+        // The poster seek answers on a timer of its own, and the flush that
+        // follows it is the write under test.
+        await turn();
+        await turn();
+      },
+    });
   } finally {
     spy.mockRestore();
     HTMLMediaElement.prototype.load = media;
@@ -400,6 +467,39 @@ describe("project workspace timecode", () => {
     expect(seen.length).toBe(settled);
     // Longer than the wait above: a decode that never finishes has to fail this
     // test on its assertion, not by timing the test out before its cleanup runs.
+  }, 20_000);
+
+  it("keeps a measurement that lands before the one before it has come back down", async () => {
+    /* The race the queue never covered. Two files finish decoding one after the
+       other; each finish flushes. The flush used to rebuild the whole config
+       from the `config` prop of the render it ran in, so the second flush —
+       running before the first write had returned as a new prop — rebuilt from
+       the config that still knew nothing and dropped the first measurement.
+       Here the holder deliberately never feeds anything back, which is that
+       window at its widest, and both measurements still have to survive. */
+    const config = projectWithMedia();
+    const onChange = vi.fn();
+    await withStagedDecoder({ seconds: 40, width: 1920, height: 1080 }, async (stage) => {
+      render(createElement(TimelineView, { config, folderPath: "C:\\Staged Project", onChange, onOpenGenerator: () => undefined }));
+      fireEvent.click(screen.getByRole("button", { name: "Media" }));
+      await stage.opened(2);
+      await stage.settle(0);
+      await stage.settle(1);
+    });
+    // Two files, two separate writes: one write for both would mean the second
+    // decode never landed and the test is proving nothing.
+    expect(onChange.mock.calls.length).toBeGreaterThanOrEqual(2);
+    /* Fold every write onto the config the view was given, in the order it
+       asked for them — which is all a holder does with them. A write that
+       carries a whole config replaces what came before it; an updater is
+       applied to it. */
+    const folded = onChange.mock.calls.reduce(
+      (current: ProjectConfig, call) => typeof call[0] === "function" ? (call[0] as (value: ProjectConfig) => ProjectConfig)(current) : call[0] as ProjectConfig,
+      config,
+    );
+    expect(folded.assets.map((asset) => [asset.name, asset.durationMs])).toEqual([["Macro footage", 40_000], ["Room tone", 40_000]]);
+    expect(folded.assets.find((asset) => asset.kind === "video")!.width).toBe(1920);
+    expect(parseProjectConfig(folded)).toBeTruthy();
   }, 20_000);
 
   it("keeps the transport on the timeline, with one timecode and one reason", () => {
