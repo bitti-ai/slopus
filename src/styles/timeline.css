@@ -408,18 +408,6 @@
   padding-left: 0;
 }
 
-.media-grid--list .media-import {
-  min-height: var(--space-7);
-  flex-direction: row;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-}
-
-.media-grid--list .media-import b,
-.media-grid--list .media-import small {
-  width: auto;
-}
-
 .media-grid button[draggable="true"]:active {
   cursor: grabbing;
 }
@@ -455,6 +443,26 @@
 .media-import small {
   width: 100%;
   text-align: center;
+}
+
+/* In list mode the import control is one row like every other, not the tall
+   dashed plate the grid needs. These have the same specificity as the grid
+   rules above, so they MUST stay below them — moved up, the 120px plate won. */
+.media-grid--list .media-import {
+  min-height: var(--space-7);
+  flex-direction: row;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.media-grid--list .media-import b,
+.media-grid--list .media-import small {
+  width: auto;
+  text-align: left;
+}
+
+.media-grid--list .media-import small {
+  color: var(--text-muted);
 }
 
 /* --- Program monitor ------------------------------------------------------- */
