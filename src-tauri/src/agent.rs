@@ -1057,28 +1057,31 @@ mod tests {
     #[test]
     fn fake_provider_executable_streams_a_normalized_result() {
         let root = tempfile::tempdir().unwrap();
-        let script = root.path().join("fake-provider.ps1");
+        // A .bat run by cmd.exe rather than a PowerShell script. This test
+        // spawns a REAL child and reads its stdout; the interpreter is
+        // incidental to what it checks, but PowerShell's startup is not — on a
+        // loaded machine it has taken minutes here, and a 5-second budget then
+        // reports a defect in the pipe reader that does not exist. cmd starts
+        // in ~25ms. Keep the JSON clear of `& < > | ^ %`, which `echo` eats.
+        let script = root.path().join("fake-provider.bat");
         fs::write(
             &script,
-            "Write-Output '{\"kind\":\"answer\",\"content\":\"fixture provider\"}'",
+            "@echo {\"kind\":\"answer\",\"content\":\"fixture provider\"}\r\n",
         )
         .unwrap();
-        let executable = discover_executable("powershell", None).expect("PowerShell fixture host");
+        let executable = discover_executable("cmd", None).expect("cmd.exe fixture host");
         let spec = CommandSpec {
             executable,
-            args: vec![
-                "-NoProfile".into(),
-                "-NonInteractive".into(),
-                "-File".into(),
-                script.into_os_string(),
-            ],
+            args: vec!["/c".into(), script.into_os_string()],
             current_dir: root.path().into(),
         };
         let (_, output) = run_subprocess(
             spec,
             ProviderId::Codex,
             Arc::new(AtomicBool::new(false)),
-            Duration::from_secs(5),
+            // Generous because it is timing nothing: the child prints one line
+            // and exits.
+            Duration::from_secs(30),
         )
         .unwrap();
         assert!(matches!(
