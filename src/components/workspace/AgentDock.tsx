@@ -33,8 +33,13 @@ export function AgentDock({ context, record, providers, onRecord }: {
   // The dock is one line tall, so on a narrow window the placeholder gets an
   // ellipsis (see .agent-dock input in workspace.css). Keep the full sentence
   // reachable on hover so nothing that matters is lost to the truncation.
+  //
+  // It used to offer to "generate a shot", which the generator flatly denies a
+  // few inches above it: this bar changes a shot that already exists, it does
+  // not start one. New shots are made in the generator. Two panels cannot
+  // describe the same bar differently, so this one follows that rule.
   const placeholder = ready
-    ? `Ask Pol to refine ${context}, generate a shot, or make an edit…`
+    ? `Ask Pol to refine ${context}, change a shot you already have, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
 
   const send = async () => {
