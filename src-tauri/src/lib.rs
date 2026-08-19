@@ -174,6 +174,18 @@ struct GenerationJob {
     compiled_prompt: String,
     #[serde(default)]
     reference_ids: Vec<String>,
+    /// The H3 vocabulary tags this shot was built from: group id -> option ids.
+    /// zod spells it `.nullish()` (src/lib/project.ts `shotTagSelectionSchema`),
+    /// so `null` IS readable on the frontend — but the key is still skipped
+    /// when there is nothing to say, because every project written before shot
+    /// tags existed has no key here and must keep round-tripping unchanged.
+    ///
+    /// Only the SHAPE is checked, on both sides: the vocabulary itself lives in
+    /// src/lib/shot-tags.ts and nowhere else, so a term can be reworded without
+    /// this file knowing, and an id from a newer build is preserved rather than
+    /// dropped on the next save.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shot_tags: Option<BTreeMap<String, Vec<String>>>,
     // `clipId` is `.optional()` and NOT `.nullable()` on the frontend, and no
     // freshly created job ever has one, so emitting `"clipId": null` made every
     // create_project / open_project response fail zod. Keep the key absent.
@@ -433,6 +445,59 @@ fn check_iso_datetime(label: &str, value: &str) -> Result<(), String> {
             "{label} must be an ISO date-time like 2026-01-01T00:00:00.000Z, received '{value}'."
         ))
     }
+}
+
+/// The id shape both validators accept. This IS `SHOT_TAG_ID_PATTERN` from
+/// src/lib/shot-tags.ts — `^[a-z][a-zA-Z0-9-]*$` — written out because a regex
+/// crate would be a dependency for one pattern. Change one and change the other
+/// or the two layers disagree about what may be stored. (The group ids are
+/// camelCase, `cameraAmplitude` among them; the leading character is still
+/// lowercase so nothing here can be mistaken for a type name or a sentence.)
+fn is_shot_tag_id(value: &str) -> bool {
+    let mut characters = value.chars();
+    matches!(characters.next(), Some(first) if first.is_ascii_lowercase())
+        && characters.all(|character| character.is_ascii_alphanumeric() || character == '-')
+}
+
+/// Tidies a shot's tags for storage, in the same three steps and the same order
+/// as `normalizeShotTagSelection` in src/lib/shot-tags.ts: drop empty groups,
+/// drop repeats within a group, and collapse an empty result to `None` so the
+/// key is left out of the file entirely. `BTreeMap` also sorts the groups, which
+/// is what the frontend's `Object.keys().sort()` does — otherwise the same
+/// selection would serialise to different bytes depending on which layer wrote
+/// it last, and every save would show a spurious diff.
+///
+/// Unknown ids are KEPT: the vocabulary is the frontend's, and a build that has
+/// never heard of a tag must not silently delete the user's choice.
+fn normalize_shot_tags(
+    tags: Option<BTreeMap<String, Vec<String>>>,
+) -> Result<Option<BTreeMap<String, Vec<String>>>, String> {
+    let Some(tags) = tags else {
+        return Ok(None);
+    };
+    let mut normalized: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (group, options) in tags {
+        if !is_shot_tag_id(&group) {
+            return Err(format!("has an invalid shot tag group '{group}'."));
+        }
+        let mut kept: Vec<String> = Vec::new();
+        for option in options {
+            if !is_shot_tag_id(&option) {
+                return Err(format!("has an invalid shot tag '{option}'."));
+            }
+            if !kept.contains(&option) {
+                kept.push(option);
+            }
+        }
+        if !kept.is_empty() {
+            normalized.insert(group, kept);
+        }
+    }
+    Ok(if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    })
 }
 
 fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectConfig, String> {
@@ -704,6 +769,8 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             &format!("Generation job '{}' updatedAt", job.id),
             &job.updated_at,
         )?;
+        job.shot_tags = normalize_shot_tags(job.shot_tags.take())
+            .map_err(|reason| format!("Generation job '{}' {reason}", job.id))?;
         job.output_relative_path = job
             .output_relative_path
             .as_deref()
@@ -2731,6 +2798,83 @@ mod tests {
         rejects("empty generation job error", |config| {
             config.generation_jobs[0].error = Some(String::new());
         });
+        rejects("shot tag group id the frontend regex refuses", |config| {
+            config.generation_jobs[0].shot_tags =
+                Some(BTreeMap::from([("Camera Movement".into(), vec!["push-in".into()])]));
+        });
+        rejects("shot tag id the frontend regex refuses", |config| {
+            config.generation_jobs[0].shot_tags =
+                Some(BTreeMap::from([("cameraMovement".into(), vec!["Push In".into()])]));
+        });
+        rejects("empty shot tag id", |config| {
+            config.generation_jobs[0].shot_tags =
+                Some(BTreeMap::from([("cameraMovement".into(), vec![String::new()])]));
+        });
+    }
+
+    #[test]
+    fn shot_tags_normalize_the_same_way_the_frontend_does() {
+        // The three steps `normalizeShotTagSelection` performs in
+        // src/lib/shot-tags.ts, in the same order. If these drift the same
+        // selection serialises differently depending on which layer wrote it
+        // last, and every save shows a diff nobody made.
+        let mut config = fixture();
+        config.generation_jobs[0].shot_tags = Some(BTreeMap::from([
+            // A group emptied by unticking its last option: dropped, not stored.
+            ("mood".into(), Vec::new()),
+            // A repeat: kept once, in first-seen order.
+            (
+                "lighting".into(),
+                vec!["soft-light".into(), "soft-light".into(), "backlight".into()],
+            ),
+        ]));
+        let normalized = validate_and_normalize_config(config).unwrap();
+        let tags = normalized.generation_jobs[0].shot_tags.as_ref().unwrap();
+        assert!(!tags.contains_key("mood"), "an empty group must be dropped");
+        assert_eq!(
+            tags["lighting"],
+            vec!["soft-light".to_string(), "backlight".to_string()]
+        );
+
+        // Nothing left to say -> the key is absent, never `{}` and never null,
+        // so a shot built from prose alone writes the file it always wrote.
+        let mut emptied = fixture();
+        emptied.generation_jobs[0].shot_tags =
+            Some(BTreeMap::from([("mood".into(), Vec::new())]));
+        let emptied = validate_and_normalize_config(emptied).unwrap();
+        assert_eq!(emptied.generation_jobs[0].shot_tags, None);
+        let json = serde_json::to_string(&emptied).unwrap();
+        assert!(
+            !json.contains("shotTags"),
+            "an empty selection must not reach the file: {json}"
+        );
+
+        // A tag id this build has never heard of belongs to the user, not to
+        // this build: it survives a load and a save untouched.
+        let mut future = fixture();
+        future.generation_jobs[0].shot_tags = Some(BTreeMap::from([(
+            "weather".into(),
+            vec!["light-rain".into()],
+        )]));
+        let future = validate_and_normalize_config(future).unwrap();
+        assert_eq!(
+            future.generation_jobs[0].shot_tags.as_ref().unwrap()["weather"],
+            vec!["light-rain".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_project_written_before_shot_tags_existed_still_opens() {
+        // The created fixture is the byte-exact output of createProjectConfig
+        // before this field existed; `created_fixture()` still deserialises it
+        // because the field is `#[serde(default)]`.
+        let created = validate_and_normalize_config(created_fixture()).unwrap();
+        assert_eq!(created.generation_jobs[0].shot_tags, None);
+        let json = serde_json::to_string_pretty(&created).unwrap();
+        assert!(
+            !json.contains("shotTags"),
+            "a tagless job must not grow a shotTags key: {json}"
+        );
     }
 
     #[test]
