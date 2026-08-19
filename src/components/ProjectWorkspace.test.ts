@@ -8,6 +8,7 @@ import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
+import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
 
@@ -621,15 +622,15 @@ describe("project workspace timecode", () => {
     ];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    expect(screen.getByText("1 reference guides this shot")).not.toBeNull();
-    expect(screen.queryByText("3 references guide this shot")).toBeNull();
+    expect(screen.getByText("1 reference guides this scene")).not.toBeNull();
+    expect(screen.queryByText("3 references guide this scene")).toBeNull();
     // Skipped references stay visible, each with its reason.
     expect(screen.getByText("Lead character")).not.toBeNull();
-    expect(screen.getByText("Not described yet — not used by this shot")).not.toBeNull();
+    expect(screen.getByText("Not described yet — not used by this scene")).not.toBeNull();
     expect(screen.getByText(/sound note/)).not.toBeNull();
   });
 
-  it("renames a shot, and never saves it nameless", () => {
+  it("renames a scene, and never saves it nameless", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const onChange = vi.fn();
     render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
@@ -638,7 +639,7 @@ describe("project workspace timecode", () => {
     expect(onChange.mock.calls[0][0].generationJobs[0].title).toBe("Clay on the wheel");
     // The schema has no room for an empty title, so an emptied field falls back.
     fireEvent.change(field, { target: { value: "" } });
-    expect(onChange.mock.calls[1][0].generationJobs[0].title).toBe("Untitled shot");
+    expect(onChange.mock.calls[1][0].generationJobs[0].title).toBe("Untitled scene");
     expect(parseProjectConfig(onChange.mock.calls[1][0])).toBeTruthy();
   });
 
@@ -679,12 +680,12 @@ describe("project workspace timecode", () => {
     const references = [{ id: "ref-blank", kind: "text", name: "Lead character", description: "", content: null, intendedUse: ["character"], createdAt: fresh.createdAt }];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-blank"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    expect(screen.queryByText("1 reference guides this shot")).toBeNull();
-    expect(screen.getByText("No references used by this shot")).not.toBeNull();
+    expect(screen.queryByText("1 reference guides this scene")).toBeNull();
+    expect(screen.getByText("No references used by this scene")).not.toBeNull();
     expect(screen.getByText("The video engine only follows the words above.")).not.toBeNull();
     // The claim that a text definition is written into the prompt must not
     // appear when nothing is written into it.
-    expect(screen.queryByText(/text definitions are written into this shot/)).toBeNull();
+    expect(screen.queryByText(/text definitions are written into this scene/)).toBeNull();
   });
 
   it("disables Split while the playhead sits outside the selected clip", () => {
@@ -740,7 +741,7 @@ describe("project workspace timecode", () => {
       generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-text"] }],
     });
     const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
-    expect(document.querySelector(".job-refs")!.textContent).toContain("The text definition is written into this shot’s prompt.");
+    expect(document.querySelector(".job-refs")!.textContent).toContain("The text definition is written into this scene’s prompt.");
     // The composer hint says the same thing about the same references. Scoping
     // this to .job-refs hid a second copy of the claim that was still wrong.
     expect(container.querySelector(".generation-composer__hint")!.textContent).toContain("The text definition is written into the prompt.");
@@ -806,94 +807,220 @@ describe("project workspace timecode", () => {
     expect(screenText).toContain("Not described yet — the picture is sent, but nothing tells the engine what to keep.");
   });
 
-  /** Opens one tag group inside ONE picker and ticks one of its options. The
-   *  generator shows two pickers at once — the shot being written and the shot
-   *  selected — so every query here has to say which. */
-  function pickTag(scope: HTMLElement, group: string, option: string) {
-    fireEvent.click(within(scope).getByRole("button", { name: new RegExp(`^${group}`) }));
-    fireEvent.click(within(scope).getByRole("button", { name: option, pressed: false }));
+  /** Adds one setting to one shot: choose the setting, then choose its value.
+   *  Settings are added one at a time now, rather than laid out as a wall of
+   *  every term the vocabulary holds. */
+  function addSetting(shotNumber: number, group: string, value: string) {
+    fireEvent.change(screen.getByRole("combobox", { name: `Add a setting to shot ${shotNumber}` }), { target: { value: group } });
+    fireEvent.change(screen.getByRole("combobox", { name: new RegExp(`^Value for .* on shot ${shotNumber}$`) }), { target: { value } });
   }
 
-  it("calls the authoring section “Describe the shot”, on a new shot and an old one", () => {
-    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    // With a shot selected this heading used to rename itself to "Write another
-    // shot", which read as a footnote to the shot above rather than as the
-    // place shots are made.
+  const lampProject = () => createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+
+  it("calls the rail Scenes, drops the eyebrow, and offers no way back to the timeline from the header", () => {
+    const fresh = lampProject();
     for (const config of [parseProjectConfig({ ...fresh, generationJobs: [] }), fresh]) {
-      const { unmount } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
-      expect(screen.getByRole("heading", { name: "Describe the shot" })).not.toBeNull();
-      expect(screen.queryByText("Write another shot")).toBeNull();
-      // And it says which surface authors a shot and which one edits one, so
-      // the dock at the bottom of the window is not mistaken for this.
-      expect(document.querySelector(".generation-composer__lede")!.textContent).toContain("changing a shot that already exists");
+      const { container, unmount } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
+      expect(screen.getByRole("complementary", { name: "Scenes" })).not.toBeNull();
+      expect(container.querySelector(".generator-heading .eyebrow")).toBeNull();
+      expect(screen.queryByRole("button", { name: "View timeline" })).toBeNull();
+      // A new scene is still started from this page, and it says so.
+      expect(screen.getByRole("heading", { name: "Start another scene" })).not.toBeNull();
+      expect(document.querySelector(".generation-composer__lede")!.textContent).toContain("changing a scene that already exists");
       unmount();
     }
   });
 
-  it("builds a new shot from tags as well as prose, and shows the prompt first", () => {
-    localStorage.clear();
-    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+  it("splits a scene into three shots on the bar, each with its own line and cut", () => {
+    const config = lampProject();
     const onChange = vi.fn();
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
-    fireEvent.change(container.querySelector(".generation-composer textarea")!, { target: { value: "hands shaping wet clay on a spinning wheel" } });
+    const { rerender } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
 
-    const composer = container.querySelector(".generation-composer") as HTMLElement;
-    pickTag(composer, "Camera movement", "Push in");
-    // Speed and amplitude only mean something once a movement exists, so they
-    // are offered only after one is chosen — the compiler drops them otherwise.
-    pickTag(composer, "Movement speed", "Slow");
+    // Two more shots, and the scene stretched to hold them.
+    fireEvent.click(screen.getByRole("button", { name: "Add a shot" }));
+    let next = onChange.mock.calls.at(-1)![0];
+    expect(next.generationJobs[0].shots).toHaveLength(2);
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a shot" }));
+    next = onChange.mock.calls.at(-1)![0];
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
 
-    // The compiled prompt is on screen BEFORE anything is committed, and the
-    // words the user typed are still marked as theirs.
-    expect(composer.querySelector(".compiled-prompt__text")!.textContent).toContain("Camera movement: push in, slow speed.");
-    expect(composer.querySelector(".prompt-part--brief")!.textContent).toBe("hands shaping wet clay on a spinning wheel");
-    expect([...composer.querySelectorAll(".prompt-part--tag")].map((part) => part.textContent)).toContain("push in, slow speed");
-    // The tag terms are NOT dressed up as the user's own writing.
-    expect(composer.querySelector(".prompt-part--brief")!.textContent).not.toContain("push in");
+    fireEvent.change(screen.getByRole("slider", { name: "Scene length in seconds" }), { target: { value: "9" } });
+    next = onChange.mock.calls.at(-1)![0];
+    expect(next.generationJobs[0].durationSeconds).toBe(9);
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
 
-    fireEvent.click(screen.getByRole("button", { name: /Save as a draft|Generate/ }));
-    const created = onChange.mock.calls[0][0].generationJobs[0];
-    expect(created.shotTags).toEqual({ cameraMovement: ["push-in"], cameraSpeed: ["slow"] });
-    expect(created.compiledPrompt).toContain("Camera movement: push in, slow speed.");
-    // The whole config still validates, so this is a shot that can be saved.
-    expect(parseProjectConfig(onChange.mock.calls[0][0])).toBeTruthy();
+    // Each cut is set on the bar, and the second and third lines are written.
+    for (const [shotNumber, startSeconds, line] of [[2, 3, "she stops at the doorway"], [3, 6.5, "the door opens"]] as const) {
+      fireEvent.change(screen.getByRole("spinbutton", { name: `Shot ${shotNumber} starts at, in seconds` }), { target: { value: String(startSeconds) } });
+      next = onChange.mock.calls.at(-1)![0];
+      rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+      fireEvent.change(screen.getByRole("textbox", { name: `What happens in shot ${shotNumber}` }), { target: { value: line } });
+      next = onChange.mock.calls.at(-1)![0];
+      rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    }
+
+    const compiled = document.querySelector(".compiled-prompt__text")!.textContent!;
+    expect(compiled).toContain("[Shot 1] Live-action, cinematic, A quiet product film.");
+    expect(compiled).toContain("[Shot 2] (cut at 3s) she stops at the doorway.");
+    expect(compiled).toContain("[Shot 3] (cut at 6.5s) the door opens");
+    expect(compiled.indexOf("[Shot 2]")).toBeLessThan(compiled.indexOf("[Shot 3]"));
+    // And the whole thing is still a project that can be saved.
+    expect(parseProjectConfig(next)).toBeTruthy();
+  });
+
+  it("keeps the scene inside nought to fifteen seconds", () => {
+    const config = lampProject();
+    const onChange = vi.fn();
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const length = screen.getByRole("slider", { name: "Scene length in seconds" }) as HTMLInputElement;
+    expect(length.min).toBe("0");
+    expect(length.max).toBe("15");
+    // The bound is enforced, not merely advertised: a hand-set value past the
+    // end is clamped rather than persisted as a scene the schema refuses.
+    fireEvent.change(length, { target: { value: "40" } });
+    expect(onChange.mock.calls.at(-1)![0].generationJobs[0].durationSeconds).toBe(15);
+    fireEvent.change(length, { target: { value: "-3" } });
+    const emptied = onChange.mock.calls.at(-1)![0];
+    expect(emptied.generationJobs[0].durationSeconds).toBe(0);
+    expect(parseProjectConfig(emptied)).toBeTruthy();
+    // A scene of no length has no frames to render, and the screen says so
+    // rather than leaving a grey button.
+    expect(screen.queryByText(/no frames to render/)).toBeNull();
+  });
+
+  it("adds a setting to one shot and takes it off again, without touching the other shot", () => {
+    const config = lampProject();
+    const onChange = vi.fn();
+    const { rerender } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    addSetting(1, "cameraMovement", "push-in");
+    let next = onChange.mock.calls.at(-1)![0];
+    expect(next.generationJobs[0].shots[0].settings).toEqual({ cameraMovement: ["push-in"] });
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+
+    // Speed only means something once a movement exists, so it is refused until
+    // then and offered afterwards — the compiler drops it otherwise.
+    addSetting(1, "cameraSpeed", "slow");
+    next = onChange.mock.calls.at(-1)![0];
+    expect(next.generationJobs[0].shots[0].settings).toEqual({ cameraMovement: ["push-in"], cameraSpeed: ["slow"] });
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+
+    // The compiled prompt shows it immediately, with the term marked as the
+    // user's choice rather than as their own prose.
+    const prompt = document.querySelector(".compiled-prompt__text")!;
+    expect(prompt.textContent).toContain("Camera movement: push in, slow speed.");
+    expect([...document.querySelectorAll(".prompt-part--tag")].map((part) => part.textContent)).toContain("push in, slow speed");
+    expect(document.querySelector(".prompt-part--brief")!.textContent).not.toContain("push in");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Camera movement: Push in from shot 1" }));
+    expect(onChange.mock.calls.at(-1)![0].generationJobs[0].shots[0].settings).toEqual({ cameraSpeed: ["slow"] });
   });
 
   it("refuses movement speed until there is a movement for it to qualify", () => {
-    localStorage.clear();
-    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
+    const config = lampProject();
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     // Not merely disabled — it says why, the way every other blocked control on
     // this screen does.
-    const composer = container.querySelector(".generation-composer") as HTMLElement;
-    const speed = within(composer).getByRole("button", { name: /^Movement speed/ }) as HTMLButtonElement;
+    const menu = screen.getByRole("combobox", { name: "Add a setting to shot 1" });
+    const speed = within(menu).getByRole("option", { name: /^Movement speed/ }) as HTMLOptionElement;
     expect(speed.disabled).toBe(true);
-    expect(speed.textContent).toContain("Needs a camera movement first");
+    expect(speed.textContent).toContain("needs a camera movement first");
+    // The look belongs to the whole scene, so it is not offered per shot.
+    expect(within(menu).queryByRole("option", { name: "Look" })).toBeNull();
+    expect(screen.getByRole("combobox", { name: "The look of this scene" })).not.toBeNull();
   });
 
-  it("reopens an existing shot's tags so they can be adjusted", () => {
-    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], shotTags: { lens: ["macro-lens"] } }] });
+  it("reopens a scene written before scenes existed, with its tags on its one shot", () => {
+    const fresh = lampProject();
+    // The legacy shape: no shots, no length, tags on the job itself.
+    const legacy = { ...fresh.generationJobs[0], shots: null, durationSeconds: null, shotTags: { lens: ["macro-lens"] } };
+    const config = parseProjectConfig({ ...fresh, generationJobs: [legacy] });
     const onChange = vi.fn();
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    // The saved tag is reported in the terms it puts in the prompt, not a
-    // paraphrase of them.
-    const shotTags = container.querySelector(".job-tags") as HTMLElement;
-    expect(screen.getByText("1 tag shapes this shot")).not.toBeNull();
-    expect(within(shotTags).getByRole("button", { name: /^Lens/ }).textContent).toContain("macro lens");
-    expect(container.querySelector(".compiled-prompt__text")!.textContent).toContain("macro lens, A quiet product film");
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
 
-    pickTag(shotTags, "Lens", "Telephoto");
-    expect(onChange.mock.calls[0][0].generationJobs[0].shotTags).toEqual({ lens: ["telephoto-lens"] });
+    // One shot, holding the words and the tags the file already had.
+    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value).toBe("A quiet product film");
+    expect(screen.getByText("macro lens")).not.toBeNull();
+    expect(screen.queryByRole("textbox", { name: "What happens in shot 2" })).toBeNull();
+    expect(document.querySelector(".compiled-prompt__text")!.textContent).toContain("macro lens, A quiet product film");
+    // Its length is the one it was always generated at, said out loud.
+    expect(screen.getByText("6.0 seconds, one shot")).not.toBeNull();
+
+    // The first edit moves the tags onto the shot, and clears the legacy copy
+    // so the two can never disagree.
+    addSetting(1, "lighting", "soft-light");
+    const next = onChange.mock.calls.at(-1)![0].generationJobs[0];
+    expect(next.shots[0].settings).toEqual({ lens: ["macro-lens"], lighting: ["soft-light"] });
+    expect(next.shotTags).toBeNull();
+    expect(parseProjectConfig(onChange.mock.calls.at(-1)![0])).toBeTruthy();
   });
 
-  it("locks a running shot's tags, because the engine already has the prompt", () => {
-    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4, shotTags: { lens: ["macro-lens"] } }] });
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    const shotTags = container.querySelector(".job-tags") as HTMLElement;
-    expect((within(shotTags).getByRole("button", { name: /^Lens/ }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/Its tags can be changed once it finishes/)).not.toBeNull();
+  it("locks a running scene, because the engine already has the prompt", () => {
+    const fresh = lampProject();
+    const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4 }] });
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "Add a setting to shot 1" }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: "Scene length in seconds" }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText(/It can be changed once it finishes/)).not.toBeNull();
+  });
+
+  it("drops a reference into a line, cites it as a subject, and swaps it for another", () => {
+    const fresh = lampProject();
+    const createdAt = fresh.createdAt;
+    const references = [
+      { id: "ref-woman", kind: "text", name: "Red-haired woman", description: "Dark red hair, green canvas jacket.", content: "Dark red hair, green canvas jacket.", intendedUse: ["character"], createdAt },
+      { id: "ref-street", kind: "text", name: "City street", description: "Brick warehouses, wet cobbles.", content: "Brick warehouses, wet cobbles.", intendedUse: ["location"], createdAt },
+    ];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], shots: [{ id: "shot-a", startSeconds: 0, action: "" }], referenceIds: [] }] });
+    const onChange = vi.fn();
+    const render1 = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const show = (next: ProjectConfig) => render1.rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+
+    // Dragged out of the palette and dropped onto the line.
+    const drop = (referenceId: string) => {
+      const field = screen.getByRole("textbox", { name: "What happens in shot 1" });
+      const event = createEvent.drop(field);
+      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
+      fireEvent(field, event);
+    };
+    drop("ref-woman");
+    let next = onChange.mock.calls.at(-1)![0];
+    // Writing it into the line is what binds it to the scene, which is what
+    // gives it a subject number and a place in reference_paths.
+    expect(next.generationJobs[0].referenceIds).toEqual(["ref-woman"]);
+    show(next);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "What happens in shot 1" }), { target: { value: "[Reference 1] walks towards the camera on " } });
+    next = onChange.mock.calls.at(-1)![0];
+    show(next);
+    drop("ref-street");
+    next = onChange.mock.calls.at(-1)![0];
+    expect(next.generationJobs[0].referenceIds).toEqual(["ref-woman", "ref-street"]);
+    show(next);
+
+    // What the user reads in the field is "Reference N"; what is stored is the
+    // reference's id, so a rename or a reorder cannot re-point the sentence.
+    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value)
+      .toBe("[Reference 1] walks towards the camera on [Reference 2]");
+    expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
+    const compiled = () => document.querySelector(".compiled-prompt__text")!.textContent!;
+    expect(compiled()).toContain("<Subject 1> walks towards the camera on <Subject 2>");
+    expect(compiled()).not.toContain("@[ref:");
+    // The citation is PolStudio's format, not something the user typed.
+    expect([...document.querySelectorAll(".prompt-part--frame")].map((part) => part.textContent)).toContain("<Subject 1>");
+    expect(document.querySelector(".prompt-part--brief")!.textContent).not.toContain("<Subject");
+
+    // Clicking the first reference in the line offers every other one.
+    const token = screen.getByRole("combobox", { name: "Reference 1 · Red-haired woman — choose another reference" });
+    expect([...token.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+      "Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line",
+    ]);
+    fireEvent.change(token, { target: { value: "ref-street" } });
+    next = onChange.mock.calls.at(-1)![0];
+    show(next);
+    expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-street] walks towards the camera on @[ref:ref-street]");
+    expect(compiled()).toContain("<Subject 2> walks towards the camera on <Subject 2>");
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {
