@@ -301,19 +301,17 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
         <main className="program-panel">
           <h2 className="sr-only">Program monitor</h2>
           <div className="program-canvas">
-            {hasVisualOutput ? (
+            {/* An empty monitor is an empty monitor. The panel that used to sit
+                here restated the project's name and prompt — both already in the
+                topbar — to say nothing was playing, which the black picture says
+                by itself. Footage that exists but cannot be played back yet still
+                gets a panel, because THAT is not obvious. */}
+            {hasVisualOutput && (
               <div className="program-empty program-empty--footage">
                 <Film size={30} />
                 <strong>{config.name}</strong>
                 <span>{config.brief.prompt}</span>
                 <small>PolStudio can’t play this footage back yet. {clipCount === 1 ? "1 clip is" : `${clipCount} clips are`} arranged on the timeline below and nothing has been lost.</small>
-              </div>
-            ) : (
-              <div className="program-empty" data-testid="project-empty-monitor">
-                <Film size={30} />
-                <strong>{config.name}</strong>
-                <span>{config.brief.prompt}</span>
-                <small>Nothing to play yet. Add or generate a scene and it will land on the timeline below.</small>
               </div>
             )}
           </div>

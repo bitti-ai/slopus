@@ -69,15 +69,16 @@ describe("project workspace timecode", () => {
     expect(screen.getAllByText("DRAFT").length).toBe(1);
   });
 
-  it("shows a project-specific empty monitor without unrelated demo preview", () => {
+  it("leaves the monitor empty rather than explaining the emptiness", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     render(createElement(ProjectWorkspace, {
       project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "timeline",
       onBack: () => undefined, onSave: async () => undefined,
     }));
-    const monitor = screen.getByTestId("project-empty-monitor");
-    expect(monitor.textContent).toContain("Ceramic lamp");
-    expect(monitor.textContent).toContain("A quiet product film");
+    expect(screen.queryByTestId("project-empty-monitor")).toBeNull();
+    expect(screen.queryByText(/Nothing to play yet/)).toBeNull();
+    // The point the old placeholder was carrying: no other project's demo
+    // footage ever appears in this one's monitor.
     expect(screen.queryByText("NORTHERN LIGHT")).toBeNull();
   });
 
