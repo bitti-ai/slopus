@@ -13,9 +13,14 @@
  * visible in the terminal instead of only in a taskbar.
  *
  * The mark is the film ticket from the in-app logo (src/components/PolStudioLogo.tsx):
- * a blue plate, a column of four white perforations, and a heavy white letter.
- * Every size carries a single "P" — "PolS" is four letters in the space that
- * fits one, and at 16px it was an illegible smudge.
+ * a blue plate with a column of four perforations punched clean through it and a
+ * heavy white letter. Every size carries a single "P" — "PolS" is four letters in
+ * the space that fits one, and at 16px it was an illegible smudge.
+ *
+ * The perforations are transparent, not white, at every size. They are 2x2 at
+ * 16px and grow from there, always with at least 2px of plate to their left, so
+ * a hole reads as a hole rather than as a nibbled edge; and the whole point of
+ * the mark is that light passes through the film.
  */
 
 import { deflateSync, inflateSync } from "node:zlib";
@@ -102,13 +107,23 @@ function inPlate(L, x, y) {
   return inRoundRect(x, y, x0, y0, x1, y1, r, r, r, r);
 }
 
-/** The white ink: four perforations plus the letter P. */
-function inMark(L, x, y) {
-  const { perf, p } = L;
+/**
+ * The four perforations. These are holes, not ink: the plate is punched out
+ * there and the alpha channel carries it, so whatever the icon sits on shows
+ * through — the same thing the in-app logo's mask does.
+ */
+function inPerf(L, x, y) {
+  const { perf } = L;
   for (let i = 0; i < 4; i++) {
     const y0 = perf.y + i * (perf.h + perf.gap);
     if (inRoundRect(x, y, perf.x, y0, perf.x + perf.w, y0 + perf.h, perf.r, perf.r, perf.r, perf.r)) return true;
   }
+  return false;
+}
+
+/** The white ink: the letter P. */
+function inLetter(L, x, y) {
+  const { p } = L;
 
   // Stem.
   if (x >= p.x && x <= p.x + p.t && y >= p.y && y <= p.y + p.h) return true;
@@ -155,22 +170,23 @@ function render(size) {
   const out = Buffer.alloc(size * size * 4);
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
-      let plate = 0;
-      let mark = 0;
+      let solid = 0;
+      let ink = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
           const x = px + (sx + 0.5) / SS;
           const y = py + (sy + 0.5) / SS;
           if (!inPlate(L, x, y)) continue;
-          plate++;
-          if (inMark(L, x, y)) mark++;
+          if (inPerf(L, x, y)) continue; // punched out: contributes to neither
+          solid++;
+          if (inLetter(L, x, y)) ink++;
         }
       }
       const n = SS * SS;
       const i = (py * size + px) * 4;
-      if (plate === 0) continue;
-      const a = plate / n;
-      const inkShare = mark / plate;
+      if (solid === 0) continue; // outside the plate, or entirely inside a hole
+      const a = solid / n;
+      const inkShare = ink / solid;
       const base = plateColor(L, px + 0.5, py + 0.5);
       for (let j = 0; j < 3; j++) out[i + j] = Math.round(base[j] + (255 - base[j]) * inkShare);
       out[i + 3] = Math.round(a * 255);
@@ -393,6 +409,23 @@ function ascii({ width, height, rgba }) {
   return lines.join("\n");
 }
 
+/**
+ * The alpha actually stored in a decoded image, at the centre of each
+ * perforation and, for contrast, at the centre of the plate. Reading the
+ * generator proves nothing about the bytes on disk; these numbers do. Holes
+ * must read 0 and the plate 255.
+ */
+function alphaProbe({ width, rgba }) {
+  const L = layout(width);
+  const at = (x, y) => rgba[(Math.floor(y) * width + Math.floor(x)) * 4 + 3];
+  const holes = [];
+  for (let i = 0; i < 4; i++) {
+    const cy = L.perf.y + i * (L.perf.h + L.perf.gap) + L.perf.h / 2;
+    holes.push(at(L.perf.x + L.perf.w / 2, cy));
+  }
+  return `alpha: holes [${holes.join(", ")}], plate ${at(L.plate.x0 + L.D / 2, L.plate.y0 + L.D / 2)}`;
+}
+
 function parseICO(buf) {
   if (buf.readUInt16LE(0) !== 0 || buf.readUInt16LE(2) !== 1) throw new Error("not an ICO");
   const count = buf.readUInt16LE(4);
@@ -441,14 +474,14 @@ function check() {
   const entries = parseICO(readFileSync(join(ICONS_DIR, "icon.ico")));
   console.log(`icon.ico entries: ${entries.map((e) => e.declared).join(",")}`);
   for (const e of entries) {
-    console.log(`\n--- ${e.declared}x${e.declared} (${e.kind}, ${e.bytes} bytes) ---`);
+    console.log(`\n--- ${e.declared}x${e.declared} (${e.kind}, ${e.bytes} bytes) — ${alphaProbe(e)} ---`);
     console.log(ascii(e));
   }
   console.log(`\nicon.icns: ${parseICNS(readFileSync(join(ICONS_DIR, "icon.icns"))).join(" ")}`);
   for (const [size, name] of Object.entries(PNG_FILES)) {
     const img = decodePNG(readFileSync(join(ICONS_DIR, name)));
     if (img.width !== Number(size) || img.height !== Number(size)) throw new Error(`${name} is ${img.width}x${img.height}`);
-    console.log(`${name}: ${img.width}x${img.height} RGBA`);
+    console.log(`${name}: ${img.width}x${img.height} RGBA — ${alphaProbe(img)}`);
   }
 }
 
