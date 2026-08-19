@@ -197,13 +197,33 @@ export async function readProjectFileUrl(folderPath: string, relativePath: strin
  *  project itself names — see `read_external_media_file` in
  *  src-tauri/src/lib.rs. Same revoke rule as `readProjectFileUrl`. */
 export async function readMediaFileUrl(folderPath: string, item: StoredLocation, mimeType: string): Promise<string | null> {
-  if (!isTauri()) return null;
-  const bytes = item.sourcePath
-    ? await invoke<ArrayBuffer>("read_external_media_file", { folderPath, sourcePath: item.sourcePath })
-    : item.relativePath
-      ? await invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath: item.relativePath })
-      : null;
-  return bytes ? URL.createObjectURL(new Blob([bytes], { type: mimeType })) : null;
+  if (!isTauri() || (!item.sourcePath && !item.relativePath)) return null;
+  return URL.createObjectURL(new Blob([await readMediaFileBytes(folderPath, item)], { type: mimeType }));
+}
+
+/** The same read as `readMediaFileUrl`, stopping at the bytes.
+ *
+ *  The export pipeline wants the file itself — mp4box takes an ArrayBuffer
+ *  apart, and wrapping it in a blob URL first only to fetch it back would copy
+ *  a multi-gigabyte rush for nothing. It exists so that pipeline cannot go and
+ *  read `relativePath` on its own: video and audio have none, and calling
+ *  `read_project_file` with a null relative path dies at IPC argument
+ *  deserialisation before Rust ever sees it — which is exactly the bug this
+ *  sibling was added to end.
+ *
+ *  Throws rather than returning null: every caller needs the bytes, so an
+ *  absent file is a failure with a reason, not an empty result. */
+export async function readMediaFileBytes(folderPath: string, item: StoredLocation): Promise<ArrayBuffer> {
+  if (!isTauri()) {
+    throw new Error("Reading project media needs the desktop app; the browser preview has no project folder.");
+  }
+  if (item.sourcePath) {
+    return invoke<ArrayBuffer>("read_external_media_file", { folderPath, sourcePath: item.sourcePath });
+  }
+  if (item.relativePath) {
+    return invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath: item.relativePath });
+  }
+  throw new Error("This item records no file at all — neither a path inside the project nor one outside it.");
 }
 
 export async function createProject(input: CreateProjectInput): Promise<ProjectRecord | null> {

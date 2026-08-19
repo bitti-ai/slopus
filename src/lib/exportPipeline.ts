@@ -17,7 +17,7 @@
    ========================================================================== */
 
 import { invoke } from "@tauri-apps/api/core";
-import { isTauri } from "./persistence";
+import { isTauri, readMediaFileBytes } from "./persistence";
 import {
   fitRect,
   outputCodec,
@@ -37,8 +37,12 @@ export interface ExportSupport {
   /** WebCodecs encode. Present in WebView2/Chromium, absent in older engines. */
   encoder: boolean;
   decoder: boolean;
-  /** The GPU compositor. Absent is not fatal — there is a 2D canvas fallback. */
-  webgpu: boolean;
+  /** `navigator.gpu` EXISTS. That is all this says, and it is not enough to
+   *  promise a GPU compositor: on a VM, over RDP, on a blocklisted driver, the
+   *  object is there and `requestAdapter()` still returns null. Ask
+   *  `probeCompositor()` — which does request an adapter — before telling a
+   *  user which compositor will run. */
+  webgpuApi: boolean;
   /** Only the desktop shell has files to read and a place to write one. */
   desktop: boolean;
 }
@@ -48,7 +52,7 @@ export function detectExportSupport(): ExportSupport {
   return {
     encoder: typeof scope.VideoEncoder === "function",
     decoder: typeof scope.VideoDecoder === "function",
-    webgpu: typeof navigator !== "undefined" && "gpu" in navigator && Boolean(navigator.gpu),
+    webgpuApi: typeof navigator !== "undefined" && "gpu" in navigator && Boolean(navigator.gpu),
     desktop: isTauri(),
   };
 }
@@ -163,14 +167,28 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 }
 `;
 
-async function createWebGpuCompositor(width: number, height: number, background: string): Promise<Compositor | null> {
-  if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) return null;
+/** Either a working GPU compositor, or the reason there is none. Never a bare
+ *  null: "WebGPU was unavailable" with no cause is what the last round shipped,
+ *  and it is unactionable. */
+type GpuAttempt = { compositor: Compositor; reason: null } | { compositor: null; reason: string };
+
+const NO_GPU_API = "This webview exposes no navigator.gpu at all.";
+const NO_ADAPTER =
+  "navigator.gpu exists but requestAdapter() returned no adapter — the usual causes are a virtual machine, an RDP session, or a driver on Chromium's blocklist.";
+
+async function createWebGpuCompositor(width: number, height: number, background: string): Promise<GpuAttempt> {
+  if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
+    return { compositor: null, reason: NO_GPU_API };
+  }
   const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) return null;
+  if (!adapter) return { compositor: null, reason: NO_ADAPTER };
   const device = await adapter.requestDevice();
   const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext("webgpu");
-  if (!context) return null;
+  if (!context) {
+    device.destroy();
+    return { compositor: null, reason: "This computer gave no WebGPU context for an OffscreenCanvas." };
+  }
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
   const shader = device.createShaderModule({ code: COMPOSITOR_SHADER });
@@ -213,7 +231,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
     device.queue.submit([encoder.finish()]);
   };
 
-  return {
+  const compositor: Compositor = {
     kind: "webgpu",
     clear() {
       pass(context.getCurrentTexture().createView(), null);
@@ -244,6 +262,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
       device.destroy();
     },
   };
+  return { compositor, reason: null };
 }
 
 function createCanvasCompositor(width: number, height: number, background: string): Compositor {
@@ -269,6 +288,44 @@ function createCanvasCompositor(width: number, height: number, background: strin
   };
 }
 
+export interface CompositorProbe {
+  /** Which compositor an export started right now would actually use. */
+  kind: CompositorKind;
+  /** Why, in this machine's own terms. For canvas2d that is the reason the GPU
+   *  path is out; for webgpu it is what the adapter calls itself. */
+  detail: string;
+}
+
+/** Asks the GPU for an adapter, exactly as the export will.
+ *
+ *  `navigator.gpu` being present is not the same question, and it was the wrong
+ *  one to put in front of a user: measured on one ordinary machine, the object
+ *  was there, `requestAdapter()` returned null, and the run composited on a 2D
+ *  canvas while the page had already promised WebGPU. This asks what the export
+ *  asks, and the answer is what the page is allowed to claim. */
+export async function probeCompositor(): Promise<CompositorProbe> {
+  if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
+    return { kind: "canvas2d", detail: NO_GPU_API };
+  }
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) return { kind: "canvas2d", detail: NO_ADAPTER };
+    /* Nothing is kept: this adapter is dropped here and the export requests its
+       own. The probe is a question, not a reservation. */
+    const info: GPUAdapterInfo | undefined = adapter.info;
+    const named = [info?.description, info?.device, info?.vendor, info?.architecture]
+      .filter((part) => Boolean(part))
+      .join(" ")
+      .trim();
+    return { kind: "webgpu", detail: named ? `GPU adapter: ${named}.` : "This computer offered a GPU adapter." };
+  } catch (reason) {
+    return {
+      kind: "canvas2d",
+      detail: `Asking this computer for a GPU adapter failed: ${reason instanceof Error ? reason.message : String(reason)}`,
+    };
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Stage 1 — demux
    --------------------------------------------------------------------------- */
@@ -278,11 +335,20 @@ export interface DemuxedSource {
   samples: Array<{ data: Uint8Array; timestampUs: number; durationUs: number; key: boolean }>;
 }
 
+/** The asset's file, wherever the project actually keeps it.
+ *
+ *  This MUST stay routed through `readMediaFileBytes`. Reading
+ *  `asset.relativePath` here directly is what broke every real export: since
+ *  media stopped being copied into the project folder, imported video and audio
+ *  carry an absolute `sourcePath` and a null `relativePath`, so the old call
+ *  handed `read_project_file` a null where Rust declares a String and died at
+ *  IPC argument deserialisation — after the page had shown a clean plan and a
+ *  live Export button. */
 async function readAssetBytes(folderPath: string, asset: ProjectAsset): Promise<ArrayBuffer> {
-  if (!isTauri()) {
-    throw new Error("Reading project media needs the desktop app; the browser preview has no project folder.");
+  if (!asset.sourcePath && !asset.relativePath) {
+    throw new Error(`${asset.name} records no file at all, so there is nothing to read for this clip.`);
   }
-  return invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath: asset.relativePath });
+  return readMediaFileBytes(folderPath, asset);
 }
 
 /** Any of the codec configuration boxes. They all serialise themselves the
@@ -390,6 +456,10 @@ export class ExportCancelled extends Error {
 export interface ExportResult {
   bytes: Uint8Array;
   compositor: CompositorKind;
+  /** Why that one. When the GPU compositor did not run, this is the reason it
+   *  did not — the previous version reported only WHICH compositor ran, which
+   *  told nobody what to fix. */
+  compositorDetail: string;
   codecString: string;
 }
 
@@ -452,12 +522,21 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   /* WebGPU first, as the pipeline is meant to run — the decoded frame is
      sampled where it already lives. A machine without it, or a GPU that gives
      up part way through, drops to the 2D canvas, which composites the same
-     picture on the same geometry. Which one ran is reported, never assumed. */
-  const stage: { compositor: Compositor } = {
-    compositor:
-      (await createWebGpuCompositor(plan.width, plan.height, plan.backgroundColor).catch(() => null)) ??
-      createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
-  };
+     picture on the same geometry. Which one ran is reported, never assumed —
+     and so is WHY, because "WebGPU was unavailable" on its own is a sentence
+     nobody can act on. */
+  const attempt = await createWebGpuCompositor(plan.width, plan.height, plan.backgroundColor).catch(
+    (reason: unknown) => ({
+      compositor: null,
+      reason: `Starting the GPU compositor failed: ${reason instanceof Error ? reason.message : String(reason)}`,
+    }),
+  );
+  const stage: { compositor: Compositor; detail: string } = attempt.compositor
+    ? { compositor: attempt.compositor, detail: attempt.reason ?? "" }
+    : {
+        compositor: createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
+        detail: attempt.reason,
+      };
   const paint = (frame: VideoFrame | null) => {
     try {
       if (frame) stage.compositor.draw(frame);
@@ -467,6 +546,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       if (stage.compositor.kind === "canvas2d") throw reason;
       stage.compositor.dispose();
       stage.compositor = createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
+      stage.detail = `The GPU compositor gave out ${framesDone} frames in and the rest was composited on a 2D canvas: ${reason instanceof Error ? reason.message : String(reason)}`;
     }
     if (frame) stage.compositor.draw(frame);
     else stage.compositor.clear();
@@ -669,6 +749,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     return {
       bytes: new Uint8Array(target.buffer),
       compositor: stage.compositor.kind,
+      compositorDetail: stage.detail,
       codecString: probe.codecString,
     };
   } finally {

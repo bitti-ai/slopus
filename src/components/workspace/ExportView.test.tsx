@@ -2,7 +2,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createProjectConfig, type ProjectConfig, type TimelineClip } from "../../lib/project";
+import externalFixture from "../../../fixtures/project-v1-external-media.json";
+import { createProjectConfig, parseProjectConfig, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ExportView } from "./ExportView";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -65,5 +66,33 @@ describe("the export view where nothing can encode", () => {
     render(<ExportView config={project([])} folderPath="/tmp/project" />);
     expect(screen.getByRole("alert").textContent).toContain("no video clips");
     expect(screen.getByText(/nothing on the timeline yet/i)).toBeTruthy();
+  });
+});
+
+/* The other half of the media policy: video is NOT copied into the project, so
+   a real timeline's clips carry an absolute source path and no relative one.
+   The page has to plan such a project exactly as it plans any other — the
+   previous build did, and then the run died on the first read. */
+describe("the export view on media the project does not contain", () => {
+  const external = () => parseProjectConfig(externalFixture);
+
+  it("plans the external clip instead of calling it missing media", () => {
+    render(<ExportView config={external()} folderPath="D:\\tmp\\news\\News broadcast" />);
+    const reasons = screen.getByRole("alert").textContent ?? "";
+    expect(reasons).not.toMatch(/not in this project/i);
+    expect(reasons).not.toMatch(/no file recorded/i);
+    expect(screen.getByText("00:12.000")).toBeTruthy();
+    expect(screen.getByText("360 frames at 30 fps")).toBeTruthy();
+  });
+});
+
+describe("what the page claims about the compositor", () => {
+  it("does not promise WebGPU before anything has asked for an adapter", async () => {
+    render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    // jsdom has no navigator.gpu, so the settled answer is the 2D canvas with a
+    // stated reason. What must never appear is a bare WebGPU promise.
+    expect(await screen.findByText(/no navigator\.gpu/i)).toBeTruthy();
+    expect(screen.queryByText("WebGPU")).toBeNull();
+    expect(document.body.textContent).toContain("on a 2D canvas");
   });
 });

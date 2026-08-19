@@ -283,6 +283,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
     blockers.push("There are no video clips on the timeline, so there is nothing to render.");
   }
   const missing: string[] = [];
+  const locationless: string[] = [];
   const undecodable: string[] = [];
   for (const segment of segments) {
     if (segment.kind !== "clip") continue;
@@ -291,11 +292,21 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       missing.push(segment.label);
       continue;
     }
+    /* An asset carries EITHER a path inside the project or an absolute one
+       outside it — imported video and audio are never copied in, so they only
+       ever have the second. Neither means there is no file to read, and the run
+       would die on the first frame; say so here, where the button still is. */
+    if (!asset.relativePath && !asset.sourcePath) {
+      locationless.push(`${segment.label} (${asset.name})`);
+    }
     const drawable = DEMUXABLE_VIDEO.has(asset.mimeType) || DRAWABLE_IMAGE.has(asset.mimeType);
     if (!drawable) undecodable.push(`${segment.label} (${asset.name}, ${asset.mimeType})`);
   }
   if (missing.length > 0) {
     blockers.push(`These clips point at media that is not in this project: ${missing.join(", ")}.`);
+  }
+  if (locationless.length > 0) {
+    blockers.push(`These clips point at media with no file recorded for it at all: ${locationless.join(", ")}.`);
   }
   if (undecodable.length > 0) {
     blockers.push(
