@@ -561,11 +561,19 @@
 
    What is true, and what every rule below relies on instead: each piece of
    chrome carries its OWN dark plate and is legible against that plate alone,
-   whatever the picture under it turns out to be. The badges and the play button
-   always did; the caption now does too. Its plate is opaque enough to clear
-   14.5:1 over PURE WHITE, which is the only bound that survives a cover the
-   code has not seen — including a real thumbnail set through
-   ProjectCard's inline background-image. theme.test.ts recomputes it. */
+   whatever the picture under it turns out to be. The bound that means anything
+   is the one taken over PURE WHITE, because that is the only backdrop no cover
+   can be paler than — the four that exist today, one added later, or a real
+   thumbnail set through ProjectCard's inline background-image, which this file
+   cannot see. theme.test.ts recomputes all three from the literals below.
+
+   The badges and the play button did NOT always carry that. The sentence here
+   used to say they did, and the numbers say otherwise: over a white thumbnail
+   the badges measured 3.78:1 and the play triangle 3.18:1, because a plate at
+   0.55 and a disc at 0.45 composite to mid-grey over white and `backdrop-filter`
+   blurs without darkening. Their alphas were raised to 0.70 and 0.64, which is
+   what makes the paragraph above true rather than aspirational; a plate that
+   thin was the same defect as the caption's old text-shadow, one rule over. */
 .project-card__art--aurora {
   background: linear-gradient(155deg, #101c38, #172d55 45%, #6e6d4d);
 }
@@ -652,7 +660,7 @@
   top: var(--space-3);
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.85);
-  background: rgba(4, 6, 10, 0.55);
+  background: rgba(4, 6, 10, 0.7);
   backdrop-filter: blur(8px);
   border-radius: var(--radius-xs);
   padding: var(--space-1) var(--space-2);
@@ -682,7 +690,7 @@
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 50%;
   color: #fff;
-  background: rgba(5, 7, 11, 0.45);
+  background: rgba(5, 7, 11, 0.64);
   opacity: 0;
   transition: 0.2s;
   backdrop-filter: blur(8px);
