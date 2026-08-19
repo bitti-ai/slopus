@@ -57,9 +57,9 @@ describe("the export view where nothing can encode", () => {
     expect(screen.getByText("1920 × 1080")).toBeTruthy();
   });
 
-  it("says outright that the file will have no sound", () => {
+  it("says outright that a timeline with no audio clips produces no sound", () => {
     render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    expect(screen.getByText("video only — see below")).toBeTruthy();
+    expect(screen.getByText("no audio clips on the timeline")).toBeTruthy();
   });
 
   it("blocks on an empty timeline rather than offering to render nothing", () => {

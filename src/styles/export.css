@@ -387,3 +387,18 @@
   margin-top: var(--space-2);
   color: var(--text-muted);
 }
+
+/* The audio clips that did NOT make it into the file, named one per line. This
+   list is the difference between a soundtrack that failed and one that vanished
+   without a word, so it is not allowed to read as a footnote. */
+.export-outcome ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+}
+
+.export-outcome ul li {
+  line-height: var(--leading-normal);
+}
