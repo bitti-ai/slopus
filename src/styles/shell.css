@@ -7,7 +7,7 @@
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
   background:
-    radial-gradient(circle at 72% -20%, rgba(49, 76, 153, 0.11), transparent 37%),
+    radial-gradient(circle at 72% -20%, var(--glow-accent), transparent 37%),
     var(--bg);
 }
 
@@ -162,7 +162,7 @@
   border: 1px solid var(--line-strong);
   border-radius: 50%;
   color: var(--text-muted);
-  background: rgba(13, 16, 22, 0.92);
+  background: var(--glass);
   backdrop-filter: blur(12px);
   box-shadow: var(--shadow-sm);
   transition: 0.16s ease;
@@ -170,8 +170,8 @@
 
 .settings-launcher:hover {
   color: var(--text-primary);
-  border-color: rgba(107, 141, 255, 0.4);
-  background: rgba(20, 26, 40, 0.96);
+  border-color: var(--accent-line-strong);
+  background: var(--glass-hover);
 }
 
 /* --- Settings ---------------------------------------------------------------
@@ -184,7 +184,7 @@
   inset: 0;
   overflow-y: auto;
   padding: var(--space-7) var(--space-5);
-  background: rgba(4, 6, 10, 0.72);
+  background: var(--scrim);
   backdrop-filter: blur(10px);
 }
 
@@ -225,7 +225,7 @@
   padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--wash-1);
 }
 
 .settings-status span {
@@ -254,8 +254,8 @@
 }
 
 .settings-status--ready {
-  border-color: rgba(110, 207, 149, 0.3);
-  background: rgba(110, 207, 149, 0.07);
+  border-color: var(--success-line);
+  background: var(--success-soft);
 }
 
 .settings-status--ready i {
@@ -337,7 +337,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  background: rgba(7, 9, 14, 0.72);
+  background: var(--field-bg);
   font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
 }
 
@@ -364,7 +364,7 @@
 }
 
 .settings-path--missing .settings-path__row input {
-  border-color: rgba(236, 125, 134, 0.45);
+  border-color: var(--danger-line-strong);
 }
 
 .settings-view__foot {

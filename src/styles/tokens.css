@@ -18,7 +18,32 @@
    6. Prose uses line-height 1.5 (--leading-normal). Tight UI labels may use
       --leading-snug (1.35); only display type uses --leading-tight.
    7. The dimmest text allowed anywhere is --text-faint, which clears 4.5:1 on
-      --panel / --panel-3. Never hand-write a grey below it.
+      --panel / --panel-3 IN BOTH THEMES. Never hand-write a grey below it.
+
+   THEMING
+   ----------------------------------------------------------------------------
+   Three states, one attribute:
+
+     system (default)  no data-theme attribute; the media query below decides
+     light             <html data-theme="light">
+     dark              <html data-theme="dark">
+
+   The COMPLETE palette is defined once, on a bare `:root`, in DARK. Light only
+   ever REDEFINES those same names — it never introduces a colour of its own, so
+   a token can never be missing in one theme and paint one theme's ink on the
+   other theme's ground. Light appears twice, and the two blocks must stay
+   identical:
+
+     @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) }
+         the OS asked for light and the user has not overridden it
+     :root[data-theme="light"]
+         the user asked for light, whatever the OS says
+
+   The `:not([data-theme="dark"])` guard is what makes an explicit choice beat
+   the OS in BOTH directions: without it, "dark" chosen on a light computer
+   would still get the light block (same specificity, later in the file wins).
+
+   src/lib/theme.ts owns the attribute; index.html sets it before first paint.
    ========================================================================== */
 
 :root {
@@ -86,34 +111,111 @@
   --topbar-height: 72px;
   --content-max: 1180px;
 
+  /* ==========================================================================
+     COLOUR — dark (the base palette; light redefines every name below)
+     ====================================================================== */
+
   /* --- Surfaces ----------------------------------------------------------- */
-  --bg: #080a0f;
-  --panel: #0d1016;
-  --panel-2: #12151d;
-  --panel-3: #171b24;
+  --bg: #080a0f;                       /* the app's ground */
+  --panel: #0d1016;                    /* cards, dialogs, the topbar */
+  --panel-2: #12151d;                  /* a surface sitting on a panel */
+  --panel-3: #171b24;                  /* chips, menus, skeletons, placeholders */
+  --field-bg: #0b0e14;                 /* recessed: text inputs, search field */
+
+  /* --- Lines --------------------------------------------------------------
+     --line / --line-strong are translucent so they work over any surface.
+     --line-solid is the opaque equivalent for a border between two known
+     surfaces (topbar bottom, dock top) where a wash would double up. */
   --line: rgba(255, 255, 255, 0.085);
   --line-strong: rgba(255, 255, 255, 0.14);
+  --line-hover: rgba(255, 255, 255, 0.25);
+  --line-solid: #232630;
+
+  /* --- Neutral washes ------------------------------------------------------
+     Hover / rest / pressed tints laid over whatever surface is underneath.
+     White in dark, BLACK in light — this is the single most common reason a
+     converted stylesheet looks broken in the other theme. */
+  --wash-1: rgba(255, 255, 255, 0.025); /* resting fill on a segmented control */
+  --wash-2: rgba(255, 255, 255, 0.045); /* hover */
+  --wash-3: rgba(255, 255, 255, 0.06);  /* hover on an already-tinted row */
+  --hairline-hi: rgba(255, 255, 255, 0.025); /* 1px top sheen on raised chrome */
+  --hatch: rgba(255, 255, 255, 0.03);   /* diagonal placeholder hatching */
+
+  /* --- Translucent chrome (always paired with backdrop-filter) ------------ */
+  --glass: rgba(13, 16, 22, 0.92);     /* floating control / overlay panel */
+  --glass-hover: rgba(20, 26, 40, 0.96);
+  --topbar-glass: rgba(8, 10, 15, 0.74);
+  --scrim: rgba(4, 6, 10, 0.72);       /* behind a modal */
 
   /* --- Text (contrast-checked against --panel / --panel-3) ---------------- */
-  --text-primary: #eff1f7;
-  --text-secondary: #c5cbd7;
-  --text-muted: #9aa2b1;               /* replaces every #86..#9x grey */
-  --text-faint: #838b9a;               /* DIMMEST text allowed — ~5:1 on --panel */
+  --text-primary: #eff1f7;             /* 16.9:1 on --panel */
+  --text-secondary: #c5cbd7;           /* 11.7:1 */
+  --text-muted: #9aa2b1;               /*  7.4:1 — replaces every #86..#9x grey */
+  --text-faint: #838b9a;               /* DIMMEST text allowed — 5.6:1 on --panel */
 
-  /* --- Accent ------------------------------------------------------------- */
+  /* --- Accent --------------------------------------------------------------
+     --accent is 4.2:1 on --panel: BORDERS, dots and fills only, never text.
+     --accent-bright is the accent AT READING CONTRAST (6.2:1) and is the one
+     that may carry a label or a focus ring. */
   --accent: #3d6df2;
   --accent-bright: #6b8dff;
-  --accent-dark: #173ca6;
+  --accent-dark: #173ca6;              /* solid accent chip, always wears --on-accent */
   --accent-soft: rgba(60, 105, 239, 0.15);
+  --accent-soft-strong: rgba(60, 105, 239, 0.22);
+  --accent-on-soft: #c7d2ff;           /* label sitting on --accent-soft */
+  --accent-line: rgba(107, 141, 255, 0.28);
+  --accent-line-strong: rgba(103, 138, 245, 0.55);
+  --accent-ring: rgba(63, 94, 198, 0.1);   /* 3px halo on a focused composite */
+  --glow-accent: rgba(49, 76, 153, 0.11);  /* blurred page-corner light */
+  --eyebrow: #8fa0d8;                  /* uppercase accent-tinted section label */
 
-  /* --- Status ------------------------------------------------------------- */
+  /* --- On-accent -----------------------------------------------------------
+     The primary button and the send button stay blue in BOTH themes, so what
+     sits on them is white in both. Deliberately theme-independent. */
+  --on-accent: #ffffff;
+  --on-accent-dim: rgba(255, 255, 255, 0.35);
+  --sheen: rgba(255, 255, 255, 0.15);
+
+  /* --- Primary button ----------------------------------------------------- */
+  --button-primary-bg: linear-gradient(180deg, #5279f4, #3159d4);
+  --button-primary-border: #5578ed;
+  --button-primary-shadow: 0 5px 18px rgba(31, 70, 196, 0.26);
+
+  /* --- Progress ----------------------------------------------------------- */
+  --track: #20252e;
+  --progress-fill: linear-gradient(90deg, #4468db, #7d9aff);
+  --progress-glow: rgba(91, 126, 224, 0.53);
+
+  /* --- Status --------------------------------------------------------------
+     Each hue has a text/dot value, a border tint and a surface tint. */
   --success: #6ecf95;
+  --success-line: rgba(110, 207, 149, 0.3);
+  --success-soft: rgba(110, 207, 149, 0.07);
+  --success-glow: rgba(110, 207, 149, 0.55);
+
   --warning: #e3a862;
+  --warning-line: rgba(227, 168, 98, 0.32);
+
   --danger: #ec7d86;
+  --danger-line: rgba(236, 125, 134, 0.3);
+  --danger-line-strong: rgba(236, 125, 134, 0.5);
+  --danger-soft: #26171b;              /* opaque: destructive button, error toast */
+  --danger-soft-strong: #2e1b20;
+  --danger-text-soft: #c0a4ab;         /* body copy inside a danger surface */
+
+  /* --- Composer / dock surfaces ------------------------------------------- */
+  --composer-bg: linear-gradient(
+    135deg,
+    rgba(21, 29, 53, 0.76),
+    rgba(13, 16, 23, 0.95) 55%,
+    #0d1016
+  );
+  --dock-bg: linear-gradient(90deg, #121827, #11151f);
 
   /* --- Elevation ---------------------------------------------------------- */
   --shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
   --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.28);
+  --shadow-up: 0 -12px 30px rgba(0, 0, 0, 0.2);
 
   /* --- Focus --------------------------------------------------------------
      One ring for the whole app. base.css applies it to focusable elements;
@@ -122,4 +224,169 @@
      two never stack. */
   --focus-ring-width: 2px;
   --focus-ring-color: var(--accent-bright);
+}
+
+/* ============================================================================
+   LIGHT — the OS asked for it and the user has not overridden it.
+
+   Designed, not inverted. The ground is a cool grey (#eef1f6) and panels are
+   WHITE, so a card still reads as raised; a straight inversion would have put
+   white paper behind everything and left the cards invisible. The neutral
+   washes flip from white-over-dark to black-over-light. The accent darkens
+   rather than brightens, because "more contrast" points the other way here.
+   Every ratio in the comments is computed, not estimated (see the report in
+   the commit that introduced this block).
+   ========================================================================== */
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --bg: #eef1f6;
+    --panel: #ffffff;
+    --panel-2: #f5f7fa;
+    --panel-3: #e9ecf3;
+    --field-bg: #ffffff;
+
+    --line: rgba(15, 23, 42, 0.1);
+    --line-strong: rgba(15, 23, 42, 0.18);
+    --line-hover: rgba(15, 23, 42, 0.32);
+    --line-solid: #dde1ea;
+
+    --wash-1: rgba(15, 23, 42, 0.035);
+    --wash-2: rgba(15, 23, 42, 0.055);
+    --wash-3: rgba(15, 23, 42, 0.075);
+    --hairline-hi: rgba(255, 255, 255, 0.9);
+    --hatch: rgba(15, 23, 42, 0.045);
+
+    --glass: rgba(255, 255, 255, 0.92);
+    --glass-hover: rgba(245, 248, 255, 0.97);
+    --topbar-glass: rgba(246, 248, 252, 0.78);
+    --scrim: rgba(20, 25, 36, 0.45);   /* still DARKENS: a white panel needs it */
+
+    --text-primary: #101420;           /* 18.4:1 on --panel */
+    --text-secondary: #333c4e;         /* 11.1:1 */
+    --text-muted: #4a5365;             /*  7.7:1 */
+    --text-faint: #5a6377;             /*  6.0:1 on --panel, 5.1:1 on --panel-3 */
+
+    --accent: #2d5bd7;
+    --accent-bright: #1e4fd0;          /* 6.8:1 — the readable accent */
+    --accent-dark: #1e40af;
+    --accent-soft: rgba(45, 91, 215, 0.1);
+    --accent-soft-strong: rgba(45, 91, 215, 0.16);
+    --accent-on-soft: #1e40af;
+    --accent-line: rgba(45, 91, 215, 0.3);
+    --accent-line-strong: rgba(30, 79, 208, 0.6);
+    --accent-ring: rgba(45, 91, 215, 0.14);
+    --glow-accent: rgba(45, 91, 215, 0.07);
+    --eyebrow: #47549a;                /* 6.6:1 on --panel */
+
+    --track: #dfe3ec;
+    --progress-glow: rgba(45, 91, 215, 0.35);
+
+    --success: #0f7a45;                /* 5.4:1 */
+    --success-line: rgba(15, 122, 69, 0.35);
+    --success-soft: rgba(15, 122, 69, 0.08);
+    --success-glow: rgba(15, 122, 69, 0.4);
+
+    --warning: #8a5a09;                /* 5.9:1 */
+    --warning-line: rgba(138, 90, 9, 0.35);
+
+    --danger: #c02c3a;                 /* 5.7:1 */
+    --danger-line: rgba(192, 44, 58, 0.3);
+    --danger-line-strong: rgba(192, 44, 58, 0.55);
+    --danger-soft: #fdf1f2;
+    --danger-soft-strong: #fbe4e6;
+    --danger-text-soft: #7a4a52;       /* 6.3:1 on --danger-soft */
+
+    --composer-bg: linear-gradient(
+      135deg,
+      rgba(226, 234, 253, 0.9),
+      rgba(248, 250, 253, 0.96) 55%,
+      #ffffff
+    );
+    --dock-bg: linear-gradient(90deg, #eef3fd, #f8f9fc);
+
+    --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
+    --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
+    --shadow-up: 0 -12px 30px rgba(15, 23, 42, 0.06);
+  }
+}
+
+/* ============================================================================
+   LIGHT — the user chose it explicitly, whatever the OS says.
+   Must stay byte-identical to the block above apart from the selector.
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #eef1f6;
+  --panel: #ffffff;
+  --panel-2: #f5f7fa;
+  --panel-3: #e9ecf3;
+  --field-bg: #ffffff;
+
+  --line: rgba(15, 23, 42, 0.1);
+  --line-strong: rgba(15, 23, 42, 0.18);
+  --line-hover: rgba(15, 23, 42, 0.32);
+  --line-solid: #dde1ea;
+
+  --wash-1: rgba(15, 23, 42, 0.035);
+  --wash-2: rgba(15, 23, 42, 0.055);
+  --wash-3: rgba(15, 23, 42, 0.075);
+  --hairline-hi: rgba(255, 255, 255, 0.9);
+  --hatch: rgba(15, 23, 42, 0.045);
+
+  --glass: rgba(255, 255, 255, 0.92);
+  --glass-hover: rgba(245, 248, 255, 0.97);
+  --topbar-glass: rgba(246, 248, 252, 0.78);
+  --scrim: rgba(20, 25, 36, 0.45);
+
+  --text-primary: #101420;
+  --text-secondary: #333c4e;
+  --text-muted: #4a5365;
+  --text-faint: #5a6377;
+
+  --accent: #2d5bd7;
+  --accent-bright: #1e4fd0;
+  --accent-dark: #1e40af;
+  --accent-soft: rgba(45, 91, 215, 0.1);
+  --accent-soft-strong: rgba(45, 91, 215, 0.16);
+  --accent-on-soft: #1e40af;
+  --accent-line: rgba(45, 91, 215, 0.3);
+  --accent-line-strong: rgba(30, 79, 208, 0.6);
+  --accent-ring: rgba(45, 91, 215, 0.14);
+  --glow-accent: rgba(45, 91, 215, 0.07);
+  --eyebrow: #47549a;
+
+  --track: #dfe3ec;
+  --progress-glow: rgba(45, 91, 215, 0.35);
+
+  --success: #0f7a45;
+  --success-line: rgba(15, 122, 69, 0.35);
+  --success-soft: rgba(15, 122, 69, 0.08);
+  --success-glow: rgba(15, 122, 69, 0.4);
+
+  --warning: #8a5a09;
+  --warning-line: rgba(138, 90, 9, 0.35);
+
+  --danger: #c02c3a;
+  --danger-line: rgba(192, 44, 58, 0.3);
+  --danger-line-strong: rgba(192, 44, 58, 0.55);
+  --danger-soft: #fdf1f2;
+  --danger-soft-strong: #fbe4e6;
+  --danger-text-soft: #7a4a52;
+
+  --composer-bg: linear-gradient(
+    135deg,
+    rgba(226, 234, 253, 0.9),
+    rgba(248, 250, 253, 0.96) 55%,
+    #ffffff
+  );
+  --dock-bg: linear-gradient(90deg, #eef3fd, #f8f9fc);
+
+  --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
+  --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
+  --shadow-up: 0 -12px 30px rgba(15, 23, 42, 0.06);
 }

@@ -17,7 +17,7 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--topbar-height) minmax(0, 1fr) 80px;
   color: var(--text-secondary);
-  background: #080a0e;
+  background: var(--bg);
 }
 
 /* --- Topbar ---------------------------------------------------------------- */
@@ -33,7 +33,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-4);
-  border-bottom: 1px solid #232630;
+  border-bottom: 1px solid var(--line-solid);
   background: var(--panel);
 }
 
@@ -106,7 +106,7 @@
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--wash-1);
 }
 
 .project-nav button {
@@ -135,13 +135,13 @@
 
 .project-nav button:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-2);
 }
 
 .project-nav button.active {
   color: var(--text-primary);
-  background: rgba(60, 105, 239, 0.22);
-  box-shadow: inset 0 0 0 1px rgba(107, 141, 255, 0.28);
+  background: var(--accent-soft-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
 /* Running-generation count. */
@@ -149,10 +149,10 @@
   flex: 0 0 auto;
   min-width: 22px;
   padding: 2px var(--space-2);
-  border: 1px solid rgba(104, 134, 231, 0.26);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-pill);
   color: var(--accent-bright);
-  background: rgba(70, 99, 194, 0.15);
+  background: var(--accent-soft);
   font: var(--weight-medium) var(--text-2xs) / 1.4 var(--font-mono);
 }
 
@@ -177,9 +177,9 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid #252934;
-  background: #0b0e13;
-  box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--line-solid);
+  background: var(--panel);
+  box-shadow: var(--shadow-up);
 }
 
 /* The settings launcher is fixed over the bottom-left corner, which is this
@@ -198,17 +198,17 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2) 0 var(--space-3);
-  border: 1px solid rgba(99, 127, 219, 0.34);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
-  background: linear-gradient(90deg, #121827, #11151f);
+  background: var(--dock-bg);
   box-shadow:
-    0 5px 20px rgba(0, 0, 0, 0.3),
-    inset 0 1px rgba(255, 255, 255, 0.025);
+    var(--shadow-sm),
+    inset 0 1px var(--hairline-hi);
 }
 
 .agent-dock:focus-within {
-  border-color: #627fe0;
-  box-shadow: 0 0 0 3px rgba(63, 94, 198, 0.1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .agent-dock__identity {
@@ -268,27 +268,27 @@
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid #5f7fe8;
+  border: 1px solid var(--button-primary-border);
   border-radius: var(--radius-sm);
-  color: #fff;
-  background: #3f64d9;
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 .agent-dock button:disabled {
   color: var(--text-faint);
-  border-color: #292e39;
-  background: #1a1e26;
+  border-color: var(--line-solid);
+  background: var(--panel-3);
 }
 
 .agent-dock .agent-cancel {
-  border-color: #6b3941;
+  border-color: var(--danger-line-strong);
   color: var(--danger);
-  background: #29171b;
+  background: var(--danger-soft);
 }
 
 .agent-busy {
   flex: 0 0 auto;
-  color: #7994e9;
+  color: var(--accent-bright);
   animation: spin 1.2s linear infinite;
 }
 
@@ -311,9 +311,9 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2);
-  border: 1px solid #292f3a;
+  border: 1px solid var(--line-solid);
   border-radius: var(--radius-sm);
-  background: #0d1119;
+  background: var(--field-bg);
 }
 
 .agent-provider i {
@@ -327,7 +327,7 @@
 /* Provider state is real information — every state gets a truthful colour. */
 .agent-provider--ready i {
   background: var(--success);
-  box-shadow: 0 0 8px rgba(110, 207, 149, 0.55);
+  box-shadow: 0 0 8px var(--success-glow);
 }
 
 .agent-provider--authRequired i,
@@ -346,11 +346,11 @@
 
 .agent-provider--authRequired,
 .agent-provider--notInstalled {
-  border-color: rgba(227, 168, 98, 0.32);
+  border-color: var(--warning-line);
 }
 
 .agent-provider--unavailable {
-  border-color: rgba(236, 125, 134, 0.3);
+  border-color: var(--danger-line);
 }
 
 .agent-provider select {
@@ -373,10 +373,10 @@
   max-height: 280px;
   overflow: auto;
   padding: var(--space-2);
-  border: 1px solid #303749;
+  border: 1px solid var(--line-solid);
   border-radius: var(--radius-md);
-  background: rgba(16, 21, 31, 0.86);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  background: var(--glass);
+  box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
 }
 
@@ -392,7 +392,7 @@
 }
 
 .agent-conversation p + p {
-  border-top: 1px solid #242a34;
+  border-top: 1px solid var(--line);
 }
 
 .agent-conversation b {

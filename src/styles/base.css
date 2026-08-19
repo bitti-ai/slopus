@@ -86,10 +86,10 @@ select {
 /* The dropdown list a <select> opens is painted by the platform, not by this
    stylesheet, and it takes its colours from the select itself. A select with a
    transparent background got a white menu with grey text on Windows. Both
-   sides are now stated outright, and color-scheme tells the platform which
-   scrollbars and highlight to use inside it. */
+   sides are now stated outright; `color-scheme` is NOT restated here because
+   tokens.css sets it per theme on :root and it inherits — pinning it to `dark`
+   again would give a light-theme user a dark platform menu. */
 select {
-  color-scheme: dark;
   background-color: var(--panel-2);
 }
 
@@ -133,8 +133,11 @@ a:focus-visible,
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  /* The spinner only ever appears inside a primary (blue) button, which is
+     blue in both themes, so it wears the on-accent pair rather than a
+     theme-dependent grey. */
+  border: 2px solid var(--on-accent-dim);
+  border-top-color: var(--on-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
