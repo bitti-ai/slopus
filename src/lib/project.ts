@@ -482,8 +482,14 @@ export function compileMiniMaxH3PromptSegments(
   // the guess stands, and it is marked as PolStudio's own doing.
   const style = tags.style ?? deriveH3Style(brief);
   const styleSegment = tags.style ? tagged(style) : frame(style);
-  // Sentences the tags contribute after the description, already terminated.
-  const tail = tags.clauses.length === 0 ? [] : [frame(` ${tags.clauses.join(" ")}`)];
+  // Sentences the tags contribute after the description. The field name is
+  // PolStudio's, the terms inside it are the user's — hence three segments per
+  // clause rather than one pre-joined sentence nobody could attribute.
+  const tail: PromptSegment[] = tags.clauses.flatMap((clause) => [
+    frame(` ${clause.label}: `),
+    tagged(clause.terms.join(", ")),
+    frame("."),
+  ]);
   // Same filter pair as `usableImageReferences`, in the same order — see the
   // <Picture N> / reference_paths lockstep note on that function. An
   // audio-only-tagged reference is dropped here (ref guide §2.1), so a project

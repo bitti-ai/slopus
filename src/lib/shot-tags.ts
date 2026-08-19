@@ -336,17 +336,26 @@ export function hasCameraMovement(selection: ShotTagSelection | null | undefined
   return shotTagTerms(selection, "cameraMovement").length > 0;
 }
 
+/** One sentence the tags contribute after the user's description. Kept split
+ *  so the compiler can mark the LABEL as PolStudio's own scaffolding and the
+ *  TERMS as the user's choices — a pre-joined sentence would have to be
+ *  attributed to one or the other, and both answers would be wrong. */
+export interface ShotTagClause {
+  /** The field name PolStudio writes, e.g. "Camera movement". */
+  label: string;
+  /** The chosen terms, in taxonomy order. */
+  terms: string[];
+}
+
 /** What the tags contribute to one `[Shot N]`, split by where it lands. */
 export interface ShotTagClauses {
   /** Canonical H3 style name, or null to keep deriving it from the user's words. */
   style: string | null;
   /** Framing terms, in guide order, that precede the user's description. */
   framing: string[];
-  /** Whole sentences that follow the user's description, already terminated. */
-  clauses: string[];
+  /** Sentences that follow the user's description, in guide order. */
+  clauses: ShotTagClause[];
 }
-
-const list = (terms: string[]): string => terms.join(", ");
 
 /** Guide order inside a shot: size, then angle, then lens, then the subject and
  *  its action (the user's own words), then the camera's move, then light, time,
@@ -359,23 +368,23 @@ export function shotTagClauses(selection: ShotTagSelection | null | undefined): 
     ...shotTagTerms(selection, "lens"),
   ];
 
-  const clauses: string[] = [];
+  const clauses: ShotTagClause[] = [];
   const movement = shotTagTerms(selection, "cameraMovement");
   if (movement.length > 0) {
     // Speed and amplitude qualify the movement, so they ride in the same
     // clause. Without a movement they say nothing and are left out entirely —
     // the picker disables them for the same reason.
     const qualifiers = [...shotTagTerms(selection, "cameraSpeed"), ...shotTagTerms(selection, "cameraAmplitude")];
-    clauses.push(`Camera movement: ${list([...movement, ...qualifiers])}.`);
+    clauses.push({ label: "Camera movement", terms: [...movement, ...qualifiers] });
   }
-  const lighting = shotTagTerms(selection, "lighting");
-  if (lighting.length > 0) clauses.push(`Lighting: ${list(lighting)}.`);
-  const timeOfDay = shotTagTerms(selection, "timeOfDay");
-  if (timeOfDay.length > 0) clauses.push(`Time of day: ${list(timeOfDay)}.`);
-  const mood = shotTagTerms(selection, "mood");
-  if (mood.length > 0) clauses.push(`Mood: ${list(mood)}.`);
-  const pace = shotTagTerms(selection, "motionPace");
-  if (pace.length > 0) clauses.push(`Motion: ${list(pace)}.`);
+  const push = (label: string, groupId: ShotTagGroupId) => {
+    const terms = shotTagTerms(selection, groupId);
+    if (terms.length > 0) clauses.push({ label, terms });
+  };
+  push("Lighting", "lighting");
+  push("Time of day", "timeOfDay");
+  push("Mood", "mood");
+  push("Motion", "motionPace");
 
   return { style, framing, clauses };
 }
