@@ -6,7 +6,7 @@ import { AgentDock } from "./workspace/AgentDock";
 import { ExportView } from "./workspace/ExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
-import { TimelineView } from "./workspace/TimelineView";
+import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 
 export type ProjectView = "timeline" | "generator" | "references" | "export";
 
@@ -37,10 +37,24 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const changeConfig = (next: ProjectConfig) => {
+  /* Takes an updater as well as a value, because a write built from something
+     asynchronous cannot safely name the config it starts from — see
+     TimelineView's measurement flush. Views that only ever change the project
+     from a click still pass a plain value. */
+  const changeConfig = (next: ConfigUpdate) => {
     setConfig(next);
     setDirty(true);
   };
+
+  /* A file's length and size, read off the file by the media panel's decode.
+     It is new information and the project keeps it — the next save writes it —
+     but the user edited nothing by opening a panel, so it must not turn Save
+     on. That button is the app's whole claim about what is and is not on disk,
+     and "you have unsaved changes" was false: there was nothing the user could
+     lose. Everything measured here is re-derivable from the files themselves,
+     so a measurement that never rides along with a real save costs a re-decode
+     and nothing else. */
+  const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => setConfig(update);
 
   const save = async (record?: ProjectRecord) => {
     setSaving(true);
@@ -96,7 +110,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     </header>
 
     <div className={`project-content project-content--${view}`}>
-      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} draftPrompt={generatorPrompt} onDraftPromptChange={setGeneratorPrompt} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
