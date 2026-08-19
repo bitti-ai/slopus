@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
@@ -480,6 +480,96 @@ describe("project workspace timecode", () => {
     }
     expect(screenText).toContain("An image counts as soon as you import it");
     expect(screenText).toContain("Not described yet — the picture is sent, but nothing tells the engine what to keep.");
+  });
+
+  /** Opens one tag group inside ONE picker and ticks one of its options. The
+   *  generator shows two pickers at once — the shot being written and the shot
+   *  selected — so every query here has to say which. */
+  function pickTag(scope: HTMLElement, group: string, option: string) {
+    fireEvent.click(within(scope).getByRole("button", { name: new RegExp(`^${group}`) }));
+    fireEvent.click(within(scope).getByRole("button", { name: option, pressed: false }));
+  }
+
+  it("calls the authoring section “Describe the shot”, on a new shot and an old one", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    // With a shot selected this heading used to rename itself to "Write another
+    // shot", which read as a footnote to the shot above rather than as the
+    // place shots are made.
+    for (const config of [parseProjectConfig({ ...fresh, generationJobs: [] }), fresh]) {
+      const { unmount } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
+      expect(screen.getByRole("heading", { name: "Describe the shot" })).not.toBeNull();
+      expect(screen.queryByText("Write another shot")).toBeNull();
+      // And it says which surface authors a shot and which one edits one, so
+      // the dock at the bottom of the window is not mistaken for this.
+      expect(document.querySelector(".generation-composer__lede")!.textContent).toContain("changing a shot that already exists");
+      unmount();
+    }
+  });
+
+  it("builds a new shot from tags as well as prose, and shows the prompt first", () => {
+    localStorage.clear();
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const onChange = vi.fn();
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
+    fireEvent.change(container.querySelector(".generation-composer textarea")!, { target: { value: "hands shaping wet clay on a spinning wheel" } });
+
+    const composer = container.querySelector(".generation-composer") as HTMLElement;
+    pickTag(composer, "Camera movement", "Push in");
+    // Speed and amplitude only mean something once a movement exists, so they
+    // are offered only after one is chosen — the compiler drops them otherwise.
+    pickTag(composer, "Movement speed", "Slow");
+
+    // The compiled prompt is on screen BEFORE anything is committed, and the
+    // words the user typed are still marked as theirs.
+    expect(composer.querySelector(".compiled-prompt__text")!.textContent).toContain("Camera movement: push in, slow speed.");
+    expect(composer.querySelector(".prompt-part--brief")!.textContent).toBe("hands shaping wet clay on a spinning wheel");
+    expect([...composer.querySelectorAll(".prompt-part--tag")].map((part) => part.textContent)).toContain("push in, slow speed");
+    // The tag terms are NOT dressed up as the user's own writing.
+    expect(composer.querySelector(".prompt-part--brief")!.textContent).not.toContain("push in");
+
+    fireEvent.click(screen.getByRole("button", { name: /Save as a draft|Generate/ }));
+    const created = onChange.mock.calls[0][0].generationJobs[0];
+    expect(created.shotTags).toEqual({ cameraMovement: ["push-in"], cameraSpeed: ["slow"] });
+    expect(created.compiledPrompt).toContain("Camera movement: push in, slow speed.");
+    // The whole config still validates, so this is a shot that can be saved.
+    expect(parseProjectConfig(onChange.mock.calls[0][0])).toBeTruthy();
+  });
+
+  it("refuses movement speed until there is a movement for it to qualify", () => {
+    localStorage.clear();
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
+    // Not merely disabled — it says why, the way every other blocked control on
+    // this screen does.
+    const composer = container.querySelector(".generation-composer") as HTMLElement;
+    const speed = within(composer).getByRole("button", { name: /^Movement speed/ }) as HTMLButtonElement;
+    expect(speed.disabled).toBe(true);
+    expect(speed.textContent).toContain("Needs a camera movement first");
+  });
+
+  it("reopens an existing shot's tags so they can be adjusted", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], shotTags: { lens: ["macro-lens"] } }] });
+    const onChange = vi.fn();
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    // The saved tag is reported in the terms it puts in the prompt, not a
+    // paraphrase of them.
+    const shotTags = container.querySelector(".job-tags") as HTMLElement;
+    expect(screen.getByText("1 tag shapes this shot")).not.toBeNull();
+    expect(within(shotTags).getByRole("button", { name: /^Lens/ }).textContent).toContain("macro lens");
+    expect(container.querySelector(".compiled-prompt__text")!.textContent).toContain("macro lens, A quiet product film");
+
+    pickTag(shotTags, "Lens", "Telephoto");
+    expect(onChange.mock.calls[0][0].generationJobs[0].shotTags).toEqual({ lens: ["telephoto-lens"] });
+  });
+
+  it("locks a running shot's tags, because the engine already has the prompt", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4, shotTags: { lens: ["macro-lens"] } }] });
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const shotTags = container.querySelector(".job-tags") as HTMLElement;
+    expect((within(shotTags).getByRole("button", { name: /^Lens/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Its tags can be changed once it finishes/)).not.toBeNull();
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {
