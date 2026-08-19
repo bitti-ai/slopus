@@ -191,14 +191,34 @@ describe("every stylesheet resolves through the palette", () => {
     "generator", "timeline", "references", "export",
   ];
   const known = new Set(declarations(block(readCss("src/styles/tokens.css"), "\n:root {")).keys());
-  /* Declared locally by the sheet that uses them, not by the palette. */
-  const local = new Set(["--track-column", "--clip-color"]);
+  /* Set by a component at runtime, so no stylesheet declares them. Each entry
+     names the file that supplies it and is checked below, so this cannot rot
+     into a list of tokens nothing sets any more. */
+  const setByComponents: Record<string, string> = {
+    "--clip-color": "src/components/workspace/TimelineView.tsx",
+  };
+
+  for (const [token, source] of Object.entries(setByComponents)) {
+    it(`${token} is still set by ${source}`, () => {
+      expect(read(source)).toContain(token);
+    });
+  }
 
   for (const name of sheets) {
     it(`${name}.css uses no undefined token`, () => {
       const css = readCss(`src/styles/${name}.css`);
+      /* A sheet may declare its own custom properties — a track column width,
+         a clip colour, the offset that centres the transport on the picture.
+         Those are not palette entries and must not be, so they are collected
+         from the sheet itself rather than from a hand-kept allowlist: two
+         agents added one each in a single wave, and a list would have gone
+         stale twice in an afternoon. What this test is for is a `var()` that
+         names something nothing declares anywhere. */
+      const declared = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]));
       const used = [...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((match) => match[1]);
-      const missing = [...new Set(used)].filter((token) => !known.has(token) && !local.has(token));
+      const missing = [...new Set(used)].filter(
+        (token) => !known.has(token) && !declared.has(token) && !(token in setByComponents),
+      );
       expect(missing).toEqual([]);
     });
   }
