@@ -2782,6 +2782,31 @@ mod tests {
         assert!(directive("connect-src").contains("ipc:"));
     }
 
+    /// The window must NOT take the OS drag-and-drop handler.
+    ///
+    /// Tauri defaults `dragDropEnabled` to true, which on Windows makes wry
+    /// call `RegisterDragDrop` on the window and own the OLE drop target. That
+    /// is the same channel WebView2 needs for HTML5 drag-and-drop *inside* the
+    /// page, so with it on, a drag started in the media panel fires `dragstart`
+    /// and then `dragend` immediately — no `dragover`, no `drop`, no clip. The
+    /// user reported exactly that and the jsdom tests could not see it, because
+    /// jsdom has no OS drag loop and a browser has no Tauri window.
+    ///
+    /// Turning it off costs nothing the app uses: files come in through the
+    /// Import button's native dialog, not by dropping them on the window.
+    #[test]
+    fn the_window_leaves_drag_and_drop_to_the_webview() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let window = &config["app"]["windows"][0];
+        assert_eq!(
+            window["dragDropEnabled"],
+            serde_json::Value::Bool(false),
+            "the window must set dragDropEnabled: false, or dragging media onto \
+             a track silently does nothing in the desktop app: {window}"
+        );
+    }
+
     /// Writes a minimal real project folder and returns it, so a test can say
     /// "a folder that holds a project" without the create ceremony.
     fn project_folder_at(path: &Path) -> PathBuf {
