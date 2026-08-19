@@ -389,7 +389,9 @@ function buildICNS(images) {
 const RAMP = ".:-=+*#%@";
 
 /** Prints a decoded image as ASCII, ramped on the red channel: the plate is
- *  blue (r ~ 0x08-0x15) and the ink is white (r = 0xff), so red *is* the ink. */
+ *  blue (r ~ 0x08-0x15) and the ink is white (r = 0xff), so red *is* the ink.
+ *  A blank is transparent — outside the plate, or one of the four perforations
+ *  punched through it, which is why the holes show as gaps in the column. */
 function ascii({ width, height, rgba }) {
   const lines = [];
   for (let y = 0; y < height; y++) {
