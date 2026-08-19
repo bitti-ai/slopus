@@ -1773,11 +1773,100 @@ fn cancel_vidfab_generation(
     state.cancel(&job_id)
 }
 
+/* ── Exit guard ──────────────────────────────────────────────────────────────
+   The video engine runs inside this process, so closing the window ends a
+   generation outright — and vidfab writes no file of its own, so an unfinished
+   run leaves nothing behind. The webview therefore has to be able to answer the
+   close request before the window goes away.
+
+   The window is held open ONLY while the frontend has said something is
+   generating (`set_generation_active`). A webview that never loaded, or one
+   with nothing to lose, closes on the first click exactly as before: the guard
+   can never be the reason a user is stuck in a window that will not shut.
+   -------------------------------------------------------------------------- */
+
+#[derive(Default)]
+struct ExitGuard {
+    /// Set by the frontend whenever the number of running or queued generations
+    /// changes. False means "close without asking".
+    generation_active: std::sync::atomic::AtomicBool,
+    /// True between putting the question to the webview and its answer, so a
+    /// second click on the close button does not stack a second dialog.
+    asking: std::sync::atomic::AtomicBool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CloseDecision {
+    /// Nothing is generating: let the window close.
+    Close,
+    /// Hold the window open and ask the webview.
+    Ask,
+    /// Hold the window open; the question is already on screen.
+    Waiting,
+}
+
+impl ExitGuard {
+    fn on_close_requested(&self) -> CloseDecision {
+        if !self.generation_active.load(Ordering::Acquire) {
+            return CloseDecision::Close;
+        }
+        if self.asking.swap(true, Ordering::AcqRel) {
+            CloseDecision::Waiting
+        } else {
+            CloseDecision::Ask
+        }
+    }
+
+    /// Records the webview's answer. `true` also clears the active flag, so the
+    /// close that follows is not stopped by the guard a second time.
+    fn answered(&self, confirmed: bool) {
+        self.asking.store(false, Ordering::Release);
+        if confirmed {
+            self.generation_active.store(false, Ordering::Release);
+        }
+    }
+}
+
+#[tauri::command]
+fn set_generation_active(state: tauri::State<'_, ExitGuard>, active: bool) {
+    state.generation_active.store(active, Ordering::Release);
+}
+
+#[tauri::command]
+fn answer_app_close(window: tauri::Window, state: tauri::State<'_, ExitGuard>, confirmed: bool) {
+    state.answered(confirmed);
+    if confirmed {
+        let _ = window.destroy();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(agent::AgentRuntime::default())
         .manage(vidfab::VidfabRuntime::default())
+        .manage(ExitGuard::default())
+        .on_window_event(|window, event| {
+            use tauri::{Emitter as _, Manager as _};
+            let tauri::WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            let guard = window.state::<ExitGuard>();
+            match guard.on_close_requested() {
+                CloseDecision::Close => {}
+                CloseDecision::Waiting => api.prevent_close(),
+                CloseDecision::Ask => {
+                    api.prevent_close();
+                    // If the question cannot even be delivered there is nobody
+                    // to answer it, and refusing to close would be worse than
+                    // closing unasked.
+                    if window.emit("app-close-requested", ()).is_err() {
+                        guard.answered(true);
+                        let _ = window.destroy();
+                    }
+                }
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             open_project,
@@ -1797,6 +1886,8 @@ pub fn run() {
             resolve_vidfab_plan,
             enqueue_vidfab_generation,
             cancel_vidfab_generation,
+            set_generation_active,
+            answer_app_close,
             export::choose_export_destination,
             export::write_export_file
         ])
@@ -3292,5 +3383,62 @@ mod tests {
         assert!(!track.muted);
         assert_eq!(track.clips[0].source_start_ms, 0);
         assert!(validate_and_normalize_config(config.clone()).is_ok());
+    }
+}
+
+/* ── Exit guard tests ─────────────────────────────────────────────────────── */
+#[cfg(test)]
+mod exit_guard_tests {
+    use super::{CloseDecision, ExitGuard};
+    use std::sync::atomic::Ordering;
+
+    fn generating() -> ExitGuard {
+        let guard = ExitGuard::default();
+        guard.generation_active.store(true, Ordering::Release);
+        guard
+    }
+
+    #[test]
+    fn a_window_with_nothing_generating_closes_without_asking() {
+        let guard = ExitGuard::default();
+        assert_eq!(guard.on_close_requested(), CloseDecision::Close);
+        // And it keeps closing: the guard must never latch on its own.
+        assert_eq!(guard.on_close_requested(), CloseDecision::Close);
+    }
+
+    #[test]
+    fn a_generation_holds_the_window_and_asks_once() {
+        let guard = generating();
+        assert_eq!(guard.on_close_requested(), CloseDecision::Ask);
+        // Clicking the close button again while the question is on screen must
+        // still hold the window, but must not stack a second dialog.
+        assert_eq!(guard.on_close_requested(), CloseDecision::Waiting);
+    }
+
+    #[test]
+    fn keeping_generating_leaves_the_guard_ready_to_ask_again() {
+        let guard = generating();
+        assert_eq!(guard.on_close_requested(), CloseDecision::Ask);
+        guard.answered(false);
+        // The run is still going, so the next attempt is a fresh question and
+        // not a silent close.
+        assert_eq!(guard.on_close_requested(), CloseDecision::Ask);
+    }
+
+    #[test]
+    fn confirming_lets_the_window_go() {
+        let guard = generating();
+        assert_eq!(guard.on_close_requested(), CloseDecision::Ask);
+        guard.answered(true);
+        // destroy() can itself raise a close request; if the flag were still
+        // set the guard would ask again and the window would never shut.
+        assert_eq!(guard.on_close_requested(), CloseDecision::Close);
+    }
+
+    #[test]
+    fn a_run_that_finishes_first_takes_the_guard_back_out_of_the_way() {
+        let guard = generating();
+        guard.generation_active.store(false, Ordering::Release);
+        assert_eq!(guard.on_close_requested(), CloseDecision::Close);
     }
 }
