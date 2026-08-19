@@ -223,11 +223,6 @@
   white-space: nowrap;
 }
 
-.agent-dock__identity b {
-  color: var(--text-secondary);
-  font-weight: var(--weight-semibold);
-}
-
 /* The placeholder carries real guidance (and, when Pol is blocked, the reason
    plus the fix), so it must taper off with an ellipsis instead of being sliced
    through the middle of a word. The full text stays in the input's title. */
@@ -487,11 +482,6 @@
   .project-nav button {
     min-width: var(--control-sm);
     padding: 0 var(--space-3);
-  }
-
-
-  .agent-dock__identity b {
-    display: none;
   }
 
   .agent-dock__identity {
