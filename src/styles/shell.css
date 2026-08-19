@@ -283,6 +283,98 @@
   letter-spacing: var(--tracking-tight);
 }
 
+/* What a section is for, under its own heading rather than in one lead
+   paragraph that had to speak for every unrelated setting on the screen. */
+.settings-section__note {
+  max-width: 70ch;
+  margin: calc(var(--space-4) * -1) 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.settings-section .settings-status {
+  margin-bottom: var(--space-2);
+}
+
+/* --- Appearance -------------------------------------------------------------
+   Three options, always all three visible: "system" is a real choice, not the
+   absence of one, and a two-state toggle cannot say so. */
+
+.theme-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.theme-choice__option {
+  min-height: var(--control-lg);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  background: var(--wash-1);
+  cursor: pointer;
+  transition: 0.16s ease;
+}
+
+/* The radio still exists and still takes focus — it is only invisible, so the
+   arrow keys, the label click and the screen reader all keep working. The ring
+   is drawn on the card, which is what reads as the control. */
+.theme-choice__option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-choice__option:has(input:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.theme-choice__option > svg {
+  grid-row: 1;
+  flex: 0 0 auto;
+}
+
+.theme-choice__option b {
+  grid-row: 1;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.theme-choice__option small {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.theme-choice__option:hover {
+  border-color: var(--line-hover);
+  color: var(--text-secondary);
+  background: var(--wash-2);
+}
+
+.theme-choice__option--selected,
+.theme-choice__option--selected:hover {
+  border-color: var(--accent);
+  color: var(--text-secondary);
+  background: var(--accent-soft);
+}
+
+.theme-choice__option--selected > svg {
+  color: var(--accent-bright);
+}
+
 .settings-path {
   padding: var(--space-4) 0;
   border-top: 1px solid var(--line);
@@ -401,6 +493,10 @@
   .settings-view__foot {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .theme-choice {
+    grid-template-columns: 1fr;
   }
 
 }

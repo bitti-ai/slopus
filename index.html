@@ -6,6 +6,12 @@
     <meta name="theme-color" content="#080a0f" />
     <meta name="description" content="PolStudio — an agentic video creation workspace." />
     <title>PolStudio</title>
+    <!-- Parser-blocking on purpose: it paints the saved theme's ground before
+         anything reaches the screen, so a light-theme user never sees the dark
+         window flash through. Must stay a classic same-origin script — the
+         app's CSP forbids inline script, and a module would be deferred past
+         the first paint. See public/theme-boot.js. -->
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>
