@@ -4,6 +4,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     collections::BTreeMap,
     env,
@@ -198,7 +200,80 @@ impl AgentRuntime {
     }
 }
 
+/// The last answer the probe sweep gave, kept so it is not paid for twice.
+///
+/// One sweep is four child processes — a version check and an auth check per
+/// CLI — and what is installed on this computer does not change between two
+/// calls a moment apart. Without this, every remount of the app shell ran the
+/// whole sweep again (React's development double-mount alone doubles it), and
+/// on Windows each of those was a console window in the user's face.
+///
+/// A TTL rather than a permanent memo: a CLI installed, or logged into, while
+/// PolStudio is open is still picked up, just not instantly.
+struct CachedProbe {
+    key: String,
+    at: Instant,
+    statuses: Vec<ProviderStatus>,
+}
+
+static PROVIDER_PROBE_CACHE: Mutex<Option<CachedProbe>> = Mutex::new(None);
+const PROVIDER_PROBE_TTL: Duration = Duration::from_secs(120);
+
+/// What the answer depends on: the settings for the agent CLIs themselves.
+/// The engine paths travel in the same map and change often, and rekeying on
+/// those would have thrown the probe away every time the settings screen was
+/// touched.
+fn provider_probe_key(settings: &BTreeMap<String, ProviderSetting>) -> String {
+    let relevant: BTreeMap<&str, &ProviderSetting> = [ProviderId::Claude, ProviderId::Codex]
+        .into_iter()
+        .filter_map(|id| settings.get(id.key()).map(|setting| (id.key(), setting)))
+        .collect();
+    serde_json::to_string(&relevant).unwrap_or_default()
+}
+
+fn cached_or_probe<F>(
+    cache: &Mutex<Option<CachedProbe>>,
+    key: String,
+    ttl: Duration,
+    probe: F,
+) -> Vec<ProviderStatus>
+where
+    F: FnOnce() -> Vec<ProviderStatus>,
+{
+    // The lock is held ACROSS the probe on purpose. Two calls arriving together
+    // — which is exactly what a double-mounted app shell does — would otherwise
+    // both miss the cache and both run the sweep. The second one waits here and
+    // then finds the first one's answer.
+    let mut guard = match cache.lock() {
+        Ok(guard) => guard,
+        // A panic while probing must not make probing impossible for the rest
+        // of the session.
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(cached) = guard.as_ref() {
+        if cached.key == key && cached.at.elapsed() < ttl {
+            return cached.statuses.clone();
+        }
+    }
+    let statuses = probe();
+    *guard = Some(CachedProbe {
+        key,
+        at: Instant::now(),
+        statuses: statuses.clone(),
+    });
+    statuses
+}
+
 pub fn provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
+    cached_or_probe(
+        &PROVIDER_PROBE_CACHE,
+        provider_probe_key(settings),
+        PROVIDER_PROBE_TTL,
+        || probe_provider_statuses(settings),
+    )
+}
+
+fn probe_provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
     [ProviderId::Claude, ProviderId::Codex]
         .into_iter()
         .map(|id| {
@@ -418,13 +493,28 @@ struct CommandSpec {
     current_dir: PathBuf,
 }
 
+/// Windows gives every child process started by a GUI application its own
+/// console window. Launching PolStudio therefore flashed up one black window
+/// per probe — and the agent CLIs are batch shims, so each was a real window
+/// that stole focus. CREATE_NO_WINDOW asks for no console at all; stdout and
+/// stderr are piped either way, so nothing is lost by hiding it.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn quiet_command(executable: &Path) -> Command {
+    let mut command = Command::new(executable);
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
 fn run_subprocess(
     spec: CommandSpec,
     provider: ProviderId,
     cancel: Arc<AtomicBool>,
     timeout: Duration,
 ) -> Result<(Vec<AgentEvent>, String), String> {
-    let mut child = Command::new(&spec.executable)
+    let mut child = quiet_command(&spec.executable)
         .args(&spec.args)
         .current_dir(&spec.current_dir)
         .stdin(Stdio::null())
@@ -598,7 +688,7 @@ fn discover_executable(name: &str, setting: Option<&ProviderSetting>) -> Option<
 }
 
 fn probe_command(executable: &Path, args: &[&str], timeout: Duration) -> Result<String, String> {
-    let mut child = Command::new(executable)
+    let mut child = quiet_command(executable)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -764,6 +854,53 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_probe_sweep_is_reused_until_the_settings_or_the_ttl_change() {
+        use std::sync::atomic::AtomicUsize;
+
+        let cache: Mutex<Option<CachedProbe>> = Mutex::new(None);
+        let sweeps = AtomicUsize::new(0);
+        let sweep = || {
+            sweeps.fetch_add(1, Ordering::AcqRel);
+            Vec::new()
+        };
+        let ttl = Duration::from_secs(60);
+
+        cached_or_probe(&cache, "claude-default".into(), ttl, sweep);
+        cached_or_probe(&cache, "claude-default".into(), ttl, sweep);
+        // Four child processes, not eight: the app shell mounting twice must
+        // not launch the CLIs twice.
+        assert_eq!(sweeps.load(Ordering::Acquire), 1);
+
+        // A provider actually reconfigured is a different question.
+        cached_or_probe(&cache, "claude-disabled".into(), ttl, sweep);
+        assert_eq!(sweeps.load(Ordering::Acquire), 2);
+
+        // And an expired answer is no answer.
+        cached_or_probe(&cache, "claude-disabled".into(), Duration::ZERO, sweep);
+        assert_eq!(sweeps.load(Ordering::Acquire), 3);
+    }
+
+    #[test]
+    fn engine_paths_do_not_invalidate_the_agent_probe() {
+        // The engine settings ride in the same map and change whenever the
+        // settings screen is touched. Keying on them re-ran the CLI sweep for
+        // a change that cannot affect its answer.
+        let mut with_engine = BTreeMap::new();
+        with_engine.insert(
+            "vidfab".to_string(),
+            ProviderSetting {
+                enabled: true,
+                model: None,
+                options: BTreeMap::new(),
+            },
+        );
+        assert_eq!(
+            provider_probe_key(&BTreeMap::new()),
+            provider_probe_key(&with_engine)
+        );
     }
 
     #[test]
