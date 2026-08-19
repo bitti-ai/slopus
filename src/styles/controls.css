@@ -25,12 +25,12 @@
   min-height: var(--control-lg);
   padding: 0 var(--space-5);
   font-size: var(--text-base);
-  border: 1px solid #5578ed;
-  color: #fff;
-  background: linear-gradient(180deg, #5279f4, #3159d4);
+  border: 1px solid var(--button-primary-border);
+  color: var(--on-accent);
+  background: var(--button-primary-bg);
   box-shadow:
-    0 5px 18px rgba(31, 70, 196, 0.26),
-    inset 0 1px rgba(255, 255, 255, 0.15);
+    var(--button-primary-shadow),
+    inset 0 1px var(--sheen);
 }
 
 .primary-button:hover:not(:disabled) {
@@ -41,13 +41,13 @@
 .secondary-button {
   border: 1px solid var(--line-strong);
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--wash-1);
 }
 
 .secondary-button:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: var(--line-hover);
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--wash-2);
 }
 
 .primary-button:disabled,
@@ -64,17 +64,17 @@
   justify-content: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
-  border: 1px solid #65363e;
+  border: 1px solid var(--danger-line-strong);
   border-radius: var(--radius-md);
   color: var(--danger);
-  background: #26171b;
+  background: var(--danger-soft);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
 }
 
 .danger-button:hover:not(:disabled) {
-  border-color: #7d434c;
-  background: #2e1b20;
+  border-color: var(--danger);
+  background: var(--danger-soft-strong);
 }
 
 /* --- Icon buttons ---------------------------------------------------------- */
@@ -94,12 +94,12 @@
 
 .icon-button:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.045);
+  background: var(--wash-2);
 }
 
 .icon-button--active {
-  color: #c7d2ff;
-  border-color: rgba(88, 119, 218, 0.25);
+  color: var(--accent-on-soft);
+  border-color: var(--accent-line);
   background: var(--accent-soft);
 }
 
@@ -118,7 +118,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3);
   color: var(--text-muted);
-  background: #0e1117;
+  background: var(--field-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
 }
@@ -127,7 +127,7 @@
    has to land somewhere obvious. The input's own ring is suppressed just below
    so the two never stack. */
 .search-field:focus-within {
-  border-color: rgba(92, 127, 236, 0.6);
+  border-color: var(--accent-line-strong);
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: 2px;
 }
@@ -162,7 +162,7 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  color: #8fa0d8;
+  color: var(--eyebrow);
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
   line-height: var(--leading-snug);
@@ -188,7 +188,7 @@
 
 .back-link:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--wash-1);
 }
 
 /* --- Panel chrome (shared header strip inside editor panels) ---------------- */
@@ -228,7 +228,7 @@
 
 .panel-chrome button:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--wash-2);
 }
 
 .live-dot {
@@ -245,15 +245,15 @@
   height: 6px;
   margin: var(--space-3) 0;
   border-radius: var(--radius-xs);
-  background: #20252e;
+  background: var(--track);
 }
 
 .progress-track i {
   display: block;
   height: 100%;
   border-radius: var(--radius-xs);
-  background: linear-gradient(90deg, #4468db, #7d9aff);
-  box-shadow: 0 0 8px rgba(91, 126, 224, 0.53);
+  background: var(--progress-fill);
+  box-shadow: 0 0 8px var(--progress-glow);
 }
 
 .mini-progress {
@@ -261,14 +261,14 @@
   height: 4px;
   margin-top: var(--space-2);
   border-radius: var(--radius-xs);
-  background: #242a35;
+  background: var(--track);
 }
 
 .mini-progress em {
   display: block;
   height: 100%;
   border-radius: var(--radius-xs);
-  background: #637fe0;
+  background: var(--accent);
 }
 
 /* --- Toast ----------------------------------------------------------------- */
@@ -280,9 +280,9 @@
   bottom: var(--space-5);
   width: 380px;
   padding: var(--space-4);
-  border: 1px solid rgba(244, 104, 104, 0.25);
+  border: 1px solid var(--danger-line);
   border-radius: var(--radius-lg);
-  background: #171116;
+  background: var(--danger-soft);
   box-shadow: var(--shadow);
   display: grid;
   grid-template-columns: 1fr auto;
@@ -301,7 +301,7 @@
   max-height: 40vh;
   overflow-y: auto;
   overflow-wrap: anywhere;
-  color: #c0a4ab;
+  color: var(--danger-text-soft);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
 }
@@ -314,13 +314,13 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
-  color: #e1939f;
+  color: var(--danger);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
 }
 
 .toast button:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wash-3);
 }
 
 @media (max-width: 650px) {

@@ -21,7 +21,7 @@
   gap: var(--space-3);
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--line);
-  background: rgba(8, 10, 15, 0.74);
+  background: var(--topbar-glass);
   backdrop-filter: blur(16px);
 }
 
@@ -52,15 +52,10 @@
 .composer-shell {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(91, 121, 211, 0.2);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
-  background: linear-gradient(
-    135deg,
-    rgba(21, 29, 53, 0.76),
-    rgba(13, 16, 23, 0.95) 55%,
-    #0d1016
-  );
+  background: var(--composer-bg);
   box-shadow: var(--shadow);
 }
 
@@ -71,7 +66,7 @@
   right: -80px;
   top: -120px;
   border-radius: 50%;
-  background: rgba(51, 89, 217, 0.13);
+  background: var(--glow-accent);
   filter: blur(50px);
   pointer-events: none;
 }
@@ -124,19 +119,19 @@
 
 .composer {
   position: relative;
-  border: 1px solid rgba(114, 139, 218, 0.27);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
-  background: rgba(7, 9, 14, 0.72);
+  background: var(--field-bg);
   box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.025),
-    0 10px 25px rgba(0, 0, 0, 0.2);
+    inset 0 1px var(--hairline-hi),
+    var(--shadow-sm);
 }
 
 .composer:focus-within {
-  border-color: rgba(103, 138, 245, 0.55);
+  border-color: var(--accent-line-strong);
   box-shadow:
-    0 0 0 3px rgba(52, 89, 203, 0.08),
-    0 12px 30px rgba(0, 0, 0, 0.25);
+    0 0 0 3px var(--accent-ring),
+    var(--shadow-sm);
 }
 
 /* The textarea fills the box, so a ring on it alone would float inside the
@@ -198,10 +193,10 @@
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-1) 0 var(--space-3);
-  border: 1px solid rgba(91, 121, 211, 0.26);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-sm);
   color: var(--accent-bright);
-  background: rgba(45, 67, 130, 0.15);
+  background: var(--accent-soft);
 }
 
 .composer__reference b {
@@ -229,7 +224,7 @@
 
 .composer__reference button:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wash-3);
 }
 
 /* --- Optional settings (collapsed by default — the defaults are good) ------- */
@@ -332,7 +327,7 @@
 }
 
 .composer__options-grid select:hover {
-  border-color: rgba(112, 139, 226, 0.4);
+  border-color: var(--accent-line-strong);
 }
 
 /* --- Composer action bar --------------------------------------------------- */
@@ -361,8 +356,8 @@
 
 .composer__attach:hover:not(:disabled) {
   color: var(--text-primary);
-  border-color: rgba(112, 139, 226, 0.4);
-  background: rgba(73, 99, 174, 0.12);
+  border-color: var(--accent-line-strong);
+  background: var(--accent-soft);
 }
 
 .composer__attach:disabled {
@@ -375,7 +370,7 @@
   min-width: var(--space-5);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-pill);
-  color: var(--text-primary);
+  color: var(--on-accent);
   background: var(--accent-dark);
   font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
   text-align: center;
@@ -424,14 +419,14 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--wash-1);
   font-size: var(--text-sm);
   transition: 0.16s ease;
 }
 
 .idea-row button:hover {
   color: var(--text-primary);
-  border-color: rgba(112, 139, 226, 0.45);
+  border-color: var(--accent-line-strong);
   background: var(--accent-soft);
 }
 
@@ -516,8 +511,8 @@
 .project-card:hover,
 .project-card:focus-within {
   transform: translateY(-2px);
-  border-color: rgba(117, 137, 198, 0.28);
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.28);
+  border-color: var(--accent-line);
+  box-shadow: var(--shadow-sm);
 }
 
 .project-card__art-button {
@@ -550,7 +545,14 @@
   position: absolute;
 }
 
-/* Generated cover artwork — decorative, sizes intentionally unchanged. */
+/* Generated cover artwork — decorative, sizes intentionally unchanged.
+
+   THEME-INDEPENDENT ON PURPOSE. Everything from here to .project-card__body is
+   a picture, not a surface: four generated cover illustrations and the badges,
+   play button and caption that sit ON TOP of one. A cover does not become a
+   light-theme cover any more than a photograph does, and the chrome over it is
+   white-on-dark because the artwork underneath is dark in every theme. Running
+   these through --text-* would put dark ink on a dark picture. */
 .project-card__art--aurora {
   background: linear-gradient(155deg, #101c38, #172d55 45%, #6e6d4d);
 }
@@ -759,7 +761,7 @@
 
 .project-card__menu button:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--wash-3);
 }
 
 .project-card__path {
