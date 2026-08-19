@@ -1,9 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, compileMiniMaxH3PromptSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
+import { ReferenceImage } from "./ReferenceImage";
 import { SceneEditor } from "./SceneEditor";
 
 interface GeneratorViewProps {
@@ -346,8 +347,9 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                 sent to the engine. A bound reference the prompt skips stays
                 listed with its reason — hiding it would leave the user
                 wondering where it went. */}
-            {config.references.map((ref, index) => {
+            {config.references.map((ref) => {
               const bound = selected.referenceIds.includes(ref.id);
+              const picture = ref.kind === "image" && (ref.relativePath || ref.sourcePath);
               const skipped = skipReason(ref);
               return <label key={ref.id} className={`job-ref ${bound ? "job-ref--bound" : ""}`}>
                 <input
@@ -356,7 +358,15 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                   disabled={refsLocked}
                   onChange={() => toggleReference(selected, ref.id)}
                 />
-                <i className={`ref-mini ref-mini--${index}`} />
+                {/* The reference's real picture, not a stand-in. aria-hidden
+                    because the name it illustrates is the next node in this
+                    same <label>, and repeating it would say every reference
+                    twice when the checkbox announces itself. */}
+                <span className="ref-mini" aria-hidden="true">
+                  {picture
+                    ? <ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt="" />
+                    : ref.kind === "image" ? <ImageIcon size={16} /> : <FileText size={16} />}
+                </span>
                 <b>{ref.name}</b>
                 {skipped
                   ? <p className="job-refs__reason">{skipped}</p>

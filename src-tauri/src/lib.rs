@@ -1938,9 +1938,42 @@ fn answer_app_close(window: tauri::Window, state: tauri::State<'_, ExitGuard>, c
     }
 }
 
+/* The window's own ground — what the OS paints before the webview has anything
+ * to show. A FIFTH copy of a colour that tokens.css already owns, after
+ * tokens.css itself, theme.ts, public/theme-boot.js and the `backgroundColor`
+ * in tauri.conf.json; src/lib/theme.test.ts now pins every one of them.
+ *
+ * Why Rust repaints it at all: tauri.conf.json holds ONE static value, and the
+ * appearance preference has three states. Left at the dark ground, a
+ * light-theme computer showed a black window for the moment before the webview
+ * painted. The preference itself lives in the webview's localStorage — there is
+ * nothing here that can read it — so this follows the OS instead, which is
+ * exactly what the default "system" choice resolves to, and is right for an
+ * explicit choice that agrees with the computer. The one case it still gets
+ * wrong is an explicit choice that opposes the OS, and no value obtainable in
+ * this process fixes that: it would need the preference duplicated into a
+ * second store, which is precisely the drift this comment exists to record.
+ * theme-boot.js corrects it on the first frame the webview draws either way. */
+const GROUND_DARK: tauri::window::Color = tauri::window::Color(0x08, 0x0a, 0x0f, 0xff);
+const GROUND_LIGHT: tauri::window::Color = tauri::window::Color(0xee, 0xf1, 0xf6, 0xff);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager as _;
+            if let Some(window) = app.get_webview_window("main") {
+                let ground = if matches!(window.theme(), Ok(tauri::Theme::Light)) {
+                    GROUND_LIGHT
+                } else {
+                    GROUND_DARK
+                };
+                // A window that will not take a background colour is not a
+                // reason to refuse to start: the webview repaints in a frame.
+                let _ = window.set_background_color(Some(ground));
+            }
+            Ok(())
+        })
         .manage(agent::AgentRuntime::default())
         .manage(vidfab::VidfabRuntime::default())
         .manage(ExitGuard::default())
