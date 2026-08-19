@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, type ProjectConfig } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -80,6 +80,73 @@ describe("project workspace timecode", () => {
     // The point the old placeholder was carrying: no other project's demo
     // footage ever appears in this one's monitor.
     expect(screen.queryByText("NORTHERN LIGHT")).toBeNull();
+  });
+
+  /* jsdom has no DataTransfer, and the drop handler reads a custom type off it,
+     so the drag has to carry its own. Same contract as the browser's: setData
+     during dragstart, types visible during dragover, getData on drop. */
+  function fakeDataTransfer() {
+    const data: Record<string, string> = {};
+    return {
+      dropEffect: "none", effectAllowed: "all",
+      types: [] as string[],
+      setData(type: string, value: string) { data[type] = value; this.types.push(type); },
+      getData(type: string) { return data[type] ?? ""; },
+    };
+  }
+
+  /** A project carrying one importable clip, so the media panel has a card. */
+  function projectWithMedia(): ProjectConfig {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    return parseProjectConfig({ ...fresh, assets: [{
+      id: "asset-macro", kind: "video", name: "Macro footage", relativePath: "media/imported/macro.mp4",
+      mimeType: "video/mp4", durationMs: null, width: null, height: null, createdAt: fresh.createdAt,
+    }] });
+  }
+
+  function mediaPanel(config: ProjectConfig, onChange = vi.fn()) {
+    const view = render(createElement(TimelineView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    fireEvent.click(screen.getByRole("button", { name: "Media" }));
+    return { ...view, onChange };
+  }
+
+  it("switches the media panel between grid and list, and remembers which", () => {
+    localStorage.removeItem("polstudio.media-layout.v1");
+    const { container } = mediaPanel(projectWithMedia());
+    expect(container.querySelector(".media-grid--grid")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(container.querySelector(".media-grid--list")).not.toBeNull();
+    expect(container.querySelector(".media-grid--grid")).toBeNull();
+    // The choice is a habit, not a per-project setting: it outlives the mount.
+    cleanup();
+    const second = mediaPanel(projectWithMedia());
+    expect(second.container.querySelector(".media-grid--list")).not.toBeNull();
+  });
+
+  it("drops a video from the media panel onto a video track, and refuses the audio track", () => {
+    const config = projectWithMedia();
+    const video = config.assets[0];
+    const { container, onChange } = mediaPanel(config);
+    const card = screen.getByTitle(new RegExp(`^${video.name} —`));
+    const lanes = container.querySelectorAll(".track-lane");
+    const videoLane = lanes[config.timeline.tracks.findIndex((track) => track.kind === "video")];
+    const audioLane = lanes[config.timeline.tracks.findIndex((track) => track.kind === "audio")];
+
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.dragOver(audioLane, { dataTransfer });
+    fireEvent.drop(audioLane, { dataTransfer });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.dragOver(videoLane, { dataTransfer });
+    fireEvent.drop(videoLane, { dataTransfer });
+    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const track = next.timeline.tracks.find((item) => item.kind === "video")!;
+    const dropped = track.clips.find((clip) => clip.assetId === video.id)!;
+    expect(dropped.label).toBe(video.name);
+    // A zero-width lane in jsdom must still yield a real start time, not NaN.
+    expect(Number.isFinite(dropped.startMs)).toBe(true);
+    expect(parseProjectConfig(next)).toBeTruthy();
   });
 
   it("does not delete a selected clip from a locked track", () => {
