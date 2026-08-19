@@ -197,16 +197,20 @@ describe("tokens.css", () => {
        theme as soon as the app is up, and theme-boot.js corrects it again on
        the webview's first frame. See the comment above GROUND_DARK for the one
        case that still gets a wrong frame and why nothing here can fix it. */
+    /* Case-insensitively, all three of them: a hex colour is case-insensitive,
+       so re-spelling #080a0f as #080A0F is not drift and must not fail the
+       suite — this pin exists to catch a DIFFERENT colour, and a pin that also
+       fires on a capital letter teaches people to edit the test. */
     const conf = JSON.parse(read("src-tauri/tauri.conf.json"));
-    expect(conf.app.windows[0].backgroundColor).toBe(THEME_BACKGROUND.dark);
+    expect(String(conf.app.windows[0].backgroundColor).toLowerCase()).toBe(THEME_BACKGROUND.dark.toLowerCase());
 
     /* Written as Color(0x08, 0x0a, 0x0f, 0xff) so this comparison is exact
        rather than a decimal triple nobody could check by eye. */
     const asRustColor = (hex: string) =>
       `Color(${hex.slice(1).match(/../g)!.map((pair) => `0x${pair}`).join(", ")}, 0xff)`;
     const rust = read("src-tauri/src/lib.rs");
-    expect(rust).toContain(asRustColor(THEME_BACKGROUND.dark));
-    expect(rust).toContain(asRustColor(THEME_BACKGROUND.light));
+    expect(rust.toLowerCase()).toContain(asRustColor(THEME_BACKGROUND.dark).toLowerCase());
+    expect(rust.toLowerCase()).toContain(asRustColor(THEME_BACKGROUND.light).toLowerCase());
     /* And that they are actually used for this. Two consts nothing calls would
        keep passing the two assertions above while the window stayed black. */
     expect(rust).toContain("set_background_color");
@@ -214,7 +218,7 @@ describe("tokens.css", () => {
 
     /* index.html's meta ships the dark ground and applyTheme rewrites it on
        every switch, so the static value only has to be a real palette entry. */
-    expect(read("index.html")).toContain(`content="${THEME_BACKGROUND.dark}"`);
+    expect(read("index.html").toLowerCase()).toContain(`content="${THEME_BACKGROUND.dark.toLowerCase()}"`);
     expect(read("src/lib/theme.ts")).toContain('meta[name="theme-color"]');
   });
 });
@@ -287,7 +291,18 @@ describe("every stylesheet resolves through the palette", () => {
    and a listed rule that has gone away — or has stopped containing a literal —
    fails too. An allowlist nothing verifies is how the last two guards rotted.  */
 
-const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/g;
+/* The `i` is load-bearing and was missing: CSS function names are ASCII
+   case-insensitive, so `RGB(255,0,0)` and `OKLCH(…)` are the same declarations
+   as their lowercase spellings and walked straight through. The file's own
+   `RebeccaPurple` assertion shows case had been thought about for NAMES and not
+   for functions.
+
+   `%23` is the percent-encoded `#`, which is the canonical way to put a colour
+   in an inline SVG data URI — `url("data:image/svg+xml,%3Csvg fill='%23ff0000'…")`
+   — and this repo already inlines SVG masks in shell.css, so it is a spelling
+   that would plausibly arrive rather than a theoretical one. The raw `#` form
+   was already caught; only the encoded one got through. */
+const COLOUR_LITERAL = /(?:#|%23)[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi;
 
 /* Every named colour in CSS Color 4. `transparent` and `currentcolor` are
    deliberately absent — see above. The interpolation spaces color-mix() takes
@@ -313,17 +328,64 @@ const NAMED_COLOURS = new Set(`
   thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen
 `.trim().split(/\s+/));
 
+/* The SYSTEM colours, also CSS Color 4, and every bit as much a hardcoded
+   surface: `background: Canvas; color: CanvasText` is the OS's palette painted
+   over this one, which is exactly the "one theme's ink on the other theme's
+   ground" failure the whole guard exists for — worse, because the two palettes
+   are not even ours to reason about. They went through untouched.
+
+   These are also the reason `--custom-property` names are blanked out of a
+   value below: `var(--field-bg)` is a token this repo really uses, and `Field`
+   is a system colour, so scanning the raw value would fire on the palette
+   itself. A property NAME is never a colour value; only what follows it is. */
+const SYSTEM_COLOURS = new Set(`
+  accentcolor accentcolortext activetext buttonborder buttonface buttontext canvas canvastext
+  field fieldtext graytext highlight highlighttext linktext mark marktext selecteditem
+  selecteditemtext visitedtext
+`.trim().split(/\s+/));
+
+/* CSS lets an identifier be spelled with escapes — `\77 hite` IS `white`, and
+   `\72 gb(0,0,0)` IS `rgb(0,0,0)` — so a value is decoded before its words are
+   read. A hex colour cannot hide this way (an escape produces an ident, and
+   `#fff` is a hash token, so `\23 fff` is not a colour at all), which is why
+   only idents and function names need it. */
+const decodeEscapes = (value: string) => value
+  .replace(/\\([0-9a-f]{1,6})[ \t\n]?/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+  .replace(/\\(.)/g, "$1");
+
 /** Every colour a chunk of CSS names, in the two shapes a name can take. */
 function colourLiterals(css: string): string[] {
   const found = [...css.matchAll(COLOUR_LITERAL)].map((match) => match[0]);
-  /* A named colour only counts inside a declaration VALUE. Quoted strings are
-     blanked first: `content: "black"` names a word, not a colour, and
-     `font-family: Silver` would otherwise read as one too. Selectors never
-     reach here — this only ever sees rule bodies. */
-  for (const [, value] of css.matchAll(/[-a-zA-Z]+\s*:\s*([^;{}]*)/g)) {
-    for (const word of value.replace(/"[^"]*"|'[^']*'/g, " ").match(/[a-zA-Z]+/g) ?? []) {
-      if (NAMED_COLOURS.has(word.toLowerCase())) found.push(word);
+  /* A named colour only counts inside a declaration VALUE, and only after three
+     things are removed from that value. Quoted strings, because `content:
+     "black"` names a word rather than a colour. Custom-property NAMES, because
+     `var(--field-bg)` would otherwise read as the system colour `Field`.
+
+     And the font properties are skipped whole, because their value is a list of
+     arbitrary names — `font-family: Silver, Tan, sans-serif` is three fonts and
+     no colours. The note that used to stand here said blanking quoted strings
+     handled that; it handled only `font-family: "Silver"`, and the unquoted
+     form — which is how a stack is normally written — tripped the guard. A
+     false positive is how a guard gets deleted rather than fixed, so the code
+     now does what the comment says. Nothing is lost: a font called `white`
+     paints nothing.
+
+     Selectors never reach here — this only ever sees rule bodies. */
+  /* The property name allows DIGITS, which it did not: `[-a-zA-Z]+` could not
+     reach the colon in `--wash-3: white`, so every custom property with a digit
+     in its name had its value skipped entirely — and the palette is full of
+     them (--panel-2, --panel-3, --wash-3). */
+  for (const [, property, raw] of css.matchAll(/([-a-zA-Z][-a-zA-Z0-9]*)\s*:\s*([^;{}]*)/g)) {
+    if (/^(font|font-family|--font[-a-z0-9]*)$/i.test(property)) continue;
+    const value = decodeEscapes(raw.replace(/"[^"]*"|'[^']*'/g, " ").replace(/--[a-z0-9-]+/gi, " "));
+    for (const word of value.match(/[a-zA-Z]+/g) ?? []) {
+      if (NAMED_COLOURS.has(word.toLowerCase()) || SYSTEM_COLOURS.has(word.toLowerCase())) found.push(word);
     }
+    /* A value that carried an escape is rescanned decoded, so an escaped
+       FUNCTION name is caught too. Only such values are rescanned, so ordinary
+       CSS is never counted twice; a value mixing an escaped and a plain literal
+       can double-count, which errs towards the guard firing. */
+    if (raw.includes("\\")) found.push(...[...value.matchAll(COLOUR_LITERAL)].map((match) => match[0]));
   }
   return found;
 }
@@ -367,6 +429,13 @@ function ruleBlocks(css: string): { selector: string; body: string }[] {
 /** Rule → why that rule is allowed to name a colour. Keyed by file name. */
 const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
   "shell.css": {
+    /* Found by widening the regex to `%23`, not by reading the file: this had
+       been sitting in the sheet the whole time, invisible because it is spelled
+       percent-encoded inside a data URI. It is legitimate — a mask image is
+       read for its ALPHA, so `fill='%23000'` means "opaque here" and nothing is
+       ever painted this colour — but it was legitimate by luck rather than by
+       anyone's decision, which is the state the allowlist exists to end. */
+    ".pol-logo": "the fill of a mask image: mask-image reads alpha, so this black paints nothing",
     ".pol-logo__ticket":
       "brand mark: the PolStudio ticket is one artwork, blue plate and white letter, in both themes",
     ".pol-logo__ticket::before": "the ticket's blue plate, and the mask that cuts its perforations",
@@ -453,6 +522,61 @@ describe("no stylesheet outside tokens.css names a colour", () => {
     expect(colourLiterals("a { color: currentColor; }")).toEqual([]);
     expect(colourLiterals('a { content: "black"; filter: grayscale(1); }')).toEqual([]);
     expect(colourLiterals("a { --panel-3: var(--panel-2); border: 1px solid var(--line); }")).toEqual([]);
+  });
+
+  it("catches the five more the regex above still walked past", () => {
+    /* Same discipline as the block above: each of these was tried against the
+       guard as it stood and got through. */
+
+    /* CSS function names are case-insensitive. The regex was not. */
+    expect(colourLiterals("a { color: RGB(255, 0, 0); }")).toEqual(["RGB("]);
+    expect(colourLiterals("a { color: OKLCH(62% 0.2 250); }")).toEqual(["OKLCH("]);
+    expect(colourLiterals("a { background: HSLA(0, 0%, 0%, 0.5); }")).toEqual(["HSLA("]);
+
+    /* The percent-encoded hash, which is how a colour is written inside an
+       inline SVG data URI — the shape shell.css's masks are already written in. */
+    expect(colourLiterals(`a { background: url("data:image/svg+xml,%3Csvg fill='%23ff0000'%3E%3C/svg%3E"); }`))
+      .toEqual(["%23ff0000"]);
+
+    /* System colours: the OS palette painted over ours. */
+    expect(colourLiterals("a { background: Canvas; color: CanvasText; }")).toEqual(["Canvas", "CanvasText"]);
+    expect(colourLiterals("a { color: GrayText; }")).toEqual(["GrayText"]);
+    expect(colourLiterals("a { border-color: AccentColor; }")).toEqual(["AccentColor"]);
+
+    /* An identifier spelled with escapes, as a name and as a function name. */
+    expect(colourLiterals("a { color: \\77 hite; }")).toEqual(["white"]);
+    expect(colourLiterals("a { color: \\72 gb(1, 2, 3); }")).toEqual(["rgb("]);
+
+    /* A custom property with a digit in its name: the property regex could not
+       reach the colon, so the whole value went unread. */
+    expect(colourLiterals("a { --wash-3: white; }")).toEqual(["white"]);
+    expect(colourLiterals("a { --panel-2: Canvas; }")).toEqual(["Canvas"]);
+  });
+
+  it("leaves the shapes those five rules could plausibly have broken alone", () => {
+    /* Every widening above has a legal neighbour one character away, and a
+       guard that fires on the palette's own idioms is a guard that gets
+       deleted. These are those neighbours. */
+
+    /* `Field` is a system colour; `--field-bg` is a token this repo paints
+       with. Blanking property NAMES out of a value is what separates them. */
+    expect(colourLiterals("a { background: var(--field-bg); color: var(--text-primary); }")).toEqual([]);
+    expect(colourLiterals("a { box-shadow: inset 0 1px var(--hairline-hi); }")).toEqual([]);
+
+    /* An unquoted font stack, which is how a stack is normally written. The
+       comment above used to claim quoted-string blanking covered this; it did
+       not, and `font-family: Silver, Tan, sans-serif` tripped the guard. */
+    expect(colourLiterals("a { font-family: Silver, Tan, sans-serif; }")).toEqual([]);
+    expect(colourLiterals("a { font: var(--weight-medium) 12px / 1 Silver, monospace; }")).toEqual([]);
+    expect(colourLiterals(':root { --font-sans: "Manrope", Inter, system-ui, sans-serif; }')).toEqual([]);
+
+    /* But skipping the font properties must not blind the REST of the rule. */
+    expect(colourLiterals("a { font-family: Silver; color: white; }")).toEqual(["white"]);
+
+    /* `color(` needs its paren, and the case-insensitive flag must not make a
+       bare property name look like one. */
+    expect(colourLiterals("a { accent-color: var(--accent); }")).toEqual([]);
+    expect(colourLiterals("a { transition: color 0.2s ease, background-color 0.2s; }")).toEqual([]);
   });
 
   for (const sheet of sheets) {
