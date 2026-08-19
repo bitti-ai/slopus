@@ -1,0 +1,397 @@
+/* ============================================================================
+   export.ts — what an export IS, worked out with arithmetic only.
+
+   Everything in this file is pure: it takes a project and the user's export
+   settings and works out the frame-by-frame shape of the output file. It never
+   touches WebCodecs, WebGPU, mp4box or the filesystem — that is
+   exportPipeline.ts, which consumes the plan this module produces.
+
+   The split exists so the timing maths can be tested without a GPU: which clip
+   is on screen at time T, and which moment of the source file that output frame
+   has to come from, are the two questions an editor gets wrong silently.
+   ========================================================================== */
+
+import type { AspectRatio, ProjectConfig, Resolution, TimelineClip, TimelineTrack } from "./project";
+
+export type FrameRate = ProjectConfig["settings"]["frameRate"];
+export type OutputCodecId = "h264" | "vp9" | "av1";
+export type QualityId = "draft" | "balanced" | "high";
+
+export interface ExportSettings {
+  resolution: Resolution;
+  frameRate: FrameRate;
+  codec: OutputCodecId;
+  quality: QualityId;
+}
+
+export interface OutputCodec {
+  id: OutputCodecId;
+  label: string;
+  /** The track codec name mp4-muxer expects. */
+  muxer: "avc" | "vp9" | "av1";
+  /** Codec strings tried in order against `VideoEncoder.isConfigSupported`. */
+  candidates: (width: number, height: number, frameRate: number) => string[];
+  detail: string;
+}
+
+/* H.264 levels, as the byte that ends an `avc1.` codec string. The encoder
+   rejects a configuration whose level cannot hold the frame size and rate, so
+   the level is derived from the actual output rather than hard-coded. */
+function avcLevel(width: number, height: number, frameRate: number): string {
+  const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16);
+  const rate = macroblocks * frameRate;
+  if (macroblocks <= 3600 && rate <= 108_000) return "1f"; // 3.1
+  if (macroblocks <= 8192 && rate <= 245_760) return "28"; // 4.0
+  if (macroblocks <= 8704 && rate <= 522_240) return "2a"; // 4.2
+  if (macroblocks <= 22_080 && rate <= 589_824) return "33"; // 5.1
+  return "34"; // 5.2
+}
+
+export const OUTPUT_CODECS: readonly OutputCodec[] = [
+  {
+    id: "h264",
+    label: "H.264 / AVC",
+    muxer: "avc",
+    /* High, then Main, then Baseline at the same level. Hardware encoders
+       differ on which profiles they expose, so the first one this machine
+       actually accepts is the one used — never a guess. */
+    candidates: (width, height, frameRate) => {
+      const level = avcLevel(width, height, frameRate);
+      return [`avc1.6400${level}`, `avc1.4d00${level}`, `avc1.4200${level}`];
+    },
+    detail: "Plays everywhere. The baseline choice for an .mp4.",
+  },
+  {
+    id: "vp9",
+    label: "VP9",
+    muxer: "vp9",
+    candidates: () => ["vp09.00.10.08"],
+    detail: "Smaller files at the same quality; not every player reads VP9 inside .mp4.",
+  },
+  {
+    id: "av1",
+    label: "AV1",
+    muxer: "av1",
+    candidates: () => ["av01.0.08M.08", "av01.0.04M.08"],
+    detail: "Newest codec, smallest files, slowest to encode and least widely supported.",
+  },
+];
+
+export function outputCodec(id: OutputCodecId): OutputCodec {
+  const codec = OUTPUT_CODECS.find((candidate) => candidate.id === id);
+  if (!codec) throw new Error(`Unknown output codec: ${id}`);
+  return codec;
+}
+
+export interface QualityPreset {
+  id: QualityId;
+  label: string;
+  /** Bits spent per pixel per frame. Bitrate is derived, never typed in. */
+  bitsPerPixel: number;
+  detail: string;
+}
+
+export const QUALITY_PRESETS: readonly QualityPreset[] = [
+  { id: "draft", label: "Draft", bitsPerPixel: 0.04, detail: "Fastest and smallest. Visible compression in motion." },
+  { id: "balanced", label: "Balanced", bitsPerPixel: 0.09, detail: "The usual choice for a delivery file." },
+  { id: "high", label: "High", bitsPerPixel: 0.16, detail: "Large files. Keeps detail in grain and fast motion." },
+];
+
+export function qualityPreset(id: QualityId): QualityPreset {
+  const preset = QUALITY_PRESETS.find((candidate) => candidate.id === id);
+  if (!preset) throw new Error(`Unknown quality preset: ${id}`);
+  return preset;
+}
+
+/* The resolution names the SHORT edge, so one setting means the same amount of
+   picture in every aspect ratio the project offers: 1080p is 1920×1080 wide,
+   1080×1920 tall, 1080×1080 square and 1080×1350 at 4:5. */
+const SHORT_EDGE: Record<Resolution, number> = { "720p": 720, "1080p": 1080, "4k": 2160 };
+const RATIO: Record<AspectRatio, readonly [number, number]> = {
+  "16:9": [16, 9],
+  "9:16": [9, 16],
+  "1:1": [1, 1],
+  "4:5": [4, 5],
+};
+
+/** Encoders reject odd dimensions in 4:2:0, so both edges land on an even number. */
+const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
+export function outputDimensions(resolution: Resolution, aspectRatio: AspectRatio): { width: number; height: number } {
+  const base = SHORT_EDGE[resolution];
+  const [ratioWidth, ratioHeight] = RATIO[aspectRatio];
+  return ratioWidth >= ratioHeight
+    ? { width: even((base * ratioWidth) / ratioHeight), height: even(base) }
+    : { width: even(base), height: even((base * ratioHeight) / ratioWidth) };
+}
+
+/** The export starts as the project already describes itself. Nothing here is
+ *  invented: resolution and frame rate are the project's own settings. */
+export function defaultExportSettings(config: ProjectConfig): ExportSettings {
+  return {
+    resolution: config.settings.resolution,
+    frameRate: config.settings.frameRate,
+    codec: "h264",
+    quality: "balanced",
+  };
+}
+
+export function bitrateFor(width: number, height: number, frameRate: number, quality: QualityId): number {
+  return Math.round(width * height * frameRate * qualityPreset(quality).bitsPerPixel);
+}
+
+/** Bytes the encoder is being ASKED to produce. A rate-controlled encoder lands
+ *  near its target rather than on it, so this is labelled an estimate wherever
+ *  it is shown. */
+export function estimatedBytes(bitrate: number, durationMs: number): number {
+  return Math.round((bitrate / 8) * (durationMs / 1000));
+}
+
+/* ---------------------------------------------------------------------------
+   The plan
+   --------------------------------------------------------------------------- */
+
+export type ExportSegment =
+  | {
+      kind: "clip";
+      clipId: string;
+      assetId: string;
+      label: string;
+      /** First output frame index this clip fills. */
+      startFrame: number;
+      /** One past the last output frame index it fills. */
+      endFrame: number;
+      /** The clip's own position on the timeline, in ms. */
+      clipStartMs: number;
+      /** Where inside the source file the clip begins, in ms. */
+      clipSourceStartMs: number;
+    }
+  | { kind: "gap"; startFrame: number; endFrame: number };
+
+export interface ExportPlan {
+  width: number;
+  height: number;
+  frameRate: FrameRate;
+  durationMs: number;
+  frameCount: number;
+  backgroundColor: string;
+  segments: ExportSegment[];
+  /** Video clips that contribute at least one frame to the file. */
+  clipCount: number;
+  /** Frames with nothing over them; they get the project's background colour. */
+  gapFrames: number;
+  /** Clips on audio tracks. They are NOT in the file — see `notes`. */
+  audioClipCount: number;
+  /** Reasons this export cannot run at all. Empty means it can. */
+  blockers: string[];
+  /** True things about the output the user has to be told before they press go. */
+  notes: string[];
+}
+
+/** Container formats mp4box can demux today. webm and mkv import fine and play
+ *  in the app, but nothing here can take them apart yet, so a clip built on one
+ *  blocks the export instead of quietly rendering as background. */
+const DEMUXABLE_VIDEO = new Set(["video/mp4", "video/quicktime"]);
+const DRAWABLE_IMAGE = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+/** The moment output frame `frameIndex` has to be taken from inside the source
+ *  file, in milliseconds. This is the whole of the trim maths: an output frame
+ *  sits at `frameIndex / frameRate` on the timeline, and the source moment is
+ *  that far past the clip's start, offset by where the clip begins in its file. */
+export function sourceTimeMsForFrame(
+  segment: Extract<ExportSegment, { kind: "clip" }>,
+  frameIndex: number,
+  frameRate: number,
+): number {
+  return segment.clipSourceStartMs + ((frameIndex * 1000) / frameRate - segment.clipStartMs);
+}
+
+/** The clip a viewer sees at `timeMs`.
+ *
+ *  Tracks are drawn top to bottom in array order, so the FIRST video track that
+ *  has something at this moment wins — an overlay covers the story beneath it.
+ *  Within one track two clips can overlap after a drag; the later one is the
+ *  more recent edit, so it is the one on top. */
+export function visibleClipAt(tracks: TimelineTrack[], timeMs: number): TimelineClip | null {
+  for (const track of tracks) {
+    if (track.kind !== "video") continue;
+    let best: TimelineClip | null = null;
+    for (const clip of track.clips) {
+      if (timeMs < clip.startMs || timeMs >= clip.startMs + clip.durationMs) continue;
+      if (!best || clip.startMs >= best.startMs) best = clip;
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/** Where the picture ends. Audio is not muxed yet, so a soundtrack that runs
+ *  past the last shot cannot extend the file — claiming otherwise would promise
+ *  frames that do not exist. */
+export function videoDurationMs(config: ProjectConfig): number {
+  return config.timeline.tracks
+    .filter((track) => track.kind === "video")
+    .flatMap((track) => track.clips)
+    .reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
+}
+
+export function buildExportPlan(config: ProjectConfig, settings: ExportSettings): ExportPlan {
+  const { width, height } = outputDimensions(settings.resolution, config.settings.aspectRatio);
+  const frameRate = settings.frameRate;
+  const tracks = config.timeline.tracks;
+  const videoTracks = tracks.filter((track) => track.kind === "video");
+  const durationMs = videoDurationMs(config);
+  const frameCount = Math.round((durationMs * frameRate) / 1000);
+
+  /* Resolve every output frame first, then run the identical answers together.
+     Deriving segments from clip boundaries instead would disagree with the
+     encoder loop the moment two clips overlap. */
+  const segments: ExportSegment[] = [];
+  let gapFrames = 0;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const clip = visibleClipAt(videoTracks, (frame * 1000) / frameRate);
+    const last = segments[segments.length - 1];
+    if (!clip) {
+      gapFrames += 1;
+      if (last && last.kind === "gap") last.endFrame = frame + 1;
+      else segments.push({ kind: "gap", startFrame: frame, endFrame: frame + 1 });
+      continue;
+    }
+    if (last && last.kind === "clip" && last.clipId === clip.id) {
+      last.endFrame = frame + 1;
+      continue;
+    }
+    segments.push({
+      kind: "clip",
+      clipId: clip.id,
+      assetId: clip.assetId,
+      label: clip.label,
+      startFrame: frame,
+      endFrame: frame + 1,
+      clipStartMs: clip.startMs,
+      clipSourceStartMs: clip.sourceStartMs,
+    });
+  }
+
+  const usedClipIds = new Set(segments.flatMap((segment) => (segment.kind === "clip" ? [segment.clipId] : [])));
+  const audioClipCount = tracks
+    .filter((track) => track.kind === "audio")
+    .reduce((total, track) => total + track.clips.length, 0);
+
+  const blockers: string[] = [];
+  if (frameCount === 0) {
+    blockers.push("There are no video clips on the timeline, so there is nothing to render.");
+  }
+  const missing: string[] = [];
+  const undecodable: string[] = [];
+  for (const segment of segments) {
+    if (segment.kind !== "clip") continue;
+    const asset = config.assets.find((candidate) => candidate.id === segment.assetId);
+    if (!asset) {
+      missing.push(segment.label);
+      continue;
+    }
+    const drawable = DEMUXABLE_VIDEO.has(asset.mimeType) || DRAWABLE_IMAGE.has(asset.mimeType);
+    if (!drawable) undecodable.push(`${segment.label} (${asset.name}, ${asset.mimeType})`);
+  }
+  if (missing.length > 0) {
+    blockers.push(`These clips point at media that is not in this project: ${missing.join(", ")}.`);
+  }
+  if (undecodable.length > 0) {
+    blockers.push(
+      `PolStudio can only take apart .mp4 and .mov video and still images so far. These clips use something else: ${undecodable.join(", ")}.`,
+    );
+  }
+
+  const notes: string[] = [];
+  if (audioClipCount > 0) {
+    notes.push(
+      `The file will have no sound. ${audioClipCount} audio ${audioClipCount === 1 ? "clip is" : "clips are"} on the timeline and none of them are muxed yet.`,
+    );
+  }
+  if (gapFrames > 0) {
+    notes.push(
+      `${gapFrames} of ${frameCount} frames have no clip over them and will be solid ${config.settings.backgroundColor}.`,
+    );
+  }
+  const unusedClips = videoTracks
+    .flatMap((track) => track.clips)
+    .filter((clip) => !usedClipIds.has(clip.id));
+  if (unusedClips.length > 0) {
+    notes.push(
+      `${unusedClips.length} video ${unusedClips.length === 1 ? "clip is" : "clips are"} hidden underneath another track and will not appear.`,
+    );
+  }
+
+  return {
+    width,
+    height,
+    frameRate,
+    durationMs,
+    frameCount,
+    backgroundColor: config.settings.backgroundColor,
+    segments,
+    clipCount: usedClipIds.size,
+    gapFrames,
+    audioClipCount,
+    blockers,
+    notes,
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   Geometry shared by the preview and the compositor
+   --------------------------------------------------------------------------- */
+
+export interface FittedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The source frame, scaled to fit inside the output and centred. Nothing is
+ *  cropped; whatever is left over is background. The preview and the export
+ *  compositor both call this, so what you see is the frame you get. */
+export function fitRect(sourceWidth: number, sourceHeight: number, outWidth: number, outHeight: number): FittedRect {
+  if (sourceWidth <= 0 || sourceHeight <= 0) return { x: 0, y: 0, width: outWidth, height: outHeight };
+  const scale = Math.min(outWidth / sourceWidth, outHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return { x: (outWidth - width) / 2, y: (outHeight - height) / 2, width, height };
+}
+
+/* ---------------------------------------------------------------------------
+   Formatting
+   --------------------------------------------------------------------------- */
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  const units = ["kB", "MB", "GB"];
+  let value = bytes / 1000;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
+}
+
+/** mm:ss.mmm — an editor needs the fraction, and hours would be noise for a
+ *  timeline measured in seconds. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms));
+  const minutes = Math.floor(total / 60_000);
+  const seconds = Math.floor((total % 60_000) / 1000);
+  const millis = total % 1000;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+}
+
+/** A file name the OS will accept, derived from the project's own name. */
+export function suggestedFileName(projectName: string): string {
+  const cleaned = projectName
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${cleaned || "PolStudio export"}.mp4`;
+}
