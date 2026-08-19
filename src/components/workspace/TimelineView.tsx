@@ -510,20 +510,32 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
 
       <section className="pro-timeline">
         <header className="timeline-toolbar">
-          <h2>Timeline</h2>
+          {/* What the timeline IS and where it currently stands, reading left to
+              right from the panel's own heading: name, clock, format. The clock
+              used to sit inside the transport cluster, which pushed the buttons
+              off-centre and put a number nobody is aiming at in the middle of
+              the row. It is still the only timecode on the screen. */}
+          <div className="timeline-toolbar__lead">
+            <h2>Timeline</h2>
+            <strong className="transport-time" title="Playhead position">{timecode(playhead)}</strong>
+            <span className="transport-format">{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
+          </div>
           {/* The transport belongs to the timeline, not to the picture: it drives
               the playhead, and the playhead is drawn a few pixels below this row.
               Under the monitor it also printed the same timecode this toolbar was
               already printing, so one clock was shown twice and could be read as
-              two. One transport, one timecode, beside the ruler they refer to. */}
+              two. One transport, one timecode, beside the ruler they refer to.
+
+              It is centred on the PICTURE rather than on this row, which are not
+              the same point: the toolbar runs the full width while the monitor
+              sits between two side panels of unequal width. See
+              --video-centre-shift in timeline.css. */}
           <div className="timeline-transport">
             <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={transportBlockedBy ?? "Go to beginning"} disabled={transportBlockedBy !== null}><SkipBack size={18} /></button>
             {/* Nothing to play means nothing to play: running the clock over an
                 empty timeline reads as playback of footage that isn't there. */}
             <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} title={transportBlockedBy ?? (playing ? "Pause" : "Play")}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
             <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={transportBlockedBy ?? "Step forward one second"} disabled={transportBlockedBy !== null}><SkipForward size={18} /></button>
-            <strong className="transport-time" title="Playhead position">{timecode(playhead)}</strong>
-            <span className="transport-format">{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
           </div>
           <div className="timeline-tools">
             <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
