@@ -271,7 +271,7 @@
   border: 1px solid var(--button-primary-border);
   border-radius: var(--radius-sm);
   color: var(--on-accent);
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 .agent-dock button:disabled {

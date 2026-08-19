@@ -159,6 +159,8 @@
      that may carry a label or a focus ring. */
   --accent: #3d6df2;
   --accent-bright: #6b8dff;
+  --accent-fill: #3f64d9;              /* a FILLED accent button: white on it is 5.2:1,
+                                          where white on --accent is only 4.5:1 */
   --accent-dark: #173ca6;              /* solid accent chip, always wears --on-accent */
   --accent-soft: rgba(60, 105, 239, 0.15);
   --accent-soft-strong: rgba(60, 105, 239, 0.22);
@@ -271,6 +273,7 @@
 
     --accent: #2d5bd7;
     --accent-bright: #1e4fd0;          /* 6.8:1 — the readable accent */
+    --accent-fill: #2d5bd7;            /* 5.9:1 under white */
     --accent-dark: #1e40af;
     --accent-soft: rgba(45, 91, 215, 0.1);
     --accent-soft-strong: rgba(45, 91, 215, 0.16);
@@ -282,6 +285,7 @@
     --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
     --track: #dfe3ec;
+    --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
     --progress-glow: rgba(45, 91, 215, 0.35);
 
     --success: #0f7a45;                /* 5.4:1 */
@@ -350,6 +354,7 @@
 
   --accent: #2d5bd7;
   --accent-bright: #1e4fd0;
+  --accent-fill: #2d5bd7;
   --accent-dark: #1e40af;
   --accent-soft: rgba(45, 91, 215, 0.1);
   --accent-soft-strong: rgba(45, 91, 215, 0.16);
@@ -361,6 +366,7 @@
   --eyebrow: #47549a;
 
   --track: #dfe3ec;
+  --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
   --progress-glow: rgba(45, 91, 215, 0.35);
 
   --success: #0f7a45;
