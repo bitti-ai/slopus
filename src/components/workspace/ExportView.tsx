@@ -82,6 +82,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     [config.timeline.tracks, previewTimeMs],
   );
 
+  /* Switching tabs unmounts this view, and an export that kept running would
+     finish and write a file with nothing on screen to say so. Leaving stops it
+     instead — nothing has been written yet at any point before the end. */
+  useEffect(() => () => {
+    cancelRef.current = true;
+  }, []);
+
   useEffect(() => {
     const sources = new PreviewSources(folderPath);
     sourcesRef.current = sources;
@@ -228,6 +235,11 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       "target bitrate × duration, not a measurement",
     ],
     ["Sound", "None", "video only — see below"],
+    [
+      "Compositor",
+      support.webgpu ? "WebGPU" : "2D canvas",
+      support.webgpu ? "frames scaled without leaving the GPU" : "no WebGPU in this webview",
+    ],
   ];
 
   return <div className="export-view">
@@ -236,9 +248,11 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         <span className="eyebrow">Deliver</span>
         <h1>Export</h1>
         <p>
-          PolStudio renders the video tracks in order — trims, gaps and all — decoding each source file with this
-          computer’s hardware, compositing on the GPU and writing a real .mp4. Nothing below is a mock-up: if a control
-          cannot do its job here, it says why instead of pretending.
+          PolStudio renders the video tracks in order — trims, gaps and all — taking each source file apart with
+          mp4box, decoding it through this computer’s own video decoder, compositing{" "}
+          {support.webgpu ? "on the GPU with WebGPU" : "on a 2D canvas, because this webview has no WebGPU"} and
+          muxing a real .mp4. Nothing below is a mock-up: where a control cannot do its job here, it says why instead
+          of pretending.
         </p>
       </div>
     </header>
@@ -391,6 +405,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             <i style={{ width: `${progress.frameCount === 0 ? 0 : Math.round((progress.framesDone / progress.frameCount) * 100)}%` }} />
           </div>
           <p>{progress.detail} <small>{progress.framesDone} / {progress.frameCount} frames</small></p>
+          <p><small>Nothing is written until the encode finishes. Leaving this tab cancels the run.</small></p>
         </div>}
 
         {cancelled && <p className="export-outcome" role="status">
