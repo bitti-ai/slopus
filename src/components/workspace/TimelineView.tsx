@@ -291,7 +291,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
                 disabled={importing || !isTauri()}
                 title={isTauri() ? "Copy video, sound, or image files into this project" : "Importing files is available in the desktop app"}
               >
-                <Upload size={20} /><b>{importing ? "Importing…" : "Import media"}</b><small>Video, sound, or images</small>
+                <Upload size={20} /><b>{importing ? "Importing…" : "Import media"}</b>
               </button>
               {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
@@ -301,12 +301,14 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
         <main className="program-panel">
           <h2 className="sr-only">Program monitor</h2>
           <div className="program-canvas">
-            {/* An empty monitor is an empty monitor. The panel that used to sit
+            {/* An empty monitor is an empty monitor: the panel that used to sit
                 here restated the project's name and prompt — both already in the
                 topbar — to say nothing was playing, which the black picture says
-                by itself. Footage that exists but cannot be played back yet still
-                gets a panel, because THAT is not obvious. */}
-            {hasVisualOutput && (
+                by itself. The note about footage that exists but cannot be played
+                back yet is worth making, but only once something is actually cut
+                into the timeline; over an empty edit it was a panel about
+                nothing, covering the picture. */}
+            {hasVisualOutput && clipCount > 0 && (
               <div className="program-empty program-empty--footage">
                 <Film size={30} />
                 <strong>{config.name}</strong>
