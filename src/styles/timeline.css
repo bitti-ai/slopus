@@ -818,16 +818,24 @@
   background: var(--accent-bright);
 }
 
-/* An empty timeline has nothing to play. A full-brightness Play button would
-   invite a click that does nothing, so the transport reads as disabled — and
-   every one of these carries a title saying why. */
+/* An empty timeline has nothing to play, and the pixels have to say so. They
+   did not: the fill stayed --accent and only dimmed, which on this background
+   left Play the brightest control on the page — an invitation to the one click
+   it cannot honour, with the truth hidden in the DOM and the tooltip. So the
+   accent goes entirely and the button drops to the flat surface the rest of the
+   transport already sits on.
+
+   Colour rather than opacity, because 0.4 of --text-secondary lands under the
+   contrast floor the tokens set: a disabled control still has to be readable,
+   and its title is the whole explanation of why it is off. */
 .timeline-transport button:disabled {
-  opacity: 0.4;
+  color: var(--text-faint);
   cursor: not-allowed;
 }
 
 .timeline-transport .play-button:disabled {
-  background: var(--accent);
+  color: var(--text-faint);
+  background: var(--panel-3);
 }
 
 /* The only timecode on the screen. Tabular figures so the row does not twitch
