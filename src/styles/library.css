@@ -556,7 +556,8 @@
    The chrome over the picture is white, but NOT because the picture is dark.
    TWO OF THE FOUR ARE PALE — --paper is #cabca3 flat, and --chrome runs up to
    #dce7e7 in its highlight — so "white on a dark cover" was never true, and the
-   caption sat at 1.75:1 on --paper with a text-shadow as its only defence.
+   caption measured 1.64:1 at its worst pixel over --paper (1.75:1 median,
+   Chrome, identical in both themes) with a text-shadow as its only defence.
 
    What is true, and what every rule below relies on instead: each piece of
    chrome carries its OWN dark plate and is legible against that plate alone,

@@ -392,7 +392,7 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
        than about the pictures: two of the four covers are pale (--paper is
        #cabca3, --chrome peaks at #dce7e7), so the note that used to stand here
        — "white on a dark picture in both themes, because the picture is dark in
-       both" — was simply false, and the caption it excused measured 1.75:1. */
+       both" — was simply false, and the caption it excused measured 1.64:1. */
     ".project-card__format, .project-card__quality":
       "white ink on the dark plate this rule paints for itself: 5.29:1 measured over the palest cover",
     ".project-card__play": "white ink on the dark disc this rule paints for itself",
@@ -484,8 +484,9 @@ describe("no stylesheet outside tokens.css names a colour", () => {
    is the user's own project brief, printed over generated artwork, and it was
    exempted from the guard above with the note "white on a dark picture in both
    themes, because the picture is dark in both". Two of the four covers are not
-   dark. It measured 1.75:1 on --paper in Chrome, with a text-shadow as the only
-   thing standing between the user's words and a blank strip.
+   dark. It measured 1.64:1 at its worst pixel over --paper in Chrome — the same
+   in both themes — with a text-shadow as the only thing standing between the
+   user's words and a blank strip. It now measures 16.14:1 there.
 
    The rule now paints its own strip, and this recomputes the ratio from the two
    literals in it against the worst backdrop that can physically exist — pure
@@ -523,8 +524,8 @@ describe("the library cover caption", () => {
 
   it("does not lean on a text-shadow to get there", () => {
     /* A shadow is what the old caption had instead of a plate, and it is part
-       of why nobody noticed: it makes 1.75:1 look survivable in a screenshot
-       while measuring the same 1.75:1. If one comes back it has to be
+       of why nobody noticed: it makes 1.64:1 look survivable in a screenshot
+       while measuring the same 1.64:1. If one comes back it has to be
        decoration on top of a ratio that already passes, not the reason it
        passes. */
     expect(rule).not.toContain("text-shadow");
