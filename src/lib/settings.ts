@@ -127,3 +127,30 @@ export function saveAgentProvider(provider: ProviderId): void {
     /* Losing the preference costs a dropdown click next launch, nothing more. */
   }
 }
+
+/* --- Panel layout ----------------------------------------------------------
+   How the media panel lays its footage out. A working habit, not a property of
+   any one project, so it lives beside the engine paths rather than in
+   pols.json — a project file the user may copy to another machine should not
+   carry one editor's panel preference with it. */
+
+export type MediaLayout = "grid" | "list";
+
+const MEDIA_LAYOUT_KEY = "polstudio.media-layout.v1";
+
+export function loadMediaLayout(): MediaLayout {
+  try {
+    return localStorage.getItem(MEDIA_LAYOUT_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
+export function saveMediaLayout(layout: MediaLayout): void {
+  try {
+    localStorage.setItem(MEDIA_LAYOUT_KEY, layout);
+  } catch {
+    /* A full or disabled localStorage costs the preference, not the session:
+       the panel still shows whatever was just chosen. */
+  }
+}

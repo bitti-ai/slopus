@@ -243,6 +243,40 @@
   background: rgba(60, 105, 239, 0.24);
 }
 
+/* --- Panel layout toggle ---------------------------------------------------
+   Grid or list for the media panel. Icon-only, so each button carries its name
+   for screen readers in an .sr-only span. */
+
+.layout-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.layout-toggle button {
+  width: var(--space-6);
+  height: var(--space-6);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 1px);
+  color: var(--text-muted);
+  background: none;
+}
+
+.layout-toggle button:hover {
+  color: var(--text-secondary);
+}
+
+.layout-toggle button.active {
+  color: var(--text-primary);
+  background: var(--panel-3);
+}
+
 /* --- Media panel ----------------------------------------------------------- */
 
 .media-grid {
@@ -321,8 +355,69 @@
   );
 }
 
+/* A real frame from the file, drawn to fill the plate the placeholder used. */
+.media-thumb--poster {
+  padding: 0;
+  background-image: none;
+}
+
+.media-thumb--poster img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .media-grid button[draggable="true"] {
   cursor: grab;
+}
+
+/* --- Media panel, list layout ---------------------------------------------
+   One row per file: a small still on the left, name and kind beside it. Same
+   buttons, same drag behaviour — only the shape changes. */
+
+.media-grid--list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.media-grid--list button {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: var(--space-2);
+  padding: 0;
+}
+
+.media-grid--list .media-thumb {
+  grid-row: 1 / 3;
+  width: 72px;
+  height: var(--space-7);
+  border-right: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.media-grid--list button b {
+  align-self: end;
+  margin-top: 0;
+  padding-left: 0;
+}
+
+.media-grid--list button small {
+  align-self: start;
+  padding-left: 0;
+}
+
+.media-grid--list .media-import {
+  min-height: var(--space-7);
+  flex-direction: row;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.media-grid--list .media-import b,
+.media-grid--list .media-import small {
+  width: auto;
 }
 
 .media-grid button[draggable="true"]:active {
@@ -854,7 +949,7 @@
   background: #1c3939;
 }
 
-.track-head b,
+.track-head .track-name,
 .track-head small {
   display: block;
   overflow: hidden;
@@ -862,11 +957,32 @@
   text-overflow: ellipsis;
 }
 
-.track-head b {
+/* An editable field that reads as the label it replaced until it is focused —
+   a border around every track name would turn the head into a form. */
+.track-head .track-name {
+  width: 100%;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
+  background: none;
+  font-family: inherit;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+}
+
+.track-head .track-name:hover {
+  border-color: var(--line-strong);
+}
+
+.track-head .track-name:focus {
+  outline: none;
+  border-color: var(--accent-bright);
+  background: var(--panel-2);
 }
 
 .track-head small {

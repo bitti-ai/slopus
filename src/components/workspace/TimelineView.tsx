@@ -1,11 +1,13 @@
 import {
-  Copy, Film, Image as ImageIcon, Layers3, Lock, LockOpen, Music2,
+  Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen, Music2,
   Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload, Video,
   Volume2, VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
+import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
+import { MediaThumbnail } from "./MediaThumbnail";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
@@ -50,6 +52,10 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
+  /* Grid reads a folder of footage by its pictures, list reads it by its
+     names. Which one a cutter wants is a habit, not a per-project choice, so
+     it is remembered on this machine rather than written into the project. */
+  const [mediaLayout, setMediaLayout] = useState<MediaLayout>(loadMediaLayout);
   const timelineGrid = useRef<HTMLDivElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -106,7 +112,9 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
     return () => grid.removeEventListener("wheel", onWheel);
   }, [duration, config.settings.frameRate]);
 
+  const chooseMediaLayout = (layout: MediaLayout) => { setMediaLayout(layout); saveMediaLayout(layout); };
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) => onChange({ ...config, timeline: { tracks: nextTracks } });
+  const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   const removeSelected = () => {
@@ -227,7 +235,25 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
             <button className={panelTab === "scenes" ? "active" : ""} onClick={() => setPanelTab("scenes")}><Layers3 size={16} /> Scenes</button>
             <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
           </div>
-          <div className="scene-panel__head"><h2>{panelTab === "scenes" ? "Story sequence" : "Project media"}</h2></div>
+          <div className="scene-panel__head">
+            <h2>{panelTab === "scenes" ? "Story sequence" : "Project media"}</h2>
+            {panelTab === "media" && (
+              <div className="layout-toggle" role="group" aria-label="Media layout">
+                <button
+                  className={mediaLayout === "grid" ? "active" : ""}
+                  aria-pressed={mediaLayout === "grid"}
+                  onClick={() => chooseMediaLayout("grid")}
+                  title="Show media as a grid of pictures"
+                ><LayoutGrid size={16} /><span className="sr-only">Grid</span></button>
+                <button
+                  className={mediaLayout === "list" ? "active" : ""}
+                  aria-pressed={mediaLayout === "list"}
+                  onClick={() => chooseMediaLayout("list")}
+                  title="Show media as a list"
+                ><List size={16} /><span className="sr-only">List</span></button>
+              </div>
+            )}
+          </div>
           {panelTab === "scenes" ? (
             <div className="scene-list">
               {sceneClips.map((clip, index) => (
@@ -239,7 +265,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
               <button className="scene-add" onClick={addScene}><Plus size={18} /> Add or generate a scene</button>
             </div>
           ) : (
-            <div className="media-grid">
+            <div className={`media-grid media-grid--${mediaLayout}`}>
               {/* Draggable onto the timeline. `draggable` on a <button> is the
                   whole mechanism — the button still clicks and still takes
                   focus, so keyboard users are not shut out of selecting it. */}
@@ -254,7 +280,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
                 onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
                 title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
               >
-                <span className="media-thumb">{asset.kind === "audio" ? <Music2 size={22} /> : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />}</span>
+                <MediaThumbnail folderPath={folderPath} asset={asset} />
                 <b>{asset.name}</b>
                 {/* Duration is only claimed when something actually measured it. */}
                 <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
@@ -361,6 +387,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
             dropActive={dropTrackId === track.id}
             onSelect={setSelectedId}
             onToggle={toggleTrack}
+            onRename={renameTrack}
             onDragOverLane={(event) => {
               if (!event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) return;
               if (!acceptsAsset(track, draggedAsset)) return;
@@ -375,7 +402,9 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
               const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
               if (!assetId) return;
               const rect = event.currentTarget.getBoundingClientRect();
-              dropAsset(track.id, assetId, (event.clientX - rect.left) / rect.width);
+              // A zero-width lane would make the ratio NaN and the clip's start
+              // time with it, which zod then refuses to save.
+              dropAsset(track.id, assetId, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0);
             }}
           />)}
           <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
@@ -385,13 +414,14 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   );
 }
 
-function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle, onDragOverLane, onDragLeaveLane, onDropLane }: {
+function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle, onRename, onDragOverLane, onDragLeaveLane, onDropLane }: {
   track: ProjectConfig["timeline"]["tracks"][number];
   duration: number;
   selectedId: string;
   dropActive: boolean;
   onSelect: (id: string) => void;
   onToggle: (id: string, key: "muted" | "locked") => void;
+  onRename: (id: string, name: string) => void;
   onDragOverLane: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeaveLane: () => void;
   onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -399,7 +429,17 @@ function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle,
   return <>
     <div className="track-head">
       <span className={`track-kind track-kind--${track.kind}`}>{track.kind === "audio" ? <Music2 size={16} /> : <Video size={16} />}</span>
-      <div><b>{track.name}</b><small>{track.kind === "audio" ? "Audio" : "Video"}</small></div>
+      {/* The name is an editable field, not a label: a project with three video
+          layers needs the user's own words on them, and an always-live input
+          needs no discovery. Blanking it falls back the way a clip name does,
+          because the schema has no room for a nameless track. */}
+      <div><input
+        className="track-name"
+        value={track.name}
+        aria-label={`Rename ${track.name}`}
+        title="Rename this track"
+        onChange={(event) => onRename(track.id, event.target.value || "Untitled track")}
+      /><small>{track.kind === "audio" ? "Audio" : "Video"}</small></div>
       <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} ${track.name}`} title={`${track.muted ? "Unmute" : "Mute"} ${track.name}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
       <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${track.name}`} title={`${track.locked ? "Unlock" : "Lock"} ${track.name}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
