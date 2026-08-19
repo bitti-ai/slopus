@@ -55,6 +55,13 @@ export interface ShotTagGroup {
   /** Only offered once a camera movement is chosen — "slow speed" on its own
    *  describes nothing, and the compiler drops it (see `shotTagClauses`). */
   requiresMovement?: boolean;
+  /** True for a setting that describes the WHOLE scene rather than one shot.
+   *  Base guide §4.1 opens the description with a single overall style, so a
+   *  second style on shot 3 has nowhere to go: `compileScenePromptSegments`
+   *  takes the style from the first shot that carries one and ignores the rest.
+   *  The picker says so rather than letting someone set a look per shot and
+   *  wonder why only one of them reached the prompt. */
+  sceneWide?: boolean;
   options: readonly ShotTagOption[];
 }
 
@@ -83,8 +90,9 @@ export const SHOT_TAG_GROUPS: readonly ShotTagGroup[] = [
   {
     id: "visualStyle",
     label: "Look",
-    help: "Opens the shot. Choosing one replaces the style PolStudio would otherwise guess from your words.",
+    help: "Opens the scene. Choosing one replaces the style PolStudio would otherwise guess from your words.",
     multiple: false,
+    sceneWide: true,
     options: VISUAL_STYLES,
   },
   {
