@@ -85,8 +85,11 @@ struct ProjectAsset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_path: Option<String>,
     mime_type: String,
-    // zod spells these `.optional()` with no `.nullable()`, so an explicit
-    // `null` is REJECTED by the frontend parser. The key has to stay absent.
+    // zod now spells these `.nullish()`, so an explicit `null` WOULD parse.
+    // Keep skipping anyway: it is the shape the fixtures pin, and it keeps the
+    // absent case unambiguous. Do not restate the old reason — the frontend
+    // rejecting null was true once and is the sort of stale justification this
+    // file's own rules warn about.
     #[serde(skip_serializing_if = "Option::is_none")]
     duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
