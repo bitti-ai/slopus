@@ -2,7 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, compileMiniMaxH3PromptSegments, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, shotTagSelectionSchema, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { countShotTags, hasCameraMovement, normalizeShotTagSelection, selectedShotTagOptions, SHOT_TAG_GROUPS, toggleShotTag, type ShotTagSelection } from "../../lib/shot-tags";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
@@ -27,6 +28,17 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   const [ownPrompt, setOwnPrompt] = useState("");
   const prompt = draftPrompt ?? ownPrompt;
   const setPrompt: (value: string) => void = onDraftPromptChange ?? setOwnPrompt;
+  /* The tags on the shot being written. They belong to the half-written shot,
+     not to the project, so they live outside the config until it is created —
+     but switching tabs unmounts this view, and dropping a dozen deliberate
+     choices on the way back is the same loss the composer text was rescued
+     from. Parked per project, exactly like the media panel's layout habit. */
+  const draftTagsKey = `polstudio.draft-shot-tags.v1:${config.id}`;
+  const [draftTags, setDraftTagsState] = useState<ShotTagSelection>(() => readDraftTags(draftTagsKey));
+  const setDraftTags = (next: ShotTagSelection) => {
+    setDraftTagsState(next);
+    writeDraftTags(draftTagsKey, next);
+  };
   const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const configRef = useRef(config);
@@ -71,9 +83,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     const bound = configRef.current.references.filter((reference) => job.referenceIds.includes(reference.id));
     return {
       jobId: job.id,
-      // Recompiled from current state so edits to a bound reference reach the
-      // engine, rather than sending a prompt frozen at draft-creation time.
-      prompt: compileMiniMaxH3Prompt(job.creativeBrief, bound),
+      // Recompiled from current state so edits to a bound reference or a
+      // retagged shot reach the engine, rather than sending a prompt frozen at
+      // draft-creation time. This is the ONE string vidfab is given, and it is
+      // the same string the compiled-prompt panel shows.
+      prompt: compileMiniMaxH3Prompt(job.creativeBrief, bound, job.shotTags ?? null),
       frames: Math.round(6 * config.settings.frameRate),
       steps: 50,
       seed: 482091,
@@ -122,12 +136,15 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     // Same pair the compiler applies, so a bound reference is always one that
     // actually reaches the prompt.
     const bound = config.references.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)).slice(0, 2);
-    const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: bound.map((ref) => ref.id), references: bound });
+    const draft = createDraftGenerationJob(cleanPrompt, { referenceIds: bound.map((ref) => ref.id), references: bound, shotTags: draftTags });
     const job: GenerationJob = runtimeReady ? { ...draft, status: "queued" } : draft;
     const next = { ...config, generationJobs: [job, ...jobs] };
     onChange(next);
     setSelectedId(job.id);
     setPrompt("");
+    // The tags moved into the shot, so the composer starts clean for the next
+    // one rather than silently applying the last shot's camera to it.
+    setDraftTags({});
     try {
       const request = requestFor(job);
       const plan = await resolveVidfabPlan(request, next);
@@ -198,8 +215,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         </div>
         {/* A shot is its words, and PolStudio never writes those for anyone —
             so this opens the composer rather than adding an empty job to the
-            list. Same destination as "Write another shot" below. */}
-        <button className="queue-panel__new" onClick={focusComposer} aria-label="Write a new shot" title="Write a new shot"><Plus size={18} /></button>
+            list. Same destination as "Describe another shot" below. */}
+        <button className="queue-panel__new" onClick={focusComposer} aria-label="Describe a new shot" title="Describe a new shot"><Plus size={18} /></button>
       </div>
       <div className="queue-panel__scroll">
         <QueueGroup title="Rendering now" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
@@ -260,6 +277,17 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               </li>
             </ol>
           </div>
+          {/* Every setting on this shot collapsed into the one string vidfab is
+              given. Recompiled from what the shot holds right now, so it cannot
+              disagree with what the next run sends. */}
+          <CompiledPrompt
+            creativeBrief={selected.creativeBrief}
+            references={boundRefs}
+            shotTags={selected.shotTags ?? null}
+            caption={refsLocked
+              ? "This is the prompt the engine was given for the run in progress."
+              : "Rebuilt from this shot’s words, tags and references every time it is sent."}
+          />
         </div>
 
         <aside className="job-detail__info">
@@ -284,6 +312,19 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           <div className="job-prompt">
             <span>What you asked for</span>
             <p>{selected.creativeBrief}</p>
+          </div>
+
+          {/* Tags are stored with the shot, so an existing one can be reopened
+              and retagged rather than rewritten from scratch. */}
+          <div className="job-tags">
+            <span>{shotTagSummary(selected.shotTags ?? null)}</span>
+            <ShotTagPicker
+              idPrefix={selected.id}
+              value={selected.shotTags ?? {}}
+              disabled={refsLocked}
+              onChange={(next) => updateJob(selected.id, { shotTags: normalizeShotTagSelection(next), updatedAt: new Date().toISOString() })}
+            />
+            {refsLocked && <p className="job-refs__empty">This shot is already with the engine. Its tags can be changed once it finishes, and the next run will use them.</p>}
           </div>
 
           {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note">
@@ -366,7 +407,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                   <RefreshCw size={15} /> {runtimeReady ? "Run this shot again" : "Can’t run it again yet"}
                 </button>
                 <button className="secondary-button" onClick={focusComposer}>
-                  <Sparkles size={15} /> Write another shot
+                  <Sparkles size={15} /> Describe another shot
                 </button>
               </div>
             </>}
@@ -385,16 +426,38 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         </aside>
       </section>}
 
-      <section className="generation-composer">
+      {/* Always here, and always called the same thing. It used to rename
+          itself to "Write another shot" the moment a shot existed, which read
+          as a footnote to the shot above rather than as the place shots are
+          made. This is where a shot is authored; the dock along the bottom of
+          the window changes one that already exists. */}
+      <section className="generation-composer" aria-labelledby="describe-the-shot">
+        <div className="generation-composer__head">
+          <h2 className="generation-composer__label" id="describe-the-shot"><Sparkles size={17} /> Describe the shot</h2>
+          <p className="generation-composer__lede">
+            Write what happens in your own words, then pick the camera, light and mood from MiniMax H3’s own vocabulary.
+            New shots are made here. The prompt bar along the bottom of the window is for changing a shot that already exists — it doesn’t start one.
+          </p>
+        </div>
         <label className="generation-composer__field">
-          <span className="generation-composer__label"><Sparkles size={17} /> {selected ? "Write another shot" : "Describe the shot you want"}</span>
+          <span className="generation-composer__sublabel">In your own words</span>
           <textarea
             ref={composerRef}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Example: a close shot of hands shaping wet clay on a spinning wheel, warm window light, the camera pushes in slowly, quiet room tone."
+            placeholder="Example: hands shaping wet clay on a spinning wheel, the wheel slowing as the rim thins."
           />
         </label>
+        <ShotTagPicker idPrefix="new-shot" value={draftTags} onChange={setDraftTags} />
+        {/* Visible before the button is ever pressed: the exact words that go
+            to the engine, with the user's own prose marked apart from the terms
+            their tags contributed. */}
+        {prompt.trim().length > 0 && <CompiledPrompt
+          creativeBrief={prompt}
+          references={usableReferences.slice(0, 2)}
+          shotTags={draftTags}
+          caption={`Nothing is sent until you choose “${submitLabel}”.`}
+        />}
         <div className="generation-composer__foot">
           <div className="generation-settings">
             <span className="generation-settings__lead">Every shot is made as</span>
@@ -440,6 +503,129 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     </main>
   </div>;
 }
+
+/* One accordion row per group in the taxonomy. All eleven groups open at once
+   would be ninety-odd chips before the user has typed a word, so a row shows
+   what it holds and opens on demand — and a row with choices in it says which,
+   using the exact terms those choices put in the prompt.
+
+   The vocabulary is never spelled here: every label and every term comes from
+   src/lib/shot-tags.ts, so this component cannot invent a synonym. */
+function ShotTagPicker({ idPrefix, value, onChange, disabled = false }: {
+  idPrefix: string;
+  value: ShotTagSelection;
+  onChange: (next: ShotTagSelection) => void;
+  disabled?: boolean;
+}) {
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const movementChosen = hasCameraMovement(value);
+  return <div className="shot-tags">
+    <p className="shot-tags__lead">
+      {countShotTags(value) === 0
+        ? "Optional. Anything you tag is added to the prompt in MiniMax H3’s own words, next to yours."
+        : `${countShotTags(value)} ${countShotTags(value) === 1 ? "tag" : "tags"} — each one adds its term to the prompt below.`}
+    </p>
+    {SHOT_TAG_GROUPS.map((group) => {
+      const chosen = value[group.id] ?? [];
+      // Speed and amplitude qualify a movement. With none chosen the compiler
+      // leaves them out, so offering them would promise something the prompt
+      // does not do.
+      const blocked = Boolean(group.requiresMovement) && !movementChosen;
+      const open = openGroup === group.id;
+      const panelId = `${idPrefix}-${group.id}-panel`;
+      const terms = group.options.filter((option) => chosen.includes(option.id)).map((option) => option.term);
+      return <div key={group.id} className={`shot-tag-group ${open ? "shot-tag-group--open" : ""} ${blocked ? "shot-tag-group--blocked" : ""}`}>
+        <button
+          type="button"
+          className="shot-tag-group__head"
+          aria-expanded={open}
+          aria-controls={panelId}
+          disabled={disabled || blocked}
+          onClick={() => setOpenGroup(open ? null : group.id)}
+        >
+          <b>{group.label}</b>
+          <span>{blocked ? "Needs a camera movement first" : terms.length > 0 ? terms.join(", ") : "None"}</span>
+          <ChevronRight size={16} />
+        </button>
+        {open && <div className="shot-tag-group__body" id={panelId}>
+          <p className="shot-tag-group__help">{group.help} {group.multiple ? "Choose as many as you like." : "One at a time."}</p>
+          <div className="shot-tag-group__options">
+            {group.options.map((option) => {
+              const on = chosen.includes(option.id);
+              return <button
+                key={option.id}
+                type="button"
+                className={`shot-tag ${on ? "shot-tag--on" : ""}`}
+                aria-pressed={on}
+                disabled={disabled}
+                title={`Puts “${option.term}” in the prompt`}
+                onClick={() => onChange(toggleShotTag(value, group.id, option.id))}
+              >{option.label}</button>;
+            })}
+          </div>
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+
+/* The compiled prompt, shown before anything is sent and coloured by who wrote
+   which part. The segments come from the compiler itself, so this panel is the
+   string vidfab receives — not a re-rendering of it that could drift. */
+function CompiledPrompt({ creativeBrief, references, shotTags, caption }: {
+  creativeBrief: string;
+  references: ProjectReference[];
+  shotTags: ShotTagSelection | null;
+  caption: string;
+}) {
+  const segments = useMemo(
+    () => compileMiniMaxH3PromptSegments(creativeBrief, references, shotTags),
+    [creativeBrief, references, shotTags],
+  );
+  return <section className="compiled-prompt" aria-label="The compiled MiniMax H3 prompt">
+    <span className="compiled-prompt__title">The prompt this shot becomes</span>
+    <p className="compiled-prompt__key">
+      <em className="compiled-prompt__swatch compiled-prompt__swatch--brief">your words</em>
+      <em className="compiled-prompt__swatch compiled-prompt__swatch--tag">your tags</em>
+      <em className="compiled-prompt__swatch compiled-prompt__swatch--frame">the H3 format, added by PolStudio</em>
+    </p>
+    <pre className="compiled-prompt__text">{segments.map((segment, index) =>
+      <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
+    <small>{caption}</small>
+  </section>;
+}
+
+/* Counts only what this build can turn into a term — a tag id saved by a newer
+   build is kept in the file but has no words here, so claiming it is in the
+   prompt would be a claim about something that isn't. */
+const shotTagSummary = (tags: ShotTagSelection | null): string => {
+  const chosen = selectedShotTagOptions(tags);
+  if (chosen.length === 0) return "No tags on this shot";
+  return chosen.length === 1 ? "1 tag shapes this shot" : `${chosen.length} tags shape this shot`;
+};
+
+/* The half-written shot's tags, parked per project. Anything unreadable is
+   treated as no tags rather than thrown at the user: this is a convenience
+   store, and nothing in it is the only copy of anything. */
+const readDraftTags = (key: string): ShotTagSelection => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return {};
+    const parsed = shotTagSelectionSchema.safeParse(JSON.parse(stored));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeDraftTags = (key: string, tags: ShotTagSelection) => {
+  try {
+    if (Object.keys(tags).length === 0) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(tags));
+  } catch {
+    /* A full or blocked store costs the parked copy, nothing on screen. */
+  }
+};
 
 /* The rail sits before the <h1> in the DOM, so its group titles are labelled
    groups rather than headings — otherwise the document outline would start
