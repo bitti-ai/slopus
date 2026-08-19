@@ -466,7 +466,10 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
             <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
             <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
           </div>
-          <button className={`${selected ? "secondary-button" : "primary-button"} generation-composer__submit`} onClick={() => void createJob()} disabled={!prompt.trim()}>
+          {/* Primary whether or not a shot is already selected: this is the
+              authoring surface, and demoting it the moment one shot existed
+              made it look like an afterthought to the shot above. */}
+          <button className="primary-button generation-composer__submit" onClick={() => void createJob()} disabled={!prompt.trim()}>
             <WandSparkles size={17} /> {submitLabel}
           </button>
         </div>
@@ -493,10 +496,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       {!selected && <div className="job-empty">
         <span className="job-empty__icon"><Sparkles size={26} /></span>
         <h2>Start with one shot</h2>
-        <p>Write what should happen on screen in the box above — who or what is in frame, how the camera moves, the light, the sound. Then choose “{submitLabel}”.</p>
+        <p>Write what should happen on screen in the box above — who or what is in frame, what they do, the sound. Then choose “{submitLabel}”.</p>
         <ul className="job-empty__tips">
           <li>One moment per shot works better than a whole scene.</li>
-          <li>Say what the camera does: holds still, pushes in, follows.</li>
+          <li>The camera, the light and the mood have tags above, in the video model’s own words.</li>
+          <li>You can read the finished prompt before anything is sent.</li>
           <li>Every shot stays editable, so you can rewrite and run it again.</li>
         </ul>
       </div>}
