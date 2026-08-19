@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import audioFixture from "../../../fixtures/project-v1-audio-mix.json";
 import externalFixture from "../../../fixtures/project-v1-external-media.json";
 import { createProjectConfig, parseProjectConfig, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ExportView } from "./ExportView";
@@ -83,6 +84,45 @@ describe("the export view on media the project does not contain", () => {
     expect(reasons).not.toMatch(/no file recorded/i);
     expect(screen.getByText("00:12.000")).toBeTruthy();
     expect(screen.getByText("360 frames at 30 fps")).toBeTruthy();
+  });
+});
+
+/* The mix is built whole in memory before the file is opened and held until the
+   last frame — 11.5 MB a minute, 1.4 GB for an hour — and the panel that states
+   bitrate, size estimate, compositor and codec said nothing at all about it. */
+describe("what the page says the soundtrack will cost", () => {
+  const withAudioSupport = (body: () => void) => {
+    const scope = globalThis as unknown as Record<string, unknown>;
+    const saved = { AudioEncoder: scope.AudioEncoder, AudioData: scope.AudioData, OfflineAudioContext: scope.OfflineAudioContext };
+    // detectExportSupport asks for exactly these three; nothing here calls them.
+    scope.AudioEncoder = class {};
+    scope.AudioData = class {};
+    scope.OfflineAudioContext = class {};
+    try {
+      body();
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete scope[name];
+        else scope[name] = value;
+      }
+    }
+  };
+
+  it("states the memory the mix holds, next to the bitrate and the size estimate", () => {
+    withAudioSupport(() => {
+      render(<ExportView config={parseProjectConfig(audioFixture)} folderPath="D:\\tmp\\harbour" />);
+      // Two clips on an unmuted audio track; the third is on a muted one.
+      expect(screen.getByText("AAC · 2 clips mixed")).toBeTruthy();
+      expect(screen.getByText(/1\.5 MB of memory held while it renders/)).toBeTruthy();
+    });
+  });
+
+  it("says nothing about a mix it is not going to make", () => {
+    // No AudioEncoder here, so there is no mix and no memory to disclose —
+    // stating a cost that will not be paid would be its own kind of lie.
+    render(<ExportView config={parseProjectConfig(audioFixture)} folderPath="D:\\tmp\\harbour" />);
+    expect(screen.getByText("this webview has no AudioEncoder")).toBeTruthy();
+    expect(screen.queryByText(/of memory held while it renders/)).toBeNull();
   });
 });
 

@@ -272,7 +272,11 @@ function parseWav(bytes: ArrayBuffer): { channels: Float32Array[]; sampleRate: n
   const channels = Array.from({ length: channelCount }, () => new Float32Array(frames));
   for (let frame = 0; frame < frames; frame += 1) {
     for (let channel = 0; channel < channelCount; channel += 1) {
-      channels[channel][frame] = view.getInt16(data.start + (frame * channelCount + channel) * 2, true) / 32768;
+      /* 32767.5, not 32768: measured in Chrome, int16 16384 decodes to
+         0.50001525878906250, so the range maps symmetrically onto -1..1 and
+         two half-scale clips sum to one 16-bit step OVER full scale. Getting
+         this wrong here hid exactly that case. */
+      channels[channel][frame] = view.getInt16(data.start + (frame * channelCount + channel) * 2, true) / 32767.5;
     }
   }
   return { channels, sampleRate };
@@ -891,6 +895,11 @@ describe("mixing real sound into a real export", () => {
       ]);
       expect(result.audioDetail).toMatch(/2 clips run past the end of their sound/);
       expect(result.audioProblems).toEqual([]);
+      /* Both clips sit at exactly half scale, so where they overlap the sum is
+         one 16-bit step over full scale and every sample of it is clamped.
+         That is not clipping worth announcing: the message would have advised
+         pulling down by "0.0 dB", which is not advice. */
+      expect(result.audioDetail).not.toMatch(/clipped/);
 
       /* And the silence is really there. The head sounds 0-1500 ms of its
          2000 ms; the reprise runs 1000-3000 ms and its sound stops at 2000. */

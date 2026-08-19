@@ -494,6 +494,19 @@ export interface AudioMix {
   peak: number;
 }
 
+/** How far over full scale the mix has to go before clipping is worth a
+ *  sentence: a tenth of a decibel.
+ *
+ *  Not an arbitrary tolerance. Measured in Chrome, a 16-bit sample decodes as
+ *  `value / 32767.5`, so two clips sitting at exactly half scale sum to
+ *  1.0000305 — one 16-bit step over — and the old code called that "clipped"
+ *  for every sample of the overlap while advising the user to pull down by
+ *  "0.0 dB". Below a tenth of a decibel the advice this message gives rounds
+ *  to nothing and the overshoot is 90 dB under the signal. The samples are
+ *  still clamped, because the encoder needs them in range; what changes is
+ *  that a hair over full scale is no longer announced as damage. */
+const CLIPPING_WORTH_SAYING = 10 ** (0.1 / 20);
+
 /** Decodes and mixes every audio segment in the plan into one stereo buffer.
  *  Null when the plan has no sound in it at all. */
 async function mixAudio(options: {
@@ -745,7 +758,7 @@ function describeSoundtrack(
   const parts = [
     `${soundtrack.used} audio ${soundtrack.used === 1 ? "clip" : "clips"} mixed to ${probe?.detail ?? AUDIO_CODEC}`,
   ];
-  if (soundtrack.clippedSamples > 0) {
+  if (soundtrack.clippedSamples > 0 && soundtrack.peak > CLIPPING_WORTH_SAYING) {
     const share = (soundtrack.clippedSamples / (soundtrack.frames * AUDIO_CHANNELS)) * 100;
     parts.push(
       `the mix peaked at ${soundtrack.peak.toFixed(2)} of full scale and ${soundtrack.clippedSamples.toLocaleString()} samples (${share.toFixed(share < 0.1 ? 3 : 1)}%) were clipped flat — pull the overlapping clips down by about ${(20 * Math.log10(soundtrack.peak)).toFixed(1)} dB to avoid it`,
