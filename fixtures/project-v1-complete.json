@@ -99,6 +99,15 @@
       "creativeBrief": "Reveal the product through a slow macro push.",
       "compiledPrompt": "integrated_multimodal_description: [Shot 1] Slow macro push toward the product.",
       "referenceIds": ["reference-product", "reference-tone"],
+      "shotTags": {
+        "cameraAmplitude": ["small"],
+        "cameraMovement": ["push-in"],
+        "cameraSpeed": ["slow"],
+        "lens": ["macro-lens"],
+        "lighting": ["soft-light", "practical-light"],
+        "shotSize": ["extreme-close-up"],
+        "visualStyle": ["live-action-cinematic"]
+      },
       "outputRelativePath": "media/generated/opener.mp4",
       "error": null,
       "createdAt": "2026-01-01T00:15:00.000Z",

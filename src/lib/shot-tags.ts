@@ -63,7 +63,7 @@ export type ShotTagSelection = Record<string, string[]>;
 
 /** Ids both validators accept. Kept in lockstep with `is_shot_tag_id` in
  *  src-tauri/src/lib.rs — a shape neither layer has to guess about. */
-export const SHOT_TAG_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+export const SHOT_TAG_ID_PATTERN = /^[a-z][a-zA-Z0-9-]*$/;
 
 /* The canonical H3 style names. These are the SAME seven strings
    `deriveH3Style` can produce, and `MID_SENTENCE_STYLES` in project.ts already

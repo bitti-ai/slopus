@@ -187,7 +187,7 @@ export const projectReferenceSchema = z.object({
    `is_shot_tag_id` in src-tauri/src/lib.rs is this regex. Were only one side to
    know the taxonomy, the other would happily persist a tag it then refused to
    read back. */
-export const shotTagIdSchema = z.string().regex(SHOT_TAG_ID_PATTERN, "Shot tag ids are lowercase letters, digits, and hyphens.");
+export const shotTagIdSchema = z.string().regex(SHOT_TAG_ID_PATTERN, "Shot tag ids start with a lowercase letter and carry only letters, digits, and hyphens.");
 export const shotTagSelectionSchema = z.record(shotTagIdSchema, z.array(shotTagIdSchema));
 
 export const generationJobSchema = z.object({
