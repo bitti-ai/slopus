@@ -43,7 +43,10 @@ const clip = (id: string, trackId: string, startMs: number, durationMs: number, 
   ...overrides,
 });
 
-/** A project with the app's own five tracks, `clips` distributed by trackId. */
+/** A project with the app's own four tracks, `clips` distributed by trackId.
+ *  `track-story` is "Track 1, Video" — the FIRST video track, and the one that
+ *  composites over "Track 2, Video" (`track-v2`), because the timeline draws
+ *  tracks in array order from the top. */
 function project(clips: TimelineClip[], assets: ProjectAsset[], overrides: Partial<ProjectConfig["settings"]> = {}): ProjectConfig {
   const base = createProjectConfig({
     name: "Test", prompt: "A test", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30,
@@ -117,7 +120,7 @@ describe("defaults", () => {
 describe("which clip is on screen at time T", () => {
   const tracks = () =>
     project(
-      [clip("a", "track-story", 0, 4_000), clip("b", "track-story", 4_000, 4_000), clip("over", "track-overlay", 2_000, 1_000)],
+      [clip("a", "track-v2", 0, 4_000), clip("b", "track-v2", 4_000, 4_000), clip("over", "track-story", 2_000, 1_000)],
       [],
     ).timeline.tracks;
 
@@ -142,7 +145,7 @@ describe("which clip is on screen at time T", () => {
   });
 
   it("ignores audio tracks, which have no picture", () => {
-    const withSound = project([clip("music", "track-music", 0, 5_000)], []);
+    const withSound = project([clip("music", "track-a2", 0, 5_000)], []);
     expect(visibleClipAt(withSound.timeline.tracks, 1_000)).toBeNull();
     expect(videoDurationMs(withSound)).toBe(0);
   });
@@ -185,7 +188,7 @@ describe("the plan", () => {
 
   it("splits one clip into two segments when an overlay cuts through it", () => {
     const config = project(
-      [clip("under", "track-story", 0, 3_000), clip("over", "track-overlay", 1_000, 1_000)],
+      [clip("under", "track-v2", 0, 3_000), clip("over", "track-story", 1_000, 1_000)],
       [asset("asset-under"), asset("asset-over")],
     );
     const plan = buildExportPlan(config, settings());
@@ -199,7 +202,7 @@ describe("the plan", () => {
 
   it("says nothing about a soundtrack it cannot mux, but does not stay silent either", () => {
     const config = project(
-      [clip("a", "track-story", 0, 1_000), clip("score", "track-music", 0, 5_000)],
+      [clip("a", "track-story", 0, 1_000), clip("score", "track-a2", 0, 5_000)],
       [asset("asset-a"), asset("asset-score", { kind: "audio", mimeType: "audio/wav" })],
     );
     const plan = buildExportPlan(config, settings());
@@ -225,7 +228,7 @@ describe("the plan", () => {
 
   it("reports clips that are hidden underneath another track", () => {
     const config = project(
-      [clip("hidden", "track-b-roll", 0, 1_000), clip("over", "track-story", 0, 1_000)],
+      [clip("hidden", "track-v2", 0, 1_000), clip("over", "track-story", 0, 1_000)],
       [asset("asset-hidden"), asset("asset-over")],
     );
     expect(buildExportPlan(config, settings()).notes.join(" ")).toContain("hidden underneath");
