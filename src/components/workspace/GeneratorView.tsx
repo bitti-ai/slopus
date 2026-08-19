@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceDescribed, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
@@ -146,8 +146,13 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     const now = new Date().toISOString();
     const existingAsset = config.assets.find((asset) => asset.relativePath === job.outputRelativePath);
     const asset: ProjectAsset = existingAsset ?? { id: `asset-${crypto.randomUUID()}`, kind: "generated", name: job.title, relativePath: job.outputRelativePath, mimeType: "video/mp4", durationMs: 6_000, createdAt: now };
-    const existingStory = config.timeline.tracks.find((track) => track.name === "Story");
-    const story: TimelineTrack = existingStory ?? { id: `track-${crypto.randomUUID()}`, kind: "video", name: "Story", locked: false, muted: false, clips: [] };
+    /* By id first: tracks can be renamed, and matching on the name alone made
+       a renamed story track invisible here — the next insert built a second
+       "Story" track beside it. The name is the fallback for projects made
+       before the id was fixed. */
+    const existingStory = config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)
+      ?? config.timeline.tracks.find((track) => track.kind === "video" && track.name === "Story");
+    const story: TimelineTrack = existingStory ?? { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: [] };
     if (story.locked) return;
     const startMs = story.clips.reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
     const clip: TimelineClip = { id: `clip-${crypto.randomUUID()}`, assetId: asset.id, trackId: story.id, startMs, durationMs: asset.durationMs ?? 6_000, sourceStartMs: 0, label: job.title, color: "#4f6ba8", status: "generated" };

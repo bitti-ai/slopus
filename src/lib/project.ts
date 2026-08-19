@@ -433,6 +433,12 @@ export function createDraftGenerationJob(
   });
 }
 
+/* The track a generated shot lands on. Tracks are renameable, so the generator
+   can no longer find this one by its name — an id survives a rename, and a
+   project whose owner called it "Act one" must not grow a second Story track
+   the next time a shot is inserted. */
+export const STORY_TRACK_ID = "track-story";
+
 export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
   const now = new Date().toISOString();
   const brief = input.prompt.trim();
@@ -449,12 +455,14 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       aspectRatio: input.aspectRatio, resolution: input.resolution,
     },
     assets: [],
-    /* Two video layers, not one: an overlay, a title card, or a cutaway has
-       to sit ABOVE the story track, and with a single layer the only way to
-       get one there was to displace the shot underneath it. */
+    /* Three video layers, not one: an overlay, a title card, or a cutaway has
+       to sit ABOVE the story track, and B-roll below it, and with a single
+       layer the only way to get either there was to displace the shot the
+       story is actually made of. */
     timeline: { tracks: [
       { id: "track-overlay", kind: "video", name: "Overlays", locked: false, muted: false, clips: [] },
-      { id: "track-story", kind: "video", name: "Story", locked: false, muted: false, clips: [] },
+      { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: [] },
+      { id: "track-b-roll", kind: "video", name: "B-roll", locked: false, muted: false, clips: [] },
       { id: "track-voice-over", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [] },
       { id: "track-music", kind: "audio", name: "Music", locked: false, muted: false, clips: [] },
     ] },
@@ -480,10 +488,10 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     { id: "asset-voice", kind: "audio", name: "Mara voice-over", relativePath: "media/generated/voice-over.wav", mimeType: "audio/wav", durationMs: 32000, createdAt },
   ];
   const videoClips: TimelineClip[] = [
-    { id: "clip-01", assetId: "asset-establishing", trackId: "track-v1", startMs: 0, durationMs: 7200, sourceStartMs: 0, label: "01 · A city still becoming", color: hues[0], status: "approved" },
-    { id: "clip-02", assetId: "asset-studio", trackId: "track-v1", startMs: 7200, durationMs: 8600, sourceStartMs: 0, label: "02 · From line to light", color: hues[1], status: "approved" },
-    { id: "clip-03", assetId: "asset-portrait", trackId: "track-v1", startMs: 15800, durationMs: 7600, sourceStartMs: 0, label: "03 · Designed for people", color: hues[2], status: "generated" },
-    { id: "clip-04", assetId: "asset-rooftop", trackId: "track-v1", startMs: 23400, durationMs: 8400, sourceStartMs: 0, label: "04 · Northern light", color: hues[0], status: "approved" },
+    { id: "clip-01", assetId: "asset-establishing", trackId: STORY_TRACK_ID, startMs: 0, durationMs: 7200, sourceStartMs: 0, label: "01 · A city still becoming", color: hues[0], status: "approved" },
+    { id: "clip-02", assetId: "asset-studio", trackId: STORY_TRACK_ID, startMs: 7200, durationMs: 8600, sourceStartMs: 0, label: "02 · From line to light", color: hues[1], status: "approved" },
+    { id: "clip-03", assetId: "asset-portrait", trackId: STORY_TRACK_ID, startMs: 15800, durationMs: 7600, sourceStartMs: 0, label: "03 · Designed for people", color: hues[2], status: "generated" },
+    { id: "clip-04", assetId: "asset-rooftop", trackId: STORY_TRACK_ID, startMs: 23400, durationMs: 8400, sourceStartMs: 0, label: "04 · Northern light", color: hues[0], status: "approved" },
   ];
   const references: ProjectReference[] = [
     { id: "ref-mara", kind: "text", name: "Mara · lead architect", description: "Calm, observant woman in her late 30s. Charcoal wool, precise gestures, quiet confidence. Keep facial features and wardrobe consistent.", content: "Calm, observant woman in her late 30s. Charcoal wool, precise gestures, quiet confidence.", intendedUse: ["character"], createdAt },
@@ -506,7 +514,8 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     assets,
     timeline: { tracks: [
       { id: "track-v2", kind: "video", name: "Overlays", locked: false, muted: false, clips: [] },
-      { id: "track-v1", kind: "video", name: "Story", locked: false, muted: false, clips: videoClips },
+      { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: videoClips },
+      { id: "track-b-roll", kind: "video", name: "B-roll", locked: false, muted: false, clips: [] },
       { id: "track-a1", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
       { id: "track-a2", kind: "audio", name: "Music", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
     ] },

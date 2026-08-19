@@ -51,9 +51,10 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
-    // Two video layers: an overlay or title card has to be able to sit above
-    // the story track without displacing the shot underneath it.
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Overlays", "Story", "Voice-over", "Music"]);
+    // Three video layers: an overlay or title card has to be able to sit above
+    // the story track, and B-roll below it, without displacing the shot the
+    // story is made of.
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Overlays", "Story", "B-roll", "Voice-over", "Music"]);
     expect(project.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
     expect(project.references).toEqual([]);
     expect(project.generationJobs).toHaveLength(1);
@@ -402,7 +403,7 @@ describe("project schema", () => {
       resolution: "4k",
       targetDurationSeconds: 34,
     }));
-    expect(project.timeline.tracks).toHaveLength(4);
+    expect(project.timeline.tracks).toHaveLength(5);
     expect(project.generationJobs.some((job) => job.status === "generating")).toBe(true);
     expect(project.references.some((reference) => reference.kind === "image")).toBe(true);
     expect(project.assets.every((asset) => !asset.relativePath.match(/^([a-z]:|[/\\])/i))).toBe(true);
