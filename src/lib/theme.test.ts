@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyTheme, loadTheme, resolveTheme, saveTheme, systemTheme,
@@ -221,5 +221,147 @@ describe("every stylesheet resolves through the palette", () => {
       );
       expect(missing).toEqual([]);
     });
+  }
+});
+
+/* --- The colour literals the palette cannot see ---------------------------- *
+
+   The test above proves every `var()` resolves to a declared token. It is blind
+   by construction to a colour that never goes through `var()` at all, and that
+   is the shape of every light-theme defect found so far: a hardcoded near-black
+   plate under themed ink (1.0:1 in light), a themed caption on a hardcoded dark
+   wash (2.6:1), hatching spelled `rgba(255,255,255,0.03)` beside a `--hatch`
+   token that already existed. None of them touched a var(), so nothing failed.
+
+   So: a stylesheet may not name a colour. Not `#hex`, not `rgb(`, `rgba(`,
+   `hsl(` or `hsla(`. tokens.css is the one file that spells colours out; every
+   other sheet in src/styles goes through it.
+
+   A handful of literals ARE right, because they are pictures and brand marks
+   rather than surfaces, and they stay dark whatever the page does. Each one is
+   listed below by the exact rule it lives in, with the reason. Two assertions
+   keep that list honest in both directions: a literal outside the list fails,
+   and a listed rule that has gone away — or has stopped containing a literal —
+   fails too. An allowlist nothing verifies is how the last two guards rotted.  */
+
+const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/g;
+
+/** The index of the `}` that closes the `{` at `open`. */
+function closingBrace(css: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < css.length; i += 1) {
+    if (css[i] === "{") depth += 1;
+    else if (css[i] === "}") { depth -= 1; if (depth === 0) return i; }
+  }
+  throw new Error("unterminated block");
+}
+
+/** Every rule in a sheet as { selector, body }. Conditional at-rules are walked
+ *  THROUGH, so a rule inside `@media`/`@supports` is attributed to its own
+ *  selector rather than to the wrapper — otherwise the perforation mask under
+ *  `@supports (mask-composite: exclude)` would need a second exemption naming a
+ *  feature query. `@keyframes` and `@font-face` stay whole: their inner blocks
+ *  are percentages, which are no use as a name. */
+function ruleBlocks(css: string): { selector: string; body: string }[] {
+  const found: { selector: string; body: string }[] = [];
+  const walk = (from: number, to: number) => {
+    let head = "";
+    for (let i = from; i < to; i += 1) {
+      const ch = css[i];
+      if (ch === ";") { head = ""; continue; }   /* @import, @charset */
+      if (ch !== "{") { head += ch; continue; }
+      const end = closingBrace(css, i);
+      const selector = head.trim().replace(/\s+/g, " ");
+      if (/^@(media|supports|layer|container|scope)\b/.test(selector)) walk(i + 1, end);
+      else found.push({ selector, body: css.slice(i + 1, end) });
+      i = end;
+      head = "";
+    }
+  };
+  walk(0, css.length);
+  return found;
+}
+
+/** Rule → why that rule is allowed to name a colour. Keyed by file name. */
+const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
+  "shell.css": {
+    ".pol-logo__ticket":
+      "brand mark: the PolStudio ticket is one artwork, blue plate and white letter, in both themes",
+    ".pol-logo__ticket::before": "the ticket's blue plate, and the mask that cuts its perforations",
+    ".pol-logo__ticket::after": "the ticket's diamond tail, the same blue as the plate",
+    ".pol-logo__perforations i":
+      "fallback perforations: painted black because a hole reads as a hole on any backdrop",
+  },
+  "library.css": {
+    /* library.css says all of this in prose above the rules; the point of
+       repeating it here is that the guard knows, not that a reader does. */
+    ".project-card__art--aurora": "generated cover art: a picture, not a surface",
+    ".project-card__art--aurora::before": "generated cover art",
+    ".project-card__art--aurora::after": "generated cover art",
+    ".project-card__art--paper": "generated cover art",
+    ".project-card__art--paper::before": "generated cover art",
+    ".project-card__art--paper::after": "generated cover art",
+    ".project-card__art--chrome": "generated cover art",
+    ".project-card__art--chrome::before": "generated cover art",
+    ".project-card__art--chrome::after": "generated cover art",
+    ".project-card__art--ember": "generated cover art",
+    ".project-card__format, .project-card__quality":
+      "chrome ON the cover art: white on a dark picture in both themes, because the picture is dark in both",
+    ".project-card__play": "chrome ON the cover art",
+    ".project-card__art-copy": "chrome ON the cover art",
+  },
+  "generator.css": {
+    ".job-refs .ref-mini":
+      "stand-in artwork for a reference thumbnail — the same case as the library's cover art",
+    ".ref-mini--1": "stand-in artwork for a reference thumbnail",
+  },
+};
+
+describe("no stylesheet outside tokens.css names a colour", () => {
+  const sheets = readdirSync("src/styles")
+    .filter((file) => file.endsWith(".css") && file !== "tokens.css")
+    .sort();
+
+  it("finds every stylesheet, so a new one cannot slip in unchecked", () => {
+    /* If this list ever shrinks the guard has stopped looking somewhere. */
+    expect(sheets).toContain("timeline.css");
+    expect(sheets).toContain("export.css");
+    expect(sheets).toContain("generator.css");
+    expect(sheets.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it("proves it can see a literal at all, by finding tokens.css full of them", () => {
+    /* The regex and the reader are shared with the assertions below. A typo
+       that made them match nothing would turn every test here green. */
+    expect(readCss("src/styles/tokens.css").match(COLOUR_LITERAL)!.length).toBeGreaterThan(100);
+  });
+
+  for (const sheet of sheets) {
+    const allowed = LITERALS_ALLOWED[sheet] ?? {};
+    const blocks = ruleBlocks(readCss(`src/styles/${sheet}`));
+
+    it(`${sheet} paints only through the palette`, () => {
+      const offenders: string[] = [];
+      for (const { selector, body } of blocks) {
+        if (selector in allowed) continue;
+        for (const literal of body.match(COLOUR_LITERAL) ?? []) {
+          offenders.push(`${sheet}  ${selector} { … ${literal} … }`);
+        }
+      }
+      /* Whatever you are about to add here: a token in tokens.css is almost
+         certainly the fix. Exempt a rule only when it is a picture or a brand
+         mark that stays the same in a light theme, and say so above. */
+      expect(offenders).toEqual([]);
+    });
+
+    for (const [selector, why] of Object.entries(allowed)) {
+      it(`${sheet} still has ${selector} — ${why}`, () => {
+        const rule = blocks.find((block) => block.selector === selector);
+        expect(rule, `exemption names a rule ${sheet} no longer has`).toBeTruthy();
+        /* And it still needs the exemption. A rule that has been converted to
+           tokens must lose its entry, or the list drifts back into fiction. */
+        expect(rule!.body.match(COLOUR_LITERAL), "exemption is stale: the rule names no colour any more").toBeTruthy();
+      });
+    }
   }
 });
