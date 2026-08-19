@@ -69,7 +69,9 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
     await screen.findByRole("heading", { name: "Generator" });
     expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
-    expect(screen.getByText("You can still write and save shot drafts.")).not.toBeNull();
+    // The engine pill is one line now, and in the browser that line is the
+    // demo state rather than a paragraph explaining it.
+    expect(await screen.findByText("Preview mode")).not.toBeNull();
   });
 
   it("reports a project it can’t read instead of dropping it from the library", async () => {

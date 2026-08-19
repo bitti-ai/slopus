@@ -208,12 +208,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         <QueueGroup title="Already run" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
         {jobs.length === 0 && <p className="queue-empty">No shots yet. Describe one in the box on the right and it will appear here.</p>}
       </div>
-      {/* The pill is the last thing a user reads before committing to a render,
-          so the "frames, not a video file" limit is disclosed here too. */}
+      {/* One line: the headline already IS the status. The paragraph under it
+          restated the same fact in a second sentence, and the "frames, not a
+          video file" limit is still disclosed in the composer, at the point
+          where someone actually commits to a render. */}
       <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`}>
         <span className="queue-runtime__state"><i /> {runtimeHeadline(runtime)}</span>
-        <p>{runtimeExplainer(runtime)}</p>
-        <small>{runtimeReady ? "A finished shot stays as frames — saving a video file isn’t built yet." : "You can still write and save shot drafts."}</small>
       </div>
     </aside>
 
@@ -583,13 +583,3 @@ const runtimeHeadline = (runtime: VidfabStatus | null) => {
   }
 };
 
-const runtimeExplainer = (runtime: VidfabStatus | null) => {
-  if (!runtime) return "PolStudio is looking for the video engine on this computer.";
-  switch (runtime.state) {
-    case "ready": return "It renders one shot at a time.";
-    case "demo": return "PolStudio plans the shot but doesn’t render it.";
-    case "modelsMissing": return "The video model files aren’t set up yet.";
-    case "runtimeMissing": return "The video engine isn’t installed on this computer.";
-    case "incompatible": return "This version of the video engine doesn’t work with PolStudio.";
-  }
-};
