@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "id": "project-audio-mix",
+  "name": "Project with sound to mix",
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "thumbnail": null,
+  "settings": {
+    "aspectRatio": "16:9",
+    "resolution": "1080p",
+    "frameRate": 30,
+    "backgroundColor": "#10131a"
+  },
+  "brief": {
+    "prompt": "a harbour at first light, with a score under it",
+    "status": "draft",
+    "targetDurationSeconds": 5,
+    "aspectRatio": "16:9",
+    "resolution": "1080p"
+  },
+  "assets": [
+    {
+      "id": "asset-rush",
+      "kind": "video",
+      "name": "Harbour rush",
+      "sourcePath": "D:\\tmp\\harbour\\rush-01.mp4",
+      "mimeType": "video/mp4",
+      "durationMs": 4000,
+      "width": 320,
+      "height": 180,
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "asset-score",
+      "kind": "audio",
+      "name": "Score",
+      "sourcePath": "D:\\tmp\\harbour\\score.wav",
+      "mimeType": "audio/wav",
+      "durationMs": 3000,
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "asset-voice",
+      "kind": "audio",
+      "name": "Voice-over take 3",
+      "sourcePath": "D:\\tmp\\harbour\\vo-take-3.wav",
+      "mimeType": "audio/wav",
+      "durationMs": 1000,
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "timeline": {
+    "tracks": [
+      {
+        "id": "track-story",
+        "kind": "video",
+        "name": "Story",
+        "locked": false,
+        "muted": false,
+        "clips": [
+          {
+            "id": "clip-picture",
+            "assetId": "asset-rush",
+            "trackId": "track-story",
+            "startMs": 0,
+            "durationMs": 4000,
+            "sourceStartMs": 0,
+            "label": "01 - Harbour",
+            "status": "approved"
+          }
+        ]
+      },
+      {
+        "id": "track-music",
+        "kind": "audio",
+        "name": "Music",
+        "locked": false,
+        "muted": false,
+        "clips": [
+          {
+            "id": "clip-score-a",
+            "assetId": "asset-score",
+            "trackId": "track-music",
+            "startMs": 0,
+            "durationMs": 2000,
+            "sourceStartMs": 0,
+            "label": "Score - head",
+            "status": "approved"
+          },
+          {
+            "id": "clip-score-b",
+            "assetId": "asset-score",
+            "trackId": "track-music",
+            "startMs": 1000,
+            "durationMs": 2000,
+            "sourceStartMs": 500,
+            "label": "Score - reprise",
+            "status": "approved"
+          }
+        ]
+      },
+      {
+        "id": "track-voice-over",
+        "kind": "audio",
+        "name": "Voice-over",
+        "locked": false,
+        "muted": true,
+        "clips": [
+          {
+            "id": "clip-vo",
+            "assetId": "asset-voice",
+            "trackId": "track-voice-over",
+            "startMs": 0,
+            "durationMs": 1000,
+            "sourceStartMs": 0,
+            "label": "VO - take 3",
+            "status": "approved"
+          }
+        ]
+      }
+    ]
+  },
+  "references": [],
+  "generationJobs": [],
+  "agentConversation": {
+    "messages": []
+  },
+  "providerSettings": {}
+}
