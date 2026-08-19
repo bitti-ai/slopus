@@ -38,6 +38,14 @@
         "clips": []
       },
       {
+        "id": "track-b-roll",
+        "kind": "video",
+        "name": "B-roll",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
         "id": "track-voice-over",
         "kind": "audio",
         "name": "Voice-over",
