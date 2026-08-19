@@ -3,7 +3,7 @@
  * The video engine and its weights are a property of THIS computer, not of a
  * project: a project folder copied from another machine carries paths that do
  * not exist here. They therefore live in localStorage rather than in
- * pols.json, and are merged into `providerSettings.vidfab` only
+ * polstudio.json, and are merged into `providerSettings.vidfab` only
  * on the way into a Tauri command — never on the way into a saved config.
  * Keep it that way: writing them into a project file would put one machine's
  * disk layout into a file the user is invited to move, copy, and share.
@@ -131,7 +131,7 @@ export function saveAgentProvider(provider: ProviderId): void {
 /* --- Panel layout ----------------------------------------------------------
    How the media panel lays its footage out. A working habit, not a property of
    any one project, so it lives beside the engine paths rather than in
-   pols.json — a project file the user may copy to another machine should not
+   polstudio.json — a project file the user may copy to another machine should not
    carry one editor's panel preference with it. */
 
 export type MediaLayout = "grid" | "list";

@@ -92,7 +92,7 @@ export function MediaThumbnail({ folderPath, asset }: { folderPath: string; asse
     void (async () => {
       let url: string | null = null;
       try {
-        url = await readMediaFileUrl(folderPath, asset, asset.mimeType);
+        url = await readMediaFileUrl(folderPath, { relativePath: asset.relativePath, sourcePath: asset.sourcePath }, asset.mimeType);
         // Browser preview: there is no project folder, so there is nothing to
         // show and nothing has gone wrong. The kind icon stands in.
         if (!url) return;
@@ -106,7 +106,7 @@ export function MediaThumbnail({ folderPath, asset }: { folderPath: string; asse
       }
     })();
     return () => { live = false; };
-  }, [cacheKey, folderPath, asset, asset.mimeType, asset.kind]);
+  }, [cacheKey, folderPath, asset.relativePath, asset.sourcePath, asset.mimeType, asset.kind]);
 
   if (poster) {
     return <span className="media-thumb media-thumb--poster">
