@@ -187,9 +187,9 @@
      this ground is 2.6:1 in light, which is exactly how the caption went
      unreadable. These five are the only ink allowed on the stage. */
   --stage-bg: #05070b;
-  --on-stage: #c9cfdb;                 /* 12.6:1 on --stage-bg, both themes */
+  --on-stage: #c9cfdb;                 /* 12.9:1 on --stage-bg, both themes */
   --stage-alert-bg: rgba(12, 8, 10, 0.9);
-  --stage-alert-ink: #f19aa1;          /* 8.9:1 on --stage-alert-bg over the stage */
+  --stage-alert-ink: #f19aa1;          /* 9.3:1 on --stage-alert-bg over the stage */
   --stage-alert-line: rgba(236, 125, 134, 0.45);
 
   /* --- Primary button ----------------------------------------------------- */
@@ -344,7 +344,7 @@
     --danger-soft-strong: #fbe4e6;
     --danger-text-soft: #7a4a52;       /* 6.3:1 on --danger-soft */
 
-    --audio: #10706a;                  /* 5.3:1 on --panel */
+    --audio: #10706a;                  /* 5.9:1 on --panel, 4.8:1 on --audio-soft */
     --audio-soft: rgba(16, 112, 106, 0.14);
 
     --clip-video-default: #516fba;     /* the media's own hue: unchanged */
@@ -443,7 +443,7 @@
   --danger-soft-strong: #fbe4e6;
   --danger-text-soft: #7a4a52;
 
-  --audio: #10706a;                  /* 5.3:1 on --panel */
+  --audio: #10706a;                  /* 5.9:1 on --panel, 4.8:1 on --audio-soft */
   --audio-soft: rgba(16, 112, 106, 0.14);
 
   --clip-video-default: #516fba;     /* the media's own hue: unchanged */
