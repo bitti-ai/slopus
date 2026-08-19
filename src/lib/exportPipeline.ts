@@ -182,12 +182,24 @@ async function createWebGpuCompositor(width: number, height: number, background:
   });
   const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+  /* A device that dies mid-export would keep handing back an untouched canvas,
+     which is a black frame that looks like a rendered one. Record the loss and
+     refuse to paint another frame instead. */
+  const lost: { reason: string | null } = { reason: null };
+  void device.lost.then((info) => {
+    lost.reason = info.message || String(info.reason);
+  });
+  device.addEventListener("uncapturederror", (event) => {
+    const detail = (event as GPUUncapturedErrorEvent).error;
+    lost.reason = detail instanceof Error ? detail.message : String(detail);
+  });
   const { r, g, b } = parseColor(background);
   /* The canvas format is not an -srgb one, so the clear value lands in the
      texture as written: the project's own background colour, unconverted. */
   const clearValue = { r: r / 255, g: g / 255, b: b / 255, a: 1 };
 
   const pass = (view: GPUTextureView, bindGroup: GPUBindGroup | null) => {
+    if (lost.reason) throw new Error(`This computer's GPU stopped responding during the export: ${lost.reason}`);
     const encoder = device.createCommandEncoder();
     const renderPass = encoder.beginRenderPass({
       colorAttachments: [{ view, clearValue, loadOp: "clear", storeOp: "store" }],
@@ -428,11 +440,33 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   });
   encoder.configure(encoderConfig(probe.codecString, plan, bitrate));
 
-  const compositor =
-    (await createWebGpuCompositor(plan.width, plan.height, plan.backgroundColor).catch(() => null)) ??
-    createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
+  /* WebGPU first, as the pipeline is meant to run — the decoded frame is
+     sampled where it already lives. A machine without it, or a GPU that gives
+     up part way through, drops to the 2D canvas, which composites the same
+     picture on the same geometry. Which one ran is reported, never assumed. */
+  const stage: { compositor: Compositor } = {
+    compositor:
+      (await createWebGpuCompositor(plan.width, plan.height, plan.backgroundColor).catch(() => null)) ??
+      createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
+  };
+  const paint = (frame: VideoFrame | null) => {
+    try {
+      if (frame) stage.compositor.draw(frame);
+      else stage.compositor.clear();
+      return;
+    } catch (reason) {
+      if (stage.compositor.kind === "canvas2d") throw reason;
+      stage.compositor.dispose();
+      stage.compositor = createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
+    }
+    if (frame) stage.compositor.draw(frame);
+    else stage.compositor.clear();
+  };
 
-  const frameDurationUs = Math.round(1_000_000 / plan.frameRate);
+  /* Timestamps are computed from the frame index every time rather than
+     accumulated, so a rate that does not divide a microsecond evenly (30 fps
+     does not) cannot drift the last frame away from the clock. */
+  const timestampUs = (index: number) => Math.round((index * 1_000_000) / plan.frameRate);
   /* A keyframe every two seconds. Without them a player cannot seek, and a
      30-minute delta chain is also where quality quietly collapses. */
   const keyFrameInterval = Math.max(1, Math.round(plan.frameRate * 2));
@@ -441,9 +475,11 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   const emit = async (frame: VideoFrame | null, outputIndex: number) => {
     stopIfCancelled();
     if (encoderFailure.reason) throw encoderFailure.reason;
-    if (frame) compositor.draw(frame);
-    else compositor.clear();
-    const composited = compositor.take(outputIndex * frameDurationUs, frameDurationUs);
+    paint(frame);
+    const composited = stage.compositor.take(
+      timestampUs(outputIndex),
+      timestampUs(outputIndex + 1) - timestampUs(outputIndex),
+    );
     encoder.encode(composited, { keyFrame: outputIndex % keyFrameInterval === 0 });
     composited.close();
     framesDone += 1;
@@ -623,13 +659,13 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     report("done", framesDone, "Encoded.");
     return {
       bytes: new Uint8Array(target.buffer),
-      compositor: compositor.kind,
+      compositor: stage.compositor.kind,
       codecString: probe.codecString,
     };
   } finally {
     releaseLoaded();
     if (encoder.state !== "closed") encoder.close();
-    compositor.dispose();
+    stage.compositor.dispose();
   }
 }
 
