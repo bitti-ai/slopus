@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagSelection } from "./shot-tags";
+import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
 export const PROJECT_FILE_NAME = "polstudio.json";
 /** What the settings file used to be called, newest first. Both are still
@@ -190,15 +190,108 @@ export const projectReferenceSchema = z.object({
 export const shotTagIdSchema = z.string().regex(SHOT_TAG_ID_PATTERN, "Shot tag ids start with a lowercase letter and carry only letters, digits, and hyphens.");
 export const shotTagSelectionSchema = z.record(shotTagIdSchema, z.array(shotTagIdSchema));
 
+/* ---------------------------------------------------------------------------
+   Scenes and the shots inside them.
+
+   A generation job IS a scene: a length between 0 and 15 seconds holding an
+   ordered list of shots. Each shot owns the moment it starts, the line the user
+   wrote for it, and the settings they chose for it. `[Shot N]` markers in the
+   compiled prompt come out of this list in order (base guide §4.1; the cut
+   timestamps on later shots are the "increasing cut timestamps" of
+   docs/architecture.md).
+
+   Every field added here is `.nullish()` and is backed by a Rust `Option` that
+   carries `skip_serializing_if`, so a project written before scenes existed —
+   which has none of these keys — round-trips through both validators unchanged
+   and is read as a single-shot scene by `sceneShots` below.
+   --------------------------------------------------------------------------- */
+
+/** The whole range a scene may occupy. The lower bound is 0, not 1: a scene the
+ *  user has emptied out is a legitimate in-progress state, and refusing to store
+ *  it would mean refusing to store what they are looking at. */
+export const SCENE_MAX_SECONDS = 15;
+export const SCENE_MIN_SECONDS = 0;
+/** What a new scene is made as, and what a project written before scenes had a
+ *  length is read as — the length every shot has always been generated at. */
+export const DEFAULT_SCENE_SECONDS = 6;
+
+export const sceneShotSchema = z.object({
+  id: idSchema,
+  /** Seconds from the head of the scene. The first shot always starts at 0;
+   *  `normalizeSceneShots` enforces that rather than trusting the file. */
+  startSeconds: z.number().min(SCENE_MIN_SECONDS).max(SCENE_MAX_SECONDS),
+  /** The user's own line, character for character, with reference citations
+   *  held as `@[ref:<id>]` tokens (see `splitActionText`). May be empty: a shot
+   *  that has just been added has nothing written in it yet, and PolStudio
+   *  never writes that line for anyone. */
+  action: z.string(),
+  /** The H3 vocabulary settings on this shot: group id -> option ids. Same
+   *  shape, same ids and same normalisation as the older per-job `shotTags`. */
+  settings: shotTagSelectionSchema.nullish(),
+});
+
+export type SceneShot = z.infer<typeof sceneShotSchema>;
+
+/** How a reference is cited inside a shot's action text. The id is stored, not
+ *  a number or a name: a number goes stale the moment references are reordered
+ *  and a name goes stale the moment one is renamed, and either would silently
+ *  re-point a sentence at a different picture. What the user SEES is
+ *  "Reference N" — that numbering is derived at render time from the same
+ *  ordered list that numbers `<Subject N>`, so the two cannot disagree. */
+export const referenceToken = (referenceId: string): string => `@[ref:${referenceId}]`;
+const REFERENCE_TOKEN = /@\[ref:([^\]]+)\]/g;
+/** Whether an id can survive a round trip through the token syntax. An id
+ *  holding `]` could not be read back, so the editor refuses to tokenise it. */
+export const canTokenizeReference = (referenceId: string): boolean => referenceId.length > 0 && !referenceId.includes("]");
+
+export interface ActionPart {
+  kind: "text" | "reference";
+  /** The literal characters for `text`; the reference id for `reference`. */
+  value: string;
+}
+
+/** Splits an action line into the user's characters and the references they
+ *  dropped into it. Used by the compiler and by the editor's read-back strip,
+ *  so what is clicked on screen and what becomes `<Subject N>` are one parse. */
+export function splitActionText(action: string): ActionPart[] {
+  const parts: ActionPart[] = [];
+  let cursor = 0;
+  for (const match of action.matchAll(REFERENCE_TOKEN)) {
+    const at = match.index ?? 0;
+    if (at > cursor) parts.push({ kind: "text", value: action.slice(cursor, at) });
+    parts.push({ kind: "reference", value: match[1] });
+    cursor = at + match[0].length;
+  }
+  if (cursor < action.length) parts.push({ kind: "text", value: action.slice(cursor) });
+  return parts;
+}
+
+/** Every reference id cited by a line, in the order it is first cited. */
+export function actionReferenceIds(action: string): string[] {
+  const seen: string[] = [];
+  for (const part of splitActionText(action)) {
+    if (part.kind === "reference" && !seen.includes(part.value)) seen.push(part.value);
+  }
+  return seen;
+}
+
 export const generationJobSchema = z.object({
   id: idSchema,
   title: z.string().min(1),
-  prompt: z.string().min(1),
+  // Not `.min(1)` any more, and neither is `creativeBrief`: a scene the user has
+  // emptied out has no text to mirror here, and inventing one would put words in
+  // their mouth. The superRefine below still refuses a job that is empty AND has
+  // no shots — the shape every project written before scenes existed has.
+  prompt: z.string(),
   status: z.enum(["draft", "queued", "generating", "ready", "completed", "failed", "cancelled"]),
   stage: z.enum(["queued", "preparing", "generating", "encoding", "completed", "failed"]),
   progress: z.number().min(0).max(1),
   providerId: idSchema.nullable(),
-  creativeBrief: z.string().min(1),
+  // For a scene this is a MIRROR of the shots' action lines joined by blank
+  // lines — tokens and all — kept only so a build that predates scenes still
+  // finds the user's words where it expects them. Nothing reads it once `shots`
+  // is present: `compileGenerationJobSegments` compiles the shots.
+  creativeBrief: z.string(),
   // Snapshot of the compiled prompt taken when the draft was created. NOT what
   // gets sent: GeneratorView.requestFor recompiles from live state at send
   // time, so this copy goes stale as soon as the brief or the bound references
@@ -208,7 +301,23 @@ export const generationJobSchema = z.object({
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
   // existed has no key here at all, and must keep opening.
+  //
+  // This is the LEGACY per-job tag set. A scene keeps its settings on each shot
+  // instead; `sceneShots` hands these to the single shot a legacy job is read
+  // as, and the first edit moves them there for good.
   shotTags: shotTagSelectionSchema.nullish(),
+  /** The shots inside this scene, in the order they play. Absent on every
+   *  project written before scenes existed — read `sceneShots(job)`, never this
+   *  field, or a legacy scene comes back with no shots at all. */
+  shots: z.array(sceneShotSchema).nullish(),
+  /** How long the whole scene runs. Absent means the length every shot was
+   *  generated at before this was settable; read `sceneDurationSeconds(job)`. */
+  durationSeconds: z.number().min(SCENE_MIN_SECONDS).max(SCENE_MAX_SECONDS).nullish(),
+  /** Base guide §4.6 and §4.7. Per-PROMPT fields, not per-shot, so they live on
+   *  the scene. Blank or absent means the compiler emits its own content-neutral
+   *  line; anything here is the user's own words and is marked as theirs. */
+  soundscape: z.string().nullish(),
+  music: z.string().nullish(),
   // The one that broke the desktop app outright: createDraftGenerationJob never
   // sets clipId, so EVERY project has a job without it. See the note on
   // projectAssetSchema.durationMs.
@@ -217,6 +326,29 @@ export const generationJobSchema = z.object({
   error: z.string().min(1).nullable().optional(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
+}).superRefine((job, context) => {
+  /* A job carries the user's words in ONE of two places. A scene keeps them on
+     its shots; everything written before scenes existed keeps them in `prompt`
+     and `creativeBrief`, which is why those two may not both be blank when
+     there are no shots to hold them. `validate_and_normalize_config` in
+     src-tauri/src/lib.rs applies exactly this rule — the two layers have to
+     refuse the same files or Rust writes one the UI then cannot open. */
+  if (job.shots && job.shots.length > 0) {
+    const ids = new Set<string>();
+    for (const shot of job.shots) {
+      if (ids.has(shot.id)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots"], message: `Scene '${job.id}' has two shots with the id '${shot.id}'.` });
+      }
+      ids.add(shot.id);
+    }
+    return;
+  }
+  if (!job.prompt.trim() || !job.creativeBrief.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom, path: ["creativeBrief"],
+      message: `Generation job '${job.id}' has no shots, so its prompt and creative brief cannot be empty.`,
+    });
+  }
 });
 
 export const agentMessageSchema = z.object({
@@ -463,6 +595,54 @@ const capitalize = (value: string): string => value.charAt(0).toUpperCase() + va
  *  PolStudio inserted, not something the user typed. */
 const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text ? [] : [frame(".")]);
 
+/** One scene, as the compiler needs it. Deliberately not a `GenerationJob`:
+ *  the shot being written in the editor is not a job yet, and the preview has
+ *  to show the same bytes for both. */
+export interface ScenePrompt {
+  shots: readonly SceneShot[];
+  /** Base guide §4.6 / §4.7. Blank or absent falls back to the two default
+   *  lines below, which are marked as PolStudio's own writing. */
+  soundscape?: string | null;
+  music?: string | null;
+}
+
+/** The shots of a scene, in playing order, with the first one pinned to 0.
+ *  Order comes from the START TIMES, not from the array, so the `[Shot N]`
+ *  markers and their cut timestamps can never disagree — the guide requires
+ *  later shots to carry increasing timestamps (docs/architecture.md). */
+export function normalizeSceneShots(shots: readonly SceneShot[]): SceneShot[] {
+  const ordered = [...shots].sort((left, right) => left.startSeconds - right.startSeconds);
+  return ordered.map((shot, index) => (index === 0 && shot.startSeconds !== 0 ? { ...shot, startSeconds: 0 } : shot));
+}
+
+/** A cut timestamp, in the shortest form that is still exact. */
+export function formatSceneSeconds(seconds: number): string {
+  const rounded = Math.round(seconds * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/** The shots of a job, whatever era the file is from. A job written before
+ *  scenes existed becomes ONE shot holding the words and tags it already had —
+ *  no words are added and none are dropped. */
+export function sceneShots(job: GenerationJob): SceneShot[] {
+  if (job.shots && job.shots.length > 0) return normalizeSceneShots(job.shots);
+  return [{ id: `${job.id}-shot-1`, startSeconds: 0, action: job.creativeBrief.trim(), settings: job.shotTags ?? null }];
+}
+
+/** How long this scene runs. A job written before the length was settable is
+ *  read as the length its shot was always generated at. */
+export function sceneDurationSeconds(job: GenerationJob): number {
+  const stored = job.durationSeconds;
+  if (stored === null || stored === undefined) return DEFAULT_SCENE_SECONDS;
+  return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, stored));
+}
+
+/** The mirror written back into `prompt` and `creativeBrief`. Nothing but the
+ *  user's own lines, joined — no connective words, no summary. */
+export function sceneBriefText(shots: readonly SceneShot[]): string {
+  return normalizeSceneShots(shots).map((shot) => shot.action.trim()).filter((line) => line.length > 0).join("\n\n");
+}
+
 export function compileMiniMaxH3Prompt(
   creativeBrief: string,
   references: ProjectReference[] = [],
@@ -471,49 +651,124 @@ export function compileMiniMaxH3Prompt(
   return compileMiniMaxH3PromptSegments(creativeBrief, references, shotTags).map((segment) => segment.value).join("");
 }
 
+/** One line of prose as a single shot. Every caller that has words rather than
+ *  a scene — the demo agent, a draft being typed, every project made before
+ *  scenes existed — comes through here, so a one-shot scene compiles to exactly
+ *  the bytes this function has always produced. */
 export function compileMiniMaxH3PromptSegments(
   creativeBrief: string,
   references: ProjectReference[] = [],
   shotTags: ShotTagSelection | null = null,
 ): PromptSegment[] {
-  const brief = creativeBrief.trim();
-  const tags = shotTagClauses(shotTags);
-  // A chosen style REPLACES the guess made from the user's words; without one
-  // the guess stands, and it is marked as PolStudio's own doing.
-  const style = tags.style ?? deriveH3Style(brief);
-  const styleSegment = tags.style ? tagged(style) : frame(style);
-  // Sentences the tags contribute after the description. The field name is
+  return compileScenePromptSegments(
+    { shots: [{ id: "shot-1", startSeconds: 0, action: creativeBrief, settings: shotTags }] },
+    references,
+  );
+}
+
+export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = []): PromptSegment[] {
+  return compileScenePromptSegments({ shots: sceneShots(job), soundscape: job.soundscape, music: job.music }, references);
+}
+
+export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = []): string {
+  return compileGenerationJobSegments(job, references).map((segment) => segment.value).join("");
+}
+
+/** What one shot contributes, already split by who wrote it. */
+interface CompiledShot {
+  index: number;
+  startSeconds: number;
+  /** The action line: the user's characters, with each reference token turned
+   *  into the `<Subject N>` citation PolStudio inserts. */
+  body: PromptSegment[];
+  /** The same thing as a plain string, for deciding whether a stop is needed. */
+  text: string;
+  /** Reference ids this shot cites, first citation first. */
+  citedIds: string[];
+  tags: ShotTagClauses;
+}
+
+export function compileScenePromptSegments(scene: ScenePrompt, references: ProjectReference[] = []): PromptSegment[] {
+  const shots = normalizeSceneShots(scene.shots.length > 0 ? scene.shots : [{ id: "shot-1", startSeconds: 0, action: "", settings: null }]);
+  // Same filter pair as `usableImageReferences`, in the same order — see the
+  // <Picture N> / reference_paths lockstep note on that function. An
+  // audio-only-tagged reference is dropped here (ref guide §2.1), so a scene
+  // whose only reference is audio-tagged correctly falls back to T2VA.
+  const usable = references.filter(isReferenceUsable).filter(isVisualReference);
+  const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
+
+  const compiled: CompiledShot[] = shots.map((shot, index) => {
+    const body: PromptSegment[] = [];
+    const citedIds: string[] = [];
+    let text = "";
+    for (const part of splitActionText(shot.action.trim())) {
+      if (part.kind === "text") {
+        body.push(own(part.value));
+        text += part.value;
+        continue;
+      }
+      // A token whose reference is gone, undescribed or tagged as sound only
+      // has no <Subject N> to become. It is left out rather than guessed at,
+      // and the editor says so in words above the field — see `danglingTokens`.
+      const number = subjectNumber.get(part.value);
+      if (!number) continue;
+      if (!citedIds.includes(part.value)) citedIds.push(part.value);
+      body.push(frame(`<Subject ${number}>`));
+      text += `<Subject ${number}>`;
+    }
+    return { index, startSeconds: shot.startSeconds, body, text, citedIds, tags: shotTagClauses(shot.settings ?? null) };
+  });
+
+  // §4.1: the description opens with ONE overall style, so the first shot that
+  // carries one sets it for the scene — the picker marks that setting scene-wide
+  // for the same reason. Without one, the guess from the user's own words
+  // stands and is marked as PolStudio's doing.
+  const styleFromTag = compiled.map((shot) => shot.tags.style).find((style) => Boolean(style)) ?? null;
+  const style = styleFromTag ?? deriveH3Style(compiled.map((shot) => shot.text).join(" "));
+  const styleSegment = styleFromTag ? tagged(style) : frame(style);
+
+  /** The `[Shot N]` marker. Shot 1 never carries a timestamp (base guide §4.2);
+   *  every later shot carries the cut it starts on (docs/architecture.md). */
+  const marker = (shot: CompiledShot): string =>
+    shot.index === 0 ? "[Shot 1] " : `[Shot ${shot.index + 1}] (cut at ${formatSceneSeconds(shot.startSeconds)}s) `;
+
+  // Sentences the settings contribute after the description. The field name is
   // PolStudio's, the terms inside it are the user's — hence three segments per
   // clause rather than one pre-joined sentence nobody could attribute.
-  const tail: PromptSegment[] = tags.clauses.flatMap((clause) => [
+  const tail = (shot: CompiledShot): PromptSegment[] => shot.tags.clauses.flatMap((clause) => [
     frame(` ${clause.label}: `),
     tagged(clause.terms.join(", ")),
     frame("."),
   ]);
-  // Same filter pair as `usableImageReferences`, in the same order — see the
-  // <Picture N> / reference_paths lockstep note on that function. An
-  // audio-only-tagged reference is dropped here (ref guide §2.1), so a project
-  // whose only reference is audio-tagged correctly falls back to T2VA.
-  const usable = references.filter(isReferenceUsable).filter(isVisualReference);
+  /* A stop is added when something follows the line — another clause, or
+     another shot. A lone untagged shot keeps whatever terminal punctuation the
+     user gave it, so every prompt this app has ever produced is unchanged. */
+  const stop = (shot: CompiledShot): PromptSegment[] =>
+    shot.tags.clauses.length > 0 || shot.index < compiled.length - 1 ? addedStop(shot.text) : [];
+
+  const sound = (scene.soundscape ?? "").trim();
+  const music = (scene.music ?? "").trim();
+  const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
+  const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
 
   if (usable.length === 0) {
-    // T2VA — base guide §2.2 field list and order. With no tags at all this is
-    // byte-identical to what it has always produced, down to the brief keeping
-    // whatever terminal punctuation the user gave it.
+    // T2VA — base guide §2.2 field list and order.
     return [
-      frame("integrated_multimodal_description: [Shot 1] "),
-      styleSegment,
-      frame(", "),
-      // §4.1 order inside the shot: size, angle and lens sit in front of the
-      // subject and its action.
-      ...(tags.framing.length > 0 ? [tagged(tags.framing.join(", ")), frame(", ")] : []),
-      own(brief),
-      // Only terminated when something follows it — otherwise the shape of an
-      // untagged prompt would change for every existing project.
-      ...(tags.clauses.length > 0 ? addedStop(brief) : []),
-      ...tail,
-      frame(`\n\noverall_soundscape: ${DEFAULT_SOUNDSCAPE}`),
-      frame(`\n\nnon_diegetic_music: ${DEFAULT_MUSIC}`),
+      frame("integrated_multimodal_description: "),
+      ...compiled.flatMap((shot) => [
+        frame(shot.index === 0 ? marker(shot) : ` ${marker(shot)}`),
+        ...(shot.index === 0 ? [styleSegment, frame(", ")] : []),
+        // §4.1 order inside the shot: size, angle and lens sit in front of the
+        // subject and its action.
+        ...(shot.tags.framing.length > 0 ? [tagged(shot.tags.framing.join(", ")), frame(", ")] : []),
+        ...shot.body,
+        ...stop(shot),
+        ...tail(shot),
+      ]),
+      frame("\n\noverall_soundscape: "),
+      soundSegment,
+      frame("\n\nnon_diegetic_music: "),
+      musicSegment,
     ].filter((segment) => segment.value.length > 0);
   }
 
@@ -548,18 +803,29 @@ export function compileMiniMaxH3PromptSegments(
   });
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
-  const labelList = labels.length === 1
-    ? labels[0]
-    : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+  const listOf = (values: string[]): string => values.length === 1
+    ? values[0]
+    : `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
+  const labelList = listOf(labels);
+
+  /* Which subjects each shot is said to feature. A shot that cites references
+     in its own line features exactly those; a shot that cites none features all
+     of them, which is what a scene written before tokens existed means and what
+     keeps a single untokened shot compiling to the same bytes it always did. */
+  const featured = compiled.map((shot) => shot.citedIds.length > 0 ? shot.citedIds : usable.map((reference) => reference.id));
 
   // §3: task-type prefix. Every reference here provides generation guidance
   // without acting as a concrete frame or an edited source video, which is
-  // exactly `reference generation`. The summary reuses existing labels only.
+  // exactly `reference generation`. The summary reuses existing labels only,
+  // and the user's own lines are carried through in order.
   const summary: PromptSegment[] = [
     frame("[reference generation] "),
-    own(brief),
-    ...addedStop(brief),
-    frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`),
+    ...compiled.flatMap((shot) => [
+      ...(shot.index === 0 ? [] : [frame(" ")]),
+      ...shot.body,
+      ...addedStop(shot.text),
+    ]),
+    frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the ${compiled.length === 1 ? "single shot" : `${compiled.length} shots`} described below.`),
   ];
 
   // §4.1: one line per label using the fixed marker vocabulary. Their defined
@@ -568,21 +834,32 @@ export function compileMiniMaxH3PromptSegments(
   // No `name` here either: "the defined characteristics of IMG_4821 are
   // retained" names nothing to retain. The label already points at the
   // definition above, which is where the characteristics actually live.
-  const retention = usable.map((reference, index) =>
-    `${referenceLabel(reference, index)} (appears in [Shot 1]): fully_preserved - the referenced characteristics are retained.`);
+  //
+  // Where a subject appears is READ OFF the shots, never assumed: a reference
+  // bound to the scene but written into none of its lines gets no "appears in"
+  // claim at all, because there is no shot it can honestly be placed in.
+  const retention = usable.map((reference, index) => {
+    const appearances = compiled.filter((shot) => featured[shot.index].includes(reference.id))
+      .map((shot) => `[Shot ${shot.index + 1}]`);
+    const where = appearances.length > 0 ? ` (appears in ${appearances.join(", ")})` : "";
+    return `${referenceLabel(reference, index)}${where}: fully_preserved - the referenced characteristics are retained.`;
+  });
 
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.
   const detailed: PromptSegment[] = [
     frame("The target video is in a "),
-    tags.style ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
-    frame(" style.\n[Shot 1] "),
-    // Framing leads the sentence here, so it takes the capital.
-    ...(tags.framing.length > 0 ? [tagged(capitalize(tags.framing.join(", "))), frame(", ")] : []),
-    own(brief),
-    ...addedStop(brief),
-    frame(` The shot features ${labelList}, matching the definitions above.`),
-    ...tail,
+    styleFromTag ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
+    frame(" style.\n"),
+    ...compiled.flatMap((shot) => [
+      frame(shot.index === 0 ? marker(shot) : `\n${marker(shot)}`),
+      // Framing leads the sentence here, so it takes the capital.
+      ...(shot.tags.framing.length > 0 ? [tagged(capitalize(shot.tags.framing.join(", "))), frame(", ")] : []),
+      ...shot.body,
+      ...addedStop(shot.text),
+      frame(` The shot features ${listOf(featured[shot.index].map((id) => `<Subject ${subjectNumber.get(id)}>`))}, matching the definitions above.`),
+      ...tail(shot),
+    ]),
   ];
 
   return [
@@ -593,37 +870,80 @@ export function compileMiniMaxH3PromptSegments(
     frame(`\n\nretention_analysis:\n${retention.join("\n")}`),
     frame("\n\ndetailed_description:\n"),
     ...detailed,
-    frame(`\n\noverall_soundscape:\n${DEFAULT_SOUNDSCAPE}`),
-    frame(`\n\nnon_diegetic_music:\n${DEFAULT_MUSIC}`),
+    frame("\n\noverall_soundscape:\n"),
+    soundSegment,
+    frame("\n\nnon_diegetic_music:\n"),
+    musicSegment,
   ].filter((segment) => segment.value.length > 0);
 }
 
+/** Tokens in a scene that no longer name a reference the prompt can cite —
+ *  deleted, cleared of its description, or tagged as a sound note. They are
+ *  left OUT of the compiled prompt, so the editor has to say which ones and
+ *  why, and sending is blocked until they are re-pointed or removed. */
+export function danglingReferenceTokens(shots: readonly SceneShot[], references: ProjectReference[]): string[] {
+  const usable = new Set(references.filter(isReferenceUsable).filter(isVisualReference).map((reference) => reference.id));
+  const missing: string[] = [];
+  for (const shot of shots) {
+    for (const id of actionReferenceIds(shot.action)) {
+      if (!usable.has(id) && !missing.includes(id)) missing.push(id);
+    }
+  }
+  return missing;
+}
+
+/** The name a new scene carries until the user renames it: their own first
+ *  words, never a phrase this app made up. A scene started empty has no words
+ *  to take one from, so it says exactly that instead of pretending. */
+export const UNTITLED_SCENE = "Untitled scene";
+
 export function createDraftGenerationJob(
   creativeBrief: string,
-  options: { id?: string; title?: string; referenceIds?: string[]; references?: ProjectReference[]; shotTags?: ShotTagSelection | null; now?: string } = {},
+  options: {
+    id?: string;
+    title?: string;
+    referenceIds?: string[];
+    references?: ProjectReference[];
+    shotTags?: ShotTagSelection | null;
+    /** The shots to open the scene with. Omitted means one shot holding
+     *  `creativeBrief`, which is what every caller wanted before scenes. */
+    shots?: SceneShot[];
+    durationSeconds?: number;
+    now?: string;
+  } = {},
 ): GenerationJob {
   const brief = creativeBrief.trim();
   const now = options.now ?? new Date().toISOString();
   // Omitted rather than written as null when nothing is tagged, so a shot built
   // from prose alone still writes exactly the file it always did.
   const shotTags = normalizeShotTagSelection(options.shotTags);
+  const id = options.id ?? crypto.randomUUID();
+  // Derived from the scene's own id, not a fresh uuid: the same shot id a
+  // legacy job is read as by `sceneShots`, and the same bytes on every run, so
+  // a created project is reproducible enough to be a fixture.
+  const shots = normalizeSceneShots(options.shots ?? [{ id: `${id}-shot-1`, startSeconds: 0, action: brief, ...(shotTags ? { settings: shotTags } : {}) }]);
+  const durationSeconds = Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, options.durationSeconds ?? DEFAULT_SCENE_SECONDS));
+  const text = sceneBriefText(shots);
+  const scene: ScenePrompt = { shots };
   return generationJobSchema.parse({
-    id: options.id ?? crypto.randomUUID(),
-    title: options.title ?? brief.split(/\s+/).slice(0, 6).join(" "),
-    prompt: brief,
+    id,
+    // Their own words, cut short — and only ever their words. See UNTITLED_SCENE.
+    title: options.title ?? (text.split(/\s+/).filter(Boolean).slice(0, 6).join(" ") || UNTITLED_SCENE),
+    prompt: text,
     status: "draft",
     stage: "queued",
     progress: 0,
     providerId: "minimax-h3",
-    creativeBrief: brief,
+    creativeBrief: text,
     // Draft-time snapshot only — it is NOT the prompt that gets sent.
     // GeneratorView.requestFor recompiles from live state at send time, so this
-    // value is stale the moment the brief or the bound references change (a
+    // value is stale the moment the scene or the bound references change (a
     // project created with reference images keeps a T2VA snapshot here while
-    // the job later holds bound image references). Do not read it as current.
-    compiledPrompt: compileMiniMaxH3Prompt(brief, options.references ?? [], shotTags),
+    // the scene later holds bound image references). Do not read it as current.
+    compiledPrompt: compileScenePromptSegments(scene, options.references ?? []).map((segment) => segment.value).join(""),
     referenceIds: options.referenceIds ?? [],
-    ...(shotTags ? { shotTags } : {}),
+    shots,
+    durationSeconds,
     createdAt: now,
     updatedAt: now,
   });

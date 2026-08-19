@@ -193,13 +193,16 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
     expect(segments.some((segment) => segment.kind === "frame" && segment.value === ".")).toBe(true);
   });
 
-  it("puts a draft's tags on the job and into its compiled snapshot", () => {
+  it("puts a draft's tags on the shot inside the scene, and into its compiled snapshot", () => {
+    // Tags are per-SHOT now, so a draft made from one line puts them on the one
+    // shot it opens with. The legacy per-job `shotTags` key is not written any
+    // more; it is only ever read, off files that already carry it.
     const job = createDraftGenerationJob("hands shaping wet clay", { shotTags: { cameraMovement: ["push-in"], mood: [] }, now });
-    expect(job.shotTags).toEqual({ cameraMovement: ["push-in"] });
+    expect(job.shots?.[0].settings).toEqual({ cameraMovement: ["push-in"] });
     expect(job.compiledPrompt).toContain("Camera movement: push in.");
     // Nothing tagged means no key at all, so an untagged shot writes the file
     // it always wrote.
-    expect("shotTags" in createDraftGenerationJob("hands shaping wet clay", { now })).toBe(false);
+    expect("settings" in (createDraftGenerationJob("hands shaping wet clay", { now }).shots?.[0] ?? {})).toBe(false);
   });
 });
 
