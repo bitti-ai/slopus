@@ -198,6 +198,38 @@ describe("project workspace timecode", () => {
     expect(screen.getByText(/sound note/)).not.toBeNull();
   });
 
+  it("links and unlinks a reference to the selected shot", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const createdAt = fresh.createdAt;
+    const references = [
+      { id: "ref-lamp", kind: "text", name: "Lamp silhouette", description: "Matte cream ceramic, tapered neck.", content: "Matte cream ceramic, tapered neck.", intendedUse: ["product"], createdAt },
+      { id: "ref-light", kind: "text", name: "Window light", description: "Soft north light, long shadows.", content: "Soft north light, long shadows.", intendedUse: ["style"], createdAt },
+    ];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp"] }] });
+    const onChange = vi.fn();
+    render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+
+    // Every reference in the project is offered, bound or not.
+    const lamp = screen.getByRole("checkbox", { name: /Lamp silhouette/ }) as HTMLInputElement;
+    const light = screen.getByRole("checkbox", { name: /Window light/ }) as HTMLInputElement;
+    expect(lamp.checked).toBe(true);
+    expect(light.checked).toBe(false);
+
+    fireEvent.click(light);
+    expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual(["ref-lamp", "ref-light"]);
+
+    fireEvent.click(lamp);
+    expect(onChange.mock.calls[1][0].generationJobs[0].referenceIds).toEqual([]);
+  });
+
+  it("locks a running shot’s references, because the engine already has them", () => {
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const references = [{ id: "ref-lamp", kind: "text", name: "Lamp silhouette", description: "Matte cream ceramic.", content: "Matte cream ceramic.", intendedUse: ["product"], createdAt: fresh.createdAt }];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4, referenceIds: ["ref-lamp"] }] });
+    render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect((screen.getByRole("checkbox", { name: /Lamp silhouette/ }) as HTMLInputElement).disabled).toBe(true);
+  });
+
   it("tells the user the engine only follows the words when every bound reference is skipped", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const references = [{ id: "ref-blank", kind: "text", name: "Lead character", description: "", content: null, intendedUse: ["character"], createdAt: fresh.createdAt }];

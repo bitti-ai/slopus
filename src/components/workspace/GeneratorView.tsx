@@ -37,6 +37,10 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   const queued = jobs.filter((job) => job.status === "queued");
   const drafts = jobs.filter((job) => job.status === "draft");
   const completed = jobs.filter((job) => ["ready", "completed", "failed", "cancelled"].includes(job.status));
+  // Queued and generating shots have already been handed to the engine with
+  // their references attached; re-binding now would change nothing about that
+  // run while claiming otherwise.
+  const refsLocked = selected?.status === "generating" || selected?.status === "queued";
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
   // Bound is not the same as used. compileMiniMaxH3Prompt drops a reference that
   // isn't described yet, and isVisualReference drops an audio-only one, so a
@@ -170,6 +174,16 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     node.focus();
   };
 
+  /* Binding order does not matter: requestFor and the compiler both read
+     config.references in list order and keep whatever this job names, so the
+     <Picture N> numbering stays in lockstep however the boxes are ticked. */
+  const toggleReference = (job: GenerationJob, referenceId: string) => {
+    const referenceIds = job.referenceIds.includes(referenceId)
+      ? job.referenceIds.filter((id) => id !== referenceId)
+      : [...job.referenceIds, referenceId];
+    updateJob(job.id, { referenceIds, updatedAt: new Date().toISOString() });
+  };
+
   const cancelJob = (job: GenerationJob) => {
     if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
     updateJob(job.id, { status: "cancelled", stage: "failed", updatedAt: new Date().toISOString() });
@@ -277,23 +291,37 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
 
           <div className="job-refs">
             <span>{promptRefs.length === 0 ? "No references used by this shot" : promptRefs.length === 1 ? "1 reference guides this shot" : `${promptRefs.length} references guide this shot`}</span>
-            {/* A bound reference the prompt skips is still listed — hiding it
-                would leave the user wondering where their reference went. */}
-            {boundRefs.map((ref, index) => {
+            {/* Every reference in the project, each a checkbox: which ones steer
+                a shot is the user's decision, and until now the two that were
+                bound when the draft was written were the two it kept forever.
+                A bound reference the prompt skips stays listed with its reason —
+                hiding it would leave the user wondering where it went. */}
+            {config.references.map((ref, index) => {
+              const bound = selected.referenceIds.includes(ref.id);
               const skipped = skipReason(ref);
-              return <div key={ref.id}>
+              return <label key={ref.id} className={`job-ref ${bound ? "job-ref--bound" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={bound}
+                  disabled={refsLocked}
+                  onChange={() => toggleReference(selected, ref.id)}
+                />
                 <i className={`ref-mini ref-mini--${index}`} />
                 <b>{ref.name}</b>
                 {skipped
                   ? <p className="job-refs__reason">{skipped}</p>
-                  : !isReferenceDescribed(ref)
+                  : bound && !isReferenceDescribed(ref)
                     // Used, but incomplete: the picture goes to the engine while
                     // nothing tells it what to keep. Silence here let a
                     // boilerplate-filled card look finished.
                     ? <p className="job-refs__reason">Not described yet — the picture is sent, but nothing tells the engine what to keep.</p>
                     : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
-              </div>;
+              </label>;
             })}
+            {config.references.length === 0 && <p className="job-refs__empty">This project has no references yet. Add one under References and it can steer this shot.</p>}
+            {/* The request was already handed to the engine, so a change here
+                would say it steered a render it never touched. */}
+            {refsLocked && <p className="job-refs__empty">This shot is already with the engine. Its references can be changed once it finishes, and the next run will use them.</p>}
             {promptRefs.length === 0
               ? <p className="job-refs__empty">The video engine only follows the words above.</p>
               : <p className="job-refs__empty">{referenceRouting(promptRefs)} The tags are your own notes and don’t change what is sent.</p>}
