@@ -176,9 +176,9 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   };
 
   return <div className="generator-view">
-    <aside className="queue-panel" aria-label="Your shots">
+    <aside className="queue-panel" aria-label="Shots">
       <div className="queue-panel__title">
-        <span>Your shots</span>
+        <span>Shots</span>
         <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
       </div>
       <div className="queue-panel__scroll">
