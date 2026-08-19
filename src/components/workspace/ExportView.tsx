@@ -1,6 +1,7 @@
 import { CircleCheck, Download, FileVideo, TriangleAlert, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  audioMixBytes,
   bitrateFor,
   buildExportPlan,
   defaultExportSettings,
@@ -52,6 +53,7 @@ interface FinishedExport {
   audio: boolean;
   audioDetail: string;
   audioProblems: string[];
+  audioShortfalls: string[];
 }
 
 export function ExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
@@ -239,6 +241,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         audio: outcome.audio,
         audioDetail: outcome.audioDetail,
         audioProblems: outcome.audioProblems,
+        audioShortfalls: outcome.audioShortfalls,
       });
     } catch (reason) {
       if (reason instanceof ExportCancelled) setCancelled(true);
@@ -275,7 +278,10 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           ? "every audio clip falls outside the picture"
           : "no audio clips on the timeline"
         : support.audio
-          ? "48 kHz stereo, gaps filled with silence"
+          ? /* The mix is built whole before the file is opened and held until
+               the last frame, so its size is a real cost of this export and is
+               stated with the rest of them rather than discovered as a crash. */
+            `48 kHz stereo, gaps filled with silence · ${formatBytes(audioMixBytes(plan.durationMs))} of memory held while it renders`
           : "this webview has no AudioEncoder",
     ],
     [
@@ -485,6 +491,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
                 a word is the failure worth shouting about. */}
             <p><TriangleAlert size={14} aria-hidden="true" /> Left out of the soundtrack:</p>
             <ul>{result.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
+          </>}
+          {result.audioShortfalls.length > 0 && <>
+            {/* These clips ARE in the file. Part of each one is silence because
+                the sound behind it ran out, which is exactly as inaudible as a
+                missing clip and was previously reported nowhere. */}
+            <p><TriangleAlert size={14} aria-hidden="true" /> Ran out of sound before the clip ended:</p>
+            <ul>{result.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
           </>}
         </div>}
       </section>
