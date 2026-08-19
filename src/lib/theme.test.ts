@@ -392,12 +392,20 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
        than about the pictures: two of the four covers are pale (--paper is
        #cabca3, --chrome peaks at #dce7e7), so the note that used to stand here
        — "white on a dark picture in both themes, because the picture is dark in
-       both" — was simply false, and the caption it excused measured 1.64:1. */
+       both" — was simply false, and the caption it excused measured 1.64:1.
+
+       Do NOT restate a ratio here. The first repair left "5.29:1 over the
+       palest cover" on the badges, which was true of the four covers that exist
+       and said nothing about the backdrop the rule actually has to survive — a
+       bound over the palest GENERATED cover, in a list two paragraphs under a
+       comment declaring exactly that standard insufficient. All three now name
+       the test instead, and the test recomputes them. */
     ".project-card__format, .project-card__quality":
-      "white ink on the dark plate this rule paints for itself: 5.29:1 measured over the palest cover",
-    ".project-card__play": "white ink on the dark disc this rule paints for itself",
+      "white ink on the dark plate this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
+    ".project-card__play":
+      "white ink on the dark disc this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
     ".project-card__art-copy":
-      "white ink on the strip this rule paints for itself, clearing 4.5:1 over any cover at all — recomputed from the two literals by the test below",
+      "white ink on the strip this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
     ".project-card__art-copy::before":
       "the feathered top edge of that strip: decoration, with no text on it",
   },
@@ -477,20 +485,32 @@ describe("no stylesheet outside tokens.css names a colour", () => {
   }
 });
 
-/* --- The one caption that lands on a picture instead of a palette ---------- *
+/* --- The three rules that land on a picture instead of a palette ----------- *
 
    Everywhere else, legibility is a property of two tokens and can be argued
-   about by reading tokens.css. The library cover caption is the exception: it
-   is the user's own project brief, printed over generated artwork, and it was
-   exempted from the guard above with the note "white on a dark picture in both
-   themes, because the picture is dark in both". Two of the four covers are not
-   dark. It measured 1.64:1 at its worst pixel over --paper in Chrome — the same
-   in both themes — with a text-shadow as the only thing standing between the
-   user's words and a blank strip. It now measures 16.14:1 there.
+   about by reading tokens.css. The library card's cover chrome is the
+   exception: the two badges, the play disc and the caption all print white ink
+   over generated artwork, and every one of them was exempted from the guard above.
 
-   The rule now paints its own strip, and this recomputes the ratio from the two
-   literals in it against the worst backdrop that can physically exist — pure
-   white — so it holds for the four covers today, for any cover added later, and
+   The caption's exemption used to read "white on a dark picture in both themes,
+   because the picture is dark in both". Two of the four covers are not dark: it
+   measured 1.64:1 at its worst pixel over --paper in Chrome — the same in both
+   themes — with a text-shadow as the only thing standing between the user's
+   words and a blank strip.
+
+   The badges and the play disc then inherited a subtler version of the same
+   fiction: "each carries its OWN dark plate, whatever the picture under it
+   turns out to be", asserted in prose with nothing recomputing it. Their plates
+   were rgba(4,6,10,0.55) and rgba(5,7,11,0.45), which composite to mid-grey
+   over a pale backdrop — 3.78:1 and 3.18:1 measured over a white thumbnail,
+   both failing 4.5:1 over exactly the case the sentence claimed to cover.
+   `backdrop-filter: blur(8px)` does not help: it blurs without darkening.
+
+   So none of the three is trusted to prose any more. Each is recomputed here
+   from its own two literals against the worst backdrop that can physically
+   exist — PURE WHITE — which is a floor rather than an average: every real
+   cover is darker than white, so every real cover composites darker than this.
+   It therefore holds for the four covers today, for any cover added later, and
    for a real thumbnail dropped in through ProjectCard's inline background
    image, none of which this file can see. */
 
@@ -504,30 +524,83 @@ const contrastRatio = (a: number[], b: number[]) => {
   return (lighter + 0.05) / (darker + 0.05);
 };
 
-describe("the library cover caption", () => {
-  const rule = block(readCss("src/styles/library.css"), "\n.project-card__art-copy {");
+/** `src` laid over `dst` at `src`'s own alpha. */
+const composite = (src: number[], dst: number[]) =>
+  dst.map((channel, at) => src[3] * src[at] + (1 - src[3]) * channel);
 
-  it("is legible over the worst cover that could ever exist", () => {
-    const ink = rule.match(/color:\s*#([0-9a-f]{3,6})\s*;/)!;
-    const hex = ink[1].length === 3 ? [...ink[1]].map((digit) => digit + digit).join("") : ink[1];
-    const inkRgb = [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16));
+const WHITE = [255, 255, 255];
 
-    const plate = rule.match(/background:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/)!;
-    const alpha = Number(plate[4]);
-    /* The strip over PURE WHITE. Any real cover is darker than white, so any
-       real cover composites to something darker than this — a floor, not an
-       average. It currently comes out at 14.59:1. */
-    const worstBackdrop = [1, 2, 3].map((at) => alpha * Number(plate[at]) + (1 - alpha) * 255);
+/** One declaration's value, or a throw. A rule that has LOST its `color` or its
+ *  `background` must fail loudly: silently reading `undefined` as black is how
+ *  a guard reports a ratio for a plate that is no longer painted. */
+function declaration(rule: string, property: string): string {
+  const found = rule.match(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;]+);`));
+  if (!found) throw new Error(`no ${property} declared in this rule`);
+  return found[1].trim();
+}
 
-    expect(contrastRatio(inkRgb, worstBackdrop)).toBeGreaterThanOrEqual(4.5);
+/** `#rgb`, `#rrggbb`, `rgb(…)` or `rgba(…)` as [r, g, b, alpha]. Anything else
+ *  throws rather than being guessed at — including `var()`, which would mean
+ *  the rule had moved to the palette and should lose its exemption instead. */
+function rgba(literal: string): number[] {
+  const hex = literal.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const full = hex[1].length === 3 ? [...hex[1]].map((digit) => digit + digit).join("") : hex[1];
+    return [...[0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16)), 1];
+  }
+  const call = literal.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/i);
+  if (!call) throw new Error(`not a colour this test can read: ${literal}`);
+  return [Number(call[1]), Number(call[2]), Number(call[3]), call[4] === undefined ? 1 : Number(call[4])];
+}
+
+/** What the ink of one rule measures against its own plate over `backdrop`. */
+function inkOnPlate(rule: string, backdrop: number[]): number {
+  const plate = composite(rgba(declaration(rule, "background")), backdrop);
+  const ink = composite(rgba(declaration(rule, "color")), plate);
+  return contrastRatio(ink, plate);
+}
+
+/* Keyed by the selector `block()` is asked for, because that string is the only
+   thing tying a bound to the rule it is a bound for. */
+const COVER_CHROME = {
+  "\n.project-card__format,\n.project-card__quality {": "the two corner badges",
+  "\n.project-card__play {": "the play disc",
+  "\n.project-card__art-copy {": "the caption strip",
+};
+
+describe("the chrome that sits on the cover artwork", () => {
+  const css = readCss("src/styles/library.css");
+
+  it("computes a ratio it can be caught getting wrong", () => {
+    /* The maths above is the whole assertion, so it gets its own self-check
+       before it is trusted with three rules. Both plates below are the ones
+       that actually shipped and actually failed; if a refactor made this
+       function optimistic, these are what would go green first. */
+    expect(inkOnPlate("color: #fff; background: rgba(4,6,10,0.86);", WHITE)).toBeCloseTo(14.59, 1);
+    expect(inkOnPlate("color: rgba(255,255,255,0.85); background: rgba(4,6,10,0.55);", WHITE)).toBeCloseTo(3.79, 1);
+    expect(inkOnPlate("color: #fff; background: rgba(5,7,11,0.45);", WHITE)).toBeCloseTo(3.22, 1);
+    /* And that it is reading BOTH literals rather than one: opaque black plate,
+       white ink, is 21:1 and nothing else is. */
+    expect(inkOnPlate("color: #fff; background: rgba(0,0,0,1);", WHITE)).toBeCloseTo(21, 5);
+    /* A rule that has stopped painting its own plate is a failure, not a pass. */
+    expect(() => inkOnPlate("color: #fff;", WHITE)).toThrow(/no background/);
+    expect(() => inkOnPlate("color: var(--text); background: rgba(0,0,0,1);", WHITE)).toThrow(/not a colour/);
   });
 
-  it("does not lean on a text-shadow to get there", () => {
-    /* A shadow is what the old caption had instead of a plate, and it is part
-       of why nobody noticed: it makes 1.64:1 look survivable in a screenshot
-       while measuring the same 1.64:1. If one comes back it has to be
-       decoration on top of a ratio that already passes, not the reason it
-       passes. */
-    expect(rule).not.toContain("text-shadow");
-  });
+  for (const [selector, what] of Object.entries(COVER_CHROME)) {
+    const rule = block(css, selector);
+
+    it(`${what} is legible over the worst cover that could ever exist`, () => {
+      expect(inkOnPlate(rule, WHITE)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it(`${what} does not lean on a text-shadow to get there`, () => {
+      /* A shadow is what the old caption had instead of a plate, and it is part
+         of why nobody noticed: it makes 1.64:1 look survivable in a screenshot
+         while measuring the same 1.64:1. If one comes back it has to be
+         decoration on top of a ratio that already passes, not the reason it
+         passes. */
+      expect(rule).not.toContain("text-shadow");
+    });
+  }
 });
