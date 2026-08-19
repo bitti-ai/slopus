@@ -1015,7 +1015,9 @@ fn choose_initial_reference_images(app: AppHandle) -> Result<Vec<PendingReferenc
                 .unwrap_or("Image reference")
                 .to_string();
             Ok(PendingReferenceImage {
-                source_path: source.to_string_lossy().into_owned(),
+                // Never a verbatim path: this one is shown in the composer
+                // beside the file's name before the project even exists.
+                source_path: display_path(&source),
                 name,
             })
         })
@@ -1516,7 +1518,7 @@ fn choose_engine_path(
     let path = selected
         .into_path()
         .map_err(|error| format!("Could not access the selected path: {error}"))?;
-    Ok(Some(path.to_string_lossy().into_owned()))
+    Ok(Some(display_path(&path)))
 }
 
 /// What is installed on this computer: the two agent CLIs and the video engine.
