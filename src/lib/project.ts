@@ -172,7 +172,7 @@ export const projectReferenceSchema = z.object({
   if (reference.kind !== "text" && !reference.relativePath && !reference.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],
-      message: `A ${reference.kind} reference needs the file it refers to.`,
+      message: `A reference of kind '${reference.kind}' needs the file it refers to.`,
     });
   }
 });

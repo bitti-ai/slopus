@@ -592,11 +592,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             // carries the absolute path of the file the user already has.
             "image" | "video" | "audio"
                 if reference.relative_path.is_some() || reference.source_path.is_some() => {}
-            "image" => {
-                return Err("Image references require a stored path inside the project.".into())
-            }
-            "video" | "audio" => {
-                return Err("Video and audio references require a source path.".into())
+            kind @ ("image" | "video" | "audio") => {
+                return Err(format!(
+                    "A reference of kind '{kind}' needs the file it refers to."
+                ))
             }
             _ => return Err(format!("Unsupported reference kind '{}'.", reference.kind)),
         }
@@ -1108,6 +1107,35 @@ struct ImportedReference {
     source_path: Option<String>,
 }
 
+/// Files the user chose from the OS picker in THIS run, canonicalised.
+///
+/// The project file on disk is the durable record of what may be read from
+/// outside the folder, but it lags: saving is a deliberate act, so a clip
+/// imported a second ago is not in it yet and its preview would be refused as
+/// "not one of the files this project points at". This list closes that gap
+/// without widening anything — every entry got here because the user picked
+/// that exact file in a native dialog. It is never written to disk and never
+/// survives a restart; the project file does that.
+static PICKED_EXTERNAL_FILES: std::sync::LazyLock<std::sync::Mutex<BTreeSet<PathBuf>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn remember_picked_file(path: &Path) {
+    if let Ok(canonical) = path.canonicalize() {
+        // A poisoned lock only means another thread panicked mid-insert; the
+        // fallback is the project file, so there is nothing to escalate here.
+        if let Ok(mut picked) = PICKED_EXTERNAL_FILES.lock() {
+            picked.insert(canonical);
+        }
+    }
+}
+
+fn was_picked_this_session(canonical: &Path) -> bool {
+    PICKED_EXTERNAL_FILES
+        .lock()
+        .map(|picked| picked.contains(canonical))
+        .unwrap_or(false)
+}
+
 /// The absolute, prefix-free path this project will remember a file by.
 /// Canonicalised so it survives a working-directory change and so the
 /// containment check in `read_external_media_file` compares like with like,
@@ -1118,6 +1146,15 @@ fn external_source_path(source: &Path) -> Result<String, String> {
         .canonicalize()
         .map_err(|error| format!("Could not resolve {}: {error}", source.to_string_lossy()))?;
     normalize_external_path(&display_path(&canonical))
+}
+
+/// The same path, and a note that the user just chose this file — so its
+/// preview works before the project has been saved. Only the import paths call
+/// this, and they only run on what came back from a native picker.
+fn picked_external_source_path(source: &Path) -> Result<String, String> {
+    let path = external_source_path(source)?;
+    remember_picked_file(source);
+    Ok(path)
 }
 
 /// Adds one file to a project as a reference, following the same rule the media
@@ -1153,7 +1190,7 @@ fn import_reference_file(
                 .unwrap_or("Reference")
                 .to_string(),
             relative_path: None,
-            source_path: Some(external_source_path(source)?),
+            source_path: Some(picked_external_source_path(source)?),
         }),
         _ => Err("Choose an image, a video, or a sound file.".into()),
     }
@@ -1210,7 +1247,7 @@ fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMed
                 .unwrap_or("Imported media")
                 .to_string(),
             relative_path: None,
-            source_path: Some(external_source_path(source)?),
+            source_path: Some(picked_external_source_path(source)?),
             mime_type: mime_type.into(),
         });
     }
@@ -1291,10 +1328,11 @@ fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
 /// read them where they are — and that is exactly the shape of an arbitrary
 /// file read, so it is fenced three ways:
 ///
-/// 1. The path must appear verbatim (after canonicalising both sides) in the
-///    project file ON DISK, not in whatever the caller passes in. The recorded
-///    paths only get there through the OS picker, which is the user choosing
-///    the file themselves.
+/// 1. The path must be one the USER chose: either recorded in the project file
+///    ON DISK (canonicalised on both sides before comparing), or picked from a
+///    native dialog earlier in this run — never merely named by the caller. The
+///    session list exists because saving is deliberate: a clip imported a
+///    moment ago is not in the project file yet.
 /// 2. It must still carry a media extension PolStudio imports, so even a
 ///    hand-edited project file cannot turn this into a reader for keys, wallets
 ///    or documents.
@@ -1321,7 +1359,7 @@ fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>,
             .map(|canonical| canonical == requested)
             .unwrap_or(false)
     });
-    if !recorded {
+    if !recorded && !was_picked_this_session(&requested) {
         return Err(format!(
             "{source_path} is not one of the files this project points at."
         ));
@@ -2414,6 +2452,38 @@ mod tests {
         // whatever it points at.
         assert!(external_media_bytes(folder, &secret.to_string_lossy()).is_err());
         assert!(external_media_bytes(folder, "/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
+        // Saving is a deliberate act, so the project file on disk does not
+        // mention a clip the user just imported. Refusing to read it until they
+        // press Save would mean every fresh import shows a broken preview.
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir(&project).unwrap();
+        write_project(&project, &created_fixture()).unwrap();
+        let clip = root.path().join("just picked.mp4");
+        fs::write(&clip, b"fresh rush").unwrap();
+
+        let imported = import_media_file(&clip, &project).unwrap();
+        let source = imported.source_path.unwrap();
+        assert!(
+            recorded_external_paths(&read_project(&project).unwrap().config).is_empty(),
+            "the saved project must not know about the import yet"
+        );
+        assert_eq!(
+            external_media_bytes(&project.to_string_lossy(), &source).unwrap(),
+            b"fresh rush"
+        );
+
+        // The gap it closes is exactly one file wide: a sibling nobody picked
+        // is still refused.
+        let sibling = root.path().join("never picked.mp4");
+        fs::write(&sibling, b"other rush").unwrap();
+        assert!(
+            external_media_bytes(&project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
+        );
     }
 
     #[test]
