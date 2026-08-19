@@ -4,7 +4,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type TimelineClip } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -508,7 +508,7 @@ describe("project workspace timecode", () => {
        nobody had touched — "Save your changes to this project folder" over a
        folder that had none. A measurement is still worth keeping, so it stays
        in the project and rides along with the next real save. */
-    const onSave = vi.fn(async () => undefined);
+    const onSave = vi.fn(async (_record: ProjectRecord) => undefined);
     const project = { folderPath: "C:\\Looked At", config: projectWithMedia() };
     await withFakeDecoder({ seconds: 40, width: 1920, height: 1080 }, async () => {
       render(createElement(ProjectWorkspace, { project, onBack: () => undefined, onSave }));
@@ -529,7 +529,7 @@ describe("project workspace timecode", () => {
       fireEvent.click(save());
       await waitFor(() => expect(onSave).toHaveBeenCalled());
     });
-    const saved = onSave.mock.calls[0][0] as unknown as { config: ProjectConfig };
+    const saved = onSave.mock.calls[0][0];
     expect(saved.config.assets.map((asset) => asset.durationMs)).toEqual([40_000, 40_000]);
     expect(parseProjectConfig(saved.config)).toBeTruthy();
   }, 20_000);
