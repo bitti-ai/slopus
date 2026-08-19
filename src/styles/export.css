@@ -1,0 +1,389 @@
+/* ============================================================================
+   export.css — the Export screen: settings, preview, and the run itself.
+
+   Sizing contract (see tokens.css): no literal px type sizes, nothing below
+   --text-2xs (12px), every interactive control at least --control-sm (36px).
+   ========================================================================== */
+
+.export-view {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-7) var(--space-7);
+  background:
+    radial-gradient(circle at 80% -20%, rgba(47, 69, 107, 0.13), transparent 38%),
+    var(--bg);
+}
+
+.export-heading {
+  max-width: var(--content-max);
+  margin: 0 auto var(--space-5);
+}
+
+.export-heading h1 {
+  margin: var(--space-2) 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-hero);
+}
+
+.export-heading p {
+  margin: 0;
+  max-width: 76ch;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* --- Layout ---------------------------------------------------------------- */
+
+.export-layout {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 1120px) {
+  .export-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.export-preview,
+.export-settings {
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.export-preview h2,
+.export-settings h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.export-settings h2:not(:first-of-type) {
+  margin-top: var(--space-5);
+}
+
+/* --- Preview --------------------------------------------------------------- */
+
+.export-stage {
+  position: relative;
+  width: 100%;
+  max-height: 56vh;
+  margin-bottom: var(--space-3);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  /* Deliberately not the project background: the frame paints its own, and a
+     matching surround would hide where the picture actually ends. */
+  background: #05070b;
+}
+
+.export-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.export-stage__note {
+  max-width: 46ch;
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  text-align: center;
+}
+
+.export-stage__note--bad {
+  position: absolute;
+  inset: auto var(--space-3) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid rgba(236, 125, 134, 0.4);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  background: rgba(12, 8, 10, 0.9);
+  text-align: left;
+}
+
+.export-stage__note--bad svg {
+  flex: 0 0 auto;
+}
+
+.export-stage__caption {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-stage__caption strong {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.export-scrub {
+  min-height: var(--control-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.export-scrub > span {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.export-scrub input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-sm);
+  accent-color: var(--accent-bright);
+  cursor: pointer;
+}
+
+.export-scrub output {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* --- Settings -------------------------------------------------------------- */
+
+.export-settings__lead {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-3);
+}
+
+.export-fields label,
+.export-field-note {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.export-field-note {
+  grid-column: 1 / -1;
+}
+
+.export-fields label > span,
+.export-field-note > span {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.export-fields select {
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.export-fields select:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.export-field-note p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-field-note code,
+.export-outcome code {
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  word-break: break-all;
+}
+
+/* --- Summary --------------------------------------------------------------- */
+
+.export-summary {
+  margin: 0;
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--line);
+}
+
+.export-summary > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--panel-2);
+}
+
+.export-summary dt {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.export-summary dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+
+.export-summary dd small {
+  display: block;
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+}
+
+/* --- Notices --------------------------------------------------------------- */
+
+.export-notice {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid rgba(227, 168, 98, 0.34);
+  border-radius: var(--radius-md);
+  background: rgba(58, 44, 25, 0.24);
+}
+
+.export-notice--bad {
+  border-color: rgba(236, 125, 134, 0.4);
+  background: rgba(58, 26, 30, 0.26);
+}
+
+.export-notice h3 {
+  margin: 0 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.export-notice--bad h3 {
+  color: var(--danger);
+}
+
+.export-notice ul {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.export-notice li,
+.export-notice p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-notice li + li {
+  margin-top: var(--space-1);
+}
+
+/* --- Running and finishing ------------------------------------------------- */
+
+.export-actions {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.export-progress p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-progress small {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.export-outcome {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--panel-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.export-outcome--good {
+  border-color: rgba(110, 207, 149, 0.36);
+  background: rgba(26, 48, 36, 0.26);
+}
+
+.export-outcome h3 {
+  margin: 0 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--success);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.export-outcome p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.export-outcome p + p {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+}

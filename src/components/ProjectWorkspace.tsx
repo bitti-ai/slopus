@@ -3,11 +3,12 @@ import { useState } from "react";
 import type { ProjectConfig, ProjectRecord } from "../lib/project";
 import { CHECKING_PROVIDERS, type RuntimeStatus } from "../lib/runtime";
 import { AgentDock } from "./workspace/AgentDock";
+import { ExportView } from "./workspace/ExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
 
-export type ProjectView = "timeline" | "generator" | "references";
+export type ProjectView = "timeline" | "generator" | "references" | "export";
 
 export function formatDurationTimecode(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -74,9 +75,16 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       </nav>
 
       <div className="project-topbar__actions">
-        {/* Export is not wired to anything yet, so it must not look like a working action. */}
-        <button className="secondary-button" type="button" disabled title="Export isn’t available yet. PolStudio can’t save generated shots as video files yet, so there is nothing to export.">
-          <Download size={16} aria-hidden="true" /> Export <span className="project-topbar__soon">Soon</span>
+        {/* A real view now: it renders the timeline through WebCodecs and writes
+            an .mp4. It stays honest about what it cannot do inside itself. */}
+        <button
+          className="secondary-button"
+          type="button"
+          aria-current={view === "export" ? "page" : undefined}
+          onClick={() => setView("export")}
+          title="Render the timeline to a video file"
+        >
+          <Download size={16} aria-hidden="true" /> Export
         </button>
         {/* The standing "All changes saved" pill is gone; the button itself is
             now the only save state there is, so it has to carry it. Off means
@@ -91,9 +99,10 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} onChange={changeConfig} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} draftPrompt={generatorPrompt} onDraftPromptChange={setGeneratorPrompt} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
+      {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>
     <footer className="project-agent-row"><AgentDock
-      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : "project references"}
+      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "export" ? "this export" : "project references"}
       record={{ ...project, config }}
       providers={runtime?.providers ?? CHECKING_PROVIDERS}
       /* Routed through the same save() as the Save button. Clearing `dirty`
