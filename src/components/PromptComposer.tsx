@@ -47,8 +47,8 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
-  const [resolution, setResolution] = useState<Resolution>("1080p");
-  const [duration, setDuration] = useState(60);
+  const [resolution, setResolution] = useState<Resolution>("720p");
+  const [duration, setDuration] = useState(30);
   const [referenceImages, setReferenceImages] = useState<NonNullable<CreateProjectInput["referenceImages"]>>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
