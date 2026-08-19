@@ -541,6 +541,22 @@ describe("project workspace timecode", () => {
     // It sits in the timeline toolbar now, not under the program monitor.
     expect(container.querySelector(".monitor-transport")).toBeNull();
     expect(container.querySelector(".timeline-toolbar .timeline-transport")).not.toBeNull();
+    /* The transport is the three controls and NOTHING else. The clock and the
+       format used to ride inside it, which pushed the buttons off to one side
+       of whatever the cluster happened to measure — and the cluster has to be
+       centred on the picture above it, which only works if its own contents are
+       symmetrical. They live beside the heading now instead; jsdom lays nothing
+       out, so what is pinned here is the arrangement the CSS centres, and the
+       measured geometry is recorded against --video-centre-shift. */
+    expect(Array.from(container.querySelectorAll(".timeline-transport > *")).map((el) => el.getAttribute("aria-label")))
+      .toEqual(["Go to beginning", "Play", "Step forward one second"]);
+    const lead = container.querySelector(".timeline-toolbar__lead")!;
+    expect(lead.querySelector("h2")!.textContent).toBe("Timeline");
+    expect(lead.querySelector(".transport-time")).not.toBeNull();
+    expect(lead.querySelector(".transport-format")).not.toBeNull();
+    // Reading order left to right: what this panel is, where it stands, what it
+    // is. The heading has to come first or the clock is a label on nothing.
+    expect(Array.from(lead.children).map((el) => el.tagName)).toEqual(["H2", "STRONG", "SPAN"]);
     // the playhead time is printed once. The toolbar used to print it beside
     // the heading while the monitor printed it again, which reads as two clocks.
     expect(container.textContent!.match(/\d\d:\d\d:\d\d:\d\d/g)).toHaveLength(1);
