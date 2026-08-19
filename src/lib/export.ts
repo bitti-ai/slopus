@@ -168,6 +168,51 @@ export type ExportSegment =
     }
   | { kind: "gap"; startFrame: number; endFrame: number };
 
+/** One audio clip, as much of it as lands inside the file.
+ *
+ *  The picture decides how long the file is, so sound past the last frame is
+ *  not in it. Rather than dropping such a clip silently or stretching the file
+ *  to fit it, the audible part is worked out here and the remainder is reported
+ *  as a note the user reads before pressing Export. */
+export interface AudioSegment {
+  clipId: string;
+  assetId: string;
+  label: string;
+  /** Where this lands in the OUTPUT, in ms from the start of the file. */
+  startMs: number;
+  /** How much of it lands in the output, in ms. */
+  durationMs: number;
+  /** Where inside the source file the audible part begins, in ms. */
+  sourceStartMs: number;
+}
+
+/** Every audio clip's audible part, in timeline order.
+ *
+ *  Overlaps are NOT resolved here: two clips over the same moment are two
+ *  segments, and the mixer sums them, the way a mixing desk does. Silence is
+ *  not a segment — a gap is simply a stretch no segment covers. */
+export function audioSegments(config: ProjectConfig, durationMs: number): AudioSegment[] {
+  const segments: AudioSegment[] = [];
+  for (const track of config.timeline.tracks) {
+    if (track.kind !== "audio" || track.muted) continue;
+    for (const clip of track.clips) {
+      const start = Math.max(0, clip.startMs);
+      const end = Math.min(durationMs, clip.startMs + clip.durationMs);
+      if (end <= start) continue;
+      segments.push({
+        clipId: clip.id,
+        assetId: clip.assetId,
+        label: clip.label,
+        startMs: start,
+        durationMs: end - start,
+        // A clip dragged to a negative start would begin further into its file.
+        sourceStartMs: clip.sourceStartMs + (start - clip.startMs),
+      });
+    }
+  }
+  return segments.sort((a, b) => a.startMs - b.startMs);
+}
+
 export interface ExportPlan {
   width: number;
   height: number;
@@ -180,8 +225,11 @@ export interface ExportPlan {
   clipCount: number;
   /** Frames with nothing over them; they get the project's background colour. */
   gapFrames: number;
-  /** Clips on audio tracks. They are NOT in the file — see `notes`. */
+  /** Clips on audio tracks, muted tracks included. */
   audioClipCount: number;
+  /** The audible part of each one. Empty means the file has no sound, and the
+   *  notes say why. */
+  audio: AudioSegment[];
   /** Reasons this export cannot run at all. Empty means it can. */
   blockers: string[];
   /** True things about the output the user has to be told before they press go. */
@@ -314,11 +362,46 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
     );
   }
 
+  const audio = audioSegments(config, durationMs);
   const notes: string[] = [];
-  if (audioClipCount > 0) {
+  if (audio.length > 0) {
+    const overlapping = audio.filter((segment, index) =>
+      audio.some(
+        (other, otherIndex) =>
+          otherIndex !== index &&
+          other.startMs < segment.startMs + segment.durationMs &&
+          segment.startMs < other.startMs + other.durationMs,
+      ),
+    ).length;
     notes.push(
-      `The file will have no sound. ${audioClipCount} audio ${audioClipCount === 1 ? "clip is" : "clips are"} on the timeline and none of them are muxed yet.`,
+      `${audio.length} audio ${audio.length === 1 ? "clip is" : "clips are"} mixed into an AAC track${
+        overlapping > 0 ? `, ${overlapping} of them overlapping — overlaps are summed, as on a mixing desk` : ""
+      }. Anything no clip covers is silence.`,
     );
+  }
+  /* Audio the file cannot hold, counted rather than dropped in silence. The
+     picture decides the length; sound past the last frame has nowhere to go. */
+  const audible = new Set(audio.map((segment) => segment.clipId));
+  const beyondPicture = tracks
+    .filter((track) => track.kind === "audio" && !track.muted)
+    .flatMap((track) => track.clips)
+    .filter((clip) => !audible.has(clip.id)).length;
+  if (beyondPicture > 0) {
+    notes.push(
+      `${beyondPicture} audio ${beyondPicture === 1 ? "clip starts" : "clips start"} after the last video frame, so ${beyondPicture === 1 ? "it is" : "they are"} not in the file: the picture decides how long it is.`,
+    );
+  }
+  const trimmed = audio.filter((segment) => segment.startMs + segment.durationMs >= durationMs).length;
+  if (trimmed > 0 && durationMs > 0) {
+    notes.push(
+      `The sound stops with the picture at ${formatDuration(durationMs)}, where ${trimmed === 1 ? "one clip is" : `${trimmed} clips are`} cut off.`,
+    );
+  }
+  const mutedClips = tracks
+    .filter((track) => track.kind === "audio" && track.muted)
+    .reduce((total, track) => total + track.clips.length, 0);
+  if (mutedClips > 0) {
+    notes.push(`${mutedClips} audio ${mutedClips === 1 ? "clip is" : "clips are"} on a muted track and will not be heard.`);
   }
   if (gapFrames > 0) {
     notes.push(
@@ -345,6 +428,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
     clipCount: usedClipIds.size,
     gapFrames,
     audioClipCount,
+    audio,
     blockers,
     notes,
   };

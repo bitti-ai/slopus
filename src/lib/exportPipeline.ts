@@ -22,6 +22,7 @@ import {
   fitRect,
   outputCodec,
   sourceTimeMsForFrame,
+  type AudioSegment,
   type ExportPlan,
   type ExportSegment,
   type ExportSettings,
@@ -37,6 +38,9 @@ export interface ExportSupport {
   /** WebCodecs encode. Present in WebView2/Chromium, absent in older engines. */
   encoder: boolean;
   decoder: boolean;
+  /** WebCodecs AudioEncoder plus an OfflineAudioContext to mix into it. Without
+   *  both, the file is video only and the page says so. */
+  audio: boolean;
   /** `navigator.gpu` EXISTS. That is all this says, and it is not enough to
    *  promise a GPU compositor: on a VM, over RDP, on a blocklisted driver, the
    *  object is there and `requestAdapter()` still returns null. Ask
@@ -52,6 +56,10 @@ export function detectExportSupport(): ExportSupport {
   return {
     encoder: typeof scope.VideoEncoder === "function",
     decoder: typeof scope.VideoDecoder === "function",
+    audio:
+      typeof scope.AudioEncoder === "function" &&
+      typeof scope.AudioData === "function" &&
+      typeof scope.OfflineAudioContext === "function",
     webgpuApi: typeof navigator !== "undefined" && "gpu" in navigator && Boolean(navigator.gpu),
     desktop: isTauri(),
   };
@@ -434,10 +442,213 @@ export async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSo
 }
 
 /* ---------------------------------------------------------------------------
+   Sound — the same five stages, on the other kind of track.
+
+   Decode: the webview's own audio decoders, reached through
+   `decodeAudioData`. That is deliberate. mp4box takes ISOBMFF apart and nothing
+   else, and audio arrives as .wav, .mp3, .m4a and .flac far more often than as
+   .mp4 — routing it through AudioDecoder would mean writing a demuxer per
+   container to reach decoders the engine already exposes. Same hardware, same
+   no-FFmpeg rule.
+
+   Mix: an OfflineAudioContext, one buffer source per clip, started at the
+   clip's own position with its own trim. Overlapping clips SUM, which is what
+   two faders up on a desk do; stretches no clip covers render as the silence
+   they already are; and sources at another sample rate are resampled by the
+   graph rather than by arithmetic here.
+
+   Encode and mux: AudioEncoder to AAC, into the same mp4-muxer file as the
+   picture.
+   --------------------------------------------------------------------------- */
+
+/** 48 kHz stereo: the rate every AAC encoder accepts and the one nothing on a
+ *  timeline has to be downsampled to reach. */
+const AUDIO_SAMPLE_RATE = 48_000;
+const AUDIO_CHANNELS = 2;
+const AUDIO_BITRATE = 192_000;
+/* AAC-LC. Not Opus: mp4-muxer will put Opus in an .mp4 and a large share of
+   players will then refuse the file, which is a worse outcome than a stated
+   absence of sound. */
+const AUDIO_CODEC = "mp4a.40.2";
+/** One AAC frame is 1024 samples; feeding the encoder in that unit keeps every
+ *  packet full and the timestamps exact. */
+const AUDIO_BLOCK = 1024;
+
+export interface AudioMix {
+  /** One Float32Array per channel at AUDIO_SAMPLE_RATE, already limited. */
+  channels: Float32Array[];
+  frames: number;
+  /** Clips that are in the mix. */
+  used: number;
+  /** Clips that are NOT, each named with the reason. Never silently dropped. */
+  problems: string[];
+  /** True when summing overlaps drove the mix past full scale and it was
+   *  limited to fit. Reported, because it is audible. */
+  limited: boolean;
+}
+
+/** Decodes and mixes every audio segment in the plan into one stereo buffer.
+ *  Null when the plan has no sound in it at all. */
+async function mixAudio(options: {
+  folderPath: string;
+  config: ProjectConfig;
+  segments: AudioSegment[];
+  durationMs: number;
+  report: (detail: string) => void;
+}): Promise<AudioMix | null> {
+  const { folderPath, config, segments, durationMs, report } = options;
+  const frames = Math.floor((durationMs / 1000) * AUDIO_SAMPLE_RATE);
+  if (segments.length === 0 || frames <= 0) return null;
+
+  const context = new OfflineAudioContext({
+    numberOfChannels: AUDIO_CHANNELS,
+    length: frames,
+    sampleRate: AUDIO_SAMPLE_RATE,
+  });
+
+  /* One decode per ASSET, not per clip: the same music file cut into six pieces
+     is one file to read and one decode to pay for. */
+  const decoded = new Map<string, Promise<AudioBuffer>>();
+  const problems: string[] = [];
+  let used = 0;
+
+  for (const segment of segments) {
+    const asset = config.assets.find((candidate) => candidate.id === segment.assetId);
+    if (!asset) {
+      problems.push(`“${segment.label}” points at audio that is not in this project.`);
+      continue;
+    }
+    let buffer: AudioBuffer;
+    try {
+      let pending = decoded.get(asset.id);
+      if (!pending) {
+        report(`Reading ${asset.name}…`);
+        /* decodeAudioData DETACHES the buffer it is given, so the read result is
+           copied first — the same bytes may be wanted again by the picture. */
+        pending = readAssetBytes(folderPath, asset).then((bytes) => context.decodeAudioData(bytes.slice(0)));
+        decoded.set(asset.id, pending);
+      }
+      buffer = await pending;
+    } catch (reason) {
+      // Named, not swallowed. A soundtrack that vanished without a word is the
+      // failure this whole branch exists to avoid.
+      problems.push(
+        `“${segment.label}” (${asset.name}) could not be decoded by this computer: ${reason instanceof Error ? reason.message : String(reason)}`,
+      );
+      continue;
+    }
+    const offsetSeconds = segment.sourceStartMs / 1000;
+    if (offsetSeconds >= buffer.duration) {
+      problems.push(
+        `“${segment.label}” is trimmed to start ${offsetSeconds.toFixed(2)}s into ${asset.name}, which is only ${buffer.duration.toFixed(2)}s long, so it has nothing to play.`,
+      );
+      continue;
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.start(
+      segment.startMs / 1000,
+      offsetSeconds,
+      Math.min(segment.durationMs / 1000, buffer.duration - offsetSeconds),
+    );
+    used += 1;
+  }
+
+  if (used === 0) return { channels: [], frames: 0, used: 0, problems, limited: false };
+
+  report(`Mixing ${used} audio ${used === 1 ? "clip" : "clips"}…`);
+  const rendered = await context.startRendering();
+  const channels: Float32Array[] = [];
+  let limited = false;
+  for (let channel = 0; channel < AUDIO_CHANNELS; channel += 1) {
+    const data = rendered.getChannelData(Math.min(channel, rendered.numberOfChannels - 1)).slice();
+    /* Summed clips can exceed full scale. Left alone, the encoder wraps them
+       into a crackle; clamped, they are the flat-topped peak every mixing desk
+       produces at the same point. Either way the user is told. */
+    for (let index = 0; index < data.length; index += 1) {
+      if (data[index] > 1 || data[index] < -1) {
+        data[index] = Math.max(-1, Math.min(1, data[index]));
+        limited = true;
+      }
+    }
+    channels.push(data);
+  }
+  return { channels, frames: rendered.length, used, problems, limited };
+}
+
+/** Whether this computer will encode AAC at all, asked of the encoder. */
+async function probeAudioCodec(): Promise<{ supported: boolean; detail: string }> {
+  if (typeof AudioEncoder === "undefined") {
+    return { supported: false, detail: "This webview has no WebCodecs AudioEncoder." };
+  }
+  try {
+    const support = await AudioEncoder.isConfigSupported({
+      codec: AUDIO_CODEC,
+      sampleRate: AUDIO_SAMPLE_RATE,
+      numberOfChannels: AUDIO_CHANNELS,
+      bitrate: AUDIO_BITRATE,
+    });
+    return support.supported
+      ? { supported: true, detail: `${AUDIO_CODEC} at ${AUDIO_SAMPLE_RATE / 1000} kHz stereo, ${AUDIO_BITRATE / 1000} kbit/s` }
+      : { supported: false, detail: `This computer's encoder refused AAC (${AUDIO_CODEC}) at 48 kHz stereo.` };
+  } catch (reason) {
+    return { supported: false, detail: reason instanceof Error ? reason.message : String(reason) };
+  }
+}
+
+/** Feeds the mixed buffer to the AAC encoder and the encoder's packets to the
+ *  muxer. Returns once every packet is in the file. */
+async function encodeAudio(
+  mix: AudioMix,
+  add: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => void,
+): Promise<void> {
+  const failure: { reason: Error | null } = { reason: null };
+  const encoder = new AudioEncoder({
+    output: (chunk, meta) => add(chunk, meta),
+    error: (reason) => {
+      failure.reason = reason instanceof Error ? reason : new Error(String(reason));
+    },
+  });
+  encoder.configure({
+    codec: AUDIO_CODEC,
+    sampleRate: AUDIO_SAMPLE_RATE,
+    numberOfChannels: AUDIO_CHANNELS,
+    bitrate: AUDIO_BITRATE,
+  });
+  try {
+    for (let offset = 0; offset < mix.frames; offset += AUDIO_BLOCK) {
+      if (failure.reason) throw failure.reason;
+      const count = Math.min(AUDIO_BLOCK, mix.frames - offset);
+      // f32-planar: channel 0 then channel 1, exactly as the mix holds them.
+      const planar = new Float32Array(count * AUDIO_CHANNELS);
+      for (let channel = 0; channel < AUDIO_CHANNELS; channel += 1) {
+        planar.set(mix.channels[channel].subarray(offset, offset + count), channel * count);
+      }
+      const data = new AudioData({
+        format: "f32-planar",
+        sampleRate: AUDIO_SAMPLE_RATE,
+        numberOfFrames: count,
+        numberOfChannels: AUDIO_CHANNELS,
+        timestamp: Math.round((offset * 1_000_000) / AUDIO_SAMPLE_RATE),
+        data: planar,
+      });
+      encoder.encode(data);
+      data.close();
+      while (encoder.encodeQueueSize > 16) await tick();
+    }
+    await encoder.flush();
+    if (failure.reason) throw failure.reason;
+  } finally {
+    if (encoder.state !== "closed") encoder.close();
+  }
+}
+
+/* ---------------------------------------------------------------------------
    The run
    --------------------------------------------------------------------------- */
 
-export type ExportPhase = "preparing" | "rendering" | "finishing" | "writing" | "done";
+export type ExportPhase = "preparing" | "mixing" | "rendering" | "finishing" | "writing" | "done";
 
 export interface ExportProgress {
   phase: ExportPhase;
@@ -461,6 +672,13 @@ export interface ExportResult {
    *  told nobody what to fix. */
   compositorDetail: string;
   codecString: string;
+  /** True when an AAC track went into the file. */
+  audio: boolean;
+  /** What the sound is, or why there is none. Always populated. */
+  audioDetail: string;
+  /** Audio clips that were left out, each named with its reason. Empty on a
+   *  clean run; never a silent omission. */
+  audioProblems: string[];
 }
 
 export interface ExportRunOptions {
@@ -475,6 +693,31 @@ export interface ExportRunOptions {
 }
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** One sentence about the sound in the finished file, true in every case —
+ *  including the cases where there is none. */
+function describeSoundtrack(
+  plan: ExportPlan,
+  support: ExportSupport,
+  probe: { supported: boolean; detail: string } | null,
+  mix: AudioMix | null,
+  soundtrack: AudioMix | null,
+): string {
+  if (plan.audio.length === 0) return "No sound: there are no audio clips inside the length of the picture.";
+  if (!support.audio) return "No sound: this webview has no WebCodecs AudioEncoder to make an audio track with.";
+  if (probe && !probe.supported) return `No sound: ${probe.detail}`;
+  if (!soundtrack) {
+    return mix && mix.problems.length > 0
+      ? "No sound: none of the audio clips could be decoded — see below."
+      : "No sound: the mix came out empty.";
+  }
+  const parts = [
+    `${soundtrack.used} audio ${soundtrack.used === 1 ? "clip" : "clips"} mixed to ${probe?.detail ?? AUDIO_CODEC}`,
+  ];
+  if (soundtrack.limited) parts.push("overlapping clips summed past full scale, so the peaks are limited");
+  if (soundtrack.problems.length > 0) parts.push(`${soundtrack.problems.length} left out — see below`);
+  return `${parts.join("; ")}.`;
+}
 
 export async function runExport(options: ExportRunOptions): Promise<ExportResult> {
   const { plan, settings, config, folderPath, bitrate, onProgress, cancelled } = options;
@@ -494,6 +737,26 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     if (cancelled()) throw new ExportCancelled();
   };
 
+  /* Sound is prepared BEFORE the muxer exists, because an .mp4's track list is
+     fixed the moment the file is opened: whether there is an audio track is a
+     question that has to be answered first, not discovered at the end. */
+  report("mixing", 0, "Working out the soundtrack…");
+  const audioProbe = plan.audio.length === 0 ? null : await probeAudioCodec();
+  const mix =
+    audioProbe?.supported && support.audio
+      ? await mixAudio({
+          folderPath,
+          config,
+          segments: plan.audio,
+          durationMs: plan.durationMs,
+          report: (detail) => report("mixing", 0, detail),
+        })
+      : null;
+  const soundtrack = mix && mix.used > 0 && mix.frames > 0 ? mix : null;
+  const audioProblems = mix?.problems ?? [];
+  const audioDetail = describeSoundtrack(plan, support, audioProbe, mix, soundtrack);
+  stopIfCancelled();
+
   report("preparing", 0, "Setting up the encoder…");
   const { ArrayBufferTarget, Muxer } = await import("mp4-muxer");
   const target = new ArrayBufferTarget();
@@ -505,6 +768,9 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       height: plan.height,
       frameRate: plan.frameRate,
     },
+    ...(soundtrack
+      ? { audio: { codec: "aac" as const, numberOfChannels: AUDIO_CHANNELS, sampleRate: AUDIO_SAMPLE_RATE } }
+      : {}),
     fastStart: "in-memory",
   });
 
@@ -741,6 +1007,10 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       }
     }
 
+    if (soundtrack) {
+      report("finishing", framesDone, `Encoding the mixed soundtrack as AAC…`);
+      await encodeAudio(soundtrack, (chunk, meta) => muxer.addAudioChunk(chunk, meta));
+    }
     report("finishing", framesDone, "Flushing the encoder and writing the MP4 index…");
     await encoder.flush();
     if (encoderFailure.reason) throw encoderFailure.reason;
@@ -751,6 +1021,9 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       compositor: stage.compositor.kind,
       compositorDetail: stage.detail,
       codecString: probe.codecString,
+      audio: Boolean(soundtrack),
+      audioDetail,
+      audioProblems,
     };
   } finally {
     releaseLoaded();

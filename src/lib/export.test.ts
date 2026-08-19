@@ -200,7 +200,7 @@ describe("the plan", () => {
     expect(plan.clipCount).toBe(2);
   });
 
-  it("says nothing about a soundtrack it cannot mux, but does not stay silent either", () => {
+  it("mixes the audio that lands inside the picture, and cuts it where the picture ends", () => {
     const config = project(
       [clip("a", "track-story", 0, 1_000), clip("score", "track-a2", 0, 5_000)],
       [asset("asset-a"), asset("asset-score", { kind: "audio", mimeType: "audio/wav" })],
@@ -208,7 +208,70 @@ describe("the plan", () => {
     const plan = buildExportPlan(config, settings());
     expect(plan.audioClipCount).toBe(1);
     expect(plan.durationMs).toBe(1_000);
-    expect(plan.notes.join(" ")).toContain("no sound");
+    // The clip is 5s long over a 1s picture: 1s of it is in the file, and the
+    // page says where the rest went rather than dropping it in silence.
+    expect(plan.audio).toEqual([
+      { clipId: "score", assetId: "asset-score", label: "score", startMs: 0, durationMs: 1_000, sourceStartMs: 0 },
+    ]);
+    expect(plan.notes.join(" ")).toContain("mixed into an AAC track");
+    expect(plan.notes.join(" ")).toContain("stops with the picture at 00:01.000");
+  });
+
+  it("keeps its own trim: a clip starting late plays from where it was cut, not from zero", () => {
+    const config = project(
+      [
+        clip("a", "track-story", 0, 8_000),
+        clip("vo", "track-a1", 2_000, 3_000, { sourceStartMs: 4_500 }),
+      ],
+      [asset("asset-a"), asset("asset-vo", { kind: "audio", mimeType: "audio/wav" })],
+    );
+    expect(buildExportPlan(config, settings()).audio).toEqual([
+      { clipId: "vo", assetId: "asset-vo", label: "vo", startMs: 2_000, durationMs: 3_000, sourceStartMs: 4_500 },
+    ]);
+  });
+
+  it("leaves out audio that starts after the last frame, and says how much", () => {
+    const config = project(
+      [clip("a", "track-story", 0, 1_000), clip("late", "track-a1", 4_000, 2_000)],
+      [asset("asset-a"), asset("asset-late", { kind: "audio", mimeType: "audio/wav" })],
+    );
+    const plan = buildExportPlan(config, settings());
+    expect(plan.audio).toEqual([]);
+    expect(plan.notes.join(" ")).toContain("after the last video frame");
+  });
+
+  it("does not mix a muted track, and says that too", () => {
+    const config = project(
+      [clip("a", "track-story", 0, 4_000), clip("score", "track-a2", 0, 4_000)],
+      [asset("asset-a"), asset("asset-score", { kind: "audio", mimeType: "audio/wav" })],
+    );
+    const muted = {
+      ...config,
+      timeline: {
+        tracks: config.timeline.tracks.map((track) => (track.id === "track-a2" ? { ...track, muted: true } : track)),
+      },
+    };
+    const plan = buildExportPlan(muted, settings());
+    expect(plan.audio).toEqual([]);
+    expect(plan.notes.join(" ")).toContain("muted track");
+  });
+
+  it("counts overlapping audio as summed rather than picking a winner", () => {
+    const config = project(
+      [
+        clip("a", "track-story", 0, 6_000),
+        clip("vo", "track-a1", 0, 4_000),
+        clip("score", "track-a2", 2_000, 4_000),
+      ],
+      [
+        asset("asset-a"),
+        asset("asset-vo", { kind: "audio", mimeType: "audio/wav" }),
+        asset("asset-score", { kind: "audio", mimeType: "audio/wav" }),
+      ],
+    );
+    const plan = buildExportPlan(config, settings());
+    expect(plan.audio).toHaveLength(2);
+    expect(plan.notes.join(" ")).toContain("overlaps are summed");
   });
 
   it("blocks on an empty timeline, on missing media and on a container it cannot demux", () => {

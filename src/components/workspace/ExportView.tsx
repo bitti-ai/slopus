@@ -49,6 +49,9 @@ interface FinishedExport {
   compositor: CompositorKind;
   compositorDetail: string;
   codecString: string;
+  audio: boolean;
+  audioDetail: string;
+  audioProblems: string[];
 }
 
 export function ExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
@@ -233,6 +236,9 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         compositor: outcome.compositor,
         compositorDetail: outcome.compositorDetail,
         codecString: outcome.codecString,
+        audio: outcome.audio,
+        audioDetail: outcome.audioDetail,
+        audioProblems: outcome.audioProblems,
       });
     } catch (reason) {
       if (reason instanceof ExportCancelled) setCancelled(true);
@@ -257,7 +263,21 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       formatBytes(estimatedBytes(bitrate, plan.durationMs)),
       "target bitrate × duration, not a measurement",
     ],
-    ["Sound", "None", "video only — see below"],
+    [
+      "Sound",
+      plan.audio.length === 0
+        ? "None"
+        : support.audio
+          ? `AAC · ${plan.audio.length} ${plan.audio.length === 1 ? "clip" : "clips"} mixed`
+          : "None",
+      plan.audio.length === 0
+        ? plan.audioClipCount > 0
+          ? "every audio clip falls outside the picture"
+          : "no audio clips on the timeline"
+        : support.audio
+          ? "48 kHz stereo, gaps filled with silence"
+          : "this webview has no AudioEncoder",
+    ],
     [
       "Compositor",
       compositor ? (compositor.kind === "webgpu" ? "WebGPU" : "2D canvas") : "asking this computer…",
@@ -457,8 +477,15 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           <p>
             {formatBytes(result.bytes)} written · {result.codecString} · composited with{" "}
             {result.compositor === "webgpu" ? "WebGPU" : "a 2D canvas"}
-            {result.compositorDetail ? <> — {result.compositorDetail}</> : null} · no audio track.
+            {result.compositorDetail ? <> — {result.compositorDetail}</> : null}.
           </p>
+          <p>{result.audio ? "Sound: " : ""}{result.audioDetail}</p>
+          {result.audioProblems.length > 0 && <>
+            {/* Named, not dropped in silence: a soundtrack that vanished without
+                a word is the failure worth shouting about. */}
+            <p><TriangleAlert size={14} aria-hidden="true" /> Left out of the soundtrack:</p>
+            <ul>{result.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
+          </>}
         </div>}
       </section>
     </div>
