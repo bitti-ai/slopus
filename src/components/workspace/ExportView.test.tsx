@@ -88,7 +88,7 @@ describe("the export view on media the project does not contain", () => {
 });
 
 /* The mix is built whole in memory before the file is opened and held until the
-   last frame — 11.5 MB a minute, 1.4 GB for an hour — and the panel that states
+   last frame — 23 MB a minute, 1.4 GB for an hour — and the panel that states
    bitrate, size estimate, compositor and codec said nothing at all about it. */
 describe("what the page says the soundtrack will cost", () => {
   const withAudioSupport = (body: () => void) => {
