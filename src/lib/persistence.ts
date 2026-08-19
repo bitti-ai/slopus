@@ -127,6 +127,16 @@ export async function listRecentProjects(): Promise<RecentProjects> {
       }
     }),
   );
+  // Heal the stored list from what the backend just resolved. Paths remembered
+  // by an earlier build carry the Windows verbatim prefix (`\\?\D:\…`), which
+  // is an OS escape hatch nobody should be shown; every record comes back with
+  // the ordinary form, so write that back and the list converges on it. A row
+  // that failed to load keeps its stored path — that string is the one the
+  // library is actually holding, and the error line has to name it.
+  const healed = rows.map((row, index) => (row.ok ? row.record.folderPath : paths[index]));
+  if (healed.some((path, index) => path !== paths[index])) {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(healed));
+  }
   return {
     projects: rows.flatMap((row) => (row.ok ? [row.record] : [])),
     unreadable: rows.flatMap((row) => (row.ok ? [] : [row.failure])),
