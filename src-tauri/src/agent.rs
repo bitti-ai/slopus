@@ -326,7 +326,7 @@ impl AgentProvider for ClaudeProvider {
         "claude"
     }
     fn auth_args(&self) -> &'static [&'static str] {
-        &["--bare", "auth", "status"]
+        &["auth", "status"]
     }
     fn command_spec(
         &self,
@@ -337,7 +337,6 @@ impl AgentProvider for ClaudeProvider {
         setting: Option<&ProviderSetting>,
     ) -> Result<CommandSpec, String> {
         let mut args = vec![
-            "--bare".into(),
             "--print".into(),
             "--output-format".into(),
             "stream-json".into(),
@@ -695,6 +694,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(claude.current_dir, root.path());
+        // `--bare` refuses OAuth and keychain credentials, so a subscription
+        // login could never run a turn through it.
+        assert!(!claude.args.iter().any(|arg| arg == "--bare"));
+        assert!(claude.args.iter().any(|arg| arg == "--print"));
         assert_eq!(
             claude
                 .args
@@ -778,7 +781,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_readiness_requires_auth_at_the_bare_execution_boundary() {
+    fn claude_readiness_probes_the_oauth_capable_auth_boundary() {
+        // `--bare` never reads OAuth or the keychain, so probing (and running)
+        // through it reported `authRequired` for every subscription login.
         let mut probes = Vec::new();
         let status = installed_provider_status(
             ProviderId::Claude,
@@ -793,21 +798,12 @@ mod tests {
                 match args {
                     ["--version"] => Ok("Claude Code fixture".into()),
                     ["auth", "status"] => Ok("ordinary session is logged in".into()),
-                    ["--bare", "auth", "status"] => {
-                        Err("bare-compatible credentials are missing".into())
-                    }
                     _ => Err(format!("unexpected probe: {args:?}")),
                 }
             },
         );
 
-        assert_eq!(status.state, "authRequired");
-        assert!(status
-            .detail
-            .contains("bare-compatible credentials are missing"));
-        assert_eq!(
-            probes,
-            vec![vec!["--version"], vec!["--bare", "auth", "status"]]
-        );
+        assert_eq!(status.state, "ready");
+        assert_eq!(probes, vec![vec!["--version"], vec!["auth", "status"]]);
     }
 }

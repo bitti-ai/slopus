@@ -1045,7 +1045,10 @@ fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMedia
 /// the result is checked to still sit under the canonical root, so a crafted
 /// `..` in a hand-edited pols.json cannot read the rest of the disk.
 #[tauri::command]
-fn read_project_file(folder_path: String, relative_path: String) -> Result<tauri::ipc::Response, String> {
+fn read_project_file(
+    folder_path: String,
+    relative_path: String,
+) -> Result<tauri::ipc::Response, String> {
     let root = PathBuf::from(folder_path)
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;

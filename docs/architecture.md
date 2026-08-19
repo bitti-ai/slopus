@@ -23,7 +23,7 @@ The JSON document is versioned and includes project metadata, canvas settings, o
 
 ## Agent boundary
 
-Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--bare --print --output-format stream-json`; Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. PolStudio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Provider output is treated as an untrusted proposal until it validates against the project schema.
+Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--print --output-format stream-json` (never `--bare`, which reads neither OAuth nor the keychain and so rejects every subscription login); Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. PolStudio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Provider output is treated as an untrusted proposal until it validates against the project schema.
 
 An agent can answer, ask the user a question, or propose a full project mutation. Every mutation is applied by PolStudio and persisted atomically; providers never receive authority to write arbitrary files directly.
 
