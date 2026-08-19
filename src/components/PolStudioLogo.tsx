@@ -16,7 +16,10 @@ export function PolStudioLogo({ compact = false, decorative = false, className =
     >
       <span className="pol-logo__ticket">
         <span className="pol-logo__perforations" aria-hidden="true"><i /><i /><i /><i /></span>
-        <span className="pol-logo__pols">PolS</span>
+        {/* The compact mark is the small application icon: one letter inside
+            the film ticket. "PolS" at icon size was four letters squeezed into
+            a space that fits one. */}
+        <span className="pol-logo__pols">{compact ? "P" : "PolS"}</span>
       </span>
       {!compact && <span className="pol-logo__tudio">tudio</span>}
     </span>

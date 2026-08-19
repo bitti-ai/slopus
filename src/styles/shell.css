@@ -127,15 +127,17 @@
   letter-spacing: -1.3px;
 }
 
-/* Compact mark: the ticket only. Scaled so the wordmark clears the 12px floor. */
+/* Compact mark: the ticket with a single P in it. One letter has room to be
+   read at icon size, so it takes the body size rather than the 12px floor. */
 .pol-logo--compact {
   height: 29px;
   padding: 4px 5px;
 }
 
 .pol-logo--compact .pol-logo__pols {
-  font-size: var(--text-2xs);
-  letter-spacing: -1.1px;
+  margin-right: 1px;
+  font-size: var(--text-base);
+  letter-spacing: 0;
 }
 
 /* --- Settings launcher ------------------------------------------------------
