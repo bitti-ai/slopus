@@ -1461,13 +1461,23 @@ fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
 /// the person. A `polstudio.json` the user merely OPENED — a template a
 /// colleague sent, an unzipped project, anything they double-clicked without
 /// reading — can name `C:\Users\NN\Pictures\private.jpg` and this command will
-/// serve those bytes to the webview. That is inherent: the whole point of
-/// recording an external path is that reopening the project months later still
-/// previews the rushes, so the file on disk has to be believed. What bounds the
-/// damage is rule 2 (media only, never credentials) and rule 1's scoping (one
-/// project's picks are not another's). What does NOT bound it is the caller's
-/// good intentions, and nothing here should be described as "the user chose
-/// it".
+/// serve those bytes to the webview. What bounds the damage is rule 2 (media
+/// only, never credentials) and rule 1's scoping (one project's picks are not
+/// another's). What does NOT bound it is the caller's good intentions, and
+/// nothing here should be described as "the user chose it".
+///
+/// This is inherent to trusting ANY project file the user opens — not to
+/// recording external paths, which is a weaker requirement. The narrowing that
+/// exists and has NOT been built is a per-installation approval list, kept by
+/// Rust beside the settings file (never in localStorage — the webview must not
+/// be the authority on what it may read): a project created or approved on this
+/// machine reopens silently, while a `polstudio.json` that arrived from
+/// somewhere else has its external paths treated as offline until relinked.
+/// That is also better product behaviour, because an absolute path written on
+/// another machine is almost certainly wrong here — if it resolves at all, it
+/// resolves to a file the sender never meant. Approve-once-and-remember rather
+/// than refuse, so a genuinely shared project on a shared drive still works.
+/// Until that exists, read the rule above literally.
 ///
 /// What it deliberately does NOT do is trust the caller's string: an argument
 /// the project does not name is refused whatever it points at.
@@ -2689,10 +2699,10 @@ mod tests {
     /// S1: the perimeter this command actually has, pinned so nobody has to
     /// take the docstring's word for it. The actor that opens a file here is
     /// the PROJECT FILE, not the person — a `polstudio.json` the user merely
-    /// opened can name any media file on the disk and get its bytes. That is
-    /// inherent to recording external paths at all (reopen a project a year
-    /// later and the rushes still preview), so it is documented rather than
-    /// pretended away. What it is bounded by is asserted here too.
+    /// opened can name any media file on the disk and get its bytes. That
+    /// follows from trusting any project file the user opens; the unbuilt
+    /// narrowing is a per-installation approval list (see the command's
+    /// docstring). What it IS bounded by is asserted here too.
     #[test]
     fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
         let root = tempfile::tempdir().unwrap();
