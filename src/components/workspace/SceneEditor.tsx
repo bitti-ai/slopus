@@ -330,11 +330,16 @@ function ShotCard({ shot, index, endsAt, duration, disabled, removable, focused,
     const at = field ? field.selectionStart : display.length;
     const before = display.slice(0, at);
     const after = display.slice(at);
+    // Both sides, not just the one in front of the caret. A drop at the START
+    // of a line has nothing before it, so `lead` is empty and the token used to
+    // fuse to the first word: "<Subject 1>walks towards the camera" — a
+    // malformed citation, sent to the model exactly as written.
     const lead = before && !/\s$/.test(before) ? " " : "";
+    const trail = after && !/^\s/.test(after) ? " " : "";
     // A reference this scene does not cite yet has no number, so the token is
     // written by id and the number appears once the scene binds it.
     const token = number > 0 ? `[Reference ${number}]` : referenceToken(referenceId);
-    onChange({ action: store(`${before}${lead}${token}${after}`) });
+    onChange({ action: store(`${before}${lead}${token}${trail}${after}`) });
   };
 
   return <article className={`shot-card ${focused ? "shot-card--focused" : ""}`}>

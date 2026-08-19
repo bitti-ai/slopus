@@ -1024,6 +1024,46 @@ describe("project workspace timecode", () => {
     expect(compiled()).toContain("<Subject 2> walks towards the camera on <Subject 2>");
   });
 
+  it("keeps a word off the citation wherever in the line it is dropped", () => {
+    /* The caret has two sides and the insert used to look at one of them. At
+       the START of a line there is nothing in front of the token, so nothing
+       forced a space after it and the sentence compiled to
+       "<Subject 1>walks towards the camera" — a malformed citation, sent to
+       the model exactly as written. Between two words it was the same shape.
+       At the very END there is no following word, and a trailing space would
+       be litter, so that case must stay as it is. */
+    const fresh = lampProject();
+    const createdAt = fresh.createdAt;
+    const references = [
+      { id: "ref-woman", kind: "text", name: "Red-haired woman", description: "Dark red hair.", content: "Dark red hair.", intendedUse: ["character"], createdAt },
+    ];
+    const start = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], shots: [{ id: "shot-a", startSeconds: 0, action: "walks towards the camera and stops." }], referenceIds: [] }] });
+
+    /* Each case drops the same reference at a different caret offset into the
+       same untouched line, so the only variable is where it landed. */
+    const dropAt = (caret: number): string => {
+      let config = start;
+      const onChange = vi.fn((next: ProjectConfig) => { config = parseProjectConfig(next); });
+      const view = () => createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: start.generationJobs[0].id });
+      const app = render(view());
+      const field = screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement;
+      field.setSelectionRange(caret, caret);
+      const event = createEvent.drop(field);
+      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? "ref-woman" : "", types: [REFERENCE_DRAG_TYPE] } });
+      fireEvent(field, event);
+      app.unmount();
+      return config.generationJobs[0].shots![0].action;
+    };
+
+    const line = "walks towards the camera and stops.";
+    expect(dropAt(0)).toBe(`@[ref:ref-woman] ${line}`);
+    expect(dropAt(line.length)).toBe(`${line} @[ref:ref-woman]`);
+    /* Between two words, from either side of the space that separates them:
+       one space each side, never two and never none. */
+    expect(dropAt("walks towards ".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
+    expect(dropAt("walks towards".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
+  });
+
 
   it("writes a scene of three shots and two references, and compiles the prompt the engine gets", () => {
     /* The worked example, driven through the real screen rather than through
