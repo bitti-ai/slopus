@@ -63,7 +63,23 @@ const parseDuration = (value: string, frameRate: number): number | null => {
   return Math.round(seconds * 1000 + frames);
 };
 
-export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId?: string) => void }) {
+/** How a view hands a project back. An updater rather than a plain value is
+ *  the only safe form for a write built from something asynchronous: the
+ *  holder applies it to its LATEST config, so a write does not depend on the
+ *  previous one having already come back down as a prop. */
+export type ConfigUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
+
+export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenGenerator }: {
+  config: ProjectConfig;
+  folderPath: string;
+  onChange: (next: ConfigUpdate) => void;
+  /** What a decode learned about a file the project already had — a length, a
+   *  size. Worth keeping, but the user did not edit anything by looking at the
+   *  Media panel, so the holder records it WITHOUT marking the project unsaved.
+   *  Omitted, measurements go back through onChange like any other change. */
+  onMeasured?: (update: (current: ProjectConfig) => ProjectConfig) => void;
+  onOpenGenerator: (jobId?: string) => void;
+}) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
@@ -241,33 +257,48 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
     height: asset.height ?? value.height,
   });
   /* Measurements arrive from asynchronous decodes, and two of them can land
-     between one render and the next. Writing each straight into `config` would
-     write the second one over the config the first never reached, losing it.
-     So they queue here and are flushed from an effect, which only ever runs
-     with the config this component was last rendered with. */
+     between one render and the next. They queue here so that two arriving in
+     the same render are not written one over the other — but the queue alone
+     never fixed the real race, which is between two FLUSHES rather than two
+     measurements. `{ ...config, assets }` is built from the config THIS render
+     closed over, and the second flush can run before the first write has come
+     back down as a new prop: it then rebuilds the whole config from the stale
+     one and the first measurement is gone. With five files decoding at their
+     own speeds that lost most of them, non-deterministically, and the only cure
+     was leaving the panel and re-reading every file from disk.
+
+     So nothing here writes a config. It hands up an UPDATER, which the holder
+     applies to whatever its latest config is — a flush can no longer be stale,
+     because it no longer carries a config of its own. The queue is drained into
+     a local BEFORE the updater is built, so the updater stays pure and can be
+     called twice (StrictMode, a replayed render) without eating the queue. */
   const measurements = useRef(new Map<string, MeasuredMedia>());
   const [measureTick, setMeasureTick] = useState(0);
   const recordMeasured = (assetId: string, value: MeasuredMedia) => {
     measurements.current.set(assetId, value);
     setMeasureTick((tick) => tick + 1);
   };
+  const learn = onMeasured ?? onChange;
   useEffect(() => {
     if (measurements.current.size === 0) return;
     const pending = measurements.current;
     measurements.current = new Map();
-    let learned = false;
-    const assets = config.assets.map((asset) => {
-      const value = pending.get(asset.id);
-      if (!value) return asset;
-      const next = applyMeasured(asset, value);
-      if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return asset;
-      learned = true;
-      return next;
+    learn((current) => {
+      let learned = false;
+      const assets = current.assets.map((asset) => {
+        const value = pending.get(asset.id);
+        if (!value) return asset;
+        const next = applyMeasured(asset, value);
+        if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return asset;
+        learned = true;
+        return next;
+      });
+      // Nothing new is not a change: handing back the same config leaves React
+      // with nothing to render and the holder with nothing to record, rather
+      // than marking the project edited for having been looked at.
+      return learned ? { ...current, assets } : current;
     });
-    // Nothing new is not a change: an onChange here would mark the project
-    // edited for having been looked at.
-    if (learned) onChange({ ...config, assets });
-  }, [measureTick, config, onChange]);
+  }, [measureTick, learn]);
 
   /* A trim, typed. The source is the ceiling when its length is known — a clip
      cannot play footage the file does not have — and one frame is the floor,
