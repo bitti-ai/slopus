@@ -7,6 +7,7 @@ import {
   type PendingReferenceImage,
   type ProjectConfig,
   type ProjectRecord,
+  type StoredLocation,
 } from "./project";
 
 const RECENTS_KEY = "polstudio.recent-projects.v1";
@@ -146,19 +147,25 @@ export async function chooseInitialReferenceImages(): Promise<PendingReferenceIm
   return invoke<PendingReferenceImage[]>("choose_initial_reference_images");
 }
 
-/** A file the user picked, already copied into the project's `media/` folder.
+/** A file the user picked. An IMAGE was copied into the project's `media/`
+ *  folder and comes back as `relativePath`; VIDEO and AUDIO were left where
+ *  they were and come back as an absolute `sourcePath` — a project does not
+ *  duplicate gigabytes of footage to call itself portable. Exactly one of the
+ *  two is set.
+ *
  *  No duration or dimensions: PolStudio has no decoder yet, and a guessed
  *  number would be indistinguishable from a measured one downstream. */
 export interface ImportedMediaFile {
   kind: "video" | "audio" | "image";
   name: string;
-  relativePath: string;
+  relativePath: string | null;
+  sourcePath: string | null;
   mimeType: string;
 }
 
-/** Opens the picker and copies what was chosen into the project. Returns an
- *  empty list when the user cancels — and in the browser, where there is no
- *  project folder to copy into. */
+/** Opens the picker and adds what was chosen to the project: images copied in,
+ *  video and sound recorded where they already live. Returns an empty list when
+ *  the user cancels — and in the browser, which has no project folder. */
 export async function importMediaFiles(folderPath: string): Promise<ImportedMediaFile[]> {
   if (!isTauri()) return [];
   return invoke<ImportedMediaFile[]>("import_media_files", { folderPath });
@@ -172,6 +179,21 @@ export async function readProjectFileUrl(folderPath: string, relativePath: strin
   if (!isTauri()) return null;
   const bytes = await invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath });
   return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+}
+
+/** The bytes of an asset or reference wherever it actually is: inside the
+ *  project folder, or at the absolute path the project recorded for it. The
+ *  external read goes through its own command, which only serves paths the
+ *  project itself names — see `read_external_media_file` in
+ *  src-tauri/src/lib.rs. Same revoke rule as `readProjectFileUrl`. */
+export async function readMediaFileUrl(folderPath: string, item: StoredLocation, mimeType: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  const bytes = item.sourcePath
+    ? await invoke<ArrayBuffer>("read_external_media_file", { folderPath, sourcePath: item.sourcePath })
+    : item.relativePath
+      ? await invoke<ArrayBuffer>("read_project_file", { folderPath, relativePath: item.relativePath })
+      : null;
+  return bytes ? URL.createObjectURL(new Blob([bytes], { type: mimeType })) : null;
 }
 
 export async function createProject(input: CreateProjectInput): Promise<ProjectRecord | null> {

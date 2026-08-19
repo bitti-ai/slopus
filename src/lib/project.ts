@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const PROJECT_FILE_NAME = "pols.json";
+export const PROJECT_FILE_NAME = "polstudio.json";
+/** What the settings file used to be called, newest first. Both are still
+ *  opened (`project_file_in` in src-tauri/src/lib.rs); only the current name is
+ *  ever written. */
+export const LEGACY_PROJECT_FILE_NAMES = ["pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 
 const idSchema = z.string().min(1);
@@ -30,6 +34,56 @@ export const projectRelativePathSchema = z.string().transform((value, context) =
   }
 });
 
+/** The other kind of stored location: a file the project points at but does not
+ *  contain. Video and audio are never copied into a project — a folder of
+ *  rushes is tens of gigabytes — so the project records where the user already
+ *  keeps them.
+ *
+ *  It must be ABSOLUTE, because nothing resolves it: no project root, no
+ *  working directory. `..` is refused so the recorded string is the same string
+ *  every comparison sees. Separators are left exactly as the OS wrote them, and
+ *  all three absolute forms are accepted on every platform, because a project
+ *  file written on Windows is still parsed by tests (and by a reader) on Linux.
+ *
+ *  Mirrors `normalize_external_path` in src-tauri/src/lib.rs. The two must
+ *  agree in BOTH directions — Rust writes this file before zod ever sees it. */
+export function normalizeExternalPath(value: string): string {
+  if (!value || value.includes("\0")) throw new Error("External media paths cannot be empty or contain null bytes.");
+  const absolute = /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\") || value.startsWith("/");
+  if (!absolute) throw new Error("External media must be recorded as an absolute path.");
+  if (value.split(/[\\/]/).includes("..")) throw new Error("External media paths cannot contain '..'.");
+  return value;
+}
+
+export const externalPathSchema = z.string().transform((value, context) => {
+  try {
+    return normalizeExternalPath(value);
+  } catch (error) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: error instanceof Error ? error.message : "Invalid external path.",
+    });
+    return z.NEVER;
+  }
+});
+
+/** Anything with a file behind it: inside the project, or outside it. */
+export interface StoredLocation {
+  relativePath?: string | null;
+  sourcePath?: string | null;
+}
+
+/** Every location is one of the two and never both, so nothing downstream has
+ *  to decide which wins. Shared by assets and references. */
+function checkOneLocation(value: StoredLocation, context: z.RefinementCtx, label: string): void {
+  if (value.relativePath && value.sourcePath) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom, path: ["sourcePath"],
+      message: `${label} cannot have both a project-relative path and an external source path.`,
+    });
+  }
+}
+
 export const aspectRatioSchema = z.enum(["16:9", "9:16", "1:1", "4:5"]);
 export const resolutionSchema = z.enum(["720p", "1080p", "4k"]);
 
@@ -37,7 +91,14 @@ export const projectAssetSchema = z.object({
   id: idSchema,
   kind: z.enum(["video", "audio", "image", "caption", "generated"]),
   name: z.string().min(1),
-  relativePath: projectRelativePathSchema,
+  // Exactly one of the two. `relativePath` is a file COPIED into the project
+  // folder — images, and everything generated here; `sourcePath` is a file left
+  // where the user keeps it — video and audio, which are far too big to
+  // duplicate. Both are `.nullish()`: Rust omits the absent one, and a project
+  // written before this field existed has only `relativePath`, so both must
+  // survive an absent key.
+  relativePath: projectRelativePathSchema.nullish(),
+  sourcePath: externalPathSchema.nullish(),
   mimeType: z.string().min(1),
   // `.nullish()`, not `.optional()`. Rust serialises a `None` as an explicit
   // JSON `null` unless the field carries skip_serializing_if, and a bare
@@ -48,6 +109,14 @@ export const projectAssetSchema = z.object({
   width: z.number().int().positive().nullish(),
   height: z.number().int().positive().nullish(),
   createdAt: isoDateSchema,
+}).superRefine((asset, context) => {
+  checkOneLocation(asset, context, `Asset '${asset.id}'`);
+  if (!asset.relativePath && !asset.sourcePath) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom, path: ["relativePath"],
+      message: `Asset '${asset.id}' must have either a project-relative path or an external source path.`,
+    });
+  }
 });
 
 export const timelineClipSchema = z.object({
@@ -82,18 +151,29 @@ export const generationBriefSchema = z.object({
 
 export const projectReferenceSchema = z.object({
   id: idSchema,
-  kind: z.enum(["text", "image"]),
+  // `video` and `audio` are file-backed like an image, but are never copied
+  // into the project: only their absolute path is recorded. Nothing in the UI
+  // creates one yet — both reference pickers are image-only — so this is what
+  // the file format can hold, not a promise about a button.
+  kind: z.enum(["text", "image", "video", "audio"]),
   name: z.string().min(1),
   // May be empty: a reference can exist before the user has described it, and
   // pre-filling it with instruction text would feed that text to the model.
   description: z.string(),
   content: z.string().min(1).nullable().optional(),
   relativePath: projectRelativePathSchema.nullable().optional(),
+  // An image reference is copied into `references/`; a video or audio one is
+  // pointed at where it lives. See the note on projectAssetSchema.sourcePath.
+  sourcePath: externalPathSchema.nullish(),
   intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
   createdAt: isoDateSchema,
 }).superRefine((reference, context) => {
-  if (reference.kind === "image" && !reference.relativePath) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["relativePath"], message: "Image references require a relative path." });
+  checkOneLocation(reference, context, `Reference '${reference.id}'`);
+  if (reference.kind !== "text" && !reference.relativePath && !reference.sourcePath) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom, path: ["relativePath"],
+      message: `A ${reference.kind} reference needs the file it refers to.`,
+    });
   }
 });
 
@@ -197,6 +277,23 @@ export function projectFilePath(folderPath: string, relativePath: string): strin
   return `${root}${separator}${relativePath.split(/[\\/]/).join(separator)}`;
 }
 
+/** Where an asset or reference actually is on disk, whichever kind of location
+ *  it carries. The ONE place that decides: a file copied into the project
+ *  resolves against the project folder, a file left outside it is already
+ *  absolute and is returned untouched. Null only for a record with no file at
+ *  all — a text reference.
+ *
+ *  Every consumer must go through this. Reading `relativePath` alone silently
+ *  resolves an external clip against the project folder, which produces a path
+ *  to a file that was never there. */
+export function projectItemPath(folderPath: string, item: StoredLocation): string | null {
+  if (item.sourcePath) return item.sourcePath;
+  return item.relativePath ? projectFilePath(folderPath, item.relativePath) : null;
+}
+
+/** Whether this record's file lives outside the project folder. */
+export const isExternalItem = (item: StoredLocation): boolean => Boolean(item.sourcePath);
+
 /** The words the USER wrote about a reference, or "" — never a library label
  *  and never anything this app authored. Both import paths used to seed
  *  `description` with filing boilerplate ("Visual reference copied into this
@@ -221,7 +318,7 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
   return reference.kind === "image"
-    ? Boolean(reference.relativePath)
+    ? Boolean(reference.relativePath ?? reference.sourcePath)
     : isReferenceDescribed(reference);
 }
 

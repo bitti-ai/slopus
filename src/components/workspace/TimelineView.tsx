@@ -168,7 +168,10 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
         id: `asset-${crypto.randomUUID()}`,
         kind: file.kind,
         name: file.name,
+        // Images are copied in; video and sound are left where they are and
+        // carry an absolute path instead. Exactly one of the two is set.
         relativePath: file.relativePath,
+        sourcePath: file.sourcePath,
         mimeType: file.mimeType,
         // Genuinely unknown until something decodes the file. Left null rather
         // than filled with a plausible number.
@@ -301,7 +304,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
                 className="media-import"
                 onClick={() => void importMedia()}
                 disabled={importing || !isTauri()}
-                title={isTauri() ? "Copy video, sound, or image files into this project" : "Importing files is available in the desktop app"}
+                title={isTauri() ? "Add video, sound, or image files — video and sound stay where they are, images are copied in" : "Importing files is available in the desktop app"}
               >
                 <Upload size={20} /><b>{importing ? "Importing…" : "Import media"}</b>
               </button>

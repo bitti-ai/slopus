@@ -11,10 +11,11 @@ use tauri_plugin_dialog::DialogExt;
 mod agent;
 mod vidfab;
 
-const PROJECT_FILE_NAME: &str = "pols.json";
-/// What the file was called before. Folders written by earlier builds still
-/// open; the next save writes `pols.json` and leaves the old file alone.
-const LEGACY_PROJECT_FILE_NAME: &str = "polstudio.project.json";
+const PROJECT_FILE_NAME: &str = "polstudio.json";
+/// What the file was called before, newest first. Folders written by earlier
+/// builds still open; the next save writes `polstudio.json` and leaves the old
+/// file alone, so a project stays readable by the build that made it.
+const LEGACY_PROJECT_FILE_NAMES: [&str; 2] = ["pols.json", "polstudio.project.json"];
 const PROJECT_DIRECTORIES: [&str; 6] = [
     "media/imported",
     "media/generated",
@@ -73,7 +74,15 @@ struct ProjectAsset {
     id: String,
     kind: String,
     name: String,
-    relative_path: String,
+    // Exactly one of the two locations. `relativePath` is a file COPIED into
+    // the project folder (images, and anything generated here); `sourcePath` is
+    // an absolute path to a file left where the user already keeps it (video
+    // and audio, which are far too big to duplicate). Both keys are omitted
+    // when absent rather than written as null — see the note on `durationMs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_path: Option<String>,
     mime_type: String,
     // zod spells these `.optional()` with no `.nullable()`, so an explicit
     // `null` is REJECTED by the frontend parser. The key has to stay absent.
@@ -138,6 +147,10 @@ struct ReusableReference {
     content: Option<String>,
     #[serde(default)]
     relative_path: Option<String>,
+    /// An image reference is copied into `references/`; a video or audio
+    /// reference is not, and points at wherever the user keeps it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_path: Option<String>,
     #[serde(default)]
     intended_use: Vec<String>,
     created_at: String,
@@ -220,15 +233,22 @@ struct ImportedReferenceImage {
     mime_type: String,
 }
 
-/// One file copied into the project's `media/` folder. Deliberately carries no
-/// duration or dimensions: PolStudio has no decoder yet, and a made-up number
-/// here would be indistinguishable from a measured one everywhere downstream.
+/// One file the user added to a project. An IMAGE is copied into the project's
+/// `media/` folder and comes back with `relative_path`; VIDEO and AUDIO are
+/// left exactly where they are and come back with an absolute `source_path`,
+/// because copying a rush or a stem doubles gigabytes on disk for no benefit.
+/// Exactly one of the two is ever set.
+///
+/// Deliberately carries no duration or dimensions: PolStudio has no decoder
+/// yet, and a made-up number here would be indistinguishable from a measured
+/// one everywhere downstream.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImportedMediaFile {
     kind: &'static str,
     name: String,
-    relative_path: String,
+    relative_path: Option<String>,
+    source_path: Option<String>,
     mime_type: String,
 }
 
@@ -269,6 +289,56 @@ fn normalize_project_path(value: &str) -> Result<String, String> {
         return Err("Project paths must point to an item below the project root.".into());
     }
     Ok(normalized.join("/"))
+}
+
+/// The other kind of stored location: a file the project points at but does
+/// NOT contain. Video and audio are never copied — a 40 GB rush is not going to
+/// be duplicated into a project folder — so the project records where the user
+/// already keeps it.
+///
+/// It must be ABSOLUTE, because it is resolved against nothing: no working
+/// directory, no project root. `..` is refused so the recorded string is the
+/// same string every comparison sees; canonicalised paths never contain one.
+/// The separators are left exactly as the OS wrote them. This mirrors
+/// `normalizeExternalPath` in src/lib/project.ts and must keep mirroring it in
+/// both directions.
+fn normalize_external_path(value: &str) -> Result<String, String> {
+    if value.is_empty() || value.contains('\0') {
+        return Err("External media paths cannot be empty or contain null bytes.".into());
+    }
+    let bytes = value.as_bytes();
+    let windows_drive = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/');
+    if !(windows_drive || value.starts_with("\\\\") || value.starts_with('/')) {
+        return Err(format!(
+            "External media must be recorded as an absolute path, received '{value}'."
+        ));
+    }
+    if value.split(['\\', '/']).any(|component| component == "..") {
+        return Err("External media paths cannot contain '..'.".into());
+    }
+    Ok(value.to_string())
+}
+
+/// Every location a project can hold is one of two things and never both: a
+/// file inside the folder, or a file outside it. `label` names the record so
+/// the message points at the row the user has to fix.
+fn check_one_location(
+    label: &str,
+    relative_path: Option<&String>,
+    source_path: Option<&String>,
+) -> Result<(), String> {
+    match (relative_path, source_path) {
+        (Some(_), Some(_)) => Err(format!(
+            "{label} cannot have both a project-relative path and an external source path."
+        )),
+        (None, None) => Err(format!(
+            "{label} must have either a project-relative path or an external source path."
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn is_supported_aspect_ratio(value: &str) -> bool {
@@ -475,7 +545,21 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             &format!("Asset '{}' createdAt", asset.id),
             &asset.created_at,
         )?;
-        asset.relative_path = normalize_project_path(&asset.relative_path)?;
+        asset.relative_path = asset
+            .relative_path
+            .as_deref()
+            .map(normalize_project_path)
+            .transpose()?;
+        asset.source_path = asset
+            .source_path
+            .as_deref()
+            .map(normalize_external_path)
+            .transpose()?;
+        check_one_location(
+            &format!("Asset '{}'", asset.id),
+            asset.relative_path.as_ref(),
+            asset.source_path.as_ref(),
+        )?;
     }
     for reference in &mut config.references {
         if reference.id.trim().is_empty() || reference.name.trim().is_empty() {
@@ -486,14 +570,34 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .as_deref()
             .map(normalize_project_path)
             .transpose()?;
+        reference.source_path = reference
+            .source_path
+            .as_deref()
+            .map(normalize_external_path)
+            .transpose()?;
+        if reference.relative_path.is_some() && reference.source_path.is_some() {
+            return Err(format!(
+                "Reference '{}' cannot have both a project-relative path and an external source path.",
+                reference.id
+            ));
+        }
         match reference.kind.as_str() {
             // A text reference may legitimately be blank: the UI creates one the
             // moment "New definition" is clicked, before the user has typed. It
             // is marked incomplete there rather than failing the whole save —
             // refusing here blocked every unrelated edit in the project.
             "text" => {}
-            "image" if reference.relative_path.is_some() => {}
-            "image" => return Err("Image references require a relative path.".into()),
+            // A file-backed reference has to say where its file is. An image is
+            // copied into `references/`; a video or audio reference is not, and
+            // carries the absolute path of the file the user already has.
+            "image" | "video" | "audio"
+                if reference.relative_path.is_some() || reference.source_path.is_some() => {}
+            "image" => {
+                return Err("Image references require a stored path inside the project.".into())
+            }
+            "video" | "audio" => {
+                return Err("Video and audio references require a source path.".into())
+            }
             _ => return Err(format!("Unsupported reference kind '{}'.", reference.kind)),
         }
         // Absent content is fine; present-but-empty content is not, matching
@@ -703,6 +807,22 @@ fn unique_ids<'a>(
     Ok(unique)
 }
 
+/// The settings file to READ from a project folder: the current name if it is
+/// there, otherwise the first legacy name that is. Returns the current name
+/// when the folder holds none of them, so the caller reports a missing
+/// `polstudio.json` rather than a file nobody has written since 2025.
+fn project_file_in(folder: &Path) -> PathBuf {
+    let current = folder.join(PROJECT_FILE_NAME);
+    if current.is_file() {
+        return current;
+    }
+    LEGACY_PROJECT_FILE_NAMES
+        .iter()
+        .map(|name| folder.join(name))
+        .find(|path| path.is_file())
+        .unwrap_or(current)
+}
+
 fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
     if !folder.is_dir() {
         return Err("The selected project folder does not exist.".into());
@@ -710,13 +830,7 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
     let canonical_folder = folder
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
-    let config_path = canonical_folder.join(PROJECT_FILE_NAME);
-    let legacy_path = canonical_folder.join(LEGACY_PROJECT_FILE_NAME);
-    let config_path = if !config_path.is_file() && legacy_path.is_file() {
-        legacy_path
-    } else {
-        config_path
-    };
+    let config_path = project_file_in(&canonical_folder);
     let json = fs::read_to_string(&config_path)
         .map_err(|error| format!("Could not read {}: {error}", config_path.to_string_lossy()))?;
     let config: ProjectConfig = serde_json::from_str(&json)
@@ -821,17 +935,24 @@ fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
     }
 }
 
-/// `Path::canonicalize` returns a Windows *verbatim* path — `\?\D:\tmp\news`.
-/// That prefix is an OS-level escape hatch, not something to show anybody, and
-/// it was being rendered verbatim under every project in the library. Strip it
-/// for the path that leaves this process. Every command re-canonicalizes what
-/// it is given, so the stripped form is still a valid round trip.
+/// `Path::canonicalize` returns a Windows *verbatim* path — the real prefix is
+/// four characters, `\\?\`, and the previous version of this function looked
+/// for a three-character `\?\` that no path has ever started with. Nothing was
+/// stripped, so every project in the library rendered as
+/// `\\?\D:\tmp\news\News broadcast`.
+///
+/// Strip it for any path that leaves this process. Every command
+/// re-canonicalizes what it is given, so the stripped form is still a valid
+/// round trip. A verbatim UNC path is `\\?\UNC\server\share`, whose ordinary
+/// form is `\\server\share` — dropping only the `\\?\` would leave the bogus
+/// `UNC\server\share`. Non-Windows paths carry neither prefix and come back
+/// untouched.
 fn display_path(path: &Path) -> String {
     let text = path.to_string_lossy().into_owned();
-    if let Some(rest) = text.strip_prefix(r"\?\UNC\") {
-        return format!(r"\{rest}");
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
     }
-    text.strip_prefix(r"\?\").unwrap_or(&text).to_string()
+    text.strip_prefix(r"\\?\").unwrap_or(&text).to_string()
 }
 
 fn safe_folder_name(name: &str) -> String {
@@ -975,8 +1096,69 @@ fn choose_reference_image(
     copy_reference_image(&source, &project_folder).map(Some)
 }
 
-/// Extensions PolStudio will copy into a project, and what each one is.
-/// Anything not listed is refused rather than imported as an unknown blob.
+/// One reference the user added: an image copied into `references/`, or a
+/// video/audio file left where it is and pointed at.
+#[derive(Debug, Clone)]
+struct ImportedReference {
+    kind: &'static str,
+    name: String,
+    relative_path: Option<String>,
+    source_path: Option<String>,
+}
+
+/// The absolute, prefix-free path this project will remember a file by.
+/// Canonicalised so it survives a working-directory change and so the
+/// containment check in `read_external_media_file` compares like with like,
+/// then run through `display_path` so no `\\?\` ever reaches the project file
+/// or the UI, and finally through the same validator the schema applies.
+fn external_source_path(source: &Path) -> Result<String, String> {
+    let canonical = source
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve {}: {error}", source.to_string_lossy()))?;
+    normalize_external_path(&display_path(&canonical))
+}
+
+/// Adds one file to a project as a reference, following the same rule the media
+/// panel does: pictures are small and get copied so the folder stays portable;
+/// video and audio are not copied at any size.
+fn import_reference_file(
+    source: &Path,
+    project_folder: &Path,
+) -> Result<ImportedReference, String> {
+    if !source.is_file() {
+        return Err("The selected file does not exist.".into());
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    match media_kind_and_mime(&extension) {
+        Some(("image", _)) => {
+            let copied = copy_reference_image(source, project_folder)?;
+            Ok(ImportedReference {
+                kind: "image",
+                name: copied.name,
+                relative_path: Some(copied.relative_path),
+                source_path: None,
+            })
+        }
+        Some((kind @ ("video" | "audio"), _)) => Ok(ImportedReference {
+            kind,
+            name: source
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("Reference")
+                .to_string(),
+            relative_path: None,
+            source_path: Some(external_source_path(source)?),
+        }),
+        _ => Err("Choose an image, a video, or a sound file.".into()),
+    }
+}
+
+/// Extensions PolStudio accepts, and what each one is. Anything not listed is
+/// refused rather than imported as an unknown blob.
 fn media_kind_and_mime(extension: &str) -> Option<(&'static str, &'static str)> {
     Some(match extension {
         "mp4" | "m4v" => ("video", "video/mp4"),
@@ -1001,7 +1183,12 @@ const MEDIA_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "webp", "gif",
 ];
 
-fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
+/// Adds one file to the project. Video and audio are NEVER copied: a folder of
+/// rushes is tens of gigabytes, and duplicating it to make the project folder
+/// "portable" costs the user that much disk to gain a copy they did not ask
+/// for. The project records where the file already lives instead. Images are
+/// small and stay copied, so a project's own artwork travels with it.
+fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
     if !source.is_file() {
         return Err(format!("{} does not exist.", source.to_string_lossy()));
     }
@@ -1012,6 +1199,19 @@ fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMedia
         .ok_or_else(|| "The selected file needs a file extension.".to_string())?;
     let (kind, mime_type) = media_kind_and_mime(&extension)
         .ok_or_else(|| format!("PolStudio cannot import .{extension} files yet."))?;
+    if kind != "image" {
+        return Ok(ImportedMediaFile {
+            kind,
+            name: source
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("Imported media")
+                .to_string(),
+            relative_path: None,
+            source_path: Some(external_source_path(source)?),
+            mime_type: mime_type.into(),
+        });
+    }
     let media_folder = project_folder.join("media");
     fs::create_dir_all(&media_folder)
         .map_err(|error| format!("Could not prepare media folder: {error}"))?;
@@ -1034,7 +1234,8 @@ fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMedia
     Ok(ImportedMediaFile {
         kind,
         name: display_name.to_string(),
-        relative_path: format!("media/{file_name}"),
+        relative_path: Some(format!("media/{file_name}")),
+        source_path: None,
         mime_type: mime_type.into(),
     })
 }
@@ -1043,7 +1244,7 @@ fn copy_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMedia
 /// reference image the user imported. Confined to the project folder: the
 /// relative path goes through the same normaliser every stored path does, and
 /// the result is checked to still sit under the canonical root, so a crafted
-/// `..` in a hand-edited pols.json cannot read the rest of the disk.
+/// `..` in a hand-edited polstudio.json cannot read the rest of the disk.
 #[tauri::command]
 fn read_project_file(
     folder_path: String,
@@ -1064,8 +1265,78 @@ fn read_project_file(
     Ok(tauri::ipc::Response::new(bytes))
 }
 
-/// Copies the chosen files into the project so the folder stays portable — the
-/// same rule references already follow. An empty list means the user cancelled.
+/// Every absolute path this project has recorded — the media and references
+/// that live OUTSIDE the folder. It is the allow-list for
+/// `read_external_media_file`: the webview may read a file outside the project
+/// only because the project itself names it.
+fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
+    config
+        .assets
+        .iter()
+        .filter_map(|asset| asset.source_path.clone())
+        .chain(
+            config
+                .references
+                .iter()
+                .filter_map(|reference| reference.source_path.clone()),
+        )
+        .collect()
+}
+
+/// The bytes of one file the project points at but does not contain.
+///
+/// Video and audio are no longer copied in, so the webview has to be able to
+/// read them where they are — and that is exactly the shape of an arbitrary
+/// file read, so it is fenced three ways:
+///
+/// 1. The path must appear verbatim (after canonicalising both sides) in the
+///    project file ON DISK, not in whatever the caller passes in. The recorded
+///    paths only get there through the OS picker, which is the user choosing
+///    the file themselves.
+/// 2. It must still carry a media extension PolStudio imports, so even a
+///    hand-edited project file cannot turn this into a reader for keys, wallets
+///    or documents.
+/// 3. It must be a regular file that exists now.
+///
+/// What it deliberately does NOT do is trust the caller's string: an argument
+/// that is not on the recorded list is refused whatever it points at.
+#[tauri::command]
+fn read_external_media_file(
+    folder_path: String,
+    source_path: String,
+) -> Result<tauri::ipc::Response, String> {
+    external_media_bytes(&folder_path, &source_path).map(tauri::ipc::Response::new)
+}
+
+fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>, String> {
+    let project = read_project(Path::new(&folder_path))?;
+    let requested = PathBuf::from(&source_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve {source_path}: {error}"))?;
+    let recorded = recorded_external_paths(&project.config).into_iter().any(|path| {
+        PathBuf::from(&path)
+            .canonicalize()
+            .map(|canonical| canonical == requested)
+            .unwrap_or(false)
+    });
+    if !recorded {
+        return Err(format!(
+            "{source_path} is not one of the files this project points at."
+        ));
+    }
+    let extension = requested
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if media_kind_and_mime(&extension).is_none() || !requested.is_file() {
+        return Err(format!("{source_path} is not a media file PolStudio reads."));
+    }
+    fs::read(&requested).map_err(|error| format!("Could not read {source_path}: {error}"))
+}
+
+/// Adds the chosen files to the project: images are copied in, video and audio
+/// are recorded where they already are. An empty list means the user cancelled.
 #[tauri::command]
 fn import_media_files(
     app: AppHandle,
@@ -1077,7 +1348,7 @@ fn import_media_files(
     let selected = app
         .dialog()
         .file()
-        .set_title("Import media into this project")
+        .set_title("Add media to this project")
         .add_filter("Media", MEDIA_EXTENSIONS)
         .blocking_pick_files();
     let Some(selected) = selected else {
@@ -1089,7 +1360,7 @@ fn import_media_files(
             let source = path
                 .into_path()
                 .map_err(|error| format!("Could not access the selected file: {error}"))?;
-            copy_media_file(&source, &project_folder)
+            import_media_file(&source, &project_folder)
         })
         .collect()
 }
@@ -1153,7 +1424,7 @@ fn create_project_in_with_references(
     }
     let prepare_result = (|| -> Result<(), String> {
         for (index, source) in reference_paths.iter().enumerate() {
-            let imported = copy_reference_image(source, &project_folder)?;
+            let imported = import_reference_file(source, &project_folder)?;
             let mut reference_id = format!("ref-initial-{}", index + 1);
             let mut suffix = 2;
             while config
@@ -1166,7 +1437,10 @@ fn create_project_in_with_references(
             }
             config.references.push(ReusableReference {
                 id: reference_id.clone(),
-                kind: "image".into(),
+                // Whatever the file actually is. A video or sound reference is
+                // recorded by path, not copied, so calling it an image here
+                // would be a claim about a file nobody has looked at.
+                kind: imported.kind.into(),
                 name: imported.name,
                 // MUST stay empty. The prompt compiler emits a reference's
                 // description as the subject's own traits in the text sent to
@@ -1175,7 +1449,8 @@ fn create_project_in_with_references(
                 // Same hazard the text path documents at src/lib/project.ts:87.
                 description: String::new(),
                 content: None,
-                relative_path: Some(imported.relative_path),
+                relative_path: imported.relative_path,
+                source_path: imported.source_path,
                 intended_use: vec!["style".into()],
                 created_at: config.created_at.clone(),
             });
@@ -1322,6 +1597,7 @@ pub fn run() {
             choose_reference_image,
             import_media_files,
             read_project_file,
+            read_external_media_file,
             create_project,
             save_project,
             runtime_status,
@@ -1351,6 +1627,16 @@ mod tests {
     /// clip, which is the shape that broke every create and open.
     fn created_fixture() -> ProjectConfig {
         serde_json::from_str(include_str!("../../fixtures/project-v1-created.json")).unwrap()
+    }
+
+    /// A project whose video and audio live OUTSIDE the folder, alongside a
+    /// copied image — every shape the two location fields can take, in one
+    /// file both validators read.
+    fn external_fixture() -> ProjectConfig {
+        serde_json::from_str(include_str!(
+            "../../fixtures/project-v1-external-media.json"
+        ))
+        .unwrap()
     }
 
     /// The keys the frontend schema spells `.optional()` with NO `.nullable()`
@@ -1475,6 +1761,13 @@ mod tests {
         write_fixture(
             "rust-serialized-complete.json",
             &serialize(&validate_and_normalize_config(fixture()).unwrap()),
+        );
+        // The external-location shapes: an absolute Windows path, an absolute
+        // POSIX one, a UNC share, and a copied image beside them. Rust writes
+        // exactly these bytes; the frontend suite parses them with real zod.
+        write_fixture(
+            "rust-serialized-external-media.json",
+            &serialize(&validate_and_normalize_config(external_fixture()).unwrap()),
         );
 
         // An ACTUALLY IMPORTED reference: produced by the same function the
@@ -1841,10 +2134,12 @@ mod tests {
     #[test]
     fn stored_paths_are_normalized_and_escaping_paths_are_rejected() {
         let mut normalized = fixture();
-        normalized.assets[0].relative_path = ".\\media\\imported//macro.mp4".into();
+        normalized.assets[0].relative_path = Some(".\\media\\imported//macro.mp4".into());
         assert_eq!(
-            validate_and_normalize_config(normalized).unwrap().assets[0].relative_path,
-            "media/imported/macro.mp4"
+            validate_and_normalize_config(normalized).unwrap().assets[0]
+                .relative_path
+                .as_deref(),
+            Some("media/imported/macro.mp4")
         );
 
         for path in [
@@ -1856,7 +2151,7 @@ mod tests {
             "references/../outside.png",
         ] {
             let mut escaping = fixture();
-            escaping.assets[0].relative_path = path.into();
+            escaping.assets[0].relative_path = Some(path.into());
             assert!(
                 validate_and_normalize_config(escaping).is_err(),
                 "accepted escaping path {path}"
@@ -1960,6 +2255,291 @@ mod tests {
     }
 
     #[test]
+    fn the_windows_verbatim_prefix_never_reaches_the_user() {
+        // `\\?\D:\tmp\news\News broadcast` is what canonicalize hands back and
+        // what the library rendered under every project. The prefix is an
+        // OS-level escape hatch; the user's path is the rest of it.
+        assert_eq!(
+            display_path(Path::new(r"\\?\D:\tmp\news\News broadcast")),
+            r"D:\tmp\news\News broadcast"
+        );
+        // A verbatim UNC path names a share. Stripping only `\\?\` would leave
+        // `UNC\studio-nas\shared`, which points at nothing.
+        assert_eq!(
+            display_path(Path::new(r"\\?\UNC\studio-nas\shared\Footage")),
+            r"\\studio-nas\shared\Footage"
+        );
+        // Everything else is already what it should be, prefix-shaped or not.
+        for path in [
+            r"D:\tmp\news",
+            "/home/nn/projects/news",
+            r"\\studio-nas\shared",
+            "relative/is/left/alone",
+            r"D:\?\odd\but\real",
+        ] {
+            assert_eq!(display_path(Path::new(path)), path);
+        }
+        // And the stripped form is what every command re-canonicalises, so a
+        // real project folder still opens by the name the user was shown.
+        let root = tempfile::tempdir().unwrap();
+        let created = create_project_in(root.path(), &fixture()).unwrap();
+        assert!(
+            !created.folder_path.starts_with(r"\\?\"),
+            "a verbatim path reached the frontend: {}",
+            created.folder_path
+        );
+        assert!(read_project(Path::new(&created.folder_path)).is_ok());
+    }
+
+    #[test]
+    fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let outside = root.path().join("Rushes");
+        fs::create_dir(&outside).unwrap();
+
+        for (name, bytes) in [
+            ("news broadcast.mp4", &b"video"[..]),
+            ("room tone.wav", &b"audio"[..]),
+            ("title card.png", &b"\x89PNG\r\n\x1a\n"[..]),
+        ] {
+            fs::write(outside.join(name), bytes).unwrap();
+        }
+
+        // A rush is not duplicated to make a folder "portable": the project
+        // records where it already is.
+        for name in ["news broadcast.mp4", "room tone.wav"] {
+            let imported = import_media_file(&outside.join(name), &project).unwrap();
+            assert_eq!(imported.relative_path, None, "{name} was copied");
+            let source = imported.source_path.expect("external media needs a path");
+            assert!(
+                !source.starts_with(r"\\?\"),
+                "a verbatim path was stored: {source}"
+            );
+            assert_eq!(
+                normalize_external_path(&source).unwrap(),
+                source,
+                "{name} stored a path the schema would reject"
+            );
+            assert!(Path::new(&source).is_file());
+        }
+        // A picture is small, and a project's own artwork should travel with it.
+        let image = import_media_file(&outside.join("title card.png"), &project).unwrap();
+        assert_eq!(image.relative_path.as_deref(), Some("media/title card.png"));
+        assert_eq!(image.source_path, None);
+        assert!(project.join("media/title card.png").is_file());
+
+        // Nothing but the image ever landed inside the project folder.
+        let copied: Vec<_> = fs::read_dir(project.join("media"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(copied, ["title card.png"]);
+    }
+
+    #[test]
+    fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir(&project).unwrap();
+        let video = root.path().join("reference cut.mov");
+        fs::write(&video, b"video").unwrap();
+        let image = root.path().join("harbor facade.png");
+        fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
+
+        let referenced = import_reference_file(&video, &project).unwrap();
+        assert_eq!(referenced.kind, "video");
+        assert_eq!(referenced.relative_path, None);
+        assert!(referenced.source_path.is_some());
+        assert!(
+            !project.join("references").join("reference cut.mov").exists(),
+            "a video reference was copied into the project"
+        );
+
+        let copied = import_reference_file(&image, &project).unwrap();
+        assert_eq!(copied.kind, "image");
+        assert_eq!(
+            copied.relative_path.as_deref(),
+            Some("references/harbor facade.png")
+        );
+        assert_eq!(copied.source_path, None);
+        assert!(project.join("references/harbor facade.png").is_file());
+    }
+
+    #[test]
+    fn external_media_is_readable_only_because_the_project_names_it() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().join("Rushes");
+        fs::create_dir(&outside).unwrap();
+        let clip = outside.join("rush-01.mp4");
+        fs::write(&clip, b"rush bytes").unwrap();
+        let secret = outside.join("id_rsa");
+        fs::write(&secret, b"private key").unwrap();
+        let unlisted = outside.join("rush-02.mp4");
+        fs::write(&unlisted, b"another rush").unwrap();
+
+        let mut config = created_fixture();
+        config.assets.push(ProjectAsset {
+            id: "asset-external".into(),
+            kind: "video".into(),
+            name: "Rush 01".into(),
+            relative_path: None,
+            source_path: Some(external_source_path(&clip).unwrap()),
+            mime_type: "video/mp4".into(),
+            duration_ms: None,
+            width: None,
+            height: None,
+            created_at: config.created_at.clone(),
+        });
+        let created = create_project_in(root.path(), &config).unwrap();
+        let folder = created.folder_path.as_str();
+        let recorded = created.config.assets[0].source_path.clone().unwrap();
+
+        // The file the user picked, which the project now names.
+        assert_eq!(
+            external_media_bytes(folder, &recorded).unwrap(),
+            b"rush bytes"
+        );
+
+        // A media file next to it that the project does NOT name.
+        let error = external_media_bytes(folder, &unlisted.to_string_lossy()).unwrap_err();
+        assert!(error.contains("not one of the files this project points at"));
+
+        // And the shape this command must never take: reading anything the
+        // caller asks for. A path the project does not carry is refused
+        // whatever it points at.
+        assert!(external_media_bytes(folder, &secret.to_string_lossy()).is_err());
+        assert!(external_media_bytes(folder, "/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn a_project_file_only_yields_media_a_hand_edit_cannot_widen() {
+        // Belt and braces for the direction the allow-list alone cannot cover:
+        // a HAND-EDITED project file naming something that is not media. The
+        // path is recorded, so the allow-list passes — the extension check is
+        // what refuses it.
+        let root = tempfile::tempdir().unwrap();
+        let secret = root.path().join("id_rsa");
+        fs::write(&secret, b"private key").unwrap();
+
+        let mut config = created_fixture();
+        config.assets.push(ProjectAsset {
+            id: "asset-crafted".into(),
+            kind: "video".into(),
+            name: "Not a clip".into(),
+            relative_path: None,
+            source_path: Some(external_source_path(&secret).unwrap()),
+            mime_type: "video/mp4".into(),
+            duration_ms: None,
+            width: None,
+            height: None,
+            created_at: config.created_at.clone(),
+        });
+        let created = create_project_in(root.path(), &config).unwrap();
+        let recorded = created.config.assets[0].source_path.clone().unwrap();
+        let error = external_media_bytes(&created.folder_path, &recorded).unwrap_err();
+        assert!(
+            error.contains("not a media file"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn every_stored_location_is_one_place_and_only_one() {
+        let external = external_fixture();
+        let normalized = validate_and_normalize_config(external.clone()).unwrap();
+        assert_eq!(
+            normalized.assets[0].source_path.as_deref(),
+            Some(r"D:\tmp\news\News broadcast\rush-01.mp4"),
+            "an external path is stored verbatim, not rewritten as a relative one"
+        );
+        assert!(normalized.assets[0].relative_path.is_none());
+
+        // Both at once is not a location, and neither is neither.
+        let mut both = external_fixture();
+        both.assets[0].relative_path = Some("media/rush-01.mp4".into());
+        assert!(validate_and_normalize_config(both)
+            .unwrap_err()
+            .contains("cannot have both"));
+        let mut neither = external_fixture();
+        neither.assets[0].source_path = None;
+        assert!(validate_and_normalize_config(neither)
+            .unwrap_err()
+            .contains("must have either"));
+
+        // A "source path" that is not absolute resolves against nothing.
+        for path in [
+            "Footage\\clip.mp4",
+            "media/clip.mp4",
+            "..\\..\\clip.mp4",
+            "D:\\..\\clip.mp4",
+            "",
+        ] {
+            let mut relative = external_fixture();
+            relative.assets[0].source_path = Some(path.into());
+            assert!(
+                validate_and_normalize_config(relative).is_err(),
+                "accepted '{path}' as an absolute source path"
+            );
+        }
+        // Every absolute form is accepted on every platform: a project file
+        // written on Windows is still read on Linux and back.
+        for path in [
+            "D:\\Footage\\clip.mp4",
+            "D:/Footage/clip.mp4",
+            "/home/nn/clip.mp4",
+            "\\\\nas\\share\\clip.mp4",
+        ] {
+            let mut absolute = external_fixture();
+            absolute.assets[0].source_path = Some(path.into());
+            assert!(
+                validate_and_normalize_config(absolute).is_ok(),
+                "rejected the absolute path '{path}'"
+            );
+        }
+
+        // References follow the same rule, and a file-backed one still needs
+        // its file.
+        let mut both_on_reference = external_fixture();
+        both_on_reference.references[1].relative_path = Some("references/cut.mov".into());
+        assert!(validate_and_normalize_config(both_on_reference).is_err());
+        let mut nowhere = external_fixture();
+        nowhere.references[1].source_path = None;
+        assert!(validate_and_normalize_config(nowhere).is_err());
+    }
+
+    #[test]
+    fn the_settings_file_is_polstudio_json_and_the_older_names_still_open() {
+        assert_eq!(PROJECT_FILE_NAME, "polstudio.json");
+        let root = tempfile::tempdir().unwrap();
+        let created = create_project_in(root.path(), &fixture()).unwrap();
+        let folder = PathBuf::from(&created.folder_path);
+        assert!(folder.join("polstudio.json").is_file());
+
+        // Every older name still opens, one folder per name, because a project
+        // written by an earlier build must not become unopenable.
+        for legacy in LEGACY_PROJECT_FILE_NAMES {
+            let old = root.path().join(format!("old-{legacy}"));
+            fs::create_dir(&old).unwrap();
+            fs::copy(folder.join(PROJECT_FILE_NAME), old.join(legacy)).unwrap();
+            assert_eq!(
+                read_project(&old).unwrap().config,
+                created.config,
+                "a project stored as {legacy} failed to open"
+            );
+            // Saving migrates the name and leaves the old file where it is, so
+            // the build that wrote it can still read the project.
+            write_project(&old, &created.config).unwrap();
+            assert!(old.join(PROJECT_FILE_NAME).is_file());
+            assert!(old.join(legacy).is_file());
+            // The new name wins once both exist.
+            assert_eq!(project_file_in(&old), old.join(PROJECT_FILE_NAME));
+        }
+    }
+
+    #[test]
     fn sanitizes_folder_names() {
         assert_eq!(safe_folder_name("  Launch: Film?  "), "Launch- Film-");
         assert_eq!(safe_folder_name("..."), "Untitled video");
@@ -1980,6 +2560,7 @@ mod tests {
             description: String::new(),
             content: None,
             relative_path: None,
+            source_path: None,
             intended_use: Vec::new(),
             created_at: "2026-01-01T00:07:00.000Z".into(),
         });

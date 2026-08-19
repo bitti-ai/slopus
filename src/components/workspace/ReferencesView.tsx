@@ -83,12 +83,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
         <div className="reference-library__toolbar"><span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span></div>
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
-            {ref.kind === "image" && ref.relativePath
-              ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} alt={ref.name} /></span>
+            {ref.kind === "image" && (ref.relativePath || ref.sourcePath)
+              ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt={ref.name} /></span>
               : ref.kind === "image"
                 ? <span className="reference-art"><Image size={26} /><em>Image file</em></span>
                 : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath}</small></span>{isReferenceDescribed(ref)
+            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath ?? ref.sourcePath}</small></span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
               : <p className="reference-card__incomplete">{ref.kind === "image"
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
@@ -107,11 +107,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <aside className="reference-inspector">
         <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
         {selected ? <>
-          <div className={`reference-detail-art reference-detail-art--${selected.kind}${selected.kind === "image" && selected.relativePath ? " reference-detail-art--photo" : ""}`}>
-            {selected.kind === "image" && selected.relativePath
-              ? <ReferenceImage folderPath={folderPath} relativePath={selected.relativePath} alt={selected.name} />
+          <div className={`reference-detail-art reference-detail-art--${selected.kind}${selected.kind === "image" && (selected.relativePath || selected.sourcePath) ? " reference-detail-art--photo" : ""}`}>
+            {selected.kind === "image" && (selected.relativePath || selected.sourcePath)
+              ? <ReferenceImage folderPath={folderPath} relativePath={selected.relativePath} sourcePath={selected.sourcePath} alt={selected.name} />
               : <span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span>}
-            <em>{selected.kind === "image" ? selected.relativePath : "Reusable text definition"}</em>
+            <em>{selected.kind === "image" ? selected.relativePath ?? selected.sourcePath : "Reusable text definition"}</em>
           </div>
           <div className="reference-fields">
             <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
@@ -126,7 +126,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             <h3>Used by <span>{jobs.length}</span></h3>
             {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
           </section>
-          <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? "Stored in pols.json"}</code></div></section>
+          <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? selected.sourcePath ?? "Stored in polstudio.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </aside>
     </div>
