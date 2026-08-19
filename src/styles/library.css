@@ -550,9 +550,21 @@
    THEME-INDEPENDENT ON PURPOSE. Everything from here to .project-card__body is
    a picture, not a surface: four generated cover illustrations and the badges,
    play button and caption that sit ON TOP of one. A cover does not become a
-   light-theme cover any more than a photograph does, and the chrome over it is
-   white-on-dark because the artwork underneath is dark in every theme. Running
-   these through --text-* would put dark ink on a dark picture. */
+   light-theme cover any more than a photograph does, and running these through
+   --text-* would put one theme's ink on a picture that is the same in both.
+
+   The chrome over the picture is white, but NOT because the picture is dark.
+   TWO OF THE FOUR ARE PALE — --paper is #cabca3 flat, and --chrome runs up to
+   #dce7e7 in its highlight — so "white on a dark cover" was never true, and the
+   caption sat at 1.75:1 on --paper with a text-shadow as its only defence.
+
+   What is true, and what every rule below relies on instead: each piece of
+   chrome carries its OWN dark plate and is legible against that plate alone,
+   whatever the picture under it turns out to be. The badges and the play button
+   always did; the caption now does too. Its plate is opaque enough to clear
+   14.5:1 over PURE WHITE, which is the only bound that survives a cover the
+   code has not seen — including a real thumbnail set through
+   ProjectCard's inline background-image. theme.test.ts recomputes it. */
 .project-card__art--aurora {
   background: linear-gradient(155deg, #101c38, #172d55 45%, #6e6d4d);
 }
@@ -680,18 +692,39 @@
   transform: translate(-50%, -50%) scale(1);
 }
 
+/* The user's own project brief, over artwork this file cannot predict. A strip
+   rather than a fade, because a fade's alpha under the glyphs depends on where
+   the line happens to land and no test could bound it: here every pixel behind
+   the text is the same colour, so "white ink at 14.59:1 over the worst possible
+   backdrop" is a fact about two numbers, not about the four covers that exist
+   today. */
 .project-card__art-copy {
   position: absolute;
   z-index: 2;
-  inset: auto var(--space-3) var(--space-3);
+  inset: auto 0 0;
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  color: rgba(255, 255, 255, 0.88);
-  text-shadow: 0 1px 5px #000;
+  padding: var(--space-2) var(--space-3);
+  color: #fff;
+  background: rgba(4, 6, 10, 0.86);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
   text-align: left;
+}
+
+/* Feathers the top edge of that strip into the picture instead of cutting it
+   with a hard line. Decoration only: no glyph sits on it, so nothing here has
+   to hold a contrast ratio. */
+.project-card__art-copy::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--space-5);
+  background: linear-gradient(to top, rgba(4, 6, 10, 0.86), rgba(4, 6, 10, 0));
+  pointer-events: none;
 }
 
 .project-card__art-copy svg {

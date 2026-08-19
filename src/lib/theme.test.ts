@@ -183,6 +183,40 @@ describe("tokens.css", () => {
     expect(boot).toContain(`light: "${THEME_BACKGROUND.light}"`);
     expect(boot).toContain(THEME_KEY);
   });
+
+  it("agrees with the three copies that live outside the bundle entirely", () => {
+    /* The test above pins the copies JavaScript can reach. Three more exist
+       where no stylesheet and no bundle has loaded yet, and they were unpinned
+       until now — which is how a light-theme computer came to open a black
+       window: tauri.conf.json's `backgroundColor` is a single static value and
+       nothing checked it was even a colour the palette knows.
+
+       It stays the DARK ground on purpose. It is what a window is created with
+       before any of our code runs, and one static value cannot follow a
+       three-state preference; src-tauri/src/lib.rs repaints it from the OS
+       theme as soon as the app is up, and theme-boot.js corrects it again on
+       the webview's first frame. See the comment above GROUND_DARK for the one
+       case that still gets a wrong frame and why nothing here can fix it. */
+    const conf = JSON.parse(read("src-tauri/tauri.conf.json"));
+    expect(conf.app.windows[0].backgroundColor).toBe(THEME_BACKGROUND.dark);
+
+    /* Written as Color(0x08, 0x0a, 0x0f, 0xff) so this comparison is exact
+       rather than a decimal triple nobody could check by eye. */
+    const asRustColor = (hex: string) =>
+      `Color(${hex.slice(1).match(/../g)!.map((pair) => `0x${pair}`).join(", ")}, 0xff)`;
+    const rust = read("src-tauri/src/lib.rs");
+    expect(rust).toContain(asRustColor(THEME_BACKGROUND.dark));
+    expect(rust).toContain(asRustColor(THEME_BACKGROUND.light));
+    /* And that they are actually used for this. Two consts nothing calls would
+       keep passing the two assertions above while the window stayed black. */
+    expect(rust).toContain("set_background_color");
+    expect(rust).toContain("tauri::Theme::Light");
+
+    /* index.html's meta ships the dark ground and applyTheme rewrites it on
+       every switch, so the static value only has to be a real palette entry. */
+    expect(read("index.html")).toContain(`content="${THEME_BACKGROUND.dark}"`);
+    expect(read("src/lib/theme.ts")).toContain('meta[name="theme-color"]');
+  });
 });
 
 describe("every stylesheet resolves through the palette", () => {
@@ -234,8 +268,17 @@ describe("every stylesheet resolves through the palette", () => {
    token that already existed. None of them touched a var(), so nothing failed.
 
    So: a stylesheet may not name a colour. Not `#hex`, not `rgb(`, `rgba(`,
-   `hsl(` or `hsla(`. tokens.css is the one file that spells colours out; every
-   other sheet in src/styles goes through it.
+   `hsl(` or `hsla(`, not `oklch()`, `oklab()`, `lab()`, `lch()`, `hwb()` or
+   `color()`, and not a NAMED colour either — `background: white` was the widest
+   way through this guard, and `color-mix(in srgb, white 30%, var(--panel))` the
+   likeliest, because color-mix is how nearly every derived shade in this
+   codebase is written. tokens.css is the one file that spells colours out;
+   every other sheet in src/styles goes through it.
+
+   Two spellings deliberately stay legal, because neither names a colour:
+   `transparent` (the absence of one) and `currentColor` (whatever the palette
+   already put on the element). And `color-mix()` itself is not banned — only
+   literals inside it, which the same two checks find wherever they sit.
 
    A handful of literals ARE right, because they are pictures and brand marks
    rather than surfaces, and they stay dark whatever the page does. Each one is
@@ -244,7 +287,46 @@ describe("every stylesheet resolves through the palette", () => {
    and a listed rule that has gone away — or has stopped containing a literal —
    fails too. An allowlist nothing verifies is how the last two guards rotted.  */
 
-const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\(/g;
+const COLOUR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/g;
+
+/* Every named colour in CSS Color 4. `transparent` and `currentcolor` are
+   deliberately absent — see above. The interpolation spaces color-mix() takes
+   (`in srgb`, `in oklab`, `in hsl`) are not in here either, and the function
+   list above only matches with an opening paren, so `color-mix(in oklab, …)`
+   stays legal while `oklab(0.6 0.1 0.2)` does not. */
+const NAMED_COLOURS = new Set(`
+  aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet
+  brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan
+  darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen
+  darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey
+  darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite
+  forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew
+  hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue
+  lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon
+  lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime
+  limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple
+  mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue
+  mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid
+  palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum
+  powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen
+  seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal
+  thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen
+`.trim().split(/\s+/));
+
+/** Every colour a chunk of CSS names, in the two shapes a name can take. */
+function colourLiterals(css: string): string[] {
+  const found = [...css.matchAll(COLOUR_LITERAL)].map((match) => match[0]);
+  /* A named colour only counts inside a declaration VALUE. Quoted strings are
+     blanked first: `content: "black"` names a word, not a colour, and
+     `font-family: Silver` would otherwise read as one too. Selectors never
+     reach here — this only ever sees rule bodies. */
+  for (const [, value] of css.matchAll(/[-a-zA-Z]+\s*:\s*([^;{}]*)/g)) {
+    for (const word of value.replace(/"[^"]*"|'[^']*'/g, " ").match(/[a-zA-Z]+/g) ?? []) {
+      if (NAMED_COLOURS.has(word.toLowerCase())) found.push(word);
+    }
+  }
+  return found;
+}
 
 /** The index of the `}` that closes the `{` at `open`. */
 function closingBrace(css: string, open: number): number {
@@ -305,15 +387,19 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
     ".project-card__art--chrome::before": "generated cover art",
     ".project-card__art--chrome::after": "generated cover art",
     ".project-card__art--ember": "generated cover art",
+    /* These three sit ON the artwork, and each paints its OWN dark plate. That
+       is the whole justification, and it is a fact about these rules rather
+       than about the pictures: two of the four covers are pale (--paper is
+       #cabca3, --chrome peaks at #dce7e7), so the note that used to stand here
+       — "white on a dark picture in both themes, because the picture is dark in
+       both" — was simply false, and the caption it excused measured 1.75:1. */
     ".project-card__format, .project-card__quality":
-      "chrome ON the cover art: white on a dark picture in both themes, because the picture is dark in both",
-    ".project-card__play": "chrome ON the cover art",
-    ".project-card__art-copy": "chrome ON the cover art",
-  },
-  "generator.css": {
-    ".job-refs .ref-mini":
-      "stand-in artwork for a reference thumbnail — the same case as the library's cover art",
-    ".ref-mini--1": "stand-in artwork for a reference thumbnail",
+      "white ink on the dark plate this rule paints for itself: 5.29:1 measured over the palest cover",
+    ".project-card__play": "white ink on the dark disc this rule paints for itself",
+    ".project-card__art-copy":
+      "white ink on the strip this rule paints for itself, clearing 4.5:1 over any cover at all — recomputed from the two literals by the test below",
+    ".project-card__art-copy::before":
+      "the feathered top edge of that strip: decoration, with no text on it",
   },
 };
 
@@ -333,7 +419,32 @@ describe("no stylesheet outside tokens.css names a colour", () => {
   it("proves it can see a literal at all, by finding tokens.css full of them", () => {
     /* The regex and the reader are shared with the assertions below. A typo
        that made them match nothing would turn every test here green. */
-    expect(readCss("src/styles/tokens.css").match(COLOUR_LITERAL)!.length).toBeGreaterThan(100);
+    expect(colourLiterals(readCss("src/styles/tokens.css")).length).toBeGreaterThan(100);
+  });
+
+  it("catches the three shapes the hex-and-rgb regex alone walked straight past", () => {
+    /* Each of these was tried against the previous guard and got through. The
+       point of putting them here rather than trusting the regex to read right
+       is that a rule nobody has ever seen bite is a rule nobody knows works. */
+    expect(colourLiterals("a { background: white; }")).toEqual(["white"]);
+    expect(colourLiterals("a { border-color: RebeccaPurple; }")).toEqual(["RebeccaPurple"]);
+    expect(colourLiterals("a { background: color-mix(in srgb, white 30%, var(--panel)); }")).toEqual(["white"]);
+    expect(colourLiterals("a { background: color-mix(in srgb, #fff 30%, var(--panel)); }")).toEqual(["#fff"]);
+    expect(colourLiterals("a { color: oklch(62% 0.2 250); }")).toEqual(["oklch("]);
+    expect(colourLiterals("a { color: lab(52% 40 59); }")).toEqual(["lab("]);
+    expect(colourLiterals("a { color: lch(52% 72 55); }")).toEqual(["lch("]);
+    expect(colourLiterals("a { color: hwb(194 0% 0%); }")).toEqual(["hwb("]);
+    expect(colourLiterals("a { color: color(display-p3 1 0 0); }")).toEqual(["color("]);
+
+    /* And the shapes that must NOT trip it. Banning any of these would ban the
+       idiom the palette is actually derived with, and the next person would
+       "fix" the guard by deleting it. */
+    expect(colourLiterals("a { background: color-mix(in srgb, var(--accent) 20%, var(--panel-3)); }")).toEqual([]);
+    expect(colourLiterals("a { background: color-mix(in oklab, var(--a), var(--b)); }")).toEqual([]);
+    expect(colourLiterals("a { border-color: transparent; }")).toEqual([]);
+    expect(colourLiterals("a { color: currentColor; }")).toEqual([]);
+    expect(colourLiterals('a { content: "black"; filter: grayscale(1); }')).toEqual([]);
+    expect(colourLiterals("a { --panel-3: var(--panel-2); border: 1px solid var(--line); }")).toEqual([]);
   });
 
   for (const sheet of sheets) {
@@ -344,7 +455,7 @@ describe("no stylesheet outside tokens.css names a colour", () => {
       const offenders: string[] = [];
       for (const { selector, body } of blocks) {
         if (selector in allowed) continue;
-        for (const literal of body.match(COLOUR_LITERAL) ?? []) {
+        for (const literal of colourLiterals(body)) {
           offenders.push(`${sheet}  ${selector} { … ${literal} … }`);
         }
       }
@@ -360,8 +471,62 @@ describe("no stylesheet outside tokens.css names a colour", () => {
         expect(rule, `exemption names a rule ${sheet} no longer has`).toBeTruthy();
         /* And it still needs the exemption. A rule that has been converted to
            tokens must lose its entry, or the list drifts back into fiction. */
-        expect(rule!.body.match(COLOUR_LITERAL), "exemption is stale: the rule names no colour any more").toBeTruthy();
+        expect(colourLiterals(rule!.body), "exemption is stale: the rule names no colour any more").not.toEqual([]);
       });
     }
   }
+});
+
+/* --- The one caption that lands on a picture instead of a palette ---------- *
+
+   Everywhere else, legibility is a property of two tokens and can be argued
+   about by reading tokens.css. The library cover caption is the exception: it
+   is the user's own project brief, printed over generated artwork, and it was
+   exempted from the guard above with the note "white on a dark picture in both
+   themes, because the picture is dark in both". Two of the four covers are not
+   dark. It measured 1.75:1 on --paper in Chrome, with a text-shadow as the only
+   thing standing between the user's words and a blank strip.
+
+   The rule now paints its own strip, and this recomputes the ratio from the two
+   literals in it against the worst backdrop that can physically exist — pure
+   white — so it holds for the four covers today, for any cover added later, and
+   for a real thumbnail dropped in through ProjectCard's inline background
+   image, none of which this file can see. */
+
+const linear = (channel: number) => {
+  const value = channel / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+};
+const luminance = ([r, g, b]: number[]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+const contrastRatio = (a: number[], b: number[]) => {
+  const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+describe("the library cover caption", () => {
+  const rule = block(readCss("src/styles/library.css"), "\n.project-card__art-copy {");
+
+  it("is legible over the worst cover that could ever exist", () => {
+    const ink = rule.match(/color:\s*#([0-9a-f]{3,6})\s*;/)!;
+    const hex = ink[1].length === 3 ? [...ink[1]].map((digit) => digit + digit).join("") : ink[1];
+    const inkRgb = [0, 2, 4].map((at) => parseInt(hex.slice(at, at + 2), 16));
+
+    const plate = rule.match(/background:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/)!;
+    const alpha = Number(plate[4]);
+    /* The strip over PURE WHITE. Any real cover is darker than white, so any
+       real cover composites to something darker than this — a floor, not an
+       average. It currently comes out at 14.59:1. */
+    const worstBackdrop = [1, 2, 3].map((at) => alpha * Number(plate[at]) + (1 - alpha) * 255);
+
+    expect(contrastRatio(inkRgb, worstBackdrop)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("does not lean on a text-shadow to get there", () => {
+    /* A shadow is what the old caption had instead of a plate, and it is part
+       of why nobody noticed: it makes 1.75:1 look survivable in a screenshot
+       while measuring the same 1.75:1. If one comes back it has to be
+       decoration on top of a ratio that already passes, not the reason it
+       passes. */
+    expect(rule).not.toContain("text-shadow");
+  });
 });
