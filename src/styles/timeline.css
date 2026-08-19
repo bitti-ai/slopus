@@ -439,8 +439,7 @@
   color: var(--danger);
 }
 
-.media-import b,
-.media-import small {
+.media-import b {
   width: 100%;
   text-align: center;
 }
@@ -455,14 +454,9 @@
   padding: 0 var(--space-2);
 }
 
-.media-grid--list .media-import b,
-.media-grid--list .media-import small {
+.media-grid--list .media-import b {
   width: auto;
   text-align: left;
-}
-
-.media-grid--list .media-import small {
-  color: var(--text-muted);
 }
 
 /* --- Program monitor ------------------------------------------------------- */
