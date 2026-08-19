@@ -761,6 +761,32 @@
   letter-spacing: var(--tracking-tight);
 }
 
+/* Reads as the heading it sits in until it is hovered or focused — the same
+   rule the track names follow. */
+.job-title__name {
+  width: 100%;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-overflow: ellipsis;
+}
+
+.job-title__name:hover {
+  border-color: var(--line-strong);
+}
+
+.job-title__name:focus {
+  outline: none;
+  border-color: var(--accent-bright);
+  background: var(--panel-2);
+}
+
 .job-prompt,
 .job-runtime-note {
   padding: var(--space-4) 0;
