@@ -267,7 +267,17 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
             <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>
             <div>
               <span className="job-title__badge">{STATUS_BADGE[selected.status]}</span>
-              <h2>{selected.title}</h2>
+              {/* The title is the one part of a shot PolStudio writes for the
+                  user — taken from their first words — so it has to be theirs
+                  to change. Blanking it falls back rather than saving a
+                  nameless shot the schema would reject. */}
+              <h2><input
+                className="job-title__name"
+                value={selected.title}
+                aria-label={`Rename ${selected.title}`}
+                title="Rename this shot"
+                onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled shot", updatedAt: new Date().toISOString() })}
+              /></h2>
             </div>
           </div>
 

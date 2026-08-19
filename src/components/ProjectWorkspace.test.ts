@@ -198,6 +198,19 @@ describe("project workspace timecode", () => {
     expect(screen.getByText(/sound note/)).not.toBeNull();
   });
 
+  it("renames a shot, and never saves it nameless", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const onChange = vi.fn();
+    render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const field = screen.getByRole("textbox", { name: "Rename First scene" });
+    fireEvent.change(field, { target: { value: "Clay on the wheel" } });
+    expect(onChange.mock.calls[0][0].generationJobs[0].title).toBe("Clay on the wheel");
+    // The schema has no room for an empty title, so an emptied field falls back.
+    fireEvent.change(field, { target: { value: "" } });
+    expect(onChange.mock.calls[1][0].generationJobs[0].title).toBe("Untitled shot");
+    expect(parseProjectConfig(onChange.mock.calls[1][0])).toBeTruthy();
+  });
+
   it("links and unlinks a reference to the selected shot", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const createdAt = fresh.createdAt;
