@@ -667,6 +667,41 @@ describe("project workspace timecode", () => {
     expect(onChange.mock.calls[1][0].generationJobs[0].referenceIds).toEqual([]);
   });
 
+  it("shows each reference's own picture in the generator, and invents none", async () => {
+    /* This list used to render <i class="ref-mini ref-mini--{index}"> against a
+       hardcoded gradient, and only --1 had a rule of its own — so every
+       reference except the second wore the SAME fabricated picture, over files
+       that were sitting on disk and already rendered properly by
+       ReferencesView. The rule here is the one the scene thumb and the media
+       thumb follow: a labelled placeholder, never invented art. */
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const createdAt = fresh.createdAt;
+    const references = [
+      { id: "ref-photo", kind: "image", name: "Lamp photograph", description: "The lamp itself.", relativePath: "references/lamp.jpg", intendedUse: ["product"], createdAt },
+      { id: "ref-light", kind: "text", name: "Window light", description: "Soft north light.", content: "Soft north light.", intendedUse: ["style"], createdAt },
+    ];
+    const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-photo"] }] });
+    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+
+    const tiles = () => [...container.querySelectorAll(".job-refs .ref-mini")];
+    await waitFor(() => expect(tiles()).toHaveLength(2));
+    /* The index-keyed class is what made the stand-in look deliberate. */
+    expect(container.querySelector("[class*='ref-mini--']")).toBeNull();
+
+    /* The image reference goes through the same component References uses, so
+       outside the desktop shell it says which state it is in — loading, or the
+       file is not where the project says — instead of drawing something. */
+    const drawn = tiles().filter((tile) => tile.querySelector("img, .reference-image-fallback"));
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0].parentElement!.textContent).toContain("Lamp photograph");
+
+    /* Both tiles are hidden from the checkbox's own name: the name is the next
+       node inside the same <label>, and announcing it twice is what an alt
+       text here would cost. */
+    expect(tiles().every((tile) => tile.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(screen.getByRole("checkbox", { name: /Lamp photograph/ })).not.toBeNull();
+  });
+
   it("locks a running shot’s references, because the engine already has them", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const references = [{ id: "ref-lamp", kind: "text", name: "Lamp silhouette", description: "Matte cream ceramic.", content: "Matte cream ceramic.", intendedUse: ["product"], createdAt: fresh.createdAt }];
