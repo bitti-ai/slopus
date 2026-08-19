@@ -273,7 +273,7 @@ function createCanvasCompositor(width: number, height: number, background: strin
    Stage 1 — demux
    --------------------------------------------------------------------------- */
 
-interface DemuxedSource {
+export interface DemuxedSource {
   config: VideoDecoderConfig;
   samples: Array<{ data: Uint8Array; timestampUs: number; durationUs: number; key: boolean }>;
 }
@@ -290,7 +290,9 @@ async function readAssetBytes(folderPath: string, asset: ProjectAsset): Promise<
  *  happens to use internally, and `write` touches nothing beyond DataStream. */
 type ConfigurationBox = { write(stream: unknown): void };
 
-async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSource> {
+/** Stage 1 on its own, exported so it can be tested against a real ISOBMFF
+ *  file without a GPU or a WebCodecs implementation in the room. */
+export async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSource> {
   const { createFile, DataStream, Endianness, MP4BoxBuffer } = await import("mp4box");
   type Movie = import("mp4box").Movie;
   type Sample = import("mp4box").Sample;
@@ -313,8 +315,15 @@ async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSource> {
   file.onSamples = (_id, _user, samples) => {
     for (const sample of samples) raw.push(sample);
   };
-  file.appendBuffer(MP4BoxBuffer.fromArrayBuffer(bytes, 0), true);
-  file.flush();
+  /* A file that is not ISOBMFF at all does not reach onError — the parser
+     throws from inside appendBuffer with a message about DataView offsets,
+     which on its own tells nobody which file went wrong. */
+  try {
+    file.appendBuffer(MP4BoxBuffer.fromArrayBuffer(bytes, 0), true);
+    file.flush();
+  } catch (reason) {
+    throw new Error(`${name} could not be read: ${reason instanceof Error ? reason.message : String(reason)}`);
+  }
 
   if (state.failure) throw new Error(`${name} could not be read: ${state.failure}`);
   if (!state.movie) throw new Error(`${name} has no MP4 header PolStudio could parse.`);
