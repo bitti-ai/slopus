@@ -153,6 +153,10 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   const deleteBlockedBy = !selected
     ? "Select a clip to delete it"
     : !selectedTrack || selectedTrack.locked ? "This clip’s track is locked" : null;
+  /* Same rule again for the transport: every one of its controls is off for the
+     same reason, and saying that reason is the difference between a disabled
+     button and a broken one. */
+  const transportBlockedBy = clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : null;
   const importMedia = async () => {
     setImportError(null);
     setImporting(true);
@@ -317,17 +321,6 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
               </div>
             )}
           </div>
-          <div className="monitor-transport">
-            <strong>{timecode(playhead)}</strong>
-            <div>
-              <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : "Go to beginning"} disabled={clipCount === 0}><SkipBack size={18} /></button>
-              {/* Nothing to play means nothing to play: running the clock over
-                  an empty timeline reads as playback of footage that isn't there. */}
-              <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={clipCount === 0} title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : playing ? "Pause" : "Play"}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
-              <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : "Step forward one second"} disabled={clipCount === 0}><SkipForward size={18} /></button>
-            </div>
-            <span>{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
-          </div>
         </main>
 
         <aside className="clip-inspector">
@@ -366,7 +359,21 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
 
       <section className="pro-timeline">
         <header className="timeline-toolbar">
-          <div><h2>Timeline</h2><span>{timecode(playhead)}</span></div>
+          <h2>Timeline</h2>
+          {/* The transport belongs to the timeline, not to the picture: it drives
+              the playhead, and the playhead is drawn a few pixels below this row.
+              Under the monitor it also printed the same timecode this toolbar was
+              already printing, so one clock was shown twice and could be read as
+              two. One transport, one timecode, beside the ruler they refer to. */}
+          <div className="timeline-transport">
+            <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={transportBlockedBy ?? "Go to beginning"} disabled={transportBlockedBy !== null}><SkipBack size={18} /></button>
+            {/* Nothing to play means nothing to play: running the clock over an
+                empty timeline reads as playback of footage that isn't there. */}
+            <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} title={transportBlockedBy ?? (playing ? "Pause" : "Play")}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
+            <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={transportBlockedBy ?? "Step forward one second"} disabled={transportBlockedBy !== null}><SkipForward size={18} /></button>
+            <strong className="transport-time" title="Playhead position">{timecode(playhead)}</strong>
+            <span className="transport-format">{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
+          </div>
           <div className="timeline-tools">
             <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
             <button onClick={splitSelected} disabled={splitBlockedBy !== null} title={splitBlockedBy ?? "Split at playhead"}><Scissors size={16} /> Split</button>

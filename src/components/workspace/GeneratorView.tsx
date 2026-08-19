@@ -151,12 +151,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     const existingAsset = config.assets.find((asset) => asset.relativePath === job.outputRelativePath);
     const asset: ProjectAsset = existingAsset ?? { id: `asset-${crypto.randomUUID()}`, kind: "generated", name: job.title, relativePath: job.outputRelativePath, mimeType: "video/mp4", durationMs: 6_000, createdAt: now };
     /* By id first: tracks can be renamed, and matching on the name alone made
-       a renamed story track invisible here — the next insert built a second
-       "Story" track beside it. The name is the fallback for projects made
-       before the id was fixed. */
+       a renamed first video track invisible here — the next insert built a
+       second one beside it. The name check is the fallback for projects saved
+       before the id was fixed, when the track was still called "Story". */
     const existingStory = config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)
       ?? config.timeline.tracks.find((track) => track.kind === "video" && track.name === "Story");
-    const story: TimelineTrack = existingStory ?? { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: [] };
+    const story: TimelineTrack = existingStory ?? { id: STORY_TRACK_ID, kind: "video", name: "Track 1, Video", locked: false, muted: false, clips: [] };
     if (story.locked) return;
     const startMs = story.clips.reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
     const clip: TimelineClip = { id: `clip-${crypto.randomUUID()}`, assetId: asset.id, trackId: story.id, startMs, durationMs: asset.durationMs ?? 6_000, sourceStartMs: 0, label: job.title, color: "#4f6ba8", status: "generated" };
@@ -371,7 +371,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               </div>
             </>}
 
-            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Story</button>}
+            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Track 1, Video</button>}
 
             {selected.status === "completed" && selected.clipId && <button className="primary-button" onClick={onOpenTimeline}><Play size={15} /> Open in timeline</button>}
 

@@ -433,10 +433,12 @@ export function createDraftGenerationJob(
   });
 }
 
-/* The track a generated shot lands on. Tracks are renameable, so the generator
-   can no longer find this one by its name — an id survives a rename, and a
-   project whose owner called it "Act one" must not grow a second Story track
-   the next time a shot is inserted. */
+/* The track a generated shot lands on: the first video track. Tracks are
+   renameable, so the generator can no longer find this one by its name — an id
+   survives a rename, and a project whose owner called it "Act one" must not
+   grow a second track beside it the next time a shot is inserted. The id keeps
+   its historical spelling so projects saved before the tracks were renamed
+   still resolve to the same track. */
 export const STORY_TRACK_ID = "track-story";
 
 export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
@@ -455,16 +457,17 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       aspectRatio: input.aspectRatio, resolution: input.resolution,
     },
     assets: [],
-    /* Three video layers, not one: an overlay, a title card, or a cutaway has
-       to sit ABOVE the story track, and B-roll below it, and with a single
-       layer the only way to get either there was to displace the shot the
-       story is actually made of. */
+    /* Two video layers and two audio, named the way an editor numbers them.
+       The old set named the layers after a job — Overlays, Story, B-roll — which
+       decided for the user what each one was for; a numbered pair says only
+       where it sits, and every track stays renameable. Two of each is what a
+       cut needs to work at all: something to lay over, and something to lay
+       under. */
     timeline: { tracks: [
-      { id: "track-overlay", kind: "video", name: "Overlays", locked: false, muted: false, clips: [] },
-      { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: [] },
-      { id: "track-b-roll", kind: "video", name: "B-roll", locked: false, muted: false, clips: [] },
-      { id: "track-voice-over", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [] },
-      { id: "track-music", kind: "audio", name: "Music", locked: false, muted: false, clips: [] },
+      { id: STORY_TRACK_ID, kind: "video", name: "Track 1, Video", locked: false, muted: false, clips: [] },
+      { id: "track-v2", kind: "video", name: "Track 2, Video", locked: false, muted: false, clips: [] },
+      { id: "track-a1", kind: "audio", name: "Track 1, Audio", locked: false, muted: false, clips: [] },
+      { id: "track-a2", kind: "audio", name: "Track 2, Audio", locked: false, muted: false, clips: [] },
     ] },
     references: [],
     generationJobs: [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })],
@@ -513,11 +516,10 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     brief: { ...config.brief, status: "generating" },
     assets,
     timeline: { tracks: [
-      { id: "track-v2", kind: "video", name: "Overlays", locked: false, muted: false, clips: [] },
-      { id: STORY_TRACK_ID, kind: "video", name: "Story", locked: false, muted: false, clips: videoClips },
-      { id: "track-b-roll", kind: "video", name: "B-roll", locked: false, muted: false, clips: [] },
-      { id: "track-a1", kind: "audio", name: "Voice-over", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
-      { id: "track-a2", kind: "audio", name: "Music", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
+      { id: STORY_TRACK_ID, kind: "video", name: "Track 1, Video", locked: false, muted: false, clips: videoClips },
+      { id: "track-v2", kind: "video", name: "Track 2, Video", locked: false, muted: false, clips: [] },
+      { id: "track-a1", kind: "audio", name: "Track 1, Audio", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
+      { id: "track-a2", kind: "audio", name: "Track 2, Audio", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
     ] },
     references,
     generationJobs,

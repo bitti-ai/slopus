@@ -22,41 +22,33 @@
   "timeline": {
     "tracks": [
       {
-        "id": "track-overlay",
-        "kind": "video",
-        "name": "Overlays",
-        "locked": false,
-        "muted": false,
-        "clips": []
-      },
-      {
         "id": "track-story",
         "kind": "video",
-        "name": "Story",
+        "name": "Track 1, Video",
         "locked": false,
         "muted": false,
         "clips": []
       },
       {
-        "id": "track-b-roll",
+        "id": "track-v2",
         "kind": "video",
-        "name": "B-roll",
+        "name": "Track 2, Video",
         "locked": false,
         "muted": false,
         "clips": []
       },
       {
-        "id": "track-voice-over",
+        "id": "track-a1",
         "kind": "audio",
-        "name": "Voice-over",
+        "name": "Track 1, Audio",
         "locked": false,
         "muted": false,
         "clips": []
       },
       {
-        "id": "track-music",
+        "id": "track-a2",
         "kind": "audio",
-        "name": "Music",
+        "name": "Track 2, Audio",
         "locked": false,
         "muted": false,
         "clips": []

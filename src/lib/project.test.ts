@@ -16,6 +16,7 @@ import {
   projectNameFromPrompt,
   projectReferenceSchema,
   seedProjectWorkspace,
+  STORY_TRACK_ID,
   usableImageReferences,
   type ProjectReference,
 } from "./project";
@@ -51,10 +52,13 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
-    // Three video layers: an overlay or title card has to be able to sit above
-    // the story track, and B-roll below it, without displacing the shot the
-    // story is made of.
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Overlays", "Story", "B-roll", "Voice-over", "Music"]);
+    // Two video layers over two audio, numbered rather than named after a job:
+    // the seed says where a track sits, not what the user must put on it.
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1, Video", "Track 2, Video", "Track 1, Audio", "Track 2, Audio"]);
+    expect(project.timeline.tracks.map((track) => track.kind)).toEqual(["video", "video", "audio", "audio"]);
+    // GeneratorView inserts generated shots by id. Renaming the tracks must
+    // not move that target off the first video track.
+    expect(project.timeline.tracks[0].id).toBe(STORY_TRACK_ID);
     expect(project.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
     expect(project.references).toEqual([]);
     expect(project.generationJobs).toHaveLength(1);
@@ -308,6 +312,17 @@ describe("project schema", () => {
     // job has NO clipId key at all, which is what every real project looks like.
     expect(parseProjectConfig(createdFixture)).toBeTruthy();
     expect("clipId" in createdFixture.generationJobs[0]).toBe(false);
+    // Rust reads THIS file and writes the wire fixtures from it, so a seed
+    // change that lands only in the TypeScript leaves the two layers testing
+    // different projects. Compare the part that was seeded.
+    const created = createProjectConfig({
+      name: "Freshly created project",
+      prompt: "a rocket launch over the ocean at dawn",
+      aspectRatio: "16:9",
+      resolution: "1080p",
+      targetDurationSeconds: 60,
+    });
+    expect(createdFixture.timeline).toEqual(created.timeline);
   });
 
   it("accepts an explicit null for every optional the backend can serialise as null", () => {
@@ -403,7 +418,11 @@ describe("project schema", () => {
       resolution: "4k",
       targetDurationSeconds: 34,
     }));
-    expect(project.timeline.tracks).toHaveLength(5);
+    expect(project.timeline.tracks).toHaveLength(4);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1, Video", "Track 2, Video", "Track 1, Audio", "Track 2, Audio"]);
+    // Every demo clip has to land on a track that is actually in the seed.
+    const trackIds = new Set(project.timeline.tracks.map((track) => track.id));
+    expect(project.timeline.tracks.flatMap((track) => track.clips).every((clip) => trackIds.has(clip.trackId))).toBe(true);
     expect(project.generationJobs.some((job) => job.status === "generating")).toBe(true);
     expect(project.references.some((reference) => reference.kind === "image")).toBe(true);
     expect(project.assets.every((asset) => !asset.relativePath.match(/^([a-z]:|[/\\])/i))).toBe(true);
