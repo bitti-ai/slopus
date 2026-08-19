@@ -1175,32 +1175,57 @@ struct ImportedReference {
     source_path: Option<String>,
 }
 
-/// Files the user chose from the OS picker in THIS run, canonicalised.
+/// Files the user chose from the OS picker in THIS run, canonicalised, keyed by
+/// the canonical folder of the project they were picked FOR.
 ///
 /// The project file on disk is the durable record of what may be read from
 /// outside the folder, but it lags: saving is a deliberate act, so a clip
 /// imported a second ago is not in it yet and its preview would be refused as
-/// "not one of the files this project points at". This list closes that gap
+/// "not one of the files this project points at". This map closes that gap
 /// without widening anything — every entry got here because the user picked
-/// that exact file in a native dialog. It is never written to disk and never
-/// survives a restart; the project file does that.
-static PICKED_EXTERNAL_FILES: std::sync::LazyLock<std::sync::Mutex<BTreeSet<PathBuf>>> =
-    std::sync::LazyLock::new(Default::default);
+/// that exact file in a native dialog, for that one project.
+///
+/// The key is the point. A flat list was process-global, so importing your own
+/// rushes and then opening a colleague's project let THEIR project file name
+/// and read YOUR footage: nothing in the read path could tell which project a
+/// pick belonged to. Entries are never written to disk and never survive a
+/// restart; the project file does that.
+static PICKED_EXTERNAL_FILES: std::sync::LazyLock<
+    std::sync::Mutex<BTreeMap<PathBuf, BTreeSet<PathBuf>>>,
+> = std::sync::LazyLock::new(Default::default);
 
-fn remember_picked_file(path: &Path) {
-    if let Ok(canonical) = path.canonicalize() {
-        // A poisoned lock only means another thread panicked mid-insert; the
-        // fallback is the project file, so there is nothing to escalate here.
-        if let Ok(mut picked) = PICKED_EXTERNAL_FILES.lock() {
-            picked.insert(canonical);
-        }
+/// The identity a project folder is remembered by. Canonical, so one folder
+/// spelled two ways is one key. `None` when the folder cannot be resolved, in
+/// which case nothing is remembered and the project file on disk stays the only
+/// allow-list.
+fn session_key(project_folder: &Path) -> Option<PathBuf> {
+    project_folder.canonicalize().ok()
+}
+
+fn remember_picked_file(project_folder: &Path, path: &Path) {
+    let (Some(key), Ok(canonical)) = (session_key(project_folder), path.canonicalize()) else {
+        return;
+    };
+    // A poisoned lock only means another thread panicked mid-insert; the
+    // fallback is the project file, so there is nothing to escalate here.
+    if let Ok(mut picked) = PICKED_EXTERNAL_FILES.lock() {
+        picked.entry(key).or_default().insert(canonical);
     }
 }
 
-fn was_picked_this_session(canonical: &Path) -> bool {
+/// Was this file picked in this run *for this project*? A pick made while a
+/// different project was open is not an answer here.
+fn was_picked_for_project(project_folder: &Path, canonical: &Path) -> bool {
+    let Some(key) = session_key(project_folder) else {
+        return false;
+    };
     PICKED_EXTERNAL_FILES
         .lock()
-        .map(|picked| picked.contains(canonical))
+        .map(|picked| {
+            picked
+                .get(&key)
+                .is_some_and(|files| files.contains(canonical))
+        })
         .unwrap_or(false)
 }
 
@@ -1216,12 +1241,13 @@ fn external_source_path(source: &Path) -> Result<String, String> {
     normalize_external_path(&display_path(&canonical))
 }
 
-/// The same path, and a note that the user just chose this file — so its
-/// preview works before the project has been saved. Only the import paths call
-/// this, and they only run on what came back from a native picker.
-fn picked_external_source_path(source: &Path) -> Result<String, String> {
+/// The same path, and a note that the user just chose this file FOR this
+/// project — so its preview works before the project has been saved. Only the
+/// import paths call this, and they only run on what came back from a native
+/// picker.
+fn picked_external_source_path(source: &Path, project_folder: &Path) -> Result<String, String> {
     let path = external_source_path(source)?;
-    remember_picked_file(source);
+    remember_picked_file(project_folder, source);
     Ok(path)
 }
 
@@ -1258,7 +1284,7 @@ fn import_reference_file(
                 .unwrap_or("Reference")
                 .to_string(),
             relative_path: None,
-            source_path: Some(picked_external_source_path(source)?),
+            source_path: Some(picked_external_source_path(source, project_folder)?),
         }),
         _ => Err("Choose an image, a video, or a sound file.".into()),
     }
@@ -1315,7 +1341,7 @@ fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMed
                 .unwrap_or("Imported media")
                 .to_string(),
             relative_path: None,
-            source_path: Some(picked_external_source_path(source)?),
+            source_path: Some(picked_external_source_path(source, project_folder)?),
             mime_type: mime_type.into(),
         });
     }
@@ -1347,19 +1373,42 @@ fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMed
     })
 }
 
+/// The canonical folder of a folder that actually holds a PolStudio project.
+///
+/// Every read command takes the folder from its caller, and "a folder" is not
+/// the same claim as "a project". Requiring the settings file to be there means
+/// a caller cannot aim a read at `C:\Users\NN\.ssh` and have the rest of the
+/// command's checks — which only ever constrain the path *relative* to that
+/// folder — do exactly what they promise while pointing at the wrong disk.
+fn project_root(folder_path: &str) -> Result<PathBuf, String> {
+    let root = PathBuf::from(folder_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    if !root.is_dir() {
+        return Err("The selected project folder does not exist.".into());
+    }
+    if !project_file_in(&root).is_file() {
+        return Err(format!(
+            "{} does not hold a PolStudio project.",
+            display_path(&root)
+        ));
+    }
+    Ok(root)
+}
+
 /// Hands the webview the bytes of one file inside a project, so it can show a
-/// reference image the user imported. Confined to the project folder: the
-/// relative path goes through the same normaliser every stored path does, and
-/// the result is checked to still sit under the canonical root, so a crafted
-/// `..` in a hand-edited polstudio.json cannot read the rest of the disk.
+/// reference image the user imported. Confined to a real project folder, twice
+/// over: the folder must actually contain the settings file, and the relative
+/// path goes through the same normaliser every stored path does and is then
+/// checked to still sit under the canonical root. So a crafted `..` in a
+/// hand-edited polstudio.json cannot read the rest of the disk, and a caller
+/// that names some other folder entirely does not get a reader for it.
 #[tauri::command]
 fn read_project_file(
     folder_path: String,
     relative_path: String,
 ) -> Result<tauri::ipc::Response, String> {
-    let root = PathBuf::from(folder_path)
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    let root = project_root(&folder_path)?;
     let relative = normalize_project_path(&relative_path)?;
     let target = root
         .join(&relative)
@@ -1394,20 +1443,34 @@ fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
 ///
 /// Video and audio are no longer copied in, so the webview has to be able to
 /// read them where they are — and that is exactly the shape of an arbitrary
-/// file read, so it is fenced three ways:
+/// file read. Read the rule literally, because it is wider than "the user
+/// picked this file" and pretending otherwise is how the next reader is fooled:
 ///
-/// 1. The path must be one the USER chose: either recorded in the project file
-///    ON DISK (canonicalised on both sides before comparing), or picked from a
-///    native dialog earlier in this run — never merely named by the caller. The
-///    session list exists because saving is deliberate: a clip imported a
-///    moment ago is not in the project file yet.
-/// 2. It must still carry a media extension PolStudio imports, so even a
-///    hand-edited project file cannot turn this into a reader for keys, wallets
-///    or documents.
+/// 1. The folder named must actually hold a project, and the path asked for
+///    must be one that project NAMES — either written in its `polstudio.json`
+///    on disk (canonicalised on both sides before comparing), or picked from a
+///    native dialog for THAT project earlier in this run. The session list
+///    exists because saving is deliberate: a clip imported a moment ago is not
+///    in the project file yet.
+/// 2. It must still carry a media extension PolStudio imports (checked on the
+///    canonicalised path, so a symlink is judged by its target), so no project
+///    file can turn this into a reader for keys, wallets or documents.
 /// 3. It must be a regular file that exists now.
 ///
+/// So the actor whose choice opens a file is the PROJECT FILE, not necessarily
+/// the person. A `polstudio.json` the user merely OPENED — a template a
+/// colleague sent, an unzipped project, anything they double-clicked without
+/// reading — can name `C:\Users\NN\Pictures\private.jpg` and this command will
+/// serve those bytes to the webview. That is inherent: the whole point of
+/// recording an external path is that reopening the project months later still
+/// previews the rushes, so the file on disk has to be believed. What bounds the
+/// damage is rule 2 (media only, never credentials) and rule 1's scoping (one
+/// project's picks are not another's). What does NOT bound it is the caller's
+/// good intentions, and nothing here should be described as "the user chose
+/// it".
+///
 /// What it deliberately does NOT do is trust the caller's string: an argument
-/// that is not on the recorded list is refused whatever it points at.
+/// the project does not name is refused whatever it points at.
 #[tauri::command]
 fn read_external_media_file(
     folder_path: String,
@@ -1417,7 +1480,8 @@ fn read_external_media_file(
 }
 
 fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>, String> {
-    let project = read_project(Path::new(&folder_path))?;
+    let root = project_root(folder_path)?;
+    let project = read_project(&root)?;
     let requested = PathBuf::from(&source_path)
         .canonicalize()
         .map_err(|error| format!("Could not resolve {source_path}: {error}"))?;
@@ -1427,7 +1491,7 @@ fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>,
             .map(|canonical| canonical == requested)
             .unwrap_or(false)
     });
-    if !recorded && !was_picked_this_session(&requested) {
+    if !recorded && !was_picked_for_project(&root, &requested) {
         return Err(format!(
             "{source_path} is not one of the files this project points at."
         ));
@@ -2554,6 +2618,149 @@ mod tests {
         assert!(
             external_media_bytes(&project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
         );
+    }
+
+    /// Writes a minimal real project folder and returns it, so a test can say
+    /// "a folder that holds a project" without the create ceremony.
+    fn project_folder_at(path: &Path) -> PathBuf {
+        fs::create_dir_all(path).unwrap();
+        write_project(path, &created_fixture()).unwrap();
+        path.to_path_buf()
+    }
+
+    /// S1: the perimeter this command actually has, pinned so nobody has to
+    /// take the docstring's word for it. The actor that opens a file here is
+    /// the PROJECT FILE, not the person — a `polstudio.json` the user merely
+    /// opened can name any media file on the disk and get its bytes. That is
+    /// inherent to recording external paths at all (reopen a project a year
+    /// later and the rushes still preview), so it is documented rather than
+    /// pretended away. What it is bounded by is asserted here too.
+    #[test]
+    fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
+        let root = tempfile::tempdir().unwrap();
+        let pictures = root.path().join("Pictures");
+        fs::create_dir(&pictures).unwrap();
+        let private_photo = pictures.join("private.jpg");
+        fs::write(&private_photo, b"PRIVATE PHOTO BYTES").unwrap();
+        let diary = pictures.join("diary.txt");
+        fs::write(&diary, b"DIARY").unwrap();
+        let unnamed = pictures.join("holiday.jpg");
+        fs::write(&unnamed, b"ANOTHER PHOTO").unwrap();
+
+        // A project file the user did not write: a template a colleague sent,
+        // an unzipped folder. Nobody picked these paths in any dialog.
+        let mut config = created_fixture();
+        for (index, (id, file)) in [("named", &private_photo), ("crafted", &diary)]
+            .into_iter()
+            .enumerate()
+        {
+            config.assets.push(ProjectAsset {
+                id: format!("asset-{id}"),
+                kind: "image".into(),
+                name: format!("Shared {index}"),
+                relative_path: None,
+                source_path: Some(external_source_path(file).unwrap()),
+                mime_type: "image/jpeg".into(),
+                duration_ms: None,
+                width: None,
+                height: None,
+                created_at: config.created_at.clone(),
+            });
+        }
+        let shared = root.path().join("Shared project");
+        fs::create_dir(&shared).unwrap();
+        write_project(&shared, &config).unwrap();
+        let folder = shared.to_string_lossy().into_owned();
+
+        // The rule, stated plainly: the project names it, so it is served.
+        let named = config.assets[0].source_path.clone().unwrap();
+        assert_eq!(
+            external_media_bytes(&folder, &named).unwrap(),
+            b"PRIVATE PHOTO BYTES",
+            "this is the documented perimeter, not a wish about it"
+        );
+
+        // And the two things that DO bound it. Media extensions only, checked
+        // on the canonical path — a project file cannot name credentials.
+        let crafted = config.assets[1].source_path.clone().unwrap();
+        assert!(external_media_bytes(&folder, &crafted)
+            .unwrap_err()
+            .contains("not a media file"));
+        // And only what the project names: not the whole folder around it.
+        assert!(external_media_bytes(&folder, &unnamed.to_string_lossy())
+            .unwrap_err()
+            .contains("not one of the files this project points at"));
+    }
+
+    /// S2: a file picked while project A was open is not project B's to read.
+    /// The session list used to be process-global, so opening a colleague's
+    /// project after importing your own rushes handed their project file a
+    /// reader for your footage — no hand-editing required, the paths were
+    /// already in memory.
+    #[test]
+    fn one_project_s_picks_are_not_another_project_s_to_read() {
+        let root = tempfile::tempdir().unwrap();
+        let rushes = root.path().join("Rushes");
+        fs::create_dir(&rushes).unwrap();
+        let footage = rushes.join("my footage.mp4");
+        fs::write(&footage, b"A's footage").unwrap();
+
+        let mine = project_folder_at(&root.path().join("Mine"));
+        let theirs = project_folder_at(&root.path().join("Theirs"));
+
+        // Imported into MY project, and not saved yet: only the session list
+        // knows about it.
+        let imported = import_media_file(&footage, &mine).unwrap();
+        let source = imported.source_path.unwrap();
+        assert!(recorded_external_paths(&read_project(&mine).unwrap().config).is_empty());
+
+        assert_eq!(
+            external_media_bytes(&mine.to_string_lossy(), &source).unwrap(),
+            b"A's footage",
+            "the project the clip was imported into must still preview it"
+        );
+        let error = external_media_bytes(&theirs.to_string_lossy(), &source).unwrap_err();
+        assert!(
+            error.contains("not one of the files this project points at"),
+            "another project read a file picked for this one: {error}"
+        );
+    }
+
+    /// S3: `read_project_file` confines the relative path against the folder it
+    /// is handed, and nothing used to check that the folder was a project. The
+    /// pair was the hole: every check passed while pointing at `.ssh`.
+    #[test]
+    fn reading_a_project_file_requires_the_folder_to_hold_a_project() {
+        let root = tempfile::tempdir().unwrap();
+        let ssh = root.path().join(".ssh");
+        fs::create_dir(&ssh).unwrap();
+        fs::write(ssh.join("id_rsa"), b"BEGIN OPENSSH PRIVATE KEY").unwrap();
+
+        // `tauri::ipc::Response` is not `Debug`, so the error comes out by hand.
+        let read = |folder: &Path, relative: &str| {
+            read_project_file(folder.to_string_lossy().into_owned(), relative.into())
+                .map(|_| ())
+                .err()
+        };
+        let error = read(&ssh, "id_rsa").expect("a folder with no project was read");
+        assert!(
+            error.contains("does not hold a PolStudio project"),
+            "unexpected error: {error}"
+        );
+        // Same shape for the external read, which takes the folder too.
+        assert!(
+            external_media_bytes(&ssh.to_string_lossy(), &ssh.join("id_rsa").to_string_lossy())
+                .unwrap_err()
+                .contains("does not hold a PolStudio project")
+        );
+
+        // A real project still reads its own files.
+        let project = project_folder_at(&root.path().join("project"));
+        fs::create_dir_all(project.join("references")).unwrap();
+        fs::write(project.join("references/harbor.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(read(&project, "references/harbor.png"), None);
+        // ...and still cannot climb out of itself.
+        assert!(read(&project, "../.ssh/id_rsa").is_some());
     }
 
     #[test]
