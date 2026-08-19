@@ -1,18 +1,19 @@
 import { Image as ImageIcon, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
-import { readProjectFileUrl } from "../../lib/persistence";
+import { readMediaFileUrl } from "../../lib/persistence";
 
-/* Reference images live in the project folder, which the webview cannot reach
- * directly — so the bytes come back through a Tauri command and become a blob
- * URL here. The URL is revoked on unmount and on every path change; without
+/* An image reference is copied into the project folder; a video or sound
+ * reference is left where the user keeps it and only its absolute path is
+ * recorded. Either way the webview cannot reach the file directly — so the
+ * bytes come back through a Tauri command and become a blob URL here. The URL is revoked on unmount and on every path change; without
  * that, browsing a library of references pins each one in memory for the life
  * of the window.
  *
  * The extension is the only thing available to type the blob: nothing has
  * decoded the file. Getting it wrong costs a broken <img>, which is exactly
  * what `failed` renders. */
-const mimeFor = (relativePath: string) => {
-  const extension = relativePath.split(".").pop()?.toLowerCase();
+const mimeFor = (path: string) => {
+  const extension = path.split(".").pop()?.toLowerCase();
   switch (extension) {
     case "png": return "image/png";
     case "webp": return "image/webp";
@@ -21,9 +22,12 @@ const mimeFor = (relativePath: string) => {
   }
 };
 
-export function ReferenceImage({ folderPath, relativePath, alt, className = "" }: {
+export function ReferenceImage({ folderPath, relativePath, sourcePath = null, alt, className = "" }: {
   folderPath: string;
-  relativePath: string;
+  /** Set for a file copied into the project. */
+  relativePath?: string | null;
+  /** Set instead for a file the project only points at. */
+  sourcePath?: string | null;
   alt: string;
   className?: string;
 }) {
@@ -35,7 +39,7 @@ export function ReferenceImage({ folderPath, relativePath, alt, className = "" }
     let live = true;
     setFailed(false);
     setUrl(null);
-    void readProjectFileUrl(folderPath, relativePath, mimeFor(relativePath))
+    void readMediaFileUrl(folderPath, { relativePath, sourcePath }, mimeFor(sourcePath ?? relativePath ?? ""))
       .then((value) => {
         // Unmounted (or moved to another reference) while the read was in
         // flight: revoke immediately, because nothing else ever will.
@@ -52,7 +56,7 @@ export function ReferenceImage({ folderPath, relativePath, alt, className = "" }
       live = false;
       if (current) URL.revokeObjectURL(current);
     };
-  }, [folderPath, relativePath]);
+  }, [folderPath, relativePath, sourcePath]);
 
   if (url) {
     return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} />;

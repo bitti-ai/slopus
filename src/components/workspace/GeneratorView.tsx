@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, Film, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectFilePath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 
 interface GeneratorViewProps {
@@ -79,7 +79,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       seed: 482091,
       aspectRatio: config.settings.aspectRatio,
       referencePaths: usableImageReferences(bound)
-        .map((reference) => projectFilePath(folderPath, reference.relativePath ?? ""))
+        .map((reference) => projectItemPath(folderPath, reference) ?? "")
         .filter((path) => path.length > 0),
     };
   };

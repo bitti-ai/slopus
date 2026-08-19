@@ -1,6 +1,6 @@
 import { Image as ImageIcon, Music2, TriangleAlert, Video } from "lucide-react";
 import { useEffect, useState } from "react";
-import { readProjectFileUrl } from "../../lib/persistence";
+import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectAsset } from "../../lib/project";
 
 /* A real picture of the media, not a striped placeholder.
@@ -80,7 +80,7 @@ async function imagePoster(url: string): Promise<string> {
 }
 
 export function MediaThumbnail({ folderPath, asset }: { folderPath: string; asset: ProjectAsset }) {
-  const cacheKey = `${folderPath}::${asset.relativePath}`;
+  const cacheKey = `${folderPath}::${asset.sourcePath ?? asset.relativePath}`;
   const [poster, setPoster] = useState<string | null>(() => POSTER_CACHE.get(cacheKey) ?? null);
   const [failed, setFailed] = useState(false);
 
@@ -92,7 +92,7 @@ export function MediaThumbnail({ folderPath, asset }: { folderPath: string; asse
     void (async () => {
       let url: string | null = null;
       try {
-        url = await readProjectFileUrl(folderPath, asset.relativePath, asset.mimeType);
+        url = await readMediaFileUrl(folderPath, asset, asset.mimeType);
         // Browser preview: there is no project folder, so there is nothing to
         // show and nothing has gone wrong. The kind icon stands in.
         if (!url) return;
@@ -106,7 +106,7 @@ export function MediaThumbnail({ folderPath, asset }: { folderPath: string; asse
       }
     })();
     return () => { live = false; };
-  }, [cacheKey, folderPath, asset.relativePath, asset.mimeType, asset.kind]);
+  }, [cacheKey, folderPath, asset, asset.mimeType, asset.kind]);
 
   if (poster) {
     return <span className="media-thumb media-thumb--poster">
