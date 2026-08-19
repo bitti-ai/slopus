@@ -1026,6 +1026,13 @@
   align-self: flex-start;
 }
 
+/* The placeholder moved into the status column when the scene editor took the
+   main one, so it sits between two bordered blocks rather than leading a page. */
+.job-detail__info .generation-preview {
+  min-height: 148px;
+  margin: var(--space-4) 0;
+}
+
 /* --- The compiled prompt --------------------------------------------------- */
 
 /* Shown before anything is committed, and coloured by authorship, because the
