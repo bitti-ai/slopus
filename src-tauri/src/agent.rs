@@ -356,7 +356,13 @@ fn confined_project_root(folder: &Path) -> Result<PathBuf, String> {
     if !canonical.is_dir() || !holds_a_project {
         return Err("Agent turns require a valid PolStudio project root.".into());
     }
-    Ok(canonical)
+    // `canonicalize` hands back a `\\?\`-prefixed verbatim path on Windows.
+    // Windows itself normalises that away for a child's working directory, but
+    // Codex is *told* its root a second time as a plain `-C <DIR>` argument,
+    // and a third-party CLI has no reason to understand the verbatim form. The
+    // rest of the app already reports project folders through `display_path`,
+    // so the agent hands the CLIs the same spelling the user sees.
+    Ok(PathBuf::from(crate::display_path(&canonical)))
 }
 
 trait AgentProvider {
@@ -414,8 +420,20 @@ impl AgentProvider for ClaudeProvider {
     ) -> Result<CommandSpec, String> {
         let mut args = vec![
             "--print".into(),
+            // Not optional decoration: `claude --print --output-format
+            // stream-json` refuses to start without it —
+            // "When using --print, --output-format=stream-json requires
+            // --verbose" — and exits 1 before contacting the model. Everything
+            // it adds is more NDJSON records on the same stream (system/init,
+            // rate_limit_event, thinking-only assistant turns), which
+            // `extract_provider_output` walks past on its way to the final
+            // `result` record.
+            "--verbose".into(),
             "--output-format".into(),
             "stream-json".into(),
+            // `--tools` is variadic, so it must never be the last flag before
+            // the positional prompt or it would swallow it. `--system-prompt`
+            // below keeps that from happening.
             "--tools".into(),
             "".into(),
             "--system-prompt".into(),
@@ -456,13 +474,21 @@ impl AgentProvider for CodexProvider {
             .map_err(|error| format!("Could not prepare agent cache: {error}"))?;
         fs::write(&schema_path, OUTPUT_SCHEMA)
             .map_err(|error| format!("Could not write agent output schema: {error}"))?;
+        // Every flag here is scoped to the `exec` subcommand, so `exec` stays
+        // first and the positional prompt stays last. `--skip-git-repo-check`
+        // and `--output-schema` do not exist on the top-level `codex` command
+        // at all; put them before `exec` and clap fails the invocation.
         let mut args: Vec<OsString> = vec![
             "exec".into(),
             "--ephemeral".into(),
             "--ignore-user-config".into(),
             "--json".into(),
+            // A PolStudio project folder is a plain directory of media and
+            // JSON; it is usually not a git repository, and Codex refuses to
+            // run outside one without this.
+            "--skip-git-repo-check".into(),
             "--sandbox".into(),
-            "read-only".into(),
+            "workspace-write".into(),
             "-C".into(),
             root.as_os_str().into(),
             "--output-schema".into(),
@@ -592,24 +618,44 @@ fn run_subprocess(
         return Err(format!("Agent provider exited with {status}: {diagnostic}"));
     }
     events.push(AgentEvent::Completed);
-    let output = extract_provider_output(&lines)
-        .ok_or_else(|| "Agent provider returned no structured result.".to_string())?;
+    let output = extract_provider_output(&lines)?;
     Ok((events, output))
 }
 
-fn extract_provider_output(lines: &[String]) -> Option<String> {
+/// Reduce a provider's NDJSON transcript to the one payload the turn contract
+/// is parsed from.
+///
+/// `--verbose` is mandatory for Claude's stream-json output, so the transcript
+/// always carries records this has to walk past: `system/init`,
+/// `rate_limit_event`, `system/thinking_tokens`, and assistant turns whose
+/// only content block is `thinking` (no `text` at all). Scanning from the end
+/// reaches the terminal `result` record first, which is the whole answer.
+fn extract_provider_output(lines: &[String]) -> Result<String, String> {
     for line in lines.iter().rev() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
+        // Claude reports a failed turn in band and still exits 0; `result`
+        // then holds an error message rather than a turn payload. Saying that
+        // beats letting it fall through and blaming the turn contract.
+        if value.get("type").and_then(Value::as_str) == Some("result")
+            && value.get("is_error").and_then(Value::as_bool) == Some(true)
+        {
+            let detail = value
+                .get("result")
+                .and_then(Value::as_str)
+                .or_else(|| value.get("subtype").and_then(Value::as_str))
+                .unwrap_or("the provider gave no detail");
+            return Err(format!("The agent provider reported a failed turn: {detail}"));
+        }
         if value.get("kind").is_some() {
-            return Some(line.clone());
+            return Ok(line.clone());
         }
         if let Some(text) = value.get("result").and_then(Value::as_str) {
-            return Some(text.into());
+            return Ok(text.into());
         }
         if let Some(text) = value.pointer("/item/text").and_then(Value::as_str) {
-            return Some(text.into());
+            return Ok(text.into());
         }
         if let Some(content) = value.pointer("/message/content").and_then(Value::as_array) {
             if let Some(text) = content
@@ -617,11 +663,11 @@ fn extract_provider_output(lines: &[String]) -> Option<String> {
                 .rev()
                 .find_map(|item| item.get("text").and_then(Value::as_str))
             {
-                return Some(text.into());
+                return Ok(text.into());
             }
         }
     }
-    None
+    Err("Agent provider returned no structured result.".into())
 }
 
 fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
@@ -807,7 +853,138 @@ mod tests {
         assert!(codex
             .args
             .windows(2)
-            .any(|pair| pair[0] == "--sandbox" && pair[1] == "read-only"));
+            .any(|pair| pair[0] == "--sandbox" && pair[1] == "workspace-write"));
+    }
+
+    /// `claude --print --output-format stream-json` exits 1 before it reaches
+    /// the model — "When using --print, --output-format=stream-json requires
+    /// --verbose" — so the flag is load-bearing, not decoration. Verified
+    /// against claude 2.1.234.
+    #[test]
+    fn claude_stream_json_is_invoked_with_the_verbose_flag_it_requires() {
+        let root = tempfile::tempdir().unwrap();
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let spec = ClaudeProvider
+            .command_spec(root.path(), Path::new("claude"), &config, "hello", None)
+            .unwrap();
+        let args: Vec<String> = spec
+            .args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            args[..6],
+            [
+                "--print",
+                "--verbose",
+                "--output-format",
+                "stream-json",
+                "--tools",
+                ""
+            ]
+        );
+        // `--tools` takes a variadic list. If it were the last flag before the
+        // positional prompt it would eat the prompt, so a flag must follow it.
+        let tools = args.iter().position(|arg| arg == "--tools").unwrap();
+        assert!(args[tools + 2].starts_with("--"));
+        // The prompt is positional and therefore last.
+        assert!(args.last().unwrap().contains("hello"));
+    }
+
+    /// `--skip-git-repo-check`, `--output-schema` and `--json` exist only on
+    /// `codex exec`; the top-level `codex` command rejects them. Order matters
+    /// twice over: after the subcommand, before the positional prompt.
+    /// Verified against codex-cli 0.147.0.
+    #[test]
+    fn codex_flags_sit_between_the_exec_subcommand_and_the_prompt() {
+        let root = tempfile::tempdir().unwrap();
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let spec = CodexProvider
+            .command_spec(root.path(), Path::new("codex"), &config, "hello", None)
+            .unwrap();
+        let args: Vec<String> = spec
+            .args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(args[0], "exec");
+        let prompt = args.len() - 1;
+        assert!(args[prompt].contains("hello"));
+        for flag in ["--skip-git-repo-check", "--json", "--ephemeral"] {
+            let at = args
+                .iter()
+                .position(|arg| arg == flag)
+                .unwrap_or_else(|| panic!("{flag} is missing from the codex invocation"));
+            assert!(at > 0 && at < prompt, "{flag} is out of position");
+        }
+        // A read-only sandbox cannot write the project file a mutation turn
+        // proposes.
+        let sandbox = args.iter().position(|arg| arg == "--sandbox").unwrap();
+        assert_eq!(args[sandbox + 1], "workspace-write");
+        assert!(sandbox < prompt);
+    }
+
+    /// `canonicalize` returns `\\?\C:\...` on Windows. Windows normalises that
+    /// away for a child's working directory, but Codex is handed its root a
+    /// second time as a plain `-C <DIR>` argument, where the verbatim form is
+    /// nobody's contract.
+    #[test]
+    fn the_working_directory_is_the_plain_project_folder() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join(PROJECT_FILE_NAME), "{}").unwrap();
+        let confined = confined_project_root(root.path()).unwrap();
+
+        assert!(!confined.to_string_lossy().starts_with(r"\\?\"));
+        assert!(confined.join(PROJECT_FILE_NAME).is_file());
+
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let claude = ClaudeProvider
+            .command_spec(&confined, Path::new("claude"), &config, "hi", None)
+            .unwrap();
+        let codex = CodexProvider
+            .command_spec(&confined, Path::new("codex"), &config, "hi", None)
+            .unwrap();
+        assert_eq!(claude.current_dir, confined);
+        assert_eq!(codex.current_dir, confined);
+        // Codex is told the same folder a second time, as an argument.
+        let cd = codex.args.iter().position(|arg| arg == "-C").unwrap();
+        assert_eq!(Path::new(&codex.args[cd + 1]), confined);
+    }
+
+    /// A real `--verbose` transcript, trimmed of payload but structurally
+    /// intact: an init record, a rate-limit record, an assistant turn whose
+    /// only content block is `thinking` (no `text` key at all), the assistant
+    /// turn that carries the answer, and the terminal `result`.
+    #[test]
+    fn verbose_stream_records_do_not_hide_the_final_result() {
+        let lines: Vec<String> = vec![
+            r#"{"type":"system","subtype":"init","cwd":"C:\\Projects\\Film","tools":[]}"#.into(),
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}"#.into(),
+            r#"{"type":"system","subtype":"thinking_tokens","estimated_tokens":50}"#.into(),
+            r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"","signature":"CAIS"}]}}"#.into(),
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"{\"kind\":\"answer\",\"content\":\"streamed\"}"}]}}"#.into(),
+            r#"{"is_error":false,"subtype":"success","type":"result","result":"{\"kind\":\"answer\",\"content\":\"streamed\"}"}"#.into(),
+        ];
+        assert!(matches!(
+            parse_turn_result(&extract_provider_output(&lines).unwrap()).unwrap(),
+            AgentTurnResult::Answer { content } if content == "streamed"
+        ));
+    }
+
+    #[test]
+    fn an_in_band_failure_is_reported_as_a_failure() {
+        // Claude still exits 0 for this, so the exit status cannot catch it.
+        let lines: Vec<String> = vec![
+            r#"{"type":"system","subtype":"init","cwd":"C:\\Projects\\Film"}"#.into(),
+            r#"{"is_error":true,"subtype":"error_during_execution","type":"result","result":"Credit balance is too low"}"#.into(),
+        ];
+        let error = extract_provider_output(&lines).unwrap_err();
+        assert!(error.contains("Credit balance is too low"), "{error}");
     }
 
     #[cfg(windows)]
