@@ -3,7 +3,36 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { ProjectCard, relativeDate } from "./components/ProjectCard";
 import { createProjectConfig } from "./lib/project";
+
+describe("how long ago a project was edited", () => {
+  afterEach(cleanup);
+  const secondsAgo = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
+
+  it("says what is true, including inside the first hour", () => {
+    // N8: this used to floor at an hour, so a project saved two seconds ago was
+    // labelled "Edited 1h ago" — the card's one claim about the project's life,
+    // wrong for the whole first hour of it.
+    expect(relativeDate(secondsAgo(2))).toBe("just now");
+    expect(relativeDate(secondsAgo(59))).toBe("just now");
+    expect(relativeDate(secondsAgo(90))).toBe("1 min ago");
+    expect(relativeDate(secondsAgo(59 * 60))).toBe("59 min ago");
+    expect(relativeDate(secondsAgo(60 * 60))).toBe("1h ago");
+    // Elapsed time, not the nearest label: 1h59m is not two hours yet.
+    expect(relativeDate(secondsAgo(119 * 60))).toBe("1h ago");
+    expect(relativeDate(secondsAgo(26 * 3_600))).toBe("1d ago");
+    // A clock that has moved backwards since the save is not a project edited
+    // in the future.
+    expect(relativeDate(secondsAgo(-30))).toBe("just now");
+  });
+
+  it("prints a just-saved project as just saved", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const { container } = render(<ProjectCard project={{ folderPath: "C:\\Ceramic Lamp", config }} index={0} onOpen={() => undefined} />);
+    expect(container.querySelector(".project-card__meta")!.textContent).toContain("Edited just now");
+  });
+});
 
 describe("project library controls", () => {
   beforeEach(() => localStorage.clear());

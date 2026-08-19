@@ -10,10 +10,20 @@ interface ProjectCardProps {
 
 const artwork = ["aurora", "paper", "chrome", "ember"];
 
-function relativeDate(iso: string) {
-  const hours = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 3_600_000));
+/* How long ago, said honestly. This floored everything at an hour, so a project
+   saved two seconds ago was labelled "Edited 1h ago" — the card's only claim
+   about the project's life, and it was false for the whole first hour. Rounding
+   is out for the same reason: 1h59m is not two hours yet. Everything below is
+   how much time has definitely passed. A clock that has moved backwards since
+   the save (a machine resyncing, a file from another timezone) leaves a
+   negative age, which is no age at all and reads as just now. */
+export function relativeDate(iso: string, now = Date.now()) {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
+  const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(iso));
 }
