@@ -23,6 +23,22 @@ npm run build
 cd src-tauri && cargo test
 ```
 
+## Application icons
+
+`src-tauri/icons/` is generated, not hand-drawn. The mark is the film ticket from
+the in-app logo -- blue plate, four perforations, and a single heavy white **P** --
+and it is rasterised at every size by `scripts/make-icons.mjs`, which writes the
+PNG/BMP/ICO/ICNS containers itself (no image toolchain required).
+
+```sh
+npm run icons                        # rewrite every file listed in bundle.icon
+node scripts/make-icons.mjs --check  # decode the files back and print them as ASCII
+```
+
+Edit the geometry at the top of the script and re-run to re-tune the mark. Use
+`--check` to confirm the letter is still legible at 16px; the previous icon said
+"PolS" at every size and only a decode caught it.
+
 ## Project folders
 
 Each project is a normal folder owned by the user:
