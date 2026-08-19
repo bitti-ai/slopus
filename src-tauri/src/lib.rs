@@ -1017,7 +1017,7 @@ fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
 /// form is `\\server\share` — dropping only the `\\?\` would leave the bogus
 /// `UNC\server\share`. Non-Windows paths carry neither prefix and come back
 /// untouched.
-fn display_path(path: &Path) -> String {
+pub(crate) fn display_path(path: &Path) -> String {
     let text = path.to_string_lossy().into_owned();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         return format!(r"\\{rest}");
