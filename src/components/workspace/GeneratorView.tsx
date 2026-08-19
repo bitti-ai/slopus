@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Play, Plus, RefreshCw, Sparkles, Square, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, compileMiniMaxH3PromptSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
@@ -365,7 +365,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                 <span className="ref-mini" aria-hidden="true">
                   {picture
                     ? <ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt="" />
-                    : ref.kind === "image" ? <ImageIcon size={16} /> : <FileText size={16} />}
+                    : referenceKindIcon(ref.kind)}
                 </span>
                 <b>{ref.name}</b>
                 {skipped
@@ -590,6 +590,22 @@ const skipReason = (reference: ProjectReference): string | null => {
   if (!isVisualReference(reference)) return "Tagged as a sound note, so it isn’t sent to the video engine.";
   return null;
 };
+
+/* The stand-in for a reference whose own picture is not being shown. The four
+   kinds get four icons, which they did not before: an `image` arm sat here that
+   nothing could reach — referenceSchema refuses an image with no file, so a
+   parsed image reference always has one and always renders the real picture —
+   while `video` and `audio`, which DO reach here (they are pointed at rather
+   than copied, and ReferenceImage cannot show a frame of either), fell through
+   to the same page icon a written definition gets. Same icons as
+   MediaThumbnail, so a clip and the reference it came from read alike. */
+const referenceKindIcon = (kind: ProjectReference["kind"]) =>
+  kind === "video" ? <Video size={16} />
+    : kind === "audio" ? <Music2 size={16} />
+      /* Unreachable for anything zod parsed; kept so a future kind that can
+         legitimately arrive without a file is not silently called a document. */
+      : kind === "image" ? <ImageIcon size={16} />
+        : <FileText size={16} />;
 
 const STAGES: Array<{ label: string; at: number }> = [
   { label: "Prepare", at: 0.01 },

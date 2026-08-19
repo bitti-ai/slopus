@@ -131,8 +131,13 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-/* PolStudio cannot render image previews yet, so a reference shows a labelled
-   placeholder rather than a stand-in picture of someone else's subject. */
+/* The plate a reference sits on: a hatched panel with its kind lettered on it.
+   It was once the whole story — "PolStudio cannot render image previews yet",
+   which stopped being true when `.reference-art--photo` below started painting
+   the user's own picture, and stayed in the file for a while afterwards. What
+   it is now is the BACKDROP: it shows through a transparent PNG, and it is all
+   there is for a reference with no picture to show — one still being described,
+   or a written definition, which has no file at all. */
 .reference-art,
 .reference-copy-art {
   position: relative;
