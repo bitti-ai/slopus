@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagSelection } from "./shot-tags";
 
 export const PROJECT_FILE_NAME = "polstudio.json";
 /** What the settings file used to be called, newest first. Both are still
@@ -177,6 +178,18 @@ export const projectReferenceSchema = z.object({
   }
 });
 
+/* The tags a shot was built from. Ids only — the words they compile into live
+   in src/lib/shot-tags.ts, so a term can be reworded without rewriting anyone's
+   project file, and a file written by a newer build keeps ids this build has no
+   term for instead of losing the user's choices on the next save.
+
+   Both layers validate SHAPE, not vocabulary, and they validate the same shape:
+   `is_shot_tag_id` in src-tauri/src/lib.rs is this regex. Were only one side to
+   know the taxonomy, the other would happily persist a tag it then refused to
+   read back. */
+export const shotTagIdSchema = z.string().regex(SHOT_TAG_ID_PATTERN, "Shot tag ids are lowercase letters, digits, and hyphens.");
+export const shotTagSelectionSchema = z.record(shotTagIdSchema, z.array(shotTagIdSchema));
+
 export const generationJobSchema = z.object({
   id: idSchema,
   title: z.string().min(1),
@@ -192,6 +205,10 @@ export const generationJobSchema = z.object({
   // change. Never treat it as the authoritative prompt.
   compiledPrompt: z.string().min(1),
   referenceIds: z.array(idSchema).default([]),
+  // `.nullish()` because Rust holds it as an Option — see the note on
+  // projectAssetSchema.durationMs. Every project written before shot tags
+  // existed has no key here at all, and must keep opening.
+  shotTags: shotTagSelectionSchema.nullish(),
   // The one that broke the desktop app outright: createDraftGenerationJob never
   // sets clipId, so EVERY project has a job without it. See the note on
   // projectAssetSchema.durationMs.
@@ -423,9 +440,50 @@ export function usableImageReferences(references: ProjectReference[]): ProjectRe
     .filter(isVisualReference);
 }
 
-export function compileMiniMaxH3Prompt(creativeBrief: string, references: ProjectReference[] = []): string {
+/* Who wrote each piece of the compiled prompt.
+
+   - "brief" is the user's own prose, character for character.
+   - "tag"   is a term they picked from the H3 vocabulary in shot-tags.ts.
+   - "frame" is everything PolStudio adds: field names, the [Shot N] marker,
+     punctuation it inserted, and the two default sound lines.
+
+   The preview in the generator renders these, and `compileMiniMaxH3Prompt` is
+   nothing but their values concatenated — so what the user is shown cannot
+   drift from what is sent, and their words stay visibly theirs. */
+export type PromptSegmentKind = "frame" | "brief" | "tag";
+export interface PromptSegment { kind: PromptSegmentKind; value: string }
+
+const frame = (value: string): PromptSegment => ({ kind: "frame", value });
+const own = (value: string): PromptSegment => ({ kind: "brief", value });
+const tagged = (value: string): PromptSegment => ({ kind: "tag", value });
+
+const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
+
+/** The stop `endSentence` would add, as its own segment — it is punctuation
+ *  PolStudio inserted, not something the user typed. */
+const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text ? [] : [frame(".")]);
+
+export function compileMiniMaxH3Prompt(
+  creativeBrief: string,
+  references: ProjectReference[] = [],
+  shotTags: ShotTagSelection | null = null,
+): string {
+  return compileMiniMaxH3PromptSegments(creativeBrief, references, shotTags).map((segment) => segment.value).join("");
+}
+
+export function compileMiniMaxH3PromptSegments(
+  creativeBrief: string,
+  references: ProjectReference[] = [],
+  shotTags: ShotTagSelection | null = null,
+): PromptSegment[] {
   const brief = creativeBrief.trim();
-  const style = deriveH3Style(brief);
+  const tags = shotTagClauses(shotTags);
+  // A chosen style REPLACES the guess made from the user's words; without one
+  // the guess stands, and it is marked as PolStudio's own doing.
+  const style = tags.style ?? deriveH3Style(brief);
+  const styleSegment = tags.style ? tagged(style) : frame(style);
+  // Sentences the tags contribute after the description, already terminated.
+  const tail = tags.clauses.length === 0 ? [] : [frame(` ${tags.clauses.join(" ")}`)];
   // Same filter pair as `usableImageReferences`, in the same order — see the
   // <Picture N> / reference_paths lockstep note on that function. An
   // audio-only-tagged reference is dropped here (ref guide §2.1), so a project
@@ -433,12 +491,24 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   const usable = references.filter(isReferenceUsable).filter(isVisualReference);
 
   if (usable.length === 0) {
-    // T2VA — base guide §2.2 field list and order.
+    // T2VA — base guide §2.2 field list and order. With no tags at all this is
+    // byte-identical to what it has always produced, down to the brief keeping
+    // whatever terminal punctuation the user gave it.
     return [
-      `integrated_multimodal_description: [Shot 1] ${style}, ${brief}`,
-      `overall_soundscape: ${DEFAULT_SOUNDSCAPE}`,
-      `non_diegetic_music: ${DEFAULT_MUSIC}`,
-    ].join("\n\n");
+      frame("integrated_multimodal_description: [Shot 1] "),
+      styleSegment,
+      frame(", "),
+      // §4.1 order inside the shot: size, angle and lens sit in front of the
+      // subject and its action.
+      ...(tags.framing.length > 0 ? [tagged(tags.framing.join(", ")), frame(", ")] : []),
+      own(brief),
+      // Only terminated when something follows it — otherwise the shape of an
+      // untagged prompt would change for every existing project.
+      ...(tags.clauses.length > 0 ? addedStop(brief) : []),
+      ...tail,
+      frame(`\n\noverall_soundscape: ${DEFAULT_SOUNDSCAPE}`),
+      frame(`\n\nnon_diegetic_music: ${DEFAULT_MUSIC}`),
+    ].filter((segment) => segment.value.length > 0);
   }
 
   const images = usableImageReferences(references);
@@ -459,12 +529,16 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // present an app-generated string to the model as the user's own words.
   // An image with no definition still belongs in the prompt — the picture is
   // real payload — so it is cited without any claim about what it contains.
-  const definitions = usable.map((reference, index) => {
-    const detail = endSentence(referenceDefinition(reference).replace(/\s+/g, " "));
+  const definitions = usable.flatMap((reference, index): PromptSegment[] => {
+    const detail = referenceDefinition(reference).replace(/\s+/g, " ");
     const picture = pictureNumber.get(reference.id);
     const label = referenceLabel(reference, index);
-    if (!picture) return `${label}: ${detail}`;
-    return `${label} is the content shown in <Picture ${picture}>.${detail ? ` ${detail}` : ""}`;
+    const lead = index === 0 ? "" : "\n";
+    if (!picture) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
+    return [
+      frame(`${lead}${label} is the content shown in <Picture ${picture}>.`),
+      ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),
+    ];
   });
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
@@ -475,7 +549,12 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
   // §3: task-type prefix. Every reference here provides generation guidance
   // without acting as a concrete frame or an edited source video, which is
   // exactly `reference generation`. The summary reuses existing labels only.
-  const summary = `[reference generation] ${endSentence(brief)} ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`;
+  const summary: PromptSegment[] = [
+    frame("[reference generation] "),
+    own(brief),
+    ...addedStop(brief),
+    frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the single shot described below.`),
+  ];
 
   // §4.1: one line per label using the fixed marker vocabulary. Their defined
   // role is carried through unchanged, so fully_preserved is the honest marker.
@@ -488,27 +567,40 @@ export function compileMiniMaxH3Prompt(creativeBrief: string, references: Projec
 
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.
-  const detailed = [
-    `The target video is in a ${midSentenceStyle(style)} style.`,
-    `[Shot 1] ${endSentence(brief)} The shot features ${labelList}, matching the definitions above.`,
-  ].join("\n");
+  const detailed: PromptSegment[] = [
+    frame("The target video is in a "),
+    tags.style ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
+    frame(" style.\n[Shot 1] "),
+    // Framing leads the sentence here, so it takes the capital.
+    ...(tags.framing.length > 0 ? [tagged(capitalize(tags.framing.join(", "))), frame(", ")] : []),
+    own(brief),
+    ...addedStop(brief),
+    frame(` The shot features ${labelList}, matching the definitions above.`),
+    ...tail,
+  ];
 
   return [
-    `subject_definitions:\n${definitions.join("\n")}`,
-    `summary:\n${summary}`,
-    `retention_analysis:\n${retention.join("\n")}`,
-    `detailed_description:\n${detailed}`,
-    `overall_soundscape:\n${DEFAULT_SOUNDSCAPE}`,
-    `non_diegetic_music:\n${DEFAULT_MUSIC}`,
-  ].join("\n\n");
+    frame("subject_definitions:\n"),
+    ...definitions,
+    frame("\n\nsummary:\n"),
+    ...summary,
+    frame(`\n\nretention_analysis:\n${retention.join("\n")}`),
+    frame("\n\ndetailed_description:\n"),
+    ...detailed,
+    frame(`\n\noverall_soundscape:\n${DEFAULT_SOUNDSCAPE}`),
+    frame(`\n\nnon_diegetic_music:\n${DEFAULT_MUSIC}`),
+  ].filter((segment) => segment.value.length > 0);
 }
 
 export function createDraftGenerationJob(
   creativeBrief: string,
-  options: { id?: string; title?: string; referenceIds?: string[]; references?: ProjectReference[]; now?: string } = {},
+  options: { id?: string; title?: string; referenceIds?: string[]; references?: ProjectReference[]; shotTags?: ShotTagSelection | null; now?: string } = {},
 ): GenerationJob {
   const brief = creativeBrief.trim();
   const now = options.now ?? new Date().toISOString();
+  // Omitted rather than written as null when nothing is tagged, so a shot built
+  // from prose alone still writes exactly the file it always did.
+  const shotTags = normalizeShotTagSelection(options.shotTags);
   return generationJobSchema.parse({
     id: options.id ?? crypto.randomUUID(),
     title: options.title ?? brief.split(/\s+/).slice(0, 6).join(" "),
@@ -523,8 +615,9 @@ export function createDraftGenerationJob(
     // value is stale the moment the brief or the bound references change (a
     // project created with reference images keeps a T2VA snapshot here while
     // the job later holds bound image references). Do not read it as current.
-    compiledPrompt: compileMiniMaxH3Prompt(brief, options.references ?? []),
+    compiledPrompt: compileMiniMaxH3Prompt(brief, options.references ?? [], shotTags),
     referenceIds: options.referenceIds ?? [],
+    ...(shotTags ? { shotTags } : {}),
     createdAt: now,
     updatedAt: now,
   });
