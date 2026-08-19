@@ -591,10 +591,12 @@ describe("scenes and the shots inside them", () => {
     expect(compiled).toContain("[Shot 1] Wide shot, <Subject 1> walks towards the camera on <Subject 2>.");
     // The raw token never reaches the model.
     expect(compiled).not.toContain("@[ref:");
-    // Retention names the shots each subject is really written into — shot 2
-    // cites nobody, so it features both, and shot 3 cites only the street.
-    expect(compiled).toContain("<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved");
-    expect(compiled).toContain("<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved");
+    // Retention names the shots each subject is really written into. Shot 2
+    // names nobody, so nothing claims it features anyone, and shot 3 names only
+    // the street.
+    expect(compiled).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved");
+    expect(compiled).toContain("<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved");
+    expect(compiled).toContain("[Shot 2] (cut at 4.5s) Medium close-up, she stops at a doorway and looks up.\n");
     // The scene's own sound and music replace the two default lines.
     expect(compiled).toContain("overall_soundscape:\nRain on cobbles, distant traffic, her boots on stone.");
     expect(compiled).toContain("non_diegetic_music:\nLow sustained cello");
