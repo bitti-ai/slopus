@@ -48,6 +48,22 @@
    between the S and the wordmark; the box around it was fixed too, adding more
    dead space on the right. Both now size to the artwork. */
 .pol-logo {
+  /* Perforation geometry, in one place. The strip in the flex row
+     (.pol-logo__perforations) and the mask that punches the holes out of the
+     plate (.pol-logo__ticket::before) both read these, so the holes and the
+     space reserved for them cannot drift apart. */
+  --pol-ticket-h: 21px;
+  --pol-perf-x: 3px;
+  --pol-perf-w: 4px;
+  --pol-perf-strip: 5px;              /* the hole plus 1px of plate to its right */
+  --pol-perf-h: 3px;
+  --pol-perf-gap: 1px;
+  --pol-perf-span: calc(4 * var(--pol-perf-h) + 3 * var(--pol-perf-gap));
+  --pol-perf-y: calc((var(--pol-ticket-h) - var(--pol-perf-span)) / 2);
+  /* One hole: a 4x3 rounded rect, used as a mask layer so a punched hole has
+     the same soft corners the fallback rectangles carry. */
+  --pol-perf-hole: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'%3E%3Crect width='4' height='3' rx='1' fill='%23000'/%3E%3C/svg%3E");
+
   height: 29px;
   flex: 0 0 auto;
   display: inline-flex;
@@ -59,18 +75,33 @@
   white-space: nowrap;
 }
 
+/* The ticket is only the box now: its blue plate moved to ::before so a mask can
+   take bites out of it. The drop shadow stays here, where it is clipped to the
+   outside of the border box and so cannot leak in through a perforation. */
 .pol-logo__ticket {
   position: relative;
   z-index: 1;
-  height: 21px;
+  height: var(--pol-ticket-h);
   flex: 0 0 auto;
   padding-right: var(--space-1);
   display: flex;
   align-items: center;
   border-radius: 4px 1px 1px 4px;
   color: #fff;
+  background: transparent;
+  box-shadow: 0 1px 3px #123cac55;
+}
+
+/* The plate. A layer of its own purely so the perforations can be masked out of
+   it without the mask also eating the letter, the diamond tail or the shadow. */
+.pol-logo__ticket::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
   background: linear-gradient(145deg, #0878f5 0%, #075be3 48%, #153bc5 100%);
-  box-shadow: inset 0 1px #ffffff35, 0 1px 3px #123cac55;
+  box-shadow: inset 0 1px #ffffff35;
 }
 
 .pol-logo__ticket::after {
@@ -86,23 +117,50 @@
   transform: rotate(45deg);
 }
 
+/* Positioned above the plate, so the fallback squares below are not painted
+   underneath it and lost. */
 .pol-logo__perforations {
-  width: 5px;
-  height: 16px;
-  margin-left: 3px;
+  position: relative;
+  z-index: 2;
+  width: var(--pol-perf-strip);
+  height: var(--pol-perf-span);
+  margin-left: var(--pol-perf-x);
   display: grid;
-  grid-template-rows: repeat(4, 3px);
-  gap: 1px;
-  align-content: center;
+  grid-template-rows: repeat(4, var(--pol-perf-h));
+  gap: var(--pol-perf-gap);
 }
 
+/* Fallback only: where the plate cannot be masked the holes are painted black,
+   which still reads as a hole on any backdrop, light theme or dark. */
 .pol-logo__perforations i {
-  width: 4px;
-  height: 3px;
+  width: var(--pol-perf-w);
+  height: var(--pol-perf-h);
   display: block;
   border-radius: 1px;
-  background: #fff;
-  box-shadow: inset 0 -1px #dfe8ff;
+  background: #000;
+}
+
+/* Real holes: five mask layers — the plate, minus the four perforations — so
+   whatever is behind the logo shows through them. mask-composite is the whole
+   trick, hence the @supports: without it the layers would union into a solid
+   mask and the perforations would vanish, so the black squares above stay. */
+@supports (mask-composite: exclude) {
+  .pol-logo__ticket::before {
+    mask-image: var(--pol-perf-hole), var(--pol-perf-hole), var(--pol-perf-hole), var(--pol-perf-hole),
+      linear-gradient(#000 0 0);
+    mask-repeat: no-repeat;
+    mask-size: var(--pol-perf-w) var(--pol-perf-h), var(--pol-perf-w) var(--pol-perf-h),
+      var(--pol-perf-w) var(--pol-perf-h), var(--pol-perf-w) var(--pol-perf-h), 100% 100%;
+    mask-position: var(--pol-perf-x) var(--pol-perf-y),
+      var(--pol-perf-x) calc(var(--pol-perf-y) + 1 * (var(--pol-perf-h) + var(--pol-perf-gap))),
+      var(--pol-perf-x) calc(var(--pol-perf-y) + 2 * (var(--pol-perf-h) + var(--pol-perf-gap))),
+      var(--pol-perf-x) calc(var(--pol-perf-y) + 3 * (var(--pol-perf-h) + var(--pol-perf-gap))), 0 0;
+    mask-composite: exclude;
+  }
+
+  .pol-logo__perforations i {
+    background: transparent;
+  }
 }
 
 .pol-logo__pols {

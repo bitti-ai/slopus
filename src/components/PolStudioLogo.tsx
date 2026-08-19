@@ -15,6 +15,10 @@ export function PolStudioLogo({ compact = false, decorative = false, className =
       aria-hidden={decorative || undefined}
     >
       <span className="pol-logo__ticket">
+        {/* The perforations are punched out of the plate by a mask, so they are
+            real holes and the page shows through them. These four <i> are the
+            strip they occupy in the row, and the black fallback squares for a
+            browser that cannot composite the mask. See .pol-logo* in shell.css. */}
         <span className="pol-logo__perforations" aria-hidden="true"><i /><i /><i /><i /></span>
         {/* The compact mark is the small application icon: one letter inside
             the film ticket. "PolS" at icon size was four letters squeezed into
