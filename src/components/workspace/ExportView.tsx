@@ -25,10 +25,12 @@ import {
   ExportCancelled,
   PreviewSources,
   probeAllCodecs,
+  probeCompositor,
   runExport,
   writeExportFile,
   type CodecProbe,
   type CompositorKind,
+  type CompositorProbe,
   type ExportProgress,
 } from "../../lib/exportPipeline";
 import type { ProjectConfig, Resolution } from "../../lib/project";
@@ -45,6 +47,7 @@ interface FinishedExport {
   path: string;
   bytes: number;
   compositor: CompositorKind;
+  compositorDetail: string;
   codecString: string;
 }
 
@@ -59,6 +62,10 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
      is gated on the answer rather than on what the code hopes is there. */
   const support = useMemo(detectExportSupport, []);
   const [probes, setProbes] = useState<CodecProbe[] | null>(null);
+  /* Which compositor will ACTUALLY run, asked by requesting an adapter rather
+     than by looking for `navigator.gpu`. Null until the answer comes back — the
+     page says it is asking rather than guessing WebGPU and being wrong. */
+  const [compositor, setCompositor] = useState<CompositorProbe | null>(null);
 
   const [previewTimeMs, setPreviewTimeMs] = useState(0);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -87,6 +94,16 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
      instead — nothing has been written yet at any point before the end. */
   useEffect(() => () => {
     cancelRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    void probeCompositor().then((found) => {
+      if (live) setCompositor(found);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -210,7 +227,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         detail: `Writing ${formatBytes(outcome.bytes.byteLength)} to ${destination}…`,
       });
       const written = await writeExportFile(destination, outcome.bytes);
-      setResult({ path: destination, bytes: written, compositor: outcome.compositor, codecString: outcome.codecString });
+      setResult({
+        path: destination,
+        bytes: written,
+        compositor: outcome.compositor,
+        compositorDetail: outcome.compositorDetail,
+        codecString: outcome.codecString,
+      });
     } catch (reason) {
       if (reason instanceof ExportCancelled) setCancelled(true);
       else setError(describe(reason));
@@ -237,8 +260,12 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     ["Sound", "None", "video only — see below"],
     [
       "Compositor",
-      support.webgpu ? "WebGPU" : "2D canvas",
-      support.webgpu ? "frames scaled without leaving the GPU" : "no WebGPU in this webview",
+      compositor ? (compositor.kind === "webgpu" ? "WebGPU" : "2D canvas") : "asking this computer…",
+      compositor
+        ? compositor.kind === "webgpu"
+          ? "frames scaled without leaving the GPU"
+          : compositor.detail
+        : "requesting a GPU adapter",
     ],
   ];
 
@@ -250,9 +277,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         <p>
           PolStudio renders the video tracks in order — trims, gaps and all — taking each source file apart with
           mp4box, decoding it through this computer’s own video decoder, compositing{" "}
-          {support.webgpu ? "on the GPU with WebGPU" : "on a 2D canvas, because this webview has no WebGPU"} and
-          muxing a real .mp4. Nothing below is a mock-up: where a control cannot do its job here, it says why instead
-          of pretending.
+          {compositor === null
+            ? "on the GPU if this computer gives PolStudio one and on a 2D canvas otherwise — it is being asked right now"
+            : compositor.kind === "webgpu"
+              ? "on the GPU with WebGPU, which this computer offered an adapter for"
+              : "on a 2D canvas, because this computer offers no working WebGPU adapter"}{" "}
+          and muxing a real .mp4. Nothing below is a mock-up: where a control cannot do its job here, it says why
+          instead of pretending.
         </p>
       </div>
     </header>
@@ -425,7 +456,8 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           </p>
           <p>
             {formatBytes(result.bytes)} written · {result.codecString} · composited with{" "}
-            {result.compositor === "webgpu" ? "WebGPU" : "a 2D canvas (WebGPU was unavailable)"} · no audio track.
+            {result.compositor === "webgpu" ? "WebGPU" : "a 2D canvas"}
+            {result.compositorDetail ? <> — {result.compositorDetail}</> : null} · no audio track.
           </p>
         </div>}
       </section>
