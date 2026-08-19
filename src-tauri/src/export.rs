@@ -13,6 +13,7 @@
 //! carry ASCII and a Windows path may not be.
 
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -68,9 +69,50 @@ fn percent_decode(value: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "The export path is not valid UTF-8.".to_string())
 }
 
-/// Checks a destination before anything is written to it. The path came back
-/// from the OS dialog, but it made a round trip through the webview to get
-/// here, so it is treated as untrusted on the way back in.
+/// Destinations the save dialog returned in THIS run.
+///
+/// The path makes a round trip through the webview between the dialog and the
+/// write, so what comes back is a string the webview chose — and a string that
+/// merely ends in `.mp4` and sits in an existing folder is every `.mp4` on the
+/// disk. Shape checks cannot tell "the file the user named" from "a file that
+/// looks like one", so the write is tied to the dialog's own answer instead.
+/// Never written to disk, never survives a restart: an export always starts
+/// with the dialog, so there is nothing to remember across runs.
+static CHOSEN_DESTINATIONS: std::sync::LazyLock<std::sync::Mutex<BTreeSet<PathBuf>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The identity a destination is remembered by. The file itself usually does
+/// not exist yet, so only the FOLDER is canonicalised; the name is compared as
+/// written, which is exactly the string the dialog handed out and the webview
+/// hands back.
+fn destination_key(path: &Path) -> PathBuf {
+    let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+        return path.to_path_buf();
+    };
+    parent
+        .canonicalize()
+        .unwrap_or_else(|_| parent.to_path_buf())
+        .join(name)
+}
+
+fn remember_destination(path: &Path) {
+    // A poisoned lock only means another thread panicked mid-insert. Failing
+    // the export is the safe direction, so nothing is escalated here.
+    if let Ok(mut chosen) = CHOSEN_DESTINATIONS.lock() {
+        chosen.insert(destination_key(path));
+    }
+}
+
+fn was_chosen_this_session(path: &Path) -> bool {
+    CHOSEN_DESTINATIONS
+        .lock()
+        .map(|chosen| chosen.contains(&destination_key(path)))
+        .unwrap_or(false)
+}
+
+/// Checks the SHAPE of a destination: absolute, `.mp4`, in a folder that
+/// exists, not itself a folder. Necessary and not sufficient — see
+/// [`authorized_destination`], which is what the write actually goes through.
 fn checked_destination(value: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(value);
     if !path.is_absolute() {
@@ -91,6 +133,20 @@ fn checked_destination(value: &str) -> Result<PathBuf, String> {
     }
     if path.is_dir() {
         return Err(format!("{value} is a folder, not a file."));
+    }
+    Ok(path)
+}
+
+/// The one destination this command will write to: a well-shaped path that the
+/// save dialog itself returned earlier in this run. Without the second half,
+/// "untrusted on the way back in" only ever meant "constrained to .mp4" — which
+/// still lets a webview silently overwrite any existing .mp4 on the disk.
+fn authorized_destination(value: &str) -> Result<PathBuf, String> {
+    let path = checked_destination(value)?;
+    if !was_chosen_this_session(&path) {
+        return Err(format!(
+            "{value} is not a destination the save dialog returned; choose where to export again."
+        ));
     }
     Ok(path)
 }
@@ -134,6 +190,8 @@ pub fn choose_export_destination(
     let path = selected
         .into_path()
         .map_err(|error| format!("Could not use the selected path: {error}"))?;
+    // The write end will only accept a path that came through here.
+    remember_destination(&path);
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
@@ -155,7 +213,7 @@ pub fn write_export_file(request: Request<'_>) -> Result<u64, String> {
     let encoded = header
         .to_str()
         .map_err(|_| "The export path header is not readable text.".to_string())?;
-    let destination = checked_destination(&percent_decode(encoded)?)?;
+    let destination = authorized_destination(&percent_decode(encoded)?)?;
     write_atomically(&destination, bytes)?;
     Ok(bytes.len() as u64)
 }
@@ -213,6 +271,39 @@ mod tests {
         )
         .is_err());
         assert!(checked_destination(&folder.path().to_string_lossy()).is_err());
+    }
+
+    /// S4: shape is not permission. Before the session list, any absolute
+    /// `.mp4` under any existing folder was writable, so a webview that never
+    /// opened the save dialog could name — and silently overwrite — a finished
+    /// film somewhere else on the disk.
+    #[test]
+    fn only_a_destination_the_dialog_returned_may_be_written() {
+        let folder = tempfile::tempdir().unwrap();
+        let someone_elses_film = folder.path().join("Wedding final cut.mp4");
+        fs::write(&someone_elses_film, b"a year of work").unwrap();
+
+        // Well-shaped in every way the old check asked about, and refused.
+        let error = authorized_destination(&someone_elses_film.to_string_lossy()).unwrap_err();
+        assert!(
+            error.contains("not a destination the save dialog returned"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(fs::read(&someone_elses_film).unwrap(), b"a year of work");
+
+        // What the dialog handed out is writable, spelled the same way or not.
+        let chosen = folder.path().join("Northern Light.mp4");
+        remember_destination(&chosen);
+        assert_eq!(
+            authorized_destination(&chosen.to_string_lossy()).unwrap(),
+            chosen
+        );
+        let roundabout = folder.path().join(".").join("Northern Light.mp4");
+        assert!(authorized_destination(&roundabout.to_string_lossy()).is_ok());
+
+        // Choosing one file does not open its neighbours.
+        let neighbour = folder.path().join("Northern Light 2.mp4");
+        assert!(authorized_destination(&neighbour.to_string_lossy()).is_err());
     }
 
     #[test]
