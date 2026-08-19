@@ -258,7 +258,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     [
       "Video",
       `${OUTPUT_CODECS.find((codec) => codec.id === settings.codec)?.label ?? settings.codec} in MP4`,
-      codecProbe?.codecString ?? (probes ? "unsupported here" : "asking the encoder…"),
+      codecProbe?.codecString
+        ?? (probes ? "unsupported here"
+          /* The probe effect returns early with no clips and no encoder, so
+             "asking…" would be a progress claim for a question never put. */
+          : plan.frameCount === 0 ? "not asked — nothing to encode"
+            : !support.encoder ? "not asked — no encoder here"
+              : "asking the encoder…"),
     ],
     ["Bitrate", `${(bitrate / 1_000_000).toFixed(1)} Mbit/s`, qualityPreset(settings.quality).label],
     [

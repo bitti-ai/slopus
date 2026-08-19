@@ -497,9 +497,10 @@ export interface AudioMix {
 /** How far over full scale the mix has to go before clipping is worth a
  *  sentence: a tenth of a decibel.
  *
- *  Not an arbitrary tolerance. Measured in Chrome, a 16-bit sample decodes as
- *  `value / 32767.5`, so two clips sitting at exactly half scale sum to
- *  1.0000305 — one 16-bit step over — and the old code called that "clipped"
+ *  Not an arbitrary tolerance. Measured in Chrome: 16384 decodes as
+ *  0.500015258789 — close to `value / 32767.5` but not equal to it, so take the
+ *  number and not the formula — and two clips sitting at exactly half scale sum
+ *  to 1.0000305, one 16-bit step over. The old code called that "clipped"
  *  for every sample of the overlap while advising the user to pull down by
  *  "0.0 dB". Below a tenth of a decibel the advice this message gives rounds
  *  to nothing and the overshoot is 90 dB under the signal. The samples are
