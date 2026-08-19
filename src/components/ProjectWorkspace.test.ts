@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { createElement } from "react";
+import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type TimelineClip } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -24,6 +24,58 @@ async function asDesktopApp(importedImage: { name: string; relativePath: string 
   try {
     await body();
   } finally {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.mocked(invoke).mockReset();
+  }
+}
+
+/** Runs `body` with a media stack that behaves like a browser's: the desktop
+ *  shell serves the bytes, blob URLs exist, and a <video>/<audio> element
+ *  reports the metadata of a file this long and this big. jsdom loads no media
+ *  and never fires a media event, so the decode has to be stood in for — the
+ *  numbers under test are the ones the real element would expose. */
+async function withFakeDecoder(file: { seconds: number; width: number; height: number }, body: () => Promise<void>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(8));
+  // jsdom implements neither of these, so they are installed rather than
+  // replaced — and left installed, because restoring them to `undefined` turns
+  // any decode still finishing into an unhandled TypeError.
+  URL.createObjectURL = () => "blob:polstudio-test";
+  URL.revokeObjectURL = () => undefined;
+  /* jsdom answers `load` and `getContext` by raising a "not implemented" error
+     on its virtual console, which vitest counts as an error in the run. The
+     component already treats a canvas it cannot get as no thumbnail, so give it
+     the plain refusal rather than the environment's complaint. */
+  const media = HTMLMediaElement.prototype.load;
+  const canvas = HTMLCanvasElement.prototype.getContext;
+  HTMLMediaElement.prototype.load = () => undefined;
+  HTMLCanvasElement.prototype.getContext = () => null;
+  const create = document.createElement.bind(document);
+  const spy = vi.spyOn(document, "createElement").mockImplementation((tag: string, options?: ElementCreationOptions) => {
+    const element = create(tag, options);
+    if (tag === "video" || tag === "audio") {
+      for (const [name, value] of [["duration", file.seconds], ["videoWidth", file.width], ["videoHeight", file.height]] as const) {
+        Object.defineProperty(element, name, { value, configurable: true });
+      }
+      // jsdom's currentTime setter neither seeks nor complains, so the seek for
+      // a poster frame has to answer for itself too.
+      let currentTime = 0;
+      Object.defineProperty(element, "currentTime", {
+        configurable: true,
+        get: () => currentTime,
+        set: (value: number) => { currentTime = value; setTimeout(() => element.dispatchEvent(new Event("seeked")), 0); },
+      });
+      setTimeout(() => { element.dispatchEvent(new Event("loadeddata")); element.dispatchEvent(new Event("loadedmetadata")); }, 0);
+    }
+    return element;
+  });
+  try {
+    await body();
+  } finally {
+    spy.mockRestore();
+    HTMLMediaElement.prototype.load = media;
+    HTMLCanvasElement.prototype.getContext = canvas;
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     vi.mocked(invoke).mockReset();
   }
@@ -225,6 +277,130 @@ describe("project workspace timecode", () => {
     fireEvent.dragEnd(cardFor(config.assets[1]));
     expect(rejected()).toHaveLength(0);
   });
+
+  /** The same project with its video asset already measured, as the media panel
+   *  measures it the first time it decodes the file for a thumbnail. */
+  const measuredVideo = (config: ProjectConfig, durationMs: number) => parseProjectConfig({
+    ...config,
+    assets: config.assets.map((asset) => asset.kind === "video" ? { ...asset, durationMs, width: 1920, height: 1080 } : asset),
+  });
+
+  /** That project with one clip of the video already cut into the story track. */
+  const withClip = (config: ProjectConfig, clip: Partial<TimelineClip>) => parseProjectConfig({
+    ...config,
+    timeline: { tracks: config.timeline.tracks.map((track) => track.id === STORY_TRACK_ID ? { ...track, clips: [{
+      id: "clip-macro", assetId: config.assets[0].id, trackId: STORY_TRACK_ID,
+      startMs: 0, durationMs: 40_000, sourceStartMs: 0, label: "Macro footage", color: null, status: "approved", ...clip,
+    }] } : track) },
+  });
+
+  const droppedClip = (calls: { mock: { calls: unknown[][] } }) =>
+    ((calls.mock.calls[0][0] as ProjectConfig).timeline.tracks.flatMap((track) => track.clips))[0];
+
+  it("drops a clip as long as the footage, and falls back to the stated default only when nothing measured it", () => {
+    /* B3: every dropped clip used to be five seconds, forever — a 40-second
+       rush included, with no way anywhere in the app to change it. */
+    const known = measuredVideo(projectWithMedia(), 40_000);
+    const first = mediaPanel(known);
+    const transfer = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(known.assets[0]), { dataTransfer: transfer });
+    fireEvent.drop(laneFor(first.container, known, "video"), { dataTransfer: transfer });
+    expect(droppedClip(first.onChange).durationMs).toBe(40_000);
+    expect(parseProjectConfig(first.onChange.mock.calls[0][0] as ProjectConfig)).toBeTruthy();
+    cleanup();
+
+    // Nothing has decoded this one, so there is no length to honour and the
+    // documented stand-in is what lands.
+    const unknown = projectWithMedia();
+    const second = mediaPanel(unknown);
+    const transferTwo = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(unknown.assets[0]), { dataTransfer: transferTwo });
+    fireEvent.drop(laneFor(second.container, unknown, "video"), { dataTransfer: transferTwo });
+    expect(droppedClip(second.onChange).durationMs).toBe(5_000);
+  });
+
+  it("retimes the selected clip from the Lasts field, and will not run past the footage", () => {
+    const config = withClip(measuredVideo(projectWithMedia(), 40_000), {});
+    const onChange = vi.fn();
+    render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    const lasts = screen.getByTitle(/^How long this clip lasts/) as HTMLInputElement;
+    // It was readOnly, which made the only stated way to fix a clip's length a
+    // field that could not be typed into.
+    expect(lasts.readOnly).toBe(false);
+    expect(lasts.value).toBe("00:40:00");
+    const lastDuration = () => (onChange.mock.calls.at(-1)![0] as ProjectConfig).timeline.tracks.flatMap((track) => track.clips)[0].durationMs;
+
+    // Plain seconds, and the minutes:seconds:frames the field itself prints.
+    fireEvent.change(lasts, { target: { value: "8" } });
+    expect(lastDuration()).toBe(8_000);
+    fireEvent.change(lasts, { target: { value: "00:12:15" } });
+    expect(lastDuration()).toBe(12_500);
+    expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
+
+    // Half-typed text is not a length, and must not be turned into one.
+    const before = onChange.mock.calls.length;
+    fireEvent.change(lasts, { target: { value: "00:" } });
+    expect(onChange.mock.calls.length).toBe(before);
+    expect(lasts.value).toBe("00:");
+
+    // Clamped at both ends: a clip cannot be nothing, and cannot play footage
+    // the file does not have.
+    fireEvent.change(lasts, { target: { value: "0" } });
+    expect(lastDuration()).toBe(33);
+    fireEvent.change(lasts, { target: { value: "90" } });
+    expect(lastDuration()).toBe(40_000);
+    expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
+
+    // Off the field, the clip's own length is what it shows again.
+    fireEvent.blur(lasts);
+    expect(lasts.value).toBe("00:40:00");
+  });
+
+  it("keeps a clip's place in the source when it is duplicated", () => {
+    // Otherwise every copy replays the head of the file, which is the same five
+    // seconds the original already showed.
+    const config = withClip(measuredVideo(projectWithMedia(), 40_000), { startMs: 0, durationMs: 6_000, sourceStartMs: 12_000 });
+    const onChange = vi.fn();
+    render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const clips = next.timeline.tracks.flatMap((track) => track.clips);
+    expect(clips).toHaveLength(2);
+    const copy = clips.find((clip) => clip.id !== "clip-macro")!;
+    expect(copy.sourceStartMs).toBe(12_000);
+    expect(copy.durationMs).toBe(6_000);
+    expect(parseProjectConfig(next)).toBeTruthy();
+  });
+
+  it("records the length the media panel actually measured onto the asset", async () => {
+    /* Held in state and fed back in, exactly as ProjectWorkspace holds it: two
+       files are measured here, and each measurement has to survive the other. */
+    const seen: ProjectConfig[] = [];
+    function Harness({ initial }: { initial: ProjectConfig }) {
+      const [config, setConfig] = useState(initial);
+      useEffect(() => { seen.push(config); }, [config]);
+      return createElement(TimelineView, { config, folderPath: "C:\\Measured Project", onChange: setConfig, onOpenGenerator: () => undefined });
+    }
+    await withFakeDecoder({ seconds: 40, width: 1920, height: 1080 }, async () => {
+      render(createElement(Harness, { initial: projectWithMedia() }));
+      fireEvent.click(screen.getByRole("button", { name: "Media" }));
+      await waitFor(() => expect(seen.at(-1)!.assets.every((asset) => asset.durationMs !== null)).toBe(true), { timeout: 8_000 });
+    });
+    const final = seen.at(-1)!;
+    const video = final.assets.find((asset) => asset.kind === "video")!;
+    expect(video.durationMs).toBe(40_000);
+    expect(video.width).toBe(1920);
+    expect(video.height).toBe(1080);
+    // Sound has no picture but it does have a length, and the timeline needs it.
+    expect(final.assets.find((asset) => asset.kind === "audio")!.durationMs).toBe(40_000);
+    expect(parseProjectConfig(final)).toBeTruthy();
+    // Measuring is not editing: once every file is known, it stops writing.
+    const settled = seen.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(seen.length).toBe(settled);
+    // Longer than the wait above: a decode that never finishes has to fail this
+    // test on its assertion, not by timing the test out before its cleanup runs.
+  }, 20_000);
 
   it("keeps the transport on the timeline, with one timecode and one reason", () => {
     const empty = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });

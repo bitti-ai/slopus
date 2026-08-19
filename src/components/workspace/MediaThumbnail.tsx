@@ -82,7 +82,42 @@ const settled = (element: HTMLMediaElement, event: string) =>
     element.addEventListener("error", () => reject(new Error("This file could not be decoded.")), { once: true });
   });
 
-async function videoPoster(url: string): Promise<{ poster: string; measured: MeasuredMedia }> {
+/* A seek that neither lands nor errors settles nothing, and the await on it
+   would never return: no picture, no measurement, a spinner for the life of
+   the panel. Waiting is worth a few seconds and no more. */
+const SEEK_LIMIT_MS = 4_000;
+const orGiveUp = (promise: Promise<void>, limitMs: number) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, limitMs);
+    const done = () => { clearTimeout(timer); resolve(); };
+    promise.then(done, done);
+  });
+
+/* Drawing is the part that can fail on its own — a computer with no 2D canvas,
+   a frame the decoder will not hand over. The length and size were already read
+   by then, and throwing them away over a missing picture would leave the asset
+   unmeasured for a reason that has nothing to do with measuring it. */
+const tryDraw = (source: CanvasImageSource, width: number, height: number): string | null => {
+  try {
+    return drawPoster(source, width, height);
+  } catch {
+    return null;
+  }
+};
+
+/* Hand the file back: the decoder and the whole blob go with it. Not worth
+   losing a finished measurement over, so a shell that will not release stays
+   the browser's problem. */
+const release = (element: HTMLMediaElement) => {
+  try {
+    element.removeAttribute("src");
+    element.load();
+  } catch {
+    /* nothing to do about it */
+  }
+};
+
+async function videoPoster(url: string): Promise<{ poster: string | null; measured: MeasuredMedia }> {
   const video = document.createElement("video");
   video.muted = true;
   video.preload = "auto";
@@ -97,28 +132,27 @@ async function videoPoster(url: string): Promise<{ poster: string; measured: Mea
     height: pixelsOf(video.videoHeight),
   };
   const target = Number.isFinite(video.duration) ? Math.min(video.duration / 2, POSTER_TIME_SECONDS) : 0;
-  // A seek that never lands would leave the thumbnail loading forever; frame
-  // zero is a perfectly good fallback, so a failure here is not fatal.
+  // Frame zero is a perfectly good fallback, so a seek that fails — or one that
+  // simply never arrives — costs the half-second offset and nothing else.
   if (target > 0) {
     const seeked = settled(video, "seeked");
     video.currentTime = target;
-    await seeked.catch(() => undefined);
+    await orGiveUp(seeked, SEEK_LIMIT_MS);
   }
-  const poster = drawPoster(video, video.videoWidth, video.videoHeight);
+  const poster = tryDraw(video, video.videoWidth, video.videoHeight);
   // Detach the source so the decoder and the blob are released now.
-  video.removeAttribute("src");
-  video.load();
+  release(video);
   return { poster, measured };
 }
 
-async function imagePoster(url: string): Promise<{ poster: string; measured: MeasuredMedia }> {
+async function imagePoster(url: string): Promise<{ poster: string | null; measured: MeasuredMedia }> {
   const image = new Image();
   image.src = url;
   await image.decode();
   // A still has a size and no length. Leaving durationMs null is the whole
   // point: how long a still is on screen is the cut's decision, not the file's.
   return {
-    poster: drawPoster(image, image.naturalWidth, image.naturalHeight),
+    poster: tryDraw(image, image.naturalWidth, image.naturalHeight),
     measured: { durationMs: null, width: pixelsOf(image.naturalWidth), height: pixelsOf(image.naturalHeight) },
   };
 }
@@ -131,8 +165,7 @@ async function measureAudio(url: string): Promise<MeasuredMedia> {
   audio.src = url;
   await settled(audio, "loadedmetadata");
   const measured: MeasuredMedia = { durationMs: durationMsOf(audio), width: null, height: null };
-  audio.removeAttribute("src");
-  audio.load();
+  release(audio);
   return measured;
 }
 
@@ -160,11 +193,18 @@ export function MediaThumbnail({ folderPath, asset, onMeasured }: {
 
   const needsPoster = asset.kind !== "audio" && !POSTER_CACHE.has(cacheKey);
   const needsMeasuring = Boolean(onMeasured) && !UNMEASURABLE.has(cacheKey) && wantsMeasuring(asset);
+  /* One read of the file per mount, however often this effect re-runs.
+     Measuring the asset changes it, and that change re-runs the effect — so
+     without this, a file that gave up its numbers but no drawable frame would
+     be read from disk a second time for the same missing picture. */
+  const readOnce = useRef<string | null>(null);
 
   useEffect(() => {
     // Nothing to draw and nothing left to learn: sound has no picture, a cached
     // poster is already the answer, and a measured asset stays measured.
     if (!needsPoster && !needsMeasuring) return;
+    if (readOnce.current === cacheKey) return;
+    readOnce.current = cacheKey;
     let live = true;
     setFailed(false);
     void (async () => {
@@ -179,9 +219,12 @@ export function MediaThumbnail({ folderPath, asset, onMeasured }: {
           measured = await measureAudio(url);
         } else {
           const value = asset.kind === "image" ? await imagePoster(url) : await videoPoster(url);
-          cachePoster(cacheKey, value.poster);
           measured = value.measured;
-          if (live) setPoster(value.poster);
+          // A file that opened but would not draw is still a file that could
+          // not be previewed, and the panel says so — after taking what it did
+          // learn from it.
+          if (value.poster) cachePoster(cacheKey, value.poster);
+          if (live) { if (value.poster) setPoster(value.poster); else setFailed(true); }
         }
         // Only ever hand up numbers something read off the file. When the file
         // gave none, remember that rather than reading it again next mount.

@@ -228,25 +228,46 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   const assetById = (id: string) => config.assets.find((asset) => asset.id === id);
 
   /* The media panel decodes each file to draw its thumbnail, and hands back
-     what that decode measured. Write it onto the asset so the NEXT drop is as
-     long as the footage, and so the file is only ever read once for it.
-     Only fields nothing knew yet are filled — a measurement never overwrites a
+     what that decode measured. Written onto the asset, that is what makes the
+     NEXT drop as long as the footage — and it means the file is read once for
+     it, not once per drop.
+     Only fields nothing knew yet are filled: a measurement never overwrites a
      number already on the asset, and it never retimes a clip already cut into
-     the timeline, which is the user's decision and not the file's. Bailing out
-     when nothing changed is what stops this looping: the write re-renders the
-     panel, which would otherwise measure again. */
-  const recordMeasured = (assetId: string, measured: MeasuredMedia) => {
-    const asset = assetById(assetId);
-    if (!asset) return;
-    const next: ProjectAsset = {
-      ...asset,
-      durationMs: asset.durationMs ?? measured.durationMs,
-      width: asset.width ?? measured.width,
-      height: asset.height ?? measured.height,
-    };
-    if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return;
-    onChange({ ...config, assets: config.assets.map((item) => (item.id === assetId ? next : item)) });
+     the timeline, which is the cut's decision and not the file's. */
+  const applyMeasured = (asset: ProjectAsset, value: MeasuredMedia): ProjectAsset => ({
+    ...asset,
+    durationMs: asset.durationMs ?? value.durationMs,
+    width: asset.width ?? value.width,
+    height: asset.height ?? value.height,
+  });
+  /* Measurements arrive from asynchronous decodes, and two of them can land
+     between one render and the next. Writing each straight into `config` would
+     write the second one over the config the first never reached, losing it.
+     So they queue here and are flushed from an effect, which only ever runs
+     with the config this component was last rendered with. */
+  const measurements = useRef(new Map<string, MeasuredMedia>());
+  const [measureTick, setMeasureTick] = useState(0);
+  const recordMeasured = (assetId: string, value: MeasuredMedia) => {
+    measurements.current.set(assetId, value);
+    setMeasureTick((tick) => tick + 1);
   };
+  useEffect(() => {
+    if (measurements.current.size === 0) return;
+    const pending = measurements.current;
+    measurements.current = new Map();
+    let learned = false;
+    const assets = config.assets.map((asset) => {
+      const value = pending.get(asset.id);
+      if (!value) return asset;
+      const next = applyMeasured(asset, value);
+      if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return asset;
+      learned = true;
+      return next;
+    });
+    // Nothing new is not a change: an onChange here would mark the project
+    // edited for having been looked at.
+    if (learned) onChange({ ...config, assets });
+  }, [measureTick, config, onChange]);
 
   /* A trim, typed. The source is the ceiling when its length is known — a clip
      cannot play footage the file does not have — and one frame is the floor,
