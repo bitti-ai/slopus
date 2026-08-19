@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "id": "project-scene-1",
+  "name": "A scene of three shots",
+  "createdAt": "2026-02-01T00:00:00.000Z",
+  "updatedAt": "2026-02-01T00:30:00.000Z",
+  "thumbnail": null,
+  "settings": {
+    "aspectRatio": "16:9",
+    "resolution": "1080p",
+    "frameRate": 30,
+    "backgroundColor": "#10131a"
+  },
+  "brief": {
+    "prompt": "a woman crossing a wet city street",
+    "status": "draft",
+    "targetDurationSeconds": 30,
+    "aspectRatio": "16:9",
+    "resolution": "1080p"
+  },
+  "assets": [],
+  "timeline": {
+    "tracks": [
+      {
+        "id": "track-story",
+        "kind": "video",
+        "name": "Track 1, Video",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
+        "id": "track-a1",
+        "kind": "audio",
+        "name": "Track 1, Audio",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      }
+    ]
+  },
+  "references": [
+    {
+      "id": "reference-woman",
+      "kind": "image",
+      "name": "Red-haired woman",
+      "description": "A woman in her thirties with dark red hair and a green canvas jacket.",
+      "content": null,
+      "relativePath": "references/red-haired-woman.png",
+      "intendedUse": [
+        "character"
+      ],
+      "createdAt": "2026-02-01T00:05:00.000Z"
+    },
+    {
+      "id": "reference-street",
+      "kind": "image",
+      "name": "City street",
+      "description": "A narrow street of brick warehouses with wet cobbles and hanging cables.",
+      "content": null,
+      "relativePath": "references/city-street.png",
+      "intendedUse": [
+        "location"
+      ],
+      "createdAt": "2026-02-01T00:06:00.000Z"
+    }
+  ],
+  "generationJobs": [
+    {
+      "id": "scene-walk",
+      "title": "She crosses the street",
+      "prompt": "@[ref:reference-woman] walks towards the camera on @[ref:reference-street]\n\nshe stops at a doorway and looks up\n\nthe door opens and light spills across @[ref:reference-street]",
+      "status": "draft",
+      "stage": "queued",
+      "progress": 0.0,
+      "providerId": "minimax-h3",
+      "creativeBrief": "@[ref:reference-woman] walks towards the camera on @[ref:reference-street]\n\nshe stops at a doorway and looks up\n\nthe door opens and light spills across @[ref:reference-street]",
+      "compiledPrompt": "a stale draft-time snapshot; the sender recompiles from the scene",
+      "referenceIds": [
+        "reference-woman",
+        "reference-street"
+      ],
+      "shots": [
+        {
+          "id": "scene-walk-shot-1",
+          "startSeconds": 0.0,
+          "action": "@[ref:reference-woman] walks towards the camera on @[ref:reference-street]",
+          "settings": {
+            "cameraMovement": [
+              "push-in"
+            ],
+            "cameraSpeed": [
+              "slow"
+            ],
+            "shotSize": [
+              "wide"
+            ],
+            "visualStyle": [
+              "live-action-cinematic"
+            ]
+          }
+        },
+        {
+          "id": "scene-walk-shot-2",
+          "startSeconds": 4.5,
+          "action": "she stops at a doorway and looks up",
+          "settings": {
+            "shotSize": [
+              "medium-close-up"
+            ]
+          }
+        },
+        {
+          "id": "scene-walk-shot-3",
+          "startSeconds": 9.0,
+          "action": "the door opens and light spills across @[ref:reference-street]"
+        }
+      ],
+      "durationSeconds": 12.0,
+      "soundscape": "Rain on cobbles, distant traffic, her boots on stone.",
+      "music": "Low sustained cello, slow tempo, swelling in the last two seconds.",
+      "outputRelativePath": null,
+      "error": null,
+      "createdAt": "2026-02-01T00:10:00.000Z",
+      "updatedAt": "2026-02-01T00:30:00.000Z"
+    }
+  ],
+  "agentConversation": {
+    "messages": []
+  },
+  "providerSettings": {}
+}

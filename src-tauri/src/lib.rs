@@ -160,12 +160,38 @@ struct ReusableReference {
     created_at: String,
 }
 
+/// One shot inside a scene. Mirrors `sceneShotSchema` in src/lib/project.ts.
+///
+/// `startSeconds` and `action` are REQUIRED on the zod side and are plain
+/// (non-`Option`) fields here, so they are always written — a `#[serde(default)]`
+/// covers a file that predates them without ever producing a key zod refuses.
+/// `settings` is the only optional one and carries `skip_serializing_if`,
+/// because zod spells it `.nullish()` for the same reason `shotTags` is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SceneShot {
+    id: String,
+    #[serde(default)]
+    start_seconds: f64,
+    /// The user's own line, tokens and all. May be empty: a shot they have just
+    /// added has nothing written in it, and this layer never fills it in.
+    #[serde(default)]
+    action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    settings: Option<BTreeMap<String, Vec<String>>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerationJob {
     id: String,
     #[serde(default)]
     title: String,
+    /// A MIRROR of the scene's shot lines for a scene-shaped job, and the user's
+    /// only copy of their words for every job written before scenes existed.
+    /// That is why it may be empty here but not there — see the emptiness rule
+    /// in `validate_and_normalize_config`, which is zod's `superRefine` on
+    /// `generationJobSchema` written out.
     #[serde(default)]
     prompt: String,
     status: String,
@@ -190,6 +216,24 @@ struct GenerationJob {
     /// dropped on the next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shot_tags: Option<BTreeMap<String, Vec<String>>>,
+    /// The shots this scene holds, in playing order. Every one of the four
+    /// fields below is an `Option` with `skip_serializing_if`, because every
+    /// project written before scenes existed has none of these keys and must
+    /// round-trip byte-for-byte: zod spells all four `.nullish()`, so `null`
+    /// would also be readable, but an absent key is what the old files have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shots: Option<Vec<SceneShot>>,
+    /// How long the whole scene runs, 0-15 seconds. Absent means the length
+    /// every shot was generated at before this was settable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    duration_seconds: Option<f64>,
+    /// Base guide §4.6 and §4.7 — per-prompt fields, so they sit on the scene
+    /// rather than on a shot. Absent means the compiler writes its own
+    /// content-neutral line and marks it as PolStudio's own words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    soundscape: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    music: Option<String>,
     // `clipId` is `.optional()` and NOT `.nullable()` on the frontend, and no
     // freshly created job ever has one, so emitting `"clipId": null` made every
     // create_project / open_project response fail zod. Keep the key absent.
@@ -716,11 +760,65 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         }
     }
     for job in &mut config.generation_jobs {
+        /* Normalise the scene BEFORE anything is judged, so both layers judge
+           the same thing. An empty `shots` array collapses to no key at all —
+           the same three-step tidy `normalize_shot_tags` performs, for the same
+           reason: two builds must write the same bytes for the same scene. The
+           ORDER of the shots is left exactly as given; the frontend orders them
+           by start time when it reads them (`normalizeSceneShots`), and a layer
+           that reordered on write would produce a spurious diff on every save.
+           Both layers ACCEPT the same files either way, which is the contract. */
+        if let Some(shots) = job.shots.as_mut() {
+            let mut seen: BTreeSet<String> = BTreeSet::new();
+            for shot in shots.iter_mut() {
+                if shot.id.trim().is_empty() {
+                    return Err(format!("Scene '{}' has a shot with an empty id.", job.id));
+                }
+                if !seen.insert(shot.id.clone()) {
+                    return Err(format!(
+                        "Scene '{}' has two shots with the id '{}'.",
+                        job.id, shot.id
+                    ));
+                }
+                if !shot.start_seconds.is_finite() || !(0.0..=15.0).contains(&shot.start_seconds) {
+                    return Err(format!(
+                        "Shot '{}' in scene '{}' starts at {} seconds, outside the 0-15 second scene.",
+                        shot.id, job.id, shot.start_seconds
+                    ));
+                }
+                shot.settings = normalize_shot_tags(shot.settings.take())
+                    .map_err(|reason| format!("Shot '{}' {reason}", shot.id))?;
+            }
+        }
+        if job.shots.as_ref().is_some_and(|shots| shots.is_empty()) {
+            job.shots = None;
+        }
+        if let Some(seconds) = job.duration_seconds {
+            if !seconds.is_finite() || !(0.0..=15.0).contains(&seconds) {
+                return Err(format!(
+                    "Scene '{}' is {seconds} seconds long, outside the 0-15 second range.",
+                    job.id
+                ));
+            }
+        }
+        // Blank is the same as unset for both of these; the compiler falls back
+        // to its own line, and writing `""` would be a key zod has to tolerate
+        // for no gain.
+        for field in [&mut job.soundscape, &mut job.music] {
+            if field.as_deref().is_some_and(|text| text.trim().is_empty()) {
+                *field = None;
+            }
+        }
+        /* The words live in ONE of two places. A scene keeps them on its shots,
+           so `prompt` and `creativeBrief` are only its mirror and may be blank;
+           a job with no shots — every project written before scenes existed —
+           keeps them here, where blank would mean the user's words were lost.
+           `generationJobSchema.superRefine` in src/lib/project.ts is this rule. */
+        let has_shots = job.shots.as_ref().is_some_and(|shots| !shots.is_empty());
         if job.id.trim().is_empty()
             || job.title.trim().is_empty()
-            || job.prompt.trim().is_empty()
-            || job.creative_brief.trim().is_empty()
             || job.compiled_prompt.trim().is_empty()
+            || (!has_shots && (job.prompt.trim().is_empty() || job.creative_brief.trim().is_empty()))
         {
             return Err(
                 "Generation job id, title, prompt, creative brief, and compiled prompt cannot be empty.".into(),
@@ -1903,10 +2001,14 @@ mod tests {
         serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap()
     }
 
-    /// Byte-exact output of the frontend's `createProjectConfig` — what a real
-    /// newly created project looks like before anything has been edited. The
-    /// complete fixture cannot stand in for it: it has no draft job without a
-    /// clip, which is the shape that broke every create and open.
+    /// A project created BEFORE scenes existed, and the shape every project on
+    /// disk today still has: one generation job with no `shots`, no
+    /// `durationSeconds` and no sound fields, holding its words in `prompt` and
+    /// `creativeBrief` alone. It was the byte-exact output of
+    /// `createProjectConfig`, which now opens a scene instead — the file is kept
+    /// exactly as it was because that is the point of it. The complete fixture
+    /// cannot stand in for it: it has no draft job without a clip, which is the
+    /// shape that broke every create and open.
     fn created_fixture() -> ProjectConfig {
         serde_json::from_str(include_str!("../../fixtures/project-v1-created.json")).unwrap()
     }
@@ -1919,6 +2021,14 @@ mod tests {
             "../../fixtures/project-v1-external-media.json"
         ))
         .unwrap()
+    }
+
+    /// A SCENE: three shots with their own start times, settings and reference
+    /// tokens, plus the two per-prompt sound fields. Every key scenes added is
+    /// present here, so a struct that forgets `skip_serializing_if` shows up in
+    /// `rust-serialized-scene.json` and fails on the frontend's real zod.
+    fn scene_fixture() -> ProjectConfig {
+        serde_json::from_str(include_str!("../../fixtures/project-v1-scene.json")).unwrap()
     }
 
     /// The keys the frontend schema spells `.optional()` with NO `.nullable()`
@@ -1978,7 +2088,11 @@ mod tests {
         // The cross-layer direction that went unchecked for nine rounds: Rust
         // WRITING something zod cannot read. Browser mode never touches Rust,
         // so nothing else catches it.
-        for (name, config) in [("created", created_fixture()), ("complete", fixture())] {
+        for (name, config) in [
+            ("created", created_fixture()),
+            ("complete", fixture()),
+            ("scene", scene_fixture()),
+        ] {
             let config = validate_and_normalize_config(config).unwrap();
             let found = forbidden_nulls(&config);
             assert!(
@@ -2050,6 +2164,12 @@ mod tests {
         write_fixture(
             "rust-serialized-external-media.json",
             &serialize(&validate_and_normalize_config(external_fixture()).unwrap()),
+        );
+        // Everything a scene added: shots with start times and per-shot
+        // settings, a scene length, and the two sound fields.
+        write_fixture(
+            "rust-serialized-scene.json",
+            &serialize(&validate_and_normalize_config(scene_fixture()).unwrap()),
         );
 
         // An ACTUALLY IMPORTED reference: produced by the same function the
@@ -2133,7 +2253,11 @@ mod tests {
 
     #[test]
     fn both_fixtures_round_trip_losslessly_through_json() {
-        for (name, config) in [("created", created_fixture()), ("complete", fixture())] {
+        for (name, config) in [
+            ("created", created_fixture()),
+            ("complete", fixture()),
+            ("scene", scene_fixture()),
+        ] {
             let normalized = validate_and_normalize_config(config).unwrap();
             let json = serde_json::to_string_pretty(&normalized).unwrap();
             let reparsed: ProjectConfig = serde_json::from_str(&json).unwrap();
@@ -3278,6 +3402,121 @@ mod tests {
             !json.contains("shotTags"),
             "a tagless job must not grow a shotTags key: {json}"
         );
+    }
+
+    #[test]
+    fn a_project_written_before_scenes_existed_still_opens_and_grows_no_scene_keys() {
+        // Both pre-scene shapes: the byte-exact output of createProjectConfig,
+        // and a fuller project. Neither has `shots`, `durationSeconds`,
+        // `soundscape` or `music`, and neither may sprout one — the frontend
+        // reads such a job as a single-shot scene without the file changing.
+        for (name, config) in [("created", created_fixture()), ("complete", fixture())] {
+            let opened = validate_and_normalize_config(config).unwrap();
+            let job = &opened.generation_jobs[0];
+            assert_eq!(job.shots, None, "{name}");
+            assert_eq!(job.duration_seconds, None, "{name}");
+            assert_eq!(job.soundscape, None, "{name}");
+            assert_eq!(job.music, None, "{name}");
+            let json = serde_json::to_string_pretty(&opened).unwrap();
+            for key in ["shots", "durationSeconds", "soundscape", "music"] {
+                assert!(
+                    !json.contains(&format!("\"{key}\"")),
+                    "the {name} fixture grew a {key} key it never had: {json}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_scene_keeps_its_shots_and_normalizes_them_the_way_the_frontend_does() {
+        let scene = validate_and_normalize_config(scene_fixture()).unwrap();
+        let job = &scene.generation_jobs[0];
+        let shots = job.shots.as_ref().expect("the scene fixture has shots");
+        assert_eq!(shots.len(), 3);
+        assert_eq!(
+            shots.iter().map(|shot| shot.start_seconds).collect::<Vec<_>>(),
+            vec![0.0, 4.5, 9.0]
+        );
+        assert_eq!(job.duration_seconds, Some(12.0));
+        // Per-shot settings go through the same tidy as the legacy per-job tags.
+        assert_eq!(shots[0].settings.as_ref().unwrap()["shotSize"], vec!["wide"]);
+        assert_eq!(shots[2].settings, None);
+        // Its words are on the shots, and `prompt`/`creativeBrief` mirror them.
+        assert!(shots[0].action.contains("@[ref:reference-woman]"));
+
+        // An emptied group is dropped from a SHOT's settings exactly as it is
+        // from a job's tags, and an emptied shot list collapses to no key.
+        let mut emptied = scene_fixture();
+        emptied.generation_jobs[0].shots.as_mut().unwrap()[1].settings =
+            Some(BTreeMap::from([("mood".into(), Vec::new())]));
+        let emptied = validate_and_normalize_config(emptied).unwrap();
+        assert_eq!(emptied.generation_jobs[0].shots.as_ref().unwrap()[1].settings, None);
+
+        let mut no_shots = scene_fixture();
+        no_shots.generation_jobs[0].shots = Some(Vec::new());
+        let no_shots = validate_and_normalize_config(no_shots).unwrap();
+        assert_eq!(no_shots.generation_jobs[0].shots, None);
+        let json = serde_json::to_string_pretty(&no_shots).unwrap();
+        assert!(!json.contains("\"shots\""), "an empty shot list must not be written: {json}");
+    }
+
+    #[test]
+    fn a_scene_may_have_no_words_left_in_its_mirror_but_a_pre_scene_job_may_not() {
+        // The words live on the shots, so blanking the mirror is not a loss.
+        let mut scene = scene_fixture();
+        scene.generation_jobs[0].prompt = String::new();
+        scene.generation_jobs[0].creative_brief = String::new();
+        assert!(
+            validate_and_normalize_config(scene).is_ok(),
+            "a scene keeps its words on its shots, so the mirror may be blank"
+        );
+
+        // Without shots the mirror IS the only copy, and blanking it would lose
+        // them. zod's superRefine on generationJobSchema refuses the same file.
+        for blank in [0, 1] {
+            let mut legacy = fixture();
+            if blank == 0 {
+                legacy.generation_jobs[0].prompt = String::new();
+            } else {
+                legacy.generation_jobs[0].creative_brief = String::new();
+            }
+            assert!(
+                validate_and_normalize_config(legacy).is_err(),
+                "a job with no shots must keep its words"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scene_is_bounded_to_fifteen_seconds_on_both_the_length_and_the_cuts() {
+        // The frontend spells this `z.number().min(0).max(15)` on both fields.
+        for seconds in [0.0, 7.5, 15.0] {
+            let mut config = scene_fixture();
+            config.generation_jobs[0].duration_seconds = Some(seconds);
+            assert!(
+                validate_and_normalize_config(config).is_ok(),
+                "rejected a valid scene length of {seconds}s"
+            );
+        }
+        for seconds in [-0.5, 15.1, f64::NAN, f64::INFINITY] {
+            let mut config = scene_fixture();
+            config.generation_jobs[0].duration_seconds = Some(seconds);
+            assert!(
+                validate_and_normalize_config(config).is_err(),
+                "accepted a scene length of {seconds}s"
+            );
+            let mut cut = scene_fixture();
+            cut.generation_jobs[0].shots.as_mut().unwrap()[1].start_seconds = seconds;
+            assert!(
+                validate_and_normalize_config(cut).is_err(),
+                "accepted a cut at {seconds}s"
+            );
+        }
+        // Two shots that share an id would make "the shot with id X" ambiguous
+        // in every edit the UI performs. zod refuses the same file.
+        let mut twins = scene_fixture();
+        twins.generation_jobs[0].shots.as_mut().unwrap()[1].id = "scene-walk-shot-1".into();
+        assert!(validate_and_normalize_config(twins).is_err());
     }
 
     #[test]

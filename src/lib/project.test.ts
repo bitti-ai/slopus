@@ -6,6 +6,8 @@ import wireCreated from "../../fixtures/rust-serialized-created.json";
 import wireExternal from "../../fixtures/rust-serialized-external-media.json";
 import wireComplete from "../../fixtures/rust-serialized-complete.json";
 import initialReferenceWire from "../../fixtures/rust-serialized-initial-reference.json";
+import sceneFixture from "../../fixtures/project-v1-scene.json";
+import wireScene from "../../fixtures/rust-serialized-scene.json";
 
 import {
   compileMiniMaxH3Prompt,
@@ -22,6 +24,20 @@ import {
   seedProjectWorkspace,
   STORY_TRACK_ID,
   usableImageReferences,
+  actionReferenceIds,
+  compileGenerationJobPrompt,
+  compileGenerationJobSegments,
+  createDraftGenerationJob,
+  danglingReferenceTokens,
+  formatSceneSeconds,
+  generationJobSchema,
+  referenceToken,
+  sceneBriefText,
+  sceneDurationSeconds,
+  sceneShots,
+  splitActionText,
+  DEFAULT_SCENE_SECONDS,
+  SCENE_MAX_SECONDS,
   LEGACY_PROJECT_FILE_NAMES,
   PROJECT_FILE_NAME,
   type ProjectReference,
@@ -32,6 +48,7 @@ const wireFixtures = {
   complete: wireComplete,
   initialReference: initialReferenceWire,
   externalMedia: wireExternal,
+  scene: wireScene,
 };
 
 /** Body of one compiled section, for both prompt shapes: T2VA writes
@@ -319,8 +336,9 @@ describe("project schema", () => {
   });
 
   it("accepts a freshly created project exactly as createProjectConfig writes it", () => {
-    // This fixture is the byte-exact output of createProjectConfig. Its first
-    // job has NO clipId key at all, which is what every real project looks like.
+    // This fixture is a project created before scenes existed — the shape every
+    // project on disk still has. Its first job has NO clipId key at all, which
+    // is what every real project looks like.
     expect(parseProjectConfig(createdFixture)).toBeTruthy();
     expect("clipId" in createdFixture.generationJobs[0]).toBe(false);
     // Rust reads THIS file and writes the wire fixtures from it, so a seed
@@ -509,5 +527,160 @@ describe("project schema", () => {
     expect(project.assets.every((asset) => !asset.sourcePath)).toBe(true);
     expect(project.assets.every((asset) => !asset.relativePath?.match(/^([a-z]:|[/\\])/i))).toBe(true);
     expect(project.generationJobs.filter((job) => job.outputRelativePath).every((job) => !job.outputRelativePath!.match(/^([a-z]:|[/\\])/i))).toBe(true);
+  });
+});
+
+describe("scenes and the shots inside them", () => {
+  const now = "2026-02-01T00:00:00.000Z";
+  const scene = () => parseProjectConfig(sceneFixture);
+  const shot = (id: string, startSeconds: number, action: string, settings?: Record<string, string[]>) =>
+    ({ id, startSeconds, action, ...(settings ? { settings } : {}) });
+
+  it("reads a job written before scenes existed as a single-shot scene", () => {
+    // Word for word, tag for tag — the migration adds nothing and drops nothing.
+    const legacy = parseProjectConfig(completeFixture).generationJobs[0];
+    expect(legacy.shots ?? null).toBeNull();
+    const shots = sceneShots(legacy);
+    expect(shots).toHaveLength(1);
+    expect(shots[0].action).toBe(legacy.creativeBrief);
+    expect(shots[0].startSeconds).toBe(0);
+    expect(shots[0].settings).toEqual(legacy.shotTags);
+    // And it is generated at the length it always was, without the file saying so.
+    expect(sceneDurationSeconds(legacy)).toBe(DEFAULT_SCENE_SECONDS);
+
+    // The prompt it compiles to is the one it has always compiled to.
+    expect(compileGenerationJobPrompt(legacy, []))
+      .toBe(compileMiniMaxH3Prompt(legacy.creativeBrief, [], legacy.shotTags ?? null));
+  });
+
+  it("compiles three shots in order, each cut carrying its own timestamp", () => {
+    const job = createDraftGenerationJob("", {
+      id: "scene-three", title: "Three shots", now, durationSeconds: 9,
+      shots: [
+        // Deliberately out of order in the array: the START TIMES decide.
+        shot("b", 3, "she stops at the doorway"),
+        shot("a", 0, "she walks towards the camera"),
+        shot("c", 6.5, "the door opens"),
+      ],
+    });
+    const compiled = compileGenerationJobPrompt(job, []);
+    expect(compiled).toContain("[Shot 1] Live-action, cinematic, she walks towards the camera.");
+    expect(compiled).toContain("[Shot 2] (cut at 3s) she stops at the doorway.");
+    expect(compiled).toContain("[Shot 3] (cut at 6.5s) the door opens");
+    // In order, and only shot 1 is timestamp-free (base guide §4.2).
+    expect(compiled.indexOf("[Shot 1]")).toBeLessThan(compiled.indexOf("[Shot 2]"));
+    expect(compiled.indexOf("[Shot 2]")).toBeLessThan(compiled.indexOf("[Shot 3]"));
+    expect(compiled).not.toContain("[Shot 1] (cut");
+    // The mirror is the user's own lines and nothing else.
+    expect(job.creativeBrief).toBe("she walks towards the camera\n\nshe stops at the doorway\n\nthe door opens");
+    expect(sceneBriefText(sceneShots(job))).toBe(job.creativeBrief);
+  });
+
+  it("turns a reference token into <Subject N>, in lockstep with reference_paths", () => {
+    const config = scene();
+    const job = config.generationJobs[0];
+    const compiled = compileGenerationJobPrompt(job, config.references);
+    // Subject numbering follows the project's reference order, which is the
+    // same order usableImageReferences hands to reference_paths — so <Picture 1>
+    // is the first path sent and <Subject 1> is the thing it shows.
+    const images = usableImageReferences(config.references);
+    expect(images.map((reference) => reference.id)).toEqual(["reference-woman", "reference-street"]);
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 1>.");
+    expect(compiled).toContain("<Subject 2> is the content shown in <Picture 2>.");
+    // The token in the user's line became the citation, in place.
+    expect(compiled).toContain("[Shot 1] Wide shot, <Subject 1> walks towards the camera on <Subject 2>.");
+    // The raw token never reaches the model.
+    expect(compiled).not.toContain("@[ref:");
+    // Retention names the shots each subject is really written into — shot 2
+    // cites nobody, so it features both, and shot 3 cites only the street.
+    expect(compiled).toContain("<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved");
+    expect(compiled).toContain("<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved");
+    // The scene's own sound and music replace the two default lines.
+    expect(compiled).toContain("overall_soundscape:\nRain on cobbles, distant traffic, her boots on stone.");
+    expect(compiled).toContain("non_diegetic_music:\nLow sustained cello");
+
+    // Both are the user's own words, and the citations are not.
+    const segments = compileGenerationJobSegments(job, config.references);
+    expect(segments.some((part) => part.kind === "brief" && part.value === " walks towards the camera on ")).toBe(true);
+    expect(segments.some((part) => part.kind === "frame" && part.value === "<Subject 1>")).toBe(true);
+    expect(segments.some((part) => part.kind === "brief" && part.value.startsWith("Rain on cobbles"))).toBe(true);
+    // And the preview IS the string that is sent.
+    expect(segments.map((part) => part.value).join("")).toBe(compiled);
+  });
+
+  it("re-points a token at another reference and the compiled prompt follows", () => {
+    const config = scene();
+    const job = config.generationJobs[0];
+    const before = compileGenerationJobPrompt(job, config.references);
+    expect(before).toContain("<Subject 1> walks towards the camera on <Subject 2>");
+
+    // The swap the editor performs: the token's reference id is replaced, not
+    // the words around it.
+    const swapped = {
+      ...job,
+      shots: job.shots!.map((current) => current.id === "scene-walk-shot-1"
+        ? { ...current, action: current.action.replace(referenceToken("reference-woman"), referenceToken("reference-street")) }
+        : current),
+    };
+    const after = compileGenerationJobPrompt(swapped, config.references);
+    expect(after).toContain("<Subject 2> walks towards the camera on <Subject 2>");
+    expect(after).not.toContain("<Subject 1> walks towards the camera");
+    expect(actionReferenceIds(swapped.shots![0].action)).toEqual(["reference-street"]);
+  });
+
+  it("leaves a token whose reference can no longer be cited out, and names it", () => {
+    const config = scene();
+    const job = config.generationJobs[0];
+    // The reference is deleted from the project; the sentence keeps its shape.
+    const remaining = config.references.filter((reference) => reference.id !== "reference-woman");
+    expect(danglingReferenceTokens(sceneShots(job), remaining)).toEqual(["reference-woman"]);
+    const compiled = compileGenerationJobPrompt(job, remaining);
+    expect(compiled).toContain("[Shot 1] Wide shot,  walks towards the camera on <Subject 1>.");
+    expect(compiled).not.toContain("@[ref:");
+    // Nothing dangles while every reference is still there.
+    expect(danglingReferenceTokens(sceneShots(job), config.references)).toEqual([]);
+  });
+
+  it("splits a line into the user's characters and the references they dropped in", () => {
+    expect(splitActionText("a @[ref:one] and @[ref:two]")).toEqual([
+      { kind: "text", value: "a " },
+      { kind: "reference", value: "one" },
+      { kind: "text", value: " and " },
+      { kind: "reference", value: "two" },
+    ]);
+    expect(splitActionText("no references here")).toEqual([{ kind: "text", value: "no references here" }]);
+    expect(splitActionText("")).toEqual([]);
+  });
+
+  it("holds a scene to nought through fifteen seconds, on its length and on every cut", () => {
+    const valid = (patch: Record<string, unknown>) =>
+      generationJobSchema.safeParse({ ...scene().generationJobs[0], ...patch }).success;
+    for (const durationSeconds of [0, 0.5, DEFAULT_SCENE_SECONDS, SCENE_MAX_SECONDS]) {
+      expect(valid({ durationSeconds }), `${durationSeconds}s`).toBe(true);
+    }
+    for (const durationSeconds of [-0.1, 15.1, 60]) {
+      expect(valid({ durationSeconds }), `${durationSeconds}s`).toBe(false);
+    }
+    expect(valid({ shots: [shot("a", 0, "x"), shot("b", 15, "y")] })).toBe(true);
+    expect(valid({ shots: [shot("a", 0, "x"), shot("b", 15.5, "y")] })).toBe(false);
+    expect(valid({ shots: [shot("a", 0, "x"), shot("b", -1, "y")] })).toBe(false);
+    // Two shots cannot share an id; every edit the editor makes addresses one.
+    expect(valid({ shots: [shot("a", 0, "x"), shot("a", 2, "y")] })).toBe(false);
+    // A scene keeps its words on its shots, so the mirror may be blank — a job
+    // with no shots may not, because there the mirror is the only copy.
+    expect(valid({ prompt: "", creativeBrief: "" })).toBe(true);
+    expect(valid({ prompt: "", creativeBrief: "", shots: null })).toBe(false);
+    expect(formatSceneSeconds(3)).toBe("3");
+    expect(formatSceneSeconds(4.5)).toBe("4.5");
+  });
+
+  it("keeps the scene fixture readable by both validators, in both directions", () => {
+    // The frontend's own file and the bytes Rust really wrote for it.
+    expect(parseProjectConfig(sceneFixture)).toBeTruthy();
+    expect(parseProjectConfig(wireScene)).toEqual(wireScene);
+    // Rust writes floats; the shapes still line up field for field.
+    expect(parseProjectConfig(wireScene).generationJobs[0].shots).toEqual(
+      parseProjectConfig(sceneFixture).generationJobs[0].shots,
+    );
   });
 });
