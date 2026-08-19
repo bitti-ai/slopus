@@ -19,6 +19,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, readMediaFileBytes } from "./persistence";
 import {
+  AUDIO_CHANNELS,
+  AUDIO_SAMPLE_RATE,
   fitRect,
   outputCodec,
   sourceTimeMsForFrame,
@@ -461,10 +463,8 @@ export async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSo
    picture.
    --------------------------------------------------------------------------- */
 
-/** 48 kHz stereo: the rate every AAC encoder accepts and the one nothing on a
- *  timeline has to be downsampled to reach. */
-const AUDIO_SAMPLE_RATE = 48_000;
-const AUDIO_CHANNELS = 2;
+/* AUDIO_SAMPLE_RATE and AUDIO_CHANNELS live in export.ts, with the arithmetic
+   that lets the page state what the mix will cost in memory before it runs. */
 const AUDIO_BITRATE = 192_000;
 /* AAC-LC. Not Opus: mp4-muxer will put Opus in an .mp4 and a large share of
    players will then refuse the file, which is a worse outcome than a stated
@@ -475,16 +475,23 @@ const AUDIO_CODEC = "mp4a.40.2";
 const AUDIO_BLOCK = 1024;
 
 export interface AudioMix {
-  /** One Float32Array per channel at AUDIO_SAMPLE_RATE, already limited. */
+  /** One Float32Array per channel at AUDIO_SAMPLE_RATE, already clipped. */
   channels: Float32Array[];
   frames: number;
   /** Clips that are in the mix. */
   used: number;
   /** Clips that are NOT, each named with the reason. Never silently dropped. */
   problems: string[];
-  /** True when summing overlaps drove the mix past full scale and it was
-   *  limited to fit. Reported, because it is audible. */
-  limited: boolean;
+  /** Clips that ARE in the mix but whose source file ran out before the clip
+   *  did, so part of them is silence. The graph already refuses to invent the
+   *  missing audio; this is the sentence that says it happened. */
+  shortfalls: string[];
+  /** How many samples the sum drove past full scale, and were therefore hard
+   *  clipped to ±1. Not "limited": no gain was ridden, the tops were cut off. */
+  clippedSamples: number;
+  /** The loudest magnitude the sum reached BEFORE clipping. 1.6 means the mix
+   *  was 4 dB over and says how much has to come down. */
+  peak: number;
 }
 
 /** Decodes and mixes every audio segment in the plan into one stereo buffer.
@@ -510,6 +517,7 @@ async function mixAudio(options: {
      is one file to read and one decode to pay for. */
   const decoded = new Map<string, Promise<AudioBuffer>>();
   const problems: string[] = [];
+  const shortfalls: string[] = [];
   let used = 0;
 
   for (const segment of segments) {
@@ -544,37 +552,57 @@ async function mixAudio(options: {
       );
       continue;
     }
+    /* A clip can be longer than what is left of its file — drop a five second
+       stand-in onto a two second recording and three seconds of it have no
+       sound behind them. The graph plays what exists and no more, which is
+       right; what was missing was anyone saying so. Below a millisecond this is
+       rounding between a millisecond timeline and a 48 kHz buffer, not a hole. */
+    const wantedSeconds = segment.durationMs / 1000;
+    const availableSeconds = buffer.duration - offsetSeconds;
+    const playSeconds = Math.min(wantedSeconds, availableSeconds);
+    if (wantedSeconds - availableSeconds > 0.001) {
+      shortfalls.push(
+        `“${segment.label}” runs for ${wantedSeconds.toFixed(2)}s but only ${availableSeconds.toFixed(2)}s of ${asset.name} is left from ${offsetSeconds.toFixed(2)}s in, so its last ${(wantedSeconds - availableSeconds).toFixed(2)}s is silence.`,
+      );
+    }
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.connect(context.destination);
-    source.start(
-      segment.startMs / 1000,
-      offsetSeconds,
-      Math.min(segment.durationMs / 1000, buffer.duration - offsetSeconds),
-    );
+    source.start(segment.startMs / 1000, offsetSeconds, playSeconds);
     used += 1;
   }
 
-  if (used === 0) return { channels: [], frames: 0, used: 0, problems, limited: false };
+  if (used === 0) {
+    return { channels: [], frames: 0, used: 0, problems, shortfalls, clippedSamples: 0, peak: 0 };
+  }
 
   report(`Mixing ${used} audio ${used === 1 ? "clip" : "clips"}…`);
   const rendered = await context.startRendering();
   const channels: Float32Array[] = [];
-  let limited = false;
+  let clippedSamples = 0;
+  let peak = 0;
   for (let channel = 0; channel < AUDIO_CHANNELS; channel += 1) {
     const data = rendered.getChannelData(Math.min(channel, rendered.numberOfChannels - 1)).slice();
     /* Summed clips can exceed full scale. Left alone, the encoder wraps them
-       into a crackle; clamped, they are the flat-topped peak every mixing desk
-       produces at the same point. Either way the user is told. */
+       into a crackle; cut to ±1, they are flat-topped — which is CLIPPING, and
+       is called that here and on the page. It is deliberately not a limiter: a
+       limiter rides the gain of the whole mix over an attack and a release the
+       user never chose, and quietly reshaping someone's soundtrack is a worse
+       failure than a labelled one. What is reported instead is the measurement
+       a limiter would need anyway — how far over, and how much of it — so the
+       fix is to pull a fader down by a known amount. */
     for (let index = 0; index < data.length; index += 1) {
-      if (data[index] > 1 || data[index] < -1) {
-        data[index] = Math.max(-1, Math.min(1, data[index]));
-        limited = true;
+      const value = data[index];
+      const magnitude = value < 0 ? -value : value;
+      if (magnitude > peak) peak = magnitude;
+      if (magnitude > 1) {
+        data[index] = value > 0 ? 1 : -1;
+        clippedSamples += 1;
       }
     }
     channels.push(data);
   }
-  return { channels, frames: rendered.length, used, problems, limited };
+  return { channels, frames: rendered.length, used, problems, shortfalls, clippedSamples, peak };
 }
 
 /** Whether this computer will encode AAC at all, asked of the encoder. */
@@ -679,6 +707,9 @@ export interface ExportResult {
   /** Audio clips that were left out, each named with its reason. Empty on a
    *  clean run; never a silent omission. */
   audioProblems: string[];
+  /** Audio clips that ARE in the file but ran out of sound before they ran out
+   *  of clip. The silence is real and it is now named. */
+  audioShortfalls: string[];
 }
 
 export interface ExportRunOptions {
@@ -714,7 +745,17 @@ function describeSoundtrack(
   const parts = [
     `${soundtrack.used} audio ${soundtrack.used === 1 ? "clip" : "clips"} mixed to ${probe?.detail ?? AUDIO_CODEC}`,
   ];
-  if (soundtrack.limited) parts.push("overlapping clips summed past full scale, so the peaks are limited");
+  if (soundtrack.clippedSamples > 0) {
+    const share = (soundtrack.clippedSamples / (soundtrack.frames * AUDIO_CHANNELS)) * 100;
+    parts.push(
+      `the mix peaked at ${soundtrack.peak.toFixed(2)} of full scale and ${soundtrack.clippedSamples.toLocaleString()} samples (${share.toFixed(share < 0.1 ? 3 : 1)}%) were clipped flat — pull the overlapping clips down by about ${(20 * Math.log10(soundtrack.peak)).toFixed(1)} dB to avoid it`,
+    );
+  }
+  if (soundtrack.shortfalls.length > 0) {
+    parts.push(
+      `${soundtrack.shortfalls.length} ${soundtrack.shortfalls.length === 1 ? "clip runs" : "clips run"} past the end of ${soundtrack.shortfalls.length === 1 ? "its" : "their"} sound — see below`,
+    );
+  }
   if (soundtrack.problems.length > 0) parts.push(`${soundtrack.problems.length} left out — see below`);
   return `${parts.join("; ")}.`;
 }
@@ -754,6 +795,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       : null;
   const soundtrack = mix && mix.used > 0 && mix.frames > 0 ? mix : null;
   const audioProblems = mix?.problems ?? [];
+  const audioShortfalls = mix?.shortfalls ?? [];
   const audioDetail = describeSoundtrack(plan, support, audioProbe, mix, soundtrack);
   stopIfCancelled();
 
@@ -1024,6 +1066,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       audio: Boolean(soundtrack),
       audioDetail,
       audioProblems,
+      audioShortfalls,
     };
   } finally {
     releaseLoaded();

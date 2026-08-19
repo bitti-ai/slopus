@@ -168,6 +168,32 @@ export type ExportSegment =
     }
   | { kind: "gap"; startFrame: number; endFrame: number };
 
+/* The shape of the soundtrack, kept here rather than in the pipeline because
+   the export PAGE has to be able to state its cost before anything runs.
+
+   48 kHz stereo: the rate every AAC encoder accepts and the one nothing on a
+   timeline has to be downsampled to reach. */
+export const AUDIO_SAMPLE_RATE = 48_000;
+export const AUDIO_CHANNELS = 2;
+
+/** How much memory the mixed soundtrack occupies while an export runs.
+ *
+ *  The mix is one Float32 per channel per sample and it is built BEFORE the
+ *  muxer opens — an .mp4's track list is fixed the moment the file is created,
+ *  so whether there is sound has to be settled first — and then held until the
+ *  last video frame has been encoded. That is 11.5 MB a minute, so a five
+ *  minute cut holds 115 MB across the whole render and an hour holds 1.4 GB,
+ *  roughly three times that at the peak of mixing while the decoded sources are
+ *  still alive. Nobody should meet that number by running out of memory. */
+export function audioMixBytes(durationMs: number): number {
+  return Math.max(0, Math.floor((durationMs / 1000) * AUDIO_SAMPLE_RATE)) * AUDIO_CHANNELS * 4;
+}
+
+/** Where "this is a lot of memory" starts. 200 MB is a little under 15 minutes
+ *  of timeline: below it the mix is a rounding error next to the decoded video,
+ *  above it it is a number worth reading before pressing Export. */
+const AUDIO_MIX_NOTE_BYTES = 200_000_000;
+
 /** One audio clip, as much of it as lands inside the file.
  *
  *  The picture decides how long the file is, so sound past the last frame is
@@ -377,6 +403,15 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       `${audio.length} audio ${audio.length === 1 ? "clip is" : "clips are"} mixed into an AAC track${
         overlapping > 0 ? `, ${overlapping} of them overlapping — overlaps are summed, as on a mixing desk` : ""
       }. Anything no clip covers is silence.`,
+    );
+  }
+  /* The mix is held whole, in memory, for the length of the render. On a short
+     cut that is not worth a sentence; on a long one it is the thing most likely
+     to end the export, and it was not being said anywhere. */
+  const mixBytes = audioMixBytes(durationMs);
+  if (audio.length > 0 && mixBytes >= AUDIO_MIX_NOTE_BYTES) {
+    notes.push(
+      `The whole soundtrack is mixed in memory before the file is opened and held until the last frame: about ${formatBytes(mixBytes)} for ${formatDuration(durationMs)}, and roughly three times that at the moment of mixing while the source files are still decoded.`,
     );
   }
   /* Audio the file cannot hold, counted rather than dropped in silence. The
