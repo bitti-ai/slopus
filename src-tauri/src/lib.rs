@@ -1485,12 +1485,14 @@ fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>,
     let requested = PathBuf::from(&source_path)
         .canonicalize()
         .map_err(|error| format!("Could not resolve {source_path}: {error}"))?;
-    let recorded = recorded_external_paths(&project.config).into_iter().any(|path| {
-        PathBuf::from(&path)
-            .canonicalize()
-            .map(|canonical| canonical == requested)
-            .unwrap_or(false)
-    });
+    let recorded = recorded_external_paths(&project.config)
+        .into_iter()
+        .any(|path| {
+            PathBuf::from(&path)
+                .canonicalize()
+                .map(|canonical| canonical == requested)
+                .unwrap_or(false)
+        });
     if !recorded && !was_picked_for_project(&root, &requested) {
         return Err(format!(
             "{source_path} is not one of the files this project points at."
@@ -1502,7 +1504,9 @@ fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>,
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     if media_kind_and_mime(&extension).is_none() || !requested.is_file() {
-        return Err(format!("{source_path} is not a media file PolStudio reads."));
+        return Err(format!(
+            "{source_path} is not a media file PolStudio reads."
+        ));
     }
     fs::read(&requested).map_err(|error| format!("Could not read {source_path}: {error}"))
 }
@@ -2528,7 +2532,10 @@ mod tests {
         assert_eq!(referenced.relative_path, None);
         assert!(referenced.source_path.is_some());
         assert!(
-            !project.join("references").join("reference cut.mov").exists(),
+            !project
+                .join("references")
+                .join("reference cut.mov")
+                .exists(),
             "a video reference was copied into the project"
         );
 
@@ -2618,6 +2625,57 @@ mod tests {
         assert!(
             external_media_bytes(&project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
         );
+    }
+
+    /// S5: the window shipped with `"csp": null`, which is not a policy — it is
+    /// the absence of one, and it is what made every other fence here matter so
+    /// much. The policy has to stay narrow in the direction that costs an
+    /// attacker something (no inline or eval'd script, nothing off-origin) and
+    /// stay open in the two directions media previews genuinely need: `blob:`
+    /// URLs for imported footage and `data:` URIs for thumbnails.
+    #[test]
+    fn the_window_ships_a_policy_that_previews_still_work_under() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = config["app"]["security"]["csp"]
+            .as_str()
+            .expect("the webview must ship a Content-Security-Policy");
+        let directive = |name: &str| {
+            csp.split(';')
+                .map(str::trim)
+                .find(|part| part.split_whitespace().next() == Some(name) || part.trim() == name)
+                .unwrap_or_else(|| panic!("the policy says nothing about {name}: {csp}"))
+                .to_string()
+        };
+
+        // Scripts: same origin only, and nothing the page can talk itself into.
+        let script = directive("script-src");
+        assert!(script.contains("'self'"), "{script}");
+        for hole in ["'unsafe-inline'", "'unsafe-eval'", "*", "http:", "https:"] {
+            assert!(
+                !script.split_whitespace().any(|source| source == hole),
+                "script-src allows {hole}: {script}"
+            );
+        }
+        assert!(directive("default-src").contains("'self'"));
+        assert!(directive("object-src").contains("'none'"));
+
+        // Previews: a blob URL is how every imported clip and image reaches an
+        // <img> or a <video>, and a data URI is how thumbnails do. A policy
+        // that forbids these does not secure the app, it breaks it.
+        for name in ["img-src", "media-src"] {
+            let sources = directive(name);
+            assert!(
+                sources.contains("blob:"),
+                "{name} blocks previews: {sources}"
+            );
+            assert!(
+                sources.contains("data:"),
+                "{name} blocks thumbnails: {sources}"
+            );
+        }
+        // invoke() reaches Rust over the ipc protocol.
+        assert!(directive("connect-src").contains("ipc:"));
     }
 
     /// Writes a minimal real project folder and returns it, so a test can say
@@ -2748,11 +2806,12 @@ mod tests {
             "unexpected error: {error}"
         );
         // Same shape for the external read, which takes the folder too.
-        assert!(
-            external_media_bytes(&ssh.to_string_lossy(), &ssh.join("id_rsa").to_string_lossy())
-                .unwrap_err()
-                .contains("does not hold a PolStudio project")
-        );
+        assert!(external_media_bytes(
+            &ssh.to_string_lossy(),
+            &ssh.join("id_rsa").to_string_lossy()
+        )
+        .unwrap_err()
+        .contains("does not hold a PolStudio project"));
 
         // A real project still reads its own files.
         let project = project_folder_at(&root.path().join("project"));
@@ -3009,16 +3068,22 @@ mod tests {
             config.generation_jobs[0].error = Some(String::new());
         });
         rejects("shot tag group id the frontend regex refuses", |config| {
-            config.generation_jobs[0].shot_tags =
-                Some(BTreeMap::from([("Camera Movement".into(), vec!["push-in".into()])]));
+            config.generation_jobs[0].shot_tags = Some(BTreeMap::from([(
+                "Camera Movement".into(),
+                vec!["push-in".into()],
+            )]));
         });
         rejects("shot tag id the frontend regex refuses", |config| {
-            config.generation_jobs[0].shot_tags =
-                Some(BTreeMap::from([("cameraMovement".into(), vec!["Push In".into()])]));
+            config.generation_jobs[0].shot_tags = Some(BTreeMap::from([(
+                "cameraMovement".into(),
+                vec!["Push In".into()],
+            )]));
         });
         rejects("empty shot tag id", |config| {
-            config.generation_jobs[0].shot_tags =
-                Some(BTreeMap::from([("cameraMovement".into(), vec![String::new()])]));
+            config.generation_jobs[0].shot_tags = Some(BTreeMap::from([(
+                "cameraMovement".into(),
+                vec![String::new()],
+            )]));
         });
     }
 
@@ -3049,8 +3114,7 @@ mod tests {
         // Nothing left to say -> the key is absent, never `{}` and never null,
         // so a shot built from prose alone writes the file it always wrote.
         let mut emptied = fixture();
-        emptied.generation_jobs[0].shot_tags =
-            Some(BTreeMap::from([("mood".into(), Vec::new())]));
+        emptied.generation_jobs[0].shot_tags = Some(BTreeMap::from([("mood".into(), Vec::new())]));
         let emptied = validate_and_normalize_config(emptied).unwrap();
         assert_eq!(emptied.generation_jobs[0].shot_tags, None);
         let json = serde_json::to_string(&emptied).unwrap();
