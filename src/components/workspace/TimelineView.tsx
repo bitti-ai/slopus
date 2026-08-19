@@ -199,14 +199,22 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
     const track = tracks.find((item) => item.id === trackId);
     const asset = assetById(assetId);
     if (!track || !acceptsAsset(track, asset) || !asset) return;
-    // Clamp so a drop near the right edge still lands a whole clip on the ruler.
-    const startMs = Math.round(Math.max(0, Math.min(duration - DROPPED_CLIP_MS, ratio * duration)));
+    const durationMs = asset.durationMs && asset.durationMs > 0 ? asset.durationMs : DROPPED_CLIP_MS;
+    /* Clamp so a drop near the right edge still lands a whole clip on the
+       ruler, against THIS clip's length rather than the 5s default — a long
+       import dropped at the end used to run off the end of the canvas.
+       Math.max last, because a clip longer than the whole canvas makes
+       `duration - durationMs` negative and 0 is the only honest start.
+       A non-finite ratio (a zero-width lane, a lane that has not been laid out
+       yet) would carry NaN into startMs, which zod then refuses to save. */
+    const position = Number.isFinite(ratio) ? ratio * duration : 0;
+    const startMs = Math.round(Math.max(0, Math.min(duration - durationMs, position)));
     const clip: TimelineClip = {
       id: `clip-${crypto.randomUUID()}`,
       assetId: asset.id,
       trackId: track.id,
       startMs,
-      durationMs: asset.durationMs && asset.durationMs > 0 ? asset.durationMs : DROPPED_CLIP_MS,
+      durationMs,
       sourceStartMs: 0,
       label: asset.name,
       color: null,
@@ -392,6 +400,11 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
             duration={duration}
             selectedId={selectedId}
             dropActive={dropTrackId === track.id}
+            /* A lane that stays dark is indistinguishable from a lane the
+               pointer simply is not over, so a sound held above a video track
+               looked like it had not been picked up rather than like it was
+               being refused. Marked for the whole drag, not just on hover. */
+            dropBlocked={draggedAsset !== undefined && !acceptsAsset(track, draggedAsset)}
             onSelect={setSelectedId}
             onToggle={toggleTrack}
             onRename={renameTrack}
@@ -421,11 +434,12 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   );
 }
 
-function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle, onRename, onDragOverLane, onDragLeaveLane, onDropLane }: {
+function TrackRow({ track, duration, selectedId, dropActive, dropBlocked, onSelect, onToggle, onRename, onDragOverLane, onDragLeaveLane, onDropLane }: {
   track: ProjectConfig["timeline"]["tracks"][number];
   duration: number;
   selectedId: string;
   dropActive: boolean;
+  dropBlocked: boolean;
   onSelect: (id: string) => void;
   onToggle: (id: string, key: "muted" | "locked") => void;
   onRename: (id: string, name: string) => void;
@@ -451,7 +465,8 @@ function TrackRow({ track, duration, selectedId, dropActive, onSelect, onToggle,
       <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${track.name}`} title={`${track.locked ? "Unlock" : "Lock"} ${track.name}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
     <div
-      className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""}`}
+      className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
+      title={dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} only takes ${track.kind === "audio" ? "sound" : "video and pictures"}`) : undefined}
       onDragOver={onDragOverLane}
       onDragLeave={onDragLeaveLane}
       onDrop={onDropLane}

@@ -1030,6 +1030,20 @@
   box-shadow: inset 0 0 0 1px var(--accent-bright);
 }
 
+/* And the other half of the answer: a lane that cannot take what is being
+   dragged is marked for the whole drag, so "no" is visible before the pointer
+   ever reaches it. A dark lane alone was indistinguishable from a lane the
+   pointer merely was not over. */
+.track-lane--reject {
+  cursor: not-allowed;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0 6px,
+    transparent 6px 12px
+  );
+  opacity: 0.55;
+}
+
 /* --- Clips ----------------------------------------------------------------- */
 
 .timeline-clip {
