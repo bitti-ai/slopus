@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -95,14 +95,23 @@ describe("project workspace timecode", () => {
     };
   }
 
-  /** A project carrying one importable clip, so the media panel has a card. */
+  /** A project carrying one importable clip of each kind, so the media panel
+   *  has a card that belongs on a video track and one that belongs on audio. */
   function projectWithMedia(): ProjectConfig {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     return parseProjectConfig({ ...fresh, assets: [{
       id: "asset-macro", kind: "video", name: "Macro footage", relativePath: "media/imported/macro.mp4",
       mimeType: "video/mp4", durationMs: null, width: null, height: null, createdAt: fresh.createdAt,
+    }, {
+      id: "asset-room", kind: "audio", name: "Room tone", relativePath: "media/imported/room.wav",
+      mimeType: "audio/wav", durationMs: null, width: null, height: null, createdAt: fresh.createdAt,
     }] });
   }
+
+  /** The lane for the first track of this kind, and the card for that asset. */
+  const laneFor = (container: HTMLElement, config: ProjectConfig, kind: "video" | "audio") =>
+    container.querySelectorAll(".track-lane")[config.timeline.tracks.findIndex((track) => track.kind === kind)];
+  const cardFor = (asset: ProjectAsset) => screen.getByTitle(new RegExp(`^${asset.name} —`));
 
   function mediaPanel(config: ProjectConfig, onChange = vi.fn()) {
     const view = render(createElement(TimelineView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
@@ -147,6 +156,74 @@ describe("project workspace timecode", () => {
     // A zero-width lane in jsdom must still yield a real start time, not NaN.
     expect(Number.isFinite(dropped.startMs)).toBe(true);
     expect(parseProjectConfig(next)).toBeTruthy();
+  });
+
+  it("drops a sound onto an audio track, and refuses every video track", () => {
+    const config = projectWithMedia();
+    const sound = config.assets[1];
+    const { container, onChange } = mediaPanel(config);
+
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(sound), { dataTransfer });
+    // Video and audio are separated in BOTH directions. The video test beside
+    // this one only proved the video half; a sound landing on a video track
+    // makes a clip with a picture track and no picture.
+    fireEvent.dragOver(laneFor(container, config, "video"), { dataTransfer });
+    fireEvent.drop(laneFor(container, config, "video"), { dataTransfer });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.drop(laneFor(container, config, "audio"), { dataTransfer });
+    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const audioTrack = next.timeline.tracks.find((track) => track.kind === "audio")!;
+    expect(audioTrack.clips.map((clip) => clip.assetId)).toEqual([sound.id]);
+    expect(next.timeline.tracks.filter((track) => track.kind === "video").every((track) => track.clips.length === 0)).toBe(true);
+    expect(parseProjectConfig(next)).toBeTruthy();
+  });
+
+  it("lands the dropped clip under the pointer and selects it", () => {
+    const config = projectWithMedia();
+    const video = config.assets[0];
+    const { container, onChange, rerender } = mediaPanel(config);
+    const lane = laneFor(container, config, "video") as HTMLElement;
+    // jsdom lays nothing out, so the lane has to be told how wide it is — the
+    // drop reads exactly this to turn a pointer position into a start time.
+    lane.getBoundingClientRect = () => ({ left: 100, width: 1000, top: 0, right: 1100, bottom: 72, height: 72, x: 100, y: 0, toJSON: () => ({}) });
+
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(video), { dataTransfer });
+    // jsdom has no DragEvent, so fireEvent builds a plain Event and drops any
+    // pointer coordinates on the floor. The drop reads clientX, so put it back.
+    const drop = createEvent.drop(lane, { dataTransfer });
+    Object.defineProperty(drop, "clientX", { value: 350 });
+    fireEvent(lane, drop);
+
+    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const dropped = next.timeline.tracks.flatMap((track) => track.clips)[0];
+    // A quarter of the way along a 30-second canvas, not pinned to zero.
+    expect(dropped.startMs).toBe(Math.round(0.25 * 30_000));
+    expect(parseProjectConfig(next)).toBeTruthy();
+
+    // Dropping something and then having to find it again is a fair definition
+    // of a broken drop, so the new clip arrives selected.
+    rerender(createElement(TimelineView, { config: next, folderPath: "C:\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    const clip = container.querySelector(".timeline-clip.selected");
+    expect(clip).not.toBeNull();
+    expect(clip!.textContent).toContain(video.name);
+  });
+
+  it("marks the lanes that cannot take what is being dragged", () => {
+    const config = projectWithMedia();
+    const { container } = mediaPanel(config);
+    const rejected = () => Array.from(container.querySelectorAll(".track-lane--reject"));
+
+    expect(rejected()).toHaveLength(0);
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(config.assets[1]), { dataTransfer });
+    // Every video track, for the whole drag — not only the one under the
+    // pointer. A dark lane on its own says nothing the user can act on.
+    expect(rejected()).toHaveLength(config.timeline.tracks.filter((track) => track.kind === "video").length);
+    fireEvent.dragEnd(cardFor(config.assets[1]));
+    expect(rejected()).toHaveLength(0);
   });
 
   it("does not delete a selected clip from a locked track", () => {
