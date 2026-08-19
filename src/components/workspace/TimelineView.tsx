@@ -7,14 +7,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
-import { MediaThumbnail } from "./MediaThumbnail";
+import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
-/* What a dropped media file is worth on the timeline until PolStudio can read
-   its real length. Imported assets carry no duration — nothing has decoded
-   them — so the clip starts at a stated default and the inspector's Lasts
-   field is editable so the user can set the truth. */
+/* How long a dropped clip is when the file itself cannot say.
+   A drop normally lasts as long as the footage: the media panel decodes each
+   file to draw its thumbnail and records the duration it read there (see
+   MediaThumbnail), so a 40-second rush drops as 40 seconds. This default
+   covers the two cases where there is no such number — a still image, which
+   has no length of its own, and a file the browser opened but could not
+   measure. In both, the Lasts field in the inspector sets the truth. */
 const DROPPED_CLIP_MS = 5_000;
 /* The drag payload is the asset id. A custom type keeps files dragged in from
    the desktop, and text dragged from anywhere else, out of the drop handler. */
@@ -46,6 +49,20 @@ const timecode = (ms: number) => {
   return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 };
 
+/* The Lasts field read back. It prints MM:SS:FF, so that is what it takes;
+   two parts are the minutes and seconds of it, and a bare number is seconds,
+   because "8" and "8.5" are what people actually type into a length box.
+   Null means this is not a length yet — half-typed, or not a number at all —
+   and half-typed text must never be turned into a clip length. */
+const parseDuration = (value: string, frameRate: number): number | null => {
+  const parts = value.trim().split(":");
+  if (parts.length > 3 || parts.some((part) => !/^\d+(\.\d+)?$/.test(part.trim()))) return null;
+  const numbers = parts.map((part) => Number(part));
+  const frames = parts.length === 3 ? numbers[2] * (1000 / frameRate) : 0;
+  const seconds = parts.length === 1 ? numbers[0] : numbers[0] * 60 + numbers[1];
+  return Math.round(seconds * 1000 + frames);
+};
+
 export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void; onOpenGenerator: (jobId?: string) => void }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
@@ -68,6 +85,11 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
      is being offered — it can only see the TYPE. Remembering what dragstart
      put there is the only way to know whether this lane can take it. */
   const [draggedAsset, setDraggedAsset] = useState<ProjectAsset | undefined>(undefined);
+  /* What the user is typing into Lasts, while they are typing it. The field
+     otherwise shows the clip's own length, and "00:0" on the way to "00:08"
+     must not be snapped back to a formatted timecode mid-keystroke. Null means
+     nothing is being typed and the clip speaks for itself. */
+  const [durationDraft, setDurationDraft] = useState<string | null>(null);
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
@@ -87,6 +109,9 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   }, [playing, clipCount, duration]);
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
+
+  // Another clip, another length: what was being typed belonged to the old one.
+  useEffect(() => { setDurationDraft(null); }, [selectedId]);
 
   /* Wheel over the timeline scrubs it. Registered by hand rather than with
      React's onWheel because React attaches wheel listeners passively, and a
@@ -124,6 +149,10 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   };
   const duplicateSelected = () => {
     if (!selected || !selectedTrack || selectedTrack.locked) return;
+    /* The spread carries sourceStartMs with everything else, so duplicating a
+       clip that was split off the middle of a rush copies THAT range of the
+       footage, not the head of the file. Only the id, the position on the
+       ruler, and the name are new. */
     const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, startMs: Math.min(duration - selected.durationMs, selected.startMs + selected.durationMs), label: `${selected.label} copy` };
     updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: [...track.clips, copy] } : track));
     setSelectedId(copy.id);
@@ -198,10 +227,52 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
 
   const assetById = (id: string) => config.assets.find((asset) => asset.id === id);
 
+  /* The media panel decodes each file to draw its thumbnail, and hands back
+     what that decode measured. Write it onto the asset so the NEXT drop is as
+     long as the footage, and so the file is only ever read once for it.
+     Only fields nothing knew yet are filled — a measurement never overwrites a
+     number already on the asset, and it never retimes a clip already cut into
+     the timeline, which is the user's decision and not the file's. Bailing out
+     when nothing changed is what stops this looping: the write re-renders the
+     panel, which would otherwise measure again. */
+  const recordMeasured = (assetId: string, measured: MeasuredMedia) => {
+    const asset = assetById(assetId);
+    if (!asset) return;
+    const next: ProjectAsset = {
+      ...asset,
+      durationMs: asset.durationMs ?? measured.durationMs,
+      width: asset.width ?? measured.width,
+      height: asset.height ?? measured.height,
+    };
+    if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return;
+    onChange({ ...config, assets: config.assets.map((item) => (item.id === assetId ? next : item)) });
+  };
+
+  /* A trim, typed. The source is the ceiling when its length is known — a clip
+     cannot play footage the file does not have — and one frame is the floor,
+     because zod wants a positive whole number of milliseconds and a clip
+     shorter than a frame cannot be shown. A still has no source length, so it
+     is only bounded from below. */
+  const selectedAsset = selected ? assetById(selected.assetId) : undefined;
+  const sourceLimitMs = selected && selectedAsset?.kind !== "image" && selectedAsset?.durationMs
+    ? Math.max(1, selectedAsset.durationMs - selected.sourceStartMs)
+    : null;
+  const minClipMs = Math.max(1, Math.round(1000 / config.settings.frameRate));
+  const typeDuration = (value: string) => {
+    setDurationDraft(value);
+    const parsed = selected ? parseDuration(value, config.settings.frameRate) : null;
+    if (parsed === null || !selected) return;
+    const ceiling = sourceLimitMs ?? Number.MAX_SAFE_INTEGER;
+    updateClip(selected.id, { durationMs: Math.min(Math.max(parsed, minClipMs), Math.max(ceiling, minClipMs)) });
+  };
+
   const dropAsset = (trackId: string, assetId: string, ratio: number) => {
     const track = tracks.find((item) => item.id === trackId);
     const asset = assetById(assetId);
     if (!track || !acceptsAsset(track, asset) || !asset) return;
+    /* As long as the footage, when the footage has said how long it is. A still
+       image and a file nothing could measure have no length to honour, so they
+       get the stated default — see DROPPED_CLIP_MS. */
     const durationMs = asset.durationMs && asset.durationMs > 0 ? asset.durationMs : DROPPED_CLIP_MS;
     /* Clamp so a drop near the right edge still lands a whole clip on the
        ruler, against THIS clip's length rather than the 5s default — a long
@@ -230,9 +301,15 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
-    // With none left, go to an empty composer: synthesising a shot from
-    // config.brief.prompt would describe the whole VIDEO as if it were a single
-    // shot and hand it back as words the user never wrote.
+    // With none left, go to an empty composer.
+    //
+    // createProjectConfig does seed that FIRST draft from config.brief.prompt,
+    // and this is not a disagreement with it. The brief describes the whole
+    // video, which is a fair opening for the one shot a project starts with —
+    // there is nothing else to go on, and it is there to be rewritten. Every
+    // later shot has that same paragraph already spent on the shot before it,
+    // so repeating it would describe the whole video a second time and call it
+    // shot two.
     onOpenGenerator(config.generationJobs.find((job) => job.status === "draft")?.id);
   };
 
@@ -295,7 +372,7 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
                 onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
                 title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
               >
-                <MediaThumbnail folderPath={folderPath} asset={asset} />
+                <MediaThumbnail folderPath={folderPath} asset={asset} onMeasured={(measured) => recordMeasured(asset.id, measured)} />
                 <b>{asset.name}</b>
                 {/* Duration is only claimed when something actually measured it. */}
                 <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
@@ -343,7 +420,18 @@ export function TimelineView({ config, folderPath, onChange, onOpenGenerator }: 
               <label><span>Name</span><input value={selected.label} onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })} /></label>
               <div className="field-pair">
                 <label><span>Starts at</span><input value={timecode(selected.startMs).slice(3)} readOnly /></label>
-                <label><span>Lasts</span><input value={timecode(selected.durationMs).slice(3)} readOnly /></label>
+                {/* The one field here that has to be editable: a clip is only
+                    as long as the cut says, and until this took typing there
+                    was no way at all to change a clip's length except to split
+                    it, which can only ever shorten. Typed as minutes, seconds,
+                    and frames, or as plain seconds. */}
+                <label><span>Lasts</span><input
+                  value={durationDraft ?? timecode(selected.durationMs).slice(3)}
+                  onChange={(event) => typeDuration(event.target.value)}
+                  onBlur={() => setDurationDraft(null)}
+                  title={`How long this clip lasts — minutes:seconds:frames, or just seconds.${sourceLimitMs === null ? "" : ` This footage has ${(sourceLimitMs / 1000).toFixed(1)}s left from where the clip starts in it.`}`}
+                  inputMode="decimal"
+                /></label>
               </div>
             </section>
             <section className="inspector-section inspector-section--pending">
