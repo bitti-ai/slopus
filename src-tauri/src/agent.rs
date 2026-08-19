@@ -10,7 +10,6 @@ use std::{
     collections::BTreeMap,
     env,
     ffi::OsString,
-    fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -469,15 +468,10 @@ impl AgentProvider for CodexProvider {
         prompt: &str,
         setting: Option<&ProviderSetting>,
     ) -> Result<CommandSpec, String> {
-        let schema_path = root.join("cache").join("agent-turn-output.schema.json");
-        fs::create_dir_all(schema_path.parent().expect("schema has a parent"))
-            .map_err(|error| format!("Could not prepare agent cache: {error}"))?;
-        fs::write(&schema_path, OUTPUT_SCHEMA)
-            .map_err(|error| format!("Could not write agent output schema: {error}"))?;
         // Every flag here is scoped to the `exec` subcommand, so `exec` stays
         // first and the positional prompt stays last. `--skip-git-repo-check`
-        // and `--output-schema` do not exist on the top-level `codex` command
-        // at all; put them before `exec` and clap fails the invocation.
+        // and `--json` do not exist on the top-level `codex` command at all;
+        // put them before `exec` and clap fails the invocation.
         let mut args: Vec<OsString> = vec![
             "exec".into(),
             "--ephemeral".into(),
@@ -491,8 +485,6 @@ impl AgentProvider for CodexProvider {
             "workspace-write".into(),
             "-C".into(),
             root.as_os_str().into(),
-            "--output-schema".into(),
-            schema_path.as_os_str().into(),
         ];
         if let Some(model) = setting.and_then(|value| value.model.as_deref()) {
             args.extend(["--model".into(), model.into()]);
@@ -512,7 +504,19 @@ impl AgentProvider for CodexProvider {
     }
 }
 
-const OUTPUT_SCHEMA: &str = r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["kind"],"properties":{"kind":{"enum":["answer","question","mutation"]},"content":{"type":"string"},"summary":{"type":"string"},"project":{"type":"object"}},"additionalProperties":false}"#;
+// `codex exec --output-schema` is deliberately not used. It forwards the file
+// to OpenAI's strict structured-output validator, which requires every nested
+// object to declare `additionalProperties: false` and to list every one of its
+// properties as required. A turn's `project` field is an entire PolStudio
+// project — an open-ended object by design — so the schema this once shipped
+// was rejected before the model was ever reached:
+//
+//   invalid_json_schema: In context=('properties','project'),
+//   'additionalProperties' is required to be supplied and to be false.  (400)
+//
+// Every Codex turn failed on that. The turn contract is stated in
+// AGENT_SYSTEM_PROMPT and enforced by `parse_turn_result`, which is how the
+// Claude side has always worked.
 
 struct CommandSpec {
     executable: PathBuf,
@@ -607,19 +611,44 @@ fn run_subprocess(
         }
     }
     if !status.success() {
-        let diagnostic = events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                AgentEvent::Diagnostic { text } => Some(text.as_str()),
-                _ => None,
+        // Look on stdout first. Codex announces "Reading additional input from
+        // stdin..." on stderr on every run, which is the *last* stderr line
+        // and therefore used to be the whole error message — it masked a real
+        // HTTP 400 from the model behind a notice about a pipe.
+        let diagnostic = structured_failure(&lines)
+            .or_else(|| {
+                events.iter().rev().find_map(|event| match event {
+                    AgentEvent::Diagnostic { text } if !text.trim().is_empty() => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
             })
-            .unwrap_or("Provider exited without a diagnostic.");
+            .unwrap_or_else(|| "Provider exited without a diagnostic.".into());
         return Err(format!("Agent provider exited with {status}: {diagnostic}"));
     }
     events.push(AgentEvent::Completed);
     let output = extract_provider_output(&lines)?;
     Ok((events, output))
+}
+
+/// The reason a provider gave for failing, as it reported it on stdout.
+///
+/// Codex emits `{"type":"error","message":…}` and `{"type":"turn.failed",
+/// "error":{"message":…}}`; that is where the useful text lives, not on stderr.
+fn structured_failure(lines: &[String]) -> Option<String> {
+    lines.iter().rev().find_map(|line| {
+        let value = serde_json::from_str::<Value>(line).ok()?;
+        let message = value
+            .pointer("/error/message")
+            .and_then(Value::as_str)
+            .or_else(|| {
+                (value.get("type").and_then(Value::as_str) == Some("error"))
+                    .then(|| value.get("message").and_then(Value::as_str))
+                    .flatten()
+            })?;
+        Some(message.to_string())
+    })
 }
 
 /// Reduce a provider's NDJSON transcript to the one payload the turn contract
@@ -646,7 +675,9 @@ fn extract_provider_output(lines: &[String]) -> Result<String, String> {
                 .and_then(Value::as_str)
                 .or_else(|| value.get("subtype").and_then(Value::as_str))
                 .unwrap_or("the provider gave no detail");
-            return Err(format!("The agent provider reported a failed turn: {detail}"));
+            return Err(format!(
+                "The agent provider reported a failed turn: {detail}"
+            ));
         }
         if value.get("kind").is_some() {
             return Ok(line.clone());
@@ -788,6 +819,7 @@ fn option_number(setting: &ProviderSetting, key: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn parses_answer_question_and_validates_empty_content() {
@@ -818,7 +850,6 @@ mod tests {
     #[test]
     fn provider_specs_are_argument_vectors_and_confined_to_root() {
         let root = tempfile::tempdir().unwrap();
-        fs::create_dir(root.path().join("cache")).unwrap();
         let config: ProjectConfig =
             serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
         let claude = ClaudeProvider
@@ -893,8 +924,8 @@ mod tests {
         assert!(args.last().unwrap().contains("hello"));
     }
 
-    /// `--skip-git-repo-check`, `--output-schema` and `--json` exist only on
-    /// `codex exec`; the top-level `codex` command rejects them. Order matters
+    /// `--skip-git-repo-check` and `--json` exist only on `codex exec`; the
+    /// top-level `codex` command rejects them. Order matters
     /// twice over: after the subcommand, before the positional prompt.
     /// Verified against codex-cli 0.147.0.
     #[test]
@@ -974,6 +1005,41 @@ mod tests {
             parse_turn_result(&extract_provider_output(&lines).unwrap()).unwrap(),
             AgentTurnResult::Answer { content } if content == "streamed"
         ));
+    }
+
+    /// OpenAI's strict structured-output validator rejects any nested object
+    /// that does not declare `additionalProperties: false` and list every
+    /// property as required. A turn's `project` is a whole PolStudio project,
+    /// so no schema file can describe it — passing one returned HTTP 400
+    /// before the model was reached and failed every Codex turn.
+    #[test]
+    fn codex_is_not_handed_an_output_schema_it_cannot_satisfy() {
+        let root = tempfile::tempdir().unwrap();
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let spec = CodexProvider
+            .command_spec(root.path(), Path::new("codex"), &config, "hello", None)
+            .unwrap();
+        assert!(!spec.args.iter().any(|arg| arg == "--output-schema"));
+        // And nothing is left behind in the project folder to feed it.
+        assert!(!root.path().join("cache").exists());
+    }
+
+    /// Codex writes "Reading additional input from stdin..." to stderr on
+    /// every run, so the last stderr line is never the reason it failed. That
+    /// notice once stood in for a rejected request the provider had spelled
+    /// out on stdout.
+    #[test]
+    fn a_failure_is_explained_from_stdout_not_the_last_stderr_line() {
+        let lines: Vec<String> = vec![
+            r#"{"type":"thread.started","thread_id":"01a0"}"#.into(),
+            r#"{"type":"error","message":"invalid_json_schema: additionalProperties is required"}"#
+                .into(),
+            r#"{"type":"turn.failed","error":{"message":"invalid_json_schema: additionalProperties is required"}}"#.into(),
+        ];
+        let detail = structured_failure(&lines).unwrap();
+        assert!(detail.contains("invalid_json_schema"), "{detail}");
+        assert!(structured_failure(&["not json".to_string()]).is_none());
     }
 
     #[test]
