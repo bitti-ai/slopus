@@ -502,6 +502,38 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(folded)).toBeTruthy();
   }, 20_000);
 
+  it("does not mark a saved project edited for having its media looked at", async () => {
+    /* N3: opening the Media panel measured the files, the measurement went back
+       through the same door as a user's edit, and Save lit up on a project
+       nobody had touched — "Save your changes to this project folder" over a
+       folder that had none. A measurement is still worth keeping, so it stays
+       in the project and rides along with the next real save. */
+    const onSave = vi.fn(async () => undefined);
+    const project = { folderPath: "C:\\Looked At", config: projectWithMedia() };
+    await withFakeDecoder({ seconds: 40, width: 1920, height: 1080 }, async () => {
+      render(createElement(ProjectWorkspace, { project, onBack: () => undefined, onSave }));
+      const save = () => screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+      expect(save().disabled).toBe(true);
+      expect(save().title).toBe("Everything is already saved");
+
+      fireEvent.click(screen.getByRole("button", { name: "Media" }));
+      // The panel prints the length it read, so this waits on the measurement
+      // itself rather than on a guess at how long a decode takes.
+      await waitFor(() => expect(screen.getAllByText(/40\.0s/).length).toBe(2), { timeout: 8_000 });
+      expect(save().disabled).toBe(true);
+      expect(save().title).toBe("Everything is already saved");
+
+      // An actual edit still turns it on, and carries the measurement with it.
+      fireEvent.change(screen.getAllByLabelText(/^Rename /)[0], { target: { value: "Opening layer" } });
+      expect(save().disabled).toBe(false);
+      fireEvent.click(save());
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+    });
+    const saved = onSave.mock.calls[0][0] as unknown as { config: ProjectConfig };
+    expect(saved.config.assets.map((asset) => asset.durationMs)).toEqual([40_000, 40_000]);
+    expect(parseProjectConfig(saved.config)).toBeTruthy();
+  }, 20_000);
+
   it("keeps the transport on the timeline, with one timecode and one reason", () => {
     const empty = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const { container, rerender } = render(createElement(TimelineView, { config: empty, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenGenerator: () => undefined }));
