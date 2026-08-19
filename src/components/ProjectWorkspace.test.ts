@@ -226,6 +226,36 @@ describe("project workspace timecode", () => {
     expect(rejected()).toHaveLength(0);
   });
 
+  it("keeps the transport on the timeline, with one timecode and one reason", () => {
+    const empty = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const { container, rerender } = render(createElement(TimelineView, { config: empty, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenGenerator: () => undefined }));
+
+    // It sits in the timeline toolbar now, not under the program monitor.
+    expect(container.querySelector(".monitor-transport")).toBeNull();
+    expect(container.querySelector(".timeline-toolbar .timeline-transport")).not.toBeNull();
+    // the playhead time is printed once. The toolbar used to print it beside
+    // the heading while the monitor printed it again, which reads as two clocks.
+    expect(container.textContent!.match(/\d\d:\d\d:\d\d:\d\d/g)).toHaveLength(1);
+    expect(container.querySelector(".transport-format")!.textContent).toBe("1080P · 30 fps");
+
+    // An empty timeline has nothing to play, and every control says so rather
+    // than only going grey.
+    for (const label of ["Go to beginning", "Play", "Step forward one second"]) {
+      const button = screen.getByRole("button", { name: label }) as HTMLButtonElement;
+      expect(button.disabled, label).toBe(true);
+      expect(button.title, label).toBe("Nothing to play yet — add or generate a scene first.");
+    }
+
+    // With a clip on the timeline they come alive, and Space still plays.
+    const config = parseProjectConfig(completeFixture);
+    rerender(createElement(TimelineView, { config, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenGenerator: () => undefined }));
+    expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.keyDown(container.querySelector(".timeline-view")!, { code: "Space" });
+    expect(screen.getByRole("button", { name: "Pause" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(screen.getByRole("button", { name: "Play" })).not.toBeNull();
+  });
+
   it("does not delete a selected clip from a locked track", () => {
     const config = parseProjectConfig(completeFixture);
     const firstTrackWithClip = config.timeline.tracks.find((track) => track.clips.length > 0)!;

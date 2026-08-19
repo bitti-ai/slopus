@@ -445,18 +445,36 @@
 }
 
 /* In list mode the import control is one row like every other, not the tall
-   dashed plate the grid needs. These have the same specificity as the grid
-   rules above, so they MUST stay below them — moved up, the 120px plate won. */
+   dashed plate the grid needs — and not a centred label either: it reuses the
+   row grid above, so its words start on the same pixel as every file name
+   beside it and its icon sits in the same column as their stills. These have
+   the same specificity as the grid rules above, so they MUST stay below them —
+   moved up, the 120px plate won. */
 .media-grid--list .media-import {
-  min-height: var(--space-7);
-  flex-direction: row;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
+  /* The rows beside it are 42px tall: a 40px still between two 1px borders.
+     This row carries the same border, so it has to add the same two pixels. */
+  min-height: calc(var(--space-7) + 2px);
+  display: grid;
+  align-items: center;
+  /* The grid-mode plate packs its icon and label together; a row uses the same
+     column gap as the file rows, or the name lands four pixels short of theirs. */
+  column-gap: var(--space-2);
+  padding: 0;
 }
 
+.media-grid--list .media-import svg {
+  justify-self: center;
+}
+
+/* The file rows push their name down onto the baseline of a two-line stack.
+   This row has one line, so it centres instead — bottom-aligned, it sat ten
+   pixels below its own icon. */
 .media-grid--list .media-import b {
   width: auto;
+  margin-top: 0;
+  padding-left: 0;
   text-align: left;
+  align-self: center;
 }
 
 /* --- Program monitor ------------------------------------------------------- */
@@ -868,7 +886,10 @@
 /* --- Track grid ------------------------------------------------------------ */
 
 .timeline-grid {
-  --track-column: 224px;
+  /* Wide enough for the seeded track names ("Track 1, Video") to be read in
+     full. At 224px the rename field clipped them to "Track 1, Vi...", which
+     reads as a broken name rather than a narrow column. */
+  --track-column: 256px;
   position: relative;
   display: grid;
   grid-template-columns: var(--track-column) minmax(0, 1fr);
