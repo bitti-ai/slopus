@@ -64,7 +64,7 @@
   justify-content: center;
   gap: var(--space-2);
   padding: 0 var(--space-4);
-  border: 1px solid var(--danger-line-strong);
+  border: 1px solid var(--danger-line);
   border-radius: var(--radius-md);
   color: var(--danger);
   background: var(--danger-soft);
@@ -73,7 +73,7 @@
 }
 
 .danger-button:hover:not(:disabled) {
-  border-color: var(--danger);
+  border-color: var(--danger-line-strong);
   background: var(--danger-soft-strong);
 }
 
