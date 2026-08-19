@@ -16,6 +16,10 @@ import type { ProjectConfig, ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
 
+/* Light/dark appearance is machine-level for the same reason and lives in
+ * ./theme.ts, which is separate only because index.html has to read the same
+ * value from a classic script before the bundle exists. */
+
 export type EnginePathId = "transformer" | "textEncoder" | "tokenizer" | "videoVae" | "audioVae";
 
 export interface EnginePathField {

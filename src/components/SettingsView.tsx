@@ -1,4 +1,4 @@
-import { AlertCircle, Check, FolderSearch, RotateCcw, X } from "lucide-react";
+import { AlertCircle, Check, FolderSearch, Monitor, Moon, RotateCcw, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getEngineStatus, type ModelStatus, type VidfabStatus } from "../lib/runtime";
@@ -7,6 +7,10 @@ import {
   loadEngineSettings, saveEngineSettings,
   type EnginePathField, type EnginePathId, type EngineSettings,
 } from "../lib/settings";
+import {
+  applyTheme, loadTheme, saveTheme, systemTheme, watchSystemTheme,
+  type ResolvedTheme, type ThemeChoice,
+} from "../lib/theme";
 
 type PathState = "unset" | "checking" | "found" | "missing";
 
@@ -27,6 +31,60 @@ const stateLabel: Record<PathState, string> = {
   found: "Found",
   missing: "Not found on disk",
 };
+
+/* The system option has to say what the computer is currently set to, or
+   "Match this computer" is a promise the user cannot check. */
+const themeOptions: { id: ThemeChoice; label: string; icon: typeof Sun; detail: (system: ResolvedTheme) => string }[] = [
+  {
+    id: "system",
+    label: "Match this computer",
+    icon: Monitor,
+    detail: (system) => `Currently ${system}. Follows along when you change it.`,
+  },
+  { id: "light", label: "Light", icon: Sun, detail: () => "Always light, whatever this computer is set to." },
+  { id: "dark", label: "Dark", icon: Moon, detail: () => "Always dark, whatever this computer is set to." },
+];
+
+function AppearanceSetting() {
+  const [choice, setChoice] = useState<ThemeChoice>(loadTheme);
+  const [system, setSystem] = useState<ResolvedTheme>(systemTheme);
+
+  /* The app repaints itself through prefers-color-scheme; this listener only
+     keeps the "Currently dark/light" line honest while the screen is open. */
+  useEffect(() => watchSystemTheme(setSystem), []);
+
+  const pick = (next: ThemeChoice) => {
+    setChoice(next);
+    saveTheme(next);
+    applyTheme(next);
+  };
+
+  return (
+    <div className="theme-choice" role="radiogroup" aria-labelledby="appearance-heading">
+      {themeOptions.map((option) => {
+        const Icon = option.icon;
+        const selected = choice === option.id;
+        return (
+          <label
+            key={option.id}
+            className={`theme-choice__option${selected ? " theme-choice__option--selected" : ""}`}
+          >
+            <input
+              type="radio"
+              name="polstudio-theme"
+              value={option.id}
+              checked={selected}
+              onChange={() => pick(option.id)}
+            />
+            <Icon size={18} aria-hidden="true" />
+            <b>{option.label}</b>
+            <small>{option.detail(system)}</small>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 export function SettingsView({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<EngineSettings>(() => loadEngineSettings());
@@ -85,24 +143,33 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
         <header className="settings-view__head">
           <div>
             <p className="eyebrow">Settings</p>
-            <h1 id="settings-heading">Video engine</h1>
+            <h1 id="settings-heading">This computer</h1>
           </div>
           <button className="icon-button icon-button--strong" onClick={onClose} aria-label="Close settings"><X size={18} /></button>
         </header>
 
         <p className="settings-view__lead">
-          PolStudio needs the model files to render a shot. Where they live is a property of this
-          computer, not of a project, so the paths are remembered here and used by every project you
-          open. The engine itself ships with the app and needs no setting.
+          Everything here belongs to this computer rather than to a project, so it stays behind when
+          you copy a project folder somewhere else and it applies to every project you open.
         </p>
 
-        <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
-          <span><i />{engineHeadline(status, desktop)}</span>
-          <p>{engineDetail(status, desktop, missing.length)}</p>
-        </div>
+        <section className="settings-section" aria-labelledby="appearance-heading">
+          <h2 id="appearance-heading">Appearance</h2>
+          <AppearanceSetting />
+        </section>
 
         <section className="settings-section" aria-labelledby="paths-heading">
-          <h2 id="paths-heading">Model weights</h2>
+          <h2 id="paths-heading">Video engine</h2>
+          <p className="settings-section__note">
+            PolStudio needs the model files to render a shot. Where they live is a property of this
+            computer, not of a project, so the paths are remembered here and used by every project
+            you open. The engine itself ships with the app and needs no setting.
+          </p>
+
+          <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
+            <span><i />{engineHeadline(status, desktop)}</span>
+            <p>{engineDetail(status, desktop, missing.length)}</p>
+          </div>
           {ENGINE_PATH_FIELDS.map((field) => {
             const value = settings[field.id];
             const state = pathState(field, value, status);
