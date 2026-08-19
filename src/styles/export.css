@@ -11,7 +11,7 @@
   overflow-y: auto;
   padding: var(--space-6) var(--space-7) var(--space-7);
   background:
-    radial-gradient(circle at 80% -20%, rgba(47, 69, 107, 0.13), transparent 38%),
+    radial-gradient(circle at 80% -20%, var(--glow-accent), transparent 38%),
     var(--bg);
 }
 
@@ -87,8 +87,10 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   /* Deliberately not the project background: the frame paints its own, and a
-     matching surround would hide where the picture actually ends. */
-  background: #05070b;
+     matching surround would hide where the picture actually ends. Because it
+     is black in BOTH themes, everything painted on it uses the --stage-*
+     tokens rather than the palette — see tokens.css. */
+  background: var(--stage-bg);
 }
 
 .export-stage canvas {
@@ -102,7 +104,7 @@
   max-width: 46ch;
   margin: 0;
   padding: var(--space-4);
-  color: var(--text-muted);
+  color: var(--on-stage);
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
   text-align: center;
@@ -115,10 +117,10 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  border: 1px solid rgba(236, 125, 134, 0.4);
+  border: 1px solid var(--stage-alert-line);
   border-radius: var(--radius-sm);
-  color: var(--danger);
-  background: rgba(12, 8, 10, 0.9);
+  color: var(--stage-alert-ink);
+  background: var(--stage-alert-bg);
   text-align: left;
 }
 
@@ -283,14 +285,14 @@
 .export-notice {
   margin-top: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid rgba(227, 168, 98, 0.34);
+  border: 1px solid var(--warning-line);
   border-radius: var(--radius-md);
-  background: rgba(58, 44, 25, 0.24);
+  background: var(--warning-soft);
 }
 
 .export-notice--bad {
-  border-color: rgba(236, 125, 134, 0.4);
-  background: rgba(58, 26, 30, 0.26);
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
 }
 
 .export-notice h3 {
@@ -360,8 +362,8 @@
 }
 
 .export-outcome--good {
-  border-color: rgba(110, 207, 149, 0.36);
-  background: rgba(26, 48, 36, 0.26);
+  border-color: var(--success-line);
+  background: var(--success-soft);
 }
 
 .export-outcome h3 {

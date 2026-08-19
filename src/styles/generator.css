@@ -146,7 +146,7 @@
 }
 
 .queue-group > button.selected {
-  border-color: rgba(90, 120, 218, 0.4);
+  border-color: var(--accent-line);
   background: var(--accent-soft);
 }
 
@@ -343,7 +343,7 @@
   max-width: var(--content-max);
   margin: 0 auto var(--space-6);
   padding: var(--space-5);
-  border: 1px solid rgba(91, 121, 211, 0.32);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-xl);
   background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 10%, var(--panel-2)), var(--panel-2));
   box-shadow: var(--shadow-sm);
@@ -1205,7 +1205,7 @@
   background-color: var(--panel-3);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.03) 0 6px,
+    var(--hatch) 0 6px,
     transparent 6px 12px
   );
 }
@@ -1349,7 +1349,7 @@
 }
 
 .stage-rail li.done i {
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--accent-bright);
   background: var(--accent);
 }

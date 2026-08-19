@@ -168,7 +168,7 @@
 }
 
 .scene-card.selected {
-  border-color: rgba(101, 129, 222, 0.48);
+  border-color: var(--accent-line-strong);
   background: var(--accent-soft);
   box-shadow: inset 2px 0 var(--accent-bright);
 }
@@ -184,7 +184,7 @@
   background-color: var(--panel-3);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.03) 0 6px,
+    var(--hatch) 0 6px,
     transparent 6px 12px
   );
 }
@@ -196,7 +196,8 @@
   padding: 2px var(--space-1);
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  background: rgba(9, 11, 15, 0.78);
+  background: var(--glass);
+  backdrop-filter: blur(6px);
   font: var(--weight-medium) var(--text-2xs) / 1.1 var(--font-mono);
   font-style: normal;
 }
@@ -242,7 +243,7 @@
   gap: var(--space-2);
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border: 1px dashed rgba(107, 141, 255, 0.45);
+  border: 1px dashed var(--accent-line-strong);
   border-radius: var(--radius-md);
   color: var(--accent-bright);
   background: var(--accent-soft);
@@ -254,7 +255,7 @@
 .scene-add:hover {
   color: var(--text-primary);
   border-color: var(--accent-bright);
-  background: rgba(60, 105, 239, 0.24);
+  background: var(--accent-soft-strong);
 }
 
 /* --- Panel layout toggle ---------------------------------------------------
@@ -364,7 +365,7 @@
   background-color: var(--panel-3);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.03) 0 6px,
+    var(--hatch) 0 6px,
     transparent 6px 12px
   );
 }
@@ -513,7 +514,7 @@
   justify-content: center;
   padding: var(--space-4) var(--space-6);
   background-color: var(--bg);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 0.6px, transparent 0.6px);
+  background-image: radial-gradient(var(--grid-line) 0.6px, transparent 0.6px);
   background-size: 12px 12px;
 }
 
@@ -580,7 +581,7 @@
   place-items: center;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 .inspector-summary > div {
@@ -857,7 +858,7 @@
 .timeline-transport .play-button {
   width: var(--control-md);
   height: var(--control-md);
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -1019,12 +1020,12 @@
   place-items: center;
   border-radius: var(--radius-sm);
   color: var(--accent-bright);
-  background: #27365a;
+  background: var(--accent-soft-strong);
 }
 
 .track-kind--audio {
-  color: #7cc3bc;
-  background: #1c3939;
+  color: var(--audio);
+  background: var(--audio-soft);
 }
 
 .track-head .track-name,
@@ -1097,7 +1098,7 @@
   overflow: hidden;
   border-bottom: 1px solid var(--line);
   background-color: var(--bg);
-  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-image: linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 14.7% 100%;
 }
 
@@ -1110,7 +1111,7 @@
    refuse the file (a sound over a video track, or a locked track) stay dark,
    so the highlight IS the answer to "can this go here?". */
 .track-lane--drop {
-  background-color: rgba(60, 105, 239, 0.14);
+  background-color: var(--accent-soft);
   box-shadow: inset 0 0 0 1px var(--accent-bright);
 }
 
@@ -1122,7 +1123,7 @@
   cursor: not-allowed;
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.05) 0 6px,
+    var(--hatch-strong) 0 6px,
     transparent 6px 12px
   );
   opacity: 0.55;
@@ -1137,30 +1138,30 @@
   min-width: 32px;
   overflow: hidden;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--clip-color, #516fba) 70%, white 10%);
+  border: 1px solid color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 70%, var(--clip-edge) 10%);
   border-radius: var(--radius-sm);
   text-align: left;
   color: var(--text-primary);
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--clip-color, #516fba) 72%, #27303f),
-    color-mix(in srgb, var(--clip-color, #516fba) 48%, #11151d)
+    color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 72%, var(--clip-shade-top)),
+    color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 48%, var(--clip-shade-bottom))
   );
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px var(--clip-sheen);
 }
 
 .timeline-clip::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0 18px, transparent 18px 21px);
+  background: repeating-linear-gradient(90deg, var(--clip-stripe) 0 18px, transparent 18px 21px);
 }
 
 .timeline-clip--audio {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--clip-color, #3d817c) 62%, #1d3032),
-    color-mix(in srgb, var(--clip-color, #3d817c) 38%, #10191b)
+    color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 62%, var(--clip-audio-shade-top)),
+    color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 38%, var(--clip-audio-shade-bottom))
   );
 }
 
@@ -1169,8 +1170,8 @@
 }
 
 .timeline-clip.selected {
-  border-color: #bdcaff;
-  box-shadow: 0 0 0 2px var(--accent-bright), inset 0 1px rgba(255, 255, 255, 0.17);
+  border-color: var(--clip-selected-edge);
+  box-shadow: 0 0 0 2px var(--accent-bright), inset 0 1px var(--clip-sheen-strong);
   z-index: 3;
 }
 
