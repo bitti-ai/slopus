@@ -808,11 +808,15 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     : `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
   const labelList = listOf(labels);
 
-  /* Which subjects each shot is said to feature. A shot that cites references
-     in its own line features exactly those; a shot that cites none features all
-     of them, which is what a scene written before tokens existed means and what
-     keeps a single untokened shot compiling to the same bytes it always did. */
-  const featured = compiled.map((shot) => shot.citedIds.length > 0 ? shot.citedIds : usable.map((reference) => reference.id));
+  /* Which subjects each shot is said to feature.
+
+     Once ANY line names a reference, every line means what it says: a shot that
+     names nobody features nobody, and no claim is made about it. Only a scene
+     where NO line names anything falls back to "all of them" — which is what a
+     scene written before references could be dropped into the text means, and
+     what keeps a single untokened shot compiling to the bytes it always did. */
+  const anyCited = compiled.some((shot) => shot.citedIds.length > 0);
+  const featured = compiled.map((shot) => anyCited ? shot.citedIds : usable.map((reference) => reference.id));
 
   // §3: task-type prefix. Every reference here provides generation guidance
   // without acting as a concrete frame or an edited source video, which is
@@ -857,7 +861,10 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...(shot.tags.framing.length > 0 ? [tagged(capitalize(shot.tags.framing.join(", "))), frame(", ")] : []),
       ...shot.body,
       ...addedStop(shot.text),
-      frame(` The shot features ${listOf(featured[shot.index].map((id) => `<Subject ${subjectNumber.get(id)}>`))}, matching the definitions above.`),
+      // A shot that names nobody gets no sentence about who is in it.
+      ...(featured[shot.index].length > 0
+        ? [frame(` The shot features ${listOf(featured[shot.index].map((id) => `<Subject ${subjectNumber.get(id)}>`))}, matching the definitions above.`)]
+        : []),
       ...tail(shot),
     ]),
   ];

@@ -872,21 +872,22 @@ describe("project workspace timecode", () => {
   it("keeps the scene inside nought to fifteen seconds", () => {
     const config = lampProject();
     const onChange = vi.fn();
-    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    const length = screen.getByRole("slider", { name: "Scene length in seconds" }) as HTMLInputElement;
-    expect(length.min).toBe("0");
-    expect(length.max).toBe("15");
+    const app = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const length = () => screen.getByRole("slider", { name: "Scene length in seconds" }) as HTMLInputElement;
+    expect(length().min).toBe("0");
+    expect(length().max).toBe("15");
     // The bound is enforced, not merely advertised: a hand-set value past the
     // end is clamped rather than persisted as a scene the schema refuses.
-    fireEvent.change(length, { target: { value: "40" } });
+    fireEvent.change(length(), { target: { value: "40" } });
     expect(onChange.mock.calls.at(-1)![0].generationJobs[0].durationSeconds).toBe(15);
-    fireEvent.change(length, { target: { value: "-3" } });
+    fireEvent.change(length(), { target: { value: "-3" } });
     const emptied = onChange.mock.calls.at(-1)![0];
     expect(emptied.generationJobs[0].durationSeconds).toBe(0);
     expect(parseProjectConfig(emptied)).toBeTruthy();
-    // A scene of no length has no frames to render, and the screen says so
-    // rather than leaving a grey button.
-    expect(screen.queryByText(/no frames to render/)).toBeNull();
+    // A scene of no length has no frames to render, and the screen says so in
+    // words rather than leaving a grey button with no explanation.
+    app.rerender(createElement(GeneratorView, { config: parseProjectConfig(emptied), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect(screen.getByText(/nought seconds long, so there are no frames to render/)).not.toBeNull();
   });
 
   it("adds a setting to one shot and takes it off again, without touching the other shot", () => {
@@ -1021,6 +1022,128 @@ describe("project workspace timecode", () => {
     show(next);
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-street] walks towards the camera on @[ref:ref-street]");
     expect(compiled()).toContain("<Subject 2> walks towards the camera on <Subject 2>");
+  });
+
+
+  it("writes a scene of three shots and two references, and compiles the prompt the engine gets", () => {
+    /* The worked example, driven through the real screen rather than through
+       the compiler: every value below is set with the control the user would
+       use, and the assertion is on the panel that shows what is sent. */
+    const fresh = createProjectConfig({ name: "Wet street", prompt: "walks towards the camera on ", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const createdAt = fresh.createdAt;
+    const start = parseProjectConfig({
+      ...fresh,
+      references: [
+        { id: "ref-woman", kind: "image", name: "Red-haired woman", description: "A woman in her thirties with dark red hair and a green canvas jacket.", relativePath: "references/woman.png", intendedUse: ["character"], createdAt },
+        { id: "ref-street", kind: "image", name: "City street", description: "A narrow street of brick warehouses with wet cobbles and hanging cables.", relativePath: "references/street.png", intendedUse: ["location"], createdAt },
+      ],
+    });
+
+    let config = start;
+    const onChange = vi.fn((next: ProjectConfig) => { config = parseProjectConfig(next); });
+    const view = () => createElement(GeneratorView, { config, folderPath: "C:\\Wet street", onChange, onOpenTimeline: () => undefined, selectedJobId: start.generationJobs[0].id });
+    const app = render(view());
+    const show = () => app.rerender(view());
+    const set = (role: string, name: string, value: string) => {
+      fireEvent.change(screen.getByRole(role, { name }), { target: { value } });
+      show();
+    };
+    const press = (name: string) => { fireEvent.click(screen.getByRole("button", { name })); show(); };
+    const dropReference = (referenceId: string, shotNumber: number) => {
+      const field = screen.getByRole("textbox", { name: `What happens in shot ${shotNumber}` });
+      const event = createEvent.drop(field);
+      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
+      fireEvent(field, event);
+      show();
+    };
+
+    set("slider", "Scene length in seconds", "12");
+    press("Add a shot");
+    press("Add a shot");
+
+    // The street is dropped FIRST and the woman second, but the numbering
+    // follows the project's reference order once both are bound — which is the
+    // order reference_paths is built in, so <Subject 1> is <Picture 1>.
+    dropReference("ref-street", 1);
+    dropReference("ref-woman", 1);
+    set("textbox", "What happens in shot 1", "[Reference 1] walks towards the camera on [Reference 2]");
+    set("spinbutton", "Shot 2 starts at, in seconds", "4.5");
+    set("textbox", "What happens in shot 2", "she stops at a doorway and looks up");
+    set("spinbutton", "Shot 3 starts at, in seconds", "9");
+    set("textbox", "What happens in shot 3", "the door opens and light spills across [Reference 2]");
+
+    set("combobox", "Add a setting to shot 1", "cameraMovement");
+    set("combobox", "Value for Camera movement on shot 1", "push-in");
+    set("combobox", "Add a setting to shot 1", "cameraSpeed");
+    set("combobox", "Value for Movement speed on shot 1", "slow");
+    set("combobox", "Add a setting to shot 2", "shotSize");
+    set("combobox", "Value for Shot size on shot 2", "medium-close-up");
+    set("combobox", "The look of this scene", "live-action-cinematic");
+    set("textbox", "The sound of this scene", "Rain on cobbles, distant traffic, her boots on stone.");
+    set("textbox", "The music of this scene", "Low sustained cello, slow tempo, swelling in the last two seconds.");
+
+    // What the field shows is "Reference N"; what is stored is the id, so a
+    // rename or a reorder cannot re-point the sentence.
+    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value)
+      .toBe("[Reference 1] walks towards the camera on [Reference 2]");
+    expect(config.generationJobs[0].shots![0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
+    expect(config.generationJobs[0].durationSeconds).toBe(12);
+    expect(config.generationJobs[0].shots!.map((shot) => shot.startSeconds)).toEqual([0, 4.5, 9]);
+
+    const compiled = document.querySelector(".compiled-prompt__text")!.textContent!;
+    // The panel IS the string that is sent — the parts concatenate to it.
+    expect([...document.querySelectorAll(".compiled-prompt__text .prompt-part")].map((part) => part.textContent).join("")).toBe(compiled);
+    expect(compiled).toBe([
+      "subject_definitions:",
+      "<Subject 1> is the content shown in <Picture 1>. A woman in her thirties with dark red hair and a green canvas jacket.",
+      "<Subject 2> is the content shown in <Picture 2>. A narrow street of brick warehouses with wet cobbles and hanging cables.",
+      "",
+      "summary:",
+      "[reference generation] <Subject 1> walks towards the camera on <Subject 2>. she stops at a doorway and looks up. the door opens and light spills across <Subject 2>. <Subject 1> and <Subject 2> provide generation guidance for the 3 shots described below.",
+      "",
+      "retention_analysis:",
+      "<Subject 1> (appears in [Shot 1]): fully_preserved - the referenced characteristics are retained.",
+      "<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved - the referenced characteristics are retained.",
+      "",
+      "detailed_description:",
+      "The target video is in a live-action, cinematic style.",
+      "[Shot 1] <Subject 1> walks towards the camera on <Subject 2>. The shot features <Subject 1> and <Subject 2>, matching the definitions above. Camera movement: push in, slow speed.",
+      // Shot 2 names nobody, so nothing claims it features anyone.
+      "[Shot 2] (cut at 4.5s) Medium close-up, she stops at a doorway and looks up.",
+      "[Shot 3] (cut at 9s) the door opens and light spills across <Subject 2>. The shot features <Subject 2>, matching the definitions above.",
+      "",
+      "overall_soundscape:",
+      "Rain on cobbles, distant traffic, her boots on stone.",
+      "",
+      "non_diegetic_music:",
+      "Low sustained cello, slow tempo, swelling in the last two seconds.",
+    ].join("\n"));
+
+    // Not one word of it is presented as the user's own except what they typed.
+    expect([...document.querySelectorAll(".prompt-part--brief")].map((part) => part.textContent)).toEqual([
+      "A woman in her thirties with dark red hair and a green canvas jacket.",
+      "A narrow street of brick warehouses with wet cobbles and hanging cables.",
+      " walks towards the camera on ",
+      "she stops at a doorway and looks up",
+      "the door opens and light spills across ",
+      " walks towards the camera on ",
+      "she stops at a doorway and looks up",
+      "the door opens and light spills across ",
+      "Rain on cobbles, distant traffic, her boots on stone.",
+      "Low sustained cello, slow tempo, swelling in the last two seconds.",
+    ]);
+    expect([...document.querySelectorAll(".prompt-part--tag")].map((part) => part.textContent))
+      .toEqual(["live-action, cinematic", "push in, slow speed", "Medium close-up"]);
+    expect(parseProjectConfig(config)).toBeTruthy();
+
+    // And the swap: the same sentence, pointed at the other reference.
+    const token = document.querySelector(".shot-readback__token") as HTMLSelectElement;
+    expect([...token.options].map((option) => option.textContent))
+      .toEqual(["Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line"]);
+    fireEvent.change(token, { target: { value: "ref-street" } });
+    show();
+    expect(document.querySelector(".compiled-prompt__text")!.textContent)
+      .toContain("[Shot 1] <Subject 2> walks towards the camera on <Subject 2>.");
   });
 
   it("labels a cancelled preview as cancelled instead of queued", () => {
