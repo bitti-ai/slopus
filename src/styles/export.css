@@ -21,19 +21,11 @@
 }
 
 .export-heading h1 {
-  margin: var(--space-2) 0;
+  margin: 0;
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-hero);
-}
-
-.export-heading p {
-  margin: 0;
-  max-width: 76ch;
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
 }
 
 /* --- Layout ---------------------------------------------------------------- */
@@ -172,13 +164,6 @@
 }
 
 /* --- Settings -------------------------------------------------------------- */
-
-.export-settings__lead {
-  margin: 0 0 var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
 
 .export-fields {
   display: grid;
