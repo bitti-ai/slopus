@@ -1,5 +1,6 @@
 import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { resolutionLabel } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
 
 interface ProjectCardProps {
@@ -66,7 +67,7 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}`} style={style}>
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
-          <span className="project-card__quality">{config.settings.resolution.toUpperCase()}</span>
+          <span className="project-card__quality">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</span>
           <span className="project-card__play"><Play size={18} fill="currentColor" /></span>
           <div className="project-card__art-copy"><Sparkles size={15} /><span>{config.brief.prompt}</span></div>
         </div>

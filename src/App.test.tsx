@@ -91,6 +91,36 @@ describe("project library controls", () => {
     await waitFor(() => expect(screen.getByRole("menuitem", { name: "Open project" })).not.toBeNull());
   });
 
+  it("offers frame sizes MiniMax H3 can generate, relabelled when the shape changes", async () => {
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    const shape = screen.getByRole("combobox", { name: /Video shape/ }) as HTMLSelectElement;
+    const size = screen.getByRole("combobox", { name: /Frame size/ }) as HTMLSelectElement;
+
+    // The ladder the user asked for, in pixels rather than a name for them.
+    expect([...size.options].map((option) => option.textContent)).toEqual([
+      "736 × 416", "960 × 544", "1152 × 640", "1376 × 768 (default)", "1920 × 1088", "2432 × 1344",
+    ]);
+    // Every edge a multiple of 32 — the whole reason the old 720p/1080p/4K
+    // ladder was replaced.
+    for (const option of [...size.options]) {
+      const [width, height] = option.textContent!.split(" (")[0].split(" × ").map(Number);
+      expect([width % 32, height % 32]).toEqual([0, 0]);
+    }
+
+    /* A frame size is two numbers, and one of them changes with the shape. The
+       old labels ("1080p HD") could sit above either and say nothing. */
+    fireEvent.change(shape, { target: { value: "9:16" } });
+    expect([...size.options].map((option) => option.textContent)).toEqual([
+      "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
+    ]);
+
+    // And the summary line beside the collapsed panel says the same numbers.
+    fireEvent.change(size, { target: { value: "544p" } });
+    expect(document.querySelector(".composer__options-value")!.textContent)
+      .toBe("Vertical 9:16 · 544 × 960 · 30 seconds");
+  });
+
   it("opens a prompt-created project in Generator with its initial draft selected", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");

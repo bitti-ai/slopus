@@ -9,6 +9,7 @@ import initialReferenceWire from "../../fixtures/rust-serialized-initial-referen
 import sceneFixture from "../../fixtures/project-v1-scene.json";
 import wireScene from "../../fixtures/rust-serialized-scene.json";
 
+import { outputDimensions } from "./export";
 import {
   compileMiniMaxH3Prompt,
   createProjectConfig,
@@ -21,7 +22,10 @@ import {
   projectItemPath,
   projectNameFromPrompt,
   projectReferenceSchema,
+  resolutionSchema,
   seedProjectWorkspace,
+  LEGACY_RESOLUTIONS,
+  PROJECT_RESOLUTIONS,
   STORY_TRACK_ID,
   usableImageReferences,
   actionReferenceIds,
@@ -527,6 +531,46 @@ describe("project schema", () => {
     expect(project.assets.every((asset) => !asset.sourcePath)).toBe(true);
     expect(project.assets.every((asset) => !asset.relativePath?.match(/^([a-z]:|[/\\])/i))).toBe(true);
     expect(project.generationJobs.filter((job) => job.outputRelativePath).every((job) => !job.outputRelativePath!.match(/^([a-z]:|[/\\])/i))).toBe(true);
+  });
+});
+
+describe("the frame sizes a project can be", () => {
+  it("accepts exactly the ladder plus the names already on disk, and nothing else", () => {
+    /* `is_supported_resolution` in src-tauri/src/lib.rs spells the same nine
+       names. They have to agree in BOTH directions: Rust writes the settings
+       file before the frontend ever parses it, so a name Rust accepts and zod
+       refuses is saved and then fails to open (see CLAUDE.md). */
+    expect(resolutionSchema.options).toEqual([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
+    expect(resolutionSchema.options).toEqual([
+      "416p", "544p", "640p", "768p", "1088p", "1344p", "720p", "1080p", "4k",
+    ]);
+    for (const rejected of ["8k", "480p", "1080P", "768", ""]) {
+      expect(resolutionSchema.safeParse(rejected).success).toBe(false);
+    }
+  });
+
+  it("gives every name the schema accepts a frame size in every shape", () => {
+    /* The two lists live in different files — the names in project.ts, the
+       pixels in export.ts — and TypeScript only pins the table's KEYS to the
+       type. A name added to the schema alone would reach `outputDimensions` as
+       an undefined row and throw on the export screen, not here. */
+    for (const resolution of resolutionSchema.options) {
+      for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
+        const { width, height } = outputDimensions(resolution, ratio);
+        expect(Number.isInteger(width) && width > 0).toBe(true);
+        expect(Number.isInteger(height) && height > 0).toBe(true);
+      }
+    }
+  });
+
+  it("creates a project at the size it was asked for, with the brief agreeing", () => {
+    const config = createProjectConfig({
+      name: "Ladder", prompt: "A quiet product film", aspectRatio: "9:16", resolution: "416p", targetDurationSeconds: 15,
+    });
+    expect(config.settings.resolution).toBe("416p");
+    // The brief carries its own copy and the two must not drift apart.
+    expect(config.brief.resolution).toBe("416p");
+    expect(outputDimensions(config.settings.resolution, config.settings.aspectRatio)).toEqual({ width: 416, height: 736 });
   });
 });
 

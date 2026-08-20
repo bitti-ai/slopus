@@ -4,6 +4,7 @@ import {
   Volume2, VolumeX,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
@@ -518,7 +519,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
           <div className="timeline-toolbar__lead">
             <h2>Timeline</h2>
             <strong className="transport-time" title="Playhead position">{timecode(playhead)}</strong>
-            <span className="transport-format">{config.settings.resolution.toUpperCase()} · {config.settings.frameRate} fps</span>
+            <span className="transport-format">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)} · {config.settings.frameRate} fps</span>
           </div>
           {/* The transport belongs to the timeline, not to the picture: it drives
               the playhead, and the playhead is drawn a few pixels below this row.

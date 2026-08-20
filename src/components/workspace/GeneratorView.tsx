@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { resolutionLabel } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
@@ -312,11 +313,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           <dl className="job-meta">
             <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
             <div><dt>Scene length</dt><dd>{sceneDurationSeconds(selected).toFixed(1)} seconds, {sceneShots(selected).length === 1 ? "one shot" : `${sceneShots(selected).length} shots`}</dd></div>
-            {/* Project settings, not this scene's — but they decide the frame
-                every scene is rendered into, and the composer's chips were the
-                only place on this screen that said so. */}
+            {/* The project's own settings, not this scene's. The frame size is
+                what the edit is exported at; the engine picks its own canvas
+                from the shape alone (set_aspect is the only geometry vidfab
+                takes), and the plan note above reports the one it picked. */}
             <div><dt>Shape</dt><dd>{config.settings.aspectRatio}</dd></div>
-            <div><dt>Size</dt><dd>{config.settings.resolution.toUpperCase()}</dd></div>
+            <div><dt>Frame size</dt><dd>{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</dd></div>
             <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
             <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
           </dl>

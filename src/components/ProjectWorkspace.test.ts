@@ -561,7 +561,8 @@ describe("project workspace timecode", () => {
     // the playhead time is printed once. The toolbar used to print it beside
     // the heading while the monitor printed it again, which reads as two clocks.
     expect(container.textContent!.match(/\d\d:\d\d:\d\d:\d\d/g)).toHaveLength(1);
-    expect(container.querySelector(".transport-format")!.textContent).toBe("1080P · 30 fps");
+    // Pixels, not the id: "1080p" names one edge and leaves the other a guess.
+    expect(container.querySelector(".transport-format")!.textContent).toBe("1920 × 1080 · 30 fps");
 
     // An empty timeline has nothing to play, and every control says so rather
     // than only going grey.
