@@ -34,12 +34,13 @@ export function AgentDock({ context, record, providers, onRecord }: {
   // ellipsis (see .agent-dock input in workspace.css). Keep the full sentence
   // reachable on hover so nothing that matters is lost to the truncation.
   //
-  // It used to offer to "generate a shot", which the generator flatly denies a
-  // few inches above it: this bar changes a shot that already exists, it does
-  // not start one. New shots are made in the generator. Two panels cannot
-  // describe the same bar differently, so this one follows that rule.
+  // It may offer to write a scene again: the generator no longer has a box that
+  // turns a sentence into one, and a turn here comes back as a whole mutated
+  // project that PolStudio applies — a new scene included. It still generates
+  // nothing; the scene arrives as a draft the generator renders. Two panels
+  // cannot describe the same bar differently, so the generator says the same.
   const placeholder = ready
-    ? `Ask Pol to refine ${context}, change a shot you already have, or make an edit…`
+    ? `Ask Pol to write a new scene from a prompt, refine ${context}, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
 
   const send = async () => {

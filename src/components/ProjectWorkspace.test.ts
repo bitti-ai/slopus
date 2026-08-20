@@ -4,7 +4,7 @@ import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within }
 import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, STORY_TRACK_ID, UNTITLED_SCENE, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -737,21 +737,23 @@ describe("project workspace timecode", () => {
     expect(split().title).toBe("Split at playhead");
   });
 
-  it("keeps half-written composer text when you visit another tab and come back", async () => {
+  it("keeps a half-written shot line when you visit another tab and come back", async () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    const { container } = render(createElement(ProjectWorkspace, {
+    render(createElement(ProjectWorkspace, {
       project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "generator",
       onBack: () => undefined, onSave: async () => undefined,
     }));
-    const composer = () => container.querySelector(".generation-composer textarea") as HTMLTextAreaElement;
-    fireEvent.change(composer(), { target: { value: "a slow push across the launch pad" } });
+    const line = () => screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement;
+    fireEvent.change(line(), { target: { value: "a slow push across the launch pad" } });
     fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
     await screen.findByRole("heading", { name: "Timeline", level: 2 });
     fireEvent.click(screen.getByRole("button", { name: "Generator" }));
     await screen.findByRole("heading", { name: "Generator" });
-    // Switching tabs unmounts the generator. Losing the user's own half-written
-    // words is the one thing this app must never do.
-    expect(composer().value).toBe("a slow push across the launch pad");
+    /* Switching tabs unmounts the generator. The words are no longer typed into
+       a composer the parent has to hold on its behalf — every keystroke lands on
+       the scene itself, so the project carries them across the trip. Losing the
+       user's own half-written words is the one thing this app must never do. */
+    expect(line().value).toBe("a slow push across the launch pad");
   });
 
   it("does not bind an audio-tagged reference a new shot's prompt would drop", () => {
@@ -760,9 +762,8 @@ describe("project workspace timecode", () => {
       { id: "ref-audio", kind: "text", name: "Score idea", description: "Sparse piano.", content: "Sparse piano.", intendedUse: ["audio"], createdAt: fresh.createdAt },
     ] });
     const onChange = vi.fn();
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
-    fireEvent.change(container.querySelector(".generation-composer textarea")!, { target: { value: "a slow push across the pad" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save as a draft|Generate/ }));
+    render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
     // It would take a binding slot and then be dropped by the compiler, so the
     // shot would claim a reference its prompt never mentions.
     expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual([]);
@@ -777,9 +778,6 @@ describe("project workspace timecode", () => {
     });
     const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
     expect(document.querySelector(".job-refs")!.textContent).toContain("The text definition is written into this scene’s prompt.");
-    // The composer hint says the same thing about the same references. Scoping
-    // this to .job-refs hid a second copy of the claim that was still wrong.
-    expect(container.querySelector(".generation-composer__hint")!.textContent).toContain("The text definition is written into the prompt.");
     // No image exists anywhere in this project, so NOTHING on the screen may
     // claim something is sent to the engine as an asset.
     expect(container.textContent).not.toContain("images are sent to the video engine");
@@ -859,11 +857,41 @@ describe("project workspace timecode", () => {
       expect(screen.getByRole("complementary", { name: "Scenes" })).not.toBeNull();
       expect(container.querySelector(".generator-heading .eyebrow")).toBeNull();
       expect(screen.queryByRole("button", { name: "View timeline" })).toBeNull();
-      // A new scene is still started from this page, and it says so.
-      expect(screen.getByRole("heading", { name: "Start another scene" })).not.toBeNull();
-      expect(document.querySelector(".generation-composer__lede")!.textContent).toContain("changing a scene that already exists");
+      /* The composer panel is gone. A new scene is started from the + in the
+         rail, which adds an EMPTY one — nothing on this page turns a sentence
+         into a scene any more, so nothing may advertise that it does. */
+      expect(screen.queryByRole("heading", { name: "Start another scene" })).toBeNull();
+      expect(container.querySelector(".generation-composer")).toBeNull();
+      expect(screen.getByRole("button", { name: "Add a scene" })).not.toBeNull();
       unmount();
     }
+  });
+
+  it("adds an EMPTY scene from the + button — one blank shot, no words this app wrote", () => {
+    const config = lampProject();
+    const onChange = vi.fn();
+    const { rerender } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+
+    const next = onChange.mock.calls.at(-1)![0];
+    // It goes to the head of the list and does not disturb the scene already there.
+    expect(next.generationJobs).toHaveLength(2);
+    expect(next.generationJobs[1]).toEqual(config.generationJobs[0]);
+    const added = next.generationJobs[0];
+    expect(added.status).toBe("draft");
+    // One shot with nothing in it, and a name that says so rather than a phrase
+    // PolStudio made up out of words the user never typed.
+    expect(sceneShots(added).map((shot) => shot.action)).toEqual([""]);
+    expect(added.title).toBe(UNTITLED_SCENE);
+    expect(added.prompt).toBe("");
+    expect(added.creativeBrief).toBe("");
+    // Both validators have to accept it — Rust writes this to disk before the
+    // frontend ever parses it back (see CLAUDE.md).
+    expect(() => parseProjectConfig(next)).not.toThrow();
+
+    // And it cannot be generated until the user writes a line in it.
+    rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: added.id }));
+    expect(screen.getByText("Write what happens in at least one shot before this scene can be generated.")).not.toBeNull();
   });
 
   it("splits a scene into three shots on the bar, each with its own line and cut", () => {
