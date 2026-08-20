@@ -908,9 +908,15 @@
   font: var(--weight-medium) var(--text-xs) / 1 var(--font-mono);
 }
 
+/* Flushed to the right edge of the toolbar. The third grid track is a 1fr rail
+   that exists to balance the lead against it and keep the transport centred, so
+   left-packed buttons floated in the middle of the row with a gap after them
+   that read as unused space. The rail stays; only its contents move. */
 .timeline-tools {
+  min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-1);
 }
 
