@@ -304,19 +304,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   return <div className="export-view">
     <header className="export-heading">
       <div>
-        <span className="eyebrow">Deliver</span>
         <h1>Export</h1>
-        <p>
-          PolStudio renders the video tracks in order — trims, gaps and all — taking each source file apart with
-          mp4box, decoding it through this computer’s own video decoder, compositing{" "}
-          {compositor === null
-            ? "on the GPU if this computer gives PolStudio one and on a 2D canvas otherwise — it is being asked right now"
-            : compositor.kind === "webgpu"
-              ? "on the GPU with WebGPU, which this computer offered an adapter for"
-              : "on a 2D canvas, because this computer offers no working WebGPU adapter"}{" "}
-          and muxing a real .mp4. Nothing below is a mock-up: where a control cannot do its job here, it says why
-          instead of pretending.
-        </p>
       </div>
     </header>
 
@@ -356,8 +344,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       </section>
 
       <section className="export-settings" aria-labelledby="export-settings-heading">
-        <h2 id="export-settings-heading">Settings</h2>
-        <p className="export-settings__lead">These start from this project’s own settings. Changing them here does not change the project.</p>
+        <h2 id="export-settings-heading">Export Settings</h2>
 
         <div className="export-fields">
           <label htmlFor="export-resolution">

@@ -133,6 +133,8 @@ describe("what the page claims about the compositor", () => {
     // stated reason. What must never appear is a bare WebGPU promise.
     expect(await screen.findByText(/no navigator\.gpu/i)).toBeTruthy();
     expect(screen.queryByText("WebGPU")).toBeNull();
-    expect(document.body.textContent).toContain("on a 2D canvas");
+    // The heading no longer carries a prose paragraph; the compositor row is
+    // where the settled answer is stated now.
+    expect(document.body.textContent).toContain("2D canvas");
   });
 });
