@@ -3521,6 +3521,36 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_scene_survives_the_round_trip_the_plus_button_creates() {
+        /* The Generator's + adds a scene holding ONE shot with nothing written
+           in it and no words in the mirror — PolStudio writes no line for
+           anyone. Rust writes that file to disk before the frontend ever parses
+           it back, so if this side accepted it and zod did not, the project
+           would save and then fail to open. `createDraftGenerationJob("")`
+           builds exactly this shape. */
+        let mut empty = scene_fixture();
+        let job = &mut empty.generation_jobs[0];
+        job.prompt = String::new();
+        job.creative_brief = String::new();
+        job.reference_ids = Vec::new();
+        job.shots = Some(vec![SceneShot {
+            id: "scene-walk-shot-1".into(),
+            start_seconds: 0.0,
+            action: String::new(),
+            settings: None,
+        }]);
+
+        let normalized = validate_and_normalize_config(empty)
+            .expect("an empty scene is a scene waiting to be written, not an invalid one");
+        let shots = normalized.generation_jobs[0]
+            .shots
+            .as_ref()
+            .expect("one blank shot is still a shot and must not be dropped");
+        assert_eq!(shots.len(), 1);
+        assert_eq!(shots[0].action, "");
+    }
+
+    #[test]
     fn a_scene_is_bounded_to_fifteen_seconds_on_both_the_length_and_the_cuts() {
         // The frontend spells this `z.number().min(0).max(15)` on both fields.
         for seconds in [0.0, 7.5, 15.0] {

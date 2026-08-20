@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "../../lib/persistence";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, compileMiniMaxH3PromptSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { ReferenceImage } from "./ReferenceImage";
 import { SceneEditor } from "./SceneEditor";
@@ -14,23 +14,13 @@ interface GeneratorViewProps {
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
   selectedJobId?: string;
-  /** Composer text, held by the parent. Switching tabs unmounts this view, and
-   *  keeping the half-written scene in local state threw the user's own words
-   *  away — the one thing this app is not allowed to do. Optional so the view
-   *  still works standalone; it falls back to its own state. */
-  draftPrompt?: string;
-  onDraftPromptChange?: (value: string) => void;
 }
 
 type JobStatus = GenerationJob["status"];
 
-export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId, draftPrompt, onDraftPromptChange }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
   const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
-  const [ownPrompt, setOwnPrompt] = useState("");
-  const prompt = draftPrompt ?? ownPrompt;
-  const setPrompt: (value: string) => void = onDraftPromptChange ?? setOwnPrompt;
   const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const configRef = useRef(config);
   configRef.current = config;
   const jobs = config.generationJobs;
@@ -49,14 +39,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   // taken from the IDs alone told the user a definition was steering the scene
   // when the compiled prompt never mentioned it.
   const promptRefs = useMemo(() => boundRefs.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)), [boundRefs]);
-  // The references a NEW scene could cite. Both filters, or the hint promises a
-  // reference the prompt drops and a legacy audio-only one looks available.
-  const usableReferences = useMemo(
-    () => config.references.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)),
-    [config.references],
-  );
   const runtimeReady = runtime?.state === "ready";
-  const submitLabel = runtimeReady ? "Generate this scene" : "Save as a draft";
   /* Why this scene cannot be sent, or null. Every one of these is a state the
      user can see and fix; the button says the reason rather than sitting grey. */
   const blocked = selected ? sendBlocker(selected, config.references) : null;
@@ -142,36 +125,39 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     if (runtimeReady) await enqueueVidfabGeneration(requestFor(job), configRef.current);
   };
 
-  const createJob = async () => {
-    // Never synthesise a prompt: a scene must only ever describe what the user
-    // actually typed, or it gets read back to them as their own request.
-    const cleanPrompt = prompt.trim();
-    if (!cleanPrompt) return;
-    // Nothing is auto-bound: which references steer a scene is now decided by
-    // writing them into a line, or by the checkbox list. Binding the first two
-    // in the library decided that for the user, and often for a scene that
-    // never mentioned either of them.
-    const draft = createDraftGenerationJob(cleanPrompt);
-    const job: GenerationJob = runtimeReady ? { ...draft, status: "queued" } : draft;
-    const next = { ...config, generationJobs: [job, ...jobs] };
-    onChange(next);
+  /* A scene now starts EMPTY. There is no box that turns a sentence into a
+     scene any more: the + button adds a scene holding one blank shot, and the
+     shots are written in the editor above. PolStudio still writes no line for
+     anyone, so the scene arrives with no words and carries UNTITLED_SCENE as
+     its name rather than a phrase this app made up.
+
+     A scene built FROM a prompt is Pol’s job: the bar along the bottom of the
+     window hands the request to Claude Code or Codex, which returns the whole
+     project with the new scene in it. Nothing is auto-bound either way — which
+     references steer a scene is decided by writing them into a line or by the
+     checkbox list beside it. */
+  const newScene = () => {
+    const job = createDraftGenerationJob("");
+    onChange({ ...config, generationJobs: [job, ...jobs] });
     setSelectedId(job.id);
-    setPrompt("");
-    try {
-      const request = requestFor(job);
-      const plan = await resolveVidfabPlan(request, next);
-      setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
-      if (runtimeReady) await enqueueVidfabGeneration(request, next);
-      else updateJob(job.id, { error: runtime?.detail ?? "The video engine isn’t available, so this was kept as an editable draft." });
-    } catch (reason) {
-      updateJob(job.id, { error: reason instanceof Error ? reason.message : String(reason) });
-    }
   };
 
   const startDraft = async (job: GenerationJob) => {
     if (!runtimeReady) return;
     updateJob(job.id, { status: "queued", stage: "queued", error: null, updatedAt: new Date().toISOString() });
-    await enqueueVidfabGeneration(requestFor(job), configRef.current);
+    try {
+      /* Resolved before the job is handed over, so "What actually happened"
+         reports the real frame count and canvas this run was planned as. The
+         composer used to do this for a scene it had just created; a scene is
+         now created empty and generated from here, so the plan is resolved
+         here or nobody ever sees it. */
+      const request = requestFor(job);
+      const plan = await resolveVidfabPlan(request, configRef.current);
+      setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
+      await enqueueVidfabGeneration(request, configRef.current);
+    } catch (reason) {
+      updateJob(job.id, { error: reason instanceof Error ? reason.message : String(reason) });
+    }
   };
 
   const insertIntoStory = (job: GenerationJob) => {
@@ -193,15 +179,6 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     const tracks = existingStory ? config.timeline.tracks.map((track) => track.id === story.id ? { ...track, clips: [...track.clips, clip] } : track) : [{ ...story, clips: [clip] }, ...config.timeline.tracks];
     onChange({ ...config, assets: existingAsset ? config.assets : [...config.assets, asset], timeline: { tracks }, generationJobs: jobs.map((item) => item.id === job.id ? { ...item, clipId: clip.id, updatedAt: now } : item) });
     onOpenTimeline();
-  };
-
-  // "Start another scene" has to be a real control, not advice, so the ready
-  // state always has somewhere to go.
-  const focusComposer = () => {
-    const node = composerRef.current;
-    if (!node) return;
-    if (typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "center" });
-    node.focus();
   };
 
   /* Binding order does not matter: requestFor and the compiler both read
@@ -227,17 +204,17 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           <span>Scenes</span>
           <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
         </div>
-        {/* A scene is its words, and PolStudio never writes those for anyone —
-            so this opens the composer rather than adding an empty scene to the
-            list. Same destination as "Start another scene" below. */}
-        <button className="queue-panel__new" onClick={focusComposer} aria-label="Describe a new scene" title="Describe a new scene"><Plus size={18} /></button>
+        {/* Adds the scene and leaves it empty. PolStudio still writes no words
+            for anyone — it gives the user somewhere to write them, and the
+            scene keeps the name UNTITLED_SCENE until they rename it. */}
+        <button className="queue-panel__new" onClick={newScene} aria-label="Add a scene" title="Add an empty scene — you write the shots"><Plus size={18} /></button>
       </div>
       <div className="queue-panel__scroll">
         <QueueGroup title="Rendering now" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
         <QueueGroup title="Waiting to render" jobs={queued} selectedId={selectedId} onSelect={setSelectedId} />
         <QueueGroup title="Drafts" jobs={drafts} selectedId={selectedId} onSelect={setSelectedId} />
         <QueueGroup title="Already run" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
-        {jobs.length === 0 && <p className="queue-empty">No scenes yet. Describe one in the box on the right and it will appear here.</p>}
+        {jobs.length === 0 && <p className="queue-empty">No scenes yet. Choose + to add an empty one, or ask Pol in the bar along the bottom to build one from a prompt.</p>}
       </div>
       {/* One line: the headline already IS the status. */}
       <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`}>
@@ -249,7 +226,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       <header className="generator-heading">
         <div>
           <h1>Generator</h1>
-          <p>A scene is up to fifteen seconds long and holds as many shots as you split it into. Write what happens in each one; PolStudio turns the whole scene into a single MiniMax H3 prompt you can read before anything is sent.</p>
+          <p>A scene is up to fifteen seconds long and holds as many shots as you split it into. Add one with + and write what happens in each shot, or ask Pol along the bottom to build one from a prompt; PolStudio turns the whole scene into a single MiniMax H3 prompt you can read before anything is sent.</p>
         </div>
       </header>
 
@@ -335,6 +312,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           <dl className="job-meta">
             <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
             <div><dt>Scene length</dt><dd>{sceneDurationSeconds(selected).toFixed(1)} seconds, {sceneShots(selected).length === 1 ? "one shot" : `${sceneShots(selected).length} shots`}</dd></div>
+            {/* Project settings, not this scene's — but they decide the frame
+                every scene is rendered into, and the composer's chips were the
+                only place on this screen that said so. */}
+            <div><dt>Shape</dt><dd>{config.settings.aspectRatio}</dd></div>
+            <div><dt>Size</dt><dd>{config.settings.resolution.toUpperCase()}</dd></div>
             <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
             <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
           </dl>
@@ -398,7 +380,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void startDraft(selected)}>
                 <WandSparkles size={15} /> {runtimeReady ? (jobs.length === 1 ? "Generate your first scene" : "Generate this scene") : "Can’t generate yet"}
               </button>
-              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
+              {/* Disclosed at the point of commitment, not after an expensive
+                  run. This used to sit under the composer's submit button; the
+                  button that actually starts a render is this one. */}
+              {runtimeReady
+                ? <p className="job-actions__limit"><Info size={16} /><span>A finished scene renders frames into memory. PolStudio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span></p>
+                : <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
             </>}
 
             {(selected.status === "failed" || selected.status === "cancelled") && <>
@@ -417,8 +404,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
                 <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void prepareOrRetry(selected)}>
                   <RefreshCw size={15} /> {runtimeReady ? "Run this scene again" : "Can’t run it again yet"}
                 </button>
-                <button className="secondary-button" onClick={focusComposer}>
-                  <Sparkles size={15} /> Start another scene
+                <button className="secondary-button" onClick={newScene}>
+                  <Plus size={15} /> Start another scene
                 </button>
               </div>
             </>}
@@ -437,75 +424,21 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         </aside>
       </section>}
 
-      {/* Where a NEW scene is started. The scene above is where one is written;
-          this is only the door onto the next one, which is why it is one line
-          and sits at the foot of the page. */}
-      <section className="generation-composer" aria-labelledby="start-another-scene">
-        <div className="generation-composer__head">
-          <h2 className="generation-composer__label" id="start-another-scene"><Sparkles size={17} /> Start another scene</h2>
-          <p className="generation-composer__lede">
-            One line is enough to open a scene — it becomes its first shot, and you can split the scene and add more above.
-            The prompt bar along the bottom of the window is for changing a scene that already exists — it doesn’t start one.
-          </p>
-        </div>
-        <label className="generation-composer__field">
-          <span className="generation-composer__sublabel">In your own words</span>
-          <textarea
-            ref={composerRef}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Example: hands shaping wet clay on a spinning wheel, the wheel slowing as the rim thins."
-          />
-        </label>
-        {/* Visible before the button is ever pressed: the exact words that go
-            to the engine, with the user's own prose marked apart from the
-            format PolStudio adds around it. */}
-        {prompt.trim().length > 0 && <CompiledPrompt
-          segments={compileMiniMaxH3PromptSegments(prompt, [])}
-          caption={`Nothing is sent until you choose “${submitLabel}”. A new scene starts with no references; drag one into a line once it exists.`}
-        />}
-        <div className="generation-composer__foot">
-          <div className="generation-settings">
-            <span className="generation-settings__lead">A new scene is made as</span>
-            <span className="setting-chip"><em>Length</em><b>6 seconds</b></span>
-            <span className="setting-chip"><em>Shape</em><b>{config.settings.aspectRatio}</b></span>
-            <span className="setting-chip"><em>Size</em><b>{config.settings.resolution.toUpperCase()}</b></span>
-            <span className="setting-chip"><em>Model</em><b>MiniMax H3</b></span>
-          </div>
-          <button className="primary-button generation-composer__submit" onClick={() => void createJob()} disabled={!prompt.trim()}>
-            <WandSparkles size={17} /> {submitLabel}
-          </button>
-        </div>
-        {/* Disclosed at the point of commitment, not after an expensive run. */}
-        {runtimeReady && <p className="generation-composer__limit">
-          <Info size={16} />
-          <span>A finished scene renders frames into memory. PolStudio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span>
-        </p>}
-        <p className="generation-composer__hint">
-          {runtimeReady
-            ? "Scenes render one at a time, so a new scene joins the queue behind anything already running."
-            : "Nothing renders on this computer yet, so your scene is saved as a draft you can run later."}
-          {/* Images are sent as real assets (referencePaths) AND cited as
-              <Picture N>; text definitions reach the engine only as prose
-              inside <Subject N>. Say exactly that — no more, and only about the
-              references actually in hand: the same referenceRouting the scene
-              panel uses, so the two places cannot drift apart. */}
-          {usableReferences.length > 0
-            ? ` ${usableReferences.length === 1 ? "Your reference is" : `Your ${usableReferences.length} references are`} used by a scene once you write ${usableReferences.length === 1 ? "it" : "one"} into one of its lines. ${referenceRouting(usableReferences, "the prompt")}`
-            : ""}
-        </p>
-      </section>
-
+      {/* No scene selected — which, on a new project, means none exists. This
+          is the whole of the "how do I start" advice now that the composer is
+          gone, so it has to name both doors: the button below, and Pol. */}
       {!selected && <div className="job-empty">
         <span className="job-empty__icon"><Sparkles size={26} /></span>
         <h2>Start with one scene</h2>
-        <p>Write what should happen on screen in the box above — who or what is in frame, what they do. Then choose “{submitLabel}”.</p>
+        <p>An empty scene is one blank shot waiting for a line. Add one, then write what should happen on screen — who or what is in frame, what they do.</p>
         <ul className="job-empty__tips">
           <li>A scene can be up to 15 seconds and split into as many shots as you like.</li>
           <li>Each shot gets its own line, its own start time and its own settings.</li>
           <li>Drag a reference into a line and the prompt cites it as a subject.</li>
           <li>You can read the finished prompt before anything is sent.</li>
+          <li>Or ask Pol in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
         </ul>
+        <button className="primary-button job-empty__add" onClick={newScene}><Plus size={16} /> Add an empty scene</button>
       </div>}
     </main>
   </div>;
@@ -570,16 +503,16 @@ function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs
 /* Only claim the route the bound references actually take. Saying "images are
    sent … text definitions are written into the prompt" for a scene that has only
    one of the two describes something that isn't happening. */
-const referenceRouting = (references: ProjectReference[], prompt = "this scene’s prompt"): string => {
+const referenceRouting = (references: ProjectReference[]): string => {
   const hasImage = references.some((reference) => reference.kind === "image");
   const hasText = references.some((reference) => reference.kind !== "image");
-  if (hasImage && hasText) return `Images are sent to the video engine as reference assets; text definitions are written into ${prompt}.`;
+  if (hasImage && hasText) return "Images are sent to the video engine as reference assets; text definitions are written into this scene’s prompt.";
   if (hasImage) return references.length === 1
     ? "The image is sent to the video engine as a reference asset."
     : "The images are sent to the video engine as reference assets.";
   return references.length === 1
-    ? `The text definition is written into ${prompt}.`
-    : `The text definitions are written into ${prompt}.`;
+    ? "The text definition is written into this scene’s prompt."
+    : "The text definitions are written into this scene’s prompt.";
 };
 
 /* Why a reference that is bound to this scene never reaches its prompt, or null
