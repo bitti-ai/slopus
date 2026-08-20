@@ -626,7 +626,7 @@ describe("no stylesheet outside tokens.css names a colour", () => {
    fiction: "each carries its OWN dark plate, whatever the picture under it
    turns out to be", asserted in prose with nothing recomputing it. Their plates
    were rgba(4,6,10,0.55) and rgba(5,7,11,0.45), which composite to mid-grey
-   over a pale backdrop — 3.78:1 and 3.18:1 measured over a white thumbnail,
+   over a pale backdrop — 3.78:1 and 3.22:1 measured over a white thumbnail,
    both failing 4.5:1 over exactly the case the sentence claimed to cover.
    `backdrop-filter: blur(8px)` does not help: it blurs without darkening.
 

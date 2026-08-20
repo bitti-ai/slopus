@@ -569,7 +569,7 @@
 
    The badges and the play button did NOT always carry that. The sentence here
    used to say they did, and the numbers say otherwise: over a white thumbnail
-   the badges measured 3.78:1 and the play triangle 3.18:1, because a plate at
+   the badges measured 3.78:1 and the play triangle 3.22:1, because a plate at
    0.55 and a disc at 0.45 composite to mid-grey over white and `backdrop-filter`
    blurs without darkening. Their alphas were raised to 0.70 and 0.64, which is
    what makes the paragraph above true rather than aspirational; a plate that
