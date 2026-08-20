@@ -34,9 +34,17 @@ import {
   type CompositorProbe,
   type ExportProgress,
 } from "../../lib/exportPipeline";
-import type { ProjectConfig, Resolution } from "../../lib/project";
+import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
 
-const RESOLUTIONS: Resolution[] = ["720p", "1080p", "4k"];
+/* The ladder a project can be created at, plus the project's own size when that
+   is one of the names from before the ladder was rebuilt. Dropping the legacy
+   rung outright would leave a 1080p project looking at a select that does not
+   contain what the project IS, and the first touch of any other field would
+   have quietly resized the export. */
+const resolutionChoices = (current: Resolution): Resolution[] =>
+  PROJECT_RESOLUTIONS.includes(current as (typeof PROJECT_RESOLUTIONS)[number])
+    ? [...PROJECT_RESOLUTIONS]
+    : [...PROJECT_RESOLUTIONS, current];
 const FRAME_RATES: FrameRate[] = [24, 25, 30, 60];
 /* The preview is a picture, not a deliverable: 480px on the long edge is
    enough to judge framing and costs a fraction of a full-size decode. */
@@ -355,9 +363,12 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
               disabled={running}
               onChange={(event) => setSettings({ ...settings, resolution: event.target.value as Resolution })}
             >
-              {RESOLUTIONS.map((resolution) => {
+              {resolutionChoices(config.settings.resolution).map((resolution) => {
                 const size = outputDimensions(resolution, config.settings.aspectRatio);
-                return <option key={resolution} value={resolution}>{resolution} · {size.width} × {size.height}</option>;
+                const legacy = !PROJECT_RESOLUTIONS.includes(resolution as (typeof PROJECT_RESOLUTIONS)[number]);
+                return <option key={resolution} value={resolution}>
+                  {size.width} × {size.height}{legacy ? " · this project’s original size" : ""}
+                </option>;
               })}
             </select>
           </label>

@@ -103,26 +103,47 @@ export function qualityPreset(id: QualityId): QualityPreset {
   return preset;
 }
 
-/* The resolution names the SHORT edge, so one setting means the same amount of
-   picture in every aspect ratio the project offers: 1080p is 1920×1080 wide,
-   1080×1920 tall, 1080×1080 square and 1080×1350 at 4:5. */
-const SHORT_EDGE: Record<Resolution, number> = { "720p": 720, "1080p": 1080, "4k": 2160 };
-const RATIO: Record<AspectRatio, readonly [number, number]> = {
-  "16:9": [16, 9],
-  "9:16": [9, 16],
-  "1:1": [1, 1],
-  "4:5": [4, 5],
+/* Every frame size the app knows, written out rather than derived.
+
+   The resolution names the SHORT edge, so one setting means the same height of
+   picture in every aspect ratio the project offers: 768p is 1376×768 wide,
+   768×1376 tall, 768×768 square and 768×960 at 4:5.
+
+   These are a TABLE and not a formula because the sizes MiniMax H3 generates at
+   are not the ones arithmetic would pick. Both edges have to be a multiple of
+   32, and the nearest such pair is not the ratio rounded off: 16:9 at 1344 is
+   2432×1344, which no expression of 1344 and 16/9 produces. Deriving these
+   would mean deriving the wrong numbers precisely.
+
+   So the ratios here are approximate — 736×416 is 1.769 against 16:9's 1.778 —
+   and that is the trade the multiple of 32 buys. The four legacy rows keep the
+   exact pixels the old short-edge formula produced, because a project saved at
+   1080p must open at 1920×1080 and not one pixel else. */
+const FRAME_SIZES: Record<Resolution, Record<AspectRatio, readonly [number, number]>> = {
+  "416p": { "16:9": [736, 416], "9:16": [416, 736], "1:1": [416, 416], "4:5": [416, 512] },
+  "544p": { "16:9": [960, 544], "9:16": [544, 960], "1:1": [544, 544], "4:5": [544, 672] },
+  "640p": { "16:9": [1152, 640], "9:16": [640, 1152], "1:1": [640, 640], "4:5": [640, 800] },
+  "768p": { "16:9": [1376, 768], "9:16": [768, 1376], "1:1": [768, 768], "4:5": [768, 960] },
+  "1088p": { "16:9": [1920, 1088], "9:16": [1088, 1920], "1:1": [1088, 1088], "4:5": [1088, 1376] },
+  "1344p": { "16:9": [2432, 1344], "9:16": [1344, 2432], "1:1": [1344, 1344], "4:5": [1344, 1696] },
+  // Not offered for a new project; see LEGACY_RESOLUTIONS in project.ts.
+  "720p": { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [720, 720], "4:5": [720, 900] },
+  "1080p": { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080], "4:5": [1080, 1350] },
+  "4k": { "16:9": [3840, 2160], "9:16": [2160, 3840], "1:1": [2160, 2160], "4:5": [2160, 2700] },
 };
 
-/** Encoders reject odd dimensions in 4:2:0, so both edges land on an even number. */
-const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
-
 export function outputDimensions(resolution: Resolution, aspectRatio: AspectRatio): { width: number; height: number } {
-  const base = SHORT_EDGE[resolution];
-  const [ratioWidth, ratioHeight] = RATIO[aspectRatio];
-  return ratioWidth >= ratioHeight
-    ? { width: even((base * ratioWidth) / ratioHeight), height: even(base) }
-    : { width: even(base), height: even((base * ratioHeight) / ratioWidth) };
+  const [width, height] = FRAME_SIZES[resolution][aspectRatio];
+  return { width, height };
+}
+
+/** A frame size in the only terms that mean anything to the person choosing it.
+ *  Everywhere a resolution is SHOWN uses this rather than the id: "416p" names
+ *  the short edge and leaves the other one a guess, and at 16:9 the guess is
+ *  wrong by 24 pixels. */
+export function resolutionLabel(resolution: Resolution, aspectRatio: AspectRatio): string {
+  const { width, height } = outputDimensions(resolution, aspectRatio);
+  return `${width} × ${height}`;
 }
 
 /** The export starts as the project already describes itself. Nothing here is

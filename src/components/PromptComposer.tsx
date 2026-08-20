@@ -1,8 +1,9 @@
 import { ChevronDown, Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, Undo2, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { chooseInitialReferenceImages, isTauri } from "../lib/persistence";
+import { outputDimensions, resolutionLabel } from "../lib/export";
 import type { AspectRatio, CreateProjectInput, Resolution } from "../lib/project";
-import { projectNameFromPrompt } from "../lib/project";
+import { projectNameFromPrompt, PROJECT_RESOLUTIONS } from "../lib/project";
 import { PolStudioLogo } from "./PolStudioLogo";
 
 interface PromptComposerProps {
@@ -24,11 +25,10 @@ const aspectRatioLabels: Record<AspectRatio, string> = {
   "4:5": "Portrait 4:5",
 };
 
-const resolutionLabels: Record<Resolution, string> = {
-  "720p": "720p",
-  "1080p": "1080p HD",
-  "4k": "4K",
-};
+/* Chosen because it is the closest rung to the canvas vidfab actually plans a
+   16:9 scene onto (1344×768), so a project made without opening this panel is
+   not one that has to be rescaled the moment a scene is generated. */
+const DEFAULT_RESOLUTION: Resolution = "768p";
 
 const durationOptions: { value: number; label: string }[] = [
   { value: 15, label: "15 seconds" },
@@ -47,7 +47,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
-  const [resolution, setResolution] = useState<Resolution>("720p");
+  const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
   const [duration, setDuration] = useState(30);
   const [referenceImages, setReferenceImages] = useState<NonNullable<CreateProjectInput["referenceImages"]>>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
         <details className="composer__options">
           <summary>
             <span className="composer__options-title">Video settings</span>
-            <span className="composer__options-value">{aspectRatioLabels[aspectRatio]} · {resolutionLabels[resolution]} · {durationLabel(duration)}</span>
+            <span className="composer__options-value">{aspectRatioLabels[aspectRatio]} · {resolutionLabel(resolution, aspectRatio)} · {durationLabel(duration)}</span>
             <ChevronDown className="composer__options-chevron" size={17} />
           </summary>
           <div className="composer__options-body">
@@ -164,12 +164,17 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
                   <option value="4:5">Portrait 4:5</option>
                 </select>
               </label>
+              {/* The real pixels, not a name for them. Every rung is a multiple
+                  of 32 on both edges — what MiniMax H3 generates at — and they
+                  are relabelled when the shape above changes, because 768p is
+                  1376×768 widescreen and 768×1376 vertical. */}
               <label>
-                <span><Clapperboard size={15} /> Picture quality</span>
+                <span><Clapperboard size={15} /> Frame size</span>
                 <select value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
-                  <option value="720p">720p</option>
-                  <option value="1080p">1080p HD</option>
-                  <option value="4k">4K</option>
+                  {PROJECT_RESOLUTIONS.map((option) => {
+                    const { width, height } = outputDimensions(option, aspectRatio);
+                    return <option key={option} value={option}>{width} × {height}{option === DEFAULT_RESOLUTION ? " (default)" : ""}</option>;
+                  })}
                 </select>
               </label>
               <label>

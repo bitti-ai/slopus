@@ -405,8 +405,19 @@ fn is_supported_aspect_ratio(value: &str) -> bool {
     matches!(value, "16:9" | "9:16" | "1:1" | "4:5")
 }
 
+/// The same nine names `resolutionSchema` in src/lib/project.ts accepts, and no
+/// others in either direction — this layer writes the file the frontend then
+/// has to parse. The first six are the ladder a new project is created at, every
+/// rung a multiple of 32 on both edges because that is what MiniMax H3
+/// generates at; the last three are names already on disk, kept so a project
+/// saved before the ladder was rebuilt still opens at the pixels it always had.
+/// The pixels themselves live in `outputDimensions` (src/lib/export.ts) — this
+/// side validates the name and never needs the geometry.
 fn is_supported_resolution(value: &str) -> bool {
-    matches!(value, "720p" | "1080p" | "4k")
+    matches!(
+        value,
+        "416p" | "544p" | "640p" | "768p" | "1088p" | "1344p" | "720p" | "1080p" | "4k"
+    )
 }
 
 fn days_in_month(year: u32, month: u32) -> u32 {
@@ -3593,7 +3604,9 @@ mod tests {
                 "rejected valid aspect ratio {aspect_ratio}"
             );
         }
-        for resolution in ["720p", "1080p", "4k"] {
+        for resolution in [
+            "416p", "544p", "640p", "768p", "1088p", "1344p", "720p", "1080p", "4k",
+        ] {
             let mut config = fixture();
             config.settings.resolution = resolution.into();
             config.brief.resolution = resolution.into();

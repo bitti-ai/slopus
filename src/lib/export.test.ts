@@ -8,6 +8,7 @@ import {
   formatBytes,
   formatDuration,
   outputDimensions,
+  resolutionLabel,
   sourceTimeMsForFrame,
   suggestedFileName,
   videoDurationMs,
@@ -15,7 +16,7 @@ import {
   type ExportSegment,
   type ExportSettings,
 } from "./export";
-import { createProjectConfig, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
+import { createProjectConfig, LEGACY_RESOLUTIONS, PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
 
 const asset = (id: string, overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
   id,
@@ -68,7 +69,49 @@ const settings = (overrides: Partial<ExportSettings> = {}): ExportSettings => ({
 const clipSegments = (segments: ExportSegment[]) => segments.flatMap((segment) => (segment.kind === "clip" ? [segment] : []));
 
 describe("output geometry", () => {
-  it("gives every aspect ratio the same short edge", () => {
+  it("offers the widescreen sizes MiniMax H3 actually generates at", () => {
+    // The ladder, verbatim. These are not 16:9 rounded off — 2432×1344 is 1.810
+    // against 16:9's 1.778 — so they are pinned here rather than recomputed by
+    // the same arithmetic the table deliberately does not use.
+    expect(PROJECT_RESOLUTIONS.map((resolution) => outputDimensions(resolution, "16:9"))).toEqual([
+      { width: 736, height: 416 },
+      { width: 960, height: 544 },
+      { width: 1152, height: 640 },
+      { width: 1376, height: 768 },
+      { width: 1920, height: 1088 },
+      { width: 2432, height: 1344 },
+    ]);
+  });
+
+  it("keeps both edges on a multiple of 32 in every shape a project can be", () => {
+    // The whole point of the ladder: a frame the engine cannot generate is a
+    // frame the project would have to rescale to fill.
+    for (const resolution of PROJECT_RESOLUTIONS) {
+      for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
+        const { width, height } = outputDimensions(resolution, ratio);
+        expect({ resolution, ratio, width: width % 32, height: height % 32 })
+          .toEqual({ resolution, ratio, width: 0, height: 0 });
+      }
+    }
+  });
+
+  it("gives every aspect ratio the same short edge, and 9:16 the 16:9 frame turned over", () => {
+    expect(outputDimensions("768p", "16:9")).toEqual({ width: 1376, height: 768 });
+    expect(outputDimensions("768p", "9:16")).toEqual({ width: 768, height: 1376 });
+    expect(outputDimensions("768p", "1:1")).toEqual({ width: 768, height: 768 });
+    expect(outputDimensions("768p", "4:5")).toEqual({ width: 768, height: 960 });
+    for (const resolution of PROJECT_RESOLUTIONS) {
+      const wide = outputDimensions(resolution, "16:9");
+      expect(outputDimensions(resolution, "9:16")).toEqual({ width: wide.height, height: wide.width });
+      expect(outputDimensions(resolution, "1:1")).toEqual({ width: wide.height, height: wide.height });
+      expect(outputDimensions(resolution, "4:5").width).toBe(wide.height);
+    }
+  });
+
+  it("opens a project saved before the ladder at the pixels it always had", () => {
+    /* Nobody's export is resized behind their back. These are exactly what the
+       old short-edge formula produced, which is why 1080 and 2160 are still
+       here despite not being multiples of 32. */
     expect(outputDimensions("1080p", "16:9")).toEqual({ width: 1920, height: 1080 });
     expect(outputDimensions("1080p", "9:16")).toEqual({ width: 1080, height: 1920 });
     expect(outputDimensions("1080p", "1:1")).toEqual({ width: 1080, height: 1080 });
@@ -77,8 +120,14 @@ describe("output geometry", () => {
     expect(outputDimensions("4k", "16:9")).toEqual({ width: 3840, height: 2160 });
   });
 
+  it("names a frame size in pixels, because the id only names one of its edges", () => {
+    // "768p" at 16:9 is 1376 wide, not the 1365 the name invites you to derive.
+    expect(resolutionLabel("768p", "16:9")).toBe("1376 × 768");
+    expect(resolutionLabel("768p", "9:16")).toBe("768 × 1376");
+  });
+
   it("never produces an odd edge, which a 4:2:0 encoder refuses", () => {
-    for (const resolution of ["720p", "1080p", "4k"] as const) {
+    for (const resolution of [...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]) {
       for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
         const { width, height } = outputDimensions(resolution, ratio);
         expect(width % 2).toBe(0);

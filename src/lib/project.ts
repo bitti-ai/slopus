@@ -86,7 +86,25 @@ function checkOneLocation(value: StoredLocation, context: z.RefinementCtx, label
 }
 
 export const aspectRatioSchema = z.enum(["16:9", "9:16", "1:1", "4:5"]);
-export const resolutionSchema = z.enum(["720p", "1080p", "4k"]);
+
+/** The frame sizes a NEW project can be created at, smallest first. Every one
+ *  of them is a multiple of 32 on both edges in every aspect ratio, because
+ *  that is what MiniMax H3 generates at — a frame the engine cannot produce is
+ *  a frame the project would have to rescale to fill.
+ *
+ *  The id names the SHORT edge, the way "1080p" always has: 768p is 1376×768
+ *  wide and 768×1376 tall. `outputDimensions` in export.ts holds the pixels
+ *  themselves; a test pins the two lists together so neither can grow a member
+ *  the other has never heard of. */
+export const PROJECT_RESOLUTIONS = ["416p", "544p", "640p", "768p", "1088p", "1344p"] as const;
+
+/** Names still on disk, from before the ladder was rebuilt on multiples of 32.
+ *  They keep their exact old pixels (1080p is still 1920×1080) and they are not
+ *  offered for a new project — a project is not resized behind its owner's
+ *  back, and 1080 is not a multiple of 32. */
+export const LEGACY_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
+
+export const resolutionSchema = z.enum([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
 
 export const projectAssetSchema = z.object({
   id: idSchema,
