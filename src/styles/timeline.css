@@ -956,9 +956,9 @@
 /* --- Track grid ------------------------------------------------------------ */
 
 .timeline-grid {
-  /* Wide enough for the seeded track names ("Track 1, Video") to be read in
-     full. At 224px the rename field clipped them to "Track 1, Vi...", which
-     reads as a broken name rather than a narrow column. */
+  /* Wide enough for a track name to be read in full beside the kind icon and
+     the two toggles. It was cut to fit the seeded names when those still ended
+     in ", Video"; the room now goes to names the user types. */
   --track-column: 256px;
   position: relative;
   display: grid;

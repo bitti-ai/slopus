@@ -602,6 +602,11 @@ function TrackRow({ track, duration, selectedId, dropActive, dropBlocked, onSele
   onDragLeaveLane: () => void;
   onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
 }) {
+  /* The name no longer carries its kind ("Track 1, Video" is now "Track 1"),
+     which the icon and the line under the field already say — but that leaves a
+     video and an audio track both called "Track 1", and a button announced as
+     "Mute Track 1" twice names neither. The controls say which one in full. */
+  const named = `${track.kind === "audio" ? "audio" : "video"} ${track.name}`;
   return <>
     <div className="track-head">
       <span className={`track-kind track-kind--${track.kind}`}>{track.kind === "audio" ? <Music2 size={16} /> : <Video size={16} />}</span>
@@ -612,12 +617,12 @@ function TrackRow({ track, duration, selectedId, dropActive, dropBlocked, onSele
       <div><input
         className="track-name"
         value={track.name}
-        aria-label={`Rename ${track.name}`}
+        aria-label={`Rename ${named}`}
         title="Rename this track"
         onChange={(event) => onRename(track.id, event.target.value || "Untitled track")}
       /><small>{track.kind === "audio" ? "Audio" : "Video"}</small></div>
-      <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} ${track.name}`} title={`${track.muted ? "Unmute" : "Mute"} ${track.name}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
-      <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${track.name}`} title={`${track.locked ? "Unlock" : "Lock"} ${track.name}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
+      <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} ${named}`} title={`${track.muted ? "Unmute" : "Mute"} ${named}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+      <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} title={`${track.locked ? "Unlock" : "Lock"} ${named}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
     <div
       className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}

@@ -24,7 +24,7 @@
       {
         "id": "track-story",
         "kind": "video",
-        "name": "Track 1, Video",
+        "name": "Track 1",
         "locked": false,
         "muted": false,
         "clips": []
@@ -32,7 +32,7 @@
       {
         "id": "track-v2",
         "kind": "video",
-        "name": "Track 2, Video",
+        "name": "Track 2",
         "locked": false,
         "muted": false,
         "clips": []
@@ -40,7 +40,7 @@
       {
         "id": "track-a1",
         "kind": "audio",
-        "name": "Track 1, Audio",
+        "name": "Track 1",
         "locked": false,
         "muted": false,
         "clips": []
@@ -48,7 +48,7 @@
       {
         "id": "track-a2",
         "kind": "audio",
-        "name": "Track 2, Audio",
+        "name": "Track 2",
         "locked": false,
         "muted": false,
         "clips": []
