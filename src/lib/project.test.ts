@@ -82,7 +82,7 @@ describe("project schema", () => {
     expect(project.schemaVersion).toBe(1);
     // Two video layers over two audio, numbered rather than named after a job:
     // the seed says where a track sits, not what the user must put on it.
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1, Video", "Track 2, Video", "Track 1, Audio", "Track 2, Audio"]);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 1", "Track 2"]);
     expect(project.timeline.tracks.map((track) => track.kind)).toEqual(["video", "video", "audio", "audio"]);
     // GeneratorView inserts generated shots by id. Renaming the tracks must
     // not move that target off the first video track.
@@ -516,7 +516,7 @@ describe("project schema", () => {
       targetDurationSeconds: 34,
     }));
     expect(project.timeline.tracks).toHaveLength(4);
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1, Video", "Track 2, Video", "Track 1, Audio", "Track 2, Audio"]);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 1", "Track 2"]);
     // Every demo clip has to land on a track that is actually in the seed.
     const trackIds = new Set(project.timeline.tracks.map((track) => track.id));
     expect(project.timeline.tracks.flatMap((track) => track.clips).every((clip) => trackIds.has(clip.trackId))).toBe(true);

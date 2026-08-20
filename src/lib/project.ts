@@ -987,10 +987,10 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
        cut needs to work at all: something to lay over, and something to lay
        under. */
     timeline: { tracks: [
-      { id: STORY_TRACK_ID, kind: "video", name: "Track 1, Video", locked: false, muted: false, clips: [] },
-      { id: "track-v2", kind: "video", name: "Track 2, Video", locked: false, muted: false, clips: [] },
-      { id: "track-a1", kind: "audio", name: "Track 1, Audio", locked: false, muted: false, clips: [] },
-      { id: "track-a2", kind: "audio", name: "Track 2, Audio", locked: false, muted: false, clips: [] },
+      { id: STORY_TRACK_ID, kind: "video", name: "Track 1", locked: false, muted: false, clips: [] },
+      { id: "track-v2", kind: "video", name: "Track 2", locked: false, muted: false, clips: [] },
+      { id: "track-a1", kind: "audio", name: "Track 1", locked: false, muted: false, clips: [] },
+      { id: "track-a2", kind: "audio", name: "Track 2", locked: false, muted: false, clips: [] },
     ] },
     references: [],
     generationJobs: [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })],
@@ -1039,10 +1039,10 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     brief: { ...config.brief, status: "generating" },
     assets,
     timeline: { tracks: [
-      { id: STORY_TRACK_ID, kind: "video", name: "Track 1, Video", locked: false, muted: false, clips: videoClips },
-      { id: "track-v2", kind: "video", name: "Track 2, Video", locked: false, muted: false, clips: [] },
-      { id: "track-a1", kind: "audio", name: "Track 1, Audio", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
-      { id: "track-a2", kind: "audio", name: "Track 2, Audio", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
+      { id: STORY_TRACK_ID, kind: "video", name: "Track 1", locked: false, muted: false, clips: videoClips },
+      { id: "track-v2", kind: "video", name: "Track 2", locked: false, muted: false, clips: [] },
+      { id: "track-a1", kind: "audio", name: "Track 1", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
+      { id: "track-a2", kind: "audio", name: "Track 2", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
     ] },
     references,
     generationJobs,

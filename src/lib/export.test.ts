@@ -44,8 +44,8 @@ const clip = (id: string, trackId: string, startMs: number, durationMs: number, 
 });
 
 /** A project with the app's own four tracks, `clips` distributed by trackId.
- *  `track-story` is "Track 1, Video" — the FIRST video track, and the one that
- *  composites over "Track 2, Video" (`track-v2`), because the timeline draws
+ *  `track-story` is the video "Track 1" — the FIRST video track, and the one
+ *  that composites over the video "Track 2" (`track-v2`), because the timeline draws
  *  tracks in array order from the top. */
 function project(clips: TimelineClip[], assets: ProjectAsset[], overrides: Partial<ProjectConfig["settings"]> = {}): ProjectConfig {
   const base = createProjectConfig({

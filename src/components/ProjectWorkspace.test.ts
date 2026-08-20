@@ -603,7 +603,7 @@ describe("project workspace timecode", () => {
     const onChange = vi.fn();
     const onOpenTimeline = vi.fn();
     render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange, onOpenTimeline, selectedJobId: config.generationJobs[0].id }));
-    fireEvent.click(screen.getByRole("button", { name: "Insert into Track 1, Video" }));
+    fireEvent.click(screen.getByRole("button", { name: "Insert into Track 1" }));
     const next = onChange.mock.calls[0][0];
     expect(next.assets[0].relativePath).toBe("media/generated/first-scene.mp4");
     expect(next.timeline.tracks.find((track: { id: string }) => track.id === STORY_TRACK_ID).clips).toHaveLength(1);
