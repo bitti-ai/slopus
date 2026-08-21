@@ -14,6 +14,12 @@ type ReferenceUse = ProjectReference["intendedUse"][number];
    projects saved with it still load. */
 const uses: readonly ReferenceUse[] = ["character", "product", "location", "style"];
 
+/** What a reference IS, in a word. This replaced the file path in both places
+ *  it used to be printed: a path is a fact about the disk, not about the
+ *  reference, and neither the card nor the inspector does anything with it. */
+const referenceKindLabel = (kind: ProjectReference["kind"]) =>
+  kind === "text" ? "Text definition" : kind === "image" ? "Image" : kind === "video" ? "Video clip" : "Sound";
+
 export function ReferencesView({ config, folderPath, onChange }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   const [definitionDialog, setDefinitionDialog] = useState(false);
@@ -84,7 +90,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
               : ref.kind === "image"
                 ? <span className="reference-art"><Image size={26} /><em>Image file</em></span>
                 : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{ref.kind === "text" ? "Text definition" : ref.relativePath ?? ref.sourcePath}</small></span>{isReferenceDescribed(ref)
+            <span className="reference-card__body"><span><b>{ref.name}</b><small>{referenceKindLabel(ref.kind)}</small></span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
               : <p className="reference-card__incomplete">{ref.kind === "image"
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
@@ -101,7 +107,10 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             {selected.kind === "image" && (selected.relativePath || selected.sourcePath)
               ? <ReferenceImage folderPath={folderPath} relativePath={selected.relativePath} sourcePath={selected.sourcePath} alt={selected.name} />
               : <span>{selected.kind === "image" ? <Image size={30} /> : <Users size={30} />}</span>}
-            <em>{selected.kind === "image" ? selected.relativePath ?? selected.sourcePath : "Reusable text definition"}</em>
+            {/* A caption only where there is no picture to look at. It used
+                to print the file's path over the thumbnail, which is neither
+                what the reference IS nor anything the user acts on. */}
+            {selected.kind !== "image" && <em>{referenceKindLabel(selected.kind)}</em>}
           </div>
           <div className="reference-fields">
             <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
@@ -116,7 +125,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             <h3>Used by <span>{jobs.length}</span></h3>
             {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
           </section>
-          <section className="portable-path"><BookOpen size={16} /><div><b>Where this lives</b><code>{selected.relativePath ?? selected.sourcePath ?? "Stored in polstudio.json"}</code></div></section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </aside>
     </div>
