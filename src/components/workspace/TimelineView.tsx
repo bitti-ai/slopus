@@ -1,14 +1,19 @@
 import {
   Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen, Music2,
   Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload, Video,
-  Volume2, VolumeX,
+  Volume2, VolumeX, X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
-import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
+import type { ProjectAsset, ProjectConfig, TimelineClip, TimelineTrack } from "../../lib/project";
+import {
+  clipEndMs, findClip, insertClip, moveClip, removeClip, snapTargets, sourceRoom, trimClip,
+  type SnapOptions, type SourceRoom,
+} from "../../lib/timeline";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
+import { ProgramMonitor } from "./ProgramMonitor";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
@@ -23,6 +28,56 @@ const DROPPED_CLIP_MS = 5_000;
 /* The drag payload is the asset id. A custom type keeps files dragged in from
    the desktop, and text dragged from anywhere else, out of the drop handler. */
 const ASSET_DRAG_TYPE = "application/x-polstudio-asset";
+
+/* How close two edges have to be ON SCREEN before they snap together. In
+   pixels, not milliseconds, because that is how close they LOOK — the same
+   8px feels the same on a 20-second timeline and a 10-minute one, where a fixed
+   number of milliseconds would be unusable at one end and invisible at the
+   other. Converted against the lane's real width at the moment a drag starts. */
+const SNAP_PX = 8;
+/* Below this, a press is a click. Without it the smallest tremor between
+   pointerdown and pointerup would be read as a drag and a clip that was only
+   being selected would be nudged off its cut. */
+const DRAG_THRESHOLD_PX = 3;
+
+type DragMode = "move" | "trim-start" | "trim-end";
+
+/** One drag, from the press that began it. Everything the pointer needs is
+ *  measured ONCE, here: the lane's geometry, what may be snapped to, and how
+ *  much footage the file has left at each end. Re-measuring per pointermove
+ *  would let a re-render mid-drag change the arithmetic under the pointer.
+ *
+ *  `baseTracks` is the timeline as it stood when the drag began, and every
+ *  preview is computed from it rather than from the last preview — so dragging
+ *  back to where you started really does put the clip back. */
+interface DragSession {
+  clipId: string;
+  mode: DragMode;
+  baseTracks: TimelineTrack[];
+  laneLeftPx: number;
+  msPerPx: number;
+  /** Where inside the clip the pointer took hold, so the clip does not jump so
+   *  its head is under the cursor. Move only. */
+  grabOffsetMs: number;
+  startXPx: number;
+  snap: SnapOptions;
+  room: SourceRoom;
+  moved: boolean;
+}
+
+/** Which lane the pointer is over, for a drag that has left the lane it started
+ *  in. Read from the document rather than from React state because the pointer
+ *  is captured elsewhere: what is under it is a question only the DOM can
+ *  answer. jsdom has no hit-testing, so a missing method means "the lane it
+ *  started on", not a crash. */
+function trackIdAtPoint(x: number, y: number): string | undefined {
+  if (typeof document.elementsFromPoint !== "function") return undefined;
+  for (const element of document.elementsFromPoint(x, y)) {
+    const lane = (element as HTMLElement).closest?.("[data-track-id]") as HTMLElement | null;
+    if (lane?.dataset.trackId) return lane.dataset.trackId;
+  }
+  return undefined;
+}
 
 /* The canvas used to be a hard-coded 34s — the seeded fixture's exact length —
    so a 60-second project still got a 34-second ruler. Derive it from the real
@@ -107,25 +162,39 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
      must not be snapped back to a formatted timecode mid-keystroke. Null means
      nothing is being typed and the clip speaks for itself. */
   const [durationDraft, setDurationDraft] = useState<string | null>(null);
+  /* A drag in flight, and the timeline as it would be if the pointer were
+     released right now. The lanes draw the preview, and the release commits
+     exactly it — the drag and the edit are the same calculation, run twice
+     (see src/lib/timeline.ts). Null means the move is refused from here: the
+     clip is drawn where it really is, which is the honest answer to "no". */
+  const dragRef = useRef<DragSession | null>(null);
+  const previewRef = useRef<TimelineTrack[] | null>(null);
+  const [preview, setPreview] = useState<TimelineTrack[] | null>(null);
+  const [dragging, setDragging] = useState(false);
+  /* Whether the pointer is currently dragging the playhead along the ruler.
+     A press alone moves it once; this is what makes the moves keep coming. */
+  const [scrubbing, setScrubbing] = useState(false);
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
+  /** Where the last clip ends — where playback stops, which is not the same as
+   *  where the ruler stops (the canvas is at least as long as the film the user
+   *  asked for, however little of it is cut yet). */
+  const contentEndMs = tracks.reduce((end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clipEndMs(clip)), end), 0);
   const sceneClips = tracks.filter((track) => track.kind === "video").flatMap((track) => track.clips);
-  const hasVisualOutput = config.assets.some((asset) => asset.kind === "video" || asset.kind === "image" || asset.kind === "generated")
-    || config.generationJobs.some((job) => Boolean(job.outputRelativePath));
   const duration = useMemo(() => canvasDuration(config), [config]);
   const ticks = useMemo(() => rulerTicks(duration), [duration]);
 
-  useEffect(() => {
-    // Playing an empty timeline would run the clock over nothing, which reads
-    // as playback of footage that does not exist.
-    if (!playing || clipCount === 0) return;
-    const timer = window.setInterval(() => setPlayhead((current) => current >= duration ? 0 : current + 100), 100);
-    return () => window.clearInterval(timer);
-  }, [playing, clipCount, duration]);
-
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
+
+  /* The playhead is driven by the program monitor while playing — it reads
+     where the decoder actually is, so the picture and the playhead cannot
+     drift apart. These two are handed down rather than declared inline
+     because the monitor's animation loop depends on their identity: a new
+     closure per render would tear its clock down sixty times a second. */
+  const seek = useCallback((ms: number) => setPlayhead(ms), []);
+  const setPlayingFromMonitor = useCallback((value: boolean) => setPlaying(value), []);
 
   // Another clip, another length: what was being typed belonged to the old one.
   useEffect(() => { setDurationDraft(null); }, [selectedId]);
@@ -154,24 +223,53 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     return () => grid.removeEventListener("wheel", onWheel);
   }, [duration, config.settings.frameRate]);
 
+  /** Turn a pointer position on the ruler into a playhead position. A ruler
+   *  nothing has laid out has no scale, so it is left alone rather than
+   *  sending the playhead to NaN. */
+  const scrubTo = (ruler: HTMLElement, clientX: number) => {
+    const rect = ruler.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setPlayhead(Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration));
+  };
+
   const chooseMediaLayout = (layout: MediaLayout) => { setMediaLayout(layout); saveMediaLayout(layout); };
-  const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) => onChange({ ...config, timeline: { tracks: nextTracks } });
+  /* Every timeline write hands up an UPDATER rather than a finished config,
+     for the same reason measurements do (see recordMeasured, and ConfigUpdate).
+     A finished config is built from the props THIS render closed over, and the
+     timeline is not always the most recent thing written: the media panel is
+     recording what its decodes measured the whole time a folder is being
+     imported, and a drag holds the timeline as it stood when the press began.
+     Handing up `{ ...config, timeline }` from either would take those
+     measurements back out again — a rush that had just learned it was 40
+     seconds long would go back to being an unmeasured file, and the next drop
+     of it would be a 5-second stand-in. */
+  const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) =>
+    onChange((current) => ({ ...current, timeline: { tracks: nextTracks } }));
   const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
-  const removeSelected = () => {
-    if (!selected || selectedTrack?.locked) return;
-    updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.id !== selected.id) })));
-    setSelectedId("");
+  /* Every removal — the toolbar, the key, the × on the clip itself — goes
+     through one function, so a locked track refuses all three. */
+  const deleteClip = (clipId: string) => {
+    const next = removeClip(tracks, clipId);
+    if (!next) return;
+    updateTracks(next);
+    setSelectedId((current) => (current === clipId ? "" : current));
   };
+  const removeSelected = () => { if (selected) deleteClip(selected.id); };
   const duplicateSelected = () => {
     if (!selected || !selectedTrack || selectedTrack.locked) return;
     /* The spread carries sourceStartMs with everything else, so duplicating a
        clip that was split off the middle of a rush copies THAT range of the
        footage, not the head of the file. Only the id, the position on the
        ruler, and the name are new. */
-    const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, startMs: Math.min(duration - selected.durationMs, selected.startMs + selected.durationMs), label: `${selected.label} copy` };
-    updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: [...track.clips, copy] } : track));
+    const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, label: `${selected.label} copy` };
+    // Straight after the original if that is free, and otherwise wherever the
+    // lane has room: a copy laid on top of another clip is not a copy of the
+    // cut, it is two clips claiming one moment.
+    const next = insertClip(tracks, selected.trackId, copy, selected.startMs + selected.durationMs);
+    if (!next) return;
+    updateTracks(next);
     setSelectedId(copy.id);
   };
   const splitSelected = () => {
@@ -311,15 +409,33 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     ? Math.max(1, selectedAsset.durationMs - selected.sourceStartMs)
     : null;
   const minClipMs = Math.max(1, Math.round(1000 / config.settings.frameRate));
+  /** What the FILE has left at each end of a clip. A still image and a file
+   *  nothing has measured have no source timeline to run out of, and get no
+   *  limit rather than a guessed one. */
+  const roomFor = (clip: TimelineClip) => {
+    const asset = assetById(clip.assetId);
+    return sourceRoom(clip, asset && asset.kind !== "image" ? asset.durationMs ?? null : null);
+  };
+  /* Typing a length is trimming the tail, so it is the same operation the
+     right-hand handle performs — same floor of one frame, same ceiling in the
+     footage, and the same refusal to grow over the next clip on the track. */
   const typeDuration = (value: string) => {
     setDurationDraft(value);
     const parsed = selected ? parseDuration(value, config.settings.frameRate) : null;
     if (parsed === null || !selected) return;
-    const ceiling = sourceLimitMs ?? Number.MAX_SAFE_INTEGER;
-    updateClip(selected.id, { durationMs: Math.min(Math.max(parsed, minClipMs), Math.max(ceiling, minClipMs)) });
+    const next = trimClip(tracks, selected.id, "end", selected.startMs + parsed, { minClipMs, room: roomFor(selected) });
+    if (next) updateTracks(next);
   };
 
-  const dropAsset = (trackId: string, assetId: string, ratio: number) => {
+  /* Snapping, measured against a lane that is `widthPx` wide. A lane nothing
+     has laid out yet — jsdom, a panel that has never been painted — gives a
+     tolerance of 0, which turns the magnet off instead of inventing a scale. */
+  const snapFor = (widthPx: number, excludeClipId?: string): SnapOptions => ({
+    targets: snapTargets(tracks, { excludeClipId, playheadMs: playhead }),
+    toleranceMs: widthPx > 0 ? (SNAP_PX * duration) / widthPx : 0,
+  });
+
+  const dropAsset = (trackId: string, assetId: string, ratio: number, laneWidthPx: number) => {
     const track = tracks.find((item) => item.id === trackId);
     const asset = assetById(assetId);
     if (!track || !acceptsAsset(track, asset) || !asset) return;
@@ -347,9 +463,109 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
       color: null,
       status: "approved",
     };
-    updateTracks(tracks.map((item) => item.id === track.id ? { ...item, clips: [...item.clips, clip] } : item));
+    /* The same placement a dragged clip gets: snapped to the cuts already on
+       the timeline, and butted up against whatever is in the way rather than
+       laid on top of it. A lane with no room at all refuses the drop. */
+    const next = insertClip(tracks, track.id, clip, startMs, snapFor(laneWidthPx));
+    if (!next) return;
+    updateTracks(next);
     setSelectedId(clip.id);
   };
+
+  /* --- Dragging a clip -----------------------------------------------------
+
+     Three gestures, one mechanism: take hold of a clip's body to move it along
+     its lane or into another lane of the same kind, or take hold of either end
+     to trim it. What the pointer produces is a PREVIEW — the lanes draw it and
+     nothing is written — and the release commits that preview unchanged. Escape
+     abandons it, and a gesture the rules refuse simply never produces a preview
+     to commit, so the clip stays where it was.
+     ======================================================================= */
+
+  const beginDrag = (event: React.PointerEvent<HTMLElement>, clip: TimelineClip, mode: DragMode) => {
+    // Left button only: a right-click is a context menu, and a middle-click is
+    // a scroll gesture in most shells.
+    if (event.button !== 0) return;
+    const track = tracks.find((item) => item.id === clip.trackId);
+    if (!track || track.locked) return;
+    const lane = (event.currentTarget as HTMLElement).closest(".track-lane") as HTMLElement | null;
+    const rect = lane?.getBoundingClientRect();
+    // Nothing has been laid out: there is no scale to turn pixels into time
+    // with, and a drag measured against a zero-width lane would put the clip at
+    // an arbitrary place on the ruler. The clip still selects.
+    if (!rect || rect.width <= 0) { setSelectedId(clip.id); return; }
+    const msPerPx = duration / rect.width;
+    dragRef.current = {
+      clipId: clip.id,
+      mode,
+      baseTracks: tracks,
+      laneLeftPx: rect.left,
+      msPerPx,
+      grabOffsetMs: (event.clientX - rect.left) * msPerPx - clip.startMs,
+      startXPx: event.clientX,
+      /* Every lane in the grid shares one column, so a lane's left edge and
+         width are the whole timeline's — which is why a drag that crosses into
+         another lane can keep using the geometry it measured on this one. */
+      snap: snapFor(rect.width, clip.id),
+      room: roomFor(clip),
+      moved: false,
+    };
+    setSelectedId(clip.id);
+    setDragging(true);
+  };
+
+  const endDrag = (commit: boolean) => {
+    if (commit && previewRef.current) updateTracks(previewRef.current);
+    dragRef.current = null;
+    previewRef.current = null;
+    setPreview(null);
+    setDragging(false);
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const show = (next: TimelineTrack[] | null) => { previewRef.current = next; setPreview(next); };
+    const onMove = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session) return;
+      // Until the pointer has travelled far enough to mean it, this is a click.
+      if (!session.moved && Math.abs(event.clientX - session.startXPx) < DRAG_THRESHOLD_PX) return;
+      session.moved = true;
+      const pointerMs = (event.clientX - session.laneLeftPx) * session.msPerPx;
+      if (session.mode === "move") {
+        const overTrack = trackIdAtPoint(event.clientX, event.clientY)
+          ?? findClip(session.baseTracks, session.clipId)?.track.id;
+        show(overTrack ? moveClip(session.baseTracks, session.clipId, overTrack, pointerMs - session.grabOffsetMs, session.snap) : null);
+        return;
+      }
+      show(trimClip(session.baseTracks, session.clipId, session.mode === "trim-start" ? "start" : "end", pointerMs, {
+        minClipMs, room: session.room, snap: session.snap,
+      }));
+    };
+    const onUp = () => endDrag(true);
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") endDrag(false); };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    // A drag whose pointer is snatched away — a tablet lifted, a shell that
+    // takes the capture — must not leave the timeline in a half-dragged state.
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("keydown", onKey);
+    };
+    /* Registered once per drag rather than per render: the handlers read the
+       session out of a ref, so a preview landing mid-drag must not tear the
+       listeners down and put them back. */
+  }, [dragging, minClipMs]);
+
+  /* What the lanes draw: the drag if there is one, and the project otherwise.
+     The inspector deliberately keeps reading the real project — a length that
+     flickered while a clip was being dragged would be a number nobody can
+     read. */
+  const drawnTracks = preview ?? tracks;
 
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
@@ -367,9 +583,15 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   };
 
   return (
-    <div className="timeline-view" tabIndex={0} onKeyDown={(event) => {
-      if ((event.key === "Delete" || event.key === "Backspace") && event.target === event.currentTarget) removeSelected();
-      if (event.code === "Space" && event.target === event.currentTarget && clipCount > 0) { event.preventDefault(); setPlaying((value) => !value); }
+    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""}`} tabIndex={0} onKeyDown={(event) => {
+      /* Delete works from the view itself and from a focused clip — the clip IS
+         the thing being deleted, and having to leave it first to press the key
+         is the kind of rule only the code knows. It deliberately does NOT fire
+         from a text field: a Backspace in the clip's name is an edit. */
+      const target = event.target as HTMLElement;
+      const fromClip = target.classList?.contains("timeline-clip");
+      if ((event.key === "Delete" || event.key === "Backspace") && (event.target === event.currentTarget || fromClip)) removeSelected();
+      if (event.code === "Space" && (event.target === event.currentTarget || fromClip) && clipCount > 0) { event.preventDefault(); setPlaying((value) => !value); }
     }}>
       {/* The view had no top-level heading at all, so screen-reader users had
           no landmark for it. Sighted users already see the project topbar. */}
@@ -446,21 +668,26 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
         <main className="program-panel">
           <h2 className="sr-only">Program monitor</h2>
           <div className="program-canvas">
-            {/* An empty monitor is an empty monitor: the panel that used to sit
-                here restated the project's name and prompt — both already in the
-                topbar — to say nothing was playing, which the black picture says
-                by itself. The note about footage that exists but cannot be played
-                back yet is worth making, but only once something is actually cut
-                into the timeline; over an empty edit it was a panel about
-                nothing, covering the picture. */}
-            {hasVisualOutput && clipCount > 0 && (
-              <div className="program-empty program-empty--footage">
+            {/* The real picture now: the clip under the playhead, decoded from
+                its own file. What used to stand here was a panel explaining
+                that PolStudio could not play footage back — true when it was
+                written, and no longer. An empty timeline still shows an empty
+                monitor, which says by itself that nothing is cut yet. */}
+            {clipCount > 0
+              ? <ProgramMonitor
+                config={config}
+                folderPath={folderPath}
+                playheadMs={playhead}
+                playing={playing}
+                onSeek={seek}
+                onPlayingChange={setPlayingFromMonitor}
+              />
+              : <div className="program-empty">
                 <Film size={30} />
                 <strong>{config.name}</strong>
                 <span>{config.brief.prompt}</span>
-                <small>PolStudio can’t play this footage back yet. {clipCount === 1 ? "1 clip is" : `${clipCount} clips are`} arranged on the timeline below and nothing has been lost.</small>
-              </div>
-            )}
+                <small>Drop a file from Media onto a track below, or generate a scene, and it plays here.</small>
+              </div>}
           </div>
         </main>
 
@@ -535,7 +762,10 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={transportBlockedBy ?? "Go to beginning"} disabled={transportBlockedBy !== null}><SkipBack size={18} /></button>
             {/* Nothing to play means nothing to play: running the clock over an
                 empty timeline reads as playback of footage that isn't there. */}
-            <button className="play-button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} title={transportBlockedBy ?? (playing ? "Pause" : "Play")}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
+            {/* Pressing Play with the playhead already past the last frame used
+                to start playback that immediately stopped, which reads as a
+                broken button. From the end, Play means play it again. */}
+            <button className="play-button" onClick={() => { if (!playing && playhead >= contentEndMs) setPlayhead(0); setPlaying((value) => !value); }} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} title={transportBlockedBy ?? (playing ? "Pause" : "Play")}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
             <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={transportBlockedBy ?? "Step forward one second"} disabled={transportBlockedBy !== null}><SkipForward size={18} /></button>
           </div>
           <div className="timeline-tools">
@@ -545,16 +775,34 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
           </div>
         </header>
-        <div className="timeline-grid" ref={timelineGrid} title="Scroll to scrub. Hold Shift for one frame at a time.">
+        <div className="timeline-grid" ref={timelineGrid} title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
           <div className="track-corner"><span>Tracks</span></div>
-          <div className="time-ruler" onPointerDown={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPlayhead(Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration)); }}>
+          {/* Press to jump, hold and drag to scrub. The monitor seeks to wherever
+              this lands, so dragging along the ruler runs the picture past under
+              the pointer — which is what scrubbing IS. Playback stops first:
+              scrubbing while playing would be two things driving one playhead. */}
+          <div
+            className="time-ruler"
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              setPlaying(false);
+              setScrubbing(true);
+              scrubTo(event.currentTarget, event.clientX);
+            }}
+            onPointerMove={(event) => { if (scrubbing) scrubTo(event.currentTarget, event.clientX); }}
+            onPointerUp={(event) => { event.currentTarget.releasePointerCapture?.(event.pointerId); setScrubbing(false); }}
+            onPointerCancel={() => setScrubbing(false)}
+          >
             {ticks.map((second) => <span key={second} style={{ left: `${second * 1000 / duration * 100}%` }}><i />{rulerLabel(second)}</span>)}
           </div>
-          {tracks.map((track) => <TrackRow
+          {drawnTracks.map((track) => <TrackRow
             key={track.id}
             track={track}
             duration={duration}
             selectedId={selectedId}
+            draggingId={dragging ? dragRef.current?.clipId : undefined}
+            onClipPointerDown={beginDrag}
+            onDeleteClip={deleteClip}
             dropActive={dropTrackId === track.id}
             /* A lane that stays dark is indistinguishable from a lane the
                pointer simply is not over, so a sound held above a video track
@@ -580,7 +828,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
               const rect = event.currentTarget.getBoundingClientRect();
               // A zero-width lane would make the ratio NaN and the clip's start
               // time with it, which zod then refuses to save.
-              dropAsset(track.id, assetId, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0);
+              dropAsset(track.id, assetId, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0, rect.width);
             }}
           />)}
           <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
@@ -590,15 +838,20 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   );
 }
 
-function TrackRow({ track, duration, selectedId, dropActive, dropBlocked, onSelect, onToggle, onRename, onDragOverLane, onDragLeaveLane, onDropLane }: {
+function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlocked, onSelect, onToggle, onRename, onClipPointerDown, onDeleteClip, onDragOverLane, onDragLeaveLane, onDropLane }: {
   track: ProjectConfig["timeline"]["tracks"][number];
   duration: number;
   selectedId: string;
+  /** The clip currently being dragged, so it can be drawn as the thing under
+   *  the pointer rather than as one more clip sitting on the lane. */
+  draggingId?: string;
   dropActive: boolean;
   dropBlocked: boolean;
   onSelect: (id: string) => void;
   onToggle: (id: string, key: "muted" | "locked") => void;
   onRename: (id: string, name: string) => void;
+  onClipPointerDown: (event: React.PointerEvent<HTMLElement>, clip: TimelineClip, mode: DragMode) => void;
+  onDeleteClip: (id: string) => void;
   onDragOverLane: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeaveLane: () => void;
   onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -627,12 +880,61 @@ function TrackRow({ track, duration, selectedId, dropActive, dropBlocked, onSele
     </div>
     <div
       className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
+      /* Which track this lane IS, readable from the DOM: a clip dragged across
+         lanes is hit-tested against the document, and the id is how the answer
+         gets back to the model. */
+      data-track-id={track.id}
       title={dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} only takes ${track.kind === "audio" ? "sound" : "video and pictures"}`) : undefined}
       onDragOver={onDragOverLane}
       onDragLeave={onDragLeaveLane}
       onDrop={onDropLane}
     >
-      {track.clips.map((clip) => <button key={clip.id} className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""}`} style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties} onClick={() => onSelect(clip.id)} title={`${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds`}><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></button>)}
+      {track.clips.map((clip) => <div
+        key={clip.id}
+        className={`clip-slot ${selectedId === clip.id ? "selected" : ""} ${draggingId === clip.id ? "clip-slot--dragging" : ""}`}
+        style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties}
+      >
+        {/* The clip is a div with a button's role rather than a <button>: it
+            carries two trim handles and a delete control of its own, and a
+            button inside a button is not a thing a browser or a screen reader
+            can make sense of. Everything a button gave it is still here —
+            focus, Enter, the pressed state, a name. */}
+        <div
+          className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
+          role="button"
+          tabIndex={0}
+          aria-pressed={selectedId === clip.id}
+          aria-label={`${clip.label}, ${(clip.durationMs / 1000).toFixed(1)} seconds, on ${track.name}`}
+          title={track.locked
+            ? `${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds — ${track.name} is locked`
+            : `${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds — drag to move it, drag either end to trim it`}
+          onClick={() => onSelect(clip.id)}
+          onKeyDown={(event) => { if (event.key === "Enter") onSelect(clip.id); }}
+          onPointerDown={(event) => onClipPointerDown(event, clip, "move")}
+        ><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></div>
+        {/* The two ends, which cut rather than move. They stop the press from
+            reaching the clip body, or every trim would also be a move. A locked
+            track gets none of them: nothing on it can be changed. */}
+        {!track.locked && <>
+          <span
+            className="clip-handle clip-handle--start"
+            title={`Trim the start of ${clip.label}`}
+            onPointerDown={(event) => { event.stopPropagation(); onClipPointerDown(event, clip, "trim-start"); }}
+          />
+          <span
+            className="clip-handle clip-handle--end"
+            title={`Trim the end of ${clip.label}`}
+            onPointerDown={(event) => { event.stopPropagation(); onClipPointerDown(event, clip, "trim-end"); }}
+          />
+          <button
+            className="clip-delete"
+            aria-label={`Delete ${clip.label}`}
+            title={`Delete ${clip.label}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => { event.stopPropagation(); onDeleteClip(clip.id); }}
+          ><X size={12} /></button>
+        </>}
+      </div>)}
     </div>
   </>;
 }
