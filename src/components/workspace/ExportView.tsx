@@ -1,5 +1,5 @@
-import { CircleCheck, Download, FileVideo, TriangleAlert, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CircleCheck, Download, FileVideo, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, TriangleAlert, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   audioMixBytes,
   bitrateFor,
@@ -11,9 +11,7 @@ import {
   outputDimensions,
   OUTPUT_CODECS,
   QUALITY_PRESETS,
-  qualityPreset,
   suggestedFileName,
-  visibleClipAt,
   type ExportSettings,
   type FrameRate,
   type OutputCodecId,
@@ -22,9 +20,7 @@ import {
 import {
   chooseExportDestination,
   detectExportSupport,
-  drawPreviewFrame,
   ExportCancelled,
-  PreviewSources,
   probeAllCodecs,
   probeCompositor,
   runExport,
@@ -34,6 +30,7 @@ import {
   type CompositorProbe,
   type ExportProgress,
 } from "../../lib/exportPipeline";
+import { ProgramMonitor } from "./ProgramMonitor";
 import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
 
 /* The ladder a project can be created at, plus the project's own size when that
@@ -46,10 +43,6 @@ const resolutionChoices = (current: Resolution): Resolution[] =>
     ? [...PROJECT_RESOLUTIONS]
     : [...PROJECT_RESOLUTIONS, current];
 const FRAME_RATES: FrameRate[] = [24, 25, 30, 60];
-/* The preview is a picture, not a deliverable: 480px on the long edge is
-   enough to judge framing and costs a fraction of a full-size decode. */
-const PREVIEW_LONG_EDGE = 480;
-
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
 interface FinishedExport {
@@ -81,10 +74,9 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const [compositor, setCompositor] = useState<CompositorProbe | null>(null);
 
   const [previewTimeMs, setPreviewTimeMs] = useState(0);
-  const [previewBusy, setPreviewBusy] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sourcesRef = useRef<PreviewSources | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [result, setResult] = useState<FinishedExport | null>(null);
@@ -93,14 +85,12 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const cancelRef = useRef(false);
   const running = progress !== null;
 
-  const previewScale = Math.min(1, PREVIEW_LONG_EDGE / Math.max(plan.width, plan.height));
-  const previewWidth = Math.max(2, Math.round(plan.width * previewScale));
-  const previewHeight = Math.max(2, Math.round(plan.height * previewScale));
-
-  const previewClip = useMemo(
-    () => visibleClipAt(config.timeline.tracks, previewTimeMs),
-    [config.timeline.tracks, previewTimeMs],
-  );
+  /* The playhead is the view's, and the monitor drives it while it plays —
+     these are handed down rather than declared inline because the monitor's
+     animation loop tears itself down and rebuilds when their identity changes.
+     See ProgramMonitor. */
+  const seek = useCallback((ms: number) => setPreviewTimeMs(ms), []);
+  const changePlaying = useCallback((value: boolean) => setPlaying(value), []);
 
   /* Switching tabs unmounts this view, and an export that kept running would
      finish and write a file with nothing on screen to say so. Leaving stops it
@@ -118,15 +108,6 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       live = false;
     };
   }, []);
-
-  useEffect(() => {
-    const sources = new PreviewSources(folderPath);
-    sourcesRef.current = sources;
-    return () => {
-      sources.dispose();
-      sourcesRef.current = null;
-    };
-  }, [folderPath]);
 
   // A scrub past the end of a shortened timeline would ask for a frame nothing
   // renders, so the playhead follows the content.
@@ -156,43 +137,26 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
        changed clip label would be a stutter for nothing. */
   }, [support.encoder, plan.width, plan.height, plan.frameRate, plan.frameCount, bitrate]);
 
-  /* The preview decodes the real file through the webview's own hardware
-     decoder and lays it out with the export's geometry. It is debounced because
-     a scrub is a hundred requests, not one. */
+  /* Fullscreen is the browser's to grant and the user's to leave — Escape and
+     the window chrome both end it without asking this component — so the
+     button reads the document rather than remembering what it did. */
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const sources = sourcesRef.current;
-    if (!canvas || !sources || !support.desktop || running) return;
-    let live = true;
-    setPreviewError(null);
-    setPreviewBusy(true);
-    const timer = window.setTimeout(() => {
-      void drawPreviewFrame({
-        canvas,
-        plan,
-        config,
-        sources,
-        clip: previewClip
-          ? {
-              assetId: previewClip.assetId,
-              sourceTimeMs: previewClip.sourceStartMs + (previewTimeMs - previewClip.startMs),
-            }
-          : null,
-      })
-        .then(() => {
-          if (live) setPreviewBusy(false);
-        })
-        .catch((reason) => {
-          if (!live) return;
-          setPreviewBusy(false);
-          setPreviewError(describe(reason));
-        });
-    }, 120);
-    return () => {
-      live = false;
-      window.clearTimeout(timer);
-    };
-  }, [config, previewClip, previewTimeMs, plan.backgroundColor, previewWidth, previewHeight, support.desktop, running]);
+    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => undefined);
+    else void stage.requestFullscreen?.().catch(() => undefined);
+  };
+
+  const step = (deltaMs: number) => {
+    setPlaying(false);
+    setPreviewTimeMs((current) => Math.round(Math.max(0, Math.min(Math.max(0, plan.durationMs - 1), current + deltaMs))));
+  };
 
   const codecProbe = probes?.find((probe) => probe.id === settings.codec) ?? null;
   const blockers = [...plan.blockers];
@@ -261,20 +225,6 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
 
   const summary: Array<[string, string, string?]> = [
     ["Duration", formatDuration(plan.durationMs), `${plan.frameCount} frames at ${plan.frameRate} fps`],
-    ["Clips", String(plan.clipCount), plan.gapFrames > 0 ? `${plan.gapFrames} background frames` : "no gaps"],
-    ["Frame", `${plan.width} × ${plan.height}`, `${config.settings.aspectRatio} · ${settings.resolution}`],
-    [
-      "Video",
-      `${OUTPUT_CODECS.find((codec) => codec.id === settings.codec)?.label ?? settings.codec} in MP4`,
-      codecProbe?.codecString
-        ?? (probes ? "unsupported here"
-          /* The probe effect returns early with no clips and no encoder, so
-             "asking…" would be a progress claim for a question never put. */
-          : plan.frameCount === 0 ? "not asked — nothing to encode"
-            : !support.encoder ? "not asked — no encoder here"
-              : "asking the encoder…"),
-    ],
-    ["Bitrate", `${(bitrate / 1_000_000).toFixed(1)} Mbit/s`, qualityPreset(settings.quality).label],
     [
       "Estimated size",
       formatBytes(estimatedBytes(bitrate, plan.durationMs)),
@@ -310,26 +260,73 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   ];
 
   return <div className="export-view">
+    {/* The action lives beside the title, where every other screen in
+        PolStudio puts its main button (see the References header). It used to
+        sit at the bottom of the right-hand column, below everything the page
+        had to say — which is a long way to scroll to press the one control the
+        screen exists for. */}
     <header className="export-heading">
+      <h1>Export</h1>
       <div>
-        <h1>Export</h1>
+        {running && <button
+          className="secondary-button"
+          type="button"
+          onClick={() => { cancelRef.current = true; }}
+          title="Stop encoding. Nothing has been written to disk yet."
+        ><X size={16} aria-hidden="true" /> Cancel</button>}
+        <button
+          className="primary-button"
+          type="button"
+          disabled={!canExport}
+          onClick={() => void start()}
+          title={canExport ? "Choose where to save, then render the timeline" : blockers[0] ?? "Export is running"}
+        >
+          <Download size={16} aria-hidden="true" /> {running ? "Exporting…" : "Export video"}
+        </button>
       </div>
     </header>
 
     <div className="export-layout">
       <section className="export-preview" aria-labelledby="export-preview-heading">
         <h2 id="export-preview-heading">Preview</h2>
-        <div className="export-stage" style={{ aspectRatio: `${plan.width} / ${plan.height}` }}>
-          {support.desktop
-            ? <canvas ref={canvasRef} width={previewWidth} height={previewHeight} aria-label={`Frame at ${formatDuration(previewTimeMs)}`} />
-            : <p className="export-stage__note">
-                No frame to show. The browser preview has no project folder, so there is no file to decode —
-                this is a labelled empty stage, not a picture of your edit.
-              </p>}
-          {previewError && <p className="export-stage__note export-stage__note--bad"><TriangleAlert size={16} aria-hidden="true" /> {previewError}</p>}
+        {/* The same player the timeline uses, on the same cut: it decodes the
+            real files and plays them with their sound, rather than decoding one
+            still frame per scrub. What the export will contain is what this
+            plays — the picture is fitted inside the project's frame and the
+            rest is the project's background, exactly as the encoder does it. */}
+        <div className="export-stage" ref={stageRef}>
+          <ProgramMonitor
+            config={config}
+            folderPath={folderPath}
+            playheadMs={previewTimeMs}
+            playing={playing}
+            onSeek={seek}
+            onPlayingChange={changePlaying}
+          />
         </div>
-        <label className="export-scrub" htmlFor="export-scrub">
-          <span>Playhead</span>
+        <div className="export-transport">
+          <button
+            type="button"
+            onClick={() => step(-1000)}
+            disabled={plan.frameCount === 0}
+            aria-label="Back one second"
+            title="Back one second"
+          ><SkipBack size={16} aria-hidden="true" /></button>
+          <button
+            type="button"
+            className="export-transport__play"
+            onClick={() => setPlaying((value) => !value)}
+            disabled={plan.frameCount === 0}
+            aria-label={playing ? "Pause" : "Play"}
+            title={plan.frameCount === 0 ? "There is nothing on the timeline to play" : playing ? "Pause" : "Play"}
+          >{playing ? <Pause size={16} fill="currentColor" aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}</button>
+          <button
+            type="button"
+            onClick={() => step(1000)}
+            disabled={plan.frameCount === 0}
+            aria-label="Forward one second"
+            title="Forward one second"
+          ><SkipForward size={16} aria-hidden="true" /></button>
           <input
             id="export-scrub"
             type="range"
@@ -338,17 +335,21 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             step={Math.max(1, Math.round(1000 / plan.frameRate))}
             value={previewTimeMs}
             disabled={plan.frameCount === 0}
-            onChange={(event) => setPreviewTimeMs(Number(event.target.value))}
+            aria-label="Playhead"
+            onChange={(event) => { setPlaying(false); setPreviewTimeMs(Number(event.target.value)); }}
           />
           <output htmlFor="export-scrub">{formatDuration(previewTimeMs)}</output>
-        </label>
-        <p className="export-stage__caption">
-          {plan.frameCount === 0
-            ? "There is nothing on the timeline yet."
-            : previewClip
-              ? <>Frame {Math.round((previewTimeMs * plan.frameRate) / 1000)} · <strong>{previewClip.label}</strong> at {formatDuration(previewClip.sourceStartMs + (previewTimeMs - previewClip.startMs))} into its source file{previewBusy ? " · decoding…" : ""}</>
-              : <>Frame {Math.round((previewTimeMs * plan.frameRate) / 1000)} · no clip here, so the frame is solid {plan.backgroundColor}.</>}
-        </p>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
+            title={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
+          >{fullscreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}</button>
+        </div>
+        {/* The one thing left to say under the picture: that there is no
+            picture. The frame-by-frame caption that used to live here named a
+            clip and an offset nobody was reading. */}
+        {plan.frameCount === 0 && <p className="export-stage__caption">There is nothing on the timeline yet.</p>}
       </section>
 
       <section className="export-settings" aria-labelledby="export-settings-heading">
@@ -365,10 +366,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             >
               {resolutionChoices(config.settings.resolution).map((resolution) => {
                 const size = outputDimensions(resolution, config.settings.aspectRatio);
-                const legacy = !PROJECT_RESOLUTIONS.includes(resolution as (typeof PROJECT_RESOLUTIONS)[number]);
-                return <option key={resolution} value={resolution}>
-                  {size.width} × {size.height}{legacy ? " · this project’s original size" : ""}
-                </option>;
+                return <option key={resolution} value={resolution}>{size.width} × {size.height}</option>;
               })}
             </select>
           </label>
@@ -417,12 +415,6 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             </select>
           </label>
 
-          <div className="export-field-note">
-            <span>Destination</span>
-            <p>{result
-              ? <>Last written to <code>{result.path}</code>.</>
-              : "PolStudio opens your computer’s save dialog when you press Export, and writes only after the encode finishes."}</p>
-          </div>
         </div>
 
         <h2>What this export will be</h2>
@@ -433,33 +425,10 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           </div>)}
         </dl>
 
-        {plan.notes.length > 0 && <div className="export-notice" role="note">
-          <h3><TriangleAlert size={16} aria-hidden="true" /> True of this export</h3>
-          <ul>{plan.notes.map((note) => <li key={note}>{note}</li>)}</ul>
-        </div>}
-
         {blockers.length > 0 && <div className="export-notice export-notice--bad" role="alert">
           <h3><TriangleAlert size={16} aria-hidden="true" /> Not possible yet</h3>
           <ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
         </div>}
-
-        <div className="export-actions">
-          <button
-            className="primary-button"
-            type="button"
-            disabled={!canExport}
-            onClick={() => void start()}
-            title={canExport ? "Choose where to save, then render the timeline" : blockers[0] ?? "Export is running"}
-          >
-            <Download size={16} aria-hidden="true" /> {running ? "Exporting…" : "Export video"}
-          </button>
-          {running && <button
-            className="secondary-button"
-            type="button"
-            onClick={() => { cancelRef.current = true; }}
-            title="Stop encoding. Nothing has been written to disk yet."
-          ><X size={16} aria-hidden="true" /> Cancel</button>}
-        </div>
 
         {progress && <div className="export-progress" role="status">
           <div className="progress-track">
