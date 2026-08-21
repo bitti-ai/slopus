@@ -18,6 +18,10 @@
 .export-heading {
   max-width: var(--content-max);
   margin: 0 auto var(--space-5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
 }
 
 .export-heading h1 {
@@ -26,6 +30,14 @@
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-hero);
+}
+
+/* Export, and Cancel while it runs — the same place the References screen puts
+   Add image. */
+.export-heading > div {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-2);
 }
 
 /* --- Layout ---------------------------------------------------------------- */
@@ -85,11 +97,20 @@
   background: var(--stage-bg);
 }
 
-.export-stage canvas {
+/* The player fills the stage; the letterboxing inside it is the project's own
+   frame shape, painted in the project's own background colour. */
+.export-stage .program-picture {
   width: 100%;
   height: 100%;
-  display: block;
-  object-fit: contain;
+}
+
+/* Fullscreen paints the stage's own background behind the picture, so the
+   black bars stay black rather than showing the page through them. */
+.export-stage:fullscreen {
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: var(--stage-bg);
 }
 
 .export-stage__note {
@@ -127,40 +148,70 @@
   line-height: var(--leading-normal);
 }
 
-.export-stage__caption strong {
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
-}
-
-.export-scrub {
+/* Play, step, scrub, fullscreen — one row, and the scrub takes whatever the
+   buttons leave. */
+.export-transport {
   min-height: var(--control-sm);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.export-scrub > span {
+.export-transport button {
   flex: 0 0 auto;
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: 0.14s ease;
 }
 
-.export-scrub input[type="range"] {
+.export-transport button:hover:not(:disabled) {
+  border-color: var(--line-hover);
+  color: var(--text-primary);
+  background: var(--panel-3);
+}
+
+.export-transport button:disabled {
+  cursor: not-allowed;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.export-transport__play:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.export-transport__play:hover:not(:disabled) {
+  border-color: var(--accent-bright);
+  color: var(--on-accent);
+  background: var(--accent-bright);
+}
+
+.export-transport input[type="range"] {
   flex: 1 1 auto;
   min-width: 0;
   height: var(--control-sm);
+  margin: 0 var(--space-1);
   accent-color: var(--accent-bright);
   cursor: pointer;
 }
 
-.export-scrub output {
+.export-transport output {
   flex: 0 0 auto;
+  min-width: 8ch;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
+  text-align: right;
 }
 
 /* --- Settings -------------------------------------------------------------- */
@@ -314,13 +365,6 @@
 }
 
 /* --- Running and finishing ------------------------------------------------- */
-
-.export-actions {
-  margin-top: var(--space-5);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
 
 .export-progress p {
   margin: 0;

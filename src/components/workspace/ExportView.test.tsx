@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import audioFixture from "../../../fixtures/project-v1-audio-mix.json";
 import externalFixture from "../../../fixtures/project-v1-external-media.json";
@@ -45,17 +45,25 @@ describe("the export view where nothing can encode", () => {
     expect(reasons).toContain("WebCodecs");
   });
 
-  it("shows a labelled empty stage instead of a picture it cannot decode", () => {
+  it("says why there is no picture rather than showing an empty stage as though it were one", () => {
     render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    expect(screen.getByText(/labelled empty stage/i)).toBeTruthy();
+    // The preview is the same player the timeline uses, and in a browser there
+    // is no project folder for it to read the footage from.
+    expect(screen.getByText(/Playback needs the desktop app/i)).toBeTruthy();
     expect(document.querySelector("canvas")).toBeNull();
+    // The controls are there and are honest about what they can do: there IS
+    // something on this timeline, so play is offered.
+    expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Watch fullscreen" })).toBeTruthy();
   });
 
-  it("states the real duration, clip count and frame size of the planned file", () => {
+  it("states the real duration of the planned file", () => {
     render(<ExportView config={project([clip("a", 0, 2_000), clip("b", 2_000, 1_000)])} folderPath="/tmp/project" />);
     expect(screen.getByText("00:03.000")).toBeTruthy();
     expect(screen.getByText("72 frames at 24 fps")).toBeTruthy();
-    expect(screen.getByText("1920 × 1080")).toBeTruthy();
+    /* The frame size is named where it is CHOSEN — in the resolution select —
+       rather than repeated in a summary row beside it. */
+    expect((screen.getByLabelText("Resolution") as HTMLSelectElement).selectedOptions[0].textContent).toBe("1920 × 1080");
   });
 
   it("says outright that a timeline with no audio clips produces no sound", () => {
@@ -67,6 +75,25 @@ describe("the export view where nothing can encode", () => {
     render(<ExportView config={project([])} folderPath="/tmp/project" />);
     expect(screen.getByRole("alert").textContent).toContain("no video clips");
     expect(screen.getByText(/nothing on the timeline yet/i)).toBeTruthy();
+    // Nothing to play, and the transport says so instead of sitting live.
+    expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("puts the one control the screen exists for beside its title", () => {
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    const heading = container.querySelector(".export-heading")!;
+    expect(within(heading as HTMLElement).getByRole("button", { name: /export video/i })).toBeTruthy();
+  });
+
+  it("says none of the prose it used to carry about how exporting works", () => {
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    for (const gone of ["True of this export", "opens your computer", "this project’s original size"]) {
+      expect(container.textContent, gone).not.toContain(gone);
+    }
+    // And none of the summary rows that repeated a setting back at the user.
+    for (const row of ["Clips", "Frame", "Bitrate"]) {
+      expect(within(container.querySelector(".export-summary") as HTMLElement).queryByText(row)).toBeNull();
+    }
   });
 });
 
