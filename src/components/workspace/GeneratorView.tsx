@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, Info, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
+import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolutionLabel } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
@@ -26,10 +26,14 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   configRef.current = config;
   const jobs = config.generationJobs;
   const selected = jobs.find((job) => job.id === selectedId);
-  const active = jobs.filter((job) => job.status === "generating");
+  /* "ready" means the pictures exist and the file does not yet — the app is
+     encoding them. That is work in progress, so it belongs beside the render it
+     came out of rather than under "Already run", where it would sit looking
+     finished with nothing to open. */
+  const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
   const drafts = jobs.filter((job) => job.status === "draft");
-  const completed = jobs.filter((job) => ["ready", "completed", "failed", "cancelled"].includes(job.status));
+  const completed = jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status));
   // Queued and generating scenes have already been handed to the engine with
   // their references attached; re-binding now would change nothing about that
   // run while claiming otherwise.
@@ -96,29 +100,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     };
   };
 
-  useEffect(() => {
-    if (!isTauri()) return;
-    let disposed = false;
-    const subscriptions = Promise.all([
-      listen<{ jobId: string; stage: string; step: number; totalSteps: number }>("vidfab-progress", ({ payload }) => {
-        if (disposed) return;
-        const progress = payload.totalSteps > 0 ? Math.min(.92, .12 + Math.max(0, payload.step) / payload.totalSteps * .72) : payload.stage === "delivering" ? .95 : .08;
-        updateJob(payload.jobId, { status: "generating", stage: payload.stage === "starting" || payload.stage === "transformerLoad" ? "preparing" : "generating", progress, updatedAt: new Date().toISOString() });
-      }),
-      listen<{ jobId: string; state: string; detail: string }>("vidfab-job", ({ payload }) => {
-        if (disposed) return;
-        const updates: Partial<GenerationJob> = payload.state === "framesReady"
-          ? { status: "ready", stage: "completed", progress: 1, error: payload.detail }
-          : payload.state === "failed" ? { status: "failed", stage: "failed", error: payload.detail }
-          : payload.state === "cancelled" ? { status: "cancelled", stage: "failed", error: payload.detail }
-          : { status: "queued", stage: "queued" };
-        updateJob(payload.jobId, { ...updates, updatedAt: new Date().toISOString() });
-      }),
-    ]);
-    return () => { disposed = true; void subscriptions.then((unlisten) => unlisten.forEach((stop) => stop())); };
-    // configRef keeps handlers current without resubscribing per progress tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onChange]);
+  /* The engine's own events are listened for by the project screen
+     (useGenerationEvents), not here: a render outlives this view, and the
+     encode that turns its frames into a file has to happen wherever the user
+     happens to be. What this view does with a scene is start it, stop it, and
+     show what became of it. */
 
   const prepareOrRetry = async (job: GenerationJob) => {
     const now = new Date().toISOString();
@@ -382,12 +368,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void startDraft(selected)}>
                 <WandSparkles size={15} /> {runtimeReady ? (jobs.length === 1 ? "Generate your first scene" : "Generate this scene") : "Can’t generate yet"}
               </button>
-              {/* Disclosed at the point of commitment, not after an expensive
-                  run. This used to sit under the composer's submit button; the
-                  button that actually starts a render is this one. */}
-              {runtimeReady
-                ? <p className="job-actions__limit"><Info size={16} /><span>A finished scene renders frames into memory. PolStudio can’t save them as a video file yet, so nothing lands in your project folder and there is nothing to add to the timeline.</span></p>
-                : <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
+              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
             </>}
 
             {(selected.status === "failed" || selected.status === "cancelled") && <>
@@ -397,22 +378,23 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               {!runtimeReady && <p className="job-actions__note">PolStudio needs a working video engine before it can run this scene again.</p>}
             </>}
 
-            {selected.status === "ready" && <>
-              <div className="job-actions__blocked">
-                <b>There is nothing to open yet</b>
-                <p>The frames and sound were rendered and are held in memory, but PolStudio can’t package them into a video file yet — that step isn’t built. Nothing was written to your project folder.</p>
-              </div>
-              <div className="job-actions__choices">
-                <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void prepareOrRetry(selected)}>
-                  <RefreshCw size={15} /> {runtimeReady ? "Run this scene again" : "Can’t run it again yet"}
-                </button>
-                <button className="secondary-button" onClick={newScene}>
-                  <Plus size={15} /> Start another scene
-                </button>
-              </div>
+            {/* Between the last frame and the file: the pictures are rendered
+                and are being encoded into an .mp4 in the project folder. It is
+                a real step with a real duration — a few hundred megabytes
+                through the machine's encoder — so it is a state, not a
+                flicker. */}
+            {selected.status === "ready" && <p className="job-actions__note">
+              <LoaderCircle size={15} className="spin" /> Saving this scene into your project folder…
+            </p>}
+
+            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <>
+              <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Track 1</button>
+              <p className="job-actions__note">Saved to <code>{selected.outputRelativePath}</code>.</p>
             </>}
 
-            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Track 1</button>}
+            {/* Something was left out of the file — the scene is finished and
+                the file exists, so this is a note rather than a failure. */}
+            {selected.status === "completed" && selected.outputRelativePath && selected.error && <p className="job-actions__note">{selected.error}</p>}
 
             {selected.status === "completed" && selected.clipId && <button className="primary-button" onClick={onOpenTimeline}><Play size={15} /> Open in timeline</button>}
 
@@ -420,7 +402,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void prepareOrRetry(selected)}>
                 <RefreshCw size={15} /> {runtimeReady ? "Run this scene again" : "Can’t run it again yet"}
               </button>
-              <p className="job-actions__note">This run finished without saving a video file, so there is nothing to add to your edit.</p>
+              <p className="job-actions__note">This run finished without a video file in your project folder, so there is nothing to add to your edit.</p>
             </>}
           </div>
         </aside>
@@ -527,17 +509,20 @@ const referenceKindIcon = (kind: ProjectReference["kind"]) =>
       : kind === "image" ? <ImageIcon size={16} />
         : <FileText size={16} />;
 
+/* The three things that happen to a scene, in the order they happen. "Save" is
+   the encode: the engine's pictures being written into an .mp4 in the project
+   folder, which is the last tenth of the bar. */
 const STAGES: Array<{ label: string; at: number }> = [
   { label: "Prepare", at: 0.01 },
   { label: "Render", at: 0.5 },
-  { label: "Frames ready", at: 1 },
+  { label: "Save", at: 0.9 },
 ];
 
 const STATUS_BADGE: Record<JobStatus, string> = {
   draft: "DRAFT",
   queued: "IN QUEUE",
   generating: "RENDERING",
-  ready: "FRAMES RENDERED",
+  ready: "SAVING",
   completed: "FINISHED",
   failed: "FAILED",
   cancelled: "CANCELLED",
@@ -547,7 +532,7 @@ const STATUS_WORD: Record<JobStatus, string> = {
   draft: "Saved as a draft",
   queued: "Waiting to render",
   generating: "Rendering now",
-  ready: "Frames rendered, held in memory",
+  ready: "Saving the video file",
   completed: "Finished",
   failed: "Stopped by an error",
   cancelled: "Stopped by you",
@@ -567,21 +552,23 @@ const queueLine = (job: GenerationJob) => {
     case "generating": return `Rendering · ${Math.round(job.progress * 100)}%`;
     case "queued": return "Waiting its turn";
     case "draft": return `Draft — ${shape}`;
-    case "ready": return "Frames rendered · no video file";
+    case "ready": return `Saving the video file · ${Math.round(job.progress * 100)}%`;
     case "completed": return job.outputRelativePath ? `Ready to use · ${shape}` : "Finished with no file";
     case "failed": return "Didn’t finish";
     case "cancelled": return "Cancelled";
   }
 };
 
-const statusIcon = (status: JobStatus) => status === "generating" ? <LoaderCircle size={16} /> : status === "completed" || status === "ready" ? <Check size={16} /> : status === "failed" ? <AlertCircle size={16} /> : status === "cancelled" ? <Ban size={16} /> : <Clock3 size={16} />;
+/* Encoding turns the same spinner as rendering: it is the app working, not the
+   app waiting, and a tick beside "saving" would say it was already done. */
+const statusIcon = (status: JobStatus) => status === "generating" || status === "ready" ? <LoaderCircle size={16} /> : status === "completed" ? <Check size={16} /> : status === "failed" ? <AlertCircle size={16} /> : status === "cancelled" ? <Ban size={16} /> : <Clock3 size={16} />;
 
 const progressTitle = (job: GenerationJob) => {
   switch (job.status) {
     case "generating": return `${Math.round(job.progress * 100)}% rendered`;
     case "queued": return "Waiting to start";
     case "draft": return "Draft saved";
-    case "ready": return "Frames rendered";
+    case "ready": return "Saving the video file";
     case "completed": return job.outputRelativePath ? "Ready for your edit" : "Finished with no file";
     case "failed": return "Didn’t finish";
     case "cancelled": return "Generation stopped";
@@ -593,7 +580,7 @@ const stageCopy = (job: GenerationJob) => {
     case "generating": return "The video engine is building the motion and the sound.";
     case "queued": return "Waiting for the scene ahead of it to finish.";
     case "draft": return "Saved with your project. Nothing has been rendered yet.";
-    case "ready": return "The frames and sound exist in memory. PolStudio can’t package them into a video file yet.";
+    case "ready": return "The pictures are rendered. They are being encoded into a video file in your project folder.";
     case "completed": return job.outputRelativePath ? "Saved in your project and ready to drop into the timeline." : "This run ended without saving a video file.";
     case "failed": return "The run stopped before it finished. You can try it again.";
     case "cancelled": return "You stopped this one. You can run it again.";
@@ -605,7 +592,7 @@ const previewStatus = (job: GenerationJob) => {
     case "generating": return <><LoaderCircle size={15} /> Rendering {Math.round(job.progress * 100)}%</>;
     case "queued": return <><Clock3 size={15} /> Waiting in queue</>;
     case "draft": return <><Clock3 size={15} /> Draft — nothing rendered</>;
-    case "ready": return <><Check size={15} /> Frames rendered</>;
+    case "ready": return <><LoaderCircle size={15} /> Saving {Math.round(job.progress * 100)}%</>;
     case "completed": return job.outputRelativePath ? <><Check size={15} /> Ready for your edit</> : <><AlertCircle size={15} /> No video file was saved</>;
     case "failed": return <><AlertCircle size={15} /> Generation failed</>;
     case "cancelled": return <><Ban size={15} /> Generation cancelled</>;
@@ -619,7 +606,7 @@ const previewCaption = (job: GenerationJob): string => {
     case "generating": return "Frames are being built now. PolStudio can’t show them while they are still in memory.";
     case "queued": return "This scene hasn’t started, so there is no picture to show.";
     case "draft": return "Nothing has been rendered, so there is no picture to show.";
-    case "ready": return "The frames exist in memory only. PolStudio can’t display or save them yet.";
+    case "ready": return "The pictures are being encoded into a video file. It can be watched in the timeline once it lands.";
     case "completed": return job.outputRelativePath ? "A video file was saved. Open it in the timeline to watch it." : "This run ended without a video file, so there is no picture to show.";
     case "failed": return "The run stopped before any frames were kept.";
     case "cancelled": return "You stopped this run, so no frames were kept.";

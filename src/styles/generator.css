@@ -1522,12 +1522,6 @@
 /* The states that cannot produce a file still get real controls, so the user
    is never left with prose and no way forward. */
 
-.job-actions__choices {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
 .job-actions .primary-button:disabled {
   cursor: not-allowed;
   color: var(--text-muted);
@@ -1538,57 +1532,28 @@
 }
 
 .job-actions__note {
-  margin: var(--space-3) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-/* Expectation-setting, not an alarm: sits directly under the generate button
-   so the limit is known before an expensive render, never after it. */
-
-.job-actions__limit {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-2);
   margin: var(--space-3) 0 0;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  background: var(--panel);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-.job-actions__limit svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
   color: var(--text-muted);
-}
-
-/* Shown when the honest answer is "there is no next step here". */
-
-.job-actions__blocked {
-  padding: var(--space-4);
-  border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warning) 8%, var(--panel-2));
-}
-
-.job-actions__blocked b {
-  display: block;
-  color: var(--warning);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.job-actions__blocked p {
-  margin: var(--space-2) 0 0;
-  color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
+}
+
+/* The path a scene was saved to, which is a file name and reads as one. */
+.job-actions__note code {
+  color: var(--text-secondary);
+  font: var(--weight-medium) var(--text-xs) / 1.4 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Encoding is the one thing in this panel that is HAPPENING rather than
+   waiting to be started, so its icon turns. */
+.job-actions__note .spin {
+  flex: 0 0 auto;
+  color: var(--accent-bright);
+  animation: spin 1.4s linear infinite;
 }
 
 /* --- Empty state ----------------------------------------------------------- */

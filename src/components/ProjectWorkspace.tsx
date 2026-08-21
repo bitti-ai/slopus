@@ -8,15 +8,21 @@ import { ExportView } from "./workspace/ExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
+import { useGenerationEvents } from "./workspace/useGenerationEvents";
 
 export type ProjectView = "timeline" | "generator" | "references" | "export";
 
-/** A generation the app is still working on. These are exactly the two statuses
- *  the Generator splits into its "Rendering now" and "Waiting to render" groups
- *  and locks a shot's references on; the topbar count and the exit guard both
- *  read this one predicate, so a badge saying "2" and a warning about what
- *  leaving costs can never disagree. */
-export const isGenerationOngoing = (job: GenerationJob) => job.status === "generating" || job.status === "queued";
+/** A generation the app is still working on: waiting for the engine, being
+ *  rendered by it, or — `ready` — rendered and being encoded into the file that
+ *  will land in the project folder.
+ *
+ *  That last one belongs here for the same reason as the other two: until the
+ *  .mp4 is written there is nothing on disk, and closing the window in the
+ *  seconds it takes to encode throws away the whole render. The topbar count
+ *  and the exit guard both read this one predicate, so a badge saying "2" and a
+ *  warning about what leaving costs can never disagree. */
+export const isGenerationOngoing = (job: GenerationJob) =>
+  job.status === "generating" || job.status === "queued" || job.status === "ready";
 
 export function formatDurationTimecode(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -41,6 +47,11 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   onOngoingGenerationsChange?: (jobs: OngoingGeneration[]) => void;
 }) {
   const [config, setConfig] = useState(project.config);
+  /* What the engine says about a render, and the saving of the file it
+     produces. Mounted HERE, not in the Generator: a render takes minutes, and
+     a user who spends them on the timeline used to unmount the only listeners
+     there were — the finished frames then arrived at nobody and were dropped. */
+  useGenerationEvents({ folderPath: project.folderPath, onChange: (update) => { setConfig(update); setDirty(true); } });
   const [view, setView] = useState<ProjectView>(initialView);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const [saving, setSaving] = useState(false);
@@ -71,10 +82,11 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   useEffect(() => { if (ongoing.length === 0) setLeaveGuard(false); }, [ongoing.length]);
 
   const leave = () => {
-    /* Nothing resumes, and nothing is written until a shot finishes, so a run
-       the user has walked away from can only burn the GPU for a result no one
-       is listening for — the events that record it land in the Generator, which
-       is about to unmount. Stopped the same way its own stop button stops it. */
+    /* Nothing resumes, and a render that finishes after this screen is gone has
+       nowhere to be recorded: the listeners that save it (useGenerationEvents)
+       belong to this component and go with it. Rather than burn the GPU for a
+       result no one will keep, the runs are stopped the same way their own stop
+       button stops them. */
     ongoing.forEach((job) => { void cancelVidfabGeneration(job.id).catch(() => undefined); });
     onBack();
   };

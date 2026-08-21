@@ -2,7 +2,7 @@
 //!
 //! All ABI declarations and `unsafe` calls live in `ffi`; the rest of the
 //! application only handles owned Rust status, plan, progress, and metadata.
-use crate::{ProviderOption, ProviderSetting};
+use crate::{rendered, ProviderOption, ProviderSetting};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -106,6 +106,9 @@ struct JobEvent {
     output: Option<OutputMetadata>,
 }
 
+/// What came back, and what the webview needs in order to encode it: the
+/// shape of the pictures now waiting in [`crate::rendered`], and how much sound
+/// came with them.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OutputMetadata {
@@ -115,6 +118,9 @@ struct OutputMetadata {
     fps: f64,
     audio_channels: i32,
     audio_sample_rate: i32,
+    /// Interleaved samples across every channel, so the webview can tell an
+    /// empty soundtrack from one it has not read yet.
+    audio_samples: usize,
     duration_seconds: f64,
     boundary: &'static str,
 }
@@ -134,7 +140,21 @@ impl Default for VidfabRuntime {
             while let Ok(item) = receiver.recv() {
                 let result = run_generation(&item);
                 let (state, detail, output) = match result {
-                    Ok(output) => ("framesReady", "Raw frames and audio are ready for host encoding; no MP4 was created by vidfab.".into(), Some(output)),
+                    Ok((metadata, pictures)) => {
+                        /* The pictures wait in memory for the webview, which
+                           encodes them and asks Rust to write the file. What
+                           had to be dropped to make room is said out loud —
+                           an abandoned render is a scene that has to be run
+                           again, and the user is owed that sentence. */
+                        let evicted = rendered::keep(pictures);
+                        let detail = match evicted {
+                            Some(job) if job != item.request.job_id => format!(
+                                "Frames and audio are ready to be encoded. The frames of {job} were dropped to make room and that scene would have to be rendered again."
+                            ),
+                            _ => "Frames and audio are ready to be encoded.".to_string(),
+                        };
+                        ("framesReady", detail, Some(metadata))
+                    }
                     Err(error) if item.cancel.load(Ordering::Acquire) => ("cancelled", error, None),
                     Err(error) => ("failed", error, None),
                 };
@@ -365,7 +385,13 @@ fn configure_request(
     Ok(())
 }
 
-fn run_generation(item: &QueueItem) -> Result<OutputMetadata, String> {
+/// Runs one generation and takes a copy of everything it produced.
+///
+/// The copy is not optional: `api.output` hands back pointers into memory the
+/// generation owns, and `destroy_generation` — which this function always
+/// reaches — frees it. Everything the app will ever have of a render is taken
+/// here or lost here.
+fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     if item.cancel.load(Ordering::Acquire) {
         return Err("Generation was cancelled before it started.".into());
     }
@@ -425,21 +451,50 @@ fn run_generation(item: &QueueItem) -> Result<OutputMetadata, String> {
             return Err(error);
         }
     };
+    /* SAFETY: `output` describes buffers the generation owns and keeps alive
+       until `destroy_generation`, which is below and after the copy. The counts
+       are the C API's own, and a null pointer is read as an empty slice rather
+       than dereferenced. */
+    let video = if output.video.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(output.video, output.video_float_count) }
+    };
+    let audio = if output.audio.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(output.audio, output.audio_float_count) }
+    };
+    let pictures = rendered::from_output(
+        &item.request.job_id,
+        video,
+        audio,
+        output.frames.max(0) as u32,
+        output.width.max(0) as u32,
+        output.height.max(0) as u32,
+        output.channels.max(0) as u32,
+        output.fps,
+        output.audio_channels.max(0) as u32,
+        output.audio_sample_rate.max(0) as u32,
+    );
     let metadata = OutputMetadata {
         frames: output.frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
+        audio_samples: output.audio_float_count,
         duration_seconds: if output.fps > 0.0 {
             output.frames as f64 / output.fps
         } else {
             0.0
         },
-        boundary: "Raw decoded buffers were returned and released. Host encoding is not implemented; no MP4 exists.",
+        boundary: "Raw decoded buffers were copied out and released. The webview encodes them; vidfab wrote no file.",
     };
     api.destroy_generation(generation);
     unsafe {
         drop(Box::from_raw(context_ptr));
     }
-    Ok(metadata)
+    // Only now, with the C API's memory handed back: a conversion that failed
+    // must not leave the generation handle alive behind it.
+    Ok((metadata, pictures?))
 }
 
 struct RequestHandle<'a>(*mut ffi::Request, &'a ffi::Api);

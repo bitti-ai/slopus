@@ -5,11 +5,12 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-use tauri::AppHandle;
+use tauri::{ipc::InvokeBody, ipc::Request, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 
 mod agent;
 mod export;
+mod rendered;
 mod vidfab;
 
 const PROJECT_FILE_NAME: &str = "polstudio.json";
@@ -1882,6 +1883,146 @@ fn cancel_vidfab_generation(
     state.cancel(&job_id)
 }
 
+/* ── A finished render, on its way to a file ─────────────────────────────────
+   vidfab produces pictures, not files. The webview turns them into an MP4 —
+   WebCodecs owns the hardware encoder and there is no FFmpeg here (CLAUDE.md) —
+   which means the pictures have to cross into the webview and the bytes have to
+   come back. These four commands are that round trip: three that read what a
+   finished generation left in memory (see `rendered`), and one that writes the
+   encoded file into the project.
+   -------------------------------------------------------------------------- */
+
+const GENERATED_FOLDER_HEADER: &str = "x-generated-folder";
+const GENERATED_JOB_HEADER: &str = "x-generated-job";
+/// Where a rendered scene lands, relative to the project root. Created by
+/// `create_project` along with the rest of the folder layout.
+const GENERATED_DIRECTORY: &str = "media/generated";
+
+/// A scene id, as a file name.
+///
+/// The webview names the job, so this is caller-controlled text about to become
+/// a path — the exact shape of a traversal. Rather than sanitising it, the id
+/// is REFUSED unless it is already only letters, digits, dash and underscore,
+/// which is what every id PolStudio generates looks like. There is nothing to
+/// strip and nothing to get wrong: no dots (so no `..` and no second
+/// extension), no separators, no length worth arguing about.
+fn generated_file_stem(job_id: &str) -> Result<String, String> {
+    let trimmed = job_id.trim();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return Err("A scene id must be between 1 and 64 characters.".into());
+    }
+    if !trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(format!(
+            "'{job_id}' is not a scene id: only letters, digits, dashes and underscores name a rendered file."
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+/// The single path a generated video may be written to, and what the project
+/// will record. Nothing about it comes from the caller except the scene id,
+/// which [`generated_file_stem`] has already refused unless it is inert — so
+/// unlike an export, there is no destination to authorise, because the webview
+/// never names one.
+fn generated_video_destination(folder_path: &str, job_id: &str) -> Result<(PathBuf, String), String> {
+    let root = project_root(folder_path)?;
+    let stem = generated_file_stem(job_id)?;
+    let directory = root.join(GENERATED_DIRECTORY);
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!("Could not make {}: {error}", display_path(&directory))
+    })?;
+    Ok((
+        directory.join(format!("{stem}.mp4")),
+        format!("{GENERATED_DIRECTORY}/{stem}.mp4"),
+    ))
+}
+
+/// What was written, in the project's own terms: the path that goes into
+/// `polstudio.json` and the size of the file that demonstrably exists.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GeneratedVideoFile {
+    relative_path: String,
+    bytes: u64,
+}
+
+/// Writes the webview's encoded MP4 into the project folder.
+///
+/// The bytes arrive as a raw IPC body for the same reason an export's do: a
+/// 30 MB file serialised as a JSON array of numbers is hundreds of megabytes of
+/// text. That leaves nowhere for the arguments, so the project folder and the
+/// scene id ride in headers, percent-encoded because a header is ASCII and a
+/// Windows path is not.
+#[tauri::command]
+fn write_generated_video(request: Request<'_>) -> Result<GeneratedVideoFile, String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("The rendered scene was sent as JSON instead of raw bytes.".to_string());
+    };
+    if bytes.is_empty() {
+        return Err("The encoder produced no bytes, so nothing was written.".to_string());
+    }
+    let header = |name: &str| -> Result<String, String> {
+        let value = request
+            .headers()
+            .get(name)
+            .ok_or_else(|| format!("The request carried no {name} header."))?;
+        export::percent_decode(
+            value
+                .to_str()
+                .map_err(|_| format!("The {name} header is not readable text."))?,
+        )
+    };
+    let (destination, relative_path) = generated_video_destination(
+        &header(GENERATED_FOLDER_HEADER)?,
+        &header(GENERATED_JOB_HEADER)?,
+    )?;
+    export::write_atomically(&destination, bytes)?;
+    Ok(GeneratedVideoFile {
+        relative_path,
+        bytes: bytes.len() as u64,
+    })
+}
+
+/// What is waiting to be encoded for this scene, or None when nothing is. The
+/// webview asks this first: it decides what to encode from what Rust actually
+/// holds rather than from the event that told it to look.
+#[tauri::command]
+fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
+    rendered::summary(&job_id)
+}
+
+/// One frame of a finished render, as RGBA the webview can build a `VideoFrame`
+/// from. A frame at a time because a whole render is hundreds of megabytes and
+/// the encoder only ever wants the next one.
+#[tauri::command]
+fn generated_frame(job_id: String, index: u32) -> Result<tauri::ipc::Response, String> {
+    rendered::frame(&job_id, index)
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| {
+            format!("Frame {index} of {job_id} is not in memory. The render was released, dropped to make room, or never finished.")
+        })
+}
+
+/// The render's soundtrack, interleaved little-endian f32 — one read, because
+/// even fifteen seconds of stereo is a couple of megabytes.
+#[tauri::command]
+fn generated_audio(job_id: String) -> Result<tauri::ipc::Response, String> {
+    rendered::audio(&job_id)
+        .map(tauri::ipc::Response::new)
+        .ok_or_else(|| format!("The audio of {job_id} is not in memory."))
+}
+
+/// Hands the memory back. Called when the file has been written AND when the
+/// webview has given up: a render nobody can encode is still hundreds of
+/// megabytes nobody should be holding.
+#[tauri::command]
+fn release_generated_frames(job_id: String) -> bool {
+    rendered::release(&job_id)
+}
+
 /* ── Exit guard ──────────────────────────────────────────────────────────────
    The video engine runs inside this process, so closing the window ends a
    generation outright — and vidfab writes no file of its own, so an unfinished
@@ -2030,6 +2171,11 @@ pub fn run() {
             cancel_vidfab_generation,
             set_generation_active,
             answer_app_close,
+            write_generated_video,
+            generated_summary,
+            generated_frame,
+            generated_audio,
+            release_generated_frames,
             export::choose_export_destination,
             export::write_export_file
         ])
@@ -3724,6 +3870,70 @@ mod tests {
         assert_eq!(track.clips[0].source_start_ms, 0);
         assert!(validate_and_normalize_config(config.clone()).is_ok());
     }
+
+    /* ── Where a rendered scene is allowed to land ──────────────────────────
+       The webview names the scene, and the scene names the file. That is the
+       whole of the caller's influence over this path, and these pin it.
+       ------------------------------------------------------------------- */
+
+    fn project_folder() -> tempfile::TempDir {
+        let folder = tempfile::tempdir().unwrap();
+        fs::write(
+            folder.path().join(PROJECT_FILE_NAME),
+            serde_json::to_vec(&created_fixture()).unwrap(),
+        )
+        .unwrap();
+        folder
+    }
+
+    #[test]
+    fn a_rendered_scene_lands_in_the_project_under_its_own_id() {
+        let folder = project_folder();
+        let (destination, relative) =
+            generated_video_destination(&folder.path().to_string_lossy(), "job-initial-brief").unwrap();
+        assert_eq!(relative, "media/generated/job-initial-brief.mp4");
+        assert!(destination.ends_with("media/generated/job-initial-brief.mp4"));
+        // The folder is made, so the write that follows has somewhere to go.
+        assert!(destination.parent().unwrap().is_dir());
+        // And it really is inside the project, not merely named as though it were.
+        assert!(destination.starts_with(folder.path().canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn a_scene_id_that_is_not_a_scene_id_is_refused_rather_than_scrubbed() {
+        let folder = project_folder();
+        let root = folder.path().to_string_lossy().into_owned();
+        for hostile in [
+            "../../etc/passwd",
+            "..",
+            ".",
+            "job/../../escape",
+            r"job\..\escape",
+            "job:stream",
+            "job.mp4",
+            "",
+            "   ",
+            &"j".repeat(65),
+        ] {
+            assert!(
+                generated_video_destination(&root, hostile).is_err(),
+                "'{hostile}' must not name a file"
+            );
+        }
+        // A dot is refused too — nothing PolStudio generates has one, and
+        // allowing it is how a second extension gets in.
+        assert!(generated_file_stem("job-01_A").is_ok());
+        assert!(generated_file_stem("job.01").is_err());
+    }
+
+    #[test]
+    fn a_folder_that_holds_no_project_gets_no_writer() {
+        // The same rule every other command that takes a folderPath follows:
+        // confining a name against an unchecked folder confines nothing.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(generated_video_destination(&empty.path().to_string_lossy(), "job-01").is_err());
+        assert!(generated_video_destination("", "job-01").is_err());
+    }
 }
 
 /* ── Exit guard tests ─────────────────────────────────────────────────────── */
@@ -3781,4 +3991,5 @@ mod exit_guard_tests {
         guard.generation_active.store(false, Ordering::Release);
         assert_eq!(guard.on_close_requested(), CloseDecision::Close);
     }
+
 }

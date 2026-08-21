@@ -30,10 +30,14 @@ const workspace = (config: ProjectConfig, onBack: () => void) =>
   render(createElement(ProjectWorkspace, { project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "timeline", onBack, onSave: async () => undefined }));
 
 describe("the one definition of an ongoing generation", () => {
-  it("is the pair of statuses the Generator queues shots through, and nothing else", () => {
+  it("is every status with something still to lose, and nothing else", () => {
     const statuses: GenerationJob["status"][] = ["draft", "queued", "generating", "ready", "completed", "failed", "cancelled"];
     const ongoing = statuses.filter((status) => isGenerationOngoing({ status } as GenerationJob));
-    expect(ongoing).toEqual(["queued", "generating"]);
+    /* "ready" is in the list because it does not mean finished: the pictures
+       exist and the file does not yet — the app is encoding them into the
+       project folder. Leaving then costs the whole render, exactly as leaving
+       mid-render does. "completed" is the one that means there is a file. */
+    expect(ongoing).toEqual(["queued", "generating", "ready"]);
   });
 
   it("counts what is happening without rounding a queued shot up into a rendering one", () => {
@@ -46,7 +50,7 @@ describe("the one definition of an ongoing generation", () => {
 describe("leaving a project", () => {
   it("goes straight back when nothing is generating", () => {
     const onBack = vi.fn();
-    workspace(withJobs(["draft", "completed", "failed", "cancelled", "ready"]), onBack);
+    workspace(withJobs(["draft", "completed", "failed", "cancelled"]), onBack);
     fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alertdialog")).toBeNull();
