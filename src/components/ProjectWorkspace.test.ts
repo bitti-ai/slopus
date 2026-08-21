@@ -215,6 +215,12 @@ describe("project workspace timecode", () => {
     };
   }
 
+  /** What a view actually wrote. The timeline hands up UPDATERS rather than
+   *  finished configs (see ConfigUpdate), so reading a call means applying it
+   *  to the config the view was holding at the time. */
+  const wrote = (call: unknown, current: ProjectConfig): ProjectConfig =>
+    typeof call === "function" ? (call as (value: ProjectConfig) => ProjectConfig)(current) : call as ProjectConfig;
+
   /** A project carrying one importable clip of each kind, so the media panel
    *  has a card that belongs on a video track and one that belongs on audio. */
   function projectWithMedia(): ProjectConfig {
@@ -269,7 +275,7 @@ describe("project workspace timecode", () => {
 
     fireEvent.dragOver(videoLane, { dataTransfer });
     fireEvent.drop(videoLane, { dataTransfer });
-    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const next = wrote(onChange.mock.calls[0][0], config);
     const track = next.timeline.tracks.find((item) => item.kind === "video")!;
     const dropped = track.clips.find((clip) => clip.assetId === video.id)!;
     expect(dropped.label).toBe(video.name);
@@ -293,7 +299,7 @@ describe("project workspace timecode", () => {
     expect(onChange).not.toHaveBeenCalled();
 
     fireEvent.drop(laneFor(container, config, "audio"), { dataTransfer });
-    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const next = wrote(onChange.mock.calls[0][0], config);
     const audioTrack = next.timeline.tracks.find((track) => track.kind === "audio")!;
     expect(audioTrack.clips.map((clip) => clip.assetId)).toEqual([sound.id]);
     expect(next.timeline.tracks.filter((track) => track.kind === "video").every((track) => track.clips.length === 0)).toBe(true);
@@ -317,7 +323,7 @@ describe("project workspace timecode", () => {
     Object.defineProperty(drop, "clientX", { value: 350 });
     fireEvent(lane, drop);
 
-    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const next = wrote(onChange.mock.calls[0][0], config);
     const dropped = next.timeline.tracks.flatMap((track) => track.clips)[0];
     // A quarter of the way along a 30-second canvas, not pinned to zero.
     expect(dropped.startMs).toBe(Math.round(0.25 * 30_000));
@@ -362,8 +368,8 @@ describe("project workspace timecode", () => {
     }] } : track) },
   });
 
-  const droppedClip = (calls: { mock: { calls: unknown[][] } }) =>
-    ((calls.mock.calls[0][0] as ProjectConfig).timeline.tracks.flatMap((track) => track.clips))[0];
+  const droppedClip = (calls: { mock: { calls: unknown[][] } }, current: ProjectConfig) =>
+    wrote(calls.mock.calls[0][0], current).timeline.tracks.flatMap((track) => track.clips)[0];
 
   it("drops a clip as long as the footage, and falls back to the stated default only when nothing measured it", () => {
     /* B3: every dropped clip used to be five seconds, forever — a 40-second
@@ -373,8 +379,8 @@ describe("project workspace timecode", () => {
     const transfer = fakeDataTransfer();
     fireEvent.dragStart(cardFor(known.assets[0]), { dataTransfer: transfer });
     fireEvent.drop(laneFor(first.container, known, "video"), { dataTransfer: transfer });
-    expect(droppedClip(first.onChange).durationMs).toBe(40_000);
-    expect(parseProjectConfig(first.onChange.mock.calls[0][0] as ProjectConfig)).toBeTruthy();
+    expect(droppedClip(first.onChange, known).durationMs).toBe(40_000);
+    expect(parseProjectConfig(wrote(first.onChange.mock.calls[0][0], known))).toBeTruthy();
     cleanup();
 
     // Nothing has decoded this one, so there is no length to honour and the
@@ -384,19 +390,29 @@ describe("project workspace timecode", () => {
     const transferTwo = fakeDataTransfer();
     fireEvent.dragStart(cardFor(unknown.assets[0]), { dataTransfer: transferTwo });
     fireEvent.drop(laneFor(second.container, unknown, "video"), { dataTransfer: transferTwo });
-    expect(droppedClip(second.onChange).durationMs).toBe(5_000);
+    expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
   });
 
   it("retimes the selected clip from the Lasts field, and will not run past the footage", () => {
     const config = withClip(measuredVideo(projectWithMedia(), 40_000), {});
-    const onChange = vi.fn();
-    render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    /* Every edit is fed back in, the way the holder does it in the app. It has
+       to be: a typed length is now a trim of the clip’s tail, and a trim is
+       measured against the clip AS IT STANDS — how much footage is left in the
+       file after it, what sits next to it on the track. A harness that
+       swallowed the writes would ask every keystroke about a clip that had
+       already been replaced. */
+    let current = config;
+    const onChange = vi.fn((next: ProjectConfig | ((value: ProjectConfig) => ProjectConfig)) => {
+      current = typeof next === "function" ? next(current) : next;
+      rerender(createElement(TimelineView, { config: current, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    });
+    const { rerender } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
     const lasts = screen.getByTitle(/^How long this clip lasts/) as HTMLInputElement;
     // It was readOnly, which made the only stated way to fix a clip's length a
     // field that could not be typed into.
     expect(lasts.readOnly).toBe(false);
     expect(lasts.value).toBe("00:40:00");
-    const lastDuration = () => (onChange.mock.calls.at(-1)![0] as ProjectConfig).timeline.tracks.flatMap((track) => track.clips)[0].durationMs;
+    const lastDuration = () => current.timeline.tracks.flatMap((track) => track.clips)[0].durationMs;
 
     // Plain seconds, and the minutes:seconds:frames the field itself prints.
     fireEvent.change(lasts, { target: { value: "8" } });
@@ -404,7 +420,7 @@ describe("project workspace timecode", () => {
     fireEvent.change(lasts, { target: { value: "00:12:15" } });
     // 15 frames at the project's 24 fps is 625 ms, not half a second.
     expect(lastDuration()).toBe(12_625);
-    expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
+    expect(parseProjectConfig(current)).toBeTruthy();
 
     // Half-typed text is not a length, and must not be turned into one.
     const before = onChange.mock.calls.length;
@@ -418,11 +434,200 @@ describe("project workspace timecode", () => {
     expect(lastDuration()).toBe(42);
     fireEvent.change(lasts, { target: { value: "90" } });
     expect(lastDuration()).toBe(40_000);
-    expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
+    expect(parseProjectConfig(current)).toBeTruthy();
 
     // Off the field, the clip's own length is what it shows again.
     fireEvent.blur(lasts);
     expect(lasts.value).toBe("00:40:00");
+  });
+
+  /* --- Dragging clips on the timeline --------------------------------------
+
+     jsdom lays nothing out and has no PointerEvent, so both are supplied here:
+     the lane is told how wide it is (a drag turns pixels into milliseconds
+     against exactly this), and each gesture is a bubbling event carrying the
+     coordinates the handlers read. 1000px over a 30-second canvas makes the
+     arithmetic legible: 1px is 30ms, and the 8px magnet is 240ms.
+     ======================================================================= */
+
+  const LANE_WIDTH = 1000;
+  const LANE_RECT = { left: 0, width: LANE_WIDTH, top: 0, right: LANE_WIDTH, bottom: 72, height: 72, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+
+  function pointerEvent(type: string, clientX: number, clientY = 40) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    for (const [key, value] of Object.entries({ clientX, clientY, button: 0, pointerId: 1 })) {
+      Object.defineProperty(event, key, { value });
+    }
+    return event;
+  }
+
+  /** A project with clips cut into one of its tracks. */
+  const withClips = (config: ProjectConfig, clips: Partial<TimelineClip>[], trackId = STORY_TRACK_ID) => parseProjectConfig({
+    ...config,
+    timeline: { tracks: config.timeline.tracks.map((track) => track.id === trackId ? { ...track, clips: clips.map((clip, index) => ({
+      id: `clip-${index}`, assetId: config.assets[0].id, trackId,
+      startMs: 0, durationMs: 4_000, sourceStartMs: 0, label: `Shot ${index + 1}`, color: null, status: "approved", ...clip,
+    })) } : track) },
+  });
+
+  /** Renders the timeline with every lane measured, and hands back what a drag
+   *  needs: the lanes, the clips, and whatever was written. */
+  function timeline(config: ProjectConfig) {
+    const onChange = vi.fn();
+    const view = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    for (const lane of view.container.querySelectorAll(".track-lane")) lane.getBoundingClientRect = () => LANE_RECT;
+    const laneOf = (trackId: string) => view.container.querySelector(`[data-track-id="${trackId}"]`) as HTMLElement;
+    const written = () => onChange.mock.calls.length ? wrote(onChange.mock.calls.at(-1)![0], config) : undefined;
+    const clipsOn = (trackId: string) => written()?.timeline.tracks.find((track) => track.id === trackId)?.clips ?? [];
+    return { ...view, onChange, laneOf, written, clipsOn };
+  }
+
+  /** One whole gesture: press on `grip`, move to `toX`, release. */
+  function drag(grip: Element, fromX: number, toX: number, clientY = 40) {
+    fireEvent(grip, pointerEvent("pointerdown", fromX, clientY));
+    fireEvent(window, pointerEvent("pointermove", toX, clientY));
+    fireEvent(window, pointerEvent("pointerup", toX, clientY));
+  }
+
+  /** Which lane the pointer is over. jsdom cannot hit-test, so this is the one
+   *  thing about a cross-lane drag a test has to supply. */
+  const overLane = (lane: HTMLElement) => {
+    (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () => [lane];
+  };
+  const stopHitTesting = () => { delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint; };
+
+  it("drags a clip along its own lane and writes where it landed", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 2_000, durationMs: 4_000 }]);
+    const view = timeline(config);
+    // Taken hold of 1s into the clip and dropped 6s further along: the clip
+    // moves by what the POINTER moved, rather than jumping its head under it.
+    drag(view.container.querySelector(".timeline-clip")!, 100, 300);
+    expect(view.clipsOn(STORY_TRACK_ID)[0]).toMatchObject({ startMs: 8_000, durationMs: 4_000 });
+    expect(parseProjectConfig(view.written()!)).toBeTruthy();
+  });
+
+  it("drags a clip onto another video track, and onto no audio track", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 4_000 }]);
+    const view = timeline(config);
+    overLane(view.laneOf("track-v2"));
+    drag(view.container.querySelector(".timeline-clip")!, 20, 220);
+    expect(view.clipsOn(STORY_TRACK_ID)).toHaveLength(0);
+    expect(view.clipsOn("track-v2")[0]).toMatchObject({ startMs: 6_000, trackId: "track-v2" });
+    expect(parseProjectConfig(view.written()!)).toBeTruthy();
+
+    // A picture held over a sound lane is refused outright: nothing is written,
+    // so the clip stays where it was rather than landing where it cannot play.
+    cleanup();
+    const second = timeline(config);
+    overLane(second.laneOf("track-a1"));
+    drag(second.container.querySelector(".timeline-clip")!, 20, 220);
+    expect(second.onChange).not.toHaveBeenCalled();
+    stopHitTesting();
+  });
+
+  it("moves sound from one sound track to another", () => {
+    const measured = parseProjectConfig({
+      ...projectWithMedia(),
+      assets: projectWithMedia().assets.map((asset) => asset.kind === "audio" ? { ...asset, durationMs: 20_000 } : asset),
+    });
+    const config = withClips(measured, [{ startMs: 0, durationMs: 6_000, assetId: "asset-room", label: "Room tone" }], "track-a1");
+    const view = timeline(config);
+    overLane(view.laneOf("track-a2"));
+    drag(view.container.querySelector(".timeline-clip")!, 10, 110);
+    expect(view.clipsOn("track-a1")).toHaveLength(0);
+    expect(view.clipsOn("track-a2")[0]).toMatchObject({ startMs: 3_000, trackId: "track-a2" });
+    stopHitTesting();
+  });
+
+  it("will not lay one clip over another", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [
+      { startMs: 0, durationMs: 4_000 },
+      { startMs: 12_000, durationMs: 4_000 },
+    ]);
+    const view = timeline(config);
+    // Dragged from 12s back to 1s, right on top of the first clip: it lands
+    // flush against the side it was nearer to, and nothing overlaps.
+    drag(view.container.querySelectorAll(".timeline-clip")[1], 400, 33);
+    expect(view.clipsOn(STORY_TRACK_ID).map((clip) => [clip.startMs, clip.durationMs])).toEqual([[0, 4_000], [4_000, 4_000]]);
+    expect(parseProjectConfig(view.written()!)).toBeTruthy();
+  });
+
+  it("snaps a dragged clip to the cut beside it", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [
+      { startMs: 0, durationMs: 4_000 },
+      { startMs: 20_000, durationMs: 4_000 },
+    ]);
+    const view = timeline(config);
+    /* Dropped with its head 150ms past the first clip's tail — inside the 240ms
+       magnet, so the gap closes completely rather than leaving a hole too small
+       to see and too real for the encoder to ignore. */
+    drag(view.container.querySelectorAll(".timeline-clip")[1], 667, 138);
+    expect(view.clipsOn(STORY_TRACK_ID)[1].startMs).toBe(4_000);
+  });
+
+  it("trims the tail by dragging the right edge, and never past the footage", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 6_000, sourceStartMs: 1_000 }]);
+    const view = timeline(config);
+    drag(view.container.querySelector(".clip-handle--end")!, 200, 100);
+    // Only the length changes: the head of the clip and the point it starts
+    // inside the file are not what the right-hand edge is holding.
+    expect(view.clipsOn(STORY_TRACK_ID)[0]).toMatchObject({ startMs: 0, durationMs: 3_000, sourceStartMs: 1_000 });
+
+    // The file is 40s long and this clip starts 1s into it, so 39s is all the
+    // tail there is, however far the pointer goes.
+    cleanup();
+    const second = timeline(config);
+    drag(second.container.querySelector(".clip-handle--end")!, 200, 1_600);
+    expect(second.clipsOn(STORY_TRACK_ID)[0].durationMs).toBe(39_000);
+  });
+
+  it("trims the head by dragging the left edge, moving the cut and the source together", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 4_000, durationMs: 6_000, sourceStartMs: 2_000 }]);
+    const view = timeline(config);
+    drag(view.container.querySelector(".clip-handle--start")!, 133, 250);
+    // Three and a half seconds later on the ruler is three and a half seconds
+    // later in the footage.
+    expect(view.clipsOn(STORY_TRACK_ID)[0]).toMatchObject({ startMs: 7_500, durationMs: 2_500, sourceStartMs: 5_500 });
+
+    // Pulled the other way it stops where the file's own head is: only 2s of
+    // footage exists before this clip's first frame.
+    cleanup();
+    const second = timeline(config);
+    drag(second.container.querySelector(".clip-handle--start")!, 133, 0);
+    expect(second.clipsOn(STORY_TRACK_ID)[0]).toMatchObject({ startMs: 2_000, durationMs: 8_000, sourceStartMs: 0 });
+  });
+
+  it("abandons a drag on Escape and writes nothing", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 2_000, durationMs: 4_000 }]);
+    const view = timeline(config);
+    fireEvent(view.container.querySelector(".timeline-clip")!, pointerEvent("pointerdown", 100));
+    fireEvent(window, pointerEvent("pointermove", 400));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent(window, pointerEvent("pointerup", 400));
+    expect(view.onChange).not.toHaveBeenCalled();
+  });
+
+  it("refuses to drag or trim anything on a locked track", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 2_000, durationMs: 4_000 }]);
+    const locked = parseProjectConfig({ ...config, timeline: { tracks: config.timeline.tracks.map((track) => track.id === STORY_TRACK_ID ? { ...track, locked: true } : track) } });
+    const view = timeline(locked);
+    drag(view.container.querySelector(".timeline-clip")!, 100, 400);
+    expect(view.onChange).not.toHaveBeenCalled();
+    // The handles are not merely inert, they are absent: a control that cannot
+    // do anything is worse than no control at all.
+    expect(view.container.querySelector(".clip-handle")).toBeNull();
+    expect(view.container.querySelector(".clip-delete")).toBeNull();
+  });
+
+  it("removes a clip from its track with the control on the clip itself", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [
+      { startMs: 0, durationMs: 4_000, label: "Opening" },
+      { startMs: 8_000, durationMs: 4_000, label: "Closing" },
+    ]);
+    const view = timeline(config);
+    fireEvent.click(screen.getByRole("button", { name: "Delete Opening" }));
+    expect(view.clipsOn(STORY_TRACK_ID).map((clip) => clip.label)).toEqual(["Closing"]);
+    expect(parseProjectConfig(view.written()!)).toBeTruthy();
   });
 
   it("keeps a clip's place in the source when it is duplicated", () => {
@@ -432,7 +637,7 @@ describe("project workspace timecode", () => {
     const onChange = vi.fn();
     render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
     fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
-    const next = onChange.mock.calls[0][0] as ProjectConfig;
+    const next = wrote(onChange.mock.calls[0][0], config);
     const clips = next.timeline.tracks.flatMap((track) => track.clips);
     expect(clips).toHaveLength(2);
     const copy = clips.find((clip) => clip.id !== "clip-macro")!;

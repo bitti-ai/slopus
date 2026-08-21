@@ -518,6 +518,53 @@
   background-size: 12px 12px;
 }
 
+/* The picture itself. The panel is the frame; the shot is fitted inside it and
+   the rest is the project's background colour, so a 9:16 cut looks 9:16 while
+   it is being cut rather than being stretched to fill a 16:9 panel. */
+.program-picture {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.program-picture video,
+.program-picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* What the monitor has to say when there is no picture to show: a gap under the
+   playhead, a file it could not read, a file still being read. Over the frame
+   rather than instead of it, so the black stays black. */
+.program-note {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(90%, 520px);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  background: color-mix(in srgb, var(--panel) 86%, transparent);
+}
+
+.program-note--error {
+  border-color: var(--danger);
+  color: var(--text-primary);
+}
+
 /* One honest monitor state for both cases: PolStudio cannot decode footage in
    the editor yet, so it names the real project instead of drawing a stand-in. */
 .program-empty {
@@ -1137,13 +1184,35 @@
 
 /* --- Clips ----------------------------------------------------------------- */
 
-.timeline-clip {
+/* The clip and the three controls that ride on it — two trim handles and a
+   delete — share one box, positioned on the ruler. They are siblings rather
+   than children of the clip because the clip is itself a control: nesting a
+   button inside a button is not something a browser or a screen reader can
+   make sense of. */
+.clip-slot {
   position: absolute;
   top: var(--space-2);
   height: 56px;
-  min-width: 32px;
+  min-width: 22px;
+}
+
+.clip-slot.selected {
+  z-index: 3;
+}
+
+/* The clip being dragged rides over everything, including the clip it is being
+   dropped next to, so the edge being aimed at stays visible. */
+.clip-slot--dragging {
+  z-index: 5;
+  filter: brightness(1.06);
+}
+
+.timeline-clip {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   padding: 0;
+  cursor: grab;
   border: 1px solid color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 70%, var(--clip-edge) 10%);
   border-radius: var(--radius-sm);
   text-align: left;
@@ -1175,10 +1244,100 @@
   filter: brightness(1.14);
 }
 
+/* Nothing on a locked track moves, so nothing on it offers the hand that says
+   it would. */
+.timeline-clip--locked {
+  cursor: default;
+}
+
 .timeline-clip.selected {
   border-color: var(--clip-selected-edge);
   box-shadow: 0 0 0 2px var(--accent-bright), inset 0 1px var(--clip-sheen-strong);
-  z-index: 3;
+}
+
+/* --- Trimming and deleting a clip ------------------------------------------
+
+   The handles are hit targets first: 10px of grab area at each end, wider than
+   the 3px they draw, because a trim that needs a pixel-perfect press is a trim
+   nobody performs. They sit ON the clip's edges rather than outside them, so
+   two clips butted together do not put four overlapping handles in the same
+   few pixels.
+   ========================================================================== */
+
+.clip-handle {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.clip-handle--start { left: 0; }
+.clip-handle--end { right: 0; }
+
+.clip-slot:hover .clip-handle,
+.clip-slot.selected .clip-handle {
+  background: linear-gradient(90deg, var(--clip-sheen-strong), transparent 60%);
+}
+
+.clip-slot:hover .clip-handle--end,
+.clip-slot.selected .clip-handle--end {
+  background: linear-gradient(270deg, var(--clip-sheen-strong), transparent 60%);
+}
+
+.clip-handle:hover {
+  background: var(--accent-bright) !important;
+  opacity: 0.85;
+}
+
+.clip-delete {
+  position: absolute;
+  z-index: 4;
+  top: 3px;
+  right: 3px;
+  display: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+}
+
+/* Only on the clip the pointer is over, or the one being worked on: eighteen
+   delete buttons across a full timeline is a row of things to hit by mistake.
+   Focus counts too, so it can be reached from the keyboard at all. */
+.clip-slot:hover .clip-delete,
+.clip-slot.selected .clip-delete,
+.clip-delete:focus-visible {
+  display: grid;
+}
+
+.clip-delete:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* A clip narrower than the controls would be nothing but controls. */
+.clip-slot[style*="width: 0"] .clip-delete {
+  display: none;
+}
+
+/* Nothing is selectable while a clip is being dragged: a drag across the lanes
+   would otherwise paint the whole timeline blue with a text selection. */
+.timeline-view--dragging {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.timeline-view--dragging .timeline-clip {
+  cursor: grabbing;
 }
 
 .clip-text {
