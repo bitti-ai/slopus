@@ -512,7 +512,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-4) var(--space-6);
+  /* No padding: the picture takes the whole panel. The letterboxing inside it
+     is the project's own frame shape, and a margin around that only made the
+     monitor smaller for nothing. */
+  padding: 0;
   background-color: var(--bg);
   background-image: radial-gradient(var(--grid-line) 0.6px, transparent 0.6px);
   background-size: 12px 12px;
@@ -521,6 +524,8 @@
 /* The picture itself. The panel is the frame; the shot is fitted inside it and
    the rest is the project's background colour, so a 9:16 cut looks 9:16 while
    it is being cut rather than being stretched to fill a 16:9 panel. */
+/* A monitor, not a card: square corners, no frame of its own, and every pixel
+   of the panel. What bounds the picture is the picture. */
 .program-picture {
   position: relative;
   width: 100%;
@@ -530,8 +535,6 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
 }
 
 .program-picture video,
