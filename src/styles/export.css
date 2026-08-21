@@ -15,12 +15,15 @@
     var(--bg);
 }
 
+/* Title, notification, action. The middle column holds its place whether or
+   not there is anything to say, so the Saved notice can arrive and leave
+   without the title or the button moving a pixel. */
 .export-heading {
   max-width: var(--content-max);
   margin: 0 auto var(--space-5);
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: flex-end;
-  justify-content: space-between;
   gap: var(--space-5);
 }
 
@@ -34,21 +37,63 @@
 
 /* Export, and Cancel while it runs — the same place the References screen puts
    Add image. */
-.export-heading > div {
-  flex: 0 0 auto;
+.export-heading__actions {
+  justify-self: end;
   display: flex;
   gap: var(--space-2);
 }
 
+.export-toast-slot {
+  justify-self: center;
+  align-self: center;
+}
+
+/* Says one word. No path, no size, no codec — the file was just chosen in a
+   save dialog, and everything else the panel used to list is either already
+   known or a warning, and warnings do not fade out (see .export-notice). */
+.export-toast {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--success-line);
+  border-radius: var(--radius-md);
+  color: var(--success);
+  background: var(--success-soft);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  animation: export-toast-in 0.18s ease-out;
+}
+
+.export-toast svg {
+  flex: 0 0 auto;
+}
+
+@keyframes export-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-toast {
+    animation: none;
+  }
+}
+
 /* --- Layout ---------------------------------------------------------------- */
 
+/* Two panels of the same width, and — because they stretch rather than sit at
+   their own heights — the same height as each other. */
 .export-layout {
   max-width: var(--content-max);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 1120px) {
@@ -80,11 +125,18 @@
 
 /* --- Preview --------------------------------------------------------------- */
 
+/* The project's frame, at the project's shape: `aspect-ratio` and
+   `--frame-aspect` are set inline from the export plan (see ExportView). The
+   max-width is what keeps the box on its aspect while obeying the height cap —
+   clamping the HEIGHT alone would leave a full-width box with the wrong shape.
+   Before this the stage had no height of its own and took the intrinsic shape
+   of whatever was under the playhead, so a portrait still made the preview tall
+   and the next video clip shrank it back. */
 .export-stage {
   position: relative;
   width: 100%;
-  max-height: 56vh;
-  margin-bottom: var(--space-3);
+  max-width: calc(56vh * var(--frame-aspect, 1.7778));
+  margin: 0 auto var(--space-3);
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -107,7 +159,7 @@
 /* Fullscreen paints the stage's own background behind the picture, so the
    black bars stay black rather than showing the page through them. */
 .export-stage:fullscreen {
-  max-height: none;
+  max-width: none;
   border: 0;
   border-radius: 0;
   background: var(--stage-bg);
@@ -264,8 +316,7 @@
   line-height: var(--leading-normal);
 }
 
-.export-field-note code,
-.export-outcome code {
+.export-field-note code {
   color: var(--text-primary);
   font-size: var(--text-2xs);
   word-break: break-all;
@@ -390,46 +441,3 @@
   line-height: var(--leading-normal);
 }
 
-.export-outcome--good {
-  border-color: var(--success-line);
-  background: var(--success-soft);
-}
-
-.export-outcome h3 {
-  margin: 0 0 var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--success);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.export-outcome p {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.export-outcome p + p {
-  margin-top: var(--space-2);
-  color: var(--text-muted);
-}
-
-/* The audio clips that did NOT make it into the file, named one per line. This
-   list is the difference between a soundtrack that failed and one that vanished
-   without a word, so it is not allowed to read as a footnote. */
-.export-outcome ul {
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-4);
-  display: grid;
-  gap: var(--space-1);
-  color: var(--text-muted);
-}
-
-.export-outcome ul li {
-  line-height: var(--leading-normal);
-}

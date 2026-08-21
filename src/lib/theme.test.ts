@@ -237,6 +237,9 @@ describe("every stylesheet resolves through the palette", () => {
     // The lane grid's interval, computed from the ruler's own tick step so the
     // lines under the clips fall where the timecodes above them are.
     "--lane-grid": "src/components/workspace/TimelineView.tsx",
+    // The project's frame shape, so the export stage keeps one size whatever is
+    // under the playhead.
+    "--frame-aspect": "src/components/workspace/ExportView.tsx",
   };
 
   for (const [token, source] of Object.entries(setByComponents)) {

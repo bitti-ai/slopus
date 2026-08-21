@@ -97,6 +97,48 @@ describe("the export view where nothing can encode", () => {
   });
 });
 
+/* The screen used to size its own preview from whatever was under the playhead
+   and to confirm a finished export with a panel in the bottom corner naming the
+   path, the size, the codec and the compositor. */
+describe("the shape of the export screen", () => {
+  it("names its two panels after what they hold", () => {
+    render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    expect(screen.getByRole("heading", { name: "Video" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Preview" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Export Settings" })).toBeNull();
+  });
+
+  it("gives the estimated size as a size and nothing else", () => {
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    const row = within(container.querySelector(".export-summary") as HTMLElement)
+      .getByText("Estimated size").parentElement!;
+    expect(row.querySelector("dd")!.textContent).toMatch(/^[\d.]+ [KMG]?B$/);
+    expect(row.querySelector("dd small")).toBeNull();
+  });
+
+  /* A portrait still on the timeline used to make this box tall and the next
+     video clip shrank it back, because the stage had no size of its own and
+     took the intrinsic shape of whatever was playing. The export writes ONE
+     frame size for the whole file. */
+  it("sizes the stage from the export plan rather than from the media under the playhead", () => {
+    const portrait = project([clip("a", 0, 2_000)]);
+    portrait.assets[0] = { ...portrait.assets[0], kind: "image", mimeType: "image/png", width: 1080, height: 1920 };
+    const { container } = render(<ExportView config={portrait} folderPath="/tmp/project" />);
+    const stage = container.querySelector(".export-stage") as HTMLElement;
+    // The project is 16:9 at 1080p; the picture inside it is not.
+    expect(stage.style.aspectRatio).toBe("1920 / 1080");
+  });
+
+  it("says nothing about a finished export until there is one", () => {
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    expect(container.querySelector(".export-toast")).toBeNull();
+    // And the notification lives in the header, not at the foot of the settings
+    // column where the old panel sat.
+    expect(container.querySelector(".export-heading .export-toast-slot")).toBeTruthy();
+  });
+});
+
 /* The other half of the media policy: video is NOT copied into the project, so
    a real timeline's clips carry an absolute source path and no relative one.
    The page has to plan such a project exactly as it plans any other — the

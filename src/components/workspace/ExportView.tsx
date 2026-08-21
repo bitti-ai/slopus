@@ -1,4 +1,4 @@
-import { CircleCheck, Download, FileVideo, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, TriangleAlert, X } from "lucide-react";
+import { CircleCheck, Download, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   audioMixBytes,
@@ -26,7 +26,6 @@ import {
   runExport,
   writeExportFile,
   type CodecProbe,
-  type CompositorKind,
   type CompositorProbe,
   type ExportProgress,
 } from "../../lib/exportPipeline";
@@ -45,14 +44,15 @@ const resolutionChoices = (current: Resolution): Resolution[] =>
 const FRAME_RATES: FrameRate[] = [24, 25, 30, 60];
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
-interface FinishedExport {
-  path: string;
-  bytes: number;
-  compositor: CompositorKind;
-  compositorDetail: string;
-  codecString: string;
-  audio: boolean;
-  audioDetail: string;
+/** How long the Saved notification stays up before it takes itself away. */
+const SAVED_NOTICE_MS = 4_000;
+
+/* What the finished run left OUT of the soundtrack. Everything else an export
+   used to report on the page — path, size, codec, compositor — is gone: the
+   confirmation is a notification that says Saved and then leaves. These two
+   lists are not a confirmation, they are the failure worth shouting about, so
+   they stay until the next run replaces them. */
+interface LeftOut {
   audioProblems: string[];
   audioShortfalls: string[];
 }
@@ -79,7 +79,11 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const stageRef = useRef<HTMLDivElement>(null);
 
   const [progress, setProgress] = useState<ExportProgress | null>(null);
-  const [result, setResult] = useState<FinishedExport | null>(null);
+  /* The finished run says one word, in the middle of the header, and stops
+     saying it. A panel that sat in the corner until the next export could not
+     tell "just saved" from "saved twenty minutes ago". */
+  const [saved, setSaved] = useState(false);
+  const [leftOut, setLeftOut] = useState<LeftOut | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const cancelRef = useRef(false);
@@ -146,6 +150,15 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
 
+  /* The notification takes itself away. Re-armed on every run, and cleared on
+     the way out so a saved export that is left behind does not fire into an
+     unmounted view. */
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(false), SAVED_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
+
   const toggleFullscreen = () => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -175,7 +188,8 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
 
   const start = async () => {
     setError(null);
-    setResult(null);
+    setSaved(false);
+    setLeftOut(null);
     setCancelled(false);
     let destination: string | null = null;
     try {
@@ -203,18 +217,9 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         frameCount: plan.frameCount,
         detail: `Writing ${formatBytes(outcome.bytes.byteLength)} to ${destination}…`,
       });
-      const written = await writeExportFile(destination, outcome.bytes);
-      setResult({
-        path: destination,
-        bytes: written,
-        compositor: outcome.compositor,
-        compositorDetail: outcome.compositorDetail,
-        codecString: outcome.codecString,
-        audio: outcome.audio,
-        audioDetail: outcome.audioDetail,
-        audioProblems: outcome.audioProblems,
-        audioShortfalls: outcome.audioShortfalls,
-      });
+      await writeExportFile(destination, outcome.bytes);
+      setLeftOut({ audioProblems: outcome.audioProblems, audioShortfalls: outcome.audioShortfalls });
+      setSaved(true);
     } catch (reason) {
       if (reason instanceof ExportCancelled) setCancelled(true);
       else setError(describe(reason));
@@ -225,11 +230,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
 
   const summary: Array<[string, string, string?]> = [
     ["Duration", formatDuration(plan.durationMs), `${plan.frameCount} frames at ${plan.frameRate} fps`],
-    [
-      "Estimated size",
-      formatBytes(estimatedBytes(bitrate, plan.durationMs)),
-      "target bitrate × duration, not a measurement",
-    ],
+    ["Estimated size", formatBytes(estimatedBytes(bitrate, plan.durationMs))],
     [
       "Sound",
       plan.audio.length === 0
@@ -267,7 +268,16 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
         screen exists for. */}
     <header className="export-heading">
       <h1>Export</h1>
-      <div>
+      {/* A notification, not a panel: it appears between the title and the
+          button that produced it, says the one thing there is to say, and goes.
+          The middle column is always there whether or not it holds anything, so
+          nothing on either side of it moves when it arrives or leaves. */}
+      <div className="export-toast-slot" aria-live="polite">
+        {saved && <p className="export-toast">
+          <CircleCheck size={16} aria-hidden="true" /> Saved
+        </p>}
+      </div>
+      <div className="export-heading__actions">
         {running && <button
           className="secondary-button"
           type="button"
@@ -288,13 +298,22 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
 
     <div className="export-layout">
       <section className="export-preview" aria-labelledby="export-preview-heading">
-        <h2 id="export-preview-heading">Preview</h2>
+        <h2 id="export-preview-heading">Video</h2>
         {/* The same player the timeline uses, on the same cut: it decodes the
             real files and plays them with their sound, rather than decoding one
             still frame per scrub. What the export will contain is what this
             plays — the picture is fitted inside the project's frame and the
             rest is the project's background, exactly as the encoder does it. */}
-        <div className="export-stage" ref={stageRef}>
+        {/* The stage IS the project's frame. Sized from the plan rather than
+            from whatever is under the playhead, or a portrait still on the
+            timeline would make the preview tall and the next video clip would
+            shrink it back — the export writes one frame size for the whole
+            file, and this shows that size the whole time. */}
+        <div
+          className="export-stage"
+          ref={stageRef}
+          style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}
+        >
           <ProgramMonitor
             config={config}
             folderPath={folderPath}
@@ -353,7 +372,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       </section>
 
       <section className="export-settings" aria-labelledby="export-settings-heading">
-        <h2 id="export-settings-heading">Export Settings</h2>
+        <h2 id="export-settings-heading">Settings</h2>
 
         <div className="export-fields">
           <label htmlFor="export-resolution">
@@ -448,30 +467,21 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           <p>{error}</p>
         </div>}
 
-        {result && <div className="export-outcome export-outcome--good" role="status">
-          <h3><CircleCheck size={16} aria-hidden="true" /> Saved</h3>
-          <p>
-            <FileVideo size={14} aria-hidden="true" /> <code>{result.path}</code>
-          </p>
-          <p>
-            {formatBytes(result.bytes)} written · {result.codecString} · composited with{" "}
-            {result.compositor === "webgpu" ? "WebGPU" : "a 2D canvas"}
-            {result.compositorDetail ? <> — {result.compositorDetail}</> : null}.
-          </p>
-          <p>{result.audio ? "Sound: " : ""}{result.audioDetail}</p>
-          {result.audioProblems.length > 0 && <>
-            {/* Named, not dropped in silence: a soundtrack that vanished without
-                a word is the failure worth shouting about. */}
-            <p><TriangleAlert size={14} aria-hidden="true" /> Left out of the soundtrack:</p>
-            <ul>{result.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
-          </>}
-          {result.audioShortfalls.length > 0 && <>
-            {/* These clips ARE in the file. Part of each one is silence because
-                the sound behind it ran out, which is exactly as inaudible as a
-                missing clip and was previously reported nowhere. */}
-            <p><TriangleAlert size={14} aria-hidden="true" /> Ran out of sound before the clip ended:</p>
-            <ul>{result.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
-          </>}
+        {/* The export itself is confirmed by the notification in the header and
+            nowhere else. What stays on the page is only what went WRONG with the
+            sound — a soundtrack that vanished without a word is not something to
+            fade out after four seconds. */}
+        {leftOut && leftOut.audioProblems.length > 0 && <div className="export-notice" role="alert">
+          <h3><TriangleAlert size={16} aria-hidden="true" /> Left out of the soundtrack</h3>
+          <ul>{leftOut.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
+        </div>}
+
+        {/* These clips ARE in the file. Part of each one is silence because the
+            sound behind it ran out, which is exactly as inaudible as a missing
+            clip and was previously reported nowhere. */}
+        {leftOut && leftOut.audioShortfalls.length > 0 && <div className="export-notice" role="alert">
+          <h3><TriangleAlert size={16} aria-hidden="true" /> Ran out of sound before the clip ended</h3>
+          <ul>{leftOut.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
         </div>}
       </section>
     </div>
