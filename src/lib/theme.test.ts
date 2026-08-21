@@ -234,6 +234,9 @@ describe("every stylesheet resolves through the palette", () => {
      into a list of tokens nothing sets any more. */
   const setByComponents: Record<string, string> = {
     "--clip-color": "src/components/workspace/TimelineView.tsx",
+    // The lane grid's interval, computed from the ruler's own tick step so the
+    // lines under the clips fall where the timecodes above them are.
+    "--lane-grid": "src/components/workspace/TimelineView.tsx",
   };
 
   for (const [token, source] of Object.entries(setByComponents)) {

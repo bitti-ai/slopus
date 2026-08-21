@@ -48,10 +48,14 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
-  it("says a gap is a gap rather than showing the last shot it played", () => {
-    monitor(project([clip()]), 9_000);
-    expect(screen.getByText("Nothing under the playhead here.")).toBeTruthy();
+  it("shows a gap as the empty frame it will be exported as, and says nothing about it", () => {
+    const { container } = monitor(project([clip()]), 9_000);
+    // No element for a clip that is not there, and no panel over the picture
+    // either: the background colour IS the answer, and it is the same colour
+    // the encoder writes for those frames.
     expect(document.querySelector("video")).toBeNull();
+    expect(container.querySelector(".program-note")).toBeNull();
+    expect((container.querySelector(".program-picture") as HTMLElement).style.backgroundColor).toBeTruthy();
   });
 
   it("is honest that the browser preview cannot read the project's footage", () => {

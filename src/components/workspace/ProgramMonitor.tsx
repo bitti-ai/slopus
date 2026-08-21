@@ -287,11 +287,12 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 
   const hasClips = tracks.some((track) => track.clips.length > 0);
 
-  /* What the monitor can say, in the order the user needs it: nothing cut yet,
-     nothing under the playhead, no way to read the file, or the picture. */
+  /* What the monitor can say, in the order the user needs it: no way to read
+     the file, or the file still being read. A GAP says nothing at all — the
+     empty frame in the project's own background colour is exactly what the
+     export writes there, and a panel over it only hid the answer. */
   let overlay: React.ReactNode = null;
-  if (!hasClips) overlay = null;
-  else if (!clip) overlay = <div className="program-note"><Film size={22} /><span>Nothing under the playhead here.</span></div>;
+  if (!hasClips || !clip) overlay = null;
   else if (!isTauri()) {
     overlay = <div className="program-note"><Film size={22} /><span>Playback needs the desktop app — the browser preview has no project folder to read the footage from.</span></div>;
   } else if (error) {
