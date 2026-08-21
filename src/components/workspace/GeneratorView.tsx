@@ -225,10 +225,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
 
     <main className="generator-main">
       <header className="generator-heading">
-        <div>
-          <h1>Generator</h1>
-          <p>A scene is up to fifteen seconds long and holds as many shots as you split it into. Add one with + and write what happens in each shot, or ask Pol along the bottom to build one from a prompt; PolStudio turns the whole scene into a single MiniMax H3 prompt you can read before anything is sent.</p>
-        </div>
+        <h1>Generator</h1>
       </header>
 
       {selected && <section className="job-detail">

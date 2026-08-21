@@ -402,7 +402,8 @@ describe("project workspace timecode", () => {
     fireEvent.change(lasts, { target: { value: "8" } });
     expect(lastDuration()).toBe(8_000);
     fireEvent.change(lasts, { target: { value: "00:12:15" } });
-    expect(lastDuration()).toBe(12_500);
+    // 15 frames at the project's 24 fps is 625 ms, not half a second.
+    expect(lastDuration()).toBe(12_625);
     expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
 
     // Half-typed text is not a length, and must not be turned into one.
@@ -411,10 +412,10 @@ describe("project workspace timecode", () => {
     expect(onChange.mock.calls.length).toBe(before);
     expect(lasts.value).toBe("00:");
 
-    // Clamped at both ends: a clip cannot be nothing, and cannot play footage
-    // the file does not have.
+    // Clamped at both ends: a clip cannot be shorter than one frame — 42 ms at
+    // 24 fps — and cannot play footage the file does not have.
     fireEvent.change(lasts, { target: { value: "0" } });
-    expect(lastDuration()).toBe(33);
+    expect(lastDuration()).toBe(42);
     fireEvent.change(lasts, { target: { value: "90" } });
     expect(lastDuration()).toBe(40_000);
     expect(parseProjectConfig(onChange.mock.calls.at(-1)![0] as ProjectConfig)).toBeTruthy();
@@ -562,7 +563,7 @@ describe("project workspace timecode", () => {
     // the heading while the monitor printed it again, which reads as two clocks.
     expect(container.textContent!.match(/\d\d:\d\d:\d\d:\d\d/g)).toHaveLength(1);
     // Pixels, not the id: "1080p" names one edge and leaves the other a guess.
-    expect(container.querySelector(".transport-format")!.textContent).toBe("1920 × 1080 · 30 fps");
+    expect(container.querySelector(".transport-format")!.textContent).toBe("1920 × 1080 · 24 fps");
 
     // An empty timeline has nothing to play, and every control says so rather
     // than only going grey.
@@ -827,8 +828,9 @@ describe("project workspace timecode", () => {
     // The screen must describe the rule the code implements. isReferenceUsable
     // qualifies an image on its FILE alone, so this imported picture IS bound
     // and IS sent — nothing on the page may say it is skipped or waiting on a
-    // definition. Three sentences here once said exactly that while the card
-    // beside them correctly said the file was sent.
+    // definition. The explainer panel that once said exactly that is gone; the
+    // card is now the only place the screen states the rule, and it says the
+    // file is sent.
     cleanup();
     const withImport = onChange.mock.calls[0][0];
     expect(withImport.references[0].relativePath).toBeTruthy();
@@ -837,7 +839,6 @@ describe("project workspace timecode", () => {
     for (const staleRule of ["you’ve described", "described references", "skipped", "is skipped until you write"]) {
       expect(screenText, `stale binding rule on screen: ${staleRule}`).not.toContain(staleRule);
     }
-    expect(screenText).toContain("An image counts as soon as you import it");
     expect(screenText).toContain("Not described yet — the picture is sent, but nothing tells the engine what to keep.");
   });
 

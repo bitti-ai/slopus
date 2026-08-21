@@ -317,24 +317,12 @@
   margin: 0 auto var(--space-5);
 }
 
-.generator-heading > div {
-  min-width: 0;
-  max-width: 68ch;
-}
-
 .generator-heading h1 {
   margin: var(--space-2) 0 var(--space-2);
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-hero);
-}
-
-.generator-heading p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
 }
 
 /* --- The scene editor ------------------------------------------------------

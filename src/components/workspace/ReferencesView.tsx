@@ -1,4 +1,4 @@
-import { BookOpen, Check, FileText, Image, Link2, Plus, Sparkles, Trash2, Upload, Users } from "lucide-react";
+import { BookOpen, Check, FileText, Image, Link2, Plus, Trash2, Upload, Users } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, type ProjectConfig, type ProjectReference } from "../../lib/project";
@@ -66,10 +66,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
 
   return <div className="references-view">
     <header className="references-heading">
-      <div>
-        <h1>References</h1>
-        <p>Keep the people, places, products, and visual rules for this project in one place. A scene uses one once you drag it into a shot’s line in the generator.</p>
-      </div>
+      <h1>References</h1>
       <div>
         <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
         <button className="primary-button" onClick={() => void addImage()}><Upload size={16} /> Add image</button>
@@ -95,12 +92,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
-        <div className="reference-explainer"><Sparkles size={18} /><div><b>References guide new shots, not your timeline</b>{/* The rule the code actually implements: isReferenceUsable qualifies an
-            image on its FILE alone, so an imported picture is bound and sent
-            whether or not it has been described. Saying it was "skipped until
-            you write its definition" contradicted the card 30px away, which
-            correctly says the picture is sent. */}
-        <p>Each new shot uses the first two it can use from this list. An image counts as soon as you import it: its file is copied into the project’s <code>references/</code> folder and sent to the video engine, and describing it tells the engine what to keep about it. A text definition isn’t used until you write it, and then it reaches the engine as words in the shot’s prompt. Newest additions go to the top.</p></div></div>
       </section>
 
       <aside className="reference-inspector">

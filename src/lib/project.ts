@@ -992,7 +992,7 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
     createdAt: now,
     updatedAt: now,
     thumbnail: null,
-    settings: { aspectRatio: input.aspectRatio, resolution: input.resolution, frameRate: 30, backgroundColor: "#10131a" },
+    settings: { aspectRatio: input.aspectRatio, resolution: input.resolution, frameRate: 24, backgroundColor: "#10131a" },
     brief: {
       prompt: brief, status: "draft", targetDurationSeconds: input.targetDurationSeconds,
       aspectRatio: input.aspectRatio, resolution: input.resolution,
