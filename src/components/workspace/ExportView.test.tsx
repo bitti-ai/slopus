@@ -54,7 +54,7 @@ describe("the export view where nothing can encode", () => {
   it("states the real duration, clip count and frame size of the planned file", () => {
     render(<ExportView config={project([clip("a", 0, 2_000), clip("b", 2_000, 1_000)])} folderPath="/tmp/project" />);
     expect(screen.getByText("00:03.000")).toBeTruthy();
-    expect(screen.getByText("90 frames at 30 fps")).toBeTruthy();
+    expect(screen.getByText("72 frames at 24 fps")).toBeTruthy();
     expect(screen.getByText("1920 × 1080")).toBeTruthy();
   });
 
