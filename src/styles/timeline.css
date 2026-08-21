@@ -814,6 +814,20 @@
   display: grid;
   grid-template-rows: var(--control-lg) minmax(0, 1fr);
   background: var(--panel);
+  /* None of this is text anyone reads by selecting it: the heading, the
+     timecode, the format, the ruler's numbers and the clips' own labels are
+     chrome. Every gesture down here is a drag — scrubbing the ruler, moving a
+     clip, trimming one — and a drag over selectable chrome paints it blue.
+     Turned off permanently rather than for the duration of a drag, because the
+     browser starts a selection on the press, before a class applied by a
+     re-render can reach the DOM. */
+  user-select: none;
+}
+
+/* Except what really is text being edited: a track's name is typed into, and
+   typing means selecting. */
+.pro-timeline input {
+  user-select: text;
 }
 
 /* Three tracks, and the two outer ones are the SAME width whatever they hold —
@@ -1329,10 +1343,17 @@
   display: none;
 }
 
-/* Nothing is selectable while a clip is being dragged: a drag across the lanes
-   would otherwise paint the whole timeline blue with a text selection. */
-.timeline-view--dragging {
+/* A drag that leaves the timeline is still a drag: the pointer crosses the
+   monitor and the inspector on its way, and those DO hold readable text, so
+   they are frozen for the length of the gesture rather than for good. Scrubbing
+   the ruler counts — the pointer can wander anywhere while the playhead is
+   being pulled along. */
+.timeline-view--dragging,
+.timeline-view--scrubbing {
   user-select: none;
+}
+
+.timeline-view--dragging {
   cursor: grabbing;
 }
 
