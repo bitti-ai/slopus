@@ -257,8 +257,13 @@
    does not know the unit. */
 .settings-view {
   width: min(880px, 100%);
-  max-height: calc(100vh - var(--space-7) * 2);
-  max-height: calc(100dvh - var(--space-7) * 2);
+  /* ONE height, whichever tab is open. The two panels are nothing like the same
+     length — five path fields against three theme cards — and a dialog that
+     halved in height when the tab changed pulled the tab row itself out from
+     under the pointer that had just clicked it. The viewport cap still wins on
+     a short window, and the body scrolls inside whatever height that leaves. */
+  height: min(860px, calc(100vh - var(--space-7) * 2));
+  height: min(860px, calc(100dvh - var(--space-7) * 2));
   margin: 0 auto;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -609,8 +614,8 @@
   }
 
   .settings-view {
-    max-height: calc(100vh - var(--space-4) * 2);
-    max-height: calc(100dvh - var(--space-4) * 2);
+    height: min(860px, calc(100vh - var(--space-4) * 2));
+    height: min(860px, calc(100dvh - var(--space-4) * 2));
     padding: var(--space-5) var(--space-4);
   }
 

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
@@ -11,6 +12,19 @@ afterEach(cleanup);
 
 const open = () => render(<SettingsView onClose={() => undefined} />);
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+
+/* jsdom does no layout, so the one thing that can be checked here is that the
+   rule which makes the two tabs the same height is still in the sheet: the
+   panels differ by hundreds of pixels, and a shrink-to-fit dialog moved the tab
+   row out from under the pointer that had just clicked it. */
+describe("the frame the tabs sit in", () => {
+  it("gives the dialog a height of its own rather than letting the open tab set it", () => {
+    const css = readFileSync("src/styles/shell.css", "utf8");
+    const rule = css.slice(css.indexOf(".settings-view {"), css.indexOf(".settings-view__body"));
+    expect(rule).toMatch(/^\s*height: min\(/m);
+    expect(rule).not.toMatch(/^\s*max-height:/m);
+  });
+});
 
 describe("the settings screen", () => {
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
