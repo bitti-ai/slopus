@@ -976,21 +976,6 @@ describe("project workspace timecode", () => {
     expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual([]);
   });
 
-  it("describes only the route the bound references actually take", () => {
-    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    const config = parseProjectConfig({
-      ...fresh,
-      references: [{ id: "ref-text", kind: "text", name: "Mara", description: "Calm architect.", content: "Calm architect.", intendedUse: ["character"], createdAt: fresh.createdAt }],
-      generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-text"] }],
-    });
-    const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: fresh.generationJobs[0].id }));
-    expect(document.querySelector(".job-refs")!.textContent).toContain("The text definition is written into this scene’s prompt.");
-    // No image exists anywhere in this project, so NOTHING on the screen may
-    // claim something is sent to the engine as an asset.
-    expect(container.textContent).not.toContain("images are sent to the video engine");
-    expect(container.textContent).not.toContain("Images are sent to the video engine");
-  });
-
   it("says why Duplicate and Delete are unavailable, not just that they are", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     render(createElement(TimelineView, { config, folderPath: "C:\Timeline Project", onChange: () => undefined, onOpenGenerator: () => undefined }));

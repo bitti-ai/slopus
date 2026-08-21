@@ -363,9 +363,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
             {/* The request was already handed to the engine, so a change here
                 would say it steered a render it never touched. */}
             {refsLocked && <p className="job-refs__empty">This scene is already with the engine. Its references can be changed once it finishes, and the next run will use them.</p>}
-            {promptRefs.length === 0
-              ? <p className="job-refs__empty">The video engine only follows the words above.</p>
-              : <p className="job-refs__empty">{referenceRouting(promptRefs)} The tags are your own notes and don’t change what is sent.</p>}
+            {/* Only the empty case says anything now. With references actually
+                bound, the list above already shows what each one is and what is
+                wrong with any that will not be used; a paragraph restating the
+                route every one of them takes was a sentence about the system
+                rather than about this scene. */}
+            {promptRefs.length === 0 && <p className="job-refs__empty">The video engine only follows the words above.</p>}
           </div>
 
           <div className="job-actions">
@@ -498,21 +501,6 @@ function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs
     </button>)}
   </section>;
 }
-
-/* Only claim the route the bound references actually take. Saying "images are
-   sent … text definitions are written into the prompt" for a scene that has only
-   one of the two describes something that isn't happening. */
-const referenceRouting = (references: ProjectReference[]): string => {
-  const hasImage = references.some((reference) => reference.kind === "image");
-  const hasText = references.some((reference) => reference.kind !== "image");
-  if (hasImage && hasText) return "Images are sent to the video engine as reference assets; text definitions are written into this scene’s prompt.";
-  if (hasImage) return references.length === 1
-    ? "The image is sent to the video engine as a reference asset."
-    : "The images are sent to the video engine as reference assets.";
-  return references.length === 1
-    ? "The text definition is written into this scene’s prompt."
-    : "The text definitions are written into this scene’s prompt.";
-};
 
 /* Why a reference that is bound to this scene never reaches its prompt, or null
    when it does. The wording mirrors the References card so the two screens

@@ -241,19 +241,43 @@
   z-index: 60;
   inset: 0;
   overflow-y: auto;
+  display: grid;
+  align-content: center;
   padding: var(--space-7) var(--space-5);
   background: var(--scrim);
   backdrop-filter: blur(10px);
 }
 
+/* The screen is a panel with a fixed frame, not a document: the title, the
+   tabs and the footer stay put and only the panel between them scrolls. The
+   whole thing used to be one long column inside a scrolling overlay, so the
+   close button and "changes are saved as you type" both left the screen as
+   soon as the engine paths did. dvh rather than vh because a mobile-style
+   toolbar must not push the footer under the edge; vh first for anything that
+   does not know the unit. */
 .settings-view {
   width: min(880px, 100%);
+  max-height: calc(100vh - var(--space-7) * 2);
+  max-height: calc(100dvh - var(--space-7) * 2);
   margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   padding: var(--space-6);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-xl);
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+/* The only part that scrolls, and on an ordinary window it does not have to:
+   one tab's worth of settings fits. */
+.settings-view__body {
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for the focus ring on the first and last controls, which a clipped
+     overflow would otherwise cut in half. */
+  padding: 2px;
+  margin: 0 -2px;
 }
 
 .settings-view__head {
@@ -271,12 +295,64 @@
   letter-spacing: var(--tracking-hero);
 }
 
-.settings-view__lead {
-  max-width: 70ch;
-  margin: var(--space-4) 0 var(--space-5);
+/* --- Tabs -------------------------------------------------------------------
+   One row of two, each naming the panel below it. They carry the whole job the
+   section headings used to do, so those are gone with them. */
+
+.settings-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin: var(--space-5) 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-tabs button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: 0;
   color: var(--text-muted);
+  background: none;
   font-size: var(--text-base);
-  line-height: var(--leading-normal);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+  cursor: pointer;
+}
+
+.settings-tabs button:hover {
+  color: var(--text-secondary);
+}
+
+.settings-tabs button.active {
+  color: var(--text-primary);
+}
+
+/* Drawn over the row's own line rather than beside it, so the selected tab
+   reads as attached to the panel underneath. */
+.settings-tabs button.active::after {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-bright);
+}
+
+/* How many paths still need setting, readable from the other tab. */
+.settings-tabs button em {
+  min-width: 18px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  border: 1px solid var(--warning-line);
+  background: var(--warning-soft);
+  font: var(--weight-semibold) var(--text-2xs) / 18px var(--font-mono);
+  font-style: normal;
+  text-align: center;
 }
 
 .settings-status {
@@ -329,26 +405,10 @@
   background: var(--danger);
 }
 
+/* A section is a whole tab panel now, so it opens at the top of the body
+   rather than a heading's distance below the one before it. */
 .settings-section {
-  margin-top: var(--space-6);
-}
-
-.settings-section h2 {
-  margin: 0 0 var(--space-4);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
-}
-
-/* What a section is for, under its own heading rather than in one lead
-   paragraph that had to speak for every unrelated setting on the screen. */
-.settings-section__note {
-  max-width: 70ch;
-  margin: calc(var(--space-4) * -1) 0 var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
+  margin: 0;
 }
 
 .settings-section .settings-status {
@@ -433,8 +493,15 @@
   color: var(--accent-bright);
 }
 
+/* Five of these, and stacked (name, hint, field, state) each one was four
+   rows tall — the reason this screen needed scrolling at all. Side by side the
+   same five fit in a window without losing a word of what they say. */
 .settings-path {
-  padding: var(--space-4) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--line);
 }
 
@@ -474,8 +541,9 @@
 }
 
 .settings-path__row {
-  margin-top: var(--space-3);
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
 }
 
@@ -496,7 +564,7 @@
 }
 
 .settings-path__state {
-  margin-top: var(--space-2);
+  flex-basis: 100%;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -541,11 +609,19 @@
   }
 
   .settings-view {
+    max-height: calc(100vh - var(--space-4) * 2);
+    max-height: calc(100dvh - var(--space-4) * 2);
     padding: var(--space-5) var(--space-4);
+  }
+
+  .settings-path {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
   }
 
   .settings-path__row {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .settings-view__foot {
