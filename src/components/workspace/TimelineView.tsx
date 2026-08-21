@@ -223,6 +223,14 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     return () => grid.removeEventListener("wheel", onWheel);
   }, [duration, config.settings.frameRate]);
 
+  /** Any highlight the press just painted, undone. The chrome down here is not
+   *  selectable at all (see .pro-timeline), but a gesture can begin on a clip
+   *  and travel over the panels above, and a selection that was already in
+   *  progress goes on extending under the pointer. Clearing it at the start of
+   *  a gesture is the difference between dragging a clip and dragging a clip
+   *  through a blue smear. */
+  const dropSelection = () => window.getSelection?.()?.removeAllRanges();
+
   /** Turn a pointer position on the ruler into a playhead position. A ruler
    *  nothing has laid out has no scale, so it is left alone rather than
    *  sending the playhead to NaN. */
@@ -494,6 +502,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     // with, and a drag measured against a zero-width lane would put the clip at
     // an arbitrary place on the ruler. The clip still selects.
     if (!rect || rect.width <= 0) { setSelectedId(clip.id); return; }
+    dropSelection();
     const msPerPx = duration / rect.width;
     dragRef.current = {
       clipId: clip.id,
@@ -583,7 +592,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   };
 
   return (
-    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""}`} tabIndex={0} onKeyDown={(event) => {
+    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""} ${scrubbing ? "timeline-view--scrubbing" : ""}`} tabIndex={0} onKeyDown={(event) => {
       /* Delete works from the view itself and from a focused clip — the clip IS
          the thing being deleted, and having to leave it first to press the key
          is the kind of rule only the code knows. It deliberately does NOT fire
@@ -785,6 +794,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             className="time-ruler"
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture?.(event.pointerId);
+              dropSelection();
               setPlaying(false);
               setScrubbing(true);
               scrubTo(event.currentTarget, event.clientX);
