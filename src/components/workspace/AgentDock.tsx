@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { cancelAgentTurn, runAgentTurn, type ProviderId, type ProviderStatus } from "../../lib/runtime";
 import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
-import { PolStudioLogo } from "../PolStudioLogo";
 
 export function AgentDock({ context, record, providers, onRecord }: {
   context: string;
@@ -67,9 +66,6 @@ export function AgentDock({ context, record, providers, onRecord }: {
         {error && <p className="agent-conversation__error"><b>Pol</b>Couldn’t finish that request. {error}</p>}
       </div>}
       <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-        {/* The mark alone. The word beside it said what the logo already says,
-           and the input’s own label still names who is being asked. */}
-        <span className="agent-dock__identity"><PolStudioLogo compact decorative /></span>
         <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={blockedDetail ?? selected?.detail}>
           <i />
           <select aria-label="Agent provider" value={provider} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); saveAgentProvider(next); }}>
