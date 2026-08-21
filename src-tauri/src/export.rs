@@ -46,7 +46,9 @@ fn safe_file_name(value: &str) -> String {
 
 /// Decodes `encodeURIComponent` output back to the path the user chose. Only
 /// `%XX` is special; everything else is already the character it looks like.
-fn percent_decode(value: &str) -> Result<String, String> {
+/// Shared with the generated-video write, which carries its own paths in
+/// headers for the same reason: a raw body leaves nowhere else to put them.
+pub(crate) fn percent_decode(value: &str) -> Result<String, String> {
     let source = value.as_bytes();
     let mut bytes = Vec::with_capacity(source.len());
     let mut index = 0;
@@ -154,7 +156,7 @@ fn authorized_destination(value: &str) -> Result<PathBuf, String> {
 /// Writes beside the destination and renames on top of it, so an export that
 /// fails half way through cannot leave a truncated file where a playable one
 /// used to be. `fs::rename` replaces the destination on both platforms here.
-fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut temporary = destination.as_os_str().to_os_string();
     temporary.push(".part");
     let temporary = PathBuf::from(temporary);
