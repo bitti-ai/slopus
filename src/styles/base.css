@@ -30,6 +30,21 @@ body,
 body {
   min-height: 100vh;
   overflow-x: hidden;
+  /* Nothing in an editor is selected by dragging across it. Every surface here
+     is a control — clips are dragged, panels are scrolled, the ruler is
+     scrubbed — and a gesture that misses one used to leave a blue smear across
+     whatever it crossed. Selection belongs to the places text is TYPED, which
+     the rule below gives it back to. */
+  user-select: none;
+}
+
+/* Where text is written, it is text: selecting, double-clicking a word and
+   dragging through a value all keep working. */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  user-select: text;
 }
 
 /* --- Prose defaults -------------------------------------------------------- */

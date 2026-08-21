@@ -185,6 +185,11 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   const sceneClips = tracks.filter((track) => track.kind === "video").flatMap((track) => track.clips);
   const duration = useMemo(() => canvasDuration(config), [config]);
   const ticks = useMemo(() => rulerTicks(duration), [duration]);
+  /* The lanes are ruled at the SAME interval as the ruler above them, so a line
+     under a clip is a line under a number. They used to be a fixed 14.7% of the
+     width — a spacing that meant nothing at any duration, and drifted further
+     from the labels the longer the project got. */
+  const tickStepMs = (ticks.length > 1 ? ticks[1] - ticks[0] : Math.max(1, Math.ceil(duration / 1000))) * 1000;
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
 
@@ -592,7 +597,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   };
 
   return (
-    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""} ${scrubbing ? "timeline-view--scrubbing" : ""}`} tabIndex={0} onKeyDown={(event) => {
+    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""}`} tabIndex={0} onKeyDown={(event) => {
       /* Delete works from the view itself and from a focused clip — the clip IS
          the thing being deleted, and having to leave it first to press the key
          is the kind of rule only the code knows. It deliberately does NOT fire
@@ -784,7 +789,11 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
           </div>
         </header>
-        <div className="timeline-grid" ref={timelineGrid} title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
+        <div
+          className="timeline-grid"
+          ref={timelineGrid}
+          style={{ "--lane-grid": `${(tickStepMs / duration) * 100}%` } as React.CSSProperties}
+          title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
           <div className="track-corner"><span>Tracks</span></div>
           {/* Press to jump, hold and drag to scrub. The monitor seeks to wherever
               this lands, so dragging along the ruler runs the picture past under

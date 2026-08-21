@@ -817,20 +817,6 @@
   display: grid;
   grid-template-rows: var(--control-lg) minmax(0, 1fr);
   background: var(--panel);
-  /* None of this is text anyone reads by selecting it: the heading, the
-     timecode, the format, the ruler's numbers and the clips' own labels are
-     chrome. Every gesture down here is a drag — scrubbing the ruler, moving a
-     clip, trimming one — and a drag over selectable chrome paints it blue.
-     Turned off permanently rather than for the duration of a drag, because the
-     browser starts a selection on the press, before a class applied by a
-     re-render can reach the DOM. */
-  user-select: none;
-}
-
-/* Except what really is text being edited: a track's name is typed into, and
-   typing means selecting. */
-.pro-timeline input {
-  user-select: text;
 }
 
 /* Three tracks, and the two outer ones are the SAME width whatever they hold —
@@ -1169,7 +1155,10 @@
   border-bottom: 1px solid var(--line);
   background-color: var(--bg);
   background-image: linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 14.7% 100%;
+  /* Set by the view from the ruler's own tick step, so the lines line up with
+     the timecodes above. The fallback is only for a lane rendered before the
+     grid has been measured. */
+  background-size: var(--lane-grid, 14.7%) 100%;
 }
 
 .track-lane.muted {
@@ -1346,16 +1335,8 @@
   display: none;
 }
 
-/* A drag that leaves the timeline is still a drag: the pointer crosses the
-   monitor and the inspector on its way, and those DO hold readable text, so
-   they are frozen for the length of the gesture rather than for good. Scrubbing
-   the ruler counts — the pointer can wander anywhere while the playhead is
-   being pulled along. */
-.timeline-view--dragging,
-.timeline-view--scrubbing {
-  user-select: none;
-}
-
+/* Selection is off everywhere outside a text field (see base.css), so a drag
+   only has to say what it IS. */
 .timeline-view--dragging {
   cursor: grabbing;
 }
