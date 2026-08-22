@@ -1,12 +1,12 @@
-import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, Ban, Check, ChevronRight, Clock3, FileText, Image as ImageIcon, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
+import { Ban, Check, FileText, Image as ImageIcon, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolutionLabel } from "../../lib/export";
-import { isTauri } from "../../lib/persistence";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot, type TimelineClip, type TimelineTrack } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { ReferenceImage } from "./ReferenceImage";
-import { SceneEditor } from "./SceneEditor";
+import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
+import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
+import { progressTitle, stageCopy, statusIcon, STATUS_WORD } from "./sceneStatus";
 
 interface GeneratorViewProps {
   config: ProjectConfig;
@@ -17,23 +17,39 @@ interface GeneratorViewProps {
   selectedJobId?: string;
 }
 
-type JobStatus = GenerationJob["status"];
-
+/* The Generator is a BOARD and a PANEL.
+ *
+ * The board is every scene in the project, each one a row of shot cards reading
+ * left to right in the order they play, separated by the line that carries the
+ * scene's own name, state and settings. A card is the summary of a shot: its
+ * picture once the scene has been rendered, the line written for it, and the
+ * settings hung off it.
+ *
+ * The panel is whatever is open — one shot, or the scene itself. Nothing is
+ * edited on the board, and nothing is duplicated in the panel: there is exactly
+ * one place to change any given thing. */
 export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
-  const [selectedId, setSelectedId] = useState(selectedJobId ?? config.generationJobs.find((job) => job.status === "generating")?.id ?? config.generationJobs[0]?.id);
-  const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
+  const jobs = config.generationJobs;
   const configRef = useRef(config);
   configRef.current = config;
-  const jobs = config.generationJobs;
-  const selected = jobs.find((job) => job.id === selectedId);
-  /* "ready" means the pictures exist and the file does not yet — the app is
-     encoding them. That is work in progress, so it belongs beside the render it
-     came out of rather than under "Already run", where it would sit looking
-     finished with nothing to open. */
+
+  /* A scene is always what is named; the shot inside it is what a card opens.
+     Opening the Generator, or arriving from a clip in the timeline, opens the
+     SCENE — the thing that has a state, a prompt and a Generate button. */
+  const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
+  const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
+
+  useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
+
+  /* A scene can be deleted, and a shot can be removed, from under the panel.
+     Falling back to the first scene beats a panel pointing at nothing. */
+  const selected = jobs.find((job) => job.id === selection.jobId) ?? jobs[0];
+  const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
+  const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
+  const openShot = shotIndex >= 0 ? selectedShots[shotIndex] : null;
+
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
-  const drafts = jobs.filter((job) => job.status === "draft");
-  const completed = jobs.filter((job) => ["completed", "failed", "cancelled"].includes(job.status));
   // Queued and generating scenes have already been handed to the engine with
   // their references attached; re-binding now would change nothing about that
   // run while claiming otherwise.
@@ -49,19 +65,17 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
      user can see and fix; the button says the reason rather than sitting grey. */
   const blocked = selected ? sendBlocker(selected, config.references) : null;
 
-  useEffect(() => { if (selectedJobId) setSelectedId(selectedJobId); }, [selectedJobId]);
-
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
     onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) });
   };
 
-  /* An edit from the scene editor. Writing a reference into a line BINDS it to
-     the scene, because binding is what gives it a <Subject N> and puts its
-     picture in `reference_paths` — a citation the engine was never sent the
-     reference for would point at nothing. Nothing is ever auto-unbound: taking
-     a name out of one line is not a decision to stop steering the scene with it,
-     and the checkbox list below is where that decision is made. */
+  /* An edit from the panel. Writing a reference into a line BINDS it to the
+     scene, because binding is what gives it a <Subject N> and puts its picture
+     in `reference_paths` — a citation the engine was never sent the reference
+     for would point at nothing. Nothing is ever auto-unbound: taking a name out
+     of one line is not a decision to stop steering the scene with it, and the
+     checkbox list in the scene panel is where that decision is made. */
   const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) => {
     const next: Partial<GenerationJob> = { ...updates, updatedAt: new Date().toISOString() };
     if (updates.shots) {
@@ -74,6 +88,44 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       next.referenceIds = referenceIds;
     }
     updateJob(job.id, next);
+  };
+
+  /* --- The shots of a scene ------------------------------------------------
+     Every one of these goes through writeShots, so the mirrored `prompt` and
+     `creativeBrief` can never fall behind the lines they mirror. */
+
+  const setShots = (job: GenerationJob, next: SceneShot[], extra: Partial<GenerationJob> = {}) =>
+    updateScene(job, writeShots(job, next, extra));
+
+  const patchShot = (job: GenerationJob, shotId: string, updates: Partial<SceneShot>) =>
+    setShots(job, sceneShots(job).map((shot) => shot.id === shotId ? { ...shot, ...updates } : shot));
+
+  const addShot = (job: GenerationJob) => {
+    const shots = sceneShots(job);
+    const duration = sceneDurationSeconds(job);
+    const last = shots[shots.length - 1];
+    const halfway = Math.round(((last.startSeconds + duration) / 2) / STEP_SECONDS) * STEP_SECONDS;
+    const start = Math.min(duration, Math.max(last.startSeconds + STEP_SECONDS, halfway));
+    const shot: SceneShot = { id: `shot-${crypto.randomUUID()}`, startSeconds: start, action: "" };
+    setShots(job, [...shots, shot]);
+    // The new card is blank, so open it: there is nowhere else to write it.
+    setSelection({ jobId: job.id, shotId: shot.id });
+  };
+
+  const removeShot = (job: GenerationJob, shotId: string) => {
+    const shots = sceneShots(job);
+    // A scene is at least one shot: with none there is nowhere to write, and
+    // the compiler would have nothing to make a [Shot 1] out of.
+    if (shots.length <= 1) return;
+    setShots(job, shots.filter((shot) => shot.id !== shotId));
+    setSelection({ jobId: job.id, shotId: null });
+  };
+
+  const setDuration = (job: GenerationJob, value: number) => {
+    const next = Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, Math.round(value / STEP_SECONDS) * STEP_SECONDS));
+    // A shot cannot start after the scene ends, so shortening the scene pulls
+    // the later cuts back with it rather than leaving them past the end.
+    setShots(job, sceneShots(job).map((shot) => ({ ...shot, startSeconds: Math.min(shot.startSeconds, next) })), { durationSeconds: next });
   };
 
   const requestFor = (job: GenerationJob): VidfabGenerationRequest => {
@@ -114,9 +166,9 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a
      scene any more: the + button adds a scene holding one blank shot, and the
-     shots are written in the editor above. PolStudio still writes no line for
-     anyone, so the scene arrives with no words and carries UNTITLED_SCENE as
-     its name rather than a phrase this app made up.
+     shots are written in the panel beside the board. PolStudio still writes no
+     line for anyone, so the scene arrives with no words and carries
+     UNTITLED_SCENE as its name rather than a phrase this app made up.
 
      A scene built FROM a prompt is Pol’s job: the bar along the bottom of the
      window hands the request to Claude Code or Codex, which returns the whole
@@ -126,7 +178,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   const newScene = () => {
     const job = createDraftGenerationJob("");
     onChange({ ...config, generationJobs: [job, ...jobs] });
-    setSelectedId(job.id);
+    setSelection({ jobId: job.id, shotId: null });
   };
 
   const startDraft = async (job: GenerationJob) => {
@@ -184,177 +236,219 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     updateJob(job.id, { status: "cancelled", stage: "failed", updatedAt: new Date().toISOString() });
   };
 
-  return <div className="generator-view">
-    <aside className="queue-panel" aria-label="Scenes">
-      <div className="queue-panel__title">
-        <div>
-          <span>Scenes</span>
-          <b>{queueSummary(active.length, queued.length, jobs.length)}</b>
-        </div>
-        {/* Adds the scene and leaves it empty. PolStudio still writes no words
-            for anyone — it gives the user somewhere to write them, and the
-            scene keeps the name UNTITLED_SCENE until they rename it. */}
-        <button className="queue-panel__new" onClick={newScene} aria-label="Add a scene" title="Add an empty scene — you write the shots"><Plus size={18} /></button>
-      </div>
-      <div className="queue-panel__scroll">
-        <QueueGroup title="Rendering now" jobs={active} selectedId={selectedId} onSelect={setSelectedId} />
-        <QueueGroup title="Waiting to render" jobs={queued} selectedId={selectedId} onSelect={setSelectedId} />
-        <QueueGroup title="Drafts" jobs={drafts} selectedId={selectedId} onSelect={setSelectedId} />
-        <QueueGroup title="Already run" jobs={completed} selectedId={selectedId} onSelect={setSelectedId} />
-        {jobs.length === 0 && <p className="queue-empty">No scenes yet. Choose + to add an empty one, or ask Pol in the bar along the bottom to build one from a prompt.</p>}
-      </div>
-      {/* One line: the headline already IS the status. */}
-      <div className={`queue-runtime queue-runtime--${runtime?.state ?? "checking"}`}>
-        <span className="queue-runtime__state"><i /> {runtimeHeadline(runtime)}</span>
-      </div>
-    </aside>
-
+  return <div className={`generator-view ${selected ? "" : "generator-view--empty"}`}>
     <main className="generator-main">
       <header className="generator-heading">
-        <h1>Generator</h1>
+        <div className="generator-heading__title">
+          <h1>Generator</h1>
+          <p>{boardSummary(active.length, queued.length, jobs.length)}</p>
+        </div>
+        <div className="generator-heading__actions">
+          {/* One line: the headline already IS the status. */}
+          <span className={`generator-runtime generator-runtime--${runtime?.state ?? "checking"}`}>
+            <i aria-hidden="true" /> {runtimeHeadline(runtime)}
+          </span>
+          {/* Adds the scene and leaves it empty. PolStudio still writes no words
+              for anyone — it gives the user somewhere to write them, and the
+              scene keeps the name UNTITLED_SCENE until they rename it. */}
+          <button className="secondary-button" onClick={newScene} title="Add an empty scene — you write the shots">
+            <Plus size={16} aria-hidden="true" /> Add a scene
+          </button>
+        </div>
       </header>
 
-      {selected && <section className="job-detail">
-        <div className="job-detail__visual">
-          {/* THE control on this screen: the lines the user writes, the shots
-              they are split into, and the settings hung off each one. */}
-          <SceneEditor
-            key={selected.id}
-            job={selected}
-            references={config.references}
-            disabled={refsLocked}
-            onChange={(updates) => updateScene(selected, updates)}
-          />
-          {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
+      {jobs.length > 0 && <SceneBoard
+        jobs={jobs}
+        folderPath={folderPath}
+        references={config.references}
+        selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
+        onSelect={setSelection}
+        onAddShot={addShot}
+      />}
 
-          {/* Every setting on this scene collapsed into the one string vidfab is
-              given. Recompiled from what the scene holds right now, so it cannot
-              disagree with what the next run sends. */}
-          <CompiledPrompt
-            segments={compileGenerationJobSegments(selected, boundRefs)}
-            caption={refsLocked
-              ? "This is the prompt the engine was given for the run in progress."
-              : "Rebuilt from this scene’s shots, settings and references every time it is sent."}
-          />
+      {/* No scenes at all — which, on a new project, is where everyone starts.
+          This is the whole of the "how do I start" advice now that the composer
+          is gone, so it has to name both doors: the button below, and Pol. */}
+      {jobs.length === 0 && <div className="job-empty">
+        <span className="job-empty__icon"><Sparkles size={26} /></span>
+        <h2>Start with one scene</h2>
+        <p>An empty scene is one blank shot waiting for a line. Add one, then write what should happen on screen — who or what is in frame, what they do.</p>
+        <ul className="job-empty__tips">
+          <li>A scene can be up to 15 seconds and split into as many shots as you like.</li>
+          <li>Each shot is a card. Choose one to write its line and set it up.</li>
+          <li>Drag a reference into a line and the prompt cites it as a subject.</li>
+          <li>You can read the finished prompt before anything is sent.</li>
+          <li>Or ask Pol in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
+        </ul>
+        <button className="primary-button job-empty__add" onClick={newScene}><Plus size={16} /> Add an empty scene</button>
+      </div>}
+    </main>
 
-          <div className="job-progress-block">
-            <div className="job-progress-block__head">
-              <b>{progressTitle(selected)}</b>
-              <span>{stageCopy(selected)}</span>
+    {selected && <aside className="generator-panel" aria-label={openShot ? `Shot ${shotIndex + 1} of ${selected.title}` : `Scene: ${selected.title}`}>
+      {openShot
+        ? <>
+          <header className="panel-head">
+            {/* The way back up: the scene this shot belongs to, which is the
+                same thing its line on the board opens. */}
+            <button type="button" className="panel-head__up" onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
+              {selected.title} · Scene settings
+            </button>
+            <h2>Shot {shotIndex + 1}<small>of {selectedShots.length === 1 ? "one shot" : `${selectedShots.length} shots`}</small></h2>
+          </header>
+          <div className="panel-scroll">
+            <ShotInspector
+              key={openShot.id}
+              job={selected}
+              shots={selectedShots}
+              shot={openShot}
+              index={shotIndex}
+              endsAt={shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)}
+              duration={sceneDurationSeconds(selected)}
+              references={config.references}
+              disabled={refsLocked}
+              removable={selectedShots.length > 1}
+              onChange={(updates) => patchShot(selected, openShot.id, updates)}
+              onRemove={() => removeShot(selected, openShot.id)}
+            />
+            {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
+          </div>
+        </>
+        : <>
+          <header className="panel-head">
+            <div className="job-title">
+              <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>
+              <div>
+                {/* The badge is on the scene's own line on the board, where the
+                    eye compares one scene against the next. A second copy of it
+                    an inch away from the first says nothing new. */}
+                {/* The title is the one part of a scene PolStudio writes for the
+                    user — taken from their first words — so it has to be theirs
+                    to change. Blanking it falls back rather than saving a
+                    nameless scene the schema would reject. */}
+                <h2><input
+                  className="job-title__name"
+                  value={selected.title}
+                  aria-label={`Rename ${selected.title}`}
+                  title="Rename this scene"
+                  onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
+                /></h2>
+              </div>
             </div>
-            <div className="progress-track"><i style={{ width: `${selected.progress * 100}%` }} /></div>
-            <ol className="stage-rail">
-              {STAGES.map((stage, index) => {
-                const done = selected.progress > 0 && selected.progress >= stage.at;
-                return <li key={stage.label} className={done ? "done" : ""}>
-                  <i>{done ? <Check size={14} /> : index + 1}</i>
-                  <span>{stage.label}</span>
-                </li>;
+          </header>
+
+          <div className="panel-scroll">
+            <div className="job-progress-block">
+              <div className="job-progress-block__head">
+                <b>{progressTitle(selected)}</b>
+                <span>{stageCopy(selected)}</span>
+              </div>
+              <div className="progress-track"><i style={{ width: `${selected.progress * 100}%` }} /></div>
+              <ol className="stage-rail">
+                {STAGES.map((stage, index) => {
+                  const done = selected.progress > 0 && selected.progress >= stage.at;
+                  return <li key={stage.label} className={done ? "done" : ""}>
+                    <i>{done ? <Check size={14} /> : index + 1}</i>
+                    <span>{stage.label}</span>
+                  </li>;
+                })}
+                <li className="stage-rail__blocked">
+                  <i><Ban size={14} /></i>
+                  <span>Save as a video file<small>Not built yet</small></span>
+                </li>
+              </ol>
+            </div>
+
+            {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note">
+              <span>What actually happened</span>
+              <p>{planNotes[selected.id] ?? selected.error}</p>
+              <small>Reported by the video engine (vidfab).</small>
+            </div>}
+
+            {/* How long the scene runs, where its cuts fall, and the three
+                things the H3 guide defines once per prompt. */}
+            <SceneInspector
+              key={selected.id}
+              job={selected}
+              shots={selectedShots}
+              disabled={refsLocked}
+              onChange={(updates) => updateScene(selected, updates)}
+              onShots={(next) => setShots(selected, next)}
+              onDuration={(value) => setDuration(selected, value)}
+              onSelectShot={(shotId) => setSelection({ jobId: selected.id, shotId })}
+            />
+
+            {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
+
+            <div className="job-refs">
+              <span>{promptRefs.length === 0 ? "No references used by this scene" : promptRefs.length === 1 ? "1 reference guides this scene" : `${promptRefs.length} references guide this scene`}</span>
+              {/* Every reference in the project, each a checkbox: which ones steer
+                  a scene is the user's decision. Writing one into a line ticks it
+                  here; unticking it takes it out of the prompt and out of what is
+                  sent to the engine. A bound reference the prompt skips stays
+                  listed with its reason — hiding it would leave the user
+                  wondering where it went. */}
+              {config.references.map((ref) => {
+                const bound = selected.referenceIds.includes(ref.id);
+                const picture = ref.kind === "image" && (ref.relativePath || ref.sourcePath);
+                const skipped = skipReason(ref);
+                return <label key={ref.id} className={`job-ref ${bound ? "job-ref--bound" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={bound}
+                    disabled={refsLocked}
+                    onChange={() => toggleReference(selected, ref.id)}
+                  />
+                  {/* The reference's real picture, not a stand-in. aria-hidden
+                      because the name it illustrates is the next node in this
+                      same <label>, and repeating it would say every reference
+                      twice when the checkbox announces itself. */}
+                  <span className="ref-mini" aria-hidden="true">
+                    {picture
+                      ? <ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt="" />
+                      : referenceKindIcon(ref.kind)}
+                  </span>
+                  <b>{ref.name}</b>
+                  {skipped
+                    ? <p className="job-refs__reason">{skipped}</p>
+                    : bound && !isReferenceDescribed(ref)
+                      // Used, but incomplete: the picture goes to the engine while
+                      // nothing tells it what to keep. Silence here let a
+                      // boilerplate-filled card look finished.
+                      ? <p className="job-refs__reason">Not described yet — the picture is sent, but nothing tells the engine what to keep.</p>
+                      : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
+                </label>;
               })}
-              <li className="stage-rail__blocked">
-                <i><Ban size={14} /></i>
-                <span>Save as a video file<small>Not built yet</small></span>
-              </li>
-            </ol>
-          </div>
-        </div>
-
-        <aside className="job-detail__info">
-          <div className="job-title">
-            <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>
-            <div>
-              <span className="job-title__badge">{STATUS_BADGE[selected.status]}</span>
-              {/* The title is the one part of a scene PolStudio writes for the
-                  user — taken from their first words — so it has to be theirs
-                  to change. Blanking it falls back rather than saving a
-                  nameless scene the schema would reject. */}
-              <h2><input
-                className="job-title__name"
-                value={selected.title}
-                aria-label={`Rename ${selected.title}`}
-                title="Rename this scene"
-                onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
-              /></h2>
+              {config.references.length === 0 && <p className="job-refs__empty">This project has no references yet. Add one under References and it can steer this scene.</p>}
+              {/* Only the empty case says anything now. With references actually
+                  bound, the list above already shows what each one is and what is
+                  wrong with any that will not be used; a paragraph restating the
+                  route every one of them takes was a sentence about the system
+                  rather than about this scene. */}
+              {promptRefs.length === 0 && <p className="job-refs__empty">The video engine only follows the words in the shots.</p>}
             </div>
-          </div>
 
-          {/* A labelled placeholder, never invented art — the same rule the
-              scene thumb, media thumb and reference cards follow. PolStudio
-              cannot display real frames yet, so it shows none. */}
-          <div className={`generation-preview generation-preview--${selected.status}`}>
-            {selected.status === "generating" && <span className="generation-scanner" aria-hidden="true" />}
-            <span className="preview-status">{previewStatus(selected)}</span>
-            <p className="generation-preview__caption">{previewCaption(selected)}</p>
-          </div>
+            {/* Every setting on this scene collapsed into the one string vidfab is
+                given. Recompiled from what the scene holds right now, so it cannot
+                disagree with what the next run sends. */}
+            <CompiledPrompt
+              segments={compileGenerationJobSegments(selected, boundRefs)}
+              caption={refsLocked
+                ? "This is the prompt the engine was given for the run in progress."
+                : "Rebuilt from this scene’s shots, settings and references every time it is sent."}
+            />
 
-          {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note">
-            <span>What actually happened</span>
-            <p>{planNotes[selected.id] ?? selected.error}</p>
-            <small>Reported by the video engine (vidfab).</small>
-          </div>}
-
-          <dl className="job-meta">
-            <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
-            <div><dt>Scene length</dt><dd>{sceneDurationSeconds(selected).toFixed(1)} seconds, {sceneShots(selected).length === 1 ? "one shot" : `${sceneShots(selected).length} shots`}</dd></div>
-            {/* The project's own settings, not this scene's. The frame size is
-                what the edit is exported at; the engine picks its own canvas
-                from the shape alone (set_aspect is the only geometry vidfab
-                takes), and the plan note above reports the one it picked. */}
-            <div><dt>Shape</dt><dd>{config.settings.aspectRatio}</dd></div>
-            <div><dt>Frame size</dt><dd>{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</dd></div>
-            <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
-            <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
-          </dl>
-
-          <div className="job-refs">
-            <span>{promptRefs.length === 0 ? "No references used by this scene" : promptRefs.length === 1 ? "1 reference guides this scene" : `${promptRefs.length} references guide this scene`}</span>
-            {/* Every reference in the project, each a checkbox: which ones steer
-                a scene is the user's decision. Writing one into a line ticks it
-                here; unticking it takes it out of the prompt and out of what is
-                sent to the engine. A bound reference the prompt skips stays
-                listed with its reason — hiding it would leave the user
-                wondering where it went. */}
-            {config.references.map((ref) => {
-              const bound = selected.referenceIds.includes(ref.id);
-              const picture = ref.kind === "image" && (ref.relativePath || ref.sourcePath);
-              const skipped = skipReason(ref);
-              return <label key={ref.id} className={`job-ref ${bound ? "job-ref--bound" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={bound}
-                  disabled={refsLocked}
-                  onChange={() => toggleReference(selected, ref.id)}
-                />
-                {/* The reference's real picture, not a stand-in. aria-hidden
-                    because the name it illustrates is the next node in this
-                    same <label>, and repeating it would say every reference
-                    twice when the checkbox announces itself. */}
-                <span className="ref-mini" aria-hidden="true">
-                  {picture
-                    ? <ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt="" />
-                    : referenceKindIcon(ref.kind)}
-                </span>
-                <b>{ref.name}</b>
-                {skipped
-                  ? <p className="job-refs__reason">{skipped}</p>
-                  : bound && !isReferenceDescribed(ref)
-                    // Used, but incomplete: the picture goes to the engine while
-                    // nothing tells it what to keep. Silence here let a
-                    // boilerplate-filled card look finished.
-                    ? <p className="job-refs__reason">Not described yet — the picture is sent, but nothing tells the engine what to keep.</p>
-                    : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
-              </label>;
-            })}
-            {config.references.length === 0 && <p className="job-refs__empty">This project has no references yet. Add one under References and it can steer this scene.</p>}
-            {/* The request was already handed to the engine, so a change here
-                would say it steered a render it never touched. */}
-            {refsLocked && <p className="job-refs__empty">This scene is already with the engine. Its references can be changed once it finishes, and the next run will use them.</p>}
-            {/* Only the empty case says anything now. With references actually
-                bound, the list above already shows what each one is and what is
-                wrong with any that will not be used; a paragraph restating the
-                route every one of them takes was a sentence about the system
-                rather than about this scene. */}
-            {promptRefs.length === 0 && <p className="job-refs__empty">The video engine only follows the words above.</p>}
+            <dl className="job-meta">
+              <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
+              <div><dt>Scene length</dt><dd>{sceneDurationSeconds(selected).toFixed(1)} seconds, {selectedShots.length === 1 ? "one shot" : `${selectedShots.length} shots`}</dd></div>
+              {/* The project's own settings, not this scene's. The frame size is
+                  what the edit is exported at; the engine picks its own canvas
+                  from the shape alone (set_aspect is the only geometry vidfab
+                  takes), and the plan note above reports the one it picked. */}
+              <div><dt>Shape</dt><dd>{config.settings.aspectRatio}</dd></div>
+              <div><dt>Frame size</dt><dd>{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</dd></div>
+              <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
+              <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
+            </dl>
           </div>
 
           <div className="job-actions">
@@ -405,26 +499,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               <p className="job-actions__note">This run finished without a video file in your project folder, so there is nothing to add to your edit.</p>
             </>}
           </div>
-        </aside>
-      </section>}
-
-      {/* No scene selected — which, on a new project, means none exists. This
-          is the whole of the "how do I start" advice now that the composer is
-          gone, so it has to name both doors: the button below, and Pol. */}
-      {!selected && <div className="job-empty">
-        <span className="job-empty__icon"><Sparkles size={26} /></span>
-        <h2>Start with one scene</h2>
-        <p>An empty scene is one blank shot waiting for a line. Add one, then write what should happen on screen — who or what is in frame, what they do.</p>
-        <ul className="job-empty__tips">
-          <li>A scene can be up to 15 seconds and split into as many shots as you like.</li>
-          <li>Each shot gets its own line, its own start time and its own settings.</li>
-          <li>Drag a reference into a line and the prompt cites it as a subject.</li>
-          <li>You can read the finished prompt before anything is sent.</li>
-          <li>Or ask Pol in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
-        </ul>
-        <button className="primary-button job-empty__add" onClick={newScene}><Plus size={16} /> Add an empty scene</button>
-      </div>}
-    </main>
+        </>}
+    </aside>}
   </div>;
 }
 
@@ -464,26 +540,6 @@ function CompiledPrompt({ segments, caption }: { segments: PromptSegment[]; capt
   </section>;
 }
 
-/* The rail sits before the <h1> in the DOM, so its group titles are labelled
-   groups rather than headings — otherwise the document outline would start
-   mid-tree with an <h3>. */
-function QueueGroup({ title, jobs, selectedId, onSelect }: { title: string; jobs: GenerationJob[]; selectedId?: string; onSelect: (id: string) => void }) {
-  if (jobs.length === 0) return null;
-  const labelId = `queue-group-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  return <section className="queue-group" role="group" aria-labelledby={labelId}>
-    <p className="queue-group__label" id={labelId}>{title}<span>{jobs.length}</span></p>
-    {jobs.map((job) => <button key={job.id} className={selectedId === job.id ? "selected" : ""} onClick={() => onSelect(job.id)}>
-      <span className={`queue-thumb queue-thumb--${job.status}`}>{statusIcon(job.status)}</span>
-      <span className="queue-row__text">
-        <b>{job.title}</b>
-        <small>{queueLine(job)}</small>
-        {job.status === "generating" && <i className="mini-progress"><em style={{ width: `${job.progress * 100}%` }} /></i>}
-      </span>
-      <ChevronRight size={16} />
-    </button>)}
-  </section>;
-}
-
 /* Why a reference that is bound to this scene never reaches its prompt, or null
    when it does. The wording mirrors the References card so the two screens
    describe the same state in the same words. */
@@ -518,99 +574,11 @@ const STAGES: Array<{ label: string; at: number }> = [
   { label: "Save", at: 0.9 },
 ];
 
-const STATUS_BADGE: Record<JobStatus, string> = {
-  draft: "DRAFT",
-  queued: "IN QUEUE",
-  generating: "RENDERING",
-  ready: "SAVING",
-  completed: "FINISHED",
-  failed: "FAILED",
-  cancelled: "CANCELLED",
-};
-
-const STATUS_WORD: Record<JobStatus, string> = {
-  draft: "Saved as a draft",
-  queued: "Waiting to render",
-  generating: "Rendering now",
-  ready: "Saving the video file",
-  completed: "Finished",
-  failed: "Stopped by an error",
-  cancelled: "Stopped by you",
-};
-
-const queueSummary = (active: number, waiting: number, total: number) => {
+const boardSummary = (active: number, waiting: number, total: number) => {
   if (total === 0) return "Nothing here yet";
   if (active > 0) return `${active} rendering · ${waiting} waiting`;
   if (waiting > 0) return `${waiting} waiting to render`;
   return total === 1 ? "1 scene" : `${total} scenes`;
-};
-
-const queueLine = (job: GenerationJob) => {
-  const shots = sceneShots(job).length;
-  const shape = `${sceneDurationSeconds(job).toFixed(1)}s · ${shots === 1 ? "1 shot" : `${shots} shots`}`;
-  switch (job.status) {
-    case "generating": return `Rendering · ${Math.round(job.progress * 100)}%`;
-    case "queued": return "Waiting its turn";
-    case "draft": return `Draft — ${shape}`;
-    case "ready": return `Saving the video file · ${Math.round(job.progress * 100)}%`;
-    case "completed": return job.outputRelativePath ? `Ready to use · ${shape}` : "Finished with no file";
-    case "failed": return "Didn’t finish";
-    case "cancelled": return "Cancelled";
-  }
-};
-
-/* Encoding turns the same spinner as rendering: it is the app working, not the
-   app waiting, and a tick beside "saving" would say it was already done. */
-const statusIcon = (status: JobStatus) => status === "generating" || status === "ready" ? <LoaderCircle size={16} /> : status === "completed" ? <Check size={16} /> : status === "failed" ? <AlertCircle size={16} /> : status === "cancelled" ? <Ban size={16} /> : <Clock3 size={16} />;
-
-const progressTitle = (job: GenerationJob) => {
-  switch (job.status) {
-    case "generating": return `${Math.round(job.progress * 100)}% rendered`;
-    case "queued": return "Waiting to start";
-    case "draft": return "Draft saved";
-    case "ready": return "Saving the video file";
-    case "completed": return job.outputRelativePath ? "Ready for your edit" : "Finished with no file";
-    case "failed": return "Didn’t finish";
-    case "cancelled": return "Generation stopped";
-  }
-};
-
-const stageCopy = (job: GenerationJob) => {
-  switch (job.status) {
-    case "generating": return "The video engine is building the motion and the sound.";
-    case "queued": return "Waiting for the scene ahead of it to finish.";
-    case "draft": return "Saved with your project. Nothing has been rendered yet.";
-    case "ready": return "The pictures are rendered. They are being encoded into a video file in your project folder.";
-    case "completed": return job.outputRelativePath ? "Saved in your project and ready to drop into the timeline." : "This run ended without saving a video file.";
-    case "failed": return "The run stopped before it finished. You can try it again.";
-    case "cancelled": return "You stopped this one. You can run it again.";
-  }
-};
-
-const previewStatus = (job: GenerationJob) => {
-  switch (job.status) {
-    case "generating": return <><LoaderCircle size={15} /> Rendering {Math.round(job.progress * 100)}%</>;
-    case "queued": return <><Clock3 size={15} /> Waiting in queue</>;
-    case "draft": return <><Clock3 size={15} /> Draft — nothing rendered</>;
-    case "ready": return <><LoaderCircle size={15} /> Saving {Math.round(job.progress * 100)}%</>;
-    case "completed": return job.outputRelativePath ? <><Check size={15} /> Ready for your edit</> : <><AlertCircle size={15} /> No video file was saved</>;
-    case "failed": return <><AlertCircle size={15} /> Generation failed</>;
-    case "cancelled": return <><Ban size={15} /> Generation cancelled</>;
-  }
-};
-
-/* Says out loud why the placeholder is empty, so the blank surface is never
-   read as "the picture failed to load". */
-const previewCaption = (job: GenerationJob): string => {
-  switch (job.status) {
-    case "generating": return "Frames are being built now. PolStudio can’t show them while they are still in memory.";
-    case "queued": return "This scene hasn’t started, so there is no picture to show.";
-    case "draft": return "Nothing has been rendered, so there is no picture to show.";
-    case "ready": return "The pictures are being encoded into a video file. It can be watched in the timeline once it lands.";
-    case "completed": return job.outputRelativePath ? "A video file was saved. Open it in the timeline to watch it." : "This run ended without a video file, so there is no picture to show.";
-    case "failed": return "The run stopped before any frames were kept.";
-    case "cancelled": return "You stopped this run, so no frames were kept.";
-  }
 };
 
 const runtimeHeadline = (runtime: VidfabStatus | null) => {

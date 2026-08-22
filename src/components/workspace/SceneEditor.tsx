@@ -1,5 +1,5 @@
-import { Plus, Trash2, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Trash2, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import {
   actionReferenceIds,
   danglingReferenceTokens,
@@ -9,7 +9,6 @@ import {
   referenceToken,
   sceneBriefText,
   sceneDurationSeconds,
-  sceneShots,
   splitActionText,
   SCENE_MAX_SECONDS,
   SCENE_MIN_SECONDS,
@@ -35,149 +34,273 @@ export const REFERENCE_DRAG_TYPE = "application/x-polstudio-reference";
 /** The step the length slider and the cut handles move in. Half a second is the
  *  finest cut the timestamp format prints exactly (`formatSceneSeconds`), so
  *  nothing here can set a time the prompt then rounds behind the user's back. */
-const STEP_SECONDS = 0.5;
+export const STEP_SECONDS = 0.5;
 
 const seconds = (value: number): string => `${value.toFixed(1)}s`;
 
-interface SceneEditorProps {
+/** Everything that COULD be cited: the same filter pair the compiler applies,
+ *  over the whole project. See the lockstep note on `usableImageReferences`. */
+export const citableReferences = (references: readonly ProjectReference[]): ProjectReference[] =>
+  references.filter((reference) => isReferenceUsable(reference) && isVisualReference(reference));
+
+/** The reference ids of a scene in the order it NUMBERS them, which is the
+ *  order the compiler numbers them in: project order, filtered by what this
+ *  scene binds — not the order the boxes were ticked. Anything a line still
+ *  names but the prompt can no longer use is appended, so a broken token keeps
+ *  a number and survives being typed around instead of vanishing on the next
+ *  keystroke.
+ *
+ *  The board and the panel both read this, because "Reference 2" on a card and
+ *  "Reference 2" in the field have to be the same reference. */
+export function referenceOrder(job: GenerationJob, shots: readonly SceneShot[], references: readonly ProjectReference[]): string[] {
+  const order = citableReferences(references).filter((reference) => job.referenceIds.includes(reference.id)).map((reference) => reference.id);
+  for (const shot of shots) {
+    for (const id of actionReferenceIds(shot.action)) if (!order.includes(id)) order.push(id);
+  }
+  return order;
+}
+
+/** The update that writes a new set of shots onto a scene. The shots are the
+ *  truth; `prompt` and `creativeBrief` are rewritten from them as the mirror
+ *  they now are, and the legacy per-job `shotTags` is cleared because its terms
+ *  have just moved onto a shot — two copies of the same choice is how one of
+ *  them goes stale.
+ *
+ *  One function, called by every control that changes a shot, because a second
+ *  place that wrote `shots` without the mirror would leave a scene whose saved
+ *  prompt no longer matched its own lines. */
+export function writeShots(job: GenerationJob, next: readonly SceneShot[], extra: Partial<GenerationJob> = {}): Partial<GenerationJob> {
+  const shots = normalizeSceneShots(next);
+  const text = sceneBriefText(shots);
+  return {
+    shots,
+    shotTags: null,
+    prompt: text,
+    creativeBrief: text,
+    durationSeconds: sceneDurationSeconds(job),
+    ...extra,
+  };
+}
+
+/* --- One shot, opened on the right ---------------------------------------- */
+
+/** Everything about ONE shot: when it starts, the line the user wrote for it,
+ *  the references that line cites, and the settings hung off it. This is what
+ *  clicking a card on the board opens. */
+export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, removable, onChange, onRemove }: {
   job: GenerationJob;
+  /** Every shot of the scene, so the panel can number the references the same
+   *  way the compiler does and warn about the ones no line can still cite. */
+  shots: SceneShot[];
+  shot: SceneShot;
+  index: number;
+  endsAt: number;
+  duration: number;
   /** Every reference in the project. Any of them can be dropped into a line;
    *  doing so binds it to the scene, which is what gives it a number. */
   references: ProjectReference[];
   /** True once the scene is with the engine: it already has the prompt, so an
    *  edit now would change nothing about that run while claiming otherwise. */
   disabled: boolean;
-  onChange: (updates: Partial<GenerationJob>) => void;
-}
-
-export function SceneEditor({ job, references, disabled, onChange }: SceneEditorProps) {
-  const shots = useMemo(() => sceneShots(job), [job]);
-  const duration = sceneDurationSeconds(job);
-  /* Everything that COULD be cited: the same filter pair the compiler applies,
-     over the whole project. See the lockstep note on `usableImageReferences`. */
-  const citable = useMemo(
-    () => references.filter((reference) => isReferenceUsable(reference) && isVisualReference(reference)),
-    [references],
-  );
-  /* And everything this scene actually cites, in the order the compiler numbers
-     it: `boundRefs` in GeneratorView is `config.references` filtered by this
-     scene's ids, so PROJECT order — not the order boxes were ticked — decides
-     which reference is <Subject 1>. "Reference N" on screen is that number and
-     nothing else, which is the whole point of numbering it here. */
-  const numbered = useMemo(
-    () => citable.filter((reference) => job.referenceIds.includes(reference.id)),
-    [citable, job.referenceIds],
-  );
-  /* Numbering for the text. The cited references come first; anything a line
-     still names but the prompt can no longer use is appended, so a broken token
-     keeps a number and survives being typed around instead of vanishing on the
-     next keystroke. */
-  const tokenOrder = useMemo(() => {
-    const order = numbered.map((reference) => reference.id);
-    for (const shot of shots) {
-      for (const id of actionReferenceIds(shot.action)) if (!order.includes(id)) order.push(id);
-    }
-    return order;
-  }, [numbered, shots]);
+  removable: boolean;
+  onChange: (updates: Partial<SceneShot>) => void;
+  onRemove: () => void;
+}) {
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
+  const citable = useMemo(() => citableReferences(references), [references]);
+  const numbered = useMemo(() => citable.filter((reference) => job.referenceIds.includes(reference.id)), [citable, job.referenceIds]);
+  const tokenOrder = useMemo(() => referenceOrder(job, shots, references), [job, shots, references]);
   const referenceById = useMemo(() => new Map(references.map((reference) => [reference.id, reference])), [references]);
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);
-  const [activeShotId, setActiveShotId] = useState<string | null>(null);
-  const active = shots.some((shot) => shot.id === activeShotId) ? activeShotId : shots[0]?.id ?? null;
+  const settings = shot.settings ?? {};
+  const shotNumber = index + 1;
 
-  /* Every edit lands here. The shots are the truth; `prompt` and `creativeBrief`
-     are rewritten from them as the mirror they now are, and the legacy per-job
-     `shotTags` is cleared because its terms have just moved onto a shot — two
-     copies of the same choice is how one of them goes stale. */
-  const write = useCallback((next: SceneShot[], extra: Partial<GenerationJob> = {}) => {
-    const nextShots = normalizeSceneShots(next);
-    const text = sceneBriefText(nextShots);
-    onChange({
-      shots: nextShots,
-      shotTags: null,
-      prompt: text,
-      creativeBrief: text,
-      durationSeconds: duration,
-      ...extra,
-    });
-  }, [duration, onChange]);
+  /* The line, written the way the user reads and types it. What is STORED is
+     `@[ref:<id>]`, which survives a rename and a reorder; what is SHOWN is
+     "[Reference N]", which is what they were promised and what they may type by
+     hand. The two are one mapping, applied in both directions here and nowhere
+     else, so the field can never show a citation the storage does not hold. */
+  const display = useMemo(() => splitActionText(shot.action).map((part) => {
+    if (part.kind === "text") return part.value;
+    const number = tokenOrder.indexOf(part.value) + 1;
+    return number > 0 ? `[Reference ${number}]` : part.value;
+  }).join(""), [shot.action, tokenOrder]);
 
-  const patchShot = (id: string, updates: Partial<SceneShot>) =>
-    write(shots.map((shot) => shot.id === id ? { ...shot, ...updates } : shot));
+  const store = (typed: string): string => typed.replace(/\[Reference (\d+)\]/g, (whole, digits: string) => {
+    const id = tokenOrder[Number(digits) - 1];
+    // A number nobody has a reference for stays exactly as typed. It is the
+    // user's own text, and turning it into a citation would invent a subject.
+    return id ? referenceToken(id) : whole;
+  });
 
-  const setDuration = (value: number) => {
-    const next = Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, Math.round(value / STEP_SECONDS) * STEP_SECONDS));
-    // A shot cannot start after the scene ends, so shortening the scene pulls
-    // the later cuts back with it rather than leaving them past the end.
-    write(shots.map((shot) => ({ ...shot, startSeconds: Math.min(shot.startSeconds, next) })), { durationSeconds: next });
+  const insertAtCaret = (referenceId: string) => {
+    const number = tokenOrder.indexOf(referenceId) + 1;
+    const field = fieldRef.current;
+    const at = field ? field.selectionStart : display.length;
+    const before = display.slice(0, at);
+    const after = display.slice(at);
+    // Both sides, not just the one in front of the caret. A drop at the START
+    // of a line has nothing before it, so `lead` is empty and the token used to
+    // fuse to the first word: "<Subject 1>walks towards the camera" — a
+    // malformed citation, sent to the model exactly as written.
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const trail = after && !/^\s/.test(after) ? " " : "";
+    // A reference this scene does not cite yet has no number, so the token is
+    // written by id and the number appears once the scene binds it.
+    const token = number > 0 ? `[Reference ${number}]` : referenceToken(referenceId);
+    onChange({ action: store(`${before}${lead}${token}${trail}${after}`) });
   };
 
-  const addShot = () => {
-    const last = shots[shots.length - 1];
-    const halfway = Math.round(((last.startSeconds + duration) / 2) / STEP_SECONDS) * STEP_SECONDS;
-    const start = Math.min(duration, Math.max(last.startSeconds + STEP_SECONDS, halfway));
-    const shot: SceneShot = { id: `shot-${crypto.randomUUID()}`, startSeconds: start, action: "" };
-    write([...shots, shot]);
-    setActiveShotId(shot.id);
-  };
-
-  const removeShot = (id: string) => {
-    // A scene is at least one shot: with none there is nowhere to write, and
-    // the compiler would have nothing to make a [Shot 1] out of.
-    if (shots.length <= 1) return;
-    write(shots.filter((shot) => shot.id !== id));
-  };
-
-  return <section className="scene-editor" aria-label="This scene">
-    <SceneLengthBar
-      shots={shots}
-      duration={duration}
-      disabled={disabled}
-      onDuration={setDuration}
-      onStart={(id, startSeconds) => patchShot(id, { startSeconds })}
-      onSelect={setActiveShotId}
-      activeShotId={active}
-    />
-
-    <ol className="shot-list">
-      {shots.map((shot, index) => <li key={shot.id}>
-        <ShotCard
-          shot={shot}
-          index={index}
-          endsAt={index + 1 < shots.length ? shots[index + 1].startSeconds : duration}
-          duration={duration}
-          disabled={disabled}
-          removable={shots.length > 1}
-          focused={shot.id === active}
-          tokenOrder={tokenOrder}
-          referenceById={referenceById}
-          citable={citable}
-          numbered={numbered}
-          onFocus={() => setActiveShotId(shot.id)}
-          onChange={(updates) => patchShot(shot.id, updates)}
-          onRemove={() => removeShot(shot.id)}
+  return <section className="shot-inspector" aria-label={`Shot ${shotNumber}`}>
+    <div className="shot-inspector__timing">
+      <label className="shot-card__start">
+        <span>Starts at</span>
+        <input
+          type="number"
+          min={SCENE_MIN_SECONDS}
+          max={duration}
+          step={STEP_SECONDS}
+          value={shot.startSeconds}
+          disabled={disabled || index === 0}
+          aria-label={`Shot ${shotNumber} starts at, in seconds`}
+          title={index === 0 ? "The first shot always opens the scene." : undefined}
+          onChange={(event) => onChange({ startSeconds: Math.min(duration, Math.max(0, Number(event.target.value) || 0)) })}
         />
-      </li>)}
-    </ol>
+        <em>to {seconds(endsAt)}</em>
+      </label>
+      {removable && <button
+        type="button"
+        className="shot-card__remove"
+        disabled={disabled}
+        aria-label={`Remove shot ${shotNumber}`}
+        onClick={onRemove}
+      ><Trash2 size={15} /> Remove</button>}
+    </div>
 
-    <button type="button" className="secondary-button scene-editor__add" disabled={disabled} onClick={addShot}>
-      <Plus size={16} /> Add a shot
-    </button>
+    {/* The line is the point of this screen, so it is the biggest thing on it. */}
+    <label className="shot-card__action">
+      <span className="shot-card__sublabel">What happens, in your own words</span>
+      <textarea
+        ref={fieldRef}
+        value={display}
+        disabled={disabled}
+        aria-label={`What happens in shot ${shotNumber}`}
+        placeholder="Example: she walks towards the camera and stops under the awning."
+        onChange={(event) => onChange({ action: store(event.target.value) })}
+        onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
+        onDrop={(event) => {
+          const referenceId = event.dataTransfer.getData(REFERENCE_DRAG_TYPE);
+          if (!referenceId) return;
+          event.preventDefault();
+          insertAtCaret(referenceId);
+        }}
+      />
+    </label>
+
+    <ActionReadback
+      action={shot.action}
+      tokenOrder={tokenOrder}
+      referenceById={referenceById}
+      citable={citable}
+      numbered={numbered}
+      disabled={disabled}
+      onRepoint={(from, to) => onChange({ action: shot.action.split(referenceToken(from)).join(referenceToken(to)) })}
+      onDrop={(from) => onChange({ action: shot.action.split(referenceToken(from)).join("") })}
+    />
 
     <ReferencePalette
       citable={citable}
       numbered={numbered}
       dangling={dangling}
       referenceById={referenceById}
-      disabled={disabled || !active}
-      onInsert={(referenceId) => {
-        const shot = shots.find((item) => item.id === active);
-        if (!shot) return;
-        const spacer = shot.action && !/\s$/.test(shot.action) ? " " : "";
-        patchShot(shot.id, { action: `${shot.action}${spacer}${referenceToken(referenceId)}` });
-      }}
+      disabled={disabled}
+      onInsert={insertAtCaret}
     />
 
-    <SceneSettings job={job} shots={shots} disabled={disabled} onChange={onChange} onShots={write} />
+    <ShotSettings
+      settings={settings}
+      disabled={disabled}
+      shotNumber={shotNumber}
+      onChange={(next) => onChange({ settings: normalizeShotTagSelection(next) })}
+    />
+  </section>;
+}
+
+/* --- The scene, opened from its own line ---------------------------------- */
+
+/** What belongs to the whole scene rather than to one shot: how long it runs
+ *  and where its cuts fall, the look the description opens with (base guide
+ *  §4.1), and the two sound fields the guide defines per prompt (§4.6, §4.7). */
+export function SceneInspector({ job, shots, disabled, onChange, onShots, onDuration, onSelectShot }: {
+  job: GenerationJob;
+  shots: SceneShot[];
+  disabled: boolean;
+  onChange: (updates: Partial<GenerationJob>) => void;
+  onShots: (next: SceneShot[]) => void;
+  onDuration: (value: number) => void;
+  onSelectShot: (shotId: string) => void;
+}) {
+  const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
+  // The style is read off the first shot that carries one, so that is where it
+  // is written. One place, never a second field that could disagree with it.
+  const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
+
+  return <section className="scene-inspector" aria-label="This scene">
+    <SceneLengthBar
+      shots={shots}
+      duration={sceneDurationSeconds(job)}
+      disabled={disabled}
+      onDuration={onDuration}
+      onStart={(id, startSeconds) => onShots(shots.map((shot) => shot.id === id ? { ...shot, startSeconds } : shot))}
+      onSelect={onSelectShot}
+    />
+
+    <div className="scene-settings">
+      <h3>The whole scene</h3>
+      <label className="scene-settings__field">
+        <span>Look</span>
+        <select
+          value={chosen}
+          disabled={disabled}
+          aria-label="The look of this scene"
+          onChange={(event) => {
+            const value = event.target.value;
+            onShots(shots.map((shot, index) => {
+              const settings = { ...(shot.settings ?? {}) };
+              if (index === 0 && value) settings[look.id] = [value];
+              else delete settings[look.id];
+              return { ...shot, settings: normalizeShotTagSelection(settings) };
+            }));
+          }}
+        >
+          <option value="">Guessed from your words</option>
+          {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </select>
+        <small>{look.help}</small>
+      </label>
+      <label className="scene-settings__field">
+        <span>Sound</span>
+        <textarea
+          value={job.soundscape ?? ""}
+          disabled={disabled}
+          aria-label="The sound of this scene"
+          placeholder="Ambience, and the sounds the action itself makes."
+          onChange={(event) => onChange({ soundscape: event.target.value })}
+        />
+        <small>Goes into <code>overall_soundscape</code>. Left blank, PolStudio writes a line that adds nothing your description has not already established.</small>
+      </label>
+      <label className="scene-settings__field">
+        <span>Music</span>
+        <textarea
+          value={job.music ?? ""}
+          disabled={disabled}
+          aria-label="The music of this scene"
+          placeholder="Instrumentation, tempo and dynamics — not a mood."
+          onChange={(event) => onChange({ music: event.target.value })}
+        />
+        <small>Goes into <code>non_diegetic_music</code>. Left blank, it is sent as N/A, because a score nobody asked for is one PolStudio would have invented.</small>
+      </label>
+    </div>
   </section>;
 }
 
@@ -185,16 +308,15 @@ export function SceneEditor({ job, references, disabled, onChange }: SceneEditor
 
 /** The bar the scene is split on. Each shot is a segment; the line between two
  *  of them is the cut, and it can be dragged or nudged with the arrow keys.
- *  Every shot also carries a plain number field below, because a bar cannot be
- *  read by a screen reader and cannot be typed into. */
-function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSelect, activeShotId }: {
+ *  Every shot also carries a plain number field in its own panel, because a bar
+ *  cannot be read by a screen reader and cannot be typed into. */
+function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSelect }: {
   shots: SceneShot[];
   duration: number;
   disabled: boolean;
   onDuration: (value: number) => void;
   onStart: (id: string, value: number) => void;
   onSelect: (id: string) => void;
-  activeShotId: string | null;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -255,7 +377,7 @@ function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSele
     >
       {shots.map((shot, index) => <div
         key={shot.id}
-        className={`scene-bar__shot ${shot.id === activeShotId ? "scene-bar__shot--active" : ""}`}
+        className="scene-bar__shot"
         style={{ width: `${width(index)}%` }}
       >
         {index > 0 && <button
@@ -276,6 +398,8 @@ function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSele
             onStart(shot.id, clamp(index, shot.startSeconds + delta));
           }}
         />}
+        {/* Opens the shot in the panel, which is the same thing clicking its
+            card on the board does — the bar is the other way to reach it. */}
         <button type="button" className="scene-bar__label" onClick={() => onSelect(shot.id)}>
           <b>Shot {index + 1}</b>
           <em>{seconds(shot.startSeconds)}</em>
@@ -283,131 +407,6 @@ function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSele
       </div>)}
     </div>
   </div>;
-}
-
-/* --- One shot ------------------------------------------------------------- */
-
-function ShotCard({ shot, index, endsAt, duration, disabled, removable, focused, tokenOrder, referenceById, citable, numbered, onFocus, onChange, onRemove }: {
-  shot: SceneShot;
-  index: number;
-  endsAt: number;
-  duration: number;
-  disabled: boolean;
-  removable: boolean;
-  focused: boolean;
-  tokenOrder: string[];
-  referenceById: Map<string, ProjectReference>;
-  citable: ProjectReference[];
-  numbered: ProjectReference[];
-  onFocus: () => void;
-  onChange: (updates: Partial<SceneShot>) => void;
-  onRemove: () => void;
-}) {
-  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
-  const settings = shot.settings ?? {};
-
-  /* The line, written the way the user reads and types it. What is STORED is
-     `@[ref:<id>]`, which survives a rename and a reorder; what is SHOWN is
-     "[Reference N]", which is what they were promised and what they may type by
-     hand. The two are one mapping, applied in both directions here and nowhere
-     else, so the field can never show a citation the storage does not hold. */
-  const display = useMemo(() => splitActionText(shot.action).map((part) => {
-    if (part.kind === "text") return part.value;
-    const number = tokenOrder.indexOf(part.value) + 1;
-    return number > 0 ? `[Reference ${number}]` : part.value;
-  }).join(""), [shot.action, tokenOrder]);
-
-  const store = (typed: string): string => typed.replace(/\[Reference (\d+)\]/g, (whole, digits: string) => {
-    const id = tokenOrder[Number(digits) - 1];
-    // A number nobody has a reference for stays exactly as typed. It is the
-    // user's own text, and turning it into a citation would invent a subject.
-    return id ? referenceToken(id) : whole;
-  });
-
-  const insertAtCaret = (referenceId: string) => {
-    const number = tokenOrder.indexOf(referenceId) + 1;
-    const field = fieldRef.current;
-    const at = field ? field.selectionStart : display.length;
-    const before = display.slice(0, at);
-    const after = display.slice(at);
-    // Both sides, not just the one in front of the caret. A drop at the START
-    // of a line has nothing before it, so `lead` is empty and the token used to
-    // fuse to the first word: "<Subject 1>walks towards the camera" — a
-    // malformed citation, sent to the model exactly as written.
-    const lead = before && !/\s$/.test(before) ? " " : "";
-    const trail = after && !/^\s/.test(after) ? " " : "";
-    // A reference this scene does not cite yet has no number, so the token is
-    // written by id and the number appears once the scene binds it.
-    const token = number > 0 ? `[Reference ${number}]` : referenceToken(referenceId);
-    onChange({ action: store(`${before}${lead}${token}${trail}${after}`) });
-  };
-
-  return <article className={`shot-card ${focused ? "shot-card--focused" : ""}`}>
-    <header className="shot-card__head">
-      <b>Shot {index + 1}</b>
-      <label className="shot-card__start">
-        <span>Starts at</span>
-        <input
-          type="number"
-          min={SCENE_MIN_SECONDS}
-          max={duration}
-          step={STEP_SECONDS}
-          value={shot.startSeconds}
-          disabled={disabled || index === 0}
-          aria-label={`Shot ${index + 1} starts at, in seconds`}
-          title={index === 0 ? "The first shot always opens the scene." : undefined}
-          onChange={(event) => onChange({ startSeconds: Math.min(duration, Math.max(0, Number(event.target.value) || 0)) })}
-        />
-        <em>to {seconds(endsAt)}</em>
-      </label>
-      {removable && <button
-        type="button"
-        className="shot-card__remove"
-        disabled={disabled}
-        aria-label={`Remove shot ${index + 1}`}
-        onClick={onRemove}
-      ><Trash2 size={15} /></button>}
-    </header>
-
-    {/* The line is the point of this screen, so it is the biggest thing on it. */}
-    <label className="shot-card__action">
-      <span className="shot-card__sublabel">What happens, in your own words</span>
-      <textarea
-        ref={fieldRef}
-        value={display}
-        disabled={disabled}
-        aria-label={`What happens in shot ${index + 1}`}
-        placeholder="Example: she walks towards the camera and stops under the awning."
-        onFocus={onFocus}
-        onChange={(event) => onChange({ action: store(event.target.value) })}
-        onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
-        onDrop={(event) => {
-          const referenceId = event.dataTransfer.getData(REFERENCE_DRAG_TYPE);
-          if (!referenceId) return;
-          event.preventDefault();
-          insertAtCaret(referenceId);
-        }}
-      />
-    </label>
-
-    <ActionReadback
-      action={shot.action}
-      tokenOrder={tokenOrder}
-      referenceById={referenceById}
-      citable={citable}
-      numbered={numbered}
-      disabled={disabled}
-      onRepoint={(from, to) => onChange({ action: shot.action.split(referenceToken(from)).join(referenceToken(to)) })}
-      onDrop={(from) => onChange({ action: shot.action.split(referenceToken(from)).join("") })}
-    />
-
-    <ShotSettings
-      settings={settings}
-      disabled={disabled}
-      shotNumber={index + 1}
-      onChange={(next) => onChange({ settings: normalizeShotTagSelection(next) })}
-    />
-  </article>;
 }
 
 /** The same line, read back with each reference as a control. This is where
@@ -533,69 +532,6 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
   </div>;
 }
 
-/** What belongs to the whole scene rather than to one shot: the look the
- *  description opens with (base guide §4.1), and the two sound fields the guide
- *  defines per prompt (§4.6, §4.7). */
-function SceneSettings({ job, shots, disabled, onChange, onShots }: {
-  job: GenerationJob;
-  shots: SceneShot[];
-  disabled: boolean;
-  onChange: (updates: Partial<GenerationJob>) => void;
-  onShots: (next: SceneShot[]) => void;
-}) {
-  const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
-  // The style is read off the first shot that carries one, so that is where it
-  // is written. One place, never a second field that could disagree with it.
-  const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
-
-  return <div className="scene-settings">
-    <h3>The whole scene</h3>
-    <label className="scene-settings__field">
-      <span>Look</span>
-      <select
-        value={chosen}
-        disabled={disabled}
-        aria-label="The look of this scene"
-        onChange={(event) => {
-          const value = event.target.value;
-          onShots(shots.map((shot, index) => {
-            const settings = { ...(shot.settings ?? {}) };
-            if (index === 0 && value) settings[look.id] = [value];
-            else delete settings[look.id];
-            return { ...shot, settings: normalizeShotTagSelection(settings) };
-          }));
-        }}
-      >
-        <option value="">Guessed from your words</option>
-        {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>
-      <small>{look.help}</small>
-    </label>
-    <label className="scene-settings__field">
-      <span>Sound</span>
-      <textarea
-        value={job.soundscape ?? ""}
-        disabled={disabled}
-        aria-label="The sound of this scene"
-        placeholder="Ambience, and the sounds the action itself makes."
-        onChange={(event) => onChange({ soundscape: event.target.value })}
-      />
-      <small>Goes into <code>overall_soundscape</code>. Left blank, PolStudio writes a line that adds nothing your description has not already established.</small>
-    </label>
-    <label className="scene-settings__field">
-      <span>Music</span>
-      <textarea
-        value={job.music ?? ""}
-        disabled={disabled}
-        aria-label="The music of this scene"
-        placeholder="Instrumentation, tempo and dynamics — not a mood."
-        onChange={(event) => onChange({ music: event.target.value })}
-      />
-      <small>Goes into <code>non_diegetic_music</code>. Left blank, it is sent as N/A, because a score nobody asked for is one PolStudio would have invented.</small>
-    </label>
-  </div>;
-}
-
 /* --- The references this scene can use ------------------------------------ */
 
 function ReferencePalette({ citable, numbered, dangling, referenceById, disabled, onInsert }: {
@@ -610,7 +546,7 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
     <span className="reference-palette__lead">
       {citable.length === 0
         ? "This project has no references the prompt can use yet. Add one under References and it can be dropped into a line."
-        : "Drag one into a line, or add it to the end of the shot you were last writing in."}
+        : "Drag one into the line, or click it to write it where the caret is."}
     </span>
     <ul>
       {citable.map((reference) => {
@@ -639,7 +575,7 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
     {dangling.length > 0 && <p className="reference-palette__broken">
       {dangling.length === 1 ? "One reference named in this scene" : `${dangling.length} references named in this scene`} can no
       longer be used — {dangling.map((id) => referenceById.get(id)?.name ?? "one that was deleted").join(", ")}. Those names are
-      left out of the compiled prompt below, and the scene cannot be sent until each one is swapped for another reference or taken
+      left out of the compiled prompt, and the scene cannot be sent until each one is swapped for another reference or taken
       out of the line.
     </p>}
   </div>;
