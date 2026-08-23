@@ -42,9 +42,9 @@ export interface EnginePathField {
 export const ENGINE_PATH_FIELDS: EnginePathField[] = [
   { id: "transformer", label: "Transformer weights", hint: "The main model that turns your description into moving pictures.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
   { id: "textEncoder", label: "Text encoder weights", hint: "Reads your prompt so the transformer can act on it.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
-  { id: "tokenizer", label: "Tokenizer", hint: "Splits your prompt into pieces the text encoder understands. Usually a folder.", directory: true, extensions: [], required: false },
   { id: "videoVae", label: "Video VAE weights", hint: "Turns the model's internal picture into real video frames.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
   { id: "audioVae", label: "Audio VAE weights", hint: "Turns the model's internal sound into real audio.", directory: false, extensions: ["safetensors", "gguf", "bin"], required: true },
+  { id: "tokenizer", label: "Tokenizer", hint: "Splits your prompt into pieces the text encoder understands. Usually a folder.", directory: true, extensions: [], required: false },
 ];
 
 export type EngineSettings = Record<EnginePathId, string>;

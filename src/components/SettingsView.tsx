@@ -159,10 +159,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
       <div className="settings-view">
         <header className="settings-view__head">
-          <div>
-            <p className="eyebrow">Settings</p>
-            <h1 id="settings-heading">This computer</h1>
-          </div>
+          <h1 id="settings-heading">Settings</h1>
           <button className="icon-button icon-button--strong" onClick={onClose} aria-label="Close settings"><X size={18} /></button>
         </header>
 
