@@ -42,6 +42,13 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     onChange({ ...config, references: [reference, ...config.references] });
     setSelectedId(id);
   };
+  const addDefinition = () => {
+    addTextReference();
+    setPickerType("custom");
+    setPickerSubcategory("all");
+    setPresetSearch("");
+    setPresetDialog(true);
+  };
   const addImage = async () => {
     setImportError(null);
     if (!isTauri()) {
@@ -102,7 +109,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           <p>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</p>
         </div>
         <div className="references-heading__actions">
-          <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
+          <button className="secondary-button" onClick={addDefinition}><FileText size={16} /> New definition</button>
           <button className="primary-button" onClick={() => void addImage()}><Upload size={16} /> Add image</button>
         </div>
       </header>

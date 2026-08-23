@@ -43,6 +43,16 @@ function setup() {
 }
 
 describe("Reference type presets", () => {
+  it("opens the type picker immediately for a new definition", () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: "New definition" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Choose a reference type" });
+    expect(dialog).toBeInTheDocument();
+    expect(state.latest().references[0]).toMatchObject({ name: "New definition", intendedUse: [] });
+    expect(within(dialog).getByRole("button", { name: "Custom" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows one Type control without the old explanatory copy", () => {
     setup();
     expect(screen.getByRole("heading", { name: "Type" })).toBeInTheDocument();
