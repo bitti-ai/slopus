@@ -38,6 +38,7 @@ pub fn default_dll_path() -> PathBuf {
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;
 const CANCELLED: i32 = -8;
+const DEFAULT_ATTENTION: &str = "sage2";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -371,6 +372,7 @@ fn configure_request(
         _ => (16, 9),
     };
     api.set_aspect(handle, width, height)?;
+    api.set_attention(handle, DEFAULT_ATTENTION)?;
     api.set_verbose(handle, false)?;
     if include_models {
         for (id, _, path) in &configuration.models {
@@ -624,6 +626,7 @@ mod ffi {
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
         add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
+        set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_verbose: unsafe extern "C" fn(*mut Request, i32) -> i32,
         resolve_plan: unsafe extern "C" fn(*const Request, *mut Plan) -> i32,
         describe_plan: unsafe extern "C" fn(*const Request, *mut *mut c_char) -> i32,
@@ -699,6 +702,10 @@ mod ffi {
                     ),
                     add_reference: symbol!(
                         "vidfab_request_add_reference_image",
+                        unsafe extern "C" fn(*mut Request, *const c_char) -> i32
+                    ),
+                    set_attention: symbol!(
+                        "vidfab_request_set_attention",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
                     set_verbose: symbol!(
@@ -800,6 +807,11 @@ mod ffi {
         }
         pub fn set_verbose(&self, r: *mut Request, v: bool) -> Result<(), String> {
             self.error(unsafe { (self.set_verbose)(r, v as i32) })
+        }
+        pub fn set_attention(&self, r: *mut Request, v: &str) -> Result<(), String> {
+            let v = CString::new(v)
+                .map_err(|_| "Attention mode contains a null byte.".to_string())?;
+            self.error(unsafe { (self.set_attention)(r, v.as_ptr()) })
         }
         pub fn set_model(&self, r: *mut Request, id: i32, path: &Path) -> Result<(), String> {
             let v = path_cstring(path)?;
