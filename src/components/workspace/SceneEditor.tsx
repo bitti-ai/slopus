@@ -176,14 +176,13 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       ><Trash2 size={15} /> Remove</button>}
     </div>
 
-    {/* The line is the point of this screen, so it is the biggest thing on it. */}
     <label className="shot-card__action">
-      <span className="shot-card__sublabel">What happens, in your own words</span>
+      <span className="shot-card__sublabel">Describe the shot</span>
       <textarea
         ref={fieldRef}
         value={display}
         disabled={disabled}
-        aria-label={`What happens in shot ${shotNumber}`}
+        aria-label={`Describe shot ${shotNumber}`}
         placeholder="Example: she walks towards the camera and stops under the awning."
         onChange={(event) => onChange({ action: store(event.target.value) })}
         onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}

@@ -321,6 +321,9 @@ export const generationJobSchema = z.object({
   // time, so this copy goes stale as soon as the brief or the bound references
   // change. Never treat it as the authoritative prompt.
   compiledPrompt: z.string().min(1),
+  /** Exact render inputs from the most recently started generation. Absent on
+   * drafts that have never run and on projects saved before change tracking. */
+  generationSnapshot: z.string().min(1).nullish(),
   referenceIds: z.array(idSchema).default([]),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
@@ -662,6 +665,35 @@ export function sceneDurationSeconds(job: GenerationJob): number {
   const stored = job.durationSeconds;
   if (stored === null || stored === undefined) return DEFAULT_SCENE_SECONDS;
   return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, stored));
+}
+
+export interface SceneGenerationInput {
+  prompt: string;
+  frames: number;
+  steps: number;
+  seed: number;
+  aspectRatio: string;
+  referencePaths: readonly string[];
+}
+
+/** A stable record of everything sent to the renderer. Shot ids are retained
+ * separately because swapping otherwise identical shots is still an edit. */
+export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerationInput): string {
+  const shots = sceneShots(job).map((shot) => ({
+    id: shot.id,
+    settings: Object.entries(shot.settings ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([group, values]) => [group, [...values].sort()]),
+  }));
+  return JSON.stringify({
+    prompt: input.prompt,
+    frames: input.frames,
+    steps: input.steps,
+    seed: input.seed,
+    aspectRatio: input.aspectRatio,
+    referencePaths: input.referencePaths,
+    shots,
+  });
 }
 
 /** The mirror written back into `prompt` and `creativeBrief`. Nothing but the

@@ -1,6 +1,6 @@
 import { Plus, Sparkles, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationSnapshot, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
@@ -212,6 +212,9 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
     };
   };
 
+  const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
+    sceneGenerationSnapshot(job, request);
+
   /* The engine's own events are listened for by the project screen
      (useGenerationEvents), not here: a render outlives this view, and the
      encode that turns its frames into a file has to happen wherever the user
@@ -220,8 +223,16 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const prepareOrRetry = async (job: GenerationJob) => {
     const now = new Date().toISOString();
-    updateJob(job.id, { status: runtimeReady ? "queued" : "draft", stage: "queued", progress: 0, error: runtimeReady ? null : runtime?.detail ?? "The video engine isn’t available on this computer right now.", updatedAt: now });
-    if (runtimeReady) await enqueueVidfabGeneration(requestFor(job), configRef.current);
+    const request = requestFor(job);
+    updateJob(job.id, {
+      status: runtimeReady ? "queued" : "draft",
+      stage: "queued",
+      progress: 0,
+      error: runtimeReady ? null : runtime?.detail ?? "The video engine isn’t available on this computer right now.",
+      generationSnapshot: runtimeReady ? snapshotFor(job, request) : job.generationSnapshot,
+      updatedAt: now,
+    });
+    if (runtimeReady) await enqueueVidfabGeneration(request, configRef.current);
   };
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a
@@ -237,7 +248,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
      references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("");
-    onChange({ ...config, generationJobs: [job, ...jobs] });
+    onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
 
@@ -256,14 +267,20 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const startDraft = async (job: GenerationJob) => {
     if (!runtimeReady) return;
-    updateJob(job.id, { status: "queued", stage: "queued", error: null, updatedAt: new Date().toISOString() });
+    const request = requestFor(job);
+    updateJob(job.id, {
+      status: "queued",
+      stage: "queued",
+      error: null,
+      generationSnapshot: snapshotFor(job, request),
+      updatedAt: new Date().toISOString(),
+    });
     try {
       /* Resolved before the job is handed over, so "What actually happened"
          reports the real frame count and canvas this run was planned as. The
          composer used to do this for a scene it had just created; a scene is
          now created empty and generated from here, so the plan is resolved
          here or nobody ever sees it. */
-      const request = requestFor(job);
       const plan = await resolveVidfabPlan(request, configRef.current);
       setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
       await enqueueVidfabGeneration(request, configRef.current);
@@ -282,18 +299,18 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
   const generateAll = async () => {
     if (!runtimeReady || draftScenesReady.length === 0) return;
     const current = configRef.current;
-    const ids = new Set(draftScenesReady.map((job) => job.id));
+    const requests = draftScenesReady.map((job) => ({ job, request: requestFor(job) }));
+    const ids = new Map(requests.map(({ job, request }) => [job.id, snapshotFor(job, request)]));
     const now = new Date().toISOString();
     onChange({
       ...current,
       generationJobs: current.generationJobs.map((job) => ids.has(job.id)
-        ? { ...job, status: "queued", stage: "queued", progress: 0, error: null, updatedAt: now }
+        ? { ...job, status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: ids.get(job.id), updatedAt: now }
         : job),
     });
 
-    for (const job of draftScenesReady) {
+    for (const { job, request } of requests) {
       try {
-        const request = requestFor(job);
         const plan = await resolveVidfabPlan(request, current);
         setPlanNotes((notes) => ({ ...notes, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
         await enqueueVidfabGeneration(request, current);
@@ -310,6 +327,13 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
     if (job.status === "ready") return "This scene is being saved now.";
     return sendBlocker(job, config.references);
   };
+
+  const changedJobIds = new Set(jobs
+    .filter((job) => job.status === "completed"
+      && Boolean(job.generationSnapshot)
+      && job.generationSnapshot !== snapshotFor(job))
+    .map((job) => job.id));
+  const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
 
   return <div className={`generator-view ${selected ? "" : "generator-view--empty"}`}>
     <main className="generator-main">
@@ -355,6 +379,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
         onRemoveScene={(job) => setRemovalTarget({ kind: "scene", job })}
         onGenerate={generateScene}
         generationBlocker={generationBlocker}
+        changedJobIds={changedJobIds}
         onMoveScene={moveScene}
         onMoveShot={moveShot}
       />}
@@ -417,7 +442,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
         : <>
           <header className="panel-head">
             <div className="job-title">
-              {selected.status !== "draft" && <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>}
+              {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
               <div>
                 {/* The badge is on the scene's own line on the board, where the
                     eye compares one scene against the next. A second copy of it
