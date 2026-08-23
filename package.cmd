@@ -168,28 +168,18 @@ exit /b 0
 :write_readme
 > "%~1" echo PolStudio %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
 >>"%~1" echo.
->>"%~1" echo Run "PolStudio.exe". Projects are ordinary folders you choose on disk.
+>>"%~1" echo Run "PolStudio.exe". Projects are folders you choose on disk.
 >>"%~1" echo.
 >>"%~1" echo REQUIREMENTS
->>"%~1" echo   Microsoft Edge WebView2 runtime. Most Windows 11 machines have it
->>"%~1" echo   already. If the window opens blank or refuses to start, run the
->>"%~1" echo   setup installer instead - it installs WebView2 for you.
+>>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.
 >>"%~1" echo.
->>"%~1" echo GENERATION RUNTIME
+>>"%~1" echo VIDEO GENERATION
 if /I "%VIDFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The vidfab DLLs sit beside PolStudio.exe. The app loads them from
-  >>"%~1" echo   there on its own - there is nothing to configure. Keep them next to
-  >>"%~1" echo   the executable if you move this folder.
+  >>"%~1" echo   The runtime is included. Keep its DLLs beside PolStudio.exe.
 ) else (
-  >>"%~1" echo   Not included in this build. The app runs and saves projects, and
-  >>"%~1" echo   reports the generator as unavailable.
+  >>"%~1" echo   The runtime is not included. Editing still works.
 )
->>"%~1" echo   Model weights are separate and are never bundled - configure their
->>"%~1" echo   paths in the app.
->>"%~1" echo.
->>"%~1" echo NOT YET IMPLEMENTED
->>"%~1" echo   Encoding generated frames into a video file. The app says so where it
->>"%~1" echo   matters rather than pretending otherwise.
+>>"%~1" echo   Model weights are not included. Set their paths in Settings.
 exit /b 0
 
 :fail
