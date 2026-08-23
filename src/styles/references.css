@@ -8,11 +8,16 @@
 .references-view {
   height: 100%;
   min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  background: var(--bg);
+}
+
+.references-main {
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-7) var(--space-7);
-  background:
-    radial-gradient(circle at 20% -20%, var(--glow-accent), transparent 35%),
-    var(--bg);
+  padding: var(--space-6) var(--space-7) var(--space-8);
 }
 
 .references-heading {
@@ -24,51 +29,35 @@
   gap: var(--space-5);
 }
 
-.references-heading > div:last-child {
+.references-heading__actions {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
 .references-heading h1 {
-  margin: var(--space-2) 0 var(--space-2);
+  margin: var(--space-2) 0 var(--space-1);
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-hero);
 }
 
+.references-heading__title p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
 /* --- Layout ---------------------------------------------------------------- */
 
-.reference-layout {
-  max-width: var(--content-max);
-  min-height: 640px;
-  margin: auto;
-  display: grid;
-  grid-template-columns: minmax(600px, 1fr) 368px;
-  overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-}
-
 .reference-library {
+  max-width: var(--content-max);
+  margin: 0 auto;
   min-width: 0;
   padding-bottom: var(--space-5);
-  border-right: 1px solid var(--line);
-}
-
-.reference-library__toolbar {
-  height: var(--control-lg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--line);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
 }
 
 /* A real <h2> in the chrome (the outline used to jump h1 → h3), styled to look
@@ -97,7 +86,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: 0;
 }
 
 .reference-grid > button {
@@ -309,8 +298,18 @@
 
 .reference-inspector {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.reference-inspector__scroll {
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
-  background: var(--panel-2);
 }
 
 .reference-detail-art {
@@ -637,43 +636,36 @@
 
 /* --- Responsive ------------------------------------------------------------ */
 
-/* The window can be dragged to 900px (see tauri.conf.json). The old
-   `minmax(600px, 1fr) 368px` library minimum alone put the floor at 968px
-   before page padding, so the view scrolled sideways well before 900px.
-
-   1180px  drop the library's fixed minimum so it can actually flex
-   1040px  stack: the inspector moves under the library instead of squeezing it
-    900px  reference cards go single-column and the header stacks */
-
 @media (max-width: 1180px) {
-  .reference-layout {
-    grid-template-columns: minmax(0, 1fr) 328px;
+  .references-view {
+    grid-template-columns: minmax(0, 1fr) 340px;
   }
 
   .reference-grid > button {
     grid-template-columns: 116px minmax(0, 1fr);
   }
 
-  .references-view {
+  .references-main {
     padding-inline: var(--space-5);
   }
 }
 
 @media (max-width: 1040px) {
-  .reference-layout {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
+  .references-main {
+    padding: var(--space-5) var(--space-4) var(--space-7);
   }
+}
 
-  /* Stacked, the divider belongs between the rows, and the inspector scrolls
-     with the page rather than inside its own box. */
-  .reference-library {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+@media (max-width: 960px) {
+  .references-view {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .reference-inspector {
-    overflow-y: visible;
+    max-height: 60vh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 }
 
@@ -683,7 +675,7 @@
     align-items: flex-start;
   }
 
-  .references-view {
+  .references-main {
     padding-inline: var(--space-4);
   }
 
