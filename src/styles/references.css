@@ -403,15 +403,15 @@
   line-height: var(--leading-normal);
 }
 
-/* --- Intended use / usage list --------------------------------------------- */
+/* --- Reference type / usage list ------------------------------------------- */
 
-.intended-use,
+.reference-type,
 .reference-used-by {
   padding: var(--space-4);
   border-bottom: 1px solid var(--line);
 }
 
-.intended-use h3,
+.reference-type h3,
 .reference-used-by h3 {
   margin: 0 0 var(--space-2);
   color: var(--text-primary);
@@ -420,44 +420,66 @@
   line-height: var(--leading-snug);
 }
 
-.intended-use p {
-  margin: 0 0 var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-.intended-use > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.intended-use button {
-  min-height: var(--control-sm);
+.reference-type__trigger {
+  width: 100%;
+  min-height: var(--control-md);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: space-between;
   padding: 0 var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--field-bg);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.reference-type__trigger:hover {
+  border-color: var(--accent);
+}
+
+.reference-preset-summary > span {
+  display: block;
+  margin-bottom: var(--space-1);
   color: var(--text-secondary);
-  background: var(--panel-3);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  line-height: var(--leading-snug);
-  text-transform: capitalize;
 }
 
-.intended-use button:hover {
+.reference-preset-summary > button {
+  width: 100%;
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
+  background: var(--field-bg);
+  text-align: left;
+}
+
+.reference-preset-summary > button:hover {
   border-color: var(--accent);
 }
 
-.intended-use button.active {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.reference-preset-summary b,
+.reference-preset-summary small {
+  display: block;
+}
+
+.reference-preset-summary small {
+  display: -webkit-box;
+  margin-top: var(--space-1);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .reference-used-by h3 span {
@@ -634,6 +656,235 @@
   opacity: 0.5;
 }
 
+/* --- Preset picker --------------------------------------------------------- */
+
+.reference-preset-dialog {
+  width: min(920px, calc(100vw - var(--space-6)));
+  height: min(680px, calc(100vh - var(--space-6)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  box-shadow: var(--shadow);
+}
+
+.reference-preset-dialog > header {
+  min-height: 82px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.reference-preset-dialog h2,
+.reference-preset-dialog h3,
+.reference-preset-dialog p {
+  margin: 0;
+}
+
+.reference-preset-dialog h2 {
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+}
+
+.reference-preset-dialog > header p {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.reference-preset-dialog > header > button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--panel-3);
+}
+
+.reference-preset-dialog__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+}
+
+.reference-preset-dialog__body > nav {
+  padding: var(--space-3);
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.reference-preset-dialog__body > nav button {
+  width: 100%;
+  min-height: var(--control-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+.reference-preset-dialog__body > nav button:hover,
+.reference-preset-dialog__body > nav button.active {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+.reference-preset-dialog__body > nav button.active {
+  box-shadow: inset 2px 0 var(--accent-bright);
+}
+
+.reference-preset-dialog__body > section {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.reference-preset-search {
+  height: var(--field-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--field-bg);
+}
+
+.reference-preset-search:focus-within {
+  border-color: var(--accent);
+}
+
+.reference-preset-search input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+}
+
+.reference-subcategories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.reference-subcategories button {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  background: var(--panel-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.reference-subcategories button:hover,
+.reference-subcategories button.active {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
+.reference-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.reference-preset-grid > button {
+  min-height: 112px;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--panel-3);
+  text-align: left;
+}
+
+.reference-preset-grid > button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.reference-preset-grid b,
+.reference-preset-grid span,
+.reference-preset-grid small {
+  display: block;
+}
+
+.reference-preset-grid small {
+  margin-bottom: var(--space-1);
+  color: var(--accent-bright);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.reference-preset-grid b {
+  font-size: var(--text-base);
+}
+
+.reference-preset-grid span {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.reference-preset-grid > p {
+  color: var(--text-muted);
+}
+
+.reference-custom-option {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.reference-custom-option > svg {
+  color: var(--accent-bright);
+}
+
+.reference-custom-option h3 {
+  margin-top: var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+}
+
+.reference-custom-option p {
+  max-width: 44ch;
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
 /* --- Responsive ------------------------------------------------------------ */
 
 @media (max-width: 1180px) {
@@ -680,6 +931,14 @@
   }
 
   .reference-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reference-preset-dialog__body {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .reference-preset-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

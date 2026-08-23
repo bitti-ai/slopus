@@ -1,18 +1,18 @@
-import { BookOpen, Check, FileText, Image, Link2, Plus, Trash2, Upload, Users } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, Image, Link2, Plus, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, type ProjectConfig, type ProjectReference } from "../../lib/project";
+import {
+  REFERENCE_PRESETS,
+  REFERENCE_TYPES,
+  referenceType,
+  referenceTypeLabel,
+  selectedReferencePreset,
+  type ReferencePreset,
+  type ReferenceType,
+} from "../../lib/reference-presets";
 import { isTauri } from "../../lib/persistence";
 import { ReferenceImage } from "./ReferenceImage";
-
-type ReferenceUse = ProjectReference["intendedUse"][number];
-
-/* No "audio" here on purpose: references in this app are visual only. Images are
-   the only assets sent to the video engine, and the H3 prompt's two audio fields
-   (overall_soundscape, non_diegetic_music) are not reference-driven — so an
-   audio tag promised a route that never existed. It stays in the zod enum so
-   projects saved with it still load. */
-const uses: readonly ReferenceUse[] = ["character", "product", "location", "style"];
 
 /** What a reference IS, in a word. This replaced the file path in both places
  *  it used to be printed: a path is a fact about the disk, not about the
@@ -26,11 +26,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const [definitionName, setDefinitionName] = useState("Visual style reference");
   const [definitionDescription, setDefinitionDescription] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  const [presetDialog, setPresetDialog] = useState(false);
+  const [pickerType, setPickerType] = useState<ReferenceType>("custom");
+  const [pickerSubcategory, setPickerSubcategory] = useState("all");
+  const [presetSearch, setPresetSearch] = useState("");
   const selected = config.references.find((ref) => ref.id === selectedId);
-  // A reference saved before the audio tag was withdrawn still carries it, so
-  // keep the chip on that one reference — it can be seen and cleared, never
-  // added fresh.
-  const useOptions: readonly ReferenceUse[] = selected?.intendedUse.includes("audio") ? [...uses, "audio"] : uses;
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => onChange({ ...config, references: config.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
   // Starts empty on purpose. Seeding it with the instruction text meant an
@@ -38,7 +38,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   // user had written it. The guidance lives in the field's placeholder instead.
   const addTextReference = (name = "New definition", description = "") => {
     const id = `ref-${Date.now()}`;
-    const reference: ProjectReference = { id, kind: "text", name, description, content: description || null, intendedUse: ["style"], createdAt: new Date().toISOString() };
+    const reference: ProjectReference = { id, kind: "text", name, description, content: description || null, intendedUse: [], createdAt: new Date().toISOString() };
     onChange({ ...config, references: [reference, ...config.references] });
     setSelectedId(id);
   };
@@ -57,7 +57,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       // note here ("Visual reference copied into this portable project.") was
       // shipped to the model as if they had written it. The card says the
       // definition is missing instead of faking one.
-      const reference: ProjectReference = { id, kind: "image", name: imported.name, description: "", relativePath: imported.relativePath, intendedUse: ["style"], createdAt: new Date().toISOString() };
+      const reference: ProjectReference = { id, kind: "image", name: imported.name, description: "", relativePath: imported.relativePath, intendedUse: [], createdAt: new Date().toISOString() };
       onChange({ ...config, references: [reference, ...config.references] });
       setSelectedId(id);
     } catch (reason) {
@@ -69,6 +69,30 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     onChange({ ...config, references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({ ...job, referenceIds: job.referenceIds.filter((id) => id !== selected.id) })) });
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };
+  const openPresetPicker = () => {
+    if (!selected) return;
+    setPickerType(referenceType(selected));
+    setPickerSubcategory("all");
+    setPresetSearch("");
+    setPresetDialog(true);
+  };
+  const chooseCustom = () => {
+    if (!selected) return;
+    update(selected.id, { intendedUse: [] });
+    setPresetDialog(false);
+  };
+  const choosePreset = (preset: ReferencePreset) => {
+    if (!selected) return;
+    update(selected.id, { intendedUse: [preset.type], description: preset.prompt, content: preset.prompt });
+    setPresetDialog(false);
+  };
+  const visiblePresets = REFERENCE_PRESETS.filter((preset) => {
+    if (preset.type !== pickerType) return false;
+    if (pickerSubcategory !== "all" && preset.subcategory !== pickerSubcategory) return false;
+    const query = presetSearch.trim().toLocaleLowerCase();
+    return !query || `${preset.name} ${preset.prompt} ${preset.subcategory} ${preset.searchTerms ?? ""}`.toLocaleLowerCase().includes(query);
+  });
+  const subcategories = [...new Set(REFERENCE_PRESETS.filter((preset) => preset.type === pickerType).map((preset) => preset.subcategory))];
 
   return <div className="references-view">
     <main className="references-main">
@@ -96,7 +120,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
               ? <p>{ref.description}</p>
               : <p className="reference-card__incomplete">{ref.kind === "image"
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
-                : "Not described yet — it won’t be used until you add a definition."}</p>}<span className="use-tags">{ref.intendedUse.map((use) => <i key={use}>{use}</i>)}</span></span>
+                : "Not described yet — it won’t be used until you add a definition."}</p>}<span className="use-tags"><i>{referenceTypeLabel(referenceType(ref))}</i></span></span>
           </button>)}
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
@@ -118,12 +142,19 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           </div>
           <div className="reference-fields">
             <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
-            <label><span>Definition</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label>
+            {referenceType(selected) === "custom" ? <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label> : <div className="reference-preset-summary">
+              <span>Selection</span>
+              <button onClick={openPresetPicker}>
+                <span><b>{selectedReferencePreset(selected)?.name ?? `${referenceTypeLabel(referenceType(selected))} selection`}</b><small>{selected.description}</small></span>
+                <ChevronRight size={17} />
+              </button>
+            </div>}
           </div>
-          <section className="intended-use">
-            <h3>Intended use</h3>
-            <p>These tags are your own notes for keeping the library tidy. They don’t change what is sent to the video engine. Select any that apply.</p>
-            <div>{useOptions.map((use) => <button key={use} className={selected.intendedUse.includes(use) ? "active" : ""} aria-pressed={selected.intendedUse.includes(use)} onClick={() => update(selected.id, { intendedUse: selected.intendedUse.includes(use) ? selected.intendedUse.filter((item) => item !== use) : [...selected.intendedUse, use] })}>{selected.intendedUse.includes(use) && <Check size={14} />}{use}</button>)}</div>
+          <section className="reference-type">
+            <h3>Type</h3>
+            <button className="reference-type__trigger" onClick={openPresetPicker} aria-haspopup="dialog">
+              <span>{referenceTypeLabel(referenceType(selected))}</span><ChevronRight size={17} />
+            </button>
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
@@ -140,6 +171,37 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       <div>
         <button className="secondary-button" onClick={() => setDefinitionDialog(false)}>Cancel</button>
         <button className="primary-button" disabled={!definitionName.trim() || !definitionDescription.trim()} onClick={() => { addTextReference(definitionName.trim(), definitionDescription.trim()); setDefinitionDialog(false); setDefinitionDescription(""); }}>Save text definition</button>
+      </div>
+    </div></div>}
+    {presetDialog && selected && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
+      <header>
+        <div><h2 id="reference-preset-title">Choose a reference type</h2><p>Pick one type and one prepared option, or keep a custom prompt.</p></div>
+        <button onClick={() => setPresetDialog(false)} aria-label="Close type picker"><X size={18} /></button>
+      </header>
+      <div className="reference-preset-dialog__body">
+        <nav aria-label="Reference types">
+          {REFERENCE_TYPES.map((type) => <button key={type.id} className={pickerType === type.id ? "active" : ""} aria-pressed={pickerType === type.id} onClick={() => { setPickerType(type.id); setPickerSubcategory("all"); setPresetSearch(""); }}>{type.label}<ChevronRight size={16} /></button>)}
+        </nav>
+        <section>
+          {pickerType === "custom" ? <div className="reference-custom-option">
+            <FileText size={26} />
+            <h3>Custom prompt</h3>
+            <p>Keep the current prompt and edit it directly in Reference details.</p>
+            <button className="primary-button" onClick={chooseCustom}>Use Custom</button>
+          </div> : <>
+            <label className="reference-preset-search"><Search size={17} /><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder={`Search ${referenceTypeLabel(pickerType).toLocaleLowerCase()} options`} aria-label="Search reference options" /></label>
+            <div className="reference-subcategories" role="group" aria-label={`${referenceTypeLabel(pickerType)} subcategories`}>
+              <button className={pickerSubcategory === "all" ? "active" : ""} aria-pressed={pickerSubcategory === "all"} onClick={() => setPickerSubcategory("all")}>All</button>
+              {subcategories.map((subcategory) => <button key={subcategory} className={pickerSubcategory === subcategory ? "active" : ""} aria-pressed={pickerSubcategory === subcategory} onClick={() => setPickerSubcategory(subcategory)}>{subcategory}</button>)}
+            </div>
+            <div className="reference-preset-grid">
+              {visiblePresets.map((preset) => <button key={preset.id} onClick={() => choosePreset(preset)}>
+                <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
+              </button>)}
+              {visiblePresets.length === 0 && <p>No options match that search.</p>}
+            </div>
+          </>}
+        </section>
       </div>
     </div></div>}
     {importError && <div className="toast" role="alert"><strong>Couldn’t add image</strong><span>{importError}</span><button onClick={() => setImportError(null)}>Dismiss</button></div>}
