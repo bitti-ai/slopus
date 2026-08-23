@@ -172,6 +172,10 @@ struct ReusableReference {
 #[serde(rename_all = "camelCase")]
 struct SceneShot {
     id: String,
+    /// Added after scenes shipped. An absent name keeps the numbered Shot N
+    /// label, and is skipped so older project files do not grow a new key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     #[serde(default)]
     start_seconds: f64,
     /// The user's own line, tokens and all. May be empty: a shot they have just
@@ -790,6 +794,12 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                     return Err(format!(
                         "Scene '{}' has two shots with the id '{}'.",
                         job.id, shot.id
+                    ));
+                }
+                if shot.name.as_deref().is_some_and(str::is_empty) {
+                    return Err(format!(
+                        "Shot '{}' in scene '{}' has an empty name.",
+                        shot.id, job.id
                     ));
                 }
                 if !shot.start_seconds.is_finite() || !(0.0..=15.0).contains(&shot.start_seconds) {
@@ -3692,6 +3702,7 @@ mod tests {
         job.reference_ids = Vec::new();
         job.shots = Some(vec![SceneShot {
             id: "scene-walk-shot-1".into(),
+            name: None,
             start_seconds: 0.0,
             action: String::new(),
             settings: None,
@@ -3705,6 +3716,18 @@ mod tests {
             .expect("one blank shot is still a shot and must not be dropped");
         assert_eq!(shots.len(), 1);
         assert_eq!(shots[0].action, "");
+    }
+
+    #[test]
+    fn a_shot_name_survives_the_project_round_trip() {
+        let mut config = scene_fixture();
+        config.generation_jobs[0].shots.as_mut().unwrap()[0].name = Some("Doorway reveal".into());
+
+        let normalized = validate_and_normalize_config(config).expect("a named shot is valid");
+        assert_eq!(
+            normalized.generation_jobs[0].shots.as_ref().unwrap()[0].name.as_deref(),
+            Some("Doorway reveal")
+        );
     }
 
     #[test]

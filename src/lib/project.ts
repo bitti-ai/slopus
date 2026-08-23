@@ -235,6 +235,9 @@ export const DEFAULT_SCENE_SECONDS = 6;
 
 export const sceneShotSchema = z.object({
   id: idSchema,
+  /** Optional so every project written before shots could be named keeps
+   * round-tripping unchanged. The UI falls back to its numbered Shot N label. */
+  name: z.string().min(1).nullish(),
   /** Seconds from the head of the scene. The first shot always starts at 0;
    *  `normalizeSceneShots` enforces that rather than trusting the file. */
   startSeconds: z.number().min(SCENE_MIN_SECONDS).max(SCENE_MAX_SECONDS),

@@ -10,7 +10,6 @@ import {
   sceneBriefText,
   sceneDurationSeconds,
   splitActionText,
-  SCENE_MAX_SECONDS,
   SCENE_MIN_SECONDS,
   type GenerationJob,
   type ProjectReference,
@@ -228,17 +227,15 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 
 /* --- The scene, opened from its own line ---------------------------------- */
 
-/** What belongs to the whole scene rather than to one shot: how long it runs
- *  and where its cuts fall, the look the description opens with (base guide
- *  §4.1), and the two sound fields the guide defines per prompt (§4.6, §4.7). */
-export function SceneInspector({ job, shots, disabled, onChange, onShots, onDuration, onSelectShot }: {
+/** What remains in scene settings: the look the description opens with (base
+ *  guide §4.1), and the two sound fields the guide defines per prompt (§4.6,
+ *  §4.7). Length lives in the scene header where it stays visible. */
+export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
   job: GenerationJob;
   shots: SceneShot[];
   disabled: boolean;
   onChange: (updates: Partial<GenerationJob>) => void;
   onShots: (next: SceneShot[]) => void;
-  onDuration: (value: number) => void;
-  onSelectShot: (shotId: string) => void;
 }) {
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
   // The style is read off the first shot that carries one, so that is where it
@@ -246,17 +243,8 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots, onDura
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
 
   return <section className="scene-inspector" aria-label="This scene">
-    <SceneLengthBar
-      shots={shots}
-      duration={sceneDurationSeconds(job)}
-      disabled={disabled}
-      onDuration={onDuration}
-      onStart={(id, startSeconds) => onShots(shots.map((shot) => shot.id === id ? { ...shot, startSeconds } : shot))}
-      onSelect={onSelectShot}
-    />
-
     <div className="scene-settings">
-      <h3>The whole scene</h3>
+      <h3>Scene</h3>
       <label className="scene-settings__field">
         <span>Look</span>
         <select
@@ -276,7 +264,6 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots, onDura
           <option value="">Guessed from your words</option>
           {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
-        <small>{look.help}</small>
       </label>
       <label className="scene-settings__field">
         <span>Sound</span>
@@ -287,7 +274,6 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots, onDura
           placeholder="Ambience, and the sounds the action itself makes."
           onChange={(event) => onChange({ soundscape: event.target.value })}
         />
-        <small>Goes into <code>overall_soundscape</code>. Left blank, PolStudio writes a line that adds nothing your description has not already established.</small>
       </label>
       <label className="scene-settings__field">
         <span>Music</span>
@@ -298,115 +284,9 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots, onDura
           placeholder="Instrumentation, tempo and dynamics — not a mood."
           onChange={(event) => onChange({ music: event.target.value })}
         />
-        <small>Goes into <code>non_diegetic_music</code>. Left blank, it is sent as N/A, because a score nobody asked for is one PolStudio would have invented.</small>
       </label>
     </div>
   </section>;
-}
-
-/* --- The length, and where each shot starts ------------------------------- */
-
-/** The bar the scene is split on. Each shot is a segment; the line between two
- *  of them is the cut, and it can be dragged or nudged with the arrow keys.
- *  Every shot also carries a plain number field in its own panel, because a bar
- *  cannot be read by a screen reader and cannot be typed into. */
-function SceneLengthBar({ shots, duration, disabled, onDuration, onStart, onSelect }: {
-  shots: SceneShot[];
-  duration: number;
-  disabled: boolean;
-  onDuration: (value: number) => void;
-  onStart: (id: string, value: number) => void;
-  onSelect: (id: string) => void;
-}) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-
-  /** Where a cut may sit: after the shot in front of it, before the one behind,
-   *  and never past the end of the scene. */
-  const limits = (index: number): [number, number] => [
-    shots[index - 1].startSeconds + STEP_SECONDS,
-    Math.min(duration, index + 1 < shots.length ? shots[index + 1].startSeconds - STEP_SECONDS : duration),
-  ];
-
-  const clamp = (index: number, value: number): number => {
-    const [low, high] = limits(index);
-    const stepped = Math.round(value / STEP_SECONDS) * STEP_SECONDS;
-    return Math.min(Math.max(stepped, low), Math.max(low, high));
-  };
-
-  const dragTo = (index: number, clientX: number) => {
-    const track = trackRef.current?.getBoundingClientRect();
-    // jsdom, and any layout that has not happened yet, report a zero-width box.
-    // Guessing a position from that would throw every cut to the head of the
-    // scene the moment a handle was touched.
-    if (!track || track.width <= 0 || index <= 0) return;
-    onStart(shots[index].id, clamp(index, ((clientX - track.left) / track.width) * duration));
-  };
-
-  const width = (index: number): number => {
-    if (duration <= 0) return 100 / shots.length;
-    const end = index + 1 < shots.length ? shots[index + 1].startSeconds : duration;
-    return Math.max(0, (end - shots[index].startSeconds) / duration) * 100;
-  };
-
-  return <div className="scene-bar">
-    <div className="scene-bar__head">
-      <label className="scene-bar__length">
-        <span>Scene length</span>
-        <input
-          type="range"
-          min={SCENE_MIN_SECONDS}
-          max={SCENE_MAX_SECONDS}
-          step={STEP_SECONDS}
-          value={duration}
-          disabled={disabled}
-          aria-label="Scene length in seconds"
-          onChange={(event) => onDuration(Number(event.target.value))}
-        />
-        <b>{seconds(duration)}</b>
-      </label>
-      <span className="scene-bar__range">A scene runs from 0 to {SCENE_MAX_SECONDS} seconds, and holds as many shots as you split it into.</span>
-    </div>
-
-    <div
-      className="scene-bar__track"
-      ref={trackRef}
-      onPointerMove={(event) => { if (dragging !== null) dragTo(shots.findIndex((shot) => shot.id === dragging), event.clientX); }}
-      onPointerUp={() => setDragging(null)}
-      onPointerLeave={() => setDragging(null)}
-    >
-      {shots.map((shot, index) => <div
-        key={shot.id}
-        className="scene-bar__shot"
-        style={{ width: `${width(index)}%` }}
-      >
-        {index > 0 && <button
-          type="button"
-          className="scene-bar__handle"
-          role="slider"
-          aria-label={`Cut to shot ${index + 1}`}
-          aria-valuemin={limits(index)[0]}
-          aria-valuemax={limits(index)[1]}
-          aria-valuenow={shot.startSeconds}
-          aria-valuetext={seconds(shot.startSeconds)}
-          disabled={disabled}
-          onPointerDown={() => setDragging(shot.id)}
-          onKeyDown={(event) => {
-            const delta = event.key === "ArrowLeft" ? -STEP_SECONDS : event.key === "ArrowRight" ? STEP_SECONDS : 0;
-            if (delta === 0) return;
-            event.preventDefault();
-            onStart(shot.id, clamp(index, shot.startSeconds + delta));
-          }}
-        />}
-        {/* Opens the shot in the panel, which is the same thing clicking its
-            card on the board does — the bar is the other way to reach it. */}
-        <button type="button" className="scene-bar__label" onClick={() => onSelect(shot.id)}>
-          <b>Shot {index + 1}</b>
-          <em>{seconds(shot.startSeconds)}</em>
-        </button>
-      </div>)}
-    </div>
-  </div>;
 }
 
 /** The same line, read back with each reference as a control. This is where
