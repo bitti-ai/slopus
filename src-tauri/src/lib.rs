@@ -207,6 +207,10 @@ struct GenerationJob {
     provider_id: Option<String>,
     creative_brief: String,
     compiled_prompt: String,
+    /// Exact inputs of the latest generation attempt. Missing on drafts that
+    /// have never been sent to the renderer and on older project files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generation_snapshot: Option<String>,
     #[serde(default)]
     reference_ids: Vec<String>,
     /// The H3 vocabulary tags this shot was built from: group id -> option ids.

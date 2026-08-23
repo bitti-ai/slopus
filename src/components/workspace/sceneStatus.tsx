@@ -1,4 +1,4 @@
-import { AlertCircle, Ban, Check, Clock3, LoaderCircle } from "lucide-react";
+import { AlertCircle, Ban, Check, Clock3, LoaderCircle, RefreshCw } from "lucide-react";
 import { sceneDurationSeconds, sceneShots, type GenerationJob } from "../../lib/project";
 
 /* What a scene's status is CALLED, in one place.
@@ -9,8 +9,9 @@ import { sceneDurationSeconds, sceneShots, type GenerationJob } from "../../lib/
  * the bug this file exists to make impossible. */
 
 export type JobStatus = GenerationJob["status"];
+export type SceneIndicatorStatus = JobStatus | "changed";
 
-export const STATUS_BADGE: Record<JobStatus, string> = {
+export const STATUS_BADGE: Record<SceneIndicatorStatus, string> = {
   draft: "DRAFT",
   queued: "IN QUEUE",
   generating: "RENDERING",
@@ -18,6 +19,7 @@ export const STATUS_BADGE: Record<JobStatus, string> = {
   completed: "FINISHED",
   failed: "FAILED",
   cancelled: "CANCELLED",
+  changed: "CHANGED",
 };
 
 export const STATUS_WORD: Record<JobStatus, string> = {
@@ -32,11 +34,12 @@ export const STATUS_WORD: Record<JobStatus, string> = {
 
 /* Encoding turns the same spinner as rendering: it is the app working, not the
    app waiting, and a tick beside "saving" would say it was already done. */
-export const statusIcon = (status: JobStatus, size = 16) =>
+export const statusIcon = (status: SceneIndicatorStatus, size = 16) =>
   status === "generating" || status === "ready" ? <LoaderCircle size={size} />
     : status === "completed" ? <Check size={size} />
       : status === "failed" ? <AlertCircle size={size} />
         : status === "cancelled" ? <Ban size={size} />
+          : status === "changed" ? <RefreshCw size={size} />
           : <Clock3 size={size} />;
 
 /** The shape of a scene — how long it runs and how many shots it is cut into. */

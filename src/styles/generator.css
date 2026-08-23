@@ -198,6 +198,11 @@
   background: color-mix(in srgb, var(--success) 16%, var(--panel-3));
 }
 
+.scene-rule__status--changed {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
 .scene-rule__status--failed,
 .scene-rule__status--cancelled {
   color: var(--danger);
@@ -729,7 +734,7 @@
   color: var(--text-primary);
   background: var(--panel-2);
   font-family: var(--font-sans);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   line-height: var(--leading-normal);
   resize: vertical;
 }
@@ -1338,6 +1343,11 @@
 .status-icon--ready {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 16%, var(--panel-3));
+}
+
+.status-icon--changed {
+  color: var(--warning);
+  background: var(--warning-soft);
 }
 
 .status-icon--failed,

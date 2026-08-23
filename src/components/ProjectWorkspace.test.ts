@@ -953,7 +953,7 @@ describe("project workspace timecode", () => {
       project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "generator",
       onBack: () => undefined, onSave: async () => undefined,
     }));
-    const line = () => screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement;
+    const line = () => screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement;
     openShot(1);
     fireEvent.change(line(), { target: { value: "a slow push across the launch pad" } });
     fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
@@ -1139,10 +1139,10 @@ describe("project workspace timecode", () => {
     // It opens on the scene: the thing with a state, a prompt and a Generate
     // button.
     expect(screen.getByRole("textbox", { name: "Rename First scene" })).not.toBeNull();
-    expect(screen.queryByRole("textbox", { name: "What happens in shot 1" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Describe shot 1" })).toBeNull();
 
     openShot(1);
-    expect(screen.getByRole("textbox", { name: "What happens in shot 1" })).not.toBeNull();
+    expect(screen.getByRole("textbox", { name: "Describe shot 1" })).not.toBeNull();
     // The shared scene header stays visible, while the right panel edits only
     // the shot.
     expect(screen.getByRole("slider", { name: "First scene length in seconds" })).not.toBeNull();
@@ -1164,10 +1164,10 @@ describe("project workspace timecode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Scene" }));
 
     const next = onChange.mock.calls.at(-1)![0];
-    // It goes to the head of the list and does not disturb the scene already there.
+    // It goes to the bottom and does not disturb the scene already there.
     expect(next.generationJobs).toHaveLength(2);
-    expect(next.generationJobs[1]).toEqual(config.generationJobs[0]);
-    const added = next.generationJobs[0];
+    expect(next.generationJobs[0]).toEqual(config.generationJobs[0]);
+    const added = next.generationJobs[1];
     expect(added.status).toBe("draft");
     // One shot with nothing in it, and a name that says so rather than a phrase
     // PolStudio made up out of words the user never typed.
@@ -1212,7 +1212,7 @@ describe("project workspace timecode", () => {
       fireEvent.change(screen.getByRole("spinbutton", { name: `Shot ${shotNumber} starts at, in seconds` }), { target: { value: String(startSeconds) } });
       next = onChange.mock.calls.at(-1)![0];
       rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-      fireEvent.change(screen.getByRole("textbox", { name: `What happens in shot ${shotNumber}` }), { target: { value: line } });
+      fireEvent.change(screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` }), { target: { value: line } });
       next = onChange.mock.calls.at(-1)![0];
       rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     }
@@ -1306,10 +1306,10 @@ describe("project workspace timecode", () => {
 
     // One shot, holding the words and the tags the file already had.
     openShot(1);
-    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value).toBe("A quiet product film");
+    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value).toBe("A quiet product film");
     // The legacy per-job tag now reads as a setting ON the shot.
     expect(screen.getByRole("button", { name: "Remove Lens: Macro from shot 1" })).not.toBeNull();
-    expect(screen.queryByRole("textbox", { name: "What happens in shot 2" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Describe shot 2" })).toBeNull();
     // Only one card, because a legacy scene is read as a single-shot scene.
     expect(screen.queryByRole("button", { name: "Shot 2 of First scene" })).toBeNull();
     openScene();
@@ -1335,7 +1335,7 @@ describe("project workspace timecode", () => {
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     expect((screen.getByRole("slider", { name: "First scene length in seconds" }) as HTMLInputElement).disabled).toBe(true);
     openShot(1);
-    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).disabled).toBe(true);
     expect((screen.getByRole("combobox", { name: "Add a setting to shot 1" }) as HTMLSelectElement).disabled).toBe(true);
     expect(screen.getByText(/It can be changed once it finishes/)).not.toBeNull();
   });
@@ -1355,7 +1355,7 @@ describe("project workspace timecode", () => {
 
     // Dragged out of the palette and dropped onto the line.
     const drop = (referenceId: string) => {
-      const field = screen.getByRole("textbox", { name: "What happens in shot 1" });
+      const field = screen.getByRole("textbox", { name: "Describe shot 1" });
       const event = createEvent.drop(field);
       Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
       fireEvent(field, event);
@@ -1367,7 +1367,7 @@ describe("project workspace timecode", () => {
     expect(next.generationJobs[0].referenceIds).toEqual(["ref-woman"]);
     show(next);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "What happens in shot 1" }), { target: { value: "[Reference 1] walks towards the camera on " } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Describe shot 1" }), { target: { value: "[Reference 1] walks towards the camera on " } });
     next = onChange.mock.calls.at(-1)![0];
     show(next);
     drop("ref-street");
@@ -1377,7 +1377,7 @@ describe("project workspace timecode", () => {
 
     // What the user reads in the field is "Reference N"; what is stored is the
     // reference's id, so a rename or a reorder cannot re-point the sentence.
-    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value)
+    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value)
       .toBe("[Reference 1] walks towards the camera on [Reference 2]");
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     openScene();
@@ -1425,7 +1425,7 @@ describe("project workspace timecode", () => {
       const view = () => createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: start.generationJobs[0].id });
       const app = render(view());
       openShot(1);
-      const field = screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement;
+      const field = screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement;
       field.setSelectionRange(caret, caret);
       const event = createEvent.drop(field);
       Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? "ref-woman" : "", types: [REFERENCE_DRAG_TYPE] } });
@@ -1474,7 +1474,7 @@ describe("project workspace timecode", () => {
     const shot = (shotNumber: number) => { openShot(shotNumber, "First scene"); show(); };
     const scene = () => { openScene("First scene"); show(); };
     const dropReference = (referenceId: string, shotNumber: number) => {
-      const field = screen.getByRole("textbox", { name: `What happens in shot ${shotNumber}` });
+      const field = screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` });
       const event = createEvent.drop(field);
       Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
       fireEvent(field, event);
@@ -1491,13 +1491,13 @@ describe("project workspace timecode", () => {
     shot(1);
     dropReference("ref-street", 1);
     dropReference("ref-woman", 1);
-    set("textbox", "What happens in shot 1", "[Reference 1] walks towards the camera on [Reference 2]");
+    set("textbox", "Describe shot 1", "[Reference 1] walks towards the camera on [Reference 2]");
     shot(2);
     set("spinbutton", "Shot 2 starts at, in seconds", "4.5");
-    set("textbox", "What happens in shot 2", "she stops at a doorway and looks up");
+    set("textbox", "Describe shot 2", "she stops at a doorway and looks up");
     shot(3);
     set("spinbutton", "Shot 3 starts at, in seconds", "9");
-    set("textbox", "What happens in shot 3", "the door opens and light spills across [Reference 2]");
+    set("textbox", "Describe shot 3", "the door opens and light spills across [Reference 2]");
 
     shot(1);
     set("combobox", "Add a setting to shot 1", "cameraMovement");
@@ -1515,7 +1515,7 @@ describe("project workspace timecode", () => {
     // What the field shows is "Reference N"; what is stored is the id, so a
     // rename or a reorder cannot re-point the sentence.
     shot(1);
-    expect((screen.getByRole("textbox", { name: "What happens in shot 1" }) as HTMLTextAreaElement).value)
+    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value)
       .toBe("[Reference 1] walks towards the camera on [Reference 2]");
     expect(config.generationJobs[0].shots![0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     expect(config.generationJobs[0].durationSeconds).toBe(12);

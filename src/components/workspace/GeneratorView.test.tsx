@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
@@ -58,11 +58,13 @@ const transfer = (): DataTransfer => {
   return value as unknown as DataTransfer;
 };
 
-function setup() {
-  let latest = project();
+function setup(initial = project()) {
+  let latest = initial;
+  let replace: (next: ProjectConfig) => void = () => undefined;
   function Harness() {
     const [config, setConfig] = useState(latest);
     latest = config;
+    replace = (next) => setConfig(next);
     return <GeneratorView
       config={config}
       folderPath="C:\\project"
@@ -72,7 +74,24 @@ function setup() {
     />;
   }
   render(<Harness />);
-  return { latest: () => latest };
+  return {
+    latest: () => latest,
+    replace: (next: ProjectConfig) => act(() => replace(next)),
+  };
+}
+
+async function finishFirst(state: ReturnType<typeof setup>) {
+  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+  state.replace({
+    ...state.latest(),
+    generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? {
+      ...job,
+      status: "completed",
+      stage: "completed",
+      progress: 1,
+    } : job),
+  });
 }
 
 describe("Generator scene controls", () => {
@@ -113,12 +132,60 @@ describe("Generator scene controls", () => {
 
     fireEvent.change(screen.getByRole("slider", { name: "First scene length in seconds" }), { target: { value: "10" } });
     expect(state.latest().generationJobs[0].durationSeconds).toBe(10);
+    expect(screen.queryByText("CHANGED")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove scene First scene" }));
     expect(screen.getByRole("alertdialog", { name: "Remove scene?" })).toBeInTheDocument();
     expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
     fireEvent.click(screen.getByRole("button", { name: "Remove scene" }));
     expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-second"]);
+  });
+
+  it("adds new scenes at the bottom", () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add Scene" }));
+    expect(state.latest().generationJobs.slice(0, 2).map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
+    expect(state.latest().generationJobs.at(-1)?.title).toBe("Untitled scene");
+  });
+
+  it("marks a finished scene yellow when scene settings change", async () => {
+    const state = setup();
+    await finishFirst(state);
+    const scene = screen.getByRole("region", { name: "First scene" });
+    expect(within(scene).getByText("FINISHED")).toBeInTheDocument();
+    expect(scene.querySelector(".scene-rule__status--completed")).not.toBeNull();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Soft rain." } });
+    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
+    expect(scene.querySelector(".scene-rule__status--changed")).not.toBeNull();
+  });
+
+  it("marks a finished scene changed when shot settings or order change", async () => {
+    const state = setup();
+    await finishFirst(state);
+    const scene = screen.getByRole("region", { name: "First scene" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+    expect(screen.getByText("Describe the shot")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Add a setting to shot 1" }), { target: { value: "shotSize" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Value for Shot size on shot 1" }), { target: { value: "close-up" } });
+    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
+
+    fireEvent.click(within(scene).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].status).toBe("queued"));
+    const regenerated = state.latest().generationJobs[0];
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job, index) => index === 0
+        ? { ...regenerated, status: "completed", stage: "completed", progress: 1 }
+        : job),
+    });
+    expect(within(scene).getByText("FINISHED")).toBeInTheDocument();
+
+    const shotTransfer = transfer();
+    fireEvent.dragStart(screen.getByRole("button", { name: "Shot 1 of First scene" }), { dataTransfer: shotTransfer });
+    fireEvent.drop(screen.getByRole("button", { name: "Add a shot to First scene" }).parentElement!, { dataTransfer: shotTransfer });
+    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
   });
 
   it("renames a shot and confirms before removing it", () => {
@@ -143,5 +210,7 @@ describe("Generator scene controls", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]));
+    expect(state.latest().generationJobs.every((job) => Boolean(job.generationSnapshot))).toBe(true);
+    expect(parseProjectConfig(state.latest())).toBeTruthy();
   });
 });

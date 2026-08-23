@@ -54,6 +54,7 @@ export function SceneBoard({
   onRemoveScene,
   onGenerate,
   generationBlocker,
+  changedJobIds,
   onMoveScene,
   onMoveShot,
 }: {
@@ -67,6 +68,7 @@ export function SceneBoard({
   onRemoveScene: (job: GenerationJob) => void;
   onGenerate: (job: GenerationJob) => void;
   generationBlocker: (job: GenerationJob) => string | null;
+  changedJobIds: ReadonlySet<string>;
   onMoveScene: (jobId: string, beforeJobId: string | null) => void;
   onMoveShot: (sourceJobId: string, shotId: string, targetJobId: string, beforeShotId: string | null) => void;
 }) {
@@ -79,6 +81,7 @@ export function SceneBoard({
       const sceneOpen = selection.jobId === job.id && selection.shotId === null;
       const locked = job.status === "queued" || job.status === "generating";
       const blocker = generationBlocker(job);
+      const indicator = changedJobIds.has(job.id) ? "changed" : job.status;
 
       const dropScene = (event: React.DragEvent<HTMLElement>) => {
         if (!hasDragType(event.dataTransfer.types, SCENE_DRAG_TYPE)) return;
@@ -124,11 +127,11 @@ export function SceneBoard({
           ><GripVertical size={17} aria-hidden="true" /></span>
 
           <div className="scene-rule__summary">
-            {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${job.status}`}>{statusIcon(job.status, 15)}</span>}
+            {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${indicator}`}>{statusIcon(indicator, 15)}</span>}
             <span className="scene-rule__text">
               <b>{job.title}</b>
             </span>
-            {job.status !== "draft" && <span className="scene-rule__badge">{STATUS_BADGE[job.status]}</span>}
+            {job.status !== "draft" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
           </div>
 
           <label className="scene-rule__length">
