@@ -167,7 +167,7 @@ describe("project workspace timecode", () => {
     // Save is the only save state left in the topbar — the standing "All
     // changes saved" pill is gone — so it is off until there is something to
     // write. Make an edit first, or the click lands on a disabled button.
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Opening shot, retimed" } });
+    fireEvent.change(screen.getAllByTitle("Rename this track")[0], { target: { value: "Opening shots" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Couldn’t save project");
@@ -272,6 +272,25 @@ describe("project workspace timecode", () => {
     const media = container.querySelector(".media-grid")! as HTMLElement;
     expect(within(media).getByText("Macro footage")).not.toBeNull();
     expect(within(media).getByText("Room tone")).not.toBeNull();
+  });
+
+  it("removes project media and every timeline use of it", () => {
+    const base = projectWithMedia();
+    const config = parseProjectConfig({
+      ...base,
+      timeline: { tracks: base.timeline.tracks.map((track) => track.id === STORY_TRACK_ID ? { ...track, clips: [{
+        id: "clip-macro-a", assetId: "asset-macro", trackId: track.id, startMs: 0, durationMs: 2_000, sourceStartMs: 0, label: "Macro A", color: null, status: "approved",
+      }, {
+        id: "clip-macro-b", assetId: "asset-macro", trackId: track.id, startMs: 3_000, durationMs: 2_000, sourceStartMs: 2_000, label: "Macro B", color: null, status: "approved",
+      }] } : track) },
+    });
+    const { onChange } = mediaPanel(config);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Macro footage from project" }));
+    const next = wrote(onChange.mock.calls[0][0], config);
+    expect(next.assets.map((asset) => asset.id)).toEqual(["asset-room"]);
+    expect(next.timeline.tracks.flatMap((track) => track.clips).some((clip) => clip.assetId === "asset-macro")).toBe(false);
+    expect(parseProjectConfig(next)).toBeTruthy();
   });
 
   it("drops an ungenerated Generator scene onto a video track as a valid draft clip", () => {
@@ -429,54 +448,6 @@ describe("project workspace timecode", () => {
     fireEvent.dragStart(cardFor(unknown.assets[0]), { dataTransfer: transferTwo });
     fireEvent.drop(laneFor(second.container, unknown, "video"), { dataTransfer: transferTwo });
     expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
-  });
-
-  it("retimes the selected clip from the Lasts field, and will not run past the footage", () => {
-    const config = withClip(measuredVideo(projectWithMedia(), 40_000), {});
-    /* Every edit is fed back in, the way the holder does it in the app. It has
-       to be: a typed length is now a trim of the clip’s tail, and a trim is
-       measured against the clip AS IT STANDS — how much footage is left in the
-       file after it, what sits next to it on the track. A harness that
-       swallowed the writes would ask every keystroke about a clip that had
-       already been replaced. */
-    let current = config;
-    const onChange = vi.fn((next: ProjectConfig | ((value: ProjectConfig) => ProjectConfig)) => {
-      current = typeof next === "function" ? next(current) : next;
-      rerender(createElement(TimelineView, { config: current, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
-    });
-    const { rerender } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
-    const lasts = screen.getByTitle(/^How long this clip lasts/) as HTMLInputElement;
-    // It was readOnly, which made the only stated way to fix a clip's length a
-    // field that could not be typed into.
-    expect(lasts.readOnly).toBe(false);
-    expect(lasts.value).toBe("00:40:00");
-    const lastDuration = () => current.timeline.tracks.flatMap((track) => track.clips)[0].durationMs;
-
-    // Plain seconds, and the minutes:seconds:frames the field itself prints.
-    fireEvent.change(lasts, { target: { value: "8" } });
-    expect(lastDuration()).toBe(8_000);
-    fireEvent.change(lasts, { target: { value: "00:12:15" } });
-    // 15 frames at the project's 24 fps is 625 ms, not half a second.
-    expect(lastDuration()).toBe(12_625);
-    expect(parseProjectConfig(current)).toBeTruthy();
-
-    // Half-typed text is not a length, and must not be turned into one.
-    const before = onChange.mock.calls.length;
-    fireEvent.change(lasts, { target: { value: "00:" } });
-    expect(onChange.mock.calls.length).toBe(before);
-    expect(lasts.value).toBe("00:");
-
-    // Clamped at both ends: a clip cannot be shorter than one frame — 42 ms at
-    // 24 fps — and cannot play footage the file does not have.
-    fireEvent.change(lasts, { target: { value: "0" } });
-    expect(lastDuration()).toBe(42);
-    fireEvent.change(lasts, { target: { value: "90" } });
-    expect(lastDuration()).toBe(40_000);
-    expect(parseProjectConfig(current)).toBeTruthy();
-
-    // Off the field, the clip's own length is what it shows again.
-    fireEvent.blur(lasts);
-    expect(lasts.value).toBe("00:40:00");
   });
 
   /* --- Dragging clips on the timeline --------------------------------------

@@ -23,16 +23,16 @@ import {
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { sceneShape, STATUS_WORD } from "./sceneStatus";
+import { ShotThumbnail } from "./ShotThumbnail";
 
 const MIN_DURATION = 10_000;
-const NOT_YET = "Not available yet. This control doesn’t change your project.";
 /* How long a dropped clip is when the file itself cannot say.
    A drop normally lasts as long as the footage: the media panel decodes each
    file to draw its thumbnail and records the duration it read there (see
    MediaThumbnail), so a 40-second rush drops as 40 seconds. This default
    covers the two cases where there is no such number — a still image, which
    has no length of its own, and a file the browser opened but could not
-   measure. In both, the Lasts field in the inspector sets the truth. */
+   measure. */
 const DROPPED_CLIP_MS = 5_000;
 /* The drag payload is the asset id. A custom type keeps files dragged in from
    the desktop, and text dragged from anywhere else, out of the drop handler. */
@@ -115,20 +115,6 @@ const timecode = (ms: number) => {
   return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
 };
 
-/* The Lasts field read back. It prints MM:SS:FF, so that is what it takes;
-   two parts are the minutes and seconds of it, and a bare number is seconds,
-   because "8" and "8.5" are what people actually type into a length box.
-   Null means this is not a length yet — half-typed, or not a number at all —
-   and half-typed text must never be turned into a clip length. */
-const parseDuration = (value: string, frameRate: number): number | null => {
-  const parts = value.trim().split(":");
-  if (parts.length > 3 || parts.some((part) => !/^\d+(\.\d+)?$/.test(part.trim()))) return null;
-  const numbers = parts.map((part) => Number(part));
-  const frames = parts.length === 3 ? numbers[2] * (1000 / frameRate) : 0;
-  const seconds = parts.length === 1 ? numbers[0] : numbers[0] * 60 + numbers[1];
-  return Math.round(seconds * 1000 + frames);
-};
-
 /** How a view hands a project back. An updater rather than a plain value is
  *  the only safe form for a write built from something asynchronous: the
  *  holder applies it to its LATEST config, so a write does not depend on the
@@ -172,7 +158,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
      otherwise shows the clip's own length, and "00:0" on the way to "00:08"
      must not be snapped back to a formatted timecode mid-keystroke. Null means
      nothing is being typed and the clip speaks for itself. */
-  const [durationDraft, setDurationDraft] = useState<string | null>(null);
   /* A drag in flight, and the timeline as it would be if the pointer were
      released right now. The lanes draw the preview, and the release commits
      exactly it — the drag and the edit are the same calculation, run twice
@@ -213,7 +198,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   const setPlayingFromMonitor = useCallback((value: boolean) => setPlaying(value), []);
 
   // Another clip, another length: what was being typed belonged to the old one.
-  useEffect(() => { setDurationDraft(null); }, [selectedId]);
 
   /* Wheel over the timeline scrubs it. Registered by hand rather than with
      React's onWheel because React attaches wheel listeners passively, and a
@@ -270,7 +254,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) =>
     onChange((current) => ({ ...current, timeline: { tracks: nextTracks } }));
   const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
-  const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   /* Every removal — the toolbar, the key, the × on the clip itself — goes
      through one function, so a locked track refuses all three. */
@@ -431,10 +414,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
      because zod wants a positive whole number of milliseconds and a clip
      shorter than a frame cannot be shown. A still has no source length, so it
      is only bounded from below. */
-  const selectedAsset = selected ? assetById(selected.assetId) : undefined;
-  const sourceLimitMs = selected && selectedAsset?.kind !== "image" && selectedAsset?.durationMs
-    ? Math.max(1, selectedAsset.durationMs - selected.sourceStartMs)
-    : null;
   const minClipMs = Math.max(1, Math.round(1000 / config.settings.frameRate));
   /** What the FILE has left at each end of a clip. A still image and a file
    *  nothing has measured have no source timeline to run out of, and get no
@@ -446,14 +425,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
   /* Typing a length is trimming the tail, so it is the same operation the
      right-hand handle performs — same floor of one frame, same ceiling in the
      footage, and the same refusal to grow over the next clip on the track. */
-  const typeDuration = (value: string) => {
-    setDurationDraft(value);
-    const parsed = selected ? parseDuration(value, config.settings.frameRate) : null;
-    if (parsed === null || !selected) return;
-    const next = trimClip(tracks, selected.id, "end", selected.startMs + parsed, { minClipMs, room: roomFor(selected) });
-    if (next) updateTracks(next);
-  };
-
   /* Snapping, measured against a lane that is `widthPx` wide. A lane nothing
      has laid out yet — jsdom, a panel that has never been painted — gives a
      tolerance of 0, which turns the magnet off instead of inventing a scale. */
@@ -653,6 +624,23 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
      read. */
   const drawnTracks = preview ?? tracks;
 
+  const removeMediaAsset = (assetId: string) => {
+    const removedClipIds = new Set(tracks.flatMap((track) => track.clips)
+      .filter((clip) => clip.assetId === assetId)
+      .map((clip) => clip.id));
+    onChange((current) => ({
+      ...current,
+      assets: current.assets.filter((asset) => asset.id !== assetId),
+      timeline: {
+        tracks: current.timeline.tracks.map((track) => ({
+          ...track,
+          clips: track.clips.filter((clip) => clip.assetId !== assetId),
+        })),
+      },
+    }));
+    setSelectedId((current) => removedClipIds.has(current) ? "" : current);
+  };
+
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
@@ -729,7 +717,10 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
                   onDragEnd={() => { setDraggedScene(undefined); setDropTrackId(null); }}
                   title={`${job.title} — drag onto a video track below`}
                 >
-                  <span className="scene-card__thumb"><i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em></span>
+                  <span className="scene-card__thumb">
+                    <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} posterOffsetSeconds={0} />
+                    <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
+                  </span>
                   <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>
                 </button>;
               })}
@@ -740,23 +731,31 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
               {/* Draggable onto the timeline. `draggable` on a <button> is the
                   whole mechanism — the button still clicks and still takes
                   focus, so keyboard users are not shut out of selecting it. */}
-              {mediaAssets.map((asset) => <button
-                key={asset.id}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
-                  event.dataTransfer.effectAllowed = "copy";
-                  setDraggedAsset(asset);
-                  setDraggedScene(undefined);
-                }}
-                onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
-                title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
-              >
-                <MediaThumbnail folderPath={folderPath} asset={asset} onMeasured={(measured) => recordMeasured(asset.id, measured)} />
-                <b>{asset.name}</b>
-                {/* Duration is only claimed when something actually measured it. */}
-                <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
-              </button>)}
+              {mediaAssets.map((asset) => <div className="media-card" key={asset.id}>
+                <button
+                  className="media-card__source"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
+                    event.dataTransfer.effectAllowed = "copy";
+                    setDraggedAsset(asset);
+                    setDraggedScene(undefined);
+                  }}
+                  onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
+                  title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
+                >
+                  <MediaThumbnail folderPath={folderPath} asset={asset} onMeasured={(measured) => recordMeasured(asset.id, measured)} />
+                  <b>{asset.name}</b>
+                  {/* Duration is only claimed when something actually measured it. */}
+                  <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
+                </button>
+                <button
+                  className="media-card__remove"
+                  aria-label={`Remove ${asset.name} from project`}
+                  title={`Remove ${asset.name} from the project and timeline`}
+                  onClick={() => removeMediaAsset(asset.id)}
+                ><X size={14} /></button>
+              </div>)}
               <button
                 className="media-import"
                 onClick={() => void importMedia()}
@@ -796,49 +795,6 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
           </div>
         </main>
 
-        <aside className="clip-inspector">
-          <div className="panel-chrome"><h2>Clip details</h2></div>
-          {selected ? <>
-            <div className="inspector-summary"><span className="clip-chip" style={{ background: selected.color ?? undefined }}><Film size={18} /></span><div><b>{selected.label}</b><small>{selectedTrack?.name} · {selected.status}</small></div></div>
-            <section className="inspector-section">
-              <h3>Clip</h3>
-              <label><span>Name</span><input value={selected.label} onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })} /></label>
-              <div className="field-pair">
-                <label><span>Starts at</span><input value={timecode(selected.startMs).slice(3)} readOnly /></label>
-                {/* The one field here that has to be editable: a clip is only
-                    as long as the cut says, and until this took typing there
-                    was no way at all to change a clip's length except to split
-                    it, which can only ever shorten. Typed as minutes, seconds,
-                    and frames, or as plain seconds. */}
-                <label><span>Lasts</span><input
-                  value={durationDraft ?? timecode(selected.durationMs).slice(3)}
-                  onChange={(event) => typeDuration(event.target.value)}
-                  onBlur={() => setDurationDraft(null)}
-                  title={`How long this clip lasts — minutes:seconds:frames, or just seconds.${sourceLimitMs === null ? "" : ` This footage has ${(sourceLimitMs / 1000).toFixed(1)}s left from where the clip starts in it.`}`}
-                  inputMode="decimal"
-                /></label>
-              </div>
-            </section>
-            <section className="inspector-section inspector-section--pending">
-              <h3>Transform <em>Not available yet</em></h3>
-              <div className="field-pair">
-                <label><span>Scale</span><input defaultValue="100%" disabled title={NOT_YET} /></label>
-                <label><span>Rotation</span><input defaultValue="0°" disabled title={NOT_YET} /></label>
-              </div>
-              <div className="field-pair">
-                <label><span>Position X</span><input defaultValue="0" disabled title={NOT_YET} /></label>
-                <label><span>Position Y</span><input defaultValue="0" disabled title={NOT_YET} /></label>
-              </div>
-            </section>
-            <section className="inspector-section inspector-section--pending">
-              <h3>Look <em>Not available yet</em></h3>
-              <label className="range-field"><span>Opacity <b>100%</b></span><input type="range" defaultValue="100" disabled title={NOT_YET} /></label>
-              <label className="range-field"><span>Temperature <b>+4</b></span><input type="range" defaultValue="54" disabled title={NOT_YET} /></label>
-            </section>
-          </> : clipCount === 0
-            ? <div className="inspector-empty"><MouseSelection /><b>Nothing to edit yet</b><span>Once a scene lands on the timeline, select it here to rename it and check its timing.</span></div>
-            : <div className="inspector-empty"><MouseSelection /><b>Select a clip to edit it</b><span>Pick any clip on the timeline below to rename it, check its timing, and see how it was made.</span></div>}
-        </aside>
       </div>
 
       <section className="pro-timeline">
@@ -1056,5 +1012,3 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
     </div>
   </>;
 }
-
-function MouseSelection() { return <div className="selection-glyph"><span /><i /></div>; }

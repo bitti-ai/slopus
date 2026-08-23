@@ -14,19 +14,9 @@
      vertically if a project carries more tracks than that. */
   grid-template-rows: minmax(340px, 1fr) 372px;
 
-  /* How far the CENTRE OF THE PICTURE sits from the centre of a full-width row,
-     signed: negative is to the left. The timeline toolbar runs the whole width
-     while the program monitor is the middle column of .edit-panels between two
-     side panels of DIFFERENT widths, so the two centres are not the same point
-     and "centred in the toolbar" is not "centred under the video".
-
-     It is exactly half the difference between the side columns:
-       (296 - 340) / 2 = -22px
-     Anything that changes .edit-panels' columns must change this in the same
-     rule, the way --track-column and the playhead offset are kept in lockstep.
-     Measured in the shipped app at 1440px: monitor 296…1100 (centre 698),
-     toolbar 0…1440 (centre 720). */
-  --video-centre-shift: -22px;
+  /* The program monitor begins after the 296px scene panel and runs to the
+     right edge, so its centre is 148px right of the full-width toolbar's. */
+  --video-centre-shift: 148px;
 }
 
 /* The view itself is focusable (tabIndex={0}) so Space and Delete reach the
@@ -40,12 +30,11 @@
 .edit-panels {
   min-height: 0;
   display: grid;
-  grid-template-columns: 296px minmax(520px, 1fr) 340px;
+  grid-template-columns: 296px minmax(520px, 1fr);
   border-bottom: 1px solid var(--line-strong);
 }
 
-.scene-panel,
-.clip-inspector {
+.scene-panel {
   min-width: 0;
   overflow: hidden;
   background: var(--panel);
@@ -53,11 +42,6 @@
 
 .scene-panel {
   border-right: 1px solid var(--line);
-}
-
-.clip-inspector {
-  border-left: 1px solid var(--line);
-  overflow-y: auto;
 }
 
 /* --- Panel tabs ------------------------------------------------------------ */
@@ -107,8 +91,7 @@
    used to sit in the panel chrome, so they inherit the exact same look. */
 
 .scene-panel__head h2,
-.program-panel > .panel-chrome h2,
-.clip-inspector > .panel-chrome h2 {
+.program-panel > .panel-chrome h2 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -173,8 +156,6 @@
   box-shadow: inset 2px 0 var(--accent-bright);
 }
 
-/* A neutral slot, not a fake frame: PolStudio cannot render clip thumbnails
-   yet, so this shows only real data (scene number and duration). */
 .scene-card__thumb {
   position: relative;
   height: 64px;
@@ -187,6 +168,20 @@
     var(--hatch) 0 6px,
     transparent 6px 12px
   );
+}
+
+.scene-card__thumb .shot-thumb {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.scene-card__thumb .shot-thumb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .scene-card__thumb i,
@@ -315,7 +310,8 @@
   grid-column: 1 / -1;
 }
 
-.media-grid button {
+.media-grid .media-card__source,
+.media-grid .media-import {
   min-width: 0;
   /* Floor the hit target even if a card ever renders without its labels. */
   min-height: var(--control-sm);
@@ -327,12 +323,15 @@
   background: var(--panel-2);
 }
 
-.media-grid button:hover:not(:disabled) {
+.media-grid .media-card__source:hover:not(:disabled),
+.media-grid .media-import:hover:not(:disabled) {
   border-color: var(--line-strong);
 }
 
-.media-grid button b,
-.media-grid button small {
+.media-grid .media-card__source b,
+.media-grid .media-card__source small,
+.media-grid .media-import b,
+.media-grid .media-import small {
   display: block;
   padding: 0 var(--space-2);
   overflow: hidden;
@@ -340,7 +339,8 @@
   text-overflow: ellipsis;
 }
 
-.media-grid button b {
+.media-grid .media-card__source b,
+.media-grid .media-import b {
   margin-top: var(--space-2);
   color: var(--text-primary);
   font-size: var(--text-sm);
@@ -348,7 +348,8 @@
   line-height: var(--leading-snug);
 }
 
-.media-grid button small {
+.media-grid .media-card__source small,
+.media-grid .media-import small {
   margin-top: var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -383,7 +384,39 @@
   object-fit: cover;
 }
 
-.media-grid button[draggable="true"] {
+.media-card {
+  position: relative;
+  min-width: 0;
+}
+
+.media-card__source {
+  width: 100%;
+  height: 100%;
+}
+
+.media-grid .media-card__remove {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-1);
+  right: var(--space-1);
+  width: var(--control-sm);
+  min-height: var(--control-sm);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  background: var(--glass);
+  box-shadow: var(--shadow-sm);
+}
+
+.media-grid .media-card__remove:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.media-grid .media-card__source[draggable="true"] {
   cursor: grab;
 }
 
@@ -395,7 +428,7 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.media-grid--list button {
+.media-grid--list .media-card__source {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
   grid-template-rows: auto auto;
@@ -412,18 +445,18 @@
   border-bottom: 0;
 }
 
-.media-grid--list button b {
+.media-grid--list .media-card__source b {
   align-self: end;
   margin-top: 0;
   padding-left: 0;
 }
 
-.media-grid--list button small {
+.media-grid--list .media-card__source small {
   align-self: start;
   padding-left: 0;
 }
 
-.media-grid button[draggable="true"]:active {
+.media-grid .media-card__source[draggable="true"]:active {
   cursor: grabbing;
 }
 
@@ -611,203 +644,6 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
-}
-
-/* --- Clip inspector -------------------------------------------------------- */
-
-.inspector-summary {
-  display: flex;
-  gap: var(--space-3);
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--line);
-}
-
-.clip-chip {
-  width: var(--control-md);
-  height: var(--control-md);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
-
-.inspector-summary > div {
-  min-width: 0;
-}
-
-.inspector-summary b,
-.inspector-summary small {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.inspector-summary b {
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.inspector-summary small {
-  margin-top: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  text-transform: capitalize;
-}
-
-.inspector-section {
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--line);
-}
-
-.inspector-section h3 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-/* Honest badge: the fields below exist to show intent, but nothing is wired. */
-.inspector-section h3 em {
-  padding: 2px var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text-muted);
-  background: var(--panel-3);
-  font-size: var(--text-2xs);
-  font-style: normal;
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-snug);
-}
-
-.inspector-section label {
-  display: block;
-  margin-top: var(--space-3);
-}
-
-.inspector-section label > span {
-  display: block;
-  margin-bottom: var(--space-1);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-}
-
-.inspector-section input:not([type="range"]) {
-  width: 100%;
-  height: var(--field-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  /* No outline reset here: the Name field is the only editable control in the
-     inspector, and base.css's :focus-visible ring is its sole focus signal. */
-  color: var(--text-primary);
-  background: var(--bg);
-  font-family: var(--font-sans);
-  font-size: var(--text-base);
-}
-
-.inspector-section input:focus {
-  border-color: var(--accent);
-}
-
-.inspector-section input[readonly] {
-  color: var(--text-muted);
-}
-
-.inspector-section--pending {
-  opacity: 0.72;
-}
-
-.inspector-section input:disabled {
-  color: var(--text-faint);
-  cursor: not-allowed;
-}
-
-.field-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-
-.range-field > span {
-  display: flex !important;
-  justify-content: space-between;
-}
-
-.range-field b {
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
-}
-
-/* Sliders get a full 36px grab area rather than the old 2px hairline. */
-.range-field input {
-  width: 100%;
-  height: var(--control-sm);
-  accent-color: var(--accent-bright);
-}
-
-.range-field input:disabled {
-  cursor: not-allowed;
-}
-
-.inspector-empty {
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-5);
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.inspector-empty b {
-  margin: var(--space-3) 0 var(--space-2);
-  color: var(--text-primary);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.inspector-empty > span {
-  max-width: 34ch;
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-}
-
-.selection-glyph {
-  position: relative;
-  width: var(--control-md);
-  height: var(--control-md);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-}
-
-.selection-glyph span {
-  position: absolute;
-  inset: var(--space-2);
-  border: 1px dashed var(--accent-bright);
-}
-
-.selection-glyph i {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  right: var(--space-1);
-  bottom: var(--space-1);
-  border-radius: 1px;
-  background: var(--accent-bright);
 }
 
 /* --- Timeline toolbar ------------------------------------------------------ */
@@ -1409,22 +1245,20 @@
 /* The Tauri window may be resized down to 900px (see tauri.conf.json), so the
    editor has to survive 900–1180px without ever scrolling sideways. The old
    `minmax(460px, 1fr)` centre column alone forced a 1036px floor. Each step
-   below drops the least essential column; the program monitor always survives.
+   below narrows or removes the scene panel; the program monitor always survives.
 
-   1180px  three columns, narrower sides, monitor floor removed
-   1040px  two columns — the clip inspector goes first
-    840px  one column — the scene panel goes too (below the 900px window
+   1180px  narrower scene panel, monitor floor removed
+   1040px  scene panel narrows again
+    840px  one column — the scene panel goes (below the 900px window
            minimum, kept so an odd DPI/zoom combination still lays out) */
 
 @media (max-width: 1180px) {
   .edit-panels {
-    grid-template-columns: 256px minmax(0, 1fr) 300px;
+    grid-template-columns: 256px minmax(0, 1fr);
   }
 
-  /* (256 - 300) / 2 — the columns shrank by the same 40px on both sides, so
-     the picture's centre has not moved relative to the row. */
   .timeline-view {
-    --video-centre-shift: -22px;
+    --video-centre-shift: 128px;
   }
 
   .scene-card {
@@ -1443,23 +1277,8 @@
     grid-template-columns: 232px minmax(0, 1fr);
   }
 
-  /* Everything here is either read-only or already disabled, and the clip name
-     stays editable from the timeline clip itself, so this is the safe cut. */
-  .clip-inspector {
-    display: none;
-  }
-
-  /* With the inspector gone the picture runs to the right edge, so its centre
-     is (232 - 0) / 2 = 116px RIGHT of the row's centre — and that is the one
-     width where the toolbar cannot pay for it. Measured at 1040, 1000 and 900:
-     the two 1fr rails have already collapsed onto the heading and the four tool
-     buttons with only the 16px gaps left over, so the row has ZERO slack.
-     Reserving 232px of empty middle there would push the tool buttons off the
-     end. The transport takes the row's own centre instead, 116px from the
-     picture; below 840px there is one column left and the two centres agree
-     again on their own. */
   .timeline-view {
-    --video-centre-shift: 0px;
+    --video-centre-shift: 116px;
   }
 
   .timeline-grid {
@@ -1474,6 +1293,10 @@
 
   .scene-panel {
     display: none;
+  }
+
+  .timeline-view {
+    --video-centre-shift: 0px;
   }
 
   .timeline-grid {

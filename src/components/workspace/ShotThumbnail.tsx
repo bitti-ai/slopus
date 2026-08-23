@@ -235,16 +235,18 @@ function placeholder(job: GenerationJob, failed: boolean): { icon: ReactNode; wo
   }
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, shotNumber }: {
+export function ShotThumbnail({ folderPath, job, seconds, shotNumber, posterOffsetSeconds = POSTER_OFFSET_SECONDS }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
   /** Where the shot starts, in seconds from the head of the scene. */
   seconds: number;
   shotNumber: number;
+  /** Scene cards use frame zero; shot cards offset past a possible fade-in. */
+  posterOffsetSeconds?: number;
 }) {
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
-  const at = seconds + POSTER_OFFSET_SECONDS;
+  const at = seconds + posterOffsetSeconds;
   const [result, setResult] = useState<PosterResult>(() =>
     relativePath ? { poster: POSTERS.get(posterKey(fileKey(folderPath, relativePath), at)) ?? null, failed: false } : NOTHING);
 

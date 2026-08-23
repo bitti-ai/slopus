@@ -85,6 +85,17 @@ const rendered = (folder: string): GenerationJob => {
 };
 
 describe("a shot's picture", () => {
+  it("can draw the exact first frame for a scene card", async () => {
+    const folder = "C:\\Exact first frame";
+    const job = rendered(folder);
+    await withFakeFile({ seconds: 9 }, async (seen) => {
+      render(<ShotThumbnail folderPath={folder} job={job} seconds={0} shotNumber={1} posterOffsetSeconds={0} />);
+      const picture = await screen.findByRole("img", { name: "Shot 1 of First scene" }) as HTMLImageElement;
+      expect(seen.seeks).toEqual([]);
+      expect(picture.src).toContain("frame-0");
+    });
+  });
+
   it("takes each shot's own frame out of the scene's file, opening that file once", async () => {
     /* One .mp4 holds the whole scene, so a component that read the file per
        card would pull the same few hundred megabytes through the webview once
