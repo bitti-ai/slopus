@@ -164,7 +164,8 @@ export const timelineTrackSchema = z.object({
 });
 
 export const generationBriefSchema = z.object({
-  prompt: z.string().min(1),
+  /* Blank is a real empty project: no brief and no seeded scene. */
+  prompt: z.string(),
   status: z.enum(["draft", "queued", "generating", "ready", "failed"]),
   targetDurationSeconds: z.number().int().min(5).max(600),
   aspectRatio: aspectRatioSchema,
@@ -1052,7 +1053,7 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       { id: "track-a2", kind: "audio", name: "Track 2", locked: false, muted: false, clips: [] },
     ] },
     references: [],
-    generationJobs: [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })],
+    generationJobs: brief ? [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })] : [],
     agentConversation: { messages: [] }, providerSettings: {},
   });
 }

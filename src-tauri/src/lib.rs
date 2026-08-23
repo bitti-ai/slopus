@@ -588,9 +588,6 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
     }
     check_iso_datetime("Project createdAt", &config.created_at)?;
     check_iso_datetime("Project updatedAt", &config.updated_at)?;
-    if config.brief.prompt.trim().is_empty() {
-        return Err("Project brief cannot be empty.".into());
-    }
     if !is_supported_aspect_ratio(&config.settings.aspect_ratio) {
         return Err(format!(
             "Unsupported aspect ratio '{}'.",
@@ -3449,6 +3446,14 @@ mod tests {
             validate_and_normalize_config(config).is_ok(),
             "a blank text reference must never block saving the project"
         );
+    }
+
+    #[test]
+    fn blank_brief_is_a_valid_empty_project() {
+        let mut config = fixture();
+        config.brief.prompt.clear();
+        config.generation_jobs.clear();
+        assert!(validate_and_normalize_config(config).is_ok());
     }
 
     #[test]

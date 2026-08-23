@@ -117,7 +117,7 @@ const release = (element: HTMLMediaElement) => {
   }
 };
 
-async function videoPoster(url: string): Promise<{ poster: string | null; measured: MeasuredMedia }> {
+async function videoPoster(url: string, posterTimeSeconds: number): Promise<{ poster: string | null; measured: MeasuredMedia }> {
   const video = document.createElement("video");
   video.muted = true;
   video.preload = "auto";
@@ -131,7 +131,9 @@ async function videoPoster(url: string): Promise<{ poster: string | null; measur
     width: pixelsOf(video.videoWidth),
     height: pixelsOf(video.videoHeight),
   };
-  const target = Number.isFinite(video.duration) ? Math.min(video.duration / 2, POSTER_TIME_SECONDS) : 0;
+  const target = Number.isFinite(video.duration)
+    ? Math.min(Math.max(0, video.duration - 0.05), Math.max(0, posterTimeSeconds))
+    : 0;
   // Frame zero is a perfectly good fallback, so a seek that fails — or one that
   // simply never arrives — costs the half-second offset and nothing else.
   if (target > 0) {
@@ -175,24 +177,28 @@ async function measureAudio(url: string): Promise<MeasuredMedia> {
 const wantsMeasuring = (asset: ProjectAsset) =>
   asset.kind === "image" ? !asset.width || !asset.height : !asset.durationMs;
 
-export function MediaThumbnail({ folderPath, asset, onMeasured }: {
+export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS }: {
   folderPath: string;
   asset: ProjectAsset;
   /** Called once with whatever the decode could measure, so the project can
    *  record the file's real length instead of carrying nulls. Omit it and this
    *  component only draws. */
   onMeasured?: (measured: MeasuredMedia) => void;
+  /** Video time to draw. Media cards avoid fade-in black; project covers use
+   *  the exact first source frame present in the edit. */
+  posterTimeSeconds?: number;
 }) {
-  const cacheKey = `${folderPath}::${asset.sourcePath ?? asset.relativePath}`;
-  const [poster, setPoster] = useState<string | null>(() => POSTER_CACHE.get(cacheKey) ?? null);
+  const fileKey = `${folderPath}::${asset.sourcePath ?? asset.relativePath}`;
+  const posterKey = `${fileKey}::${Math.max(0, posterTimeSeconds)}`;
+  const [poster, setPoster] = useState<string | null>(() => POSTER_CACHE.get(posterKey) ?? null);
   const [failed, setFailed] = useState(false);
   /* Held in a ref because the parent passes a fresh closure on every render,
      and a callback in the dependency list would re-read the file each time. */
   const report = useRef(onMeasured);
   report.current = onMeasured;
 
-  const needsPoster = asset.kind !== "audio" && !POSTER_CACHE.has(cacheKey);
-  const needsMeasuring = Boolean(onMeasured) && !UNMEASURABLE.has(cacheKey) && wantsMeasuring(asset);
+  const needsPoster = asset.kind !== "audio" && !POSTER_CACHE.has(posterKey);
+  const needsMeasuring = Boolean(onMeasured) && !UNMEASURABLE.has(fileKey) && wantsMeasuring(asset);
   /* One read of the file per mount, however often this effect re-runs.
      Measuring the asset changes it, and that change re-runs the effect — so
      without this, a file that gave up its numbers but no drawable frame would
@@ -203,8 +209,8 @@ export function MediaThumbnail({ folderPath, asset, onMeasured }: {
     // Nothing to draw and nothing left to learn: sound has no picture, a cached
     // poster is already the answer, and a measured asset stays measured.
     if (!needsPoster && !needsMeasuring) return;
-    if (readOnce.current === cacheKey) return;
-    readOnce.current = cacheKey;
+    if (readOnce.current === posterKey) return;
+    readOnce.current = posterKey;
     let live = true;
     setFailed(false);
     void (async () => {
@@ -218,31 +224,31 @@ export function MediaThumbnail({ folderPath, asset, onMeasured }: {
         if (asset.kind === "audio") {
           measured = await measureAudio(url);
         } else {
-          const value = asset.kind === "image" ? await imagePoster(url) : await videoPoster(url);
+          const value = asset.kind === "image" ? await imagePoster(url) : await videoPoster(url, posterTimeSeconds);
           measured = value.measured;
           // A file that opened but would not draw is still a file that could
           // not be previewed, and the panel says so — after taking what it did
           // learn from it.
-          if (value.poster) cachePoster(cacheKey, value.poster);
+          if (value.poster) cachePoster(posterKey, value.poster);
           if (live) { if (value.poster) setPoster(value.poster); else setFailed(true); }
         }
         // Only ever hand up numbers something read off the file. When the file
         // gave none, remember that rather than reading it again next mount.
         if (measuredSomething(measured)) report.current?.(measured);
-        else UNMEASURABLE.add(cacheKey);
+        else UNMEASURABLE.add(fileKey);
       } catch {
-        UNMEASURABLE.add(cacheKey);
+        UNMEASURABLE.add(fileKey);
         if (live) setFailed(true);
       } finally {
         if (url) URL.revokeObjectURL(url);
       }
     })();
     return () => { live = false; };
-  }, [cacheKey, folderPath, asset.relativePath, asset.sourcePath, asset.mimeType, asset.kind, needsPoster, needsMeasuring]);
+  }, [posterKey, fileKey, folderPath, asset.relativePath, asset.sourcePath, asset.mimeType, asset.kind, posterTimeSeconds, needsPoster, needsMeasuring]);
 
   if (poster) {
     return <span className="media-thumb media-thumb--poster">
-      <img src={poster} alt={`First frames of ${asset.name}`} loading="lazy" />
+      <img src={poster} alt={`Frame from ${asset.name}`} loading="lazy" />
     </span>;
   }
   /* Three states, said plainly: sound never has a picture, a file the project

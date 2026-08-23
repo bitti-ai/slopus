@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
-import { createProjectConfig } from "./lib/project";
+import { createProjectConfig, STORY_TRACK_ID } from "./lib/project";
 
 describe("how long ago a project was edited", () => {
   afterEach(cleanup);
@@ -32,6 +32,20 @@ describe("how long ago a project was edited", () => {
     const { container } = render(<ProjectCard project={{ folderPath: "C:\\Ceramic Lamp", config }} index={0} onOpen={() => undefined} />);
     expect(container.querySelector(".project-card__meta")!.textContent).toContain("Edited just now");
   });
+
+  it("uses the first visual timeline asset as the project cover", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    config.assets = [{
+      id: "asset-cover", kind: "video", name: "Opening shot", relativePath: "media/opening.mp4", sourcePath: null,
+      mimeType: "video/mp4", durationMs: 5_000, width: 1920, height: 1080, createdAt: config.createdAt,
+    }];
+    config.timeline.tracks = config.timeline.tracks.map((track) => track.id === STORY_TRACK_ID ? { ...track, clips: [{
+      id: "clip-cover", assetId: "asset-cover", trackId: track.id, startMs: 2_000, durationMs: 3_000,
+      sourceStartMs: 750, label: "Opening shot", color: null, status: "approved",
+    }] } : track);
+    const { container } = render(<ProjectCard project={{ folderPath: "C:\\Ceramic Lamp", config }} index={0} onOpen={() => undefined} />);
+    expect(container.querySelector(".project-card__art > .media-thumb")?.getAttribute("aria-label")).toBe("Opening shot");
+  });
 });
 
 describe("project library controls", () => {
@@ -41,6 +55,7 @@ describe("project library controls", () => {
   it("can put back words an example chip overwrote", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
     const box = screen.getByRole("textbox", { name: "Describe your video" }) as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: "a rocket launch over the ocean at dawn" } });
     // While the box holds the user's own words the row says what a click costs.
@@ -94,6 +109,7 @@ describe("project library controls", () => {
   it("offers frame sizes MiniMax H3 can generate, relabelled when the shape changes", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
     const shape = screen.getByRole("combobox", { name: /Video shape/ }) as HTMLSelectElement;
     const size = screen.getByRole("combobox", { name: /Frame size/ }) as HTMLSelectElement;
 
@@ -124,6 +140,7 @@ describe("project library controls", () => {
   it("opens a prompt-created project in Generator with its initial draft selected", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Describe your video" }), { target: { value: "A quiet product film for a ceramic lamp" } });
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
     await screen.findByRole("heading", { name: "Generator" });
@@ -131,6 +148,18 @@ describe("project library controls", () => {
     // The engine pill is one line now, and in the browser that line is the
     // demo state rather than a paragraph explaining it.
     expect(await screen.findByText("Preview mode")).not.toBeNull();
+  });
+
+  it("creates an empty project when the new-project form is left blank", async () => {
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    expect(screen.getByRole("dialog", { name: "What do you want to make?" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByRole("heading", { name: "Timeline editor" })).not.toBeNull();
+    expect(screen.getAllByText("Untitled video").length).toBeGreaterThan(0);
+    expect(screen.queryByText("First scene")).toBeNull();
   });
 
   it("reports a project it can’t read instead of dropping it from the library", async () => {
