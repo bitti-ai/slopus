@@ -62,14 +62,20 @@ describe("the settings screen", () => {
     expect(within(tab("Video engine")).getByText("4")).toBeTruthy();
   });
 
-  it("says none of the prose that used to explain what this computer means", () => {
+  it("keeps the settings header short", () => {
     const { container } = open();
     for (const gone of ["belongs to this computer", "stays behind when", "needs the model files", "ships with the app"]) {
       expect(container.textContent, gone).not.toContain(gone);
     }
-    // What replaced it: the title, the tabs, and each field saying its own job.
-    expect(screen.getByRole("heading", { name: "This computer" })).toBeTruthy();
+    expect(screen.queryByText("This computer")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     expect(screen.getByText("Reads your prompt so the transformer can act on it.")).toBeTruthy();
+  });
+
+  it("puts the optional tokenizer setting last", () => {
+    const { container } = open();
+    const labels = Array.from(container.querySelectorAll(".settings-path label b")).map((label) => label.textContent);
+    expect(labels.at(-1)).toContain("Tokenizer");
   });
 
   it("offers Clear all paths only beside the paths", () => {
