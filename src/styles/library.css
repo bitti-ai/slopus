@@ -66,6 +66,7 @@
   max-height: calc(100dvh - var(--space-7) * 2);
   margin: 0 auto;
   position: relative;
+  overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-xl);
@@ -224,30 +225,14 @@
   border-top: 1px solid var(--line);
 }
 
-.composer__options > summary {
+.composer__options-head {
   min-height: var(--control-md);
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-5);
-  list-style: none;
-  cursor: pointer;
   color: var(--text-muted);
   font-size: var(--text-xs);
-}
-
-.composer__options > summary::-webkit-details-marker {
-  display: none;
-}
-
-/* base.css gives focus rings to buttons/fields; <summary> is not in that list. */
-.composer__options > summary:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: -2px;
-}
-
-.composer__options > summary:hover {
-  color: var(--text-secondary);
 }
 
 .composer__options-title {
@@ -262,26 +247,8 @@
   white-space: nowrap;
 }
 
-.composer__options-chevron {
-  flex: 0 0 auto;
-  margin-left: auto;
-  transition: transform 0.18s ease;
-}
-
-.composer__options[open] .composer__options-chevron {
-  transform: rotate(180deg);
-}
-
 .composer__options-body {
-  padding: 0 var(--space-5) var(--space-5);
-}
-
-.composer__options-note {
-  max-width: 68ch;
-  margin: 0 0 var(--space-4);
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  padding: var(--space-2) var(--space-5) var(--space-5);
 }
 
 .composer__options-grid {
