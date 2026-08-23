@@ -71,18 +71,20 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   };
 
   return <div className="references-view">
-    <header className="references-heading">
-      <h1>References</h1>
-      <div>
-        <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
-        <button className="primary-button" onClick={() => void addImage()}><Upload size={16} /> Add image</button>
-      </div>
-    </header>
-    <div className="reference-layout">
+    <main className="references-main">
+      <header className="references-heading">
+        <div className="references-heading__title">
+          <h1>References</h1>
+          <p>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</p>
+        </div>
+        <div className="references-heading__actions">
+          <button className="secondary-button" onClick={() => addTextReference()}><FileText size={16} /> New definition</button>
+          <button className="primary-button" onClick={() => void addImage()}><Upload size={16} /> Add image</button>
+        </div>
+      </header>
       <section className="reference-library" aria-labelledby="reference-library-heading">
         {/* Both regions used to start at h3, so the outline jumped h1 → h3. */}
         <h2 className="sr-only" id="reference-library-heading">Reference library</h2>
-        <div className="reference-library__toolbar"><span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span></div>
         <div className="reference-grid">
           {config.references.map((ref) => <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {ref.kind === "image" && (ref.relativePath || ref.sourcePath)
@@ -99,9 +101,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           <button className="reference-add-card" onClick={() => void addImage()}><span><Plus size={22} /></span><b>Add a reference</b><small>Import an image or write a definition</small></button>
         </div>
       </section>
+    </main>
 
-      <aside className="reference-inspector">
-        <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
+    <aside className="reference-inspector">
+      <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
+      <div className="reference-inspector__scroll">
         {selected ? <>
           <div className={`reference-detail-art reference-detail-art--${selected.kind}${selected.kind === "image" && (selected.relativePath || selected.sourcePath) ? " reference-detail-art--photo" : ""}`}>
             {selected.kind === "image" && (selected.relativePath || selected.sourcePath)
@@ -126,8 +130,8 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
           </section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
-      </aside>
-    </div>
+      </div>
+    </aside>
     {definitionDialog && <div className="reference-dialog-backdrop"><div className="reference-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-dialog-title">
       <h2 id="reference-dialog-title">Define a visual reference</h2>
       <p>Image import is available in the desktop app. This browser preview will save an honest text definition without inventing a file path.</p>
