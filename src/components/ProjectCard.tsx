@@ -1,7 +1,8 @@
 import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { resolutionLabel } from "../lib/export";
+import { resolutionLabel, visibleClipAt } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
+import { MediaThumbnail } from "./workspace/MediaThumbnail";
 
 interface ProjectCardProps {
   project: ProjectRecord;
@@ -41,6 +42,12 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
   const menuAnchor = useRef<HTMLDivElement>(null);
   const { config } = project;
   const style = config.thumbnail ? { backgroundImage: `url(${JSON.stringify(config.thumbnail).slice(1, -1)})` } : undefined;
+  const firstVisualMs = config.timeline.tracks
+    .filter((track) => track.kind === "video")
+    .flatMap((track) => track.clips)
+    .reduce<number | null>((first, clip) => first === null ? clip.startMs : Math.min(first, clip.startMs), null);
+  const firstClip = firstVisualMs === null ? null : visibleClipAt(config.timeline.tracks, firstVisualMs);
+  const firstAsset = firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -65,7 +72,13 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
   return (
     <article className="project-card" onDoubleClick={() => onOpen(project)}>
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
-        <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}`} style={style}>
+        <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}${firstAsset ? " project-card__art--media" : ""}`} style={style}>
+          {firstAsset && <MediaThumbnail
+            key={`${firstAsset.id}-${firstClip!.sourceStartMs}`}
+            folderPath={project.folderPath}
+            asset={firstAsset}
+            posterTimeSeconds={firstClip!.sourceStartMs / 1000}
+          />}
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
           <span className="project-card__quality">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</span>
           <span className="project-card__play"><Play size={18} fill="currentColor" /></span>

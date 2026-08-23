@@ -9,6 +9,7 @@ import { PolStudioLogo } from "./PolStudioLogo";
 interface PromptComposerProps {
   busy: boolean;
   onCreate: (input: CreateProjectInput) => Promise<void>;
+  onClose: () => void;
 }
 
 /** Clicking a chip fills the box with a complete starter description. */
@@ -43,8 +44,7 @@ const durationLabel = (seconds: number) =>
 const modifierKey =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
-export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
-  const [open, setOpen] = useState(false);
+export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps) {
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
@@ -77,18 +77,16 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
     setPrompt(ideaPrompt);
   };
 
-  /* Focus the box when the section is opened — that click is a statement of
-     intent, so landing in the field saves a second one. It used to fire on
-     mount, which is wrong now that the section starts closed: there would be
-     nothing to focus. Focus still moves only from the summary that was just
-     activated or from nowhere, so it never yanks focus off a field the user
-     already picked (Ctrl+K search included). */
+  /* Opening the modal is a statement of intent, so land in the optional brief. */
   useEffect(() => {
-    if (!open) return;
-    const active = document.activeElement;
-    if (active && active !== document.body && !(active instanceof HTMLElement && active.tagName === "SUMMARY")) return;
     promptInput.current?.focus({ preventScroll: true });
-  }, [open]);
+  }, []);
+
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [busy, onClose]);
 
   const addReferenceImages = async () => {
     setReferenceError(null);
@@ -101,7 +99,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   };
 
   const submit = async () => {
-    if (!prompt.trim() || busy) return;
+    if (busy) return;
     await onCreate({
       name: projectNameFromPrompt(prompt),
       prompt,
@@ -113,16 +111,13 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
   };
 
   return (
-    /* Collapsed by default. The library's job on open is to show you your
-       projects; starting a new one is deliberate, so it asks for one click
-       rather than taking the top of the page every time. <details> carries the
-       open/closed state and the keyboard behaviour natively. */
-    <details className="composer-shell" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="composer-heading">
-        <span className="eyebrow"><Sparkles size={14} /> New project</span>
-        <h2 id="create-heading">What do you want to make?</h2>
-        <ChevronDown className="composer-heading__chevron" size={20} aria-hidden="true" />
-      </summary>
+    <div className="composer-overlay" role="dialog" aria-modal="true" aria-labelledby="create-heading">
+      <section className="composer-shell">
+      <header className="composer-heading">
+        <div><span className="eyebrow"><Sparkles size={14} /> New project</span>
+        <h2 id="create-heading">What do you want to make?</h2></div>
+        <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label="Close new project"><X size={18} /></button>
+      </header>
       <div className="composer-shell__glow" />
 
       <div className="composer">
@@ -198,7 +193,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           </button>
           {/* The shortcut rides on the button it triggers rather than holding a
               permanent line of its own in the action row. */}
-          <button className="primary-button composer__submit" disabled={!prompt.trim() || busy} aria-busy={busy} onClick={() => void submit()} title={`Create project — or press ${modifierKey}+Enter`}>
+          <button className="primary-button composer__submit" disabled={busy} aria-busy={busy} onClick={() => void submit()} title={`Create project — or press ${modifierKey}+Enter`}>
             {busy ? <span className="spinner" /> : <WandSparkles size={18} />}
             Create project
           </button>
@@ -218,6 +213,7 @@ export function PromptComposer({ busy, onCreate }: PromptComposerProps) {
           <Undo2 size={15} /> Undo — put my words back
         </button>}
       </div>
-    </details>
+      </section>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { FolderOpen, Grid2X2, List, Search, Settings } from "lucide-react";
+import { FolderOpen, Grid2X2, List, Plus, Search, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brand } from "./components/Brand";
 import { ExitGuardDialog, type OngoingGeneration } from "./components/ExitGuardDialog";
@@ -30,6 +30,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
   const [error, setError] = useState<LibraryError | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   /* Settings is an overlay rather than a view of its own so opening it from
      inside a project cannot unmount the editor and throw away unsaved edits.
      Closing it bumps `settingsRevision`, which is what tells an open project to
@@ -153,7 +154,8 @@ function App() {
       const project = await createProject(input);
       if (!project) return;
       setProjects((current) => [project, ...current]);
-      setActiveProjectInitialView("generator");
+      setNewProjectOpen(false);
+      setActiveProjectInitialView(input.prompt.trim() ? "generator" : "timeline");
       setActiveProject(project);
     } catch (reason) {
       setError({ title: "Couldn’t create that project", detail: describe(reason) });
@@ -191,10 +193,9 @@ function App() {
           <Brand />
           <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
           <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
+          <button className="primary-button" onClick={() => setNewProjectOpen(true)}><Plus size={17} /> New project</button>
         </header>
         <div className="library__content">
-          <PromptComposer busy={busy} onCreate={createFromPrompt} />
-
           <section className="recent-projects" aria-labelledby="recent-heading">
             <div className="section-heading">
               <div>
@@ -221,7 +222,7 @@ function App() {
               <div className="library-empty">
                 <FolderOpen size={28} />
                 <h3>No projects yet</h3>
-                <p>Describe your video in the box above and press <strong>Create project</strong>. PolStudio makes the folder, the settings, and a first scene for you.</p>
+                <p>Create an empty project, or add a description and start with a first scene.</p>
                 <p className="library-empty__aside">Already made one on this computer?</p>
                 <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
               </div>
@@ -230,6 +231,7 @@ function App() {
         </div>
       </main>
       {settingsLauncher}
+      {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
       {exitGuard}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
