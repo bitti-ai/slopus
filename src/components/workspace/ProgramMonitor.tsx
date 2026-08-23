@@ -141,9 +141,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 
   // The picture's file. Nothing is read for a clip the playhead is not inside.
   useEffect(() => {
-    if (!asset) {
+    if (!asset || (!asset.relativePath && !asset.sourcePath)) {
       setUrl(null);
       setReady(false);
+      setError(null);
       return;
     }
     let live = true;
@@ -293,6 +294,9 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
      export writes there, and a panel over it only hid the answer. */
   let overlay: React.ReactNode = null;
   if (!hasClips || !clip) overlay = null;
+  else if (asset?.kind === "generated" && !asset.relativePath && !asset.sourcePath) {
+    overlay = <div className="program-note"><Film size={22} /><span>Generate {clip.label} to preview it. Its place on the timeline is already saved.</span></div>;
+  }
   else if (!isTauri()) {
     overlay = <div className="program-note"><Film size={22} /><span>Playback needs the desktop app — the browser preview has no project folder to read the footage from.</span></div>;
   } else if (error) {

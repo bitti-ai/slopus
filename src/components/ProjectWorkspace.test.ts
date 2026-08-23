@@ -13,6 +13,7 @@ import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 
 afterEach(cleanup);
 
@@ -256,6 +257,43 @@ describe("project workspace timecode", () => {
     cleanup();
     const second = mediaPanel(projectWithMedia());
     expect(second.container.querySelector(".media-grid--list")).not.toBeNull();
+  });
+
+  it("keeps imported media in Media and lists Generator scenes even before generation", () => {
+    const base = projectWithMedia();
+    const config = parseProjectConfig({ ...base, timeline: { tracks: base.timeline.tracks.map((track) => track.id === STORY_TRACK_ID ? { ...track, clips: [{
+      id: "clip-macro", assetId: "asset-macro", trackId: track.id, startMs: 0, durationMs: 5000, sourceStartMs: 0, label: "Macro footage", color: null, status: "approved",
+    }] } : track) } });
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenGenerator: () => undefined }));
+
+    expect(container.querySelector(".scene-list")!.textContent).toContain("First scene");
+    expect(container.querySelector(".scene-list")!.textContent).not.toContain("Macro footage");
+    fireEvent.click(screen.getByRole("button", { name: "Media" }));
+    const media = container.querySelector(".media-grid")! as HTMLElement;
+    expect(within(media).getByText("Macro footage")).not.toBeNull();
+    expect(within(media).getByText("Room tone")).not.toBeNull();
+  });
+
+  it("drops an ungenerated Generator scene onto a video track as a valid draft clip", () => {
+    const config = projectWithMedia();
+    const onChange = vi.fn();
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+    const scene = screen.getByTitle(/^First scene — drag onto a video track/);
+    const dataTransfer = fakeDataTransfer();
+
+    fireEvent.dragStart(scene, { dataTransfer });
+    fireEvent.drop(laneFor(container, config, "audio"), { dataTransfer });
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.drop(laneFor(container, config, "video"), { dataTransfer });
+    const next = wrote(onChange.mock.calls[0][0], config);
+    const generatedAsset = next.assets.find((asset) => asset.id === "asset-job-initial-brief")!;
+    const clip = next.timeline.tracks.flatMap((track) => track.clips).find((item) => item.assetId === generatedAsset.id)!;
+    expect(generatedAsset.kind).toBe("generated");
+    expect(generatedAsset.relativePath ?? null).toBeNull();
+    expect(clip.status).toBe("draft");
+    expect(clip.label).toBe("First scene");
+    expect(parseProjectConfig(next)).toBeTruthy();
   });
 
   it("drops a video from the media panel onto a video track, and refuses the audio track", () => {
@@ -902,8 +940,9 @@ describe("project workspace timecode", () => {
     // returns early — so the button must not look live.
     expect(split().disabled).toBe(true);
     expect(split().title).toBe("Move the playhead inside the selected clip to split it");
-    // Choosing a scene puts the playhead inside it, which is a real split.
-    fireEvent.click(container.querySelector(".scene-card")!);
+    // Scrubbing inside the selected timeline clip makes it a real split. Scene
+    // cards now open Generator scenes and are no longer aliases for clips.
+    fireEvent.wheel(container.querySelector(".timeline-grid")!, { deltaY: 100, deltaMode: 0 });
     expect(split().disabled).toBe(false);
     expect(split().title).toBe("Split at playhead");
   });

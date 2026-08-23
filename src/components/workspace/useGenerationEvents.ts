@@ -2,7 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
 import { saveGeneratedScene } from "../../lib/generatedVideo";
 import { isTauri } from "../../lib/persistence";
-import type { GenerationJob, ProjectConfig } from "../../lib/project";
+import { generationAssetId, type GenerationJob, type ProjectConfig } from "../../lib/project";
 
 /* Everything the video engine says about a scene, and what to do about it.
  *
@@ -85,16 +85,36 @@ export function useGenerationEvents({ folderPath, onChange }: {
             if (total > 0) updateJob(jobId, { progress: Math.min(0.99, ENCODE_FLOOR + (encoded / total) * (1 - ENCODE_FLOOR)) });
           },
         });
-        updateJob(jobId, {
-          status: "completed",
-          stage: "completed",
-          progress: 1,
-          outputRelativePath: saved.relativePath,
-          // A note means something was left out of the file — the file exists
-          // and the scene is finished, so this is not a failure, but it is not
-          // silence either.
-          error: saved.note,
-        });
+        const completedAt = new Date().toISOString();
+        const assetId = generationAssetId(jobId);
+        write.current((current) => ({
+          ...current,
+          generationJobs: current.generationJobs.map((job) => job.id === jobId ? {
+            ...job,
+            status: "completed",
+            stage: "completed",
+            progress: 1,
+            outputRelativePath: saved.relativePath,
+            // A note means something was left out of the file — the file exists
+            // and the scene is finished, so this is not a failure, but it is not
+            // silence either.
+            error: saved.note,
+            updatedAt: completedAt,
+          } : job),
+          assets: current.assets.map((asset) => asset.id === assetId ? {
+            ...asset,
+            kind: "generated",
+            relativePath: saved.relativePath,
+            sourcePath: null,
+            mimeType: "video/mp4",
+          } : asset),
+          timeline: {
+            tracks: current.timeline.tracks.map((track) => ({
+              ...track,
+              clips: track.clips.map((clip) => clip.assetId === assetId ? { ...clip, status: "generated" } : clip),
+            })),
+          },
+        }));
       } catch (reason) {
         /* The render happened and the file did not. Failed is the honest state:
            there is nothing to insert into the timeline, and the only way to get

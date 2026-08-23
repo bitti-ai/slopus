@@ -389,6 +389,26 @@ describe("project schema", () => {
     }
   });
 
+  it("allows a generated scene asset to wait for its render without relaxing imported media", () => {
+    const waiting = structuredClone(createdFixture) as any;
+    waiting.assets = [{
+      id: "asset-job-initial-brief",
+      kind: "generated",
+      name: "First scene",
+      relativePath: null,
+      sourcePath: null,
+      mimeType: "video/mp4",
+      durationMs: 6000,
+      width: null,
+      height: null,
+      createdAt: waiting.createdAt,
+    }];
+    expect(parseProjectConfig(waiting).assets[0].relativePath ?? null).toBeNull();
+
+    waiting.assets[0].kind = "video";
+    expect(() => parseProjectConfig(waiting)).toThrow(/must have either/);
+  });
+
   it("resolves project-relative reference paths to absolute for the engine", () => {
     // enqueue_vidfab_generation never receives the project folder and vidfab.rs
     // uses the string verbatim, so the frontend must send an absolute path.

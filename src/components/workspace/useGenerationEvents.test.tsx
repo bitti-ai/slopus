@@ -78,6 +78,28 @@ describe("what the app does with the engine's events", () => {
     expect(job().error).toMatch(/without sound/);
   });
 
+  it("turns a scene placed before generation into playable generated media", async () => {
+    vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-initial-brief.mp4", bytes: 10, note: null });
+    const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const jobId = fresh.generationJobs[0].id;
+    const assetId = `asset-${jobId}`;
+    const state = { config: parseProjectConfig({
+      ...fresh,
+      assets: [{ id: assetId, kind: "generated", name: "First scene", relativePath: null, sourcePath: null, mimeType: "video/mp4", durationMs: 6000, width: null, height: null, createdAt: fresh.createdAt }],
+      timeline: { tracks: fresh.timeline.tracks.map((track, index) => index === 0 ? { ...track, clips: [{ id: "clip-scene", assetId, trackId: track.id, startMs: 0, durationMs: 6000, sourceStartMs: 0, label: "First scene", color: null, status: "draft" }] } : track) },
+    }) };
+    function Harness() {
+      useGenerationEvents({ folderPath: "C:\\Ceramic Lamp", onChange: (update) => { state.config = update(state.config); } });
+      return null;
+    }
+    render(<Harness />);
+    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+
+    expect(state.config.assets[0].relativePath).toBe("media/generated/job-initial-brief.mp4");
+    expect(state.config.timeline.tracks[0].clips[0].status).toBe("generated");
+    expect(parseProjectConfig(state.config)).toBeTruthy();
+  });
+
   it("calls a render that could not be written a failure, not a finished scene", async () => {
     vi.mocked(saveGeneratedScene).mockRejectedValue(new Error("This computer's encoder refused every H.264 configuration."));
     const { jobId, job } = harness();
