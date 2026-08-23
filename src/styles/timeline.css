@@ -14,9 +14,7 @@
      vertically if a project carries more tracks than that. */
   grid-template-rows: minmax(340px, 1fr) 372px;
 
-  /* The program monitor begins after the 296px scene panel and runs to the
-     right edge, so its centre is 148px right of the full-width toolbar's. */
-  --video-centre-shift: 148px;
+  --video-centre-shift: -22px;
 }
 
 /* The view itself is focusable (tabIndex={0}) so Space and Delete reach the
@@ -30,11 +28,12 @@
 .edit-panels {
   min-height: 0;
   display: grid;
-  grid-template-columns: 296px minmax(520px, 1fr);
+  grid-template-columns: 296px minmax(520px, 1fr) 340px;
   border-bottom: 1px solid var(--line-strong);
 }
 
-.scene-panel {
+.scene-panel,
+.clip-inspector {
   min-width: 0;
   overflow: hidden;
   background: var(--panel);
@@ -42,6 +41,11 @@
 
 .scene-panel {
   border-right: 1px solid var(--line);
+}
+
+.clip-inspector {
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
 }
 
 /* --- Panel tabs ------------------------------------------------------------ */
@@ -646,6 +650,130 @@
   line-height: var(--leading-normal);
 }
 
+/* --- Clip inspector -------------------------------------------------------- */
+
+.inspector-section {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.inspector-section h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.inspector-section h3 em {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  background: var(--panel-3);
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+}
+
+.inspector-section label {
+  display: block;
+  margin-top: var(--space-3);
+}
+
+.inspector-section label > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.inspector-section input:not([type="range"]) {
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+}
+
+.inspector-section input:focus { border-color: var(--accent); }
+.inspector-section input[readonly] { color: var(--text-muted); }
+.inspector-section--pending { opacity: 0.72; }
+.inspector-section input:disabled { color: var(--text-faint); cursor: not-allowed; }
+
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.range-field > span {
+  display: flex !important;
+  justify-content: space-between;
+}
+
+.range-field b { color: var(--text-primary); font-weight: var(--weight-medium); }
+.range-field input { width: 100%; height: var(--control-sm); accent-color: var(--accent-bright); }
+.range-field input:disabled { cursor: not-allowed; }
+
+.inspector-empty {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.inspector-empty b {
+  margin: var(--space-3) 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.inspector-empty > span {
+  max-width: 34ch;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.selection-glyph {
+  position: relative;
+  width: var(--control-md);
+  height: var(--control-md);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+}
+
+.selection-glyph span {
+  position: absolute;
+  inset: var(--space-2);
+  border: 1px dashed var(--accent-bright);
+}
+
+.selection-glyph i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  right: var(--space-1);
+  bottom: var(--space-1);
+  border-radius: 1px;
+  background: var(--accent-bright);
+}
+
 /* --- Timeline toolbar ------------------------------------------------------ */
 
 .pro-timeline {
@@ -1245,20 +1373,20 @@
 /* The Tauri window may be resized down to 900px (see tauri.conf.json), so the
    editor has to survive 900–1180px without ever scrolling sideways. The old
    `minmax(460px, 1fr)` centre column alone forced a 1036px floor. Each step
-   below narrows or removes the scene panel; the program monitor always survives.
+   below drops the least essential column; the program monitor always survives.
 
-   1180px  narrower scene panel, monitor floor removed
-   1040px  scene panel narrows again
-    840px  one column — the scene panel goes (below the 900px window
+   1180px  three columns, narrower sides, monitor floor removed
+   1040px  two columns — the clip inspector goes first
+    840px  one column — the scene panel goes too (below the 900px window
            minimum, kept so an odd DPI/zoom combination still lays out) */
 
 @media (max-width: 1180px) {
   .edit-panels {
-    grid-template-columns: 256px minmax(0, 1fr);
+    grid-template-columns: 256px minmax(0, 1fr) 300px;
   }
 
   .timeline-view {
-    --video-centre-shift: 128px;
+    --video-centre-shift: -22px;
   }
 
   .scene-card {
@@ -1277,8 +1405,12 @@
     grid-template-columns: 232px minmax(0, 1fr);
   }
 
+  .clip-inspector {
+    display: none;
+  }
+
   .timeline-view {
-    --video-centre-shift: 116px;
+    --video-centre-shift: 0px;
   }
 
   .timeline-grid {

@@ -450,6 +450,21 @@ describe("project workspace timecode", () => {
     expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
   });
 
+  it("keeps the clip inspector without its two old headers", () => {
+    const config = withClip(measuredVideo(projectWithMedia(), 40_000), {});
+    const onChange = vi.fn();
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+
+    expect(container.querySelector(".clip-inspector")).not.toBeNull();
+    expect(screen.queryByText("Clip details")).toBeNull();
+    expect(container.querySelector(".inspector-summary")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Clip" })).not.toBeNull();
+
+    fireEvent.change(screen.getByTitle(/^How long this clip lasts/), { target: { value: "8" } });
+    const next = wrote(onChange.mock.calls[0][0], config);
+    expect(next.timeline.tracks.flatMap((track) => track.clips)[0].durationMs).toBe(8_000);
+  });
+
   /* --- Dragging clips on the timeline --------------------------------------
 
      jsdom lays nothing out and has no PointerEvent, so both are supplied here:
