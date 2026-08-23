@@ -1,12 +1,10 @@
-import { Ban, Check, FileText, Image as ImageIcon, LoaderCircle, Music2, Play, Plus, RefreshCw, Sparkles, Square, Video, WandSparkles, X } from "lucide-react";
+import { Plus, Sparkles, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { resolutionLabel } from "../../lib/export";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, STORY_TRACK_ID, isReferenceDescribed, isReferenceUsable, isVisualReference, projectItemPath, usableImageReferences, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot, type TimelineClip, type TimelineTrack } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
-import { ReferenceImage } from "./ReferenceImage";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
-import { progressTitle, stageCopy, statusIcon, STATUS_WORD } from "./sceneStatus";
+import { statusIcon } from "./sceneStatus";
 
 interface GeneratorViewProps {
   config: ProjectConfig;
@@ -16,6 +14,10 @@ interface GeneratorViewProps {
   onOpenTimeline: () => void;
   selectedJobId?: string;
 }
+
+type RemovalTarget =
+  | { kind: "scene"; job: GenerationJob }
+  | { kind: "shot"; job: GenerationJob; shotId: string; shotName: string };
 
 /* The Generator is a BOARD and a PANEL.
  *
@@ -28,7 +30,7 @@ interface GeneratorViewProps {
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, onChange, onOpenTimeline, selectedJobId }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, onChange, selectedJobId }: GeneratorViewProps) {
   const jobs = config.generationJobs;
   const configRef = useRef(config);
   configRef.current = config;
@@ -37,7 +39,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
      Opening the Generator, or arriving from a clip in the timeline, opens the
      SCENE — the thing that has a state, a prompt and a Generate button. */
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
-  const [planNotes, setPlanNotes] = useState<Record<string, string>>({});
+  const [, setPlanNotes] = useState<Record<string, string>>({});
+  const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
 
   useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
 
@@ -55,15 +58,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
   // run while claiming otherwise.
   const refsLocked = selected?.status === "generating" || selected?.status === "queued";
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
-  // Bound is not the same as used. The compiler drops a reference that isn't
-  // described yet, and isVisualReference drops an audio-only one, so a count
-  // taken from the IDs alone told the user a definition was steering the scene
-  // when the compiled prompt never mentioned it.
-  const promptRefs = useMemo(() => boundRefs.filter((ref) => isReferenceUsable(ref) && isVisualReference(ref)), [boundRefs]);
   const runtimeReady = runtime?.state === "ready";
-  /* Why this scene cannot be sent, or null. Every one of these is a state the
-     user can see and fix; the button says the reason rather than sitting grey. */
-  const blocked = selected ? sendBlocker(selected, config.references) : null;
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
@@ -75,8 +70,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
      in `reference_paths` — a citation the engine was never sent the reference
      for would point at nothing. Nothing is ever auto-unbound: taking a name out
      of one line is not a decision to stop steering the scene with it, and the
-     checkbox list in the scene panel is where that decision is made. */
-  const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) => {
+     reference library is where those references themselves are managed. */
+  const mergeSceneUpdates = (job: GenerationJob, updates: Partial<GenerationJob>): GenerationJob => {
     const next: Partial<GenerationJob> = { ...updates, updatedAt: new Date().toISOString() };
     if (updates.shots) {
       const referenceIds = [...job.referenceIds];
@@ -87,8 +82,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       }
       next.referenceIds = referenceIds;
     }
-    updateJob(job.id, next);
+    return { ...job, ...next };
   };
+
+  const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) =>
+    updateJob(job.id, mergeSceneUpdates(job, updates));
 
   /* --- The shots of a scene ------------------------------------------------
      Every one of these goes through writeShots, so the mirrored `prompt` and
@@ -126,6 +124,68 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
     // A shot cannot start after the scene ends, so shortening the scene pulls
     // the later cuts back with it rather than leaving them past the end.
     setShots(job, sceneShots(job).map((shot) => ({ ...shot, startSeconds: Math.min(shot.startSeconds, next) })), { durationSeconds: next });
+  };
+
+  const moveScene = (jobId: string, beforeJobId: string | null) => {
+    const current = configRef.current;
+    const moving = current.generationJobs.find((job) => job.id === jobId);
+    if (!moving || beforeJobId === jobId) return;
+    const without = current.generationJobs.filter((job) => job.id !== jobId);
+    const index = beforeJobId === null ? without.length : without.findIndex((job) => job.id === beforeJobId);
+    if (index < 0) return;
+    const generationJobs = [...without.slice(0, index), moving, ...without.slice(index)];
+    onChange({ ...current, generationJobs });
+  };
+
+  /** Reordering keeps the existing cut slots. A cross-scene move inserts a new
+   * cut between its neighbours (or at the end), so array order and playback
+   * order remain the same even though scene shots are normalized by time. */
+  const moveShot = (sourceJobId: string, shotId: string, targetJobId: string, beforeShotId: string | null) => {
+    const current = configRef.current;
+    const source = current.generationJobs.find((job) => job.id === sourceJobId);
+    const target = current.generationJobs.find((job) => job.id === targetJobId);
+    if (!source || !target) return;
+    if ([source.status, target.status].some((status) => status === "queued" || status === "generating")) return;
+
+    const sourceShots = sceneShots(source);
+    const moving = sourceShots.find((shot) => shot.id === shotId);
+    if (!moving) return;
+
+    if (source.id === target.id) {
+      const without = sourceShots.filter((shot) => shot.id !== shotId);
+      const index = beforeShotId === null ? without.length : without.findIndex((shot) => shot.id === beforeShotId);
+      if (index < 0) return;
+      const ordered = [...without.slice(0, index), moving, ...without.slice(index)];
+      const starts = sourceShots.map((shot) => shot.startSeconds);
+      const retimed = ordered.map((shot, at) => ({ ...shot, startSeconds: starts[at] }));
+      const updated = mergeSceneUpdates(source, writeShots(source, retimed));
+      onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === source.id ? updated : job) });
+      setSelection({ jobId: source.id, shotId });
+      return;
+    }
+
+    // A scene with no shots cannot be represented or edited.
+    if (sourceShots.length <= 1) return;
+    const targetShots = sceneShots(target);
+    const insertAt = beforeShotId === null ? targetShots.length : targetShots.findIndex((shot) => shot.id === beforeShotId);
+    if (insertAt < 0) return;
+    const inserted = { ...moving, startSeconds: 0 };
+    const orderedTargetShots = [...targetShots.slice(0, insertAt), inserted, ...targetShots.slice(insertAt)];
+    const targetDuration = sceneDurationSeconds(target);
+    // A destination gains a cut, so divide its available time again. This
+    // avoids a zero-length shot when one is dropped at either edge.
+    const nextTargetShots = orderedTargetShots.map((shot, at) => ({
+      ...shot,
+      startSeconds: at === 0 ? 0 : Math.min(targetDuration, Math.round((targetDuration * at / orderedTargetShots.length) / STEP_SECONDS) * STEP_SECONDS),
+    }));
+    const nextSourceShots = sourceShots.filter((shot) => shot.id !== shotId);
+    const updatedSource = mergeSceneUpdates(source, writeShots(source, nextSourceShots));
+    const updatedTarget = mergeSceneUpdates(target, writeShots(target, nextTargetShots));
+    onChange({
+      ...current,
+      generationJobs: current.generationJobs.map((job) => job.id === source.id ? updatedSource : job.id === target.id ? updatedTarget : job),
+    });
+    setSelection({ jobId: target.id, shotId });
   };
 
   const requestFor = (job: GenerationJob): VidfabGenerationRequest => {
@@ -174,11 +234,24 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
      window hands the request to Claude Code or Codex, which returns the whole
      project with the new scene in it. Nothing is auto-bound either way — which
      references steer a scene is decided by writing them into a line or by the
-     checkbox list beside it. */
+     references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("");
     onChange({ ...config, generationJobs: [job, ...jobs] });
     setSelection({ jobId: job.id, shotId: null });
+  };
+
+  const removeScene = (job: GenerationJob) => {
+    const current = configRef.current;
+    const at = current.generationJobs.findIndex((item) => item.id === job.id);
+    if (at < 0) return;
+    if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
+    const generationJobs = current.generationJobs.filter((item) => item.id !== job.id);
+    onChange({ ...current, generationJobs });
+    if (selection.jobId === job.id) {
+      const fallback = generationJobs[Math.min(at, generationJobs.length - 1)];
+      setSelection({ jobId: fallback?.id ?? "", shotId: null });
+    }
   };
 
   const startDraft = async (job: GenerationJob) => {
@@ -195,45 +268,47 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
       await enqueueVidfabGeneration(request, configRef.current);
     } catch (reason) {
-      updateJob(job.id, { error: reason instanceof Error ? reason.message : String(reason) });
+      updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
     }
   };
 
-  const insertIntoStory = (job: GenerationJob) => {
-    if (!job.outputRelativePath) return;
+  const generateScene = (job: GenerationJob) => {
+    if (job.status === "draft") void startDraft(job);
+    else void prepareOrRetry(job);
+  };
+
+  const draftScenesReady = jobs.filter((job) => job.status === "draft" && !sendBlocker(job, config.references));
+
+  const generateAll = async () => {
+    if (!runtimeReady || draftScenesReady.length === 0) return;
+    const current = configRef.current;
+    const ids = new Set(draftScenesReady.map((job) => job.id));
     const now = new Date().toISOString();
-    const lengthMs = Math.round(sceneDurationSeconds(job) * 1000);
-    const existingAsset = config.assets.find((asset) => asset.relativePath === job.outputRelativePath);
-    const asset: ProjectAsset = existingAsset ?? { id: `asset-${crypto.randomUUID()}`, kind: "generated", name: job.title, relativePath: job.outputRelativePath, mimeType: "video/mp4", durationMs: lengthMs, createdAt: now };
-    /* By id first: tracks can be renamed, and matching on the name alone made
-       a renamed first video track invisible here — the next insert built a
-       second one beside it. The name check is the fallback for projects saved
-       before the id was fixed, when the track was still called "Story". */
-    const existingStory = config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)
-      ?? config.timeline.tracks.find((track) => track.kind === "video" && track.name === "Story");
-    const story: TimelineTrack = existingStory ?? { id: STORY_TRACK_ID, kind: "video", name: "Track 1", locked: false, muted: false, clips: [] };
-    if (story.locked) return;
-    const startMs = story.clips.reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
-    const clip: TimelineClip = { id: `clip-${crypto.randomUUID()}`, assetId: asset.id, trackId: story.id, startMs, durationMs: asset.durationMs || lengthMs || 1, sourceStartMs: 0, label: job.title, color: "#4f6ba8", status: "generated" };
-    const tracks = existingStory ? config.timeline.tracks.map((track) => track.id === story.id ? { ...track, clips: [...track.clips, clip] } : track) : [{ ...story, clips: [clip] }, ...config.timeline.tracks];
-    onChange({ ...config, assets: existingAsset ? config.assets : [...config.assets, asset], timeline: { tracks }, generationJobs: jobs.map((item) => item.id === job.id ? { ...item, clipId: clip.id, updatedAt: now } : item) });
-    onOpenTimeline();
+    onChange({
+      ...current,
+      generationJobs: current.generationJobs.map((job) => ids.has(job.id)
+        ? { ...job, status: "queued", stage: "queued", progress: 0, error: null, updatedAt: now }
+        : job),
+    });
+
+    for (const job of draftScenesReady) {
+      try {
+        const request = requestFor(job);
+        const plan = await resolveVidfabPlan(request, current);
+        setPlanNotes((notes) => ({ ...notes, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
+        await enqueueVidfabGeneration(request, current);
+      } catch (reason) {
+        updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
+      }
+    }
   };
 
-  /* Binding order does not matter: requestFor and the compiler both read
-     config.references in list order and keep whatever this scene names, so the
-     <Subject N> / <Picture N> numbering stays in lockstep however the boxes are
-     ticked. */
-  const toggleReference = (job: GenerationJob, referenceId: string) => {
-    const referenceIds = job.referenceIds.includes(referenceId)
-      ? job.referenceIds.filter((id) => id !== referenceId)
-      : [...job.referenceIds, referenceId];
-    updateJob(job.id, { referenceIds, updatedAt: new Date().toISOString() });
-  };
-
-  const cancelJob = (job: GenerationJob) => {
-    if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
-    updateJob(job.id, { status: "cancelled", stage: "failed", updatedAt: new Date().toISOString() });
+  const generationBlocker = (job: GenerationJob): string | null => {
+    if (!runtimeReady) return runtime?.detail ?? "The video generator is not ready.";
+    if (job.status === "queued") return "This scene is already waiting in the queue.";
+    if (job.status === "generating") return "This scene is generating now.";
+    if (job.status === "ready") return "This scene is being saved now.";
+    return sendBlocker(job, config.references);
   };
 
   return <div className={`generator-view ${selected ? "" : "generator-view--empty"}`}>
@@ -252,7 +327,19 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               for anyone — it gives the user somewhere to write them, and the
               scene keeps the name UNTITLED_SCENE until they rename it. */}
           <button className="secondary-button" onClick={newScene} title="Add an empty scene — you write the shots">
-            <Plus size={16} aria-hidden="true" /> Add a scene
+            <Plus size={16} aria-hidden="true" /> Add Scene
+          </button>
+          <button
+            className="primary-button"
+            disabled={!runtimeReady || draftScenesReady.length === 0}
+            title={!runtimeReady
+              ? runtime?.detail ?? "The video generator is not ready."
+              : draftScenesReady.length === 0
+                ? "There are no ready draft scenes to generate."
+                : `Generate ${draftScenesReady.length} draft ${draftScenesReady.length === 1 ? "scene" : "scenes"}`}
+            onClick={() => void generateAll()}
+          >
+            <WandSparkles size={16} aria-hidden="true" /> Generate All
           </button>
         </div>
       </header>
@@ -264,6 +351,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
         onSelect={setSelection}
         onAddShot={addShot}
+        onDuration={setDuration}
+        onRemoveScene={(job) => setRemovalTarget({ kind: "scene", job })}
+        onGenerate={generateScene}
+        generationBlocker={generationBlocker}
+        onMoveScene={moveScene}
+        onMoveShot={moveShot}
       />}
 
       {/* No scenes at all — which, on a new project, is where everyone starts.
@@ -284,16 +377,24 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
       </div>}
     </main>
 
-    {selected && <aside className="generator-panel" aria-label={openShot ? `Shot ${shotIndex + 1} of ${selected.title}` : `Scene: ${selected.title}`}>
+    {selected && <aside className="generator-panel" aria-label={openShot ? `${openShot.name ?? `Shot ${shotIndex + 1}`} of ${selected.title}` : `Scene: ${selected.title}`}>
       {openShot
         ? <>
           <header className="panel-head">
             {/* The way back up: the scene this shot belongs to, which is the
                 same thing its line on the board opens. */}
             <button type="button" className="panel-head__up" onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
-              {selected.title} · Scene settings
+              {selected.title}
             </button>
-            <h2>Shot {shotIndex + 1}<small>of {selectedShots.length === 1 ? "one shot" : `${selectedShots.length} shots`}</small></h2>
+            <h2><input
+              className="shot-title__name"
+              value={openShot.name ?? ""}
+              placeholder={`Shot ${shotIndex + 1}`}
+              aria-label={`Rename shot ${shotIndex + 1}`}
+              title="Rename this shot"
+              disabled={refsLocked}
+              onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
+            /></h2>
           </header>
           <div className="panel-scroll">
             <ShotInspector
@@ -308,7 +409,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               disabled={refsLocked}
               removable={selectedShots.length > 1}
               onChange={(updates) => patchShot(selected, openShot.id, updates)}
-              onRemove={() => removeShot(selected, openShot.id)}
+              onRemove={() => setRemovalTarget({ kind: "shot", job: selected, shotId: openShot.id, shotName: openShot.name ?? `Shot ${shotIndex + 1}` })}
             />
             {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
           </div>
@@ -316,7 +417,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
         : <>
           <header className="panel-head">
             <div className="job-title">
-              <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>
+              {selected.status !== "draft" && <span className={`status-icon status-icon--${selected.status}`}>{statusIcon(selected.status)}</span>}
               <div>
                 {/* The badge is on the scene's own line on the board, where the
                     eye compares one scene against the next. A second copy of it
@@ -337,35 +438,6 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
           </header>
 
           <div className="panel-scroll">
-            <div className="job-progress-block">
-              <div className="job-progress-block__head">
-                <b>{progressTitle(selected)}</b>
-                <span>{stageCopy(selected)}</span>
-              </div>
-              <div className="progress-track"><i style={{ width: `${selected.progress * 100}%` }} /></div>
-              <ol className="stage-rail">
-                {STAGES.map((stage, index) => {
-                  const done = selected.progress > 0 && selected.progress >= stage.at;
-                  return <li key={stage.label} className={done ? "done" : ""}>
-                    <i>{done ? <Check size={14} /> : index + 1}</i>
-                    <span>{stage.label}</span>
-                  </li>;
-                })}
-                <li className="stage-rail__blocked">
-                  <i><Ban size={14} /></i>
-                  <span>Save as a video file<small>Not built yet</small></span>
-                </li>
-              </ol>
-            </div>
-
-            {(planNotes[selected.id] || selected.error) && <div className="job-runtime-note">
-              <span>What actually happened</span>
-              <p>{planNotes[selected.id] ?? selected.error}</p>
-              <small>Reported by the video engine (vidfab).</small>
-            </div>}
-
-            {/* How long the scene runs, where its cuts fall, and the three
-                things the H3 guide defines once per prompt. */}
             <SceneInspector
               key={selected.id}
               job={selected}
@@ -373,134 +445,32 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, on
               disabled={refsLocked}
               onChange={(updates) => updateScene(selected, updates)}
               onShots={(next) => setShots(selected, next)}
-              onDuration={(value) => setDuration(selected, value)}
-              onSelectShot={(shotId) => setSelection({ jobId: selected.id, shotId })}
             />
 
-            {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
-
-            <div className="job-refs">
-              <span>{promptRefs.length === 0 ? "No references used by this scene" : promptRefs.length === 1 ? "1 reference guides this scene" : `${promptRefs.length} references guide this scene`}</span>
-              {/* Every reference in the project, each a checkbox: which ones steer
-                  a scene is the user's decision. Writing one into a line ticks it
-                  here; unticking it takes it out of the prompt and out of what is
-                  sent to the engine. A bound reference the prompt skips stays
-                  listed with its reason — hiding it would leave the user
-                  wondering where it went. */}
-              {config.references.map((ref) => {
-                const bound = selected.referenceIds.includes(ref.id);
-                const picture = ref.kind === "image" && (ref.relativePath || ref.sourcePath);
-                const skipped = skipReason(ref);
-                return <label key={ref.id} className={`job-ref ${bound ? "job-ref--bound" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={bound}
-                    disabled={refsLocked}
-                    onChange={() => toggleReference(selected, ref.id)}
-                  />
-                  {/* The reference's real picture, not a stand-in. aria-hidden
-                      because the name it illustrates is the next node in this
-                      same <label>, and repeating it would say every reference
-                      twice when the checkbox announces itself. */}
-                  <span className="ref-mini" aria-hidden="true">
-                    {picture
-                      ? <ReferenceImage folderPath={folderPath} relativePath={ref.relativePath} sourcePath={ref.sourcePath} alt="" />
-                      : referenceKindIcon(ref.kind)}
-                  </span>
-                  <b>{ref.name}</b>
-                  {skipped
-                    ? <p className="job-refs__reason">{skipped}</p>
-                    : bound && !isReferenceDescribed(ref)
-                      // Used, but incomplete: the picture goes to the engine while
-                      // nothing tells it what to keep. Silence here let a
-                      // boilerplate-filled card look finished.
-                      ? <p className="job-refs__reason">Not described yet — the picture is sent, but nothing tells the engine what to keep.</p>
-                      : ref.intendedUse.length > 0 && <small>Your tags: {ref.intendedUse.join(", ")}</small>}
-                </label>;
-              })}
-              {config.references.length === 0 && <p className="job-refs__empty">This project has no references yet. Add one under References and it can steer this scene.</p>}
-              {/* Only the empty case says anything now. With references actually
-                  bound, the list above already shows what each one is and what is
-                  wrong with any that will not be used; a paragraph restating the
-                  route every one of them takes was a sentence about the system
-                  rather than about this scene. */}
-              {promptRefs.length === 0 && <p className="job-refs__empty">The video engine only follows the words in the shots.</p>}
-            </div>
-
-            {/* Every setting on this scene collapsed into the one string vidfab is
-                given. Recompiled from what the scene holds right now, so it cannot
-                disagree with what the next run sends. */}
-            <CompiledPrompt
-              segments={compileGenerationJobSegments(selected, boundRefs)}
-              caption={refsLocked
-                ? "This is the prompt the engine was given for the run in progress."
-                : "Rebuilt from this scene’s shots, settings and references every time it is sent."}
-            />
-
-            <dl className="job-meta">
-              <div><dt>Video model</dt><dd>MiniMax H3</dd></div>
-              <div><dt>Scene length</dt><dd>{sceneDurationSeconds(selected).toFixed(1)} seconds, {selectedShots.length === 1 ? "one shot" : `${selectedShots.length} shots`}</dd></div>
-              {/* The project's own settings, not this scene's. The frame size is
-                  what the edit is exported at; the engine picks its own canvas
-                  from the shape alone (set_aspect is the only geometry vidfab
-                  takes), and the plan note above reports the one it picked. */}
-              <div><dt>Shape</dt><dd>{config.settings.aspectRatio}</dd></div>
-              <div><dt>Frame size</dt><dd>{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</dd></div>
-              <div><dt>Where it is</dt><dd>{STATUS_WORD[selected.status]}</dd></div>
-              <div><dt>Saved to</dt><dd>{selected.outputRelativePath ?? "Nothing saved to disk"}</dd></div>
-            </dl>
-          </div>
-
-          <div className="job-actions">
-            {blocked && !refsLocked && <p className="job-actions__note">{blocked}</p>}
-
-            {selected.status === "generating" && <button className="danger-button" onClick={() => cancelJob(selected)}><Square size={14} /> Stop this scene</button>}
-
-            {selected.status === "queued" && <button className="danger-button" onClick={() => cancelJob(selected)}><X size={14} /> Take out of the queue</button>}
-
-            {selected.status === "draft" && <>
-              <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void startDraft(selected)}>
-                <WandSparkles size={15} /> {runtimeReady ? (jobs.length === 1 ? "Generate your first scene" : "Generate this scene") : "Can’t generate yet"}
-              </button>
-              {!runtimeReady && <p className="job-actions__note">This draft is saved with your project. PolStudio needs a working video engine before it can render it.</p>}
-            </>}
-
-            {(selected.status === "failed" || selected.status === "cancelled") && <>
-              <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void prepareOrRetry(selected)}>
-                <RefreshCw size={15} /> {runtimeReady ? "Try this scene again" : "Can’t try again yet"}
-              </button>
-              {!runtimeReady && <p className="job-actions__note">PolStudio needs a working video engine before it can run this scene again.</p>}
-            </>}
-
-            {/* Between the last frame and the file: the pictures are rendered
-                and are being encoded into an .mp4 in the project folder. It is
-                a real step with a real duration — a few hundred megabytes
-                through the machine's encoder — so it is a state, not a
-                flicker. */}
-            {selected.status === "ready" && <p className="job-actions__note">
-              <LoaderCircle size={15} className="spin" /> Saving this scene into your project folder…
-            </p>}
-
-            {selected.status === "completed" && selected.outputRelativePath && !selected.clipId && <>
-              <button className="primary-button" onClick={() => insertIntoStory(selected)}><Play size={15} /> Insert into Track 1</button>
-              <p className="job-actions__note">Saved to <code>{selected.outputRelativePath}</code>.</p>
-            </>}
-
-            {/* Something was left out of the file — the scene is finished and
-                the file exists, so this is a note rather than a failure. */}
-            {selected.status === "completed" && selected.outputRelativePath && selected.error && <p className="job-actions__note">{selected.error}</p>}
-
-            {selected.status === "completed" && selected.clipId && <button className="primary-button" onClick={onOpenTimeline}><Play size={15} /> Open in timeline</button>}
-
-            {selected.status === "completed" && !selected.outputRelativePath && <>
-              <button className="primary-button" disabled={!runtimeReady || Boolean(blocked)} onClick={() => void prepareOrRetry(selected)}>
-                <RefreshCw size={15} /> {runtimeReady ? "Run this scene again" : "Can’t run it again yet"}
-              </button>
-              <p className="job-actions__note">This run finished without a video file in your project folder, so there is nothing to add to your edit.</p>
-            </>}
+            {import.meta.env.DEV && <details className="debug-prompt">
+              <summary>Debug: final prompt</summary>
+              <CompiledPrompt segments={compileGenerationJobSegments(selected, boundRefs)} />
+            </details>}
           </div>
         </>}
     </aside>}
+
+    {removalTarget && <div className="remove-dialog-backdrop">
+      <div className="remove-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-dialog-title">
+        <h2 id="remove-dialog-title">Remove {removalTarget.kind}?</h2>
+        <p>{removalTarget.kind === "scene"
+          ? `Remove “${removalTarget.job.title}” and all of its shots?`
+          : `Remove “${removalTarget.shotName}” from “${removalTarget.job.title}”?`}</p>
+        <div>
+          <button type="button" className="secondary-button" onClick={() => setRemovalTarget(null)}>Cancel</button>
+          <button type="button" className="danger-button" onClick={() => {
+            if (removalTarget.kind === "scene") removeScene(removalTarget.job);
+            else removeShot(removalTarget.job, removalTarget.shotId);
+            setRemovalTarget(null);
+          }}>Remove {removalTarget.kind}</button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -526,53 +496,12 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
 /* The compiled prompt, shown before anything is sent and coloured by who wrote
    which part. The segments come from the compiler itself, so this panel is the
    string vidfab receives — not a re-rendering of it that could drift. */
-function CompiledPrompt({ segments, caption }: { segments: PromptSegment[]; caption: string }) {
+function CompiledPrompt({ segments }: { segments: PromptSegment[] }) {
   return <section className="compiled-prompt" aria-label="The compiled MiniMax H3 prompt">
-    <span className="compiled-prompt__title">The prompt this scene becomes</span>
-    <p className="compiled-prompt__key">
-      <em className="compiled-prompt__swatch compiled-prompt__swatch--brief">your words</em>
-      <em className="compiled-prompt__swatch compiled-prompt__swatch--tag">your settings</em>
-      <em className="compiled-prompt__swatch compiled-prompt__swatch--frame">the H3 format, added by PolStudio</em>
-    </p>
     <pre className="compiled-prompt__text">{segments.map((segment, index) =>
       <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
-    <small>{caption}</small>
   </section>;
 }
-
-/* Why a reference that is bound to this scene never reaches its prompt, or null
-   when it does. The wording mirrors the References card so the two screens
-   describe the same state in the same words. */
-const skipReason = (reference: ProjectReference): string | null => {
-  if (!isReferenceUsable(reference)) return "Not described yet — not used by this scene";
-  if (!isVisualReference(reference)) return "Tagged as a sound note, so it isn’t sent to the video engine.";
-  return null;
-};
-
-/* The stand-in for a reference whose own picture is not being shown. The four
-   kinds get four icons, which they did not before: an `image` arm sat here that
-   nothing could reach — referenceSchema refuses an image with no file, so a
-   parsed image reference always has one and always renders the real picture —
-   while `video` and `audio`, which DO reach here (they are pointed at rather
-   than copied, and ReferenceImage cannot show a frame of either), fell through
-   to the same page icon a written definition gets. Same icons as
-   MediaThumbnail, so a clip and the reference it came from read alike. */
-const referenceKindIcon = (kind: ProjectReference["kind"]) =>
-  kind === "video" ? <Video size={16} />
-    : kind === "audio" ? <Music2 size={16} />
-      /* Unreachable for anything zod parsed; kept so a future kind that can
-         legitimately arrive without a file is not silently called a document. */
-      : kind === "image" ? <ImageIcon size={16} />
-        : <FileText size={16} />;
-
-/* The three things that happen to a scene, in the order they happen. "Save" is
-   the encode: the engine's pictures being written into an .mp4 in the project
-   folder, which is the last tenth of the bar. */
-const STAGES: Array<{ label: string; at: number }> = [
-  { label: "Prepare", at: 0.01 },
-  { label: "Render", at: 0.5 },
-  { label: "Save", at: 0.9 },
-];
 
 const boardSummary = (active: number, waiting: number, total: number) => {
   if (total === 0) return "Nothing here yet";
