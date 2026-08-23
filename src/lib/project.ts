@@ -130,7 +130,10 @@ export const projectAssetSchema = z.object({
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
-  if (!asset.relativePath && !asset.sourcePath) {
+  /* A scene may be arranged on the timeline before it has been rendered. Its
+   * generated asset is the stable thing the clip points at while the file is
+   * still absent; useGenerationEvents fills the path in when rendering ends. */
+  if (asset.kind !== "generated" && !asset.relativePath && !asset.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],
       message: `Asset '${asset.id}' must have either a project-relative path or an external source path.`,
@@ -418,6 +421,9 @@ export type TimelineTrack = z.infer<typeof timelineTrackSchema>;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
 export type ProjectReference = z.infer<typeof projectReferenceSchema>;
 export type GenerationJob = z.infer<typeof generationJobSchema>;
+
+/** Stable backing asset for a Generator scene placed on the timeline. */
+export const generationAssetId = (jobId: string): string => `asset-${jobId}`;
 export type AgentMessage = z.infer<typeof agentMessageSchema>;
 export type AgentConversation = z.infer<typeof agentConversationSchema>;
 export type ProviderSetting = z.infer<typeof providerSettingSchema>;

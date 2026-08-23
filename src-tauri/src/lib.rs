@@ -684,11 +684,19 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .as_deref()
             .map(normalize_external_path)
             .transpose()?;
-        check_one_location(
-            &format!("Asset '{}'", asset.id),
-            asset.relative_path.as_ref(),
-            asset.source_path.as_ref(),
-        )?;
+        // A Generator scene can be cut before it is rendered. Its generated
+        // asset deliberately has no file until the render completes, while
+        // every imported asset still has exactly one stored location.
+        if asset.kind != "generated"
+            || asset.relative_path.is_some()
+            || asset.source_path.is_some()
+        {
+            check_one_location(
+                &format!("Asset '{}'", asset.id),
+                asset.relative_path.as_ref(),
+                asset.source_path.as_ref(),
+            )?;
+        }
     }
     for reference in &mut config.references {
         if reference.id.trim().is_empty() || reference.name.trim().is_empty() {
@@ -3329,6 +3337,14 @@ mod tests {
         assert!(validate_and_normalize_config(neither)
             .unwrap_err()
             .contains("must have either"));
+
+        // A Generator scene can be arranged before its render exists. It still
+        // has an asset id for timeline integrity, and gains its path when the
+        // generated file is saved.
+        let mut waiting_scene = external_fixture();
+        waiting_scene.assets[0].kind = "generated".into();
+        waiting_scene.assets[0].source_path = None;
+        assert!(validate_and_normalize_config(waiting_scene).is_ok());
 
         // A "source path" that is not absolute resolves against nothing.
         for path in [

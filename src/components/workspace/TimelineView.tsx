@@ -7,13 +7,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
-import type { ProjectAsset, ProjectConfig, TimelineClip, TimelineTrack } from "../../lib/project";
+import {
+  generationAssetId,
+  sceneDurationSeconds,
+  type GenerationJob,
+  type ProjectAsset,
+  type ProjectConfig,
+  type TimelineClip,
+  type TimelineTrack,
+} from "../../lib/project";
 import {
   clipEndMs, findClip, insertClip, moveClip, removeClip, snapTargets, sourceRoom, trimClip,
   type SnapOptions, type SourceRoom,
 } from "../../lib/timeline";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 import { ProgramMonitor } from "./ProgramMonitor";
+import { sceneShape, STATUS_WORD } from "./sceneStatus";
 
 const MIN_DURATION = 10_000;
 const NOT_YET = "Not available yet. This control doesn’t change your project.";
@@ -28,6 +37,7 @@ const DROPPED_CLIP_MS = 5_000;
 /* The drag payload is the asset id. A custom type keeps files dragged in from
    the desktop, and text dragged from anywhere else, out of the drop handler. */
 const ASSET_DRAG_TYPE = "application/x-polstudio-asset";
+const SCENE_DRAG_TYPE = "application/x-polstudio-generator-scene";
 
 /* How close two edges have to be ON SCREEN before they snap together. In
    pixels, not milliseconds, because that is how close they LOOK — the same
@@ -157,6 +167,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
      is being offered — it can only see the TYPE. Remembering what dragstart
      put there is the only way to know whether this lane can take it. */
   const [draggedAsset, setDraggedAsset] = useState<ProjectAsset | undefined>(undefined);
+  const [draggedScene, setDraggedScene] = useState<GenerationJob | undefined>(undefined);
   /* What the user is typing into Lasts, while they are typing it. The field
      otherwise shows the clip's own length, and "00:0" on the way to "00:08"
      must not be snapped back to a formatted timecode mid-keystroke. Null means
@@ -182,8 +193,8 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
    *  where the ruler stops (the canvas is at least as long as the film the user
    *  asked for, however little of it is cut yet). */
   const contentEndMs = tracks.reduce((end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clipEndMs(clip)), end), 0);
-  const sceneClips = tracks.filter((track) => track.kind === "video").flatMap((track) => track.clips);
   const duration = useMemo(() => canvasDuration(config), [config]);
+  const mediaAssets = useMemo(() => config.assets.filter((asset) => asset.kind !== "generated"), [config.assets]);
   const ticks = useMemo(() => rulerTicks(duration), [duration]);
   /* The lanes are ruled at the SAME interval as the ruler above them, so a line
      under a clip is a line under a number. They used to be a fixed 14.7% of the
@@ -353,6 +364,9 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     return track.kind === "audio" ? asset.kind === "audio" : asset.kind !== "audio";
   };
 
+  const acceptsScene = (track: ProjectConfig["timeline"]["tracks"][number] | undefined, scene: GenerationJob | undefined) =>
+    Boolean(scene && track && !track.locked && track.kind === "video");
+
   const assetById = (id: string) => config.assets.find((asset) => asset.id === id);
 
   /* The media panel decodes each file to draw its thumbnail, and hands back
@@ -483,6 +497,64 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
     if (!next) return;
     updateTracks(next);
     setSelectedId(clip.id);
+  };
+
+  /** Put a Generator scene in the cut whether or not it has a file yet. The
+   * generated asset is intentionally locationless while the scene is a draft;
+   * the generation event fills in its canonical MP4 path when it finishes. */
+  const dropScene = (trackId: string, jobId: string, ratio: number, laneWidthPx: number) => {
+    const job = config.generationJobs.find((candidate) => candidate.id === jobId);
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!job || !acceptsScene(track, job)) return;
+
+    const clipId = `clip-${crypto.randomUUID()}`;
+    onChange((current) => {
+      const currentJob = current.generationJobs.find((candidate) => candidate.id === jobId);
+      const currentTrack = current.timeline.tracks.find((candidate) => candidate.id === trackId);
+      if (!currentJob || !currentTrack || !acceptsScene(currentTrack, currentJob)) return current;
+
+      const plannedAssetId = generationAssetId(currentJob.id);
+      const existing = current.assets.find((asset) => asset.id === plannedAssetId)
+        ?? (currentJob.outputRelativePath
+          ? current.assets.find((asset) => asset.kind === "generated" && asset.relativePath === currentJob.outputRelativePath)
+          : undefined);
+      const sceneLengthMs = Math.max(minClipMs, Math.round(sceneDurationSeconds(currentJob) * 1000));
+      const asset: ProjectAsset = existing ?? {
+        id: plannedAssetId,
+        kind: "generated",
+        name: currentJob.title,
+        relativePath: currentJob.outputRelativePath ?? null,
+        sourcePath: null,
+        mimeType: "video/mp4",
+        durationMs: sceneLengthMs,
+        width: null,
+        height: null,
+        createdAt: currentJob.createdAt,
+      };
+      const currentDuration = canvasDuration(current);
+      const position = Number.isFinite(ratio) ? ratio * currentDuration : 0;
+      const startMs = Math.round(Math.max(0, Math.min(currentDuration - sceneLengthMs, position)));
+      const clip: TimelineClip = {
+        id: clipId,
+        assetId: asset.id,
+        trackId,
+        startMs,
+        durationMs: sceneLengthMs,
+        sourceStartMs: 0,
+        label: currentJob.title,
+        color: null,
+        status: currentJob.status === "completed" && currentJob.outputRelativePath ? "generated" : "draft",
+      };
+      const snap = {
+        targets: snapTargets(current.timeline.tracks, { playheadMs: playhead }),
+        toleranceMs: laneWidthPx > 0 ? (SNAP_PX * currentDuration) / laneWidthPx : 0,
+      };
+      const nextTracks = insertClip(current.timeline.tracks, trackId, clip, startMs, snap);
+      if (!nextTracks) return current;
+      const assets = existing ? current.assets : [...current.assets, asset];
+      return { ...current, assets, timeline: { tracks: nextTracks } };
+    });
+    setSelectedId(clipId);
   };
 
   /* --- Dragging a clip -----------------------------------------------------
@@ -617,7 +689,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
           </div>
           <div className="scene-panel__head">
-            <h2>{panelTab === "scenes" ? "Story sequence" : "Project media"}</h2>
+            <h2>{panelTab === "scenes" ? "Generator scenes" : "Project media"}</h2>
             {panelTab === "media" && (
               <div className="layout-toggle" role="group" aria-label="Media layout">
                 <button
@@ -637,12 +709,30 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
           </div>
           {panelTab === "scenes" ? (
             <div className="scene-list">
-              {sceneClips.map((clip, index) => (
-                <button key={clip.id} className={`scene-card ${selectedId === clip.id ? "selected" : ""}`} onClick={() => { setSelectedId(clip.id); setPlayhead(clip.startMs + 600); }}>
-                  <span className="scene-card__thumb"><i>{String(index + 1).padStart(2, "0")}</i><em>{(clip.durationMs / 1000).toFixed(1)}s</em></span>
-                  <span><b>{clip.label.replace(/^\d+ · /, "")}</b><small>{clip.status === "generated" ? "Needs review" : "In timeline"}</small></span>
-                </button>
-              ))}
+              {config.generationJobs.map((job, index) => {
+                const assetIds = new Set([
+                  generationAssetId(job.id),
+                  ...config.assets.filter((asset) => job.outputRelativePath && asset.relativePath === job.outputRelativePath).map((asset) => asset.id),
+                ]);
+                const placements = tracks.flatMap((track) => track.clips).filter((clip) => clip.id === job.clipId || assetIds.has(clip.assetId)).length;
+                return <button
+                  key={job.id}
+                  className="scene-card"
+                  draggable
+                  onClick={() => onOpenGenerator(job.id)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(SCENE_DRAG_TYPE, job.id);
+                    event.dataTransfer.effectAllowed = "copy";
+                    setDraggedScene(job);
+                    setDraggedAsset(undefined);
+                  }}
+                  onDragEnd={() => { setDraggedScene(undefined); setDropTrackId(null); }}
+                  title={`${job.title} — drag onto a video track below`}
+                >
+                  <span className="scene-card__thumb"><i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em></span>
+                  <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>
+                </button>;
+              })}
               <button className="scene-add" onClick={addScene}><Plus size={18} /> Add or generate a scene</button>
             </div>
           ) : (
@@ -650,13 +740,14 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
               {/* Draggable onto the timeline. `draggable` on a <button> is the
                   whole mechanism — the button still clicks and still takes
                   focus, so keyboard users are not shut out of selecting it. */}
-              {config.assets.map((asset) => <button
+              {mediaAssets.map((asset) => <button
                 key={asset.id}
                 draggable
                 onDragStart={(event) => {
                   event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
                   event.dataTransfer.effectAllowed = "copy";
                   setDraggedAsset(asset);
+                  setDraggedScene(undefined);
                 }}
                 onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
                 title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
@@ -827,13 +918,15 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
                pointer simply is not over, so a sound held above a video track
                looked like it had not been picked up rather than like it was
                being refused. Marked for the whole drag, not just on hover. */
-            dropBlocked={draggedAsset !== undefined && !acceptsAsset(track, draggedAsset)}
+            dropBlocked={(draggedAsset !== undefined && !acceptsAsset(track, draggedAsset))
+              || (draggedScene !== undefined && !acceptsScene(track, draggedScene))}
             onSelect={setSelectedId}
             onToggle={toggleTrack}
             onRename={renameTrack}
             onDragOverLane={(event) => {
-              if (!event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) return;
-              if (!acceptsAsset(track, draggedAsset)) return;
+              const hasAsset = event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
+              const hasScene = event.dataTransfer.types.includes(SCENE_DRAG_TYPE);
+              if ((!hasAsset || !acceptsAsset(track, draggedAsset)) && (!hasScene || !acceptsScene(track, draggedScene))) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "copy";
               setDropTrackId(track.id);
@@ -842,12 +935,18 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
             onDropLane={(event) => {
               event.preventDefault();
               setDropTrackId(null);
+              const jobId = event.dataTransfer.getData(SCENE_DRAG_TYPE);
+              const rect = event.currentTarget.getBoundingClientRect();
+              const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+              if (jobId) {
+                dropScene(track.id, jobId, ratio, rect.width);
+                return;
+              }
               const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
               if (!assetId) return;
-              const rect = event.currentTarget.getBoundingClientRect();
               // A zero-width lane would make the ratio NaN and the clip's start
               // time with it, which zod then refuses to save.
-              dropAsset(track.id, assetId, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0, rect.width);
+              dropAsset(track.id, assetId, ratio, rect.width);
             }}
           />)}
           <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
