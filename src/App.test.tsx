@@ -110,8 +110,8 @@ describe("project library controls", () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    const shape = screen.getByRole("combobox", { name: /Video shape/ }) as HTMLSelectElement;
-    const size = screen.getByRole("combobox", { name: /Frame size/ }) as HTMLSelectElement;
+    const shape = screen.getByRole("combobox", { name: /Aspect Ratio/ }) as HTMLSelectElement;
+    const size = screen.getByRole("combobox", { name: /Resolution/ }) as HTMLSelectElement;
 
     // The ladder the user asked for, in pixels rather than a name for them.
     expect([...size.options].map((option) => option.textContent)).toEqual([
@@ -131,7 +131,7 @@ describe("project library controls", () => {
       "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
     ]);
 
-    // And the summary line beside the collapsed panel says the same numbers.
+    // The settings header says the same numbers as the always-visible fields.
     fireEvent.change(size, { target: { value: "544p" } });
     expect(document.querySelector(".composer__options-value")!.textContent)
       .toBe("Vertical 9:16 · 544 × 960 · 30 seconds");

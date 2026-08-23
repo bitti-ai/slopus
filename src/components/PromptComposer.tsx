@@ -1,4 +1,4 @@
-import { ChevronDown, Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, Undo2, WandSparkles, X } from "lucide-react";
+import { Clapperboard, Clock3, ImagePlus, Monitor, Sparkles, Undo2, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { chooseInitialReferenceImages, isTauri } from "../lib/persistence";
 import { outputDimensions, resolutionLabel } from "../lib/export";
@@ -141,17 +141,15 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
           {referenceError && <small role="alert">{referenceError}</small>}
         </div>}
 
-        <details className="composer__options">
-          <summary>
+        <section className="composer__options">
+          <div className="composer__options-head">
             <span className="composer__options-title">Video settings</span>
             <span className="composer__options-value">{aspectRatioLabels[aspectRatio]} · {resolutionLabel(resolution, aspectRatio)} · {durationLabel(duration)}</span>
-            <ChevronDown className="composer__options-chevron" size={17} />
-          </summary>
+          </div>
           <div className="composer__options-body">
-            <p className="composer__options-note">These are already set to sensible defaults. Change them only if you want something different.</p>
             <div className="composer__options-grid">
               <label>
-                <span><Monitor size={15} /> Video shape</span>
+                <span><Monitor size={15} /> Aspect Ratio</span>
                 <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
                   <option value="16:9">Widescreen 16:9</option>
                   <option value="9:16">Vertical 9:16</option>
@@ -164,7 +162,7 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
                   are relabelled when the shape above changes, because 768p is
                   1376×768 widescreen and 768×1376 vertical. */}
               <label>
-                <span><Clapperboard size={15} /> Frame size</span>
+                <span><Clapperboard size={15} /> Resolution</span>
                 <select value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
                   {PROJECT_RESOLUTIONS.map((option) => {
                     const { width, height } = outputDimensions(option, aspectRatio);
@@ -180,7 +178,7 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
               </label>
             </div>
           </div>
-        </details>
+        </section>
 
         <div className="composer__actions">
           <button
