@@ -65,14 +65,43 @@ export async function renderedSummary(jobId: string): Promise<RenderedSummary | 
   return invoke<RenderedSummary | null>("generated_summary", { jobId });
 }
 
+type IpcBytes = ArrayBuffer | ArrayBufferView | number[];
+
+/** Tauri's raw response is an ArrayBuffer in the desktop webview, while its
+ * test/mock transports and some older runtimes expose the same body as a byte
+ * array. Normalize both without ever treating byte values as PCM samples. */
+export function bytesFromIpc(raw: IpcBytes): Uint8Array {
+  if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
+  if (ArrayBuffer.isView(raw)) return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  return Uint8Array.from(raw);
+}
+
 /** One frame's pixels, RGBA, straight out of the render. */
 async function renderedFrame(jobId: string, index: number): Promise<Uint8Array> {
-  return new Uint8Array(await invoke<ArrayBuffer>("generated_frame", { jobId, index }));
+  return bytesFromIpc(await invoke<IpcBytes>("generated_frame", { jobId, index }));
+}
+
+/** Turns the raw IPC body into the interleaved samples vidfab produced. */
+export function audioSamplesFromIpc(raw: IpcBytes, expectedSamples: number): Float32Array {
+  const bytes = bytesFromIpc(raw);
+  if (bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+    throw new Error(`The render's audio buffer has ${bytes.byteLength} bytes, which is not whole 32-bit PCM.`);
+  }
+  // Copy the exact view. Constructing Float32Array from Uint8Array would turn
+  // each byte into a sample; constructing it from an offset view can also fail
+  // alignment. vidfab and Rust both use native little-endian f32 PCM.
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const samples = new Float32Array(copy.buffer);
+  if (samples.length !== expectedSamples) {
+    throw new Error(`The render promised ${expectedSamples} audio samples, but ${samples.length} came back.`);
+  }
+  return samples;
 }
 
 /** The render's soundtrack, interleaved, as Rust holds it. */
-async function renderedAudio(jobId: string): Promise<Float32Array> {
-  return new Float32Array(await invoke<ArrayBuffer>("generated_audio", { jobId }));
+async function renderedAudio(jobId: string, expectedSamples: number): Promise<Float32Array> {
+  return audioSamplesFromIpc(await invoke<IpcBytes>("generated_audio", { jobId }), expectedSamples);
 }
 
 /** Gives the frames back. Called on the way out whether or not a file was
@@ -156,19 +185,47 @@ function frameFactory(width: number, height: number) {
   };
 }
 
-/** Whether this machine will encode the render's own sound as AAC. The render
- *  decides the rate and the channel count, so the question is asked with those
- *  numbers rather than with the export pipeline's 48 kHz stereo. */
-async function audioSupported(summary: RenderedSummary): Promise<boolean> {
-  if (summary.audioSamples === 0 || summary.audioChannels <= 0 || summary.audioSampleRate <= 0) return false;
-  if (typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return false;
-  const support = await AudioEncoder.isConfigSupported({
-    codec: AUDIO_CODEC,
-    sampleRate: summary.audioSampleRate,
-    numberOfChannels: summary.audioChannels,
-    bitrate: AUDIO_BITRATE,
-  }).catch(() => ({ supported: false }));
-  return Boolean(support.supported);
+/** The render's own AAC configuration, or null for a genuinely silent render.
+ *  Sound that exists is never quietly omitted from the MP4. */
+async function audioConfig(summary: RenderedSummary): Promise<AudioEncoderConfig | null> {
+  if (summary.audioSamples === 0) return null;
+  if (summary.audioChannels <= 0 || summary.audioSampleRate <= 0 || summary.audioSamples % summary.audioChannels !== 0) {
+    throw new Error("The render returned audio with invalid channel or sample-rate metadata.");
+  }
+  if (typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return null;
+  for (const sampleRate of [...new Set([summary.audioSampleRate, 48_000, 44_100])]) {
+    const config: AudioEncoderConfig = {
+      codec: AUDIO_CODEC,
+      sampleRate,
+      numberOfChannels: summary.audioChannels,
+      bitrate: AUDIO_BITRATE,
+    };
+    const support = await AudioEncoder.isConfigSupported(config).catch(() => ({ supported: false }));
+    if (support.supported) return config;
+  }
+  return null;
+}
+
+/** Linear PCM resampling is enough here: vidfab's soundtrack is already the
+ * final mix, and this only adapts its rate to an AAC configuration the OS
+ * exposes. Channels remain interleaved throughout. */
+export function resampleInterleaved(samples: Float32Array, channels: number, fromRate: number, toRate: number): Float32Array {
+  if (fromRate === toRate) return samples;
+  const inputFrames = Math.floor(samples.length / channels);
+  const outputFrames = Math.max(1, Math.round(inputFrames * toRate / fromRate));
+  const output = new Float32Array(outputFrames * channels);
+  for (let frame = 0; frame < outputFrames; frame += 1) {
+    const source = Math.min(inputFrames - 1, frame * fromRate / toRate);
+    const left = Math.floor(source);
+    const right = Math.min(inputFrames - 1, left + 1);
+    const mix = source - left;
+    for (let channel = 0; channel < channels; channel += 1) {
+      const a = samples[left * channels + channel];
+      const b = samples[right * channels + channel];
+      output[frame * channels + channel] = a + (b - a) * mix;
+    }
+  }
+  return output;
 }
 
 /** Feeds the render's interleaved samples to the AAC encoder, in the blocks
@@ -176,40 +233,34 @@ async function audioSupported(summary: RenderedSummary): Promise<boolean> {
 async function encodeAudio(
   summary: RenderedSummary,
   samples: Float32Array,
+  config: AudioEncoderConfig,
   add: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => void,
-): Promise<void> {
+): Promise<number> {
   const channels = summary.audioChannels;
-  const total = Math.floor(samples.length / channels);
+  const sampleRate = config.sampleRate ?? summary.audioSampleRate;
+  const prepared = resampleInterleaved(samples, channels, summary.audioSampleRate, sampleRate);
+  const total = Math.floor(prepared.length / channels);
   const failure: { reason: Error | null } = { reason: null };
+  let chunks = 0;
   const encoder = new AudioEncoder({
-    output: (chunk, meta) => add(chunk, meta),
+    output: (chunk, meta) => { chunks += 1; add(chunk, meta); },
     error: (reason) => { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); },
   });
-  encoder.configure({
-    codec: AUDIO_CODEC,
-    sampleRate: summary.audioSampleRate,
-    numberOfChannels: channels,
-    bitrate: AUDIO_BITRATE,
-  });
+  encoder.configure(config);
   try {
     for (let offset = 0; offset < total; offset += AUDIO_BLOCK) {
       if (failure.reason) throw failure.reason;
       const count = Math.min(AUDIO_BLOCK, total - offset);
-      // f32-planar: every channel's block laid end to end, de-interleaved from
-      // the way vidfab returns them.
-      const planar = new Float32Array(count * channels);
-      for (let channel = 0; channel < channels; channel += 1) {
-        for (let frame = 0; frame < count; frame += 1) {
-          planar[channel * count + frame] = samples[(offset + frame) * channels + channel];
-        }
-      }
+      // vidfab's C API returns [frame0-L, frame0-R, frame1-L, frame1-R, ...].
+      // WebCodecs calls that layout `f32`; `f32-planar` means something else.
+      const interleaved = prepared.slice(offset * channels, (offset + count) * channels);
       const data = new AudioData({
-        format: "f32-planar",
-        sampleRate: summary.audioSampleRate,
+        format: "f32",
+        sampleRate,
         numberOfFrames: count,
         numberOfChannels: channels,
-        timestamp: Math.round((offset * 1_000_000) / summary.audioSampleRate),
-        data: planar,
+        timestamp: Math.round((offset * 1_000_000) / sampleRate),
+        data: interleaved,
       });
       encoder.encode(data);
       data.close();
@@ -217,6 +268,8 @@ async function encodeAudio(
     }
     await encoder.flush();
     if (failure.reason) throw failure.reason;
+    if (chunks === 0) throw new Error("The AAC encoder finished without producing a soundtrack.");
+    return chunks;
   } finally {
     if (encoder.state !== "closed") encoder.close();
   }
@@ -252,7 +305,21 @@ export async function saveGeneratedScene(options: {
     const fps = summary.fps > 0 ? summary.fps : 24;
     const bitrate = bitrateFor(summary.width, summary.height, fps, GENERATED_QUALITY);
     const { codec } = await pickCodec(summary.width, summary.height, fps, bitrate);
-    const withAudio = await audioSupported(summary);
+    const sound = await audioConfig(summary);
+    const audioChunks: Array<{ chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }> = [];
+    let note: string | null = null;
+    if (summary.audioSamples > 0) {
+      if (sound) {
+        try {
+          await encodeAudio(summary, await renderedAudio(jobId, summary.audioSamples), sound, (chunk, meta) => audioChunks.push({ chunk, meta }));
+        } catch (reason) {
+          note = `Saved without sound: ${describe(reason)}`;
+        }
+      } else {
+        note = "Saved without sound: this computer's encoder would not take the render's audio.";
+      }
+    }
+    const withAudio = audioChunks.length > 0;
 
     const { ArrayBufferTarget, Muxer } = await import("mp4-muxer");
     const target = new ArrayBufferTarget();
@@ -260,7 +327,7 @@ export async function saveGeneratedScene(options: {
       target,
       video: { codec: outputCodec("h264").muxer, width: summary.width, height: summary.height, frameRate: Math.round(fps) },
       ...(withAudio
-        ? { audio: { codec: "aac" as const, numberOfChannels: summary.audioChannels, sampleRate: summary.audioSampleRate } }
+        ? { audio: { codec: "aac" as const, numberOfChannels: summary.audioChannels, sampleRate: sound!.sampleRate! } }
         : {}),
       fastStart: "in-memory",
     });
@@ -300,14 +367,7 @@ export async function saveGeneratedScene(options: {
       if (encoder.state !== "closed") encoder.close();
     }
 
-    let note: string | null = null;
-    if (withAudio) {
-      await encodeAudio(summary, await renderedAudio(jobId), (chunk, meta) => muxer.addAudioChunk(chunk, meta));
-    } else if (summary.audioSamples > 0) {
-      // The render HAD sound and the file does not: say so rather than hand
-      // back a silent video that looks complete.
-      note = "Saved without sound: this computer's encoder would not take the render's audio.";
-    }
+    audioChunks.forEach(({ chunk, meta }) => muxer.addAudioChunk(chunk, meta));
 
     muxer.finalize();
     const written = await writeGeneratedVideo(folderPath, jobId, new Uint8Array(target.buffer));

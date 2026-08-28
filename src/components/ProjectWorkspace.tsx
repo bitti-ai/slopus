@@ -1,5 +1,5 @@
 import { ArrowLeft, BookOpen, Download, Film, Save, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
 import { cancelVidfabGeneration, CHECKING_PROVIDERS, type RuntimeStatus } from "../lib/runtime";
 import { ExitGuardDialog, type OngoingGeneration } from "./ExitGuardDialog";
@@ -46,19 +46,68 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
    *  sees. Optional, so a test can mount the workspace on its own. */
   onOngoingGenerationsChange?: (jobs: OngoingGeneration[]) => void;
 }) {
-  const [config, setConfig] = useState(project.config);
-  /* What the engine says about a render, and the saving of the file it
-     produces. Mounted HERE, not in the Generator: a render takes minutes, and
-     a user who spends them on the timeline used to unmount the only listeners
-     there were — the finished frames then arrived at nobody and were dropped. */
-  useGenerationEvents({ folderPath: project.folderPath, onChange: (update) => { setConfig(update); setDirty(true); } });
+  const [config, setConfigState] = useState(project.config);
+  const configRef = useRef(config);
+  configRef.current = config;
   const [view, setView] = useState<ProjectView>(initialView);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  /* The back control asks before it navigates when there is a run to lose. */
   const [leaveGuard, setLeaveGuard] = useState(false);
+  /** Every save is ordered. Without this, an older manual save and a generation
+   *  completion save could race and whichever disk write happened to finish
+   *  last would win, even if it held the older project. */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaves = useRef(0);
+  // Measurements also replace the config object, but deliberately do not make
+  // the project dirty. A revision counts only writes that the Save button is
+  // responsible for, so a measurement landing during a save cannot make a
+  // successfully persisted project look unsaved.
+  const dirtyRevision = useRef(0);
+
+  const applyConfig = (next: ConfigUpdate): ProjectConfig => {
+    const resolved = typeof next === "function" ? next(configRef.current) : next;
+    configRef.current = resolved;
+    setConfigState(resolved);
+    return resolved;
+  };
+
+  const persist = (record: ProjectRecord): Promise<void> => {
+    const savedRevision = dirtyRevision.current;
+    pendingSaves.current += 1;
+    setSaving(true);
+    const attempt = saveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        setSaveError(null);
+        await onSave(record);
+      });
+    saveQueue.current = attempt.then(() => undefined, () => undefined);
+    return attempt
+      .then(() => {
+        // A later edit did not ride in this write, so its Save button must stay
+        // enabled. Background measurements do not advance this revision.
+        if (dirtyRevision.current === savedRevision) setDirty(false);
+      })
+      .catch((reason) => {
+        setSaveError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) setSaving(false);
+      });
+  };
+
+  /* What the engine says about a render, and the saving of the file it
+     produces. Mounted HERE, not in the Generator: a render takes minutes, and
+     a user who spends them on the timeline used to unmount the only listeners
+     there were — the finished frames then arrived at nobody and were dropped. */
+  useGenerationEvents({
+    folderPath: project.folderPath,
+    onChange: (update) => { applyConfig(update); dirtyRevision.current += 1; setDirty(true); },
+    onCompleted: () => { void persist({ ...project, config: configRef.current }); },
+  });
 
   /* Derived through a key of identity and status rather than from the job
      objects: a render in progress rewrites generationJobs on every progress
@@ -96,7 +145,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
      TimelineView's measurement flush. Views that only ever change the project
      from a click still pass a plain value. */
   const changeConfig = (next: ConfigUpdate) => {
-    setConfig(next);
+    applyConfig(next);
+    dirtyRevision.current += 1;
     setDirty(true);
   };
 
@@ -108,19 +158,10 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
      lose. Everything measured here is re-derivable from the files themselves,
      so a measurement that never rides along with a real save costs a re-decode
      and nothing else. */
-  const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => setConfig(update);
+  const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => { applyConfig(update); };
 
   const save = async (record?: ProjectRecord) => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onSave(record ?? { ...project, config });
-      setDirty(false);
-    } catch (reason) {
-      setSaveError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setSaving(false);
-    }
+    await persist(record ?? { ...project, config: configRef.current });
   };
 
   return <div className="project-shell">
@@ -182,7 +223,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
          up front reported a saved project even when the write then failed,
          and swallowed the reason; save() clears only on success and surfaces
          the failure in the toast. */
-      onRecord={(record) => { setConfig(record.config); void save(record); }}
+      onRecord={(record) => { applyConfig(record.config); void save(record); }}
     /></footer>
     {leaveGuard && <ExitGuardDialog jobs={ongoing} destination="library" onConfirm={leave} onCancel={() => setLeaveGuard(false)} />}
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}
