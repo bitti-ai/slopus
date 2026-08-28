@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-use tauri::{ipc::InvokeBody, ipc::Request, AppHandle};
+use tauri::{ipc::InvokeBody, ipc::Request, AppHandle, Emitter as _};
 use tauri_plugin_dialog::DialogExt;
 
 mod agent;
@@ -1907,13 +1907,32 @@ async fn runtime_status(
 
 #[tauri::command]
 async fn run_agent_turn(
+    app: AppHandle,
     state: tauri::State<'_, agent::AgentRuntime>,
     request: agent::AgentTurnRequest,
 ) -> Result<agent::AgentTurnResponse, String> {
     let runtime = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || runtime.run(request))
+    let request_id = request.request_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.run(request, |event| {
+            let _ = app.emit(
+                "agent-turn-event",
+                AgentTurnEventPayload {
+                    request_id: request_id.clone(),
+                    event: event.clone(),
+                },
+            );
+        })
+    })
         .await
         .map_err(|error| format!("Agent task failed: {error}"))?
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentTurnEventPayload {
+    request_id: String,
+    event: agent::AgentEvent,
 }
 
 #[tauri::command]
