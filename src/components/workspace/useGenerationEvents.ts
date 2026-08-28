@@ -39,17 +39,24 @@ interface ProgressEvent {
 const RENDER_CEILING = 0.9;
 const ENCODE_FLOOR = 0.9;
 
-export function useGenerationEvents({ folderPath, onChange }: {
+export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
   folderPath: string;
   /** The updater form, always: every write here happens after an await, so the
    *  config this component last saw is not the one to build from. */
   onChange: (update: (current: ProjectConfig) => ProjectConfig) => void;
+  /** Called only after the MP4 path, generated asset, and timeline clip state
+   *  have all been committed to the in-memory project. The workspace uses this
+   *  exact boundary to persist the finished generation without waiting for the
+   *  user to click Save. */
+  onCompleted?: (jobId: string) => void;
 }) {
   /* Held in refs so the subscription is made ONCE. It has to be: re-subscribing
      on every progress tick would drop events in the gap, and these events are
      the only record that a render happened at all. */
   const write = useRef(onChange);
   write.current = onChange;
+  const completed = useRef(onCompleted);
+  completed.current = onCompleted;
   const folder = useRef(folderPath);
   folder.current = folderPath;
   /** Scenes already being encoded, so a repeated event — or a remount in
@@ -63,6 +70,23 @@ export function useGenerationEvents({ folderPath, onChange }: {
       write.current((current) => ({
         ...current,
         generationJobs: current.generationJobs.map((job) => (job.id === jobId ? { ...job, ...updates, updatedAt: new Date().toISOString() } : job)),
+      }));
+    };
+    const updateProgress = (jobId: string, progress: number, stage: GenerationJob["stage"]) => {
+      write.current((current) => ({
+        ...current,
+        generationJobs: current.generationJobs.map((job) => {
+          if (job.id !== jobId || job.status === "ready" || job.status === "completed" || job.status === "failed" || job.status === "cancelled") return job;
+          return {
+            ...job,
+            status: "generating",
+            stage,
+            // vidfab stages do not share one counter. A later stage can report
+            // a smaller local percentage, but overall progress cannot regress.
+            progress: Math.max(job.progress, progress),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
       }));
     };
 
@@ -115,6 +139,7 @@ export function useGenerationEvents({ folderPath, onChange }: {
             })),
           },
         }));
+        completed.current?.(jobId);
       } catch (reason) {
         /* The render happened and the file did not. Failed is the honest state:
            there is nothing to insert into the timeline, and the only way to get
@@ -135,11 +160,11 @@ export function useGenerationEvents({ folderPath, onChange }: {
         const progress = payload.totalSteps > 0
           ? Math.min(RENDER_CEILING - 0.02, 0.12 + (Math.max(0, payload.step) / payload.totalSteps) * (RENDER_CEILING - 0.14))
           : payload.stage === "delivering" ? RENDER_CEILING - 0.02 : 0.08;
-        updateJob(payload.jobId, {
-          status: "generating",
-          stage: payload.stage === "starting" || payload.stage === "transformerLoad" ? "preparing" : "generating",
+        updateProgress(
+          payload.jobId,
           progress,
-        });
+          payload.stage === "starting" || payload.stage === "transformerLoad" ? "preparing" : "generating",
+        );
       }),
       listen<JobEvent>("vidfab-job", ({ payload }) => {
         if (disposed) return;

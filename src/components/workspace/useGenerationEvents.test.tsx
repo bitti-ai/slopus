@@ -33,11 +33,11 @@ afterEach(() => {
 
 /** A project with one draft scene, and a harness that keeps whatever the hook
  *  writes — the same shape the workspace holds it in. */
-function harness() {
+function harness(onCompleted?: (jobId: string) => void) {
   const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
   const state = { config: fresh };
   function Harness() {
-    useGenerationEvents({ folderPath: "C:\\Ceramic Lamp", onChange: (update) => { state.config = update(state.config); } });
+    useGenerationEvents({ folderPath: "C:\\Ceramic Lamp", onChange: (update) => { state.config = update(state.config); }, onCompleted });
     return null;
   }
   render(<Harness />);
@@ -54,7 +54,8 @@ const emit = async (name: string, payload: unknown) => {
 describe("what the app does with the engine's events", () => {
   it("saves the frames the moment the engine says they are ready, and records the file", async () => {
     vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 4_200_000, note: null });
-    const { jobId, job, state } = harness();
+    const completed = vi.fn();
+    const { jobId, job, state } = harness(completed);
     await emit("vidfab-job", { jobId, state: "framesReady", detail: "Frames and audio are ready to be encoded." });
 
     expect(saveGeneratedScene).toHaveBeenCalledWith(expect.objectContaining({ folderPath: "C:\\Ceramic Lamp", jobId }));
@@ -65,6 +66,7 @@ describe("what the app does with the engine's events", () => {
       outputRelativePath: "media/generated/job-01.mp4",
       error: null,
     });
+    expect(completed).toHaveBeenCalledWith(jobId);
     // What was written has to survive a save and a reload, so it has to parse.
     expect(parseProjectConfig(state.config)).toBeTruthy();
   });
@@ -141,6 +143,15 @@ describe("what the app does with the engine's events", () => {
     await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
     await act(async () => { report?.(60, 120); await Promise.resolve(); });
     expect(job().status).toBe("completed");
+  });
+
+  it("never rolls overall progress back when a later stage reports a smaller local counter", async () => {
+    const { jobId, job } = harness();
+    await emit("vidfab-progress", { jobId, stage: "denoising", step: 40, totalSteps: 50 });
+    const furthest = job().progress;
+    await emit("vidfab-progress", { jobId, stage: "audioDecode", step: 0, totalSteps: 0 });
+    expect(job().progress).toBe(furthest);
+    expect(job().progress).toBeGreaterThan(0.7);
   });
 
   it("passes queued, failed and cancelled through as themselves", async () => {

@@ -1,9 +1,9 @@
 //! What a finished generation leaves behind, between vidfab and the encoder.
 //!
-//! vidfab hands back raw pictures — planar RGB floats, one plane after another,
-//! frame after frame — and then frees them when the generation handle is
-//! destroyed. Nothing in this process can turn those into an MP4: encoding is
-//! the webview's job, because WebCodecs is what owns the OS hardware encoder
+//! vidfab hands back raw pictures — planar RGB floats, one channel after
+//! another, with every frame of a channel contiguous — and frees them when the
+//! generation handle is destroyed. Nothing in this process can turn those into
+//! an MP4: encoding is the webview's job, because WebCodecs owns the OS encoder
 //! and PolStudio ships no FFmpeg by design (see docs/architecture.md, and
 //! CLAUDE.md on the licensing reason).
 //!
@@ -125,10 +125,11 @@ impl Range {
 
 /// Turns vidfab's planar float pictures into the RGBA the webview can encode.
 ///
-/// The layout, from docs/architecture.md and the C API's own fields: `frames`
-/// pictures, each `channels` planes of `height × width` floats, rows top to
-/// bottom. Every plane of a frame is therefore `width * height` apart, which is
-/// what the striding below says.
+/// The C API declares the layout as `[channels][frames][height][width]`: all
+/// red frames first, then all green frames, then all blue frames. In
+/// particular, it is not `[frames][channels][height][width]`. Treating it as
+/// frame-major makes an RGB render look like the same third-length motion clip
+/// played three times, once from each channel plane.
 ///
 /// One channel is greyscale and is written to all three; more than three means
 /// the first three are the colour and the rest is not ours to interpret.
@@ -159,13 +160,29 @@ pub fn rgba_from_planar(
             video.len()
         ));
     }
-    let range = Range::of(&video[..planes * pixels]);
+    let channel_stride = frames * pixels;
+    let range = if (0..planes).any(|channel| {
+        let start = channel * channel_stride;
+        Range::of(&video[start..start + pixels]) == Range::Signed
+    }) {
+        Range::Signed
+    } else {
+        Range::Unit
+    };
     let mut rgba = vec![255u8; frames * pixels * 4];
     for frame in 0..frames {
-        let base = frame * planes * pixels;
-        let red = &video[base..base + pixels];
-        let green = if planes >= 2 { &video[base + pixels..base + 2 * pixels] } else { red };
-        let blue = if planes >= 3 { &video[base + 2 * pixels..base + 3 * pixels] } else { red };
+        let frame_offset = frame * pixels;
+        let red = &video[frame_offset..frame_offset + pixels];
+        let green = if planes >= 2 {
+            &video[channel_stride + frame_offset..channel_stride + frame_offset + pixels]
+        } else {
+            red
+        };
+        let blue = if planes >= 3 {
+            &video[2 * channel_stride + frame_offset..2 * channel_stride + frame_offset + pixels]
+        } else {
+            red
+        };
         let out = &mut rgba[frame * pixels * 4..(frame + 1) * pixels * 4];
         for pixel in 0..pixels {
             out[pixel * 4] = range.to_byte(red[pixel]);
@@ -193,6 +210,16 @@ pub fn from_output(
     audio_channels: u32,
     audio_sample_rate: u32,
 ) -> Result<RenderedVideo, String> {
+    if !audio.is_empty()
+        && (audio_channels == 0
+            || audio_sample_rate == 0
+            || audio.len() % audio_channels as usize != 0)
+    {
+        return Err(format!(
+            "The render returned {} audio samples with {audio_channels} channels at {audio_sample_rate} Hz.",
+            audio.len()
+        ));
+    }
     Ok(RenderedVideo {
         job_id: job_id.to_string(),
         width,
@@ -304,11 +331,13 @@ mod tests {
     }
 
     #[test]
-    fn every_frame_is_read_from_its_own_planes() {
-        // Two 1×1 frames, the second twice as bright as the first.
-        let video = vec![0.2, 0.2, 0.2, 0.4, 0.4, 0.4];
+    fn channel_major_frames_are_not_read_as_repeated_temporal_blocks() {
+        // [R0, R1, G0, G1, B0, B1], exactly as vidfab's C API returns it.
+        // Distinct channels and frames make a channel/frame transposition
+        // visible instead of letting a greyscale fixture hide it.
+        let video = vec![0.1, 0.4, 0.2, 0.5, 0.3, 0.6];
         let rgba = rgba_from_planar(&video, 2, 1, 1, 3).unwrap();
-        assert_eq!(rgba, vec![51, 51, 51, 255, 102, 102, 102, 255]);
+        assert_eq!(rgba, vec![26, 51, 77, 255, 102, 128, 153, 255]);
     }
 
     #[test]
@@ -347,6 +376,12 @@ mod tests {
         assert!(rgba_from_planar(&video, 3, 4, 4, 3).is_err());
         assert!(rgba_from_planar(&video, 2, 4, 4, 3).is_ok());
         assert!(rgba_from_planar(&[], 0, 4, 4, 3).is_err());
+    }
+
+    #[test]
+    fn malformed_interleaved_audio_is_refused_at_the_handoff() {
+        assert!(from_output("bad-audio", &[0.5, 0.5, 0.5], &[0.1, 0.2, 0.3], 1, 1, 1, 3, 24.0, 2, 32_000).is_err());
+        assert!(from_output("bad-rate", &[0.5, 0.5, 0.5], &[0.1, 0.2], 1, 1, 1, 3, 24.0, 2, 0).is_err());
     }
 
     fn sample(job_id: &str) -> RenderedVideo {
