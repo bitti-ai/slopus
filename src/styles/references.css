@@ -828,6 +828,79 @@
   background: var(--accent-soft);
 }
 
+.reference-preset-grid > button.active {
+  border-color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
+.reference-location-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+
+.reference-location-settings > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.reference-location-settings > header span,
+.reference-location-settings > header small,
+.reference-location-settings > header b {
+  display: block;
+}
+
+.reference-location-settings > header small {
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+}
+
+.reference-location-settings > p,
+.reference-location-settings__preview {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.reference-location-settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reference-location-settings__group > b {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.reference-location-settings__group > span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.reference-location-settings__group button {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  background: var(--panel-3);
+}
+
+.reference-location-settings__group button:hover,
+.reference-location-settings__group button.active {
+  border-color: var(--accent-bright);
+  color: var(--accent-bright);
+}
+
 .reference-preset-grid b,
 .reference-preset-grid span,
 .reference-preset-grid small {

@@ -90,9 +90,18 @@ describe("Reference type presets", () => {
     const groups = within(dialog).getByRole("group", { name: "Location subcategories" });
     fireEvent.click(within(groups).getByRole("button", { name: "Sci-fi" }));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "lunar" } });
-    expect(within(dialog).getByRole("button", { name: /Lunar research base/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Lunar base/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /Victorian manor/ })).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: /Lunar research base/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /Lunar base/ }));
+    fireEvent.click(within(within(dialog).getByRole("group", { name: "Time of day" })).getByRole("button", { name: "Night" }));
+    fireEvent.click(within(within(dialog).getByRole("group", { name: "Season" })).getByRole("button", { name: "Winter" }));
+    expect(within(dialog).getByText("Lunar base, at night, in winter.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use location" }));
+
+    expect(state.latest().references[0]).toMatchObject({
+      intendedUse: ["location"],
+      description: "Lunar base, at night, in winter.",
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Location" }));
     const reopened = screen.getByRole("dialog", { name: "Choose a reference type" });
@@ -100,6 +109,6 @@ describe("Reference type presets", () => {
     fireEvent.click(within(reopened).getByRole("button", { name: "Use Custom" }));
 
     expect(state.latest().references[0].intendedUse).toEqual([]);
-    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("White lunar base under harsh sunlight.");
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("Lunar base, at night, in winter.");
   });
 });

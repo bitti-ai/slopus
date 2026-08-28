@@ -1,14 +1,5 @@
 import { KNOWN_CHARACTERS } from "./known-characters";
-import {
-  LOCATION_GROUPS,
-  LOCATION_VARIANTS,
-  PRODUCT_GROUPS,
-  PRODUCT_VARIANTS,
-  STYLE_GROUPS,
-  STYLE_VARIANTS,
-  type OptionGroup,
-  type OptionVariant,
-} from "./expanded-reference-options";
+import { LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
 import type { ProjectReference } from "./project";
 
 export type ReferenceType = "custom" | "character" | "product" | "location" | "style";
@@ -80,43 +71,60 @@ const knownCharacterPresets: ReferencePreset[] = KNOWN_CHARACTERS.map(([name, ac
   searchTerms: `${actor} ${franchise}`,
 }));
 
-const expandOptions = (
-  type: PresetReferenceType,
-  groups: readonly OptionGroup[],
-  variants: readonly OptionVariant[],
-  label: (option: string, variant: OptionVariant) => string,
-  prompt: (option: string, variant: OptionVariant) => string,
-): ReferencePreset[] => groups.flatMap((group) => group.options.flatMap((option) => variants.map((variant) => ({
-  id: `${type}-${safeId(group.subcategory)}-${safeId(option)}-${safeId(variant.name)}`,
-  type,
-  subcategory: group.subcategory,
-  name: label(option, variant),
-  prompt: prompt(option, variant),
-}))));
+/** Product, location and style catalogs contain unique subjects. Qualifying
+ * adjectives no longer multiply each subject into five near-duplicates. */
+const optionsAsPresets = (type: PresetReferenceType, groups: readonly OptionGroup[]): ReferencePreset[] =>
+  groups.flatMap((group) => group.options.map((option) => ({
+    id: `${type}-${safeId(group.subcategory)}-${safeId(option)}`,
+    type,
+    subcategory: group.subcategory,
+    name: option,
+    prompt: `${option}.`,
+  })));
 
-const expandedProductPresets = expandOptions(
-  "product",
-  PRODUCT_GROUPS,
-  PRODUCT_VARIANTS,
-  (option, variant) => `${variant.name} ${option}`,
-  (option, variant) => `${variant.prompt} ${option.toLocaleLowerCase()}.`,
-);
-const expandedLocationPresets = expandOptions(
-  "location",
-  LOCATION_GROUPS,
-  LOCATION_VARIANTS,
-  (option, variant) => `${option} · ${variant.name}`,
-  (option, variant) => `${option}, ${variant.prompt}.`,
-);
-const expandedStylePresets = expandOptions(
-  "style",
-  STYLE_GROUPS,
-  STYLE_VARIANTS,
-  (option, variant) => `${variant.name} ${option}`,
-  (option, variant) => `${variant.prompt} ${option.toLocaleLowerCase()}.`,
-);
+const productPresets = optionsAsPresets("product", PRODUCT_GROUPS);
+const locationPresets = optionsAsPresets("location", LOCATION_GROUPS);
+const stylePresets = optionsAsPresets("style", STYLE_GROUPS);
 
-const curatedPresets: ReferencePreset[] = [
+export type LocationSettings = Partial<Record<(typeof LOCATION_SETTING_GROUPS)[number]["id"], string>>;
+
+export interface LocationSelection {
+  preset: ReferencePreset;
+  settings: LocationSettings;
+}
+
+export function composeLocationPrompt(preset: ReferencePreset, settings: LocationSettings): string {
+  const qualifiers = LOCATION_SETTING_GROUPS.flatMap((group) => {
+    const option = group.options.find((candidate) => candidate.id === settings[group.id]);
+    return option ? [option.prompt] : [];
+  });
+  return `${preset.name}${qualifiers.length ? `, ${qualifiers.join(", ")}` : ""}.`;
+}
+
+/** Recovers picker state from its prompt, avoiding UI-only fields in portable
+ * project JSON. Only a prompt this picker itself can compose is recognized. */
+export function locationSelectionFromPrompt(prompt: string): LocationSelection | undefined {
+  for (const preset of [...locationPresets].sort((left, right) => right.name.length - left.name.length)) {
+    const base = preset.name;
+    if (prompt === `${base}.`) return { preset, settings: {} };
+    if (!prompt.startsWith(`${base}, `) || !prompt.endsWith(".")) continue;
+    const qualifiers = prompt.slice(base.length + 2, -1).split(", ");
+    const settings: LocationSettings = {};
+    let lastGroup = -1;
+    let valid = true;
+    for (const qualifier of qualifiers) {
+      const groupIndex = LOCATION_SETTING_GROUPS.findIndex((group) => group.options.some((option) => option.prompt === qualifier));
+      const option = groupIndex >= 0 ? LOCATION_SETTING_GROUPS[groupIndex].options.find((candidate) => candidate.prompt === qualifier) : undefined;
+      if (!option || groupIndex <= lastGroup) { valid = false; break; }
+      settings[LOCATION_SETTING_GROUPS[groupIndex].id] = option.id;
+      lastGroup = groupIndex;
+    }
+    if (valid && composeLocationPrompt(preset, settings) === prompt) return { preset, settings };
+  }
+  return undefined;
+}
+
+const curatedCharacterPresets: ReferencePreset[] = [
   { id: "character-alice", type: "character", subcategory: "Literature & legend", name: "Alice in Wonderland", prompt: "Alice in her blue dress and white apron." },
   { id: "character-dracula", type: "character", subcategory: "Literature & legend", name: "Count Dracula", prompt: "Count Dracula in formal black evening wear." },
   { id: "character-robin-hood", type: "character", subcategory: "Literature & legend", name: "Robin Hood", prompt: "Robin Hood in practical forest-green clothing." },
@@ -124,57 +132,33 @@ const curatedPresets: ReferencePreset[] = [
   { id: "character-frankenstein", type: "character", subcategory: "Literature & legend", name: "Frankenstein's Creature", prompt: "Frankenstein's towering, solemn creature." },
   { id: "character-dorothy-gale", type: "character", subcategory: "Literature & legend", name: "Dorothy Gale", prompt: "Dorothy Gale in a blue gingham dress." },
   { id: "character-king-arthur", type: "character", subcategory: "Literature & legend", name: "King Arthur", prompt: "King Arthur in polished medieval armor." },
-
-  { id: "product-watch", type: "product", subcategory: "Fashion", name: "Luxury wristwatch", prompt: "Brushed steel watch with sapphire crystal." },
-  { id: "product-skincare", type: "product", subcategory: "Beauty", name: "Skincare bottle", prompt: "Minimal frosted-glass skincare bottle." },
-  { id: "product-sneaker", type: "product", subcategory: "Fashion", name: "Performance sneaker", prompt: "Modern mesh sneaker with a sculpted sole." },
-  { id: "product-smartphone", type: "product", subcategory: "Technology", name: "Flagship smartphone", prompt: "Slim glass smartphone with a satin frame." },
-  { id: "product-car", type: "product", subcategory: "Vehicles", name: "Sports car", prompt: "Low sports car with precise LED lights." },
-  { id: "product-coffee", type: "product", subcategory: "Appliances", name: "Espresso machine", prompt: "Compact brushed-steel espresso machine." },
-  { id: "product-chair", type: "product", subcategory: "Furniture", name: "Designer lounge chair", prompt: "Sculptural wood and fabric lounge chair." },
-
-  { id: "location-cyberpunk-alley", type: "location", subcategory: "Urban", name: "Neon city alley", prompt: "Rainy neon alley with reflective pavement." },
-  { id: "location-victorian-manor", type: "location", subcategory: "Historic", name: "Victorian manor", prompt: "Weathered Victorian manor with dark wood." },
-  { id: "location-moon-base", type: "location", subcategory: "Sci-fi", name: "Lunar research base", prompt: "White lunar base under harsh sunlight." },
-  { id: "location-alpine-village", type: "location", subcategory: "Nature", name: "Alpine village", prompt: "Timber village beneath snowy mountains." },
-  { id: "location-art-deco-lobby", type: "location", subcategory: "Interiors", name: "Art Deco hotel lobby", prompt: "Brass and dark-stone Art Deco lobby." },
-  { id: "location-medieval-market", type: "location", subcategory: "Historic", name: "Medieval market", prompt: "Busy medieval market with canvas stalls." },
-  { id: "location-tropical-beach", type: "location", subcategory: "Nature", name: "Remote tropical beach", prompt: "Secluded turquoise beach with palms." },
-  { id: "location-modern-studio", type: "location", subcategory: "Interiors", name: "Modern creative studio", prompt: "Bright timber studio with large windows." },
-
-  { id: "style-film-noir", type: "style", subcategory: "Cinematic", name: "Film noir", prompt: "High-contrast monochrome with hard shadows." },
-  { id: "style-documentary", type: "style", subcategory: "Cinematic", name: "35 mm documentary", prompt: "Natural light, handheld framing, subtle grain." },
-  { id: "style-watercolor", type: "style", subcategory: "Illustration", name: "Storybook watercolor", prompt: "Soft watercolor on textured paper." },
-  { id: "style-stop-motion", type: "style", subcategory: "Animation", name: "Handmade stop motion", prompt: "Tactile miniatures with stepped movement." },
-  { id: "style-editorial", type: "style", subcategory: "Commercial", name: "Luxury editorial", prompt: "Sculpted light and deliberate negative space." },
-  { id: "style-retrofuturism", type: "style", subcategory: "Retro", name: "1970s retrofuturism", prompt: "Rounded forms and warm analog controls." },
-  { id: "style-anime", type: "style", subcategory: "Animation", name: "Cinematic anime", prompt: "Clean linework with painted backgrounds." },
-  { id: "style-clay", type: "style", subcategory: "Animation", name: "Clay animation", prompt: "Hand-sculpted clay with playful movement." },
 ];
 
 export const REFERENCE_PRESETS: readonly ReferencePreset[] = [
   ...knownCharacterPresets,
-  ...expandedProductPresets,
-  ...expandedLocationPresets,
-  ...expandedStylePresets,
-  ...curatedPresets,
-]
-  .sort((left, right) => left.type.localeCompare(right.type) || left.subcategory.localeCompare(right.subcategory) || left.name.localeCompare(right.name));
+  ...productPresets,
+  ...locationPresets,
+  ...stylePresets,
+  ...curatedCharacterPresets,
+].sort((left, right) => left.type.localeCompare(right.type) || left.subcategory.localeCompare(right.subcategory) || left.name.localeCompare(right.name));
+
+const presetForReference = (reference: ProjectReference): ReferencePreset | undefined => {
+  const intended = reference.intendedUse.length === 1 ? reference.intendedUse[0] : undefined;
+  return REFERENCE_PRESETS.find((preset) => preset.type === intended && preset.prompt === reference.description)
+    ?? (intended === "location" ? locationSelectionFromPrompt(reference.description)?.preset : undefined);
+};
 
 export function referenceType(reference: ProjectReference): ReferenceType {
   const stored = reference.intendedUse.length === 1
     ? REFERENCE_TYPES.find((type) => type.id !== "custom" && type.id === reference.intendedUse[0])?.id
     : undefined;
-  /* Existing references were all free-written prompts, even when they carried
-   * one or more library tags. They stay editable as Custom. A non-custom type
-   * is only claimed when its prompt is one of that type's actual presets. */
-  return stored && REFERENCE_PRESETS.some((preset) => preset.type === stored && preset.prompt === reference.description)
-    ? stored
-    : "custom";
+  return stored && presetForReference(reference)?.type === stored ? stored : "custom";
 }
 
 export const referenceTypeLabel = (type: ReferenceType): string =>
   REFERENCE_TYPES.find((candidate) => candidate.id === type)?.label ?? "Custom";
 
-export const selectedReferencePreset = (reference: ProjectReference): ReferencePreset | undefined =>
-  REFERENCE_PRESETS.find((preset) => preset.type === referenceType(reference) && preset.prompt === reference.description);
+export const selectedReferencePreset = (reference: ProjectReference): ReferencePreset | undefined => {
+  const preset = presetForReference(reference);
+  return preset?.type === referenceType(reference) ? preset : undefined;
+};
