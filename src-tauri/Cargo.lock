@@ -2290,6 +2290,7 @@ dependencies = [
 name = "pol-studio"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "libloading 0.8.9",
  "serde",
  "serde_json",

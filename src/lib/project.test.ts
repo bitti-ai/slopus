@@ -41,6 +41,8 @@ import {
   sceneShots,
   splitActionText,
   DEFAULT_SCENE_SECONDS,
+  DEFAULT_GENERATION_STEPS,
+  RANDOM_GENERATION_SEED,
   SCENE_MAX_SECONDS,
   LEGACY_PROJECT_FILE_NAMES,
   PROJECT_FILE_NAME,
@@ -640,6 +642,38 @@ describe("scenes and the shots inside them", () => {
     expect(sceneBriefText(sceneShots(job))).toBe(job.creativeBrief);
   });
 
+  it("keeps shot speech inside MiniMax dialogue tags with its selected language", () => {
+    const firstLine = "行こう！ Keep the punctuation, exactly.";
+    const secondLine = "I will meet you there.";
+    const job = createDraftGenerationJob("", {
+      id: "scene-dialogue", title: "Dialogue", now, durationSeconds: 6,
+      shots: [
+        { id: "dialogue-a", startSeconds: 0, action: "She turns toward the doorway", speech: firstLine, speechLanguage: "Japanese" },
+        { id: "dialogue-b", startSeconds: 3, action: "The camera follows", speech: secondLine },
+      ],
+    });
+
+    for (const compiled of [compileGenerationJobPrompt(job), compileGenerationJobPrompt(job, [imageReference()])]) {
+      expect(compiled).toContain(`The scene's speaker (S1) says, <d>[Japanese] ${firstLine}</d>`);
+      expect(compiled).toContain(`The scene's speaker (S1) says, <d>[English] ${secondLine}</d>`);
+      // The full-reference summary must not repeat spoken words without tags.
+      expect(compiled.split(firstLine)).toHaveLength(2);
+      expect(compiled.split(secondLine)).toHaveLength(2);
+    }
+
+    expect(sceneShots(job)[0]).toEqual(expect.objectContaining({ speech: firstLine, speechLanguage: "Japanese" }));
+    expect(generationJobSchema.parse(job)).toEqual(job);
+  });
+
+  it("omits an empty speech field from the compiled prompt", () => {
+    const job = createDraftGenerationJob("A silent look", {
+      id: "scene-silent", title: "Silent", now,
+      shots: [{ id: "silent-a", startSeconds: 0, action: "A silent look", speech: "   ", speechLanguage: "French" }],
+    });
+    expect(compileGenerationJobPrompt(job)).not.toContain("<d>");
+    expect(compileGenerationJobPrompt(job)).not.toContain("(S1)");
+  });
+
   it("turns a reference token into <Subject N>, in lockstep with reference_paths", () => {
     const config = scene();
     const job = config.generationJobs[0];
@@ -738,6 +772,14 @@ describe("scenes and the shots inside them", () => {
     expect(valid({ prompt: "", creativeBrief: "", shots: null })).toBe(false);
     expect(formatSceneSeconds(3)).toBe("3");
     expect(formatSceneSeconds(4.5)).toBe("4.5");
+  });
+
+  it("defaults new scenes to 20 steps and a random seed marker", () => {
+    const job = createDraftGenerationJob("A slow push towards the doorway.");
+    expect(job.steps).toBe(DEFAULT_GENERATION_STEPS);
+    expect(job.seed).toBe(RANDOM_GENERATION_SEED);
+    expect(generationJobSchema.safeParse({ ...job, steps: 1 }).success).toBe(false);
+    expect(generationJobSchema.safeParse({ ...job, seed: -2 }).success).toBe(false);
   });
 
   it("keeps the scene fixture readable by both validators, in both directions", () => {

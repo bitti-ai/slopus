@@ -1,7 +1,7 @@
-import { Ban, Clock3, Film, LoaderCircle, TriangleAlert } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Ban, Clock3, Film, LoaderCircle, Pause, Play, TriangleAlert } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { readMediaFileUrl } from "../../lib/persistence";
-import type { GenerationJob } from "../../lib/project";
+import { sceneDurationSeconds, type GenerationJob } from "../../lib/project";
 
 /* A real frame of ONE shot, taken from the scene's own video file.
  *
@@ -36,6 +36,7 @@ const SEEK_LIMIT_MS = 4_000;
 const POSTER_OFFSET_SECONDS = 0.25;
 /** Small JPEGs, but not free. Bounded like MediaThumbnail's own cache. */
 const CACHE_LIMIT = 96;
+const PLAY_EVENT = "polstudio:play-generated-shot";
 
 /** Drawn frames, keyed by file and time. */
 const POSTERS = new Map<string, string>();
@@ -219,7 +220,10 @@ export function shotPoster(folderPath: string, relativePath: string, seconds: nu
 
 /** What a card says when there is no frame. Every one of these is a state of
  *  the scene the user can see and act on, never a shrug. */
-function placeholder(job: GenerationJob, failed: boolean): { icon: ReactNode; word: string } {
+function placeholder(job: GenerationJob, failed: boolean, cancelling: boolean): { icon: ReactNode; word: string } {
+  if (cancelling && (job.status === "queued" || job.status === "generating")) {
+    return { icon: <LoaderCircle size={18} className="spin" />, word: "Cancelling..." };
+  }
   switch (job.status) {
     case "generating": return { icon: <LoaderCircle size={18} className="spin" />, word: `Rendering ${Math.round(job.progress * 100)}%` };
     case "queued": return { icon: <Clock3 size={18} />, word: "Waiting to render" };
@@ -235,20 +239,56 @@ function placeholder(job: GenerationJob, failed: boolean): { icon: ReactNode; wo
   }
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, shotNumber, posterOffsetSeconds = POSTER_OFFSET_SECONDS }: {
+export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, posterOffsetSeconds = POSTER_OFFSET_SECONDS, cancelling = false }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
   /** Where the shot starts, in seconds from the head of the scene. */
   seconds: number;
+  /** The next cut (or scene end). Playback never crosses this point. */
+  endSeconds?: number;
   shotNumber: number;
   /** Scene cards use frame zero; shot cards offset past a possible fade-in. */
   posterOffsetSeconds?: number;
+  /** Cancel was requested but the engine has not reported its terminal state. */
+  cancelling?: boolean;
 }) {
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
   const at = seconds + posterOffsetSeconds;
+  const playbackId = `${job.id}@${seconds}`;
   const [result, setResult] = useState<PosterResult>(() =>
     relativePath ? { poster: POSTERS.get(posterKey(fileKey(folderPath, relativePath), at)) ?? null, failed: false } : NOTHING);
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [loadingPlayback, setLoadingPlayback] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [playFailed, setPlayFailed] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const requestRef = useRef(0);
+  const cutTimerRef = useRef<number | null>(null);
+
+  const clearCutTimer = () => {
+    if (cutTimerRef.current !== null) window.clearTimeout(cutTimerRef.current);
+    cutTimerRef.current = null;
+  };
+
+  const finishPlayback = () => {
+    clearCutTimer();
+    videoRef.current?.pause();
+    setPlaying(false);
+    setPlaybackUrl(null);
+  };
+
+  const playToCut = async (video: HTMLVideoElement) => {
+    clearCutTimer();
+    try {
+      await video.play();
+      setPlaying(true);
+      const rate = video.playbackRate > 0 ? video.playbackRate : 1;
+      cutTimerRef.current = window.setTimeout(finishPlayback, Math.max(0, (endSeconds - video.currentTime) * 1_000 / rate));
+    } catch {
+      setPlayFailed(true);
+    }
+  };
 
   useEffect(() => {
     if (!relativePath) {
@@ -260,14 +300,100 @@ export function ShotThumbnail({ folderPath, job, seconds, shotNumber, posterOffs
     return () => { live = false; };
   }, [folderPath, relativePath, at]);
 
+  useEffect(() => {
+    const stopOtherShot = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === playbackId) return;
+      requestRef.current += 1;
+      setLoadingPlayback(false);
+      finishPlayback();
+    };
+    window.addEventListener(PLAY_EVENT, stopOtherShot);
+    return () => window.removeEventListener(PLAY_EVENT, stopOtherShot);
+  }, [playbackId]);
+
+  useEffect(() => () => {
+    requestRef.current += 1;
+    clearCutTimer();
+  }, []);
+  useEffect(() => () => {
+    if (playbackUrl) URL.revokeObjectURL(playbackUrl);
+  }, [playbackUrl]);
+
+  const stopAtCut = () => {
+    const video = videoRef.current;
+    if (!video || video.currentTime + 0.02 < endSeconds) return;
+    finishPlayback();
+  };
+
+  const togglePlayback = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!relativePath || loadingPlayback) return;
+    const video = videoRef.current;
+    if (video) {
+      if (!video.paused) {
+        clearCutTimer();
+        video.pause();
+        setPlaying(false);
+      } else {
+        window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
+        if (video.currentTime < seconds || video.currentTime >= endSeconds) video.currentTime = seconds;
+        await playToCut(video);
+      }
+      return;
+    }
+
+    const request = ++requestRef.current;
+    window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
+    setLoadingPlayback(true);
+    setPlayFailed(false);
+    try {
+      const url = await readMediaFileUrl(folderPath, { relativePath }, "video/mp4");
+      if (request !== requestRef.current) {
+        if (url) URL.revokeObjectURL(url);
+        return;
+      }
+      if (!url) throw new Error("The generated file is not available in this view.");
+      setPlaybackUrl(url);
+    } catch {
+      if (request === requestRef.current) setPlayFailed(true);
+    } finally {
+      if (request === requestRef.current) setLoadingPlayback(false);
+    }
+  };
+
   if (result.poster) {
-    return <span className="shot-thumb shot-thumb--poster">
-      <img src={result.poster} alt={`Shot ${shotNumber} of ${job.title}`} loading="lazy" />
-    </span>;
+    const action = playFailed ? "Playback unavailable" : loadingPlayback ? "Opening shot" : playing ? "Pause" : "Play";
+    return <button
+      type="button"
+      className="shot-thumb shot-thumb--poster shot-thumb--playable"
+      aria-label={`${action} shot ${shotNumber} of ${job.title}`}
+      title={`${action} this shot only (${seconds.toFixed(1)}s–${endSeconds.toFixed(1)}s)`}
+      onClick={(event) => void togglePlayback(event)}
+    >
+      {playbackUrl
+        ? <video
+          ref={videoRef}
+          src={playbackUrl}
+          playsInline
+          onLoadedMetadata={(event) => {
+            event.currentTarget.currentTime = Math.min(seconds, Math.max(0, event.currentTarget.duration - 0.01));
+            void playToCut(event.currentTarget);
+          }}
+          onTimeUpdate={stopAtCut}
+          onEnded={stopAtCut}
+        />
+        : <img src={result.poster} alt="" loading="lazy" />}
+      <span className={`shot-thumb__play ${loadingPlayback ? "shot-thumb__play--loading" : ""}`} aria-hidden="true">
+        {loadingPlayback ? <LoaderCircle size={20} className="spin" /> : playing ? <Pause size={20} /> : playFailed ? <TriangleAlert size={20} /> : <Play size={20} fill="currentColor" />}
+      </span>
+    </button>;
   }
-  const { icon, word } = placeholder(job, result.failed);
+  const { icon, word } = placeholder(job, result.failed, cancelling);
   return <span className={`shot-thumb shot-thumb--${job.status}`} role="img" aria-label={`Shot ${shotNumber} — ${word}`}>
     {icon}
     <em>{word}</em>
+    {job.status === "generating" && <span className="shot-thumb__progress" aria-hidden="true">
+      <i style={{ width: `${Math.max(0, Math.min(100, job.progress * 100))}%` }} />
+    </span>}
   </span>;
 }

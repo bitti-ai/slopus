@@ -1,6 +1,6 @@
-import { Plus, Sparkles, WandSparkles } from "lucide-react";
+import { Plus, Sparkles, Square, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationSnapshot, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
@@ -34,6 +34,14 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
   const jobs = config.generationJobs;
   const configRef = useRef(config);
   configRef.current = config;
+  // A scene is displayed as queued while its plan is resolving, just before
+  // the backend receives it. Remember cancellation here as well as sending it
+  // to vidfab, so a click in that small window prevents the later enqueue.
+  const cancellationRequests = useRef(new Set<string>());
+  // The ref above protects asynchronous work; this set exists so the cards
+  // repaint immediately when Cancel is pressed, before vidfab reports the
+  // terminal cancelled state.
+  const [cancellingJobIds, setCancellingJobIds] = useState<ReadonlySet<string>>(() => new Set());
 
   /* A scene is always what is named; the shot inside it is what a card opens.
      Opening the Generator, or arriving from a clip in the timeline, opens the
@@ -41,6 +49,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [, setPlanNotes] = useState<Record<string, string>>({});
   const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
+  const [showDebugPrompt, setShowDebugPrompt] = useState(false);
 
   useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
 
@@ -53,10 +62,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
-  // Queued and generating scenes have already been handed to the engine with
-  // their references attached; re-binding now would change nothing about that
-  // run while claiming otherwise.
-  const refsLocked = selected?.status === "generating" || selected?.status === "queued";
+  const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
   const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
   const runtimeReady = runtime?.state === "ready";
 
@@ -145,8 +151,6 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
     const source = current.generationJobs.find((job) => job.id === sourceJobId);
     const target = current.generationJobs.find((job) => job.id === targetJobId);
     if (!source || !target) return;
-    if ([source.status, target.status].some((status) => status === "queued" || status === "generating")) return;
-
     const sourceShots = sceneShots(source);
     const moving = sourceShots.find((shot) => shot.id === shotId);
     if (!moving) return;
@@ -203,8 +207,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
       prompt: compileGenerationJobPrompt(job, bound),
       // The scene's own length, not a fixed six seconds.
       frames: Math.round(sceneDurationSeconds(job) * config.settings.frameRate),
-      steps: 50,
-      seed: 482091,
+      steps: sceneGenerationSteps(job),
+      seed: sceneGenerationSeed(job),
       aspectRatio: config.settings.aspectRatio,
       referencePaths: usableImageReferences(bound)
         .map((reference) => projectItemPath(folderPath, reference) ?? "")
@@ -222,6 +226,10 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
      show what became of it. */
 
   const prepareOrRetry = async (job: GenerationJob) => {
+    cancellationRequests.current.delete(job.id);
+    setCancellingJobIds((current) => current.has(job.id)
+      ? new Set([...current].filter((id) => id !== job.id))
+      : current);
     const now = new Date().toISOString();
     const request = requestFor(job);
     updateJob(job.id, {
@@ -267,6 +275,10 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const startDraft = async (job: GenerationJob) => {
     if (!runtimeReady) return;
+    cancellationRequests.current.delete(job.id);
+    setCancellingJobIds((current) => current.has(job.id)
+      ? new Set([...current].filter((id) => id !== job.id))
+      : current);
     const request = requestFor(job);
     updateJob(job.id, {
       status: "queued",
@@ -283,13 +295,48 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
          here or nobody ever sees it. */
       const plan = await resolveVidfabPlan(request, configRef.current);
       setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
+      if (cancellationRequests.current.has(job.id)) return;
       await enqueueVidfabGeneration(request, configRef.current);
     } catch (reason) {
+      if (cancellationRequests.current.has(job.id)) return;
       updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
     }
   };
 
+  const cancelScenes = async (scenes: GenerationJob[]) => {
+    const next = scenes.filter((job) =>
+      (job.status === "queued" || job.status === "generating")
+      && !cancellationRequests.current.has(job.id));
+    if (next.length === 0) return;
+    next.forEach((job) => cancellationRequests.current.add(job.id));
+    setCancellingJobIds((current) => new Set([...current, ...next.map((job) => job.id)]));
+    const accepted = await Promise.all(next.map(async (job) => {
+      try {
+        return await cancelVidfabGeneration(job.id);
+      } catch {
+        return false;
+      }
+    }));
+    // False means the scene was still in frontend planning and never reached
+    // vidfab. No backend event will arrive for it, so finish that cancellation
+    // locally; accepted cancellations are finalized by the normal event path.
+    const beforeEnqueue = new Set(next.filter((_, index) => !accepted[index]).map((job) => job.id));
+    if (beforeEnqueue.size > 0) {
+      const current = configRef.current;
+      onChange({
+        ...current,
+        generationJobs: current.generationJobs.map((job) => beforeEnqueue.has(job.id)
+          ? { ...job, status: "cancelled", stage: "failed", error: "Generation cancelled before it started.", updatedAt: new Date().toISOString() }
+          : job),
+      });
+    }
+  };
+
   const generateScene = (job: GenerationJob) => {
+    if (job.status === "queued" || job.status === "generating") {
+      void cancelScenes([job]);
+      return;
+    }
     if (job.status === "draft") void startDraft(job);
     else void prepareOrRetry(job);
   };
@@ -298,6 +345,12 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const generateAll = async () => {
     if (!runtimeReady || draftScenesReady.length === 0) return;
+    draftScenesReady.forEach((job) => cancellationRequests.current.delete(job.id));
+    const startingIds = new Set(draftScenesReady.map((job) => job.id));
+    setCancellingJobIds((current) => {
+      const next = new Set([...current].filter((id) => !startingIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
     const current = configRef.current;
     const requests = draftScenesReady.map((job) => ({ job, request: requestFor(job) }));
     const ids = new Map(requests.map(({ job, request }) => [job.id, snapshotFor(job, request)]));
@@ -310,11 +363,14 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
     });
 
     for (const { job, request } of requests) {
+      if (cancellationRequests.current.has(job.id)) continue;
       try {
         const plan = await resolveVidfabPlan(request, current);
         setPlanNotes((notes) => ({ ...notes, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
+        if (cancellationRequests.current.has(job.id)) continue;
         await enqueueVidfabGeneration(request, current);
       } catch (reason) {
+        if (cancellationRequests.current.has(job.id)) continue;
         updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
       }
     }
@@ -322,8 +378,6 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtime?.detail ?? "The video generator is not ready.";
-    if (job.status === "queued") return "This scene is already waiting in the queue.";
-    if (job.status === "generating") return "This scene is generating now.";
     if (job.status === "ready") return "This scene is being saved now.";
     return sendBlocker(job, config.references);
   };
@@ -354,16 +408,20 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
             <Plus size={16} aria-hidden="true" /> Add Scene
           </button>
           <button
-            className="primary-button"
-            disabled={!runtimeReady || draftScenesReady.length === 0}
-            title={!runtimeReady
-              ? runtime?.detail ?? "The video generator is not ready."
-              : draftScenesReady.length === 0
-                ? "There are no ready draft scenes to generate."
-                : `Generate ${draftScenesReady.length} draft ${draftScenesReady.length === 1 ? "scene" : "scenes"}`}
-            onClick={() => void generateAll()}
+            className={cancellable.length > 0 ? "danger-button generator-heading__cancel" : "primary-button"}
+            disabled={cancellable.length === 0 && (!runtimeReady || draftScenesReady.length === 0)}
+            title={cancellable.length > 0
+              ? `Cancel ${cancellable.length} ${cancellable.length === 1 ? "generation" : "generations"}`
+              : !runtimeReady
+                ? runtime?.detail ?? "The video generator is not ready."
+                : draftScenesReady.length === 0
+                  ? "There are no ready draft scenes to generate."
+                  : `Generate ${draftScenesReady.length} draft ${draftScenesReady.length === 1 ? "scene" : "scenes"}`}
+            onClick={() => cancellable.length > 0 ? void cancelScenes(cancellable) : void generateAll()}
           >
-            <WandSparkles size={16} aria-hidden="true" /> Generate All
+            {cancellable.length > 0
+              ? <><Square size={15} aria-hidden="true" /> Cancel All</>
+              : <><WandSparkles size={16} aria-hidden="true" /> Generate All</>}
           </button>
         </div>
       </header>
@@ -380,6 +438,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
         onGenerate={generateScene}
         generationBlocker={generationBlocker}
         changedJobIds={changedJobIds}
+        cancellingJobIds={cancellingJobIds}
         onMoveScene={moveScene}
         onMoveShot={moveShot}
       />}
@@ -417,7 +476,6 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
               placeholder={`Shot ${shotIndex + 1}`}
               aria-label={`Rename shot ${shotIndex + 1}`}
               title="Rename this shot"
-              disabled={refsLocked}
               onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
             /></h2>
           </header>
@@ -431,12 +489,11 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
               endsAt={shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)}
               duration={sceneDurationSeconds(selected)}
               references={config.references}
-              disabled={refsLocked}
+              disabled={false}
               removable={selectedShots.length > 1}
               onChange={(updates) => patchShot(selected, openShot.id, updates)}
               onRemove={() => setRemovalTarget({ kind: "shot", job: selected, shotId: openShot.id, shotName: openShot.name ?? `Shot ${shotIndex + 1}` })}
             />
-            {refsLocked && <p className="job-refs__empty">This scene is already with the engine. It can be changed once it finishes, and the next run will use the changes.</p>}
           </div>
         </>
         : <>
@@ -467,15 +524,20 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
               key={selected.id}
               job={selected}
               shots={selectedShots}
-              disabled={refsLocked}
+              disabled={false}
               onChange={(updates) => updateScene(selected, updates)}
               onShots={(next) => setShots(selected, next)}
             />
+          </div>
 
-            {import.meta.env.DEV && <details className="debug-prompt">
-              <summary>Debug: final prompt</summary>
-              <CompiledPrompt segments={compileGenerationJobSegments(selected, boundRefs)} />
-            </details>}
+          <div className="debug-prompt">
+            {showDebugPrompt && <CompiledPrompt segments={compileGenerationJobSegments(selected, boundRefs)} />}
+            <button
+              type="button"
+              className="secondary-button debug-prompt__toggle"
+              aria-expanded={showDebugPrompt}
+              onClick={() => setShowDebugPrompt((visible) => !visible)}
+            >Debug Prompt</button>
           </div>
         </>}
     </aside>}
@@ -505,8 +567,8 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
  *  the prompt cannot cite would be silently dropped from the middle of a line. */
 function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
   const shots = sceneShots(job);
-  if (shots.every((shot) => shot.action.trim().length === 0)) {
-    return "Write what happens in at least one shot before this scene can be generated.";
+  if (shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
+    return "Describe what happens or add speech in at least one shot before this scene can be generated.";
   }
   if (sceneDurationSeconds(job) <= 0) {
     return "This scene is nought seconds long, so there are no frames to render. Give it a length first.";

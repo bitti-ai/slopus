@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, sceneShots, type GenerationJob } from "../../lib/project";
 import { ShotThumbnail } from "./ShotThumbnail";
@@ -21,9 +21,13 @@ async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: num
   URL.createObjectURL = () => "blob:polstudio-test";
   URL.revokeObjectURL = () => undefined;
   const load = HTMLMediaElement.prototype.load;
+  const play = HTMLMediaElement.prototype.play;
+  const pause = HTMLMediaElement.prototype.pause;
   const getContext = HTMLCanvasElement.prototype.getContext;
   const toDataURL = HTMLCanvasElement.prototype.toDataURL;
   HTMLMediaElement.prototype.load = () => undefined;
+  HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+  HTMLMediaElement.prototype.pause = vi.fn();
   HTMLCanvasElement.prototype.getContext = (() => ({ drawImage: () => undefined })) as unknown as typeof getContext;
   const seeks: number[] = [];
   // The drawn frame is named after the moment it was taken from, so a test can
@@ -48,7 +52,10 @@ async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: num
           setTimeout(() => element.dispatchEvent(new Event("seeked")), 0);
         },
       });
-      setTimeout(() => element.dispatchEvent(new Event("loadeddata")), 0);
+      setTimeout(() => {
+        element.dispatchEvent(new Event("loadedmetadata"));
+        element.dispatchEvent(new Event("loadeddata"));
+      }, 0);
     }
     return element;
   });
@@ -57,6 +64,8 @@ async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: num
   } finally {
     spy.mockRestore();
     HTMLMediaElement.prototype.load = load;
+    HTMLMediaElement.prototype.play = play;
+    HTMLMediaElement.prototype.pause = pause;
     HTMLCanvasElement.prototype.getContext = getContext;
     HTMLCanvasElement.prototype.toDataURL = toDataURL;
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -90,7 +99,8 @@ describe("a shot's picture", () => {
     const job = rendered(folder);
     await withFakeFile({ seconds: 9 }, async (seen) => {
       render(<ShotThumbnail folderPath={folder} job={job} seconds={0} shotNumber={1} posterOffsetSeconds={0} />);
-      const picture = await screen.findByRole("img", { name: "Shot 1 of First scene" }) as HTMLImageElement;
+      const control = await screen.findByRole("button", { name: "Play shot 1 of First scene" });
+      const picture = control.querySelector("img") as HTMLImageElement;
       expect(seen.seeks).toEqual([]);
       expect(picture.src).toContain("frame-0");
     });
@@ -109,11 +119,9 @@ describe("a shot's picture", () => {
       /* Named "Shot N of <scene>" once a real frame is drawn; until then the
          placeholder is named for the state instead, so this waits for the
          picture rather than for anything with a role of img. */
-      const drawn = () => screen.getAllByRole("img", { name: /of First scene$/ }) as HTMLImageElement[];
+      const drawn = () => screen.getAllByRole("button", { name: /^Play shot .* of First scene$/ });
       await waitFor(() => expect(drawn()).toHaveLength(2));
-      const pictures = drawn();
-      expect(pictures.map((image) => image.getAttribute("alt")))
-        .toEqual(["Shot 1 of First scene", "Shot 2 of First scene"]);
+      const pictures = drawn().map((control) => control.querySelector("img") as HTMLImageElement);
       // The file was read once, for both cards.
       expect(seen.reads()).toBe(1);
       /* And each card got ITS shot's frame: a quarter of a second past the cut,
@@ -121,6 +129,29 @@ describe("a shot's picture", () => {
          the first card a black rectangle. */
       expect(seen.seeks).toEqual([0.25, 4.75]);
       expect(pictures[0].src).not.toBe(pictures[1].src);
+    });
+  });
+
+  it("plays from this shot's cut and stops at the next cut", async () => {
+    const folder = "C:\\Shot playback";
+    const job = rendered(folder);
+    await withFakeFile({ seconds: 9 }, async (seen) => {
+      render(<ShotThumbnail folderPath={folder} job={job} seconds={4.5} endSeconds={6} shotNumber={2} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Play shot 2 of First scene" }));
+
+      const video = await waitFor(() => {
+        const found = document.querySelector("video");
+        expect(found).not.toBeNull();
+        return found as HTMLVideoElement;
+      });
+      await waitFor(() => expect(screen.getByRole("button", { name: "Pause shot 2 of First scene" })).not.toBeNull());
+      expect(seen.seeks).toContain(4.5);
+
+      video.currentTime = 6;
+      fireEvent.timeUpdate(video);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Play shot 2 of First scene" })).not.toBeNull());
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+      expect(seen.reads()).toBe(2);
     });
   });
 
