@@ -3,14 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import {
+  composeLocationPrompt,
+  locationSelectionFromPrompt,
   REFERENCE_PRESETS,
   REFERENCE_TYPES,
   referenceType,
   referenceTypeLabel,
   selectedReferencePreset,
+  type LocationSettings,
   type ReferencePreset,
   type ReferenceType,
 } from "../../lib/reference-presets";
+import { LOCATION_SETTING_GROUPS } from "../../lib/expanded-reference-options";
 import { isTauri } from "../../lib/persistence";
 import { ReferenceImage } from "./ReferenceImage";
 
@@ -30,6 +34,8 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const [pickerType, setPickerType] = useState<ReferenceType>("custom");
   const [pickerSubcategory, setPickerSubcategory] = useState("all");
   const [presetSearch, setPresetSearch] = useState("");
+  const [locationPresetId, setLocationPresetId] = useState<string | null>(null);
+  const [locationSettings, setLocationSettings] = useState<LocationSettings>({});
   const selected = config.references.find((ref) => ref.id === selectedId);
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => onChange({ ...config, references: config.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
@@ -81,6 +87,9 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     setPickerType(referenceType(selected));
     setPickerSubcategory("all");
     setPresetSearch("");
+    const location = locationSelectionFromPrompt(selected.description);
+    setLocationPresetId(location?.preset.id ?? null);
+    setLocationSettings(location?.settings ?? {});
     setPresetDialog(true);
   };
   const chooseCustom = () => {
@@ -90,7 +99,20 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   };
   const choosePreset = (preset: ReferencePreset) => {
     if (!selected) return;
+    if (preset.type === "location") {
+      setLocationPresetId(preset.id);
+      setLocationSettings({});
+      return;
+    }
     update(selected.id, { intendedUse: [preset.type], description: preset.prompt, content: preset.prompt });
+    setPresetDialog(false);
+  };
+  const chooseLocation = () => {
+    if (!selected) return;
+    const preset = REFERENCE_PRESETS.find((candidate) => candidate.type === "location" && candidate.id === locationPresetId);
+    if (!preset) return;
+    const prompt = composeLocationPrompt(preset, locationSettings);
+    update(selected.id, { intendedUse: ["location"], description: prompt, content: prompt });
     setPresetDialog(false);
   };
   const visiblePresets = REFERENCE_PRESETS.filter((preset) => {
@@ -100,6 +122,9 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     return !query || `${preset.name} ${preset.prompt} ${preset.subcategory} ${preset.searchTerms ?? ""}`.toLocaleLowerCase().includes(query);
   });
   const subcategories = [...new Set(REFERENCE_PRESETS.filter((preset) => preset.type === pickerType).map((preset) => preset.subcategory))];
+  const chosenLocationPreset = pickerType === "location"
+    ? REFERENCE_PRESETS.find((preset) => preset.type === "location" && preset.id === locationPresetId)
+    : undefined;
 
   return <div className="references-view">
     <main className="references-main">
@@ -187,7 +212,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </header>
       <div className="reference-preset-dialog__body">
         <nav aria-label="Reference types">
-          {REFERENCE_TYPES.map((type) => <button key={type.id} className={pickerType === type.id ? "active" : ""} aria-pressed={pickerType === type.id} onClick={() => { setPickerType(type.id); setPickerSubcategory("all"); setPresetSearch(""); }}>{type.label}<ChevronRight size={16} /></button>)}
+          {REFERENCE_TYPES.map((type) => <button key={type.id} className={pickerType === type.id ? "active" : ""} aria-pressed={pickerType === type.id} onClick={() => { setPickerType(type.id); setPickerSubcategory("all"); setPresetSearch(""); setLocationPresetId(null); setLocationSettings({}); }}>{type.label}<ChevronRight size={16} /></button>)}
         </nav>
         <section>
           {pickerType === "custom" ? <div className="reference-custom-option">
@@ -201,8 +226,22 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
               <button className={pickerSubcategory === "all" ? "active" : ""} aria-pressed={pickerSubcategory === "all"} onClick={() => setPickerSubcategory("all")}>All</button>
               {subcategories.map((subcategory) => <button key={subcategory} className={pickerSubcategory === subcategory ? "active" : ""} aria-pressed={pickerSubcategory === subcategory} onClick={() => setPickerSubcategory(subcategory)}>{subcategory}</button>)}
             </div>
+            {chosenLocationPreset && <div className="reference-location-settings">
+              <header><span><small>Location</small><b>{chosenLocationPreset.name}</b></span><button className="primary-button" onClick={chooseLocation}>Use location</button></header>
+              <p>Add any combination. Each row is optional.</p>
+              {LOCATION_SETTING_GROUPS.map((group) => <div key={group.id} className="reference-location-settings__group">
+                <b>{group.label}</b>
+                <span role="group" aria-label={group.label}>{group.options.map((option) => <button
+                  key={option.id}
+                  className={locationSettings[group.id] === option.id ? "active" : ""}
+                  aria-pressed={locationSettings[group.id] === option.id}
+                  onClick={() => setLocationSettings((current) => ({ ...current, [group.id]: current[group.id] === option.id ? undefined : option.id }))}
+                >{option.label}</button>)}</span>
+              </div>)}
+              <small className="reference-location-settings__preview">{composeLocationPrompt(chosenLocationPreset, locationSettings)}</small>
+            </div>}
             <div className="reference-preset-grid">
-              {visiblePresets.map((preset) => <button key={preset.id} onClick={() => choosePreset(preset)}>
+              {visiblePresets.map((preset) => <button key={preset.id} className={preset.id === locationPresetId ? "active" : ""} aria-pressed={preset.type === "location" ? preset.id === locationPresetId : undefined} onClick={() => choosePreset(preset)}>
                 <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
               </button>)}
               {visiblePresets.length === 0 && <p>No options match that search.</p>}
