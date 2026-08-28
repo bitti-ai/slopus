@@ -9,8 +9,13 @@ import {
   referenceToken,
   sceneBriefText,
   sceneDurationSeconds,
+  sceneGenerationSeed,
+  sceneGenerationSteps,
   splitActionText,
+  DEFAULT_SPEECH_LANGUAGE,
+  MAX_GENERATION_STEPS,
   SCENE_MIN_SECONDS,
+  SPEECH_LANGUAGES,
   type GenerationJob,
   type ProjectReference,
   type SceneShot,
@@ -98,8 +103,9 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   /** Every reference in the project. Any of them can be dropped into a line;
    *  doing so binds it to the scene, which is what gives it a number. */
   references: ProjectReference[];
-  /** True once the scene is with the engine: it already has the prompt, so an
-   *  edit now would change nothing about that run while claiming otherwise. */
+  /** Optional read-only presentation. Generation deliberately does not set
+   *  this: the current run keeps its captured snapshot while edits prepare the
+   *  next one. */
   disabled: boolean;
   removable: boolean;
   onChange: (updates: Partial<SceneShot>) => void;
@@ -176,35 +182,69 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       ><Trash2 size={15} /> Remove</button>}
     </div>
 
-    <label className="shot-card__action">
-      <span className="shot-card__sublabel">Describe the shot</span>
-      <textarea
-        ref={fieldRef}
-        value={display}
-        disabled={disabled}
-        aria-label={`Describe shot ${shotNumber}`}
-        placeholder="Example: she walks towards the camera and stops under the awning."
-        onChange={(event) => onChange({ action: store(event.target.value) })}
-        onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
-        onDrop={(event) => {
-          const referenceId = event.dataTransfer.getData(REFERENCE_DRAG_TYPE);
-          if (!referenceId) return;
-          event.preventDefault();
-          insertAtCaret(referenceId);
-        }}
-      />
-    </label>
+    <div className="shot-card__action">
+      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>Describe the shot</label>
+      <div className="shot-action-editor">
+        <textarea
+          id={`shot-action-${shot.id}`}
+          ref={fieldRef}
+          value={display}
+          disabled={disabled}
+          aria-label={`Describe shot ${shotNumber}`}
+          placeholder="Example: she walks towards the camera and stops under the awning."
+          onChange={(event) => onChange({ action: store(event.target.value) })}
+          onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
+          onDrop={(event) => {
+            const referenceId = event.dataTransfer.getData(REFERENCE_DRAG_TYPE);
+            if (!referenceId) return;
+            event.preventDefault();
+            insertAtCaret(referenceId);
+          }}
+        />
+        <ReferenceSmartChips
+          action={shot.action}
+          tokenOrder={tokenOrder}
+          referenceById={referenceById}
+          citable={citable}
+          numbered={numbered}
+          disabled={disabled}
+          onChange={(partIndex, to) => {
+            const action = splitActionText(shot.action).map((part, currentIndex) => {
+              if (part.kind === "text") return part.value;
+              if (currentIndex === partIndex) return to ? referenceToken(to) : "";
+              return referenceToken(part.value);
+            }).join("");
+            onChange({ action });
+          }}
+        />
+      </div>
+    </div>
 
-    <ActionReadback
-      action={shot.action}
-      tokenOrder={tokenOrder}
-      referenceById={referenceById}
-      citable={citable}
-      numbered={numbered}
-      disabled={disabled}
-      onRepoint={(from, to) => onChange({ action: shot.action.split(referenceToken(from)).join(referenceToken(to)) })}
-      onDrop={(from) => onChange({ action: shot.action.split(referenceToken(from)).join("") })}
-    />
+    <div className="shot-speech">
+      <div className="shot-speech__heading">
+        <label className="shot-card__sublabel" htmlFor={`shot-speech-${shot.id}`}>Speech</label>
+        <label className="shot-speech__language">
+          <span>Language</span>
+          <select
+            value={shot.speechLanguage ?? DEFAULT_SPEECH_LANGUAGE}
+            disabled={disabled}
+            aria-label={`Speech language for shot ${shotNumber}`}
+            onChange={(event) => onChange({ speechLanguage: event.target.value as SceneShot["speechLanguage"] })}
+          >
+            {SPEECH_LANGUAGES.map((language) => <option key={language} value={language}>{language}</option>)}
+          </select>
+        </label>
+      </div>
+      <textarea
+        id={`shot-speech-${shot.id}`}
+        value={shot.speech ?? ""}
+        disabled={disabled}
+        aria-label={`Speech for shot ${shotNumber}`}
+        placeholder="Enter the words spoken in this shot."
+        onChange={(event) => onChange({ speech: event.target.value || null })}
+      />
+      <p className="shot-speech__hint">Added to the final prompt as MiniMax dialogue.</p>
+    </div>
 
     <ReferencePalette
       citable={citable}
@@ -226,9 +266,9 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 
 /* --- The scene, opened from its own line ---------------------------------- */
 
-/** What remains in scene settings: the look the description opens with (base
- *  guide §4.1), and the two sound fields the guide defines per prompt (§4.6,
- *  §4.7). Length lives in the scene header where it stays visible. */
+/** Scene-wide render controls, the look the description opens with (base guide
+ *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
+ *  lives in the scene header where it stays visible. */
 export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
   job: GenerationJob;
   shots: SceneShot[];
@@ -242,8 +282,8 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
 
   return <section className="scene-inspector" aria-label="This scene">
-    <div className="scene-settings">
-      <h3>Scene</h3>
+    <section className="scene-settings" aria-labelledby={`${job.id}-scene-settings`}>
+      <h3 id={`${job.id}-scene-settings`}>Scene</h3>
       <label className="scene-settings__field">
         <span>Look</span>
         <select
@@ -284,23 +324,59 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
           onChange={(event) => onChange({ music: event.target.value })}
         />
       </label>
-    </div>
+    </section>
+    <section className="scene-settings" aria-labelledby={`${job.id}-generation-settings`}>
+      <h3 id={`${job.id}-generation-settings`}>Generation</h3>
+      <div className="scene-settings__numbers">
+        <label className="scene-settings__field">
+          <span>Steps</span>
+          <input
+            type="number"
+            min={2}
+            max={MAX_GENERATION_STEPS}
+            step={1}
+            value={sceneGenerationSteps(job)}
+            disabled={disabled}
+            aria-label="Generation step count"
+            onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) onChange({ steps: value });
+            }}
+          />
+        </label>
+        <label className="scene-settings__field">
+          <span>Seed</span>
+          <input
+            type="number"
+            min={-1}
+            max={Number.MAX_SAFE_INTEGER}
+            step={1}
+            value={sceneGenerationSeed(job)}
+            disabled={disabled}
+            aria-label="Generation seed"
+            onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (Number.isSafeInteger(value) && value >= -1) onChange({ seed: value });
+            }}
+          />
+          <small>Use -1 for a random seed.</small>
+        </label>
+      </div>
+    </section>
   </section>;
 }
 
-/** The same line, read back with each reference as a control. This is where
- *  "click Reference 1 and choose another one" lives: the select IS the token,
- *  so re-pointing it changes which reference the sentence names without
- *  touching a single character the user typed around it. */
-function ActionReadback({ action, tokenOrder, referenceById, citable, numbered, disabled, onRepoint, onDrop }: {
+/** Selectable smart chips live inside the description editor. Each one owns a
+ *  single token occurrence, so changing it leaves identical citations later
+ *  in the same sentence alone. */
+function ReferenceSmartChips({ action, tokenOrder, referenceById, citable, numbered, disabled, onChange }: {
   action: string;
   tokenOrder: string[];
   referenceById: Map<string, ProjectReference>;
   citable: ProjectReference[];
   numbered: ProjectReference[];
   disabled: boolean;
-  onRepoint: (from: string, to: string) => void;
-  onDrop: (from: string) => void;
+  onChange: (partIndex: number, to: string | null) => void;
 }) {
   const parts = splitActionText(action);
   if (!parts.some((part) => part.kind === "reference")) return null;
@@ -309,19 +385,16 @@ function ActionReadback({ action, tokenOrder, referenceById, citable, numbered, 
     const name = referenceById.get(id)?.name;
     return `Reference ${number > 0 ? number : "?"}${name ? ` · ${name}` : ""}`;
   };
-  return <p className="shot-readback">
-    <span className="shot-readback__lead">Every reference in the line can be swapped for another:</span>
-    {parts.map((part, index) => part.kind === "text"
-      ? <span key={index} className="shot-readback__text">{part.value}</span>
-      : <select
+  return <div className="shot-action-editor__chips">
+    {parts.map((part, index) => part.kind === "reference" && <select
         key={index}
-        className={`shot-readback__token ${citable.some((reference) => reference.id === part.value) ? "" : "shot-readback__token--broken"}`}
+        className={`reference-smart-chip ${citable.some((reference) => reference.id === part.value) ? "" : "reference-smart-chip--broken"}`}
         value={part.value}
         disabled={disabled}
         aria-label={`${label(part.value)} — choose another reference`}
         onChange={(event) => {
-          if (event.target.value === "") onDrop(part.value);
-          else if (event.target.value !== part.value) onRepoint(part.value, event.target.value);
+          if (event.target.value === "") onChange(index, null);
+          else if (event.target.value !== part.value) onChange(index, event.target.value);
         }}
       >
         {/* A reference that can no longer be cited still has to be selectable,
@@ -335,7 +408,7 @@ function ActionReadback({ action, tokenOrder, referenceById, citable, numbered, 
         })}
         <option value="">Take it out of the line</option>
       </select>)}
-  </p>;
+  </div>;
 }
 
 /* --- Settings ------------------------------------------------------------- */

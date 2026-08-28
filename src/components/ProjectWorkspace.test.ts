@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { listen } from "@tauri-apps/api/event";
 import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
 import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, STORY_TRACK_ID, UNTITLED_SCENE, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
+import { saveGeneratedScene } from "../lib/generatedVideo";
 import { formatDurationTimecode } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -14,6 +16,7 @@ import { TimelineView } from "./workspace/TimelineView";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
+vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -172,6 +175,56 @@ describe("project workspace timecode", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Couldn’t save project");
     expect(alert.textContent).toContain("The original project file is locked.");
+  });
+
+  it("persists a completed generation without waiting for the Save button", async () => {
+    const handlers = new Map<string, (event: { payload: unknown }) => void>();
+    const scope = globalThis as unknown as Record<string, unknown>;
+    scope.__TAURI_INTERNALS__ = {};
+    vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: unknown }) => void) => {
+      handlers.set(name, handler);
+      return () => handlers.delete(name);
+    }) as unknown as typeof listen);
+    vi.mocked(saveGeneratedScene).mockResolvedValue({
+      relativePath: "media/generated/job-initial-brief.mp4",
+      bytes: 4_200_000,
+      note: null,
+    });
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const jobId = config.generationJobs[0].id;
+    const onSave = vi.fn(async (_record: ProjectRecord) => undefined);
+    const mediaLoad = HTMLMediaElement.prototype.load;
+    HTMLMediaElement.prototype.load = vi.fn();
+
+    try {
+      render(createElement(ProjectWorkspace, {
+        project: { folderPath: "C:\\Ceramic Lamp", config },
+        initialView: "timeline",
+        onBack: () => undefined,
+        onSave,
+      }));
+      await waitFor(() => expect(handlers.has("vidfab-job")).toBe(true));
+      await act(async () => {
+        handlers.get("vidfab-job")?.({ payload: { jobId, state: "framesReady", detail: "Frames ready." } });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+      const saved = onSave.mock.calls[0][0];
+      expect(saved.config.generationJobs[0]).toMatchObject({
+        status: "completed",
+        outputRelativePath: "media/generated/job-initial-brief.mp4",
+      });
+      expect(parseProjectConfig(saved.config)).toBeTruthy();
+      await waitFor(() => expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true));
+    } finally {
+      cleanup();
+      HTMLMediaElement.prototype.load = mediaLoad;
+      delete scope.__TAURI_INTERNALS__;
+      vi.mocked(listen).mockReset();
+      vi.mocked(listen).mockImplementation(async () => () => undefined);
+      vi.mocked(saveGeneratedScene).mockReset();
+    }
   });
 
   it("opens the existing unstarted draft instead of duplicating it", async () => {
@@ -846,6 +899,8 @@ describe("project workspace timecode", () => {
     ];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    expect(document.querySelector(".debug-prompt .compiled-prompt__text")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Debug Prompt" }));
     const prompt = document.querySelector(".debug-prompt .compiled-prompt__text")!.textContent!;
     expect(prompt).toContain("<Subject 1>");
     expect(prompt).not.toContain("Lead character");
@@ -899,14 +954,16 @@ describe("project workspace timecode", () => {
     expect(screen.queryByText("Lamp photograph")).toBeNull();
   });
 
-  it("locks the retained settings while a scene is running", () => {
+  it("keeps scene settings editable while a scene is running", () => {
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const references = [{ id: "ref-lamp", kind: "text", name: "Lamp silhouette", description: "Matte cream ceramic.", content: "Matte cream ceramic.", intendedUse: ["product"], createdAt: fresh.createdAt }];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4, referenceIds: ["ref-lamp"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    expect((screen.getByRole("combobox", { name: "The look of this scene" }) as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByRole("textbox", { name: "The sound of this scene" }) as HTMLTextAreaElement).disabled).toBe(true);
-    expect((screen.getByRole("textbox", { name: "The music of this scene" }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole("combobox", { name: "The look of this scene" }) as HTMLSelectElement).disabled).toBe(false);
+    expect((screen.getByRole("textbox", { name: "The sound of this scene" }) as HTMLTextAreaElement).disabled).toBe(false);
+    expect((screen.getByRole("textbox", { name: "The music of this scene" }) as HTMLTextAreaElement).disabled).toBe(false);
+    expect((screen.getByRole("spinbutton", { name: "Generation step count" }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole("spinbutton", { name: "Generation seed" }) as HTMLInputElement).disabled).toBe(false);
   });
 
   it("does not show reference guidance in scene settings", () => {
@@ -1053,6 +1110,13 @@ describe("project workspace timecode", () => {
    *  row of cards from the next scene's. */
   const openScene = (sceneTitle = "First scene") =>
     fireEvent.click(screen.getByRole("button", { name: `Settings for ${sceneTitle}` }));
+
+  /** Opens the exact prompt preview without accidentally closing it when a
+   *  test returns to the scene panel more than once. */
+  const openDebugPrompt = () => {
+    const button = screen.getByRole("button", { name: "Debug Prompt" });
+    if (button.getAttribute("aria-expanded") === "false") fireEvent.click(button);
+  };
 
   /** Adds one setting to one shot: choose the setting, then choose its value.
    *  Settings are added one at a time now, rather than laid out as a wall of
@@ -1204,6 +1268,7 @@ describe("project workspace timecode", () => {
     }
 
     openScene();
+    openDebugPrompt();
     const compiled = document.querySelector(".compiled-prompt__text")!.textContent!;
     expect(compiled).toContain("[Shot 1] Live-action, cinematic, A quiet product film.");
     expect(compiled).toContain("[Shot 2] (cut at 3s) she stops at the doorway.");
@@ -1255,6 +1320,7 @@ describe("project workspace timecode", () => {
     // The compiled prompt shows it immediately, with the term marked as the
     // user's choice rather than as their own prose.
     openScene();
+    openDebugPrompt();
     const prompt = document.querySelector(".compiled-prompt__text")!;
     expect(prompt.textContent).toContain("Camera movement: push in, slow speed.");
     expect([...document.querySelectorAll(".prompt-part--tag")].map((part) => part.textContent)).toContain("push in, slow speed");
@@ -1299,6 +1365,7 @@ describe("project workspace timecode", () => {
     // Only one card, because a legacy scene is read as a single-shot scene.
     expect(screen.queryByRole("button", { name: "Shot 2 of First scene" })).toBeNull();
     openScene();
+    openDebugPrompt();
     expect(document.querySelector(".compiled-prompt__text")!.textContent).toContain("macro lens, A quiet product film");
     // Its length remains on the header slider; the old length/shot-count line
     // under the scene name is gone.
@@ -1315,18 +1382,19 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(onChange.mock.calls.at(-1)![0])).toBeTruthy();
   });
 
-  it("locks a running scene, because the engine already has the prompt", () => {
+  it("keeps a running scene and its shots editable for the next generation", () => {
     const fresh = lampProject();
     const config = parseProjectConfig({ ...fresh, generationJobs: [{ ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.4 }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    expect((screen.getByRole("slider", { name: "First scene length in seconds" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: "First scene length in seconds" }) as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Add a shot to First scene" }) as HTMLButtonElement).disabled).toBe(false);
     openShot(1);
-    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).disabled).toBe(true);
-    expect((screen.getByRole("combobox", { name: "Add a setting to shot 1" }) as HTMLSelectElement).disabled).toBe(true);
-    expect(screen.getByText(/It can be changed once it finishes/)).not.toBeNull();
+    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).disabled).toBe(false);
+    expect((screen.getByRole("combobox", { name: "Add a setting to shot 1" }) as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.queryByText(/It can be changed once it finishes/)).toBeNull();
   });
 
-  it("drops a reference into a line, cites it as a subject, and swaps it for another", () => {
+  it("drops a reference into a line, cites it as a subject, and changes its smart chip", () => {
     const fresh = lampProject();
     const createdAt = fresh.createdAt;
     const references = [
@@ -1367,6 +1435,7 @@ describe("project workspace timecode", () => {
       .toBe("[Reference 1] walks towards the camera on [Reference 2]");
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     openScene();
+    openDebugPrompt();
     const compiled = () => document.querySelector(".compiled-prompt__text")!.textContent!;
     expect(compiled()).toContain("<Subject 1> walks towards the camera on <Subject 2>");
     expect(compiled()).not.toContain("@[ref:");
@@ -1377,6 +1446,8 @@ describe("project workspace timecode", () => {
     // Clicking the first reference in the line offers every other one.
     openShot(1);
     const token = screen.getByRole("combobox", { name: "Reference 1 · Red-haired woman — choose another reference" });
+    expect(token.closest(".shot-action-editor")).not.toBeNull();
+    expect(screen.queryByText("Every reference in the line can be swapped for another:")).toBeNull();
     expect([...token.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
       "Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line",
     ]);
@@ -1508,6 +1579,7 @@ describe("project workspace timecode", () => {
     expect(config.generationJobs[0].shots!.map((item) => item.startSeconds)).toEqual([0, 4.5, 9]);
 
     scene();
+    openDebugPrompt();
     const compiled = document.querySelector(".compiled-prompt__text")!.textContent!;
     // The panel IS the string that is sent — the parts concatenate to it.
     expect([...document.querySelectorAll(".compiled-prompt__text .prompt-part")].map((part) => part.textContent).join("")).toBe(compiled);
@@ -1556,7 +1628,7 @@ describe("project workspace timecode", () => {
 
     // And the swap: the same sentence, pointed at the other reference.
     shot(1);
-    const token = document.querySelector(".shot-readback__token") as HTMLSelectElement;
+    const token = document.querySelector(".reference-smart-chip") as HTMLSelectElement;
     expect([...token.options].map((option) => option.textContent))
       .toEqual(["Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line"]);
     fireEvent.change(token, { target: { value: "ref-street" } });

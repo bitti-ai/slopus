@@ -1,4 +1,4 @@
-import { GripVertical, Plus, SlidersHorizontal, Trash2, WandSparkles } from "lucide-react";
+import { GripVertical, Plus, SlidersHorizontal, Square, Trash2, WandSparkles } from "lucide-react";
 import {
   SCENE_MAX_SECONDS,
   SCENE_MIN_SECONDS,
@@ -55,6 +55,7 @@ export function SceneBoard({
   onGenerate,
   generationBlocker,
   changedJobIds,
+  cancellingJobIds,
   onMoveScene,
   onMoveShot,
 }: {
@@ -69,6 +70,7 @@ export function SceneBoard({
   onGenerate: (job: GenerationJob) => void;
   generationBlocker: (job: GenerationJob) => string | null;
   changedJobIds: ReadonlySet<string>;
+  cancellingJobIds: ReadonlySet<string>;
   onMoveScene: (jobId: string, beforeJobId: string | null) => void;
   onMoveShot: (sourceJobId: string, shotId: string, targetJobId: string, beforeShotId: string | null) => void;
 }) {
@@ -79,7 +81,7 @@ export function SceneBoard({
       const order = referenceOrder(job, shots, references);
       const named = new Map(references.map((reference) => [reference.id, reference.name]));
       const sceneOpen = selection.jobId === job.id && selection.shotId === null;
-      const locked = job.status === "queued" || job.status === "generating";
+      const cancellable = job.status === "queued" || job.status === "generating";
       const blocker = generationBlocker(job);
       const indicator = changedJobIds.has(job.id) ? "changed" : job.status;
 
@@ -131,7 +133,7 @@ export function SceneBoard({
             <span className="scene-rule__text">
               <b>{job.title}</b>
             </span>
-            {job.status !== "draft" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
+            {job.status !== "draft" && indicator !== "generating" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
           </div>
 
           <label className="scene-rule__length">
@@ -142,7 +144,6 @@ export function SceneBoard({
               max={SCENE_MAX_SECONDS}
               step={STEP_SECONDS}
               value={duration}
-              disabled={locked}
               aria-label={`${job.title} length in seconds`}
               onChange={(event) => onDuration(job, Number(event.target.value))}
             />
@@ -167,11 +168,13 @@ export function SceneBoard({
 
           <button
             type="button"
-            className="primary-button scene-rule__generate"
-            disabled={Boolean(blocker)}
-            title={blocker ?? `Generate ${job.title}`}
+            className={`${cancellable ? "danger-button" : "primary-button"} scene-rule__generate`}
+            disabled={!cancellable && Boolean(blocker)}
+            title={cancellable ? `Cancel ${job.title}` : blocker ?? `Generate ${job.title}`}
             onClick={() => onGenerate(job)}
-          ><WandSparkles size={15} aria-hidden="true" /> Generate</button>
+          >{cancellable
+              ? <><Square size={14} aria-hidden="true" /> Cancel</>
+              : <><WandSparkles size={15} aria-hidden="true" /> Generate</>}</button>
         </header>
 
         <ol className="shot-grid">
@@ -199,8 +202,9 @@ export function SceneBoard({
               folderPath={folderPath}
               order={order}
               named={named}
+              cancelling={cancellingJobIds.has(job.id) && cancellable}
               open={selection.jobId === job.id && selection.shotId === shot.id}
-              draggable={!locked}
+              draggable
               onOpen={() => onSelect({ jobId: job.id, shotId: shot.id })}
               onDragStart={(event) => {
                 event.dataTransfer.setData(SHOT_DRAG_TYPE, JSON.stringify({ jobId: job.id, shotId: shot.id }));
@@ -227,7 +231,6 @@ export function SceneBoard({
               type="button"
               className="shot-card shot-card--add"
               aria-label={`Add a shot to ${job.title}`}
-              disabled={locked}
               onClick={() => onAddShot(job)}
             >
               <Plus size={18} aria-hidden="true" />
@@ -240,7 +243,7 @@ export function SceneBoard({
   </div>;
 }
 
-function ShotCard({ job, shot, index, endsAt, folderPath, order, named, open, draggable, onOpen, onDragStart }: {
+function ShotCard({ job, shot, index, endsAt, folderPath, order, named, cancelling, open, draggable, onOpen, onDragStart }: {
   job: GenerationJob;
   shot: SceneShot;
   index: number;
@@ -248,26 +251,31 @@ function ShotCard({ job, shot, index, endsAt, folderPath, order, named, open, dr
   folderPath: string;
   order: string[];
   named: Map<string, string>;
+  cancelling: boolean;
   open: boolean;
   draggable: boolean;
   onOpen: () => void;
-  onDragStart: (event: React.DragEvent<HTMLButtonElement>) => void;
+  onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
 }) {
   const parts = splitActionText(shot.action);
   const written = shot.action.trim().length > 0;
   const chosen = selectedShotTagOptions(shot.settings ?? {});
 
-  return <button
-    type="button"
+  return <div
     className={`shot-card ${open ? "shot-card--open" : ""}`}
-    aria-pressed={open}
     aria-label={`${shot.name ?? `Shot ${index + 1}`} of ${job.title}`}
     title={draggable ? "Drag to reorder this shot or move it to another scene" : "This shot cannot be moved while its scene is rendering"}
     draggable={draggable}
     onDragStart={onDragStart}
-    onClick={onOpen}
   >
-    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} shotNumber={index + 1} />
+    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} cancelling={cancelling} />
+    <button
+      type="button"
+      className="shot-card__open-control"
+      aria-pressed={open}
+      aria-label={`${shot.name ?? `Shot ${index + 1}`} of ${job.title}`}
+      onClick={onOpen}
+    >
     <span className="shot-card__head">
       <b>{shot.name ?? `Shot ${index + 1}`}</b>
       <em>{seconds(shot.startSeconds)} – {seconds(endsAt)}</em>
@@ -283,5 +291,6 @@ function ShotCard({ job, shot, index, endsAt, folderPath, order, named, open, dr
       {chosen.map(({ group, option }) => <em key={`${group.id}-${option.id}`} className="shot-card__tag">{option.label}</em>)}
       {chosen.length === 0 && <em className="shot-card__tag shot-card__tag--none">No settings</em>}
     </span>
-  </button>;
+    </button>
+  </div>;
 }

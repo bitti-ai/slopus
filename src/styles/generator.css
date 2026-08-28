@@ -146,6 +146,13 @@
   background: var(--panel);
 }
 
+.generator-heading__cancel {
+  width: auto;
+  min-height: var(--control-lg);
+  padding: 0 var(--space-5);
+  font-size: var(--text-base);
+}
+
 .scene-rule__drag {
   width: var(--control-sm);
   height: var(--control-sm);
@@ -287,6 +294,7 @@
 }
 
 .scene-rule__generate {
+  width: auto;
   flex: 0 0 auto;
   min-height: var(--control-sm);
   white-space: nowrap;
@@ -491,6 +499,26 @@
   background: var(--accent-soft);
 }
 
+/* The picture and the editor affordance are separate controls: clicking the
+   picture plays this shot; clicking the copy still opens its settings. */
+.shot-card__open-control {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shot-card:focus-within {
+  border-color: var(--accent-bright);
+}
+
 .shot-card__head {
   display: flex;
   align-items: baseline;
@@ -620,8 +648,49 @@
   object-fit: cover;
 }
 
+.shot-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .shot-thumb--poster {
   background-image: none;
+}
+
+.shot-thumb--playable {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.shot-thumb__play {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-pill);
+  color: var(--on-accent);
+  background: var(--scrim);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.shot-thumb--playable:hover .shot-thumb__play,
+.shot-thumb--playable:focus-visible .shot-thumb__play,
+.shot-thumb--playable .shot-thumb__play--loading,
+.shot-thumb--playable[aria-label^="Pause"] .shot-thumb__play,
+.shot-thumb--playable[aria-label^="Playback unavailable"] .shot-thumb__play {
+  opacity: 1;
+}
+
+.shot-thumb--playable:hover .shot-thumb__play,
+.shot-thumb--playable:focus-visible .shot-thumb__play {
+  transform: translate(-50%, -50%) scale(1.06);
 }
 
 .shot-thumb em {
@@ -644,6 +713,21 @@
 
 .shot-thumb .spin {
   animation: spin 1.4s linear infinite;
+}
+
+.shot-thumb__progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.shot-thumb__progress > i {
+  height: 100%;
+  display: block;
+  background: var(--accent-bright);
+  transition: width 180ms ease;
 }
 
 /* --- The controls a shot's panel is made of -------------------------------- */
@@ -725,14 +809,31 @@
   line-height: var(--leading-snug);
 }
 
+.shot-action-editor {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.shot-action-editor:focus-within {
+  border-color: var(--accent);
+}
+
+.shot-action-editor:has(textarea:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
 .shot-card__action textarea {
   width: 100%;
   min-height: 104px;
   padding: var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-radius: 0;
+  outline: 0;
   color: var(--text-primary);
-  background: var(--panel-2);
+  background: transparent;
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
@@ -744,37 +845,83 @@
   cursor: default;
 }
 
-/* The same line read back, with every reference as a control you can change. */
-.shot-readback {
+.shot-speech {
+  margin-top: var(--space-4);
+}
+
+.shot-speech__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.shot-speech__heading > .shot-card__sublabel {
+  margin-bottom: 0;
+}
+
+.shot-speech__language {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.shot-speech__language select {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-7) 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--panel-2);
+  font: inherit;
+}
+
+.shot-speech > textarea {
+  width: 100%;
+  min-height: 76px;
+  padding: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  outline: 0;
+  color: var(--text-primary);
+  background: var(--panel-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.shot-speech > textarea:focus-visible,
+.shot-speech__language select:focus-visible {
+  border-color: var(--accent);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.shot-speech__hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+/* Reference controls are part of the description box instead of a second
+   readback of the same sentence. Each select is one token occurrence. */
+.shot-action-editor__chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1);
-  margin: var(--space-3) 0 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line);
 }
 
-.shot-readback__lead {
-  width: 100%;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-}
-
-.shot-readback__text {
-  white-space: pre-wrap;
-}
-
-.shot-readback__token {
+.reference-smart-chip {
   min-height: var(--control-sm);
   max-width: 100%;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius-pill);
   color: var(--text-primary);
@@ -785,7 +932,7 @@
   cursor: pointer;
 }
 
-.shot-readback__token--broken {
+.reference-smart-chip--broken {
   border-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
@@ -912,6 +1059,37 @@
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
+}
+
+.scene-settings__numbers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.scene-settings > h3 + .scene-settings__numbers {
+  margin-top: 0;
+}
+
+.scene-settings__numbers .scene-settings__field + .scene-settings__field {
+  margin-top: 0;
+}
+
+.scene-settings__numbers + .scene-settings__field {
+  margin-top: var(--space-4);
+}
+
+.scene-settings__numbers input {
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--panel-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 .scene-settings__field textarea {
@@ -1250,14 +1428,19 @@
   gap: var(--space-4);
 }
 
-.debug-prompt summary {
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--text-xs);
+.debug-prompt {
+  flex: 0 0 auto;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 
 .debug-prompt .compiled-prompt {
-  margin-top: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.debug-prompt__toggle {
+  width: 100%;
 }
 
 .remove-dialog-backdrop {
@@ -1738,6 +1921,7 @@
 
   .panel-head,
   .panel-scroll,
+  .debug-prompt,
   .generator-panel .job-actions {
     padding: var(--space-4);
   }

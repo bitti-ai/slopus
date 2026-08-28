@@ -3,11 +3,17 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
-import type { VidfabStatus } from "../../lib/runtime";
+import { cancelVidfabGeneration, type VidfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
 
+vi.mock("../../lib/runtime", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../lib/runtime")>(),
+  cancelVidfabGeneration: vi.fn().mockResolvedValue(true),
+}));
+
+beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 const readyRuntime: VidfabStatus = {
@@ -95,6 +101,43 @@ async function finishFirst(state: ReturnType<typeof setup>) {
 }
 
 describe("Generator scene controls", () => {
+  it("shows scene generation controls and sends their values in the render snapshot", async () => {
+    const state = setup();
+    const generation = screen.getByRole("region", { name: "Generation" });
+    expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
+    expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
+
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation step count" }), { target: { value: "28" } });
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation seed" }), { target: { value: "9173" } });
+    expect(state.latest().generationJobs[0]).toEqual(expect.objectContaining({ steps: 28, seed: 9173 }));
+
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({ steps: 28, seed: 9173 }));
+  });
+
+  it("edits shot speech and sends it with the selected language in dialogue tags", async () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+
+    const speech = screen.getByRole("textbox", { name: "Speech for shot 1" });
+    const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
+    expect(speech).toHaveValue("");
+    expect(language).toHaveValue("English");
+
+    fireEvent.change(language, { target: { value: "Korean" } });
+    fireEvent.change(speech, { target: { value: "문을 열어 주세요." } });
+    expect(sceneShots(state.latest().generationJobs[0])[0]).toEqual(expect.objectContaining({
+      speech: "문을 열어 주세요.",
+      speechLanguage: "Korean",
+    }));
+
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
+    expect(snapshot.prompt).toContain("<d>[Korean] 문을 열어 주세요.</d>");
+  });
+
   it("reorders shots inside a scene while keeping its cut slots", () => {
     const state = setup();
     const shotTransfer = transfer();
@@ -160,6 +203,41 @@ describe("Generator scene controls", () => {
     expect(scene.querySelector(".scene-rule__status--changed")).not.toBeNull();
   });
 
+  it("keeps scene and shot settings editable during generation and marks the finished scene changed", async () => {
+    const state = setup();
+    const scene = screen.getByRole("region", { name: "First scene" });
+    fireEvent.click(within(scene).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].status).toBe("queued"));
+    const sent = state.latest().generationJobs[0].generationSnapshot;
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job, index) => index === 0
+        ? { ...job, status: "generating", stage: "generating", progress: 0.4 }
+        : job),
+    });
+
+    const sound = screen.getByRole("textbox", { name: "The sound of this scene" });
+    expect(sound).toBeEnabled();
+    fireEvent.change(sound, { target: { value: "Rain added while this run is rendering." } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+    const addSetting = screen.getByRole("combobox", { name: "Add a setting to shot 1" });
+    expect(addSetting).toBeEnabled();
+    fireEvent.change(addSetting, { target: { value: "shotSize" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Value for Shot size on shot 1" }), { target: { value: "close-up" } });
+    expect(state.latest().generationJobs[0].generationSnapshot).toBe(sent);
+
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job, index) => index === 0
+        ? { ...job, status: "completed", stage: "completed", progress: 1 }
+        : job),
+    });
+    const finished = screen.getByRole("region", { name: "First scene" });
+    expect(within(finished).getByText("CHANGED")).toBeInTheDocument();
+    expect(finished.querySelector(".scene-rule__status--changed")).not.toBeNull();
+  });
+
   it("marks a finished scene changed when shot settings or order change", async () => {
     const state = setup();
     await finishFirst(state);
@@ -212,5 +290,41 @@ describe("Generator scene controls", () => {
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]));
     expect(state.latest().generationJobs.every((job) => Boolean(job.generationSnapshot))).toBe(true);
     expect(parseProjectConfig(state.latest())).toBeTruthy();
+  });
+
+  it("turns active generation actions into per-scene and batch cancellation", async () => {
+    const initial = project();
+    initial.generationJobs = initial.generationJobs.map((job, index) => ({
+      ...job,
+      status: index === 0 ? "generating" : "queued",
+      stage: index === 0 ? "generating" : "queued",
+      progress: index === 0 ? 0.42 : 0,
+    }));
+    setup(initial);
+
+    const first = screen.getByRole("region", { name: "First scene" });
+    const second = screen.getByRole("region", { name: "Second scene" });
+    expect(within(first).getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(within(second).getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancel All" })).toBeEnabled();
+    expect(within(first).getAllByText("Rendering 42%")).toHaveLength(2);
+    const progressBars = first.querySelectorAll(".shot-thumb__progress > i");
+    expect(progressBars).toHaveLength(2);
+    expect([...progressBars].every((bar) => (bar as HTMLElement).style.width === "42%")).toBe(true);
+    expect(within(first).queryByText("RENDERING")).not.toBeInTheDocument();
+
+    fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(cancelVidfabGeneration).toHaveBeenCalledWith("scene-first"));
+    const cancelling = within(first).getAllByRole("img", { name: /Cancelling\.\.\.$/ });
+    expect(cancelling).toHaveLength(2);
+    expect(cancelling.every((thumbnail) => thumbnail.querySelector(".spin"))).toBe(true);
+    expect(within(first).queryByText("Rendering 42%")).not.toBeInTheDocument();
+
+    vi.mocked(cancelVidfabGeneration).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel All" }));
+    await waitFor(() => {
+      expect(cancelVidfabGeneration).toHaveBeenCalledTimes(1);
+      expect(cancelVidfabGeneration).toHaveBeenCalledWith("scene-second");
+    });
   });
 });

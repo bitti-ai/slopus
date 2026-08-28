@@ -7,6 +7,29 @@ export const PROJECT_FILE_NAME = "polstudio.json";
  *  ever written. */
 export const LEGACY_PROJECT_FILE_NAMES = ["pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
+export const DEFAULT_GENERATION_STEPS = 20;
+export const MAX_GENERATION_STEPS = 2_147_483_647;
+export const RANDOM_GENERATION_SEED = -1;
+
+/** Languages MiniMax H3 documents as stable for dialogue generation. Keep the
+ * labels verbatim: they are written into the model's required `[Language]`
+ * marker rather than translated into the UI locale. */
+export const SPEECH_LANGUAGES = [
+  "Arabic",
+  "Chinese",
+  "English",
+  "French",
+  "German",
+  "Italian",
+  "Japanese",
+  "Korean",
+  "Portuguese",
+  "Russian",
+  "Spanish",
+] as const;
+export const speechLanguageSchema = z.enum(SPEECH_LANGUAGES);
+export type SpeechLanguage = z.infer<typeof speechLanguageSchema>;
+export const DEFAULT_SPEECH_LANGUAGE: SpeechLanguage = "English";
 
 const idSchema = z.string().min(1);
 const isoDateSchema = z.string().datetime();
@@ -250,6 +273,11 @@ export const sceneShotSchema = z.object({
    *  that has just been added has nothing written in it yet, and PolStudio
    *  never writes that line for anyone. */
   action: z.string(),
+  /** Dialogue is separate from the visual action so the compiler can guarantee
+   * that every spoken character lands inside MiniMax H3's `<d>...</d>` syntax.
+   * Both fields are optional to preserve projects written before speech UI. */
+  speech: z.string().nullish(),
+  speechLanguage: speechLanguageSchema.nullish(),
   /** The H3 vocabulary settings on this shot: group id -> option ids. Same
    *  shape, same ids and same normalisation as the older per-job `shotTags`. */
   settings: shotTagSelectionSchema.nullish(),
@@ -341,6 +369,11 @@ export const generationJobSchema = z.object({
   /** How long the whole scene runs. Absent means the length every shot was
    *  generated at before this was settable; read `sceneDurationSeconds(job)`. */
   durationSeconds: z.number().min(SCENE_MIN_SECONDS).max(SCENE_MAX_SECONDS).nullish(),
+  /** Renderer controls. Missing values belong to projects written before these
+   * were exposed; the readers below give those scenes the current defaults
+   * without rewriting the file just because it was opened. */
+  steps: z.number().int().min(2).max(MAX_GENERATION_STEPS).nullish(),
+  seed: z.number().int().min(RANDOM_GENERATION_SEED).max(Number.MAX_SAFE_INTEGER).nullish(),
   /** Base guide §4.6 and §4.7. Per-PROMPT fields, not per-shot, so they live on
    *  the scene. Blank or absent means the compiler emits its own content-neutral
    *  line; anything here is the user's own words and is marked as theirs. */
@@ -668,6 +701,14 @@ export function sceneDurationSeconds(job: GenerationJob): number {
   return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, stored));
 }
 
+export function sceneGenerationSteps(job: GenerationJob): number {
+  return job.steps ?? DEFAULT_GENERATION_STEPS;
+}
+
+export function sceneGenerationSeed(job: GenerationJob): number {
+  return job.seed ?? RANDOM_GENERATION_SEED;
+}
+
 export interface SceneGenerationInput {
   prompt: string;
   frames: number;
@@ -746,6 +787,8 @@ interface CompiledShot {
   /** Reference ids this shot cites, first citation first. */
   citedIds: string[];
   tags: ShotTagClauses;
+  speech: string | null;
+  speechLanguage: SpeechLanguage;
 }
 
 export function compileScenePromptSegments(scene: ScenePrompt, references: ProjectReference[] = []): PromptSegment[] {
@@ -776,7 +819,16 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       body.push(frame(`<Subject ${number}>`));
       text += `<Subject ${number}>`;
     }
-    return { index, startSeconds: shot.startSeconds, body, text, citedIds, tags: shotTagClauses(shot.settings ?? null) };
+    return {
+      index,
+      startSeconds: shot.startSeconds,
+      body,
+      text,
+      citedIds,
+      tags: shotTagClauses(shot.settings ?? null),
+      speech: shot.speech?.trim().length ? shot.speech : null,
+      speechLanguage: shot.speechLanguage ?? DEFAULT_SPEECH_LANGUAGE,
+    };
   });
 
   // §4.1: the description opens with ONE overall style, so the first shot that
@@ -800,11 +852,22 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     tagged(clause.terms.join(", ")),
     frame("."),
   ]);
+  /** Base guide dialogue syntax: identifying phrase and stable speaker id stay
+   * outside `<d>`, while only the language marker and the user's exact text are
+   * inside. One scene-level speech track means the same (S1) voice is retained
+   * across its shots. The pieces stay split so prompt provenance remains honest. */
+  const dialogue = (shot: CompiledShot, separate: boolean): PromptSegment[] => shot.speech === null ? [] : [
+    frame(`${separate ? " " : ""}The scene's speaker (S1) says, <d>[`),
+    tagged(shot.speechLanguage),
+    frame("] "),
+    own(shot.speech),
+    frame("</d>"),
+  ];
   /* A stop is added when something follows the line — another clause, or
      another shot. A lone untagged shot keeps whatever terminal punctuation the
      user gave it, so every prompt this app has ever produced is unchanged. */
   const stop = (shot: CompiledShot): PromptSegment[] =>
-    shot.tags.clauses.length > 0 || shot.index < compiled.length - 1 ? addedStop(shot.text) : [];
+    shot.tags.clauses.length > 0 || shot.speech !== null || shot.index < compiled.length - 1 ? addedStop(shot.text) : [];
 
   const sound = (scene.soundscape ?? "").trim();
   const music = (scene.music ?? "").trim();
@@ -824,6 +887,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         ...shot.body,
         ...stop(shot),
         ...tail(shot),
+        ...dialogue(shot, shot.text.length > 0 || shot.tags.clauses.length > 0),
       ]),
       frame("\n\noverall_soundscape: "),
       soundSegment,
@@ -926,6 +990,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         ? [frame(` The shot features ${listOf(featured[shot.index].map((id) => `<Subject ${subjectNumber.get(id)}>`))}, matching the definitions above.`)]
         : []),
       ...tail(shot),
+      ...dialogue(shot, shot.text.length > 0 || featured[shot.index].length > 0 || shot.tags.clauses.length > 0),
     ]),
   ];
 
@@ -976,6 +1041,8 @@ export function createDraftGenerationJob(
      *  `creativeBrief`, which is what every caller wanted before scenes. */
     shots?: SceneShot[];
     durationSeconds?: number;
+    steps?: number;
+    seed?: number;
     now?: string;
   } = {},
 ): GenerationJob {
@@ -1011,6 +1078,8 @@ export function createDraftGenerationJob(
     referenceIds: options.referenceIds ?? [],
     shots,
     durationSeconds,
+    steps: options.steps ?? DEFAULT_GENERATION_STEPS,
+    seed: options.seed ?? RANDOM_GENERATION_SEED,
     createdAt: now,
     updatedAt: now,
   });

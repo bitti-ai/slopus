@@ -3,6 +3,7 @@
 //! All ABI declarations and `unsafe` calls live in `ffi`; the rest of the
 //! application only handles owned Rust status, plan, progress, and metadata.
 use crate::{rendered, ProviderOption, ProviderSetting};
+use getrandom::fill as fill_random;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -66,7 +67,8 @@ pub struct GenerationRequest {
     pub prompt: String,
     pub frames: i32,
     pub steps: i32,
-    pub seed: u64,
+    /// -1 asks the host to draw a fresh seed for this generation.
+    pub seed: i64,
     pub aspect_ratio: String,
     #[serde(default)]
     pub reference_paths: Vec<String>,
@@ -180,6 +182,7 @@ impl VidfabRuntime {
         if request.job_id.trim().is_empty() || request.prompt.trim().is_empty() {
             return Err("Generation job id and prompt cannot be empty.".into());
         }
+        validate_generation_controls(&request)?;
         let cancel = Arc::new(AtomicBool::new(false));
         let mut flags = self
             .cancellations
@@ -332,6 +335,7 @@ pub fn resolve_plan(
     request: &GenerationRequest,
     settings: &BTreeMap<String, ProviderSetting>,
 ) -> Result<ResolvedPlan, String> {
+    validate_generation_controls(request)?;
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;
     api.version()?;
@@ -354,6 +358,27 @@ pub fn resolve_plan(
     })
 }
 
+fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if request.steps < 2 {
+        return Err("Generation step count must be at least 2.".into());
+    }
+    if request.seed < -1 {
+        return Err("Generation seed must be -1 or greater.".into());
+    }
+    Ok(())
+}
+
+fn generation_seed(value: i64) -> Result<u64, String> {
+    if value == -1 {
+        let mut bytes = [0_u8; 8];
+        fill_random(&mut bytes)
+            .map_err(|error| format!("Could not create a random generation seed: {error}"))?;
+        Ok(u64::from_ne_bytes(bytes))
+    } else {
+        u64::try_from(value).map_err(|_| "Generation seed must be -1 or greater.".to_string())
+    }
+}
+
 fn configure_request(
     api: &ffi::Api,
     handle: *mut ffi::Request,
@@ -364,7 +389,7 @@ fn configure_request(
     api.set_prompt(handle, &request.prompt)?;
     api.set_frames(handle, request.frames)?;
     api.set_steps(handle, request.steps)?;
-    api.set_seed(handle, request.seed)?;
+    api.set_seed(handle, generation_seed(request.seed)?)?;
     let (width, height) = match request.aspect_ratio.as_str() {
         "9:16" => (9, 16),
         "1:1" => (1, 1),
@@ -972,5 +997,12 @@ mod tests {
     fn stage_ids_are_normalized_without_assuming_an_enum() {
         assert_eq!(stage_name(4), "denoising");
         assert_eq!(stage_name(99), "unknown");
+    }
+    #[test]
+    fn generation_seed_accepts_random_and_non_negative_values() {
+        assert!(generation_seed(-1).is_ok());
+        assert_eq!(generation_seed(0).unwrap(), 0);
+        assert_eq!(generation_seed(482_091).unwrap(), 482_091);
+        assert!(generation_seed(-2).is_err());
     }
 }

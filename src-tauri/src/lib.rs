@@ -166,8 +166,8 @@ struct ReusableReference {
 /// `startSeconds` and `action` are REQUIRED on the zod side and are plain
 /// (non-`Option`) fields here, so they are always written — a `#[serde(default)]`
 /// covers a file that predates them without ever producing a key zod refuses.
-/// `settings` is the only optional one and carries `skip_serializing_if`,
-/// because zod spells it `.nullish()` for the same reason `shotTags` is.
+/// Later optional fields carry `skip_serializing_if`, because zod spells them
+/// `.nullish()` and older project files must not grow keys just by being saved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SceneShot {
@@ -182,6 +182,12 @@ struct SceneShot {
     /// added has nothing written in it, and this layer never fills it in.
     #[serde(default)]
     action: String,
+    /// Spoken text is kept separate so the frontend compiler can place it
+    /// inside MiniMax H3's dialogue tags without trying to parse prose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    speech: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    speech_language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     settings: Option<BTreeMap<String, Vec<String>>>,
 }
@@ -225,17 +231,22 @@ struct GenerationJob {
     /// dropped on the next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shot_tags: Option<BTreeMap<String, Vec<String>>>,
-    /// The shots this scene holds, in playing order. Every one of the four
-    /// fields below is an `Option` with `skip_serializing_if`, because every
-    /// project written before scenes existed has none of these keys and must
-    /// round-trip byte-for-byte: zod spells all four `.nullish()`, so `null`
-    /// would also be readable, but an absent key is what the old files have.
+    /// The shots this scene holds, in playing order. Optional scene settings
+    /// use `skip_serializing_if`, because older projects have none of these keys
+    /// and must round-trip byte-for-byte. Zod spells them `.nullish()`, so null
+    /// is readable too, but absence is what those old files contain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shots: Option<Vec<SceneShot>>,
     /// How long the whole scene runs, 0-15 seconds. Absent means the length
     /// every shot was generated at before this was settable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     duration_seconds: Option<f64>,
+    /// Renderer controls added after scenes. Missing values retain the UI's
+    /// defaults without making old project files grow new keys on open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    steps: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seed: Option<i64>,
     /// Base guide §4.6 and §4.7 — per-prompt fields, so they sit on the scene
     /// rather than on a shot. Absent means the compiler writes its own
     /// content-neutral line and marks it as PolStudio's own words.
@@ -817,6 +828,27 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                         shot.id, job.id, shot.start_seconds
                     ));
                 }
+                if shot.speech_language.as_deref().is_some_and(|language| {
+                    !matches!(
+                        language,
+                        "Arabic"
+                            | "Chinese"
+                            | "English"
+                            | "French"
+                            | "German"
+                            | "Italian"
+                            | "Japanese"
+                            | "Korean"
+                            | "Portuguese"
+                            | "Russian"
+                            | "Spanish"
+                    )
+                }) {
+                    return Err(format!(
+                        "Shot '{}' in scene '{}' has an unsupported speech language.",
+                        shot.id, job.id
+                    ));
+                }
                 shot.settings = normalize_shot_tags(shot.settings.take())
                     .map_err(|reason| format!("Shot '{}' {reason}", shot.id))?;
             }
@@ -831,6 +863,21 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                     job.id
                 ));
             }
+        }
+        if job.steps.is_some_and(|steps| steps < 2) {
+            return Err(format!(
+                "Scene '{}' must use at least 2 generation steps.",
+                job.id
+            ));
+        }
+        if job.seed.is_some_and(|seed| seed < -1) {
+            return Err(format!("Scene '{}' has a seed below -1.", job.id));
+        }
+        if job.seed.is_some_and(|seed| seed > 9_007_199_254_740_991) {
+            return Err(format!(
+                "Scene '{}' has a seed too large to preserve exactly.",
+                job.id
+            ));
         }
         // Blank is the same as unset for both of these; the compiler falls back
         // to its own line, and writing `""` would be a key zod has to tolerate
@@ -3640,12 +3687,23 @@ mod tests {
             let job = &opened.generation_jobs[0];
             assert_eq!(job.shots, None, "{name}");
             assert_eq!(job.duration_seconds, None, "{name}");
+            assert_eq!(job.steps, None, "{name}");
+            assert_eq!(job.seed, None, "{name}");
             assert_eq!(job.soundscape, None, "{name}");
             assert_eq!(job.music, None, "{name}");
             let json = serde_json::to_string_pretty(&opened).unwrap();
-            for key in ["shots", "durationSeconds", "soundscape", "music"] {
+            let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+            let serialized_job = object_of(&value["generationJobs"][0], "generationJobs[0]");
+            for key in [
+                "shots",
+                "durationSeconds",
+                "steps",
+                "seed",
+                "soundscape",
+                "music",
+            ] {
                 assert!(
-                    !json.contains(&format!("\"{key}\"")),
+                    !serialized_job.contains_key(key),
                     "the {name} fixture grew a {key} key it never had: {json}"
                 );
             }
@@ -3730,6 +3788,8 @@ mod tests {
             name: None,
             start_seconds: 0.0,
             action: String::new(),
+            speech: None,
+            speech_language: None,
             settings: None,
         }]);
 
@@ -3753,6 +3813,28 @@ mod tests {
             normalized.generation_jobs[0].shots.as_ref().unwrap()[0].name.as_deref(),
             Some("Doorway reveal")
         );
+    }
+
+    #[test]
+    fn shot_speech_and_its_supported_language_survive_the_project_round_trip() {
+        let mut config = scene_fixture();
+        let shot = &mut config.generation_jobs[0].shots.as_mut().unwrap()[0];
+        shot.speech = Some("行こう！ Keep this punctuation.".into());
+        shot.speech_language = Some("Japanese".into());
+
+        let normalized =
+            validate_and_normalize_config(config).expect("documented H3 speech is valid");
+        let shot = &normalized.generation_jobs[0].shots.as_ref().unwrap()[0];
+        assert_eq!(
+            shot.speech.as_deref(),
+            Some("行こう！ Keep this punctuation.")
+        );
+        assert_eq!(shot.speech_language.as_deref(), Some("Japanese"));
+
+        let mut invalid = scene_fixture();
+        invalid.generation_jobs[0].shots.as_mut().unwrap()[0].speech_language =
+            Some("Klingon".into());
+        assert!(validate_and_normalize_config(invalid).is_err());
     }
 
     #[test]
@@ -3785,6 +3867,23 @@ mod tests {
         let mut twins = scene_fixture();
         twins.generation_jobs[0].shots.as_mut().unwrap()[1].id = "scene-walk-shot-1".into();
         assert!(validate_and_normalize_config(twins).is_err());
+    }
+
+    #[test]
+    fn scene_generation_controls_match_the_frontend_boundaries() {
+        for (steps, seed) in [(2, -1), (20, 0), (50, 9_007_199_254_740_991)] {
+            let mut config = scene_fixture();
+            config.generation_jobs[0].steps = Some(steps);
+            config.generation_jobs[0].seed = Some(seed);
+            assert!(validate_and_normalize_config(config).is_ok());
+        }
+
+        for (steps, seed) in [(1, -1), (20, -2), (20, 9_007_199_254_740_992)] {
+            let mut config = scene_fixture();
+            config.generation_jobs[0].steps = Some(steps);
+            config.generation_jobs[0].seed = Some(seed);
+            assert!(validate_and_normalize_config(config).is_err());
+        }
     }
 
     #[test]
