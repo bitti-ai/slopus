@@ -467,10 +467,10 @@
 .media-grid .media-import {
   min-height: 120px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   color: var(--text-muted);
   border-style: dashed;
   background: none;
@@ -492,7 +492,9 @@
 }
 
 .media-import b {
-  width: 100%;
+  width: auto;
+  margin-top: 0 !important;
+  padding: 0 !important;
   text-align: center;
 }
 
@@ -506,12 +508,13 @@
   /* The rows beside it are 42px tall: a 40px still between two 1px borders.
      This row carries the same border, so it has to add the same two pixels. */
   min-height: calc(var(--space-7) + 2px);
-  display: grid;
+  display: flex;
   align-items: center;
+  justify-content: flex-start;
   /* The grid-mode plate packs its icon and label together; a row uses the same
      column gap as the file rows, or the name lands four pixels short of theirs. */
-  column-gap: var(--space-2);
-  padding: 0;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
 }
 
 .media-grid--list .media-import svg {
