@@ -31,9 +31,22 @@ export type AgentTurnResult =
   | { kind: "question"; content: string }
   | { kind: "mutation"; summary: string; project: ProjectConfig };
 
+export type AgentTurnEvent =
+  | { type: "started"; provider: ProviderId }
+  | { type: "message" | "diagnostic"; text: string }
+  | { type: "validation"; round: number; maxRounds: number; text: string }
+  | { type: "completed" };
+
+export interface AgentTurnEventPayload {
+  requestId: string;
+  event: AgentTurnEvent;
+}
+
+export const AGENT_TURN_EVENT = "agent-turn-event";
+
 export interface AgentTurnResponse {
   result: AgentTurnResult;
-  events: Array<{ type: string; text?: string }>;
+  events: AgentTurnEvent[];
   record: ProjectRecord;
 }
 
@@ -126,7 +139,7 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
     ] },
   });
   const next = await saveProject({ ...record, config });
-  return { result, record: next, events: [{ type: "started" }, { type: "completed" }] };
+  return { result, record: next, events: [{ type: "started", provider }, { type: "completed" }] };
 }
 
 export async function cancelAgentTurn(requestId: string): Promise<boolean> {

@@ -15,7 +15,7 @@
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--topbar-height) minmax(0, 1fr) 80px;
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr) auto;
   color: var(--text-secondary);
   background: var(--bg);
 }
@@ -182,6 +182,16 @@
   box-shadow: var(--shadow-up);
 }
 
+/* Expanded means the Pol panel owns the workspace below the project top bar.
+   Its height is therefore stable; additional output scrolls inside it instead
+   of repeatedly resizing the editor behind it. */
+.project-agent-row:has(.agent-dock-wrap--expanded) {
+  height: calc(100vh - var(--topbar-height));
+  height: calc(100dvh - var(--topbar-height));
+  min-height: 0;
+  align-items: stretch;
+}
+
 /* The settings launcher is fixed over the bottom-left corner, which is this
    row. The dock stays CENTRED and gives up width instead of shifting right —
    an off-centre dock reads as a layout bug, a narrower one does not. 256px is
@@ -189,11 +199,29 @@
 .agent-dock-wrap {
   position: relative;
   width: min(880px, calc(100% - 256px));
+  display: flex;
+  min-height: var(--control-lg);
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.agent-dock-wrap--expanded {
+  height: 100%;
+  min-height: 0;
+}
+
+.agent-dock-row {
+  min-width: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .agent-dock {
   height: var(--control-lg);
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -272,6 +300,25 @@
   border-color: var(--danger-line-strong);
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+.agent-panel-toggle {
+  width: var(--control-lg);
+  height: var(--control-lg);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line-solid);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  background: var(--panel-3);
+}
+
+.agent-panel-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-line-strong);
+  background: var(--accent-soft);
 }
 
 .agent-busy {
@@ -354,12 +401,10 @@
 /* --- Conversation overlay -------------------------------------------------- */
 
 .agent-conversation {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--control-lg) + var(--space-3));
-  max-height: 280px;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow: auto;
+  margin-bottom: var(--space-3);
   padding: var(--space-2);
   border: 1px solid var(--line-solid);
   border-radius: var(--radius-md);
@@ -377,6 +422,12 @@
   color: var(--text-secondary);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
+}
+
+.agent-conversation p > span {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .agent-conversation p + p {
@@ -398,6 +449,20 @@
 
 .agent-conversation__assistant b {
   color: var(--accent-bright);
+}
+
+.agent-conversation__output b {
+  color: var(--accent-bright);
+}
+
+.agent-conversation__validation,
+.agent-conversation__validation b {
+  color: var(--warning);
+}
+
+.agent-conversation__system,
+.agent-conversation__empty {
+  color: var(--text-muted);
 }
 
 .agent-conversation__error,
