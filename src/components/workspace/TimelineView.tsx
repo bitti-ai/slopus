@@ -812,10 +812,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
                 onPlayingChange={setPlayingFromMonitor}
               />
               : <div className="program-empty">
-                <Film size={30} />
-                <strong>{config.name}</strong>
-                <span>{config.brief.prompt}</span>
-                <small>Drop a file from Media onto a track below, or generate a scene, and it plays here.</small>
+                <span>Drop a file from Media onto a track below, or generate a scene, and it plays here.</span>
               </div>}
           </div>
         </main>

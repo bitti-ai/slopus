@@ -44,7 +44,7 @@
   width: min(var(--content-max), calc(100% - var(--space-9)));
   margin: 0 auto;
   /* Bottom padding clears the fixed settings launcher. */
-  padding: var(--space-7) 0 var(--space-9);
+  padding: var(--space-5) 0 var(--space-9);
 }
 
 /* --- Prompt composer ------------------------------------------------------- */
@@ -391,7 +391,7 @@
 /* --- Section heading + view controls --------------------------------------- */
 
 .recent-projects {
-  margin-top: var(--space-8);
+  margin-top: 0;
 }
 
 .section-heading {
