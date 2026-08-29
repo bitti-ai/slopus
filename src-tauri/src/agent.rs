@@ -972,6 +972,13 @@ fn quiet_command(executable: &Path) -> Command {
     command
 }
 
+fn is_benign_provider_diagnostic(provider: ProviderId, line: &str) -> bool {
+    provider == ProviderId::Codex
+        && line
+            .trim()
+            .eq_ignore_ascii_case("Reading additional input from stdin...")
+}
+
 fn run_subprocess(
     spec: CommandSpec,
     provider: ProviderId,
@@ -1011,6 +1018,9 @@ fn run_subprocess(
     let status = loop {
         while let Ok((stderr, line)) = receiver.try_recv() {
             if stderr {
+                if is_benign_provider_diagnostic(provider, &line) {
+                    continue;
+                }
                 let event = AgentEvent::Diagnostic { text: line };
                 on_event(&event);
                 events.push(event);
@@ -1044,6 +1054,9 @@ fn run_subprocess(
     };
     while let Ok((stderr, line)) = receiver.recv_timeout(Duration::from_millis(10)) {
         if stderr {
+            if is_benign_provider_diagnostic(provider, &line) {
+                continue;
+            }
             let event = AgentEvent::Diagnostic { text: line };
             on_event(&event);
             events.push(event);
@@ -1646,6 +1659,22 @@ mod tests {
         let detail = structured_failure(&lines).unwrap();
         assert!(detail.contains("invalid_json_schema"), "{detail}");
         assert!(structured_failure(&["not json".to_string()]).is_none());
+    }
+
+    #[test]
+    fn codex_stdin_notice_is_not_reported_as_an_error() {
+        assert!(is_benign_provider_diagnostic(
+            ProviderId::Codex,
+            "Reading additional input from stdin..."
+        ));
+        assert!(!is_benign_provider_diagnostic(
+            ProviderId::Claude,
+            "Reading additional input from stdin..."
+        ));
+        assert!(!is_benign_provider_diagnostic(
+            ProviderId::Codex,
+            "A real provider failure"
+        ));
     }
 
     #[test]
