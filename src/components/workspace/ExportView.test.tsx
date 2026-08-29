@@ -102,11 +102,13 @@ describe("the export view where nothing can encode", () => {
    path, the size, the codec and the compositor. */
 describe("the shape of the export screen", () => {
   it("names its two panels after what they hold", () => {
-    render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
     expect(screen.getByRole("heading", { name: "Video" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Preview" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Export Settings" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "What this export will be" })).toBeNull();
+    expect(container.querySelector(".export-details > .export-summary")).toBeTruthy();
   });
 
   it("gives the estimated size as a size and nothing else", () => {
