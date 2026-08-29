@@ -158,7 +158,7 @@ export function SceneBoard({
             aria-pressed={sceneOpen}
             aria-label={`Settings for ${job.title}`}
             onClick={() => onSelect({ jobId: job.id, shotId: null })}
-          ><SlidersHorizontal size={15} aria-hidden="true" /> Settings</button>
+          ><SlidersHorizontal size={15} aria-hidden="true" /></button>
 
           <button
             type="button"
@@ -170,7 +170,7 @@ export function SceneBoard({
 
           <button
             type="button"
-            className={`${cancellable ? "danger-button" : "primary-button"} scene-rule__generate`}
+            className={`${cancellable ? "danger-button" : "fill-button"} scene-rule__generate`}
             disabled={!cancellable && Boolean(blocker)}
             title={cancellable ? `Cancel ${job.title}` : blocker ?? `Generate ${job.title}`}
             onClick={() => onGenerate(job)}
