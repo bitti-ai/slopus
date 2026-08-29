@@ -111,6 +111,10 @@
   --topbar-height: 72px;
   --content-max: 1180px;
 
+  /* Step 1's primary button transition consumes this immediately. Step 2 adds
+     the slower panel duration and the full motion policy. */
+  --motion-fast: 120ms;
+
   /* ==========================================================================
      COLOUR — dark (the base palette; light redefines every name below)
      ====================================================================== */
@@ -178,7 +182,6 @@
      sits on them is white in both. Deliberately theme-independent. */
   --on-accent: #ffffff;
   --on-accent-dim: rgba(255, 255, 255, 0.35);
-  --sheen: rgba(255, 255, 255, 0.15);
 
   /* --- The export stage -----------------------------------------------------
      The stage behind the picture stays BLACK in both themes on purpose: a
@@ -192,10 +195,17 @@
   --stage-alert-ink: #f19aa1;          /* 9.3:1 on --stage-alert-bg over the stage */
   --stage-alert-line: rgba(236, 125, 134, 0.45);
 
-  /* --- Primary button ----------------------------------------------------- */
-  --button-primary-bg: linear-gradient(180deg, #5279f4, #3159d4);
-  --button-primary-border: #5578ed;
-  --button-primary-shadow: 0 5px 18px rgba(31, 70, 196, 0.26);
+  /* --- Primary button -----------------------------------------------------
+     One flat fill. No gradient, no border, no coloured shadow, no inner sheen:
+     the five effects that used to stack here were compensating for a topbar
+     with four other blue objects in it, which step 4 removes. */
+  --button-primary-bg: #3557c7;        /* white on it is 6.3:1 */
+  --button-primary-hover: #3f64d9;     /* 5.2:1 — lighter, as dark-theme hover should be */
+  --button-primary-active: #2c49ac;    /* 7.9:1 */
+  --button-primary-off-bg: var(--wash-2);   /* disabled is a state, not a transparency */
+  --button-primary-off-ink: var(--text-faint);  /* 5.1:1 over the wash on --panel */
+  /* The dock's send button keeps a visible edge of its own. */
+  --dock-send-border: #5578ed;
 
   /* --- Progress ----------------------------------------------------------- */
   --track: #20252e;
@@ -324,6 +334,11 @@
     --glow-accent: rgba(45, 91, 215, 0.07);
     --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
+    --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 — the old --accent-fill value */
+    --button-primary-hover: #2450c4;   /* 7.0:1 */
+    --button-primary-active: #1e40af;  /* 8.7:1 */
+    --dock-send-border: #2d5bd7;
+
     --track: #dfe3ec;
     --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
     --progress-glow: rgba(45, 91, 215, 0.35);
@@ -422,6 +437,11 @@
   --accent-ring: rgba(45, 91, 215, 0.14);
   --glow-accent: rgba(45, 91, 215, 0.07);
   --eyebrow: #47549a;
+
+  --button-primary-bg: #2d5bd7;
+  --button-primary-hover: #2450c4;
+  --button-primary-active: #1e40af;
+  --dock-send-border: #2d5bd7;
 
   --track: #dfe3ec;
   --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);

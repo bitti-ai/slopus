@@ -17,31 +17,39 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-  transition: 0.18s ease;
 }
 
-/* Primary actions are the hero control size. */
+/* tokens.css rule 5: primary actions are --control-md; --control-lg is for hero
+   CTAs. Setting every primary to --control-lg made every primary a hero CTA. */
 .primary-button {
-  min-height: var(--control-lg);
-  padding: 0 var(--space-5);
-  font-size: var(--text-base);
-  border: 1px solid var(--button-primary-border);
+  min-height: var(--control-md);
+  padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+  border: 1px solid transparent;
   color: var(--on-accent);
   background: var(--button-primary-bg);
-  box-shadow:
-    var(--button-primary-shadow),
-    inset 0 1px var(--sheen);
+  box-shadow: none;
+  transition: background-color var(--motion-fast) ease;
 }
 
-.primary-button:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+.primary-button:hover:not(:disabled) { background: var(--button-primary-hover); }
+.primary-button:active:not(:disabled) { background: var(--button-primary-active); }
+
+/* opacity on a saturated fill produces a hazy blue that reads as a rendering
+   fault rather than as "off". */
+.primary-button:disabled {
+  opacity: 1;
+  border-color: var(--line);
+  color: var(--button-primary-off-ink);
+  background: var(--button-primary-off-bg);
+  cursor: not-allowed;
 }
 
 .secondary-button {
   border: 1px solid var(--line-strong);
   color: var(--text-secondary);
   background: var(--wash-1);
+  transition: 0.18s ease;
 }
 
 .secondary-button:hover:not(:disabled) {
@@ -50,7 +58,6 @@
   background: var(--wash-2);
 }
 
-.primary-button:disabled,
 .secondary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
