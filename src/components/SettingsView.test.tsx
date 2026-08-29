@@ -84,4 +84,24 @@ describe("the settings screen", () => {
     fireEvent.click(tab("Appearance"));
     expect(screen.queryByRole("button", { name: /Clear all paths/ })).toBeNull();
   });
+
+  it("configures OpenRouter and local OpenAI-compatible models without requiring a local API key", () => {
+    open();
+    fireEvent.click(tab("Prompt LLMs"));
+
+    const openrouter = screen.getByRole("heading", { name: "OpenRouter" }).closest("section")!;
+    expect((within(openrouter).getByLabelText("OpenRouter endpoint") as HTMLInputElement).value).toBe("https://openrouter.ai/api/v1");
+    fireEvent.change(within(openrouter).getByLabelText("OpenRouter API key"), { target: { value: "sk-or-test" } });
+    fireEvent.change(within(openrouter).getByLabelText("OpenRouter model"), { target: { value: "openai/gpt-test" } });
+    expect(openrouter.textContent).toContain("Configured");
+
+    const local = screen.getByRole("heading", { name: "Local OpenAI-compatible" }).closest("section")!;
+    fireEvent.change(within(local).getByLabelText("Local OpenAI-compatible endpoint"), { target: { value: "http://localhost:1234/v1" } });
+    fireEvent.change(within(local).getByLabelText("Local OpenAI-compatible model"), { target: { value: "local-model" } });
+    expect(local.textContent).toContain("Configured");
+
+    const stored = JSON.parse(localStorage.getItem("polstudio.agent-endpoints.v1") ?? "null");
+    expect(stored.openrouter).toMatchObject({ apiKey: "sk-or-test", model: "openai/gpt-test" });
+    expect(stored.local).toMatchObject({ endpoint: "http://localhost:1234/v1", model: "local-model", apiKey: "" });
+  });
 });

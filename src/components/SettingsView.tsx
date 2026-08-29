@@ -1,10 +1,12 @@
-import { AlertCircle, Check, FolderSearch, Monitor, Moon, RotateCcw, Sun, X } from "lucide-react";
+import { AlertCircle, Check, FolderSearch, LoaderCircle, Monitor, Moon, RefreshCw, RotateCcw, Sun, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { isTauri } from "../lib/persistence";
-import { chooseEnginePath, getEngineStatus, type ModelStatus, type VidfabStatus } from "../lib/runtime";
+import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type VidfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
-  loadEngineSettings, saveEngineSettings,
+  isEndpointProviderConfigured, loadAgentEndpointSettings, loadEngineSettings,
+  saveAgentEndpointSettings, saveEngineSettings,
+  type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
   type EnginePathField, type EnginePathId, type EngineSettings,
 } from "../lib/settings";
 import {
@@ -89,6 +91,88 @@ function AppearanceSetting() {
   );
 }
 
+const endpointProviders: { id: EndpointProviderId; label: string; detail: string; endpointPlaceholder: string; keyRequired: boolean }[] = [
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    detail: "Use models from openrouter.ai through its OpenAI-compatible API.",
+    endpointPlaceholder: "https://openrouter.ai/api/v1",
+    keyRequired: true,
+  },
+  {
+    id: "local",
+    label: "Local OpenAI-compatible",
+    detail: "Use a server on this computer or network that implements /models and /chat/completions.",
+    endpointPlaceholder: "http://localhost:1234/v1",
+    keyRequired: false,
+  },
+];
+
+function PromptLlmSetting({ desktop }: { desktop: boolean }) {
+  const [settings, setSettings] = useState<AgentEndpointSettings>(loadAgentEndpointSettings);
+  const [models, setModels] = useState<Record<EndpointProviderId, string[]>>({ openrouter: [], local: [] });
+  const [loading, setLoading] = useState<EndpointProviderId | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<EndpointProviderId, string>>>({});
+
+  const update = (id: EndpointProviderId, field: keyof EndpointProviderSettings, value: string) => {
+    setSettings((current) => {
+      const next = { ...current, [id]: { ...current[id], [field]: value } };
+      saveAgentEndpointSettings(next);
+      return next;
+    });
+  };
+
+  const discover = async (id: EndpointProviderId) => {
+    setLoading(id);
+    setErrors((current) => ({ ...current, [id]: undefined }));
+    try {
+      const found = await getAgentModels(id, settings[id]);
+      setModels((current) => ({ ...current, [id]: found }));
+      if (found.length === 0) setErrors((current) => ({ ...current, [id]: "The endpoint returned no models. You can still enter a model ID manually." }));
+    } catch (reason) {
+      setErrors((current) => ({ ...current, [id]: reason instanceof Error ? reason.message : String(reason) }));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return <div className="llm-settings">
+    <p className="llm-settings__intro">Configured providers appear in Pol’s prompt LLM list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
+    {endpointProviders.map((provider) => {
+      const value = settings[provider.id];
+      const configured = isEndpointProviderConfigured(provider.id, value);
+      const listId = `llm-models-${provider.id}`;
+      return <section className={`llm-provider${configured ? " llm-provider--configured" : ""}`} key={provider.id} aria-labelledby={`llm-${provider.id}-heading`}>
+        <header>
+          <div><h2 id={`llm-${provider.id}-heading`}>{provider.label}</h2><p>{provider.detail}</p></div>
+          <span>{configured ? <><Check size={14} /> Configured</> : "Not configured"}</span>
+        </header>
+        <div className="llm-provider__fields">
+          <label>
+            <span>Endpoint</span>
+            <input aria-label={`${provider.label} endpoint`} value={value.endpoint} spellCheck={false} placeholder={provider.endpointPlaceholder} onChange={(event) => update(provider.id, "endpoint", event.target.value)} />
+          </label>
+          <label>
+            <span>API key{!provider.keyRequired && <em>Optional</em>}</span>
+            <input type="password" aria-label={`${provider.label} API key`} value={value.apiKey} autoComplete="off" spellCheck={false} placeholder={provider.keyRequired ? "Required" : "Leave blank if the server does not require one"} onChange={(event) => update(provider.id, "apiKey", event.target.value)} />
+          </label>
+          <label className="llm-provider__model">
+            <span>Model</span>
+            <div>
+              <input list={listId} aria-label={`${provider.label} model`} value={value.model} spellCheck={false} placeholder="Select or enter a model ID" onChange={(event) => update(provider.id, "model", event.target.value)} />
+              <datalist id={listId}>{models[provider.id].map((model) => <option value={model} key={model} />)}</datalist>
+              <button type="button" className="secondary-button" disabled={!desktop || !value.endpoint.trim() || loading === provider.id} onClick={() => void discover(provider.id)} title={desktop ? "Load models from this endpoint" : "Model discovery is available in the desktop app"}>
+                {loading === provider.id ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} Load models
+              </button>
+            </div>
+          </label>
+        </div>
+        {errors[provider.id] && <p className="llm-provider__error" role="alert">{errors[provider.id]}</p>}
+      </section>;
+    })}
+  </div>;
+}
+
 /* Two things live on this screen and they have nothing to do with each other:
    how the app looks, and where this computer keeps the model files. Stacked,
    they made a screen taller than the window — five path fields is a long list —
@@ -96,6 +180,7 @@ function AppearanceSetting() {
    each, and neither scrolls on an ordinary window. */
 const TABS = [
   { id: "engine", label: "Video engine" },
+  { id: "llms", label: "Prompt LLMs" },
   { id: "appearance", label: "Appearance" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -195,6 +280,15 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="settings-view__body">
+          {tab === "llms" && <section
+            className="settings-section"
+            id="settings-panel-llms"
+            role="tabpanel"
+            aria-labelledby="settings-tab-llms"
+          >
+            <PromptLlmSetting desktop={desktop} />
+          </section>}
+
           {tab === "appearance" && <section
             className="settings-section"
             id="settings-panel-appearance"

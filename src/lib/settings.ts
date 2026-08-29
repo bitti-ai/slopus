@@ -106,6 +106,80 @@ export function withEngineSettings(config: ProjectConfig): ProjectConfig {
   };
 }
 
+export type EndpointProviderId = "openrouter" | "local";
+
+export interface EndpointProviderSettings {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+}
+
+export type AgentEndpointSettings = Record<EndpointProviderId, EndpointProviderSettings>;
+
+export const EMPTY_AGENT_ENDPOINT_SETTINGS: AgentEndpointSettings = {
+  openrouter: { endpoint: "https://openrouter.ai/api/v1", apiKey: "", model: "" },
+  local: { endpoint: "", apiKey: "", model: "" },
+};
+
+const AGENT_ENDPOINTS_KEY = "polstudio.agent-endpoints.v1";
+
+export function loadAgentEndpointSettings(): AgentEndpointSettings {
+  const fallback = {
+    openrouter: { ...EMPTY_AGENT_ENDPOINT_SETTINGS.openrouter },
+    local: { ...EMPTY_AGENT_ENDPOINT_SETTINGS.local },
+  };
+  try {
+    const raw = localStorage.getItem(AGENT_ENDPOINTS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<Record<EndpointProviderId, Partial<Record<keyof EndpointProviderSettings, unknown>>>>;
+    for (const id of ["openrouter", "local"] as const) {
+      for (const field of ["endpoint", "apiKey", "model"] as const) {
+        const value = parsed?.[id]?.[field];
+        if (typeof value === "string") fallback[id][field] = value;
+      }
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveAgentEndpointSettings(settings: AgentEndpointSettings): void {
+  try {
+    localStorage.setItem(AGENT_ENDPOINTS_KEY, JSON.stringify(settings));
+  } catch {
+    /* Never fall back to putting machine credentials in a project file. */
+  }
+}
+
+export function endpointProviderSetting(settings: EndpointProviderSettings): ProviderSetting {
+  const options: ProviderSetting["options"] = { endpoint: settings.endpoint.trim() };
+  if (settings.apiKey.trim()) options.apiKey = settings.apiKey.trim();
+  return { enabled: true, model: settings.model.trim() || null, options };
+}
+
+export function isEndpointProviderConfigured(id: EndpointProviderId, settings: EndpointProviderSettings): boolean {
+  return Boolean(settings.endpoint.trim() && settings.model.trim() && (id === "local" || settings.apiKey.trim()));
+}
+
+/** These settings exist only on an IPC request. Rust removes them before
+ * validating, prompting with, or saving the project. */
+export function agentEndpointProviderSettings(): Partial<Record<EndpointProviderId, ProviderSetting>> {
+  const settings = loadAgentEndpointSettings();
+  return Object.fromEntries(
+    (["openrouter", "local"] as const)
+      .filter((id) => isEndpointProviderConfigured(id, settings[id]))
+      .map((id) => [id, endpointProviderSetting(settings[id])]),
+  );
+}
+
+export function withAgentEndpointSettings(config: ProjectConfig): ProjectConfig {
+  return {
+    ...config,
+    providerSettings: { ...config.providerSettings, ...agentEndpointProviderSettings() },
+  };
+}
+
 /* --- Agent provider -------------------------------------------------------- */
 
 /* Which coding agent drives Pol is a property of the computer — it depends on
@@ -118,7 +192,7 @@ const AGENT_PROVIDER_KEY = "polstudio.agent-provider.v1";
 export function loadAgentProvider(): ProviderId | null {
   try {
     const value = localStorage.getItem(AGENT_PROVIDER_KEY);
-    return value === "claude" || value === "codex" ? value : null;
+    return value === "claude" || value === "codex" || value === "openrouter" || value === "local" ? value : null;
   } catch {
     return null;
   }

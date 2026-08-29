@@ -395,6 +395,8 @@ fn action_contains_dialogue(action: &str) -> bool {
 pub enum ProviderId {
     Claude,
     Codex,
+    Openrouter,
+    Local,
 }
 
 impl ProviderId {
@@ -402,7 +404,22 @@ impl ProviderId {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Openrouter => "openrouter",
+            Self::Local => "local",
         }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude Code",
+            Self::Codex => "Codex",
+            Self::Openrouter => "OpenRouter",
+            Self::Local => "Local OpenAI-compatible",
+        }
+    }
+
+    fn is_compatible_endpoint(self) -> bool {
+        matches!(self, Self::Openrouter | Self::Local)
     }
 }
 
@@ -505,17 +522,30 @@ impl AgentRuntime {
         }
         let folder = confined_project_root(Path::new(&request.folder_path))?;
         let expected_project_id = request.config.id.clone();
-        let config = validate_and_normalize_config(request.config)?;
-        let provider = provider_for(request.provider);
-        let setting = config
+        let setting = request
+            .config
             .provider_settings
             .get(request.provider.key())
             .cloned();
+        // Endpoint credentials are machine settings merged into this one IPC
+        // request. They are transport configuration, not project content: do
+        // not show them to the model or let a mutation persist them.
+        let project_config = without_endpoint_provider_settings(request.config.clone());
+        let config = validate_and_normalize_config(project_config)?;
         if setting.as_ref().is_some_and(|value| !value.enabled) {
-            return Err(format!("{} is disabled in this project.", provider.label()));
+            return Err(format!("{} is disabled.", request.provider.label()));
         }
-        let executable = discover_executable(provider.executable_name(), setting.as_ref())
-            .ok_or_else(|| format!("{} is not installed or is not on PATH.", provider.label()))?;
+        if request.provider.is_compatible_endpoint() {
+            validate_compatible_setting(request.provider, setting.as_ref())?;
+        }
+        let cli_provider = cli_provider_for(request.provider);
+        let executable = cli_provider
+            .map(|provider| {
+                discover_executable(provider.executable_name(), setting.as_ref()).ok_or_else(|| {
+                    format!("{} is not installed or is not on PATH.", provider.label())
+                })
+            })
+            .transpose()?;
         let timeout = setting
             .as_ref()
             .and_then(|value| option_number(value, "timeoutSeconds"))
@@ -534,20 +564,34 @@ impl AgentRuntime {
             let mut total_retries = 0;
             let mut previous_failure: Option<String> = None;
             let (result, mut next) = loop {
-                let spec = provider.command_spec(
-                    &folder,
-                    &executable,
-                    &config,
-                    &attempt_prompt,
-                    setting.as_ref(),
-                )?;
-                let (events, output) = run_subprocess(
-                    spec,
-                    request.provider,
-                    cancel.clone(),
-                    Duration::from_secs(timeout),
-                    &on_event,
-                )?;
+                let (events, output) = if let (Some(provider), Some(executable)) =
+                    (cli_provider, executable.as_deref())
+                {
+                    let spec = provider.command_spec(
+                        &folder,
+                        executable,
+                        &config,
+                        &attempt_prompt,
+                        setting.as_ref(),
+                    )?;
+                    run_subprocess(
+                        spec,
+                        request.provider,
+                        cancel.clone(),
+                        Duration::from_secs(timeout),
+                        &on_event,
+                    )?
+                } else {
+                    run_compatible_endpoint(
+                        request.provider,
+                        &config,
+                        &attempt_prompt,
+                        setting.as_ref().expect("compatible setting validated"),
+                        cancel.clone(),
+                        Duration::from_secs(timeout),
+                        &on_event,
+                    )?
+                };
                 all_events.extend(events);
 
                 let checked = parse_turn_result(&output).and_then(|result| {
@@ -631,6 +675,12 @@ impl AgentRuntime {
     }
 }
 
+fn without_endpoint_provider_settings(mut config: ProjectConfig) -> ProjectConfig {
+    config.provider_settings.remove("openrouter");
+    config.provider_settings.remove("local");
+    config
+}
+
 /// The last answer the probe sweep gave, kept so it is not paid for twice.
 ///
 /// One sweep is four child processes — a version check and an auth check per
@@ -696,19 +746,35 @@ where
 }
 
 pub fn provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
-    cached_or_probe(
+    let mut statuses = cached_or_probe(
         &PROVIDER_PROBE_CACHE,
         provider_probe_key(settings),
         PROVIDER_PROBE_TTL,
         || probe_provider_statuses(settings),
-    )
+    );
+    for id in [ProviderId::Openrouter, ProviderId::Local] {
+        if let Some(setting) = settings
+            .get(id.key())
+            .filter(|setting| compatible_setting_is_configured(id, setting))
+        {
+            statuses.push(ProviderStatus {
+                id,
+                label: id.label(),
+                state: "ready",
+                executable: None,
+                version: setting.model.clone(),
+                detail: format!("Configured to use {}.", setting.model.as_deref().unwrap_or("the selected model")),
+            });
+        }
+    }
+    statuses
 }
 
 fn probe_provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
     [ProviderId::Claude, ProviderId::Codex]
         .into_iter()
         .map(|id| {
-            let provider = provider_for(id);
+            let provider = cli_provider_for(id).expect("CLI provider id");
             let setting = settings.get(id.key());
             if setting.is_some_and(|value| !value.enabled) {
                 return ProviderStatus {
@@ -816,12 +882,13 @@ trait AgentProvider {
 struct ClaudeProvider;
 struct CodexProvider;
 
-fn provider_for(id: ProviderId) -> &'static dyn AgentProvider {
+fn cli_provider_for(id: ProviderId) -> Option<&'static dyn AgentProvider> {
     static CLAUDE: ClaudeProvider = ClaudeProvider;
     static CODEX: CodexProvider = CodexProvider;
     match id {
-        ProviderId::Claude => &CLAUDE,
-        ProviderId::Codex => &CODEX,
+        ProviderId::Claude => Some(&CLAUDE),
+        ProviderId::Codex => Some(&CODEX),
+        ProviderId::Openrouter | ProviderId::Local => None,
     }
 }
 
@@ -1089,6 +1156,192 @@ fn run_subprocess(
     events.push(completed);
     let output = extract_provider_output(&lines)?;
     Ok((events, output))
+}
+
+fn compatible_setting_is_configured(id: ProviderId, setting: &ProviderSetting) -> bool {
+    setting.enabled
+        && setting
+            .model
+            .as_deref()
+            .is_some_and(|model| !model.trim().is_empty())
+        && option_string(setting, "endpoint").is_some_and(|value| !value.trim().is_empty())
+        && (id != ProviderId::Openrouter
+            || option_string(setting, "apiKey").is_some_and(|value| !value.trim().is_empty()))
+}
+
+fn validate_compatible_setting(
+    id: ProviderId,
+    setting: Option<&ProviderSetting>,
+) -> Result<(), String> {
+    let setting = setting.ok_or_else(|| format!("{} is not configured in Settings.", id.label()))?;
+    if !compatible_setting_is_configured(id, setting) {
+        let needed = if id == ProviderId::Openrouter {
+            "an endpoint, API key, and model"
+        } else {
+            "an endpoint and model"
+        };
+        return Err(format!("{} needs {needed} in Settings.", id.label()));
+    }
+    compatible_resource_url(setting, "chat/completions")?;
+    Ok(())
+}
+
+fn compatible_resource_url(setting: &ProviderSetting, resource: &str) -> Result<String, String> {
+    let endpoint = option_string(setting, "endpoint")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "The OpenAI-compatible endpoint is empty.".to_string())?;
+    let base = endpoint
+        .trim_end_matches('/')
+        .strip_suffix("/chat/completions")
+        .unwrap_or(endpoint.trim_end_matches('/'));
+    let url = format!("{base}/{resource}");
+    let parsed = reqwest::Url::parse(&url)
+        .map_err(|error| format!("The OpenAI-compatible endpoint is not a valid URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("The OpenAI-compatible endpoint must use http or https.".into());
+    }
+    Ok(url)
+}
+
+fn compatible_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .user_agent("PolStudio/0.1")
+        .build()
+        .map_err(|error| format!("Could not prepare the OpenAI-compatible client: {error}"))
+}
+
+fn with_compatible_auth(
+    request: reqwest::blocking::RequestBuilder,
+    setting: &ProviderSetting,
+) -> reqwest::blocking::RequestBuilder {
+    match option_string(setting, "apiKey").map(str::trim).filter(|value| !value.is_empty()) {
+        Some(key) => request.bearer_auth(key),
+        None => request,
+    }
+}
+
+fn compatible_http_error(label: &str, status: reqwest::StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| value.pointer("/error/message").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_else(|| body.trim().chars().take(800).collect());
+    if detail.is_empty() {
+        format!("{label} returned HTTP {status}.")
+    } else {
+        format!("{label} returned HTTP {status}: {detail}")
+    }
+}
+
+fn compatible_message_content(value: &Value) -> Option<String> {
+    let content = value.pointer("/choices/0/message/content")?;
+    if let Some(text) = content.as_str() {
+        return Some(text.to_string());
+    }
+    content.as_array().and_then(|items| {
+        let text = items
+            .iter()
+            .filter_map(|item| {
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .or_else(|| item.get("content").and_then(Value::as_str))
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        (!text.is_empty()).then_some(text)
+    })
+}
+
+fn compatible_chat_body(
+    config: &ProjectConfig,
+    prompt: &str,
+    model: &str,
+) -> Result<Value, String> {
+    Ok(serde_json::json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content": full_agent_system_prompt() },
+            { "role": "user", "content": context_prompt(config, prompt)? }
+        ],
+        "temperature": 0
+    }))
+}
+
+fn run_compatible_endpoint(
+    provider: ProviderId,
+    config: &ProjectConfig,
+    prompt: &str,
+    setting: &ProviderSetting,
+    cancel: Arc<AtomicBool>,
+    timeout: Duration,
+    on_event: &dyn Fn(&AgentEvent),
+) -> Result<(Vec<AgentEvent>, String), String> {
+    if cancel.load(Ordering::Acquire) {
+        return Err("Agent turn cancelled.".into());
+    }
+    let started = AgentEvent::Started { provider };
+    on_event(&started);
+    let mut events = vec![started];
+    let url = compatible_resource_url(setting, "chat/completions")?;
+    let model = setting.model.as_deref().expect("compatible setting validated");
+    let body = compatible_chat_body(config, prompt, model)?;
+    let request = compatible_client(timeout)?.post(url).json(&body);
+    let response = with_compatible_auth(request, setting)
+        .send()
+        .map_err(|error| format!("Could not reach {}: {error}", provider.label()))?;
+    let status = response.status();
+    let response_body = response
+        .text()
+        .map_err(|error| format!("Could not read {}'s response: {error}", provider.label()))?;
+    if !status.is_success() {
+        return Err(compatible_http_error(provider.label(), status, &response_body));
+    }
+    if cancel.load(Ordering::Acquire) {
+        return Err("Agent turn cancelled.".into());
+    }
+    let value: Value = serde_json::from_str(&response_body)
+        .map_err(|error| format!("{} returned invalid JSON: {error}", provider.label()))?;
+    let output = compatible_message_content(&value)
+        .ok_or_else(|| format!("{} returned no assistant message content.", provider.label()))?;
+    let message = AgentEvent::Message { text: output.clone() };
+    on_event(&message);
+    events.push(message);
+    let completed = AgentEvent::Completed;
+    on_event(&completed);
+    events.push(completed);
+    Ok((events, output))
+}
+
+pub fn compatible_models(provider: ProviderId, setting: &ProviderSetting) -> Result<Vec<String>, String> {
+    if !provider.is_compatible_endpoint() {
+        return Err("Model discovery is only available for endpoint providers.".into());
+    }
+    let url = compatible_resource_url(setting, "models")?;
+    let request = compatible_client(Duration::from_secs(20))?.get(url);
+    let response = with_compatible_auth(request, setting)
+        .send()
+        .map_err(|error| format!("Could not reach {}: {error}", provider.label()))?;
+    let status = response.status();
+    let response_body = response
+        .text()
+        .map_err(|error| format!("Could not read {}'s model list: {error}", provider.label()))?;
+    if !status.is_success() {
+        return Err(compatible_http_error(provider.label(), status, &response_body));
+    }
+    let value: Value = serde_json::from_str(&response_body)
+        .map_err(|error| format!("{} returned an invalid model list: {error}", provider.label()))?;
+    let mut models = value
+        .get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|model| model.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+    Ok(models)
 }
 
 /// The reason a provider gave for failing, as it reported it on stdout.
@@ -1828,5 +2081,87 @@ mod tests {
 
         assert_eq!(status.state, "ready");
         assert_eq!(probes, vec![vec!["--version"], vec!["auth", "status"]]);
+    }
+
+    fn endpoint_setting(endpoint: &str, api_key: &str, model: Option<&str>) -> ProviderSetting {
+        let mut options = BTreeMap::new();
+        options.insert(
+            "endpoint".into(),
+            crate::ProviderOption::String(endpoint.into()),
+        );
+        if !api_key.is_empty() {
+            options.insert(
+                "apiKey".into(),
+                crate::ProviderOption::String(api_key.into()),
+            );
+        }
+        ProviderSetting {
+            enabled: true,
+            model: model.map(str::to_string),
+            options,
+        }
+    }
+
+    #[test]
+    fn endpoint_providers_require_complete_settings_and_use_openai_resource_paths() {
+        let openrouter = endpoint_setting(
+            "https://openrouter.ai/api/v1/",
+            "sk-or-test",
+            Some("openai/gpt-test"),
+        );
+        assert!(compatible_setting_is_configured(
+            ProviderId::Openrouter,
+            &openrouter
+        ));
+        assert_eq!(
+            compatible_resource_url(&openrouter, "chat/completions").unwrap(),
+            "https://openrouter.ai/api/v1/chat/completions"
+        );
+        assert_eq!(
+            compatible_resource_url(&openrouter, "models").unwrap(),
+            "https://openrouter.ai/api/v1/models"
+        );
+
+        let no_key = endpoint_setting("https://openrouter.ai/api/v1", "", Some("model"));
+        assert!(!compatible_setting_is_configured(
+            ProviderId::Openrouter,
+            &no_key
+        ));
+        assert!(compatible_setting_is_configured(ProviderId::Local, &no_key));
+    }
+
+    #[test]
+    fn openai_compatible_responses_expose_assistant_content() {
+        let value = serde_json::json!({
+            "choices": [{ "message": { "role": "assistant", "content": "{\"kind\":\"answer\",\"content\":\"Done\"}" } }]
+        });
+        assert_eq!(
+            compatible_message_content(&value).unwrap(),
+            r#"{"kind":"answer","content":"Done"}"#
+        );
+
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let body = compatible_chat_body(&config, "Create a scene", "test-model").unwrap();
+        let system = body.pointer("/messages/0/content").and_then(Value::as_str).unwrap();
+        assert!(system.contains("Look is the scene-wide visualStyle setting"));
+        assert!(system.contains("Music is generationJob.music"));
+    }
+
+    #[test]
+    fn endpoint_credentials_are_removed_from_project_context() {
+        let mut config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        config.provider_settings.insert(
+            "openrouter".into(),
+            endpoint_setting(
+                "https://openrouter.ai/api/v1",
+                "secret-key",
+                Some("openai/gpt-test"),
+            ),
+        );
+        let clean = without_endpoint_provider_settings(config);
+        assert!(!clean.provider_settings.contains_key("openrouter"));
+        assert!(!serde_json::to_string(&clean).unwrap().contains("secret-key"));
     }
 }
