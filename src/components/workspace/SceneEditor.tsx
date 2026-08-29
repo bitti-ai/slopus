@@ -29,6 +29,7 @@ import {
   SHOT_TAG_GROUPS,
   type ShotTagSelection,
 } from "../../lib/shot-tags";
+import { CommittedNumberInput } from "./CommittedNumberInput";
 
 /** What a reference chip carries when it is dragged into a shot's line. A
  *  private type, so a file dragged in from the desktop is never mistaken for
@@ -330,34 +331,28 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
       <div className="scene-settings__numbers">
         <label className="scene-settings__field">
           <span>Steps</span>
-          <input
-            type="number"
-            min={2}
-            max={MAX_GENERATION_STEPS}
+          <CommittedNumberInput
+            minimum={2}
+            maximum={MAX_GENERATION_STEPS}
             step={1}
             value={sceneGenerationSteps(job)}
+            integer
             disabled={disabled}
             aria-label="Generation step count"
-            onChange={(event) => {
-              const value = event.currentTarget.valueAsNumber;
-              if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) onChange({ steps: value });
-            }}
+            onCommit={(value) => onChange({ steps: value })}
           />
         </label>
         <label className="scene-settings__field">
           <span>Seed</span>
-          <input
-            type="number"
-            min={-1}
-            max={Number.MAX_SAFE_INTEGER}
+          <CommittedNumberInput
+            minimum={-1}
+            maximum={Number.MAX_SAFE_INTEGER}
             step={1}
             value={sceneGenerationSeed(job)}
+            integer
             disabled={disabled}
             aria-label="Generation seed"
-            onChange={(event) => {
-              const value = event.currentTarget.valueAsNumber;
-              if (Number.isSafeInteger(value) && value >= -1) onChange({ seed: value });
-            }}
+            onCommit={(value) => onChange({ seed: value })}
           />
           <small>Use -1 for a random seed.</small>
         </label>
