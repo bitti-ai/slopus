@@ -16,14 +16,14 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 
-const DLL_FILE_NAME: &str = "vidfab_c.dll";
+const DLL_FILE_NAME: &str = "vidfab.dll";
 /// Where the packaged build puts the runtime while it is being developed. Used
 /// only when the DLL is NOT beside the executable, so a `cargo run` out of the
 /// source tree still finds it.
-const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\vidfab\build-shared\Release\vidfab_c.dll";
+const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\vidfab\build\Release\vidfab.dll";
 
 /// The runtime ships beside PolStudio.exe and is loaded from there — there is
-/// no path for anyone to configure and no way for one to go stale. vidfab_c.dll
+/// no path for anyone to configure and no way for one to go stale. vidfab.dll
 /// is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its own dependencies sit in
 /// that folder too, which is the same reason a subfolder never bought anything.
 pub fn default_dll_path() -> PathBuf {
@@ -928,8 +928,8 @@ mod ffi {
 
     #[cfg(windows)]
     unsafe fn load_library(path: &Path) -> Result<Library, libloading::Error> {
-        // LOAD_WITH_ALTERED_SEARCH_PATH makes Windows resolve sibling vidfab
-        // modules relative to this absolute DLL path instead of the host exe.
+        // LOAD_WITH_ALTERED_SEARCH_PATH makes Windows resolve the runtime's
+        // dynamic dependencies relative to this absolute path instead of the host exe.
         const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x0000_0008;
         unsafe {
             libloading::os::windows::Library::load_with_flags(path, LOAD_WITH_ALTERED_SEARCH_PATH)
@@ -965,7 +965,7 @@ mod tests {
                 model: None,
                 options: BTreeMap::from([(
                     "dllPath".into(),
-                    ProviderOption::String("Z:/definitely-absent/vidfab_c.dll".into()),
+                    ProviderOption::String("Z:/definitely-absent/vidfab.dll".into()),
                 )]),
             },
         );
