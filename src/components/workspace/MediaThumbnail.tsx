@@ -23,6 +23,7 @@ import type { ProjectAsset } from "../../lib/project";
  * a hardware decoder, and one still frame is all this needs. */
 
 const THUMB_WIDTH = 320;
+const DEFAULT_JPEG_QUALITY = 0.72;
 /* Frame zero of a shot that fades in is a black rectangle, which reads as a
    broken thumbnail. Half a second in is past the fade and still cheap to seek. */
 const POSTER_TIME_SECONDS = 0.5;
@@ -64,7 +65,7 @@ function cachePoster(key: string, poster: string) {
   POSTER_CACHE.set(key, poster);
 }
 
-function drawPoster(source: CanvasImageSource, width: number, height: number): string {
+function drawPoster(source: CanvasImageSource, width: number, height: number, jpegQuality: number): string {
   if (!width || !height) throw new Error("The frame has no size.");
   const canvas = document.createElement("canvas");
   const scale = Math.min(1, THUMB_WIDTH / width);
@@ -73,7 +74,7 @@ function drawPoster(source: CanvasImageSource, width: number, height: number): s
   const context = canvas.getContext("2d");
   if (!context) throw new Error("This computer gave no 2D canvas.");
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.72);
+  return canvas.toDataURL("image/jpeg", jpegQuality);
 }
 
 const settled = (element: HTMLMediaElement, event: string) =>
@@ -97,9 +98,9 @@ const orGiveUp = (promise: Promise<void>, limitMs: number) =>
    a frame the decoder will not hand over. The length and size were already read
    by then, and throwing them away over a missing picture would leave the asset
    unmeasured for a reason that has nothing to do with measuring it. */
-const tryDraw = (source: CanvasImageSource, width: number, height: number): string | null => {
+const tryDraw = (source: CanvasImageSource, width: number, height: number, jpegQuality: number): string | null => {
   try {
-    return drawPoster(source, width, height);
+    return drawPoster(source, width, height, jpegQuality);
   } catch {
     return null;
   }
@@ -117,7 +118,7 @@ const release = (element: HTMLMediaElement) => {
   }
 };
 
-async function videoPoster(url: string, posterTimeSeconds: number): Promise<{ poster: string | null; measured: MeasuredMedia }> {
+async function videoPoster(url: string, posterTimeSeconds: number, jpegQuality: number): Promise<{ poster: string | null; measured: MeasuredMedia }> {
   const video = document.createElement("video");
   video.muted = true;
   video.preload = "auto";
@@ -141,20 +142,20 @@ async function videoPoster(url: string, posterTimeSeconds: number): Promise<{ po
     video.currentTime = target;
     await orGiveUp(seeked, SEEK_LIMIT_MS);
   }
-  const poster = tryDraw(video, video.videoWidth, video.videoHeight);
+  const poster = tryDraw(video, video.videoWidth, video.videoHeight, jpegQuality);
   // Detach the source so the decoder and the blob are released now.
   release(video);
   return { poster, measured };
 }
 
-async function imagePoster(url: string): Promise<{ poster: string | null; measured: MeasuredMedia }> {
+async function imagePoster(url: string, jpegQuality: number): Promise<{ poster: string | null; measured: MeasuredMedia }> {
   const image = new Image();
   image.src = url;
   await image.decode();
   // A still has a size and no length. Leaving durationMs null is the whole
   // point: how long a still is on screen is the cut's decision, not the file's.
   return {
-    poster: tryDraw(image, image.naturalWidth, image.naturalHeight),
+    poster: tryDraw(image, image.naturalWidth, image.naturalHeight, jpegQuality),
     measured: { durationMs: null, width: pixelsOf(image.naturalWidth), height: pixelsOf(image.naturalHeight) },
   };
 }
@@ -177,7 +178,7 @@ async function measureAudio(url: string): Promise<MeasuredMedia> {
 const wantsMeasuring = (asset: ProjectAsset) =>
   asset.kind === "image" ? !asset.width || !asset.height : !asset.durationMs;
 
-export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS }: {
+export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS, jpegQuality = DEFAULT_JPEG_QUALITY }: {
   folderPath: string;
   asset: ProjectAsset;
   /** Called once with whatever the decode could measure, so the project can
@@ -187,9 +188,11 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
   /** Video time to draw. Media cards avoid fade-in black; project covers use
    *  the exact first source frame present in the edit. */
   posterTimeSeconds?: number;
+  /** Project covers use a less compressed JPEG than compact media cards. */
+  jpegQuality?: number;
 }) {
   const fileKey = `${folderPath}::${asset.sourcePath ?? asset.relativePath}`;
-  const posterKey = `${fileKey}::${Math.max(0, posterTimeSeconds)}`;
+  const posterKey = `${fileKey}::${Math.max(0, posterTimeSeconds)}::${jpegQuality}`;
   const [poster, setPoster] = useState<string | null>(() => POSTER_CACHE.get(posterKey) ?? null);
   const [failed, setFailed] = useState(false);
   /* Held in a ref because the parent passes a fresh closure on every render,
@@ -224,7 +227,7 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
         if (asset.kind === "audio") {
           measured = await measureAudio(url);
         } else {
-          const value = asset.kind === "image" ? await imagePoster(url) : await videoPoster(url, posterTimeSeconds);
+          const value = asset.kind === "image" ? await imagePoster(url, jpegQuality) : await videoPoster(url, posterTimeSeconds, jpegQuality);
           measured = value.measured;
           // A file that opened but would not draw is still a file that could
           // not be previewed, and the panel says so — after taking what it did
@@ -244,7 +247,7 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
       }
     })();
     return () => { live = false; };
-  }, [posterKey, fileKey, folderPath, asset.relativePath, asset.sourcePath, asset.mimeType, asset.kind, posterTimeSeconds, needsPoster, needsMeasuring]);
+  }, [posterKey, fileKey, folderPath, asset.relativePath, asset.sourcePath, asset.mimeType, asset.kind, posterTimeSeconds, jpegQuality, needsPoster, needsMeasuring]);
 
   if (poster) {
     return <span className="media-thumb media-thumb--poster">

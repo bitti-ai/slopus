@@ -79,6 +79,7 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
             folderPath={project.folderPath}
             asset={firstAsset}
             posterTimeSeconds={firstClip!.sourceStartMs / 1000}
+            jpegQuality={0.9}
           />}
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
           <span className="project-card__quality">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</span>
