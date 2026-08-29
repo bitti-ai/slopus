@@ -12,6 +12,7 @@ import {
   clipTransform,
   clipTransition,
   generationAssetId,
+  roundClipTransform,
   sceneDurationSeconds,
   type GenerationJob,
   type ProjectAsset,
@@ -280,7 +281,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     if (!selected || !selectedTransform || !Number.isFinite(value)) return;
     const limits = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
     const [minimum, maximum] = limits[key];
-    updateClip(selected.id, { transform: { ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) } });
+    updateClip(selected.id, { transform: roundClipTransform({ ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) }) });
   };
   const updateLook = (key: keyof NonNullable<TimelineClip["look"]>, value: number) => {
     if (!selected || !selectedLook || !Number.isFinite(value)) return;
@@ -833,7 +834,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 selectedClipId={selectedId}
                 transformEditingDisabled={selectedTrack?.locked ?? false}
                 onSelectClip={setSelectedId}
-                onTransformChange={(clipId, transform) => updateClip(clipId, { transform })}
+                onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) })}
               />
               : <div className="program-empty">
                 <span>Drop a file from Media onto a track below, or generate a scene, and it plays here.</span>

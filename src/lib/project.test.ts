@@ -23,6 +23,7 @@ import {
   projectNameFromPrompt,
   projectReferenceSchema,
   resolutionSchema,
+  roundClipTransform,
   seedProjectWorkspace,
   LEGACY_RESOLUTIONS,
   PROJECT_RESOLUTIONS,
@@ -77,6 +78,11 @@ const imageReference = (over: Partial<ProjectReference> = {}): ProjectReference 
 });
 
 describe("project schema", () => {
+  it("rounds editable clip transforms to two decimal places", () => {
+    expect(roundClipTransform({ scale: 123.4567, rotation: -8.7654, positionX: 0.005, positionY: -0.004 }))
+      .toEqual({ scale: 123.46, rotation: -8.77, positionX: 0.01, positionY: 0 });
+  });
+
   it("creates a versioned, validated project", () => {
     const project = createProjectConfig({
       name: "Launch film",
