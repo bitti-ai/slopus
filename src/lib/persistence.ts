@@ -47,6 +47,11 @@ function rememberPath(path: string): void {
   localStorage.setItem(RECENTS_KEY, JSON.stringify([path, ...paths].slice(0, 12)));
 }
 
+function forgetPath(path: string): void {
+  const paths = readJson<string[]>(RECENTS_KEY, []).filter((item) => item !== path);
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(paths));
+}
+
 function webSeedProjects(): ProjectRecord[] {
   const now = new Date();
   const seeds = [
@@ -259,5 +264,19 @@ export async function saveProject(record: ProjectRecord): Promise<ProjectRecord>
   }
   rememberPath(next.folderPath);
   return next;
+}
+
+/** Permanently removes one confirmed project. The desktop command repeats the
+ * identity and folder checks at the filesystem boundary before deleting; the
+ * browser preview removes only its localStorage-backed stand-in. */
+export async function deleteProject(record: ProjectRecord): Promise<void> {
+  if (isTauri()) {
+    await invoke("delete_project", { folderPath: record.folderPath, projectId: record.config.id });
+  } else {
+    const projects = getWebProjects().projects.filter((project) =>
+      project.config.id !== record.config.id || project.folderPath !== record.folderPath);
+    localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify(projects));
+  }
+  forgetPath(record.folderPath);
 }
 

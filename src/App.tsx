@@ -3,12 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, Plus, Search, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brand } from "./components/Brand";
+import { DeleteProjectDialog } from "./components/DeleteProjectDialog";
 import { ExitGuardDialog, type OngoingGeneration } from "./components/ExitGuardDialog";
 import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
-import { chooseAndOpenProject, createProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
+import { chooseAndOpenProject, createProject, deleteProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
 import { getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
@@ -31,6 +32,8 @@ function App() {
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
   const [error, setError] = useState<LibraryError | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectRecord | null>(null);
+  const [deletingProject, setDeletingProject] = useState(false);
   /* Settings is an overlay rather than a view of its own so opening it from
      inside a project cannot unmount the editor and throw away unsaved edits.
      Closing it bumps `settingsRevision`, which is what tells an open project to
@@ -164,6 +167,22 @@ function App() {
     }
   };
 
+  const confirmProjectDeletion = async () => {
+    if (!projectToDelete || deletingProject) return;
+    const target = projectToDelete;
+    setDeletingProject(true);
+    setError(null);
+    try {
+      await deleteProject(target);
+      setProjects((current) => current.filter((project) => project.config.id !== target.config.id || project.folderPath !== target.folderPath));
+      setProjectToDelete(null);
+    } catch (reason) {
+      setError({ title: "Couldn’t delete that project", detail: describe(reason) });
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
   /* Anchored bottom-left in every view, project editor included: the engine
      paths it holds are what makes generation work at all, and finding out they
      are wrong happens inside a project, not in the library. */
@@ -210,7 +229,7 @@ function App() {
             {loading ? (
               <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
             ) : filteredProjects.length ? (
-              <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} />)}</div>
+              <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} onDelete={setProjectToDelete} />)}</div>
             ) : query ? (
               <div className="library-empty">
                 <FolderOpen size={28} />
@@ -233,6 +252,7 @@ function App() {
       {settingsLauncher}
       {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}
       {exitGuard}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
