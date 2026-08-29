@@ -889,7 +889,6 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={transportBlockedBy ?? "Step forward one second"} disabled={transportBlockedBy !== null}><SkipForward size={18} /></button>
           </div>
           <div className="timeline-tools">
-            <button onClick={addScene} title="Draft a new scene"><Plus size={16} /> Add</button>
             <button onClick={splitSelected} disabled={splitBlockedBy !== null} title={splitBlockedBy ?? "Split at playhead"}><Scissors size={16} /> Split</button>
             <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} title={duplicateBlockedBy ?? "Duplicate clip"}><Copy size={16} /> Duplicate</button>
             <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
