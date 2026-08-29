@@ -77,11 +77,6 @@
   white-space: nowrap;
 }
 
-/* Match the primary action height so the row reads as one band of controls. */
-.project-topbar__actions .secondary-button {
-  min-height: var(--control-lg);
-}
-
 .project-topbar__soon {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line);
@@ -284,7 +279,7 @@
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--button-primary-border);
+  border: 1px solid var(--dock-send-border);
   border-radius: var(--radius-sm);
   color: var(--on-accent);
   background: var(--accent-fill);
