@@ -247,8 +247,12 @@
 
 .scene-rule__settings-button {
   flex: 0 0 auto;
+  width: var(--control-sm);
+  height: var(--control-sm);
   min-height: var(--control-sm);
-  white-space: nowrap;
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 
 .scene-rule__length {
@@ -296,7 +300,6 @@
 .scene-rule__generate {
   width: auto;
   flex: 0 0 auto;
-  min-height: var(--control-sm);
   white-space: nowrap;
 }
 

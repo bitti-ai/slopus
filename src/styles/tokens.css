@@ -218,6 +218,13 @@
   --segment-active-bg: #1b2130;
   --segment-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 
+  /* --- Filled neutral -------------------------------------------------------
+     A row's own verb: louder than a ghost control, quieter than the one blue
+     action on the surface. Without this level a demoted Generate is
+     indistinguishable from the Settings button beside it. */
+  --button-fill-bg: #252b36;           /* --text-primary on it is 12.6:1 */
+  --button-fill-hover: #2d3442;
+
   /* --- Progress ----------------------------------------------------------- */
   --track: #20252e;
   --progress-fill: #9aa2b1;            /* 6.0:1 on --track */
@@ -351,6 +358,9 @@
     --segment-active-bg: #ffffff;
     --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
 
+    --button-fill-bg: #e2e6ee;         /* --text-primary on it is 14.7:1 */
+    --button-fill-hover: #d6dbe6;
+
     --track: #dfe3ec;
     --progress-fill: #4a5365;          /* 6.0:1 on --track */
 
@@ -455,6 +465,9 @@
 
   --segment-active-bg: #ffffff;
   --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
+
+  --button-fill-bg: #e2e6ee;
+  --button-fill-hover: #d6dbe6;
 
   --track: #dfe3ec;
   --progress-fill: #4a5365;
