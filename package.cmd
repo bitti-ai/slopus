@@ -9,9 +9,9 @@ set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\pol-studio.exe"
 
 rem The generation runtime is built by a separate project. Override with
-rem   set VIDFAB_DIR=...\build-shared\Release
+rem   set VIDFAB_DIR=...\build\Release
 rem before running if it lives somewhere else.
-if not defined VIDFAB_DIR set "VIDFAB_DIR=D:\Projects\vidfab\build-shared\Release"
+if not defined VIDFAB_DIR set "VIDFAB_DIR=D:\Projects\vidfab\build\Release"
 
 where.exe npm.cmd >nul 2>nul || (
   echo ERROR: npm was not found on PATH.
@@ -125,16 +125,14 @@ mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\PolStudio.exe" >nul || goto :fail
 
 set "VIDFAB_BUNDLED=no"
-if exist "%VIDFAB_DIR%\vidfab_c.dll" (
+if exist "%VIDFAB_DIR%\vidfab.dll" (
   rem Beside PolStudio.exe, not in a subfolder. That is where the app looks,
-  rem so there is nothing left for anyone to configure - and vidfab_c.dll is
+  rem so there is nothing left for anyone to configure - and vidfab.dll is
   rem loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its dependencies have to
   rem sit in the same folder as it anyway.
-  copy /Y "%VIDFAB_DIR%\vidfab_c.dll" "%OUTPUT_DIR%\" >nul || goto :fail
-  if exist "%VIDFAB_DIR%\vidfab_core.dll" copy /Y "%VIDFAB_DIR%\vidfab_core.dll" "%OUTPUT_DIR%\" >nul
-  if exist "%VIDFAB_DIR%\vidfab_cuda.dll" copy /Y "%VIDFAB_DIR%\vidfab_cuda.dll" "%OUTPUT_DIR%\" >nul
+  copy /Y "%VIDFAB_DIR%\vidfab.dll" "%OUTPUT_DIR%\" >nul || goto :fail
   set "VIDFAB_BUNDLED=yes"
-  echo        Runtime:   vidfab DLLs included.
+  echo        Runtime:   vidfab.dll included.
 ) else (
   echo        Runtime:   vidfab not found at %VIDFAB_DIR% - shipping without it.
   echo                   The app still runs; it reports the generator as unavailable.
@@ -175,7 +173,7 @@ exit /b 0
 >>"%~1" echo.
 >>"%~1" echo VIDEO GENERATION
 if /I "%VIDFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The runtime is included. Keep its DLLs beside PolStudio.exe.
+  >>"%~1" echo   The runtime is included. Keep vidfab.dll beside PolStudio.exe.
 ) else (
   >>"%~1" echo   The runtime is not included. Editing still works.
 )
