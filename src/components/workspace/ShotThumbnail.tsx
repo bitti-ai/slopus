@@ -21,19 +21,16 @@ import { sceneDurationSeconds, type GenerationJob } from "../../lib/project";
  * As in MediaThumbnail, no FFmpeg and no WebCodecs: the <video> element already
  * owns a hardware decoder and one still frame is all this needs. */
 
-const THUMB_WIDTH = 320;
+// Two physical pixels per typical 320px card keeps posters sharp on high-DPI
+// displays without retaining full-resolution render frames in the cache.
+const THUMB_WIDTH = 640;
 /** How long a seek may take before the frame it was going to draw is given up
  *  on. A seek that neither lands nor errors settles nothing, and awaiting it
  *  would leave every card behind it in the queue spinning for the life of the
  *  panel. */
 const SEEK_LIMIT_MS = 4_000;
-/** How far INTO a shot its picture is taken from. The frame exactly on a cut is
- *  the first frame of the shot, which on a fade-in is a black rectangle — and a
- *  black card reads as a broken thumbnail rather than as a shot that opens
- *  dark. A quarter of a second is inside every shot there can be, because cuts
- *  move in half-second steps (`STEP_SECONDS`), and is still the shot's own
- *  picture rather than the one before it. */
-const POSTER_OFFSET_SECONDS = 0.25;
+/** Posters represent the cut itself: every shot card shows the exact frame at
+ *  its own startSeconds. */
 /** Small JPEGs, but not free. Bounded like MediaThumbnail's own cache. */
 const CACHE_LIMIT = 96;
 const PLAY_EVENT = "polstudio:play-generated-shot";
@@ -105,7 +102,7 @@ function tryDraw(video: HTMLVideoElement): string | null {
     const context = canvas.getContext("2d");
     if (!context) return null;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", 0.72);
+    return canvas.toDataURL("image/jpeg", 0.92);
   } catch {
     return null;
   }
@@ -239,7 +236,7 @@ function placeholder(job: GenerationJob, failed: boolean, cancelling: boolean): 
   }
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, posterOffsetSeconds = POSTER_OFFSET_SECONDS, cancelling = false }: {
+export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, posterOffsetSeconds = 0, cancelling = false }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
@@ -248,7 +245,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   /** The next cut (or scene end). Playback never crosses this point. */
   endSeconds?: number;
   shotNumber: number;
-  /** Scene cards use frame zero; shot cards offset past a possible fade-in. */
+  /** Optional caller-selected offset from the exact cut. */
   posterOffsetSeconds?: number;
   /** Cancel was requested but the engine has not reported its terminal state. */
   cancelling?: boolean;
