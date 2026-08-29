@@ -280,7 +280,7 @@ const engineHeadline = (status: VidfabStatus | null, desktop: boolean) => {
 const engineDetail = (status: VidfabStatus | null, desktop: boolean, missing: number) => {
   if (!desktop) return "Paths are saved here, but only the desktop app can check them or render with them.";
   if (!status) return "Looking for the engine and the model files.";
-  if (status.state === "runtimeMissing") return `${status.detail} vidfab_c.dll should sit next to PolStudio.exe.`;
+  if (status.state === "runtimeMissing") return `${status.detail} vidfab.dll should sit next to PolStudio.exe.`;
   if (status.state === "ready") return "Everything PolStudio needs to render a shot is in place.";
   if (missing > 0) return `${status.detail} ${missing === 1 ? "One path" : `${missing} paths`} still need setting below.`;
   return status.detail;
