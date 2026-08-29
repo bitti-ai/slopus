@@ -101,7 +101,7 @@
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: var(--wash-1);
+  background: var(--wash-2);
 }
 
 .project-nav button {
@@ -118,7 +118,7 @@
   color: var(--text-muted);
   background: transparent;
   font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-snug);
   white-space: nowrap;
   transition: 0.16s ease;
@@ -135,8 +135,11 @@
 
 .project-nav button.active {
   color: var(--text-primary);
-  background: var(--accent-soft-strong);
-  box-shadow: inset 0 0 0 1px var(--accent-line);
+  background: var(--segment-active-bg);
+  font-weight: var(--weight-semibold);
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    var(--segment-active-shadow);
 }
 
 /* Running-generation count. */
@@ -144,10 +147,10 @@
   flex: 0 0 auto;
   min-width: 22px;
   padding: 2px var(--space-2);
-  border: 1px solid var(--accent-line);
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  color: var(--accent-bright);
-  background: var(--accent-soft);
+  color: var(--text-secondary);          /* 10.6:1 dark / 9.4:1 light on --panel-3 */
+  background: var(--panel-3);
   font: var(--weight-medium) var(--text-2xs) / 1.4 var(--font-mono);
 }
 

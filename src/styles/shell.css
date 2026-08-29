@@ -50,7 +50,7 @@
      (.pol-logo__perforations) and the mask that punches the holes out of the
      plate (.pol-logo__ticket::before) both read these, so the holes and the
      space reserved for them cannot drift apart. */
-  --pol-ticket-h: 21px;
+  --pol-ticket-h: 28px;
   --pol-perf-x: 3px;
   --pol-perf-w: 4px;
   --pol-perf-strip: 5px;              /* the hole plus 1px of plate to its right */
@@ -62,7 +62,7 @@
      the same soft corners the fallback rectangles carry. */
   --pol-perf-hole: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'%3E%3Crect width='4' height='3' rx='1' fill='%23000'/%3E%3C/svg%3E");
 
-  height: 29px;
+  height: 39px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -109,7 +109,7 @@
   width: 13px;
   height: 13px;
   right: -6px;
-  top: 4px;
+  top: 7px;
   border-radius: 2px;
   background: linear-gradient(135deg, #075be3, #153bc5);
   transform: rotate(45deg);
@@ -165,7 +165,7 @@
   position: relative;
   z-index: 2;
   margin-left: 3px;
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   font-weight: 800;
   line-height: 1;
   letter-spacing: -1.5px;
@@ -177,7 +177,7 @@
   margin-left: var(--space-2);
   padding-left: 1px;
   color: var(--text-primary);
-  font-size: var(--text-md);
+  font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   line-height: 1;
   letter-spacing: -1.3px;
@@ -186,8 +186,13 @@
 /* Compact mark: the ticket with a single P in it. One letter has room to be
    read at icon size, so it takes the body size rather than the 12px floor. */
 .pol-logo--compact {
+  --pol-ticket-h: 21px;
   height: 29px;
   padding: 4px 5px;
+}
+
+.pol-logo--compact .pol-logo__ticket::after {
+  top: 4px;
 }
 
 .pol-logo--compact .pol-logo__pols {

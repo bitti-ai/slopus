@@ -30,14 +30,9 @@
 }
 
 /* With the rail gone this is the app's only identity mark, so it is sized to
-   read as one rather than as a leftover sidebar badge. Scaled from the
-   transform origin so the artwork's internal proportions are untouched. */
+   read as one rather than as a leftover sidebar badge. */
 .library__topbar .brand {
   height: auto;
-  transform: scale(1.35);
-  transform-origin: left center;
-  /* transform does not affect layout, so the row is told the real width. */
-  margin-right: calc(var(--space-5) + 42px);
 }
 
 .library__content {
