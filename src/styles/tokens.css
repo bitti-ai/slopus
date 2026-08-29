@@ -108,7 +108,7 @@
   --field-height: 40px;                /* text inputs, selects */
 
   /* --- Layout ------------------------------------------------------------- */
-  --topbar-height: 72px;
+  --topbar-height: 56px;
   --content-max: 1180px;
 
   /* --- Motion -------------------------------------------------------------
@@ -208,6 +208,15 @@
   --button-primary-off-ink: var(--text-faint);  /* 5.1:1 over the wash on --panel */
   /* The dock's send button keeps a visible edge of its own. */
   --dock-send-border: #5578ed;
+
+  /* --- Segmented control ---------------------------------------------------
+     The selected view tab is a chip raised off the track, not a blue plate.
+     Selection is elevation here, which frees the accent for the one committed
+     action on the screen. --segment-active-bg is a SURFACE step, so the 4.5:1
+     text rule does not apply to it; what has to clear is the label on it,
+     which is --text-primary at 14.2:1 dark / 18.4:1 light. */
+  --segment-active-bg: #1b2130;
+  --segment-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 
   /* --- Progress ----------------------------------------------------------- */
   --track: #20252e;
@@ -340,6 +349,9 @@
     --button-primary-active: #1e40af;  /* 8.7:1 */
     --dock-send-border: #2d5bd7;
 
+    --segment-active-bg: #ffffff;
+    --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
+
     --track: #dfe3ec;
     --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
     --progress-glow: rgba(45, 91, 215, 0.35);
@@ -442,6 +454,9 @@
   --button-primary-hover: #2450c4;
   --button-primary-active: #1e40af;
   --dock-send-border: #2d5bd7;
+
+  --segment-active-bg: #ffffff;
+  --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
 
   --track: #dfe3ec;
   --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
