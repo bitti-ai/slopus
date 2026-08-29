@@ -583,6 +583,8 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform-origin: center;
+  will-change: transform, opacity, filter, clip-path;
 }
 
 /* What the monitor has to say when there is no picture to show: a gap under the
@@ -696,7 +698,8 @@
   line-height: var(--leading-snug);
 }
 
-.inspector-section input:not([type="range"]) {
+.inspector-section input:not([type="range"]),
+.inspector-section select {
   width: 100%;
   height: var(--field-height);
   padding: 0 var(--space-3);
@@ -708,10 +711,12 @@
   font-size: var(--text-base);
 }
 
-.inspector-section input:focus { border-color: var(--accent); }
+.inspector-section input:focus,
+.inspector-section select:focus { border-color: var(--accent); }
 .inspector-section input[readonly] { color: var(--text-muted); }
 .inspector-section--pending { opacity: 0.72; }
-.inspector-section input:disabled { color: var(--text-faint); cursor: not-allowed; }
+.inspector-section input:disabled,
+.inspector-section select:disabled { color: var(--text-faint); cursor: not-allowed; }
 
 .field-pair {
   display: grid;

@@ -21,10 +21,12 @@ import { isTauri, readMediaFileBytes } from "./persistence";
 import {
   AUDIO_CHANNELS,
   AUDIO_SAMPLE_RATE,
+  clipFrameStyle,
   fitRect,
   outputCodec,
   sourceTimeMsForFrame,
   type AudioSegment,
+  type ClipFrameStyle,
   type ExportPlan,
   type ExportSegment,
   type ExportSettings,
@@ -134,7 +136,7 @@ interface Compositor {
   /** Paints the background alone — what a frame with no clip over it looks like. */
   clear(): void;
   /** Paints the background, then the frame scaled to fit inside it. */
-  draw(frame: VideoFrame): void;
+  draw(frame: VideoFrame, style: ClipFrameStyle): void;
   /** The composited picture, ready for the encoder. Caller closes it. */
   take(timestampUs: number, durationUs: number): VideoFrame;
   dispose(): void;
@@ -153,10 +155,16 @@ struct VertexOut {
   @location(0) uv: vec2f,
 };
 
-// x0, y0, x1, y1 of the fitted picture in clip space.
+// x0, y0, x1, y1 of the fitted and transformed picture in clip space.
 @group(0) @binding(0) var<uniform> rect: vec4f;
-@group(0) @binding(1) var source: texture_external;
-@group(0) @binding(2) var source_sampler: sampler;
+// rotation, opacity, temperature, reveal start / reveal end.
+struct Style {
+  primary: vec4f,
+  secondary: vec4f,
+};
+@group(0) @binding(1) var<uniform> style: Style;
+@group(0) @binding(2) var source: texture_external;
+@group(0) @binding(3) var source_sampler: sampler;
 
 @vertex
 fn vs(@builtin(vertex_index) index: u32) -> VertexOut {
@@ -166,14 +174,26 @@ fn vs(@builtin(vertex_index) index: u32) -> VertexOut {
   );
   let corner = corners[index];
   var out: VertexOut;
-  out.position = vec4f(mix(rect.x, rect.z, corner.x), mix(rect.y, rect.w, corner.y), 0.0, 1.0);
+  let centre = vec2f((rect.x + rect.z) * 0.5, (rect.y + rect.w) * 0.5);
+  let point = vec2f(mix(rect.x, rect.z, corner.x), mix(rect.y, rect.w, corner.y));
+  let delta = point - centre;
+  let angle = style.primary.x;
+  let rotated = vec2f(
+    delta.x * cos(angle) - delta.y * sin(angle),
+    delta.x * sin(angle) + delta.y * cos(angle),
+  );
+  out.position = vec4f(centre + rotated, 0.0, 1.0);
   out.uv = vec2f(corner.x, 1.0 - corner.y);
   return out;
 }
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  return textureSampleBaseClampToEdge(source, source_sampler, uv);
+  if (uv.x < style.primary.w || uv.x > style.secondary.x) { discard; }
+  let sampled = textureSampleBaseClampToEdge(source, source_sampler, uv);
+  let temperature = style.primary.z;
+  let rgb = clamp(sampled.rgb + vec3f(temperature * 0.1, 0.0, -temperature * 0.1), vec3f(0.0), vec3f(1.0));
+  return vec4f(rgb, sampled.a * style.primary.y);
 }
 `;
 
@@ -205,10 +225,21 @@ async function createWebGpuCompositor(width: number, height: number, background:
   const pipeline = device.createRenderPipeline({
     layout: "auto",
     vertex: { module: shader, entryPoint: "vs" },
-    fragment: { module: shader, entryPoint: "fs", targets: [{ format }] },
+    fragment: {
+      module: shader,
+      entryPoint: "fs",
+      targets: [{
+        format,
+        blend: {
+          color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+          alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+        },
+      }],
+    },
     primitive: { topology: "triangle-list" },
   });
   const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const styleUniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   /* A device that dies mid-export would keep handing back an untouched canvas,
      which is a black frame that looks like a rendered one. Record the loss and
@@ -246,21 +277,39 @@ async function createWebGpuCompositor(width: number, height: number, background:
     clear() {
       pass(context.getCurrentTexture().createView(), null);
     },
-    draw(frame) {
-      const box = fitRect(frame.displayWidth, frame.displayHeight, width, height);
+    draw(frame, style) {
+      const fitted = fitRect(frame.displayWidth, frame.displayHeight, width, height);
+      const scale = style.transform.scale / 100;
+      const box = {
+        width: fitted.width * scale,
+        height: fitted.height * scale,
+        x: fitted.x + (fitted.width * (1 - scale)) / 2 + (style.transform.positionX / 100) * width,
+        y: fitted.y + (fitted.height * (1 - scale)) / 2 + (style.transform.positionY / 100) * height,
+      };
       const x0 = (box.x / width) * 2 - 1;
       const x1 = ((box.x + box.width) / width) * 2 - 1;
       const yTop = 1 - (box.y / height) * 2;
       const yBottom = 1 - ((box.y + box.height) / height) * 2;
       device.queue.writeBuffer(uniform, 0, new Float32Array([x0, yBottom, x1, yTop]));
+      device.queue.writeBuffer(styleUniform, 0, new Float32Array([
+        (style.transform.rotation * Math.PI) / 180,
+        style.opacity,
+        style.look.temperature / 100,
+        style.revealStart,
+        style.revealEnd,
+        0,
+        0,
+        0,
+      ]));
       // Zero copy: the decoded frame is sampled where it already lives.
       const external = device.importExternalTexture({ source: frame });
       const bindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: uniform } },
-          { binding: 1, resource: external },
-          { binding: 2, resource: sampler },
+          { binding: 1, resource: { buffer: styleUniform } },
+          { binding: 2, resource: external },
+          { binding: 3, resource: sampler },
         ],
       });
       pass(context.getCurrentTexture().createView(), bindGroup);
@@ -286,10 +335,27 @@ function createCanvasCompositor(width: number, height: number, background: strin
   return {
     kind: "canvas2d",
     clear: paintBackground,
-    draw(frame) {
+    draw(frame, style) {
       paintBackground();
-      const box = fitRect(frame.displayWidth, frame.displayHeight, width, height);
-      context.drawImage(frame, box.x, box.y, box.width, box.height);
+      const fitted = fitRect(frame.displayWidth, frame.displayHeight, width, height);
+      const scale = style.transform.scale / 100;
+      const drawWidth = fitted.width * scale;
+      const drawHeight = fitted.height * scale;
+      const centreX = fitted.x + fitted.width / 2 + (style.transform.positionX / 100) * width;
+      const centreY = fitted.y + fitted.height / 2 + (style.transform.positionY / 100) * height;
+      const warmth = style.look.temperature / 100;
+      context.save();
+      context.beginPath();
+      context.rect(style.revealStart * width, 0, (style.revealEnd - style.revealStart) * width, height);
+      context.clip();
+      context.globalAlpha = style.opacity;
+      context.filter = warmth === 0
+        ? "none"
+        : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`;
+      context.translate(centreX, centreY);
+      context.rotate((style.transform.rotation * Math.PI) / 180);
+      context.drawImage(frame, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      context.restore();
     },
     take(timestamp, duration) {
       return new VideoFrame(canvas, { timestamp, duration, alpha: "discard" });
@@ -859,9 +925,9 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
         compositor: createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
         detail: attempt.reason,
       };
-  const paint = (frame: VideoFrame | null) => {
+  const paint = (frame: VideoFrame | null, style: ClipFrameStyle | null) => {
     try {
-      if (frame) stage.compositor.draw(frame);
+      if (frame && style) stage.compositor.draw(frame, style);
       else stage.compositor.clear();
       return;
     } catch (reason) {
@@ -870,7 +936,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       stage.compositor = createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
       stage.detail = `The GPU compositor gave out ${framesDone} frames in and the rest was composited on a 2D canvas: ${reason instanceof Error ? reason.message : String(reason)}`;
     }
-    if (frame) stage.compositor.draw(frame);
+    if (frame && style) stage.compositor.draw(frame, style);
     else stage.compositor.clear();
   };
 
@@ -883,10 +949,16 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   const keyFrameInterval = Math.max(1, Math.round(plan.frameRate * 2));
   let framesDone = 0;
 
-  const emit = async (frame: VideoFrame | null, outputIndex: number) => {
+  const emit = async (
+    frame: VideoFrame | null,
+    outputIndex: number,
+    segment: Extract<ExportSegment, { kind: "clip" }> | null = null,
+  ) => {
     stopIfCancelled();
     if (encoderFailure.reason) throw encoderFailure.reason;
-    paint(frame);
+    const timelineMs = (outputIndex * 1000) / plan.frameRate;
+    const style = segment ? clipFrameStyle(segment.visual, timelineMs - segment.clipStartMs) : null;
+    paint(frame, style);
     const composited = stage.compositor.take(
       timestampUs(outputIndex),
       timestampUs(outputIndex + 1) - timestampUs(outputIndex),
@@ -947,7 +1019,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
 
     const still = loaded.image;
     if (still) {
-      for (let index = segment.startFrame; index < segment.endFrame; index += 1) await emit(still, index);
+      for (let index = segment.startFrame; index < segment.endFrame; index += 1) await emit(still, index, segment);
       return;
     }
     const source = loaded.source;
@@ -1006,7 +1078,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
         const frame = pending.shift() as VideoFrame;
         if (on.screen) {
           while (nextOutput < segment.endFrame && wantUs(nextOutput) < frame.timestamp) {
-            await emit(on.screen, nextOutput);
+            await emit(on.screen, nextOutput, segment);
             nextOutput += 1;
           }
           on.screen.close();
@@ -1019,7 +1091,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
           throw new Error(`${asset.name} decoded no frames, so clip “${segment.label}” has no picture to export.`);
         }
         while (nextOutput < segment.endFrame) {
-          await emit(on.screen, nextOutput);
+          await emit(on.screen, nextOutput, segment);
           nextOutput += 1;
         }
       }
