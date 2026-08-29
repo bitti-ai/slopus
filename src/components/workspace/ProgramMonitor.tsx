@@ -2,7 +2,7 @@ import { Film, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clipFrameStyle, clipVisualSettings, visibleClipAt } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
-import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
+import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
 import { PreviewSources } from "../../lib/exportPipeline";
 
@@ -68,7 +68,26 @@ function seekTo(element: HTMLMediaElement, seconds: number, pending: { current: 
   element.currentTime = target;
 }
 
-export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek, onPlayingChange }: {
+type TransformGesture = {
+  kind: "move" | "scale" | "rotate";
+  pointerId: number;
+  startX: number;
+  startY: number;
+  centerX: number;
+  centerY: number;
+  startDistance: number;
+  startAngle: number;
+  initial: ClipTransform;
+  frameWidth: number;
+  frameHeight: number;
+  captureTarget: HTMLElement;
+};
+
+const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+const angleAt = (x: number, y: number, centerX: number, centerY: number) => Math.atan2(y - centerY, x - centerX) * 180 / Math.PI;
+const normalizedAngle = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
+
+export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange }: {
   config: ProjectConfig;
   folderPath: string;
   playheadMs: number;
@@ -77,6 +96,12 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
    *  reports where the decoder actually is. */
   onSeek: (ms: number) => void;
   onPlayingChange: (playing: boolean) => void;
+  /** Timeline-only direct manipulation. Export omits these props and therefore
+   *  never renders editor chrome into its preview. */
+  selectedClipId?: string | null;
+  transformEditingDisabled?: boolean;
+  onSelectClip?: (clipId: string) => void;
+  onTransformChange?: (clipId: string, transform: ClipTransform) => void;
 }) {
   const tracks = config.timeline.tracks;
   const clip = useMemo(() => visibleClipAt(tracks, playheadMs), [tracks, playheadMs]);
@@ -123,6 +148,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   );
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const pictureRef = useRef<HTMLDivElement>(null);
+  const transformGesture = useRef<TransformGesture | null>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
   const pendingVideoSeek = useRef<number | null>(null);
   /* The last playhead value THIS component produced. Anything else arriving in
@@ -306,6 +333,61 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 
   const hasClips = tracks.some((track) => track.clips.length > 0);
 
+  const beginTransform = (kind: TransformGesture["kind"], event: React.PointerEvent<HTMLElement>) => {
+    if (!clip || !frameStyle || transformEditingDisabled || !onTransformChange) return;
+    const bounds = pictureRef.current?.getBoundingClientRect();
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    onPlayingChange(false);
+    const initial = frameStyle.transform;
+    const centerX = bounds.left + bounds.width / 2 + bounds.width * initial.positionX / 100;
+    const centerY = bounds.top + bounds.height / 2 + bounds.height * initial.positionY / 100;
+    transformGesture.current = {
+      kind,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      centerX,
+      centerY,
+      startDistance: Math.max(1, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
+      startAngle: angleAt(event.clientX, event.clientY, centerX, centerY),
+      initial,
+      frameWidth: bounds.width,
+      frameHeight: bounds.height,
+      captureTarget: event.currentTarget,
+    };
+  };
+
+  const moveTransform = (event: React.PointerEvent<HTMLElement>) => {
+    const gesture = transformGesture.current;
+    if (!gesture || !clip || !onTransformChange || event.pointerId !== gesture.pointerId) return;
+    event.preventDefault();
+    let next = gesture.initial;
+    if (gesture.kind === "move") {
+      next = {
+        ...next,
+        positionX: clamp(gesture.initial.positionX + (event.clientX - gesture.startX) / gesture.frameWidth * 100, -100, 100),
+        positionY: clamp(gesture.initial.positionY + (event.clientY - gesture.startY) / gesture.frameHeight * 100, -100, 100),
+      };
+    } else if (gesture.kind === "scale") {
+      const distance = Math.hypot(event.clientX - gesture.centerX, event.clientY - gesture.centerY);
+      next = { ...next, scale: clamp(gesture.initial.scale * distance / gesture.startDistance, 10, 400) };
+    } else {
+      const delta = angleAt(event.clientX, event.clientY, gesture.centerX, gesture.centerY) - gesture.startAngle;
+      next = { ...next, rotation: normalizedAngle(gesture.initial.rotation + delta) };
+    }
+    onTransformChange(clip.id, next);
+  };
+
+  const endTransform = (event: React.PointerEvent<HTMLElement>) => {
+    const gesture = transformGesture.current;
+    if (gesture?.pointerId !== event.pointerId) return;
+    transformGesture.current = null;
+    if (gesture.captureTarget.hasPointerCapture?.(event.pointerId)) gesture.captureTarget.releasePointerCapture(event.pointerId);
+  };
+
   /* What the monitor can say, in the order the user needs it: no way to read
      the file, or the file still being read. A GAP says nothing at all — the
      empty frame in the project's own background colour is exactly what the
@@ -327,7 +409,12 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
      background colour — the same letterboxing, against the same colour, that
      the export writes into the file. Nothing is cropped to fill the panel: a
      9:16 cut has to LOOK 9:16 while it is being cut. */
-  return <div className="program-picture" style={{ backgroundColor: config.settings.backgroundColor }}>
+  return <div
+    ref={pictureRef}
+    className={`program-picture${onSelectClip && clip ? " program-picture--selectable" : ""}`}
+    style={{ backgroundColor: config.settings.backgroundColor }}
+    onClick={() => { if (clip && onSelectClip) onSelectClip(clip.id); }}
+  >
     {/* One element, re-pointed at whatever the playhead is over. Rebuilding it
         per clip would drop the decoder and re-open the file on every cut. */}
     {asset && !isImage(asset) && url && <video
@@ -341,6 +428,20 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onError={() => setError("This file could not be decoded.")}
     />}
     {asset && isImage(asset) && url && <img src={url} alt={clip?.label ?? ""} style={mediaStyle} />}
+    {clip && frameStyle && selectedClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
+      className="program-transform"
+      style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}
+      role="group"
+      aria-label={`Transform ${clip.label}`}
+      onPointerDown={(event) => beginTransform("move", event)}
+      onPointerMove={moveTransform}
+      onPointerUp={endTransform}
+      onPointerCancel={endTransform}
+    >
+      <button className="program-transform__rotate" type="button" aria-label="Rotate clip" title="Drag to rotate" onPointerDown={(event) => beginTransform("rotate", event)} />
+      <button className="program-transform__scale" type="button" aria-label="Scale clip" title="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />
+      <span className="sr-only">Drag inside the frame to move the clip.</span>
+    </div>}
     {audioClips.map((audioClip) => {
       const audioUrl = audioUrls[audioClip.assetId];
       return audioUrl

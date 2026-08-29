@@ -191,7 +191,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const selectedTransform = selected ? clipTransform(selected) : null;
   const selectedLook = selected ? clipLook(selected) : null;
   const selectedTransition = selected ? clipTransition(selected) : null;
-  const visualControlsDisabled = selectedTrack?.kind !== "video";
+  const visualControlsDisabled = selectedTrack?.kind !== "video" || selectedTrack.locked;
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
   /** Where the last clip ends — where playback stops, which is not the same as
    *  where the ruler stops (the canvas is at least as long as the film the user
@@ -830,6 +830,10 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 playing={playing}
                 onSeek={seek}
                 onPlayingChange={setPlayingFromMonitor}
+                selectedClipId={selectedId}
+                transformEditingDisabled={selectedTrack?.locked ?? false}
+                onSelectClip={setSelectedId}
+                onTransformChange={(clipId, transform) => updateClip(clipId, { transform })}
               />
               : <div className="program-empty">
                 <span>Drop a file from Media onto a track below, or generate a scene, and it plays here.</span>

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ProgramMonitor } from "./ProgramMonitor";
@@ -48,6 +49,30 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it("shows move, scale, and rotate widgets after the timeline picture is selected", () => {
+    const config = project([clip()]);
+    function Harness() {
+      const [selected, setSelected] = useState<string | null>(null);
+      return <ProgramMonitor
+        config={config}
+        folderPath="C:\\Ceramic Lamp"
+        playheadMs={3_000}
+        playing={false}
+        onSeek={() => undefined}
+        onPlayingChange={() => undefined}
+        selectedClipId={selected}
+        onSelectClip={setSelected}
+        onTransformChange={() => undefined}
+      />;
+    }
+    const { container } = render(<Harness />);
+    expect(screen.queryByRole("group", { name: "Transform Macro footage" })).toBeNull();
+    fireEvent.click(container.querySelector(".program-picture")!);
+    expect(screen.getByRole("group", { name: "Transform Macro footage" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Scale clip" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rotate clip" })).toBeTruthy();
+  });
+
   it("shows a gap as the empty frame it will be exported as, and says nothing about it", () => {
     const { container } = monitor(project([clip()]), 9_000);
     // No element for a clip that is not there, and no panel over the picture
