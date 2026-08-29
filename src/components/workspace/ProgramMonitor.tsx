@@ -161,6 +161,21 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [editingClipId, setEditingClipId] = useState<string | null>(null);
+  const selectionFromPicture = useRef<string | null>(null);
+
+  /* A timeline selection identifies what the inspector edits, but does not put
+     handles over the picture. Only a click on the video opts into direct
+     manipulation; a later selection elsewhere dismisses it. */
+  useEffect(() => {
+    if (selectionFromPicture.current === selectedClipId) {
+      selectionFromPicture.current = null;
+      return;
+    }
+    selectionFromPicture.current = null;
+    setEditingClipId(null);
+  }, [selectedClipId]);
+  useEffect(() => setEditingClipId(null), [clip?.id]);
 
   /* One blob per asset, held for the life of this view so that scrubbing back
      and forth across a cut re-reads nothing. The cost is real and worth stating:
@@ -413,7 +428,12 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     ref={pictureRef}
     className={`program-picture${onSelectClip && clip ? " program-picture--selectable" : ""}`}
     style={{ backgroundColor: config.settings.backgroundColor }}
-    onClick={() => { if (clip && onSelectClip) onSelectClip(clip.id); }}
+    onClick={() => {
+      if (!clip || !onSelectClip) return;
+      selectionFromPicture.current = clip.id;
+      setEditingClipId(clip.id);
+      onSelectClip(clip.id);
+    }}
   >
     {/* One element, re-pointed at whatever the playhead is over. Rebuilding it
         per clip would drop the decoder and re-open the file on every cut. */}
@@ -428,7 +448,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onError={() => setError("This file could not be decoded.")}
     />}
     {asset && isImage(asset) && url && <img src={url} alt={clip?.label ?? ""} style={mediaStyle} />}
-    {clip && frameStyle && selectedClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
+    {clip && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
       style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}
       role="group"
