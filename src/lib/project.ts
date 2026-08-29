@@ -380,6 +380,9 @@ export const generationJobSchema = z.object({
    * drafts that have never run and on projects saved before change tracking. */
   generationSnapshot: z.string().min(1).nullish(),
   referenceIds: z.array(idSchema).default([]),
+  /** An image reference used as the scene's opening frame. It is separate from
+   *  subject citations because a frame is composition, not a named subject. */
+  startFrameReferenceId: idSchema.nullish(),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
   // existed has no key here at all, and must keep opening.
@@ -673,6 +676,15 @@ export function usableImageReferences(references: ProjectReference[]): ProjectRe
     .filter(isVisualReference);
 }
 
+/** References in the exact order both the prompt compiler and VidFab consume.
+ *  A start frame must be Picture 1; ordinary bound references retain project
+ *  order after it and a frame that is also bound is still sent only once. */
+export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
+  const start = references.find((reference) => reference.id === job.startFrameReferenceId && reference.kind === "image" && isReferenceUsable(reference));
+  const bound = references.filter((reference) => job.referenceIds.includes(reference.id) && reference.id !== start?.id);
+  return start ? [start, ...bound] : bound;
+}
+
 /* Who wrote each piece of the compiled prompt.
 
    - "brief" is the user's own prose, character for character.
@@ -701,6 +713,7 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
  *  to show the same bytes for both. */
 export interface ScenePrompt {
   shots: readonly SceneShot[];
+  startFrameReferenceId?: string | null;
   /** Base guide §4.6 / §4.7. Blank or absent falls back to the two default
    *  lines below, which are marked as PolStudio's own writing. */
   soundscape?: string | null;
@@ -805,7 +818,7 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = []): PromptSegment[] {
-  return compileScenePromptSegments({ shots: sceneShots(job), soundscape: job.soundscape, music: job.music }, references);
+  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, soundscape: job.soundscape, music: job.music }, references);
 }
 
 export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = []): string {
@@ -834,7 +847,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // <Picture N> / reference_paths lockstep note on that function. An
   // audio-only-tagged reference is dropped here (ref guide §2.1), so a scene
   // whose only reference is audio-tagged correctly falls back to T2VA.
-  const usable = references.filter(isReferenceUsable).filter(isVisualReference);
+  const startFrame = references.find((reference) => reference.id === scene.startFrameReferenceId && reference.kind === "image" && isReferenceUsable(reference)) ?? null;
+  const usable = references.filter(isReferenceUsable).filter(isVisualReference).filter((reference) => reference.id !== startFrame?.id);
   const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
 
   const compiled: CompiledShot[] = shots.map((shot, index) => {
@@ -911,7 +925,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
   const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
 
-  if (usable.length === 0) {
+  if (usable.length === 0 && !startFrame) {
     // T2VA — base guide §2.2 field list and order.
     return [
       frame("integrated_multimodal_description: "),
@@ -937,9 +951,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const pictureNumber = new Map(images.map((reference, index) => [reference.id, index + 1]));
 
   // §2.2: an image that only defines a character, scene, costume or style is
-  // cited INSIDE its <Subject N> definition — it never becomes a standalone
-  // <Picture N> entry. This app cannot express a first/last/key frame, so no
-  // standalone picture entry is ever correct here.
+  // cited INSIDE its <Subject N> definition. A scene's explicit first frame is
+  // the exception: it describes composition, so it is emitted as a standalone
+  // <Picture N> entry instead of pretending to be a subject.
   // No <Audio N> is emitted either: §2.4 defines it as an actual audio asset,
   // and every reference in this app is text or image. An "audio" intendedUse
   // is a note about desired sound, not a signal to copy.
@@ -962,6 +976,10 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),
     ];
   });
+  const startPicture = startFrame ? pictureNumber.get(startFrame.id) : null;
+  const startDefinition = startPicture
+    ? [frame(`<Picture ${startPicture}> is the first frame of the video.${definitions.length > 0 ? "\n" : ""}`)]
+    : [];
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
   const listOf = (values: string[]): string => values.length === 1
@@ -979,10 +997,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const anyCited = compiled.some((shot) => shot.citedIds.length > 0);
   const featured = compiled.map((shot) => anyCited ? shot.citedIds : usable.map((reference) => reference.id));
 
-  // §3: task-type prefix. Every reference here provides generation guidance
-  // without acting as a concrete frame or an edited source video, which is
-  // exactly `reference generation`. The summary reuses existing labels only,
-  // and the user's own lines are carried through in order.
+  // §3: task-type prefix. Subject references provide generation guidance; an
+  // optional opening picture additionally anchors the first frame. The summary
+  // reuses existing labels only and carries the user's lines through in order.
   const summary: PromptSegment[] = [
     frame("[reference generation] "),
     ...compiled.flatMap((shot) => [
@@ -990,7 +1007,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...shot.body,
       ...addedStop(shot.text),
     ]),
-    frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the ${compiled.length === 1 ? "single shot" : `${compiled.length} shots`} described below.`),
+    ...(startPicture ? [frame(` The video begins with <Picture ${startPicture}>.`)] : []),
+    ...(labels.length > 0 ? [frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the ${compiled.length === 1 ? "single shot" : `${compiled.length} shots`} described below.`)] : []),
   ];
 
   // §4.1: one line per label using the fixed marker vocabulary. Their defined
@@ -1009,6 +1027,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const where = appearances.length > 0 ? ` (appears in ${appearances.join(", ")})` : "";
     return `${referenceLabel(reference, index)}${where}: fully_preserved - the referenced characteristics are retained.`;
   });
+  if (startPicture) retention.unshift(`<Picture ${startPicture}>: first_frame - used as the opening frame.`);
 
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.
@@ -1028,11 +1047,13 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         : []),
       ...tail(shot),
       ...dialogue(shot, shot.text.length > 0 || featured[shot.index].length > 0 || shot.tags.clauses.length > 0),
+      ...(shot.index === 0 && startPicture ? [frame(` The opening frame matches <Picture ${startPicture}>.`)] : []),
     ]),
   ];
 
   return [
     frame("subject_definitions:\n"),
+    ...startDefinition,
     ...definitions,
     frame("\n\nsummary:\n"),
     ...summary,
@@ -1072,6 +1093,7 @@ export function createDraftGenerationJob(
     id?: string;
     title?: string;
     referenceIds?: string[];
+    startFrameReferenceId?: string | null;
     references?: ProjectReference[];
     shotTags?: ShotTagSelection | null;
     /** The shots to open the scene with. Omitted means one shot holding
@@ -1113,6 +1135,7 @@ export function createDraftGenerationJob(
     // the scene later holds bound image references). Do not read it as current.
     compiledPrompt: compileScenePromptSegments(scene, options.references ?? []).map((segment) => segment.value).join(""),
     referenceIds: options.referenceIds ?? [],
+    startFrameReferenceId: options.startFrameReferenceId ?? undefined,
     shots,
     durationSeconds,
     steps: options.steps ?? DEFAULT_GENERATION_STEPS,

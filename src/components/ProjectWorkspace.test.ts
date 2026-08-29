@@ -951,7 +951,8 @@ describe("project workspace timecode", () => {
     const { container } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
 
     expect(container.querySelector(".job-refs")).toBeNull();
-    expect(screen.queryByText("Lamp photograph")).toBeNull();
+    expect(container.querySelector(".scene-settings img, .scene-settings .reference-image-fallback")).toBeNull();
+    expect(within(screen.getByRole("combobox", { name: "Start frame for this scene" })).getByRole("option", { name: "Lamp photograph" })).toBeTruthy();
   });
 
   it("keeps scene settings editable while a scene is running", () => {

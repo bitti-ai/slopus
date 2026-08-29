@@ -101,6 +101,30 @@ async function finishFirst(state: ReturnType<typeof setup>) {
 }
 
 describe("Generator scene controls", () => {
+  it("offers no inferred Look and sends a selected image as the scene's first frame", async () => {
+    const initial = project();
+    initial.references = [{
+      id: "ref-opening",
+      kind: "image",
+      name: "Opening still",
+      description: "",
+      relativePath: "references/opening.jpg",
+      intendedUse: [],
+      createdAt: initial.createdAt,
+    }];
+    const state = setup(parseProjectConfig(initial));
+
+    expect(within(screen.getByRole("combobox", { name: "The look of this scene" })).getByRole("option", { name: "None" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Start frame for this scene" }), { target: { value: "ref-opening" } });
+    expect(state.latest().generationJobs[0].startFrameReferenceId).toBe("ref-opening");
+
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
+    expect(snapshot.referencePaths).toEqual(["C:\\\\project\\references\\opening.jpg"]);
+    expect(snapshot.prompt).toContain("<Picture 1> is the first frame of the video.");
+  });
+
   it("shows scene generation controls and sends their values in the render snapshot", async () => {
     const state = setup();
     const generation = screen.getByRole("region", { name: "Generation" });

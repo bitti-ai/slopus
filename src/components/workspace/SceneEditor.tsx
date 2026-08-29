@@ -1,4 +1,4 @@
-import { Trash2, X } from "lucide-react";
+import { ImagePlus, Trash2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import {
   actionReferenceIds,
@@ -270,10 +270,14 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
+export function SceneInspector({ job, shots, references, disabled, importAvailable, importError, onAddStartFrame, onChange, onShots }: {
   job: GenerationJob;
   shots: SceneShot[];
+  references: ProjectReference[];
   disabled: boolean;
+  importAvailable: boolean;
+  importError: string | null;
+  onAddStartFrame: () => void;
   onChange: (updates: Partial<GenerationJob>) => void;
   onShots: (next: SceneShot[]) => void;
 }) {
@@ -281,6 +285,10 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
   // The style is read off the first shot that carries one, so that is where it
   // is written. One place, never a second field that could disagree with it.
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
+  const imageReferences = useMemo(
+    () => references.filter((reference) => reference.kind === "image" && isReferenceUsable(reference)),
+    [references],
+  );
 
   return <section className="scene-inspector" aria-label="This scene">
     <section className="scene-settings" aria-labelledby={`${job.id}-scene-settings`}>
@@ -301,10 +309,33 @@ export function SceneInspector({ job, shots, disabled, onChange, onShots }: {
             }));
           }}
         >
-          <option value="">Guessed from your words</option>
+          <option value="">None</option>
           {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
       </label>
+      <div className="scene-settings__field">
+        <span>Start frame</span>
+        <div className="scene-settings__start-frame">
+          <select
+            value={job.startFrameReferenceId ?? ""}
+            disabled={disabled}
+            aria-label="Start frame for this scene"
+            onChange={(event) => onChange({ startFrameReferenceId: event.target.value || undefined })}
+          >
+            <option value="">None</option>
+            {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+          </select>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={disabled || !importAvailable}
+            title={importAvailable ? "Import an image and use it as this scene's first frame" : "Image import is available in the desktop app"}
+            onClick={onAddStartFrame}
+          ><ImagePlus size={15} /> Add image</button>
+        </div>
+        <small>The selected image is sent to VidFab as Picture 1 and anchors the opening frame.</small>
+        {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
+      </div>
       <label className="scene-settings__field">
         <span>Sound</span>
         <textarea
