@@ -164,7 +164,16 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     </main>
 
     <aside className="reference-inspector">
-      <div className="panel-chrome"><h2>Reference details</h2>{selected && <button onClick={remove} aria-label="Delete reference" title="Delete this reference"><Trash2 size={16} /></button>}</div>
+      <header className="reference-inspector__head">{selected ? <>
+        <h2><input
+          className="reference-title__name"
+          value={selected.name}
+          aria-label="Reference name"
+          title="Rename this reference"
+          onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })}
+        /></h2>
+        <button onClick={remove} aria-label="Remove reference" title="Remove this reference"><Trash2 size={16} /></button>
+      </> : <h2>Reference details</h2>}</header>
       <div className="reference-inspector__scroll">
         {selected ? <>
           <div className={`reference-detail-art reference-detail-art--${selected.kind}${selected.kind === "image" && (selected.relativePath || selected.sourcePath) ? " reference-detail-art--photo" : ""}`}>
@@ -177,7 +186,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             {selected.kind !== "image" && <em>{referenceKindLabel(selected.kind)}</em>}
           </div>
           <div className="reference-fields">
-            <label><span>Name</span><input value={selected.name} onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })} /></label>
             {referenceType(selected) === "custom" ? <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label> : <div className="reference-preset-summary">
               <span>Selection</span>
               <button onClick={openPresetPicker}>

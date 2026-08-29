@@ -43,6 +43,20 @@ function setup() {
 }
 
 describe("Reference type presets", () => {
+  it("renames the selected reference from the inspector header", () => {
+    const state = setup();
+    const name = screen.getByRole("textbox", { name: "Reference name" });
+    const header = name.closest("header");
+
+    expect(name).toHaveValue("Hero");
+    expect(header).not.toBeNull();
+    expect(within(header!).getByRole("button", { name: "Remove reference" })).toBeInTheDocument();
+    fireEvent.change(name, { target: { value: "Lead traveler" } });
+
+    expect(state.latest().references[0].name).toBe("Lead traveler");
+    expect(screen.getByRole("button", { name: /Lead traveler/ })).toBeInTheDocument();
+  });
+
   it("opens the type picker immediately for a new definition", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "New definition" }));

@@ -60,24 +60,66 @@
   padding-bottom: var(--space-5);
 }
 
-/* A real <h2> in the chrome (the outline used to jump h1 → h3), styled to look
-   exactly like the <span> it replaced. */
-.reference-inspector > .panel-chrome h2 {
+/* The selected reference owns the inspector header, like the editable scene
+   and shot names in the Generator. */
+.reference-inspector__head {
+  flex: 0 0 auto;
+  min-height: var(--control-lg);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  margin: 0;
-  color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
 }
 
-.reference-inspector > .panel-chrome button {
+.reference-inspector__head h2 {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
+}
+
+.reference-title__name {
+  width: 100%;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.reference-title__name:hover,
+.reference-title__name:focus {
+  border-color: var(--accent-bright);
+  background: var(--panel-2);
+  outline: none;
+}
+
+.reference-inspector__head button {
   width: var(--control-sm);
   height: var(--control-sm);
-  justify-content: center;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: none;
+}
+
+.reference-inspector__head button:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 /* --- Reference cards ------------------------------------------------------- */
