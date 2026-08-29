@@ -90,9 +90,8 @@
 }
 
 /* --- Region headings -------------------------------------------------------
-   The edit view now carries a real heading outline (sr-only h1 → h2 per region
-   → h3 inside the inspector). These h2s replace the plain <span>/<strong> that
-   used to sit in the panel chrome, so they inherit the exact same look. */
+   Media and the program monitor retain real h2 headings; Scenes starts
+   directly below its already-labelled tab. */
 
 .scene-panel__head h2,
 .program-panel > .panel-chrome h2 {
@@ -120,9 +119,9 @@
   line-height: var(--leading-snug);
 }
 
-/* Panel body fills what is left after the tabs (48px) and the head (48px). */
+/* Scenes start directly below the tabs; they do not need a second heading. */
 .scene-list {
-  height: calc(100% - (var(--control-lg) * 2));
+  height: calc(100% - var(--control-lg));
   padding: 0 var(--space-2) var(--space-4);
   overflow-y: auto;
 }
