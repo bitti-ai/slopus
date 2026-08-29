@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs, io,
+    env, fs, io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -1223,6 +1223,63 @@ fn open_project(folder_path: String) -> Result<ProjectRecord, String> {
     read_project(Path::new(&folder_path))
 }
 
+/** Permanently delete exactly one verified project folder.
+ *
+ * The UI supplies both coordinates it displayed in the confirmation: folder
+ * and project id. Resolve the folder again at the destructive boundary and
+ * require both to still agree. Broad filesystem roots, the user's home, the
+ * process working directory, and symlink targets are never valid deletion
+ * candidates even if somebody places a project file there. */
+fn delete_project_folder(folder_path: &str, expected_project_id: &str) -> Result<(), String> {
+    if expected_project_id.trim().is_empty() {
+        return Err("The project id to delete cannot be empty.".into());
+    }
+    let requested = PathBuf::from(folder_path);
+    let metadata = fs::symlink_metadata(&requested)
+        .map_err(|error| format!("Could not inspect project folder: {error}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err("A project folder reached through a symbolic link cannot be deleted.".into());
+    }
+
+    let root = project_root(folder_path)?;
+    if root.parent().is_none() {
+        return Err("A filesystem root cannot be deleted as a project.".into());
+    }
+    let mut protected = Vec::new();
+    if let Ok(current) = env::current_dir().and_then(|path| path.canonicalize()) {
+        protected.push(current);
+    }
+    for variable in ["HOME", "USERPROFILE"] {
+        if let Some(path) = env::var_os(variable) {
+            if let Ok(path) = PathBuf::from(path).canonicalize() {
+                protected.push(path);
+            }
+        }
+    }
+    if protected.iter().any(|path| path == &root) {
+        return Err("This protected folder cannot be deleted as a project.".into());
+    }
+
+    let record = read_project(&root)?;
+    if record.config.id != expected_project_id {
+        return Err(format!(
+            "The folder now holds project '{}', not the project selected for deletion.",
+            record.config.name
+        ));
+    }
+    fs::remove_dir_all(&root).map_err(|error| {
+        format!(
+            "Could not delete project folder {}: {error}",
+            display_path(&root)
+        )
+    })
+}
+
+#[tauri::command]
+fn delete_project(folder_path: String, project_id: String) -> Result<(), String> {
+    delete_project_folder(&folder_path, &project_id)
+}
+
 #[tauri::command]
 fn choose_project_folder(app: AppHandle) -> Result<Option<ProjectRecord>, String> {
     let selected = app
@@ -2238,6 +2295,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             open_project,
+            delete_project,
             choose_project_folder,
             choose_initial_reference_images,
             choose_reference_image,
@@ -2795,6 +2853,33 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(files, [PROJECT_FILE_NAME]);
+    }
+
+    #[test]
+    fn deleting_a_project_removes_its_folder_and_every_file_inside_it() {
+        let parent = tempfile::tempdir().unwrap();
+        let project = project_folder_at(&parent.path().join("Disposable project"));
+        fs::create_dir_all(project.join("media/generated")).unwrap();
+        fs::write(project.join("media/generated/scene.mp4"), b"video").unwrap();
+        let id = read_project(&project).unwrap().config.id;
+
+        delete_project_folder(&project.to_string_lossy(), &id).unwrap();
+
+        assert!(!project.exists());
+        assert!(parent.path().is_dir());
+    }
+
+    #[test]
+    fn deletion_refuses_a_different_project_identity_and_keeps_the_folder() {
+        let parent = tempfile::tempdir().unwrap();
+        let project = project_folder_at(&parent.path().join("Keep this project"));
+
+        let error = delete_project_folder(&project.to_string_lossy(), "some-other-project")
+            .unwrap_err();
+
+        assert!(error.contains("not the project selected for deletion"));
+        assert!(project.is_dir());
+        assert!(project.join(PROJECT_FILE_NAME).is_file());
     }
 
     #[test]

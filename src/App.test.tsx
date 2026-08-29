@@ -106,6 +106,29 @@ describe("project library controls", () => {
     await waitFor(() => expect(screen.getByRole("menuitem", { name: "Open project" })).not.toBeNull());
   });
 
+  it("confirms permanent project deletion before removing it from the library", async () => {
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete Project" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "Delete “Northern Light — Brand Film”?" });
+    expect(dialog.textContent).toContain("permanently deletes the project folder and every file inside it");
+    expect(dialog.textContent).toContain("~/PolStudio/Northern Light");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Northern Light — Brand Film")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
+
+    await waitFor(() => expect(screen.queryByText("Northern Light — Brand Film")).toBeNull());
+    const stored = JSON.parse(localStorage.getItem("polstudio.web-projects.v1") ?? "[]") as Array<{ config: { id: string } }>;
+    expect(stored.some((project) => project.config.id === "sample-1")).toBe(false);
+    expect(screen.getByText("2 projects")).not.toBeNull();
+  });
+
   it("offers frame sizes MiniMax H3 can generate, relabelled when the shape changes", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");

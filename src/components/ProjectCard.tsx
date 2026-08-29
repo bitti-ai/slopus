@@ -1,4 +1,4 @@
-import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles } from "lucide-react";
+import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resolutionLabel, visibleClipAt } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
@@ -8,6 +8,7 @@ interface ProjectCardProps {
   project: ProjectRecord;
   index: number;
   onOpen: (project: ProjectRecord) => void;
+  onDelete?: (project: ProjectRecord) => void;
 }
 
 const artwork = ["aurora", "paper", "chrome", "ember"];
@@ -37,7 +38,7 @@ function durationLabel(seconds: number) {
   return rest ? `${minutes} min ${rest} sec` : `${minutes} min`;
 }
 
-export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
+export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuAnchor = useRef<HTMLDivElement>(null);
   const { config } = project;
@@ -98,6 +99,7 @@ export function ProjectCard({ project, index, onOpen }: ProjectCardProps) {
           {menuOpen && (
             <div className="project-card__menu" role="menu">
               <button role="menuitem" onClick={() => onOpen(project)}><Folder size={16} /> Open project</button>
+              {onDelete && <button className="project-card__menu-delete" role="menuitem" onClick={() => { setMenuOpen(false); onDelete(project); }}><Trash2 size={16} /> Delete Project</button>}
             </div>
           )}
         </div>
