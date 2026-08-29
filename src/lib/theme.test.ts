@@ -477,8 +477,6 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
        the test instead, and the test recomputes them. */
     ".project-card__format, .project-card__quality":
       "white ink on the dark plate this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
-    ".project-card__play":
-      "white ink on the dark disc this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
     ".project-card__art-copy":
       "white ink on the strip this rule paints for itself, clearing 4.5:1 over any backdrop at all — recomputed from the two literals by the test below",
     ".project-card__art-copy::before":
@@ -615,12 +613,12 @@ describe("no stylesheet outside tokens.css names a colour", () => {
   }
 });
 
-/* --- The three rules that land on a picture instead of a palette ----------- *
+/* --- The two rules that land on a picture instead of a palette ------------- *
 
    Everywhere else, legibility is a property of two tokens and can be argued
    about by reading tokens.css. The library card's cover chrome is the
-   exception: the two badges, the play disc and the caption all print white ink
-   over generated artwork, and every one of them was exempted from the guard above.
+   exception: the two badges and the caption print white ink over generated
+   artwork, and both rules are exempted from the guard above.
 
    The caption's exemption used to read "white on a dark picture in both themes,
    because the picture is dark in both". Two of the four covers are not dark: it
@@ -628,15 +626,15 @@ describe("no stylesheet outside tokens.css names a colour", () => {
    themes — with a text-shadow as the only thing standing between the user's
    words and a blank strip.
 
-   The badges and the play disc then inherited a subtler version of the same
-   fiction: "each carries its OWN dark plate, whatever the picture under it
-   turns out to be", asserted in prose with nothing recomputing it. Their plates
-   were rgba(4,6,10,0.55) and rgba(5,7,11,0.45), which composite to mid-grey
-   over a pale backdrop — 3.78:1 and 3.22:1 measured over a white thumbnail,
-   both failing 4.5:1 over exactly the case the sentence claimed to cover.
+   The badges then inherited a subtler version of the same fiction: "each
+   carries its OWN dark plate, whatever the picture under it turns out to be",
+   asserted in prose with nothing recomputing it. Their plate was
+   rgba(4,6,10,0.55), which composites to mid-grey over a pale backdrop —
+   3.78:1 measured over a white thumbnail,
+   failing 4.5:1 over exactly the case the sentence claimed to cover.
    `backdrop-filter: blur(8px)` does not help: it blurs without darkening.
 
-   So none of the three is trusted to prose any more. Each is recomputed here
+   So neither rule is trusted to prose any more. Each is recomputed here
    from its own two literals against the worst backdrop that can physically
    exist — PURE WHITE — which is a floor rather than an average: every real
    cover is darker than white, so every real cover composites darker than this.
@@ -694,7 +692,6 @@ function inkOnPlate(rule: string, backdrop: number[]): number {
    thing tying a bound to the rule it is a bound for. */
 const COVER_CHROME = {
   "\n.project-card__format,\n.project-card__quality {": "the two corner badges",
-  "\n.project-card__play {": "the play disc",
   "\n.project-card__art-copy {": "the caption strip",
 };
 
@@ -703,12 +700,11 @@ describe("the chrome that sits on the cover artwork", () => {
 
   it("computes a ratio it can be caught getting wrong", () => {
     /* The maths above is the whole assertion, so it gets its own self-check
-       before it is trusted with three rules. Both plates below are the ones
+       before it is trusted with two rules. Both plates below are the ones
        that actually shipped and actually failed; if a refactor made this
        function optimistic, these are what would go green first. */
     expect(inkOnPlate("color: #fff; background: rgba(4,6,10,0.86);", WHITE)).toBeCloseTo(14.59, 1);
     expect(inkOnPlate("color: rgba(255,255,255,0.85); background: rgba(4,6,10,0.55);", WHITE)).toBeCloseTo(3.79, 1);
-    expect(inkOnPlate("color: #fff; background: rgba(5,7,11,0.45);", WHITE)).toBeCloseTo(3.22, 1);
     /* And that it is reading BOTH literals rather than one: opaque black plate,
        white ink, is 21:1 and nothing else is. */
     expect(inkOnPlate("color: #fff; background: rgba(0,0,0,1);", WHITE)).toBeCloseTo(21, 5);
