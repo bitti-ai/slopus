@@ -11,9 +11,10 @@ export const DEFAULT_GENERATION_STEPS = 20;
 export const MAX_GENERATION_STEPS = 2_147_483_647;
 export const RANDOM_GENERATION_SEED = -1;
 
-/** Languages MiniMax H3 documents as stable for dialogue generation. Keep the
- * labels verbatim: they are written into the model's required `[Language]`
- * marker rather than translated into the UI locale. */
+/** Languages MiniMax H3 documents as stable for dialogue generation. These are
+ * suggestions, not a validator whitelist: an LLM or user may name another
+ * language. Keep every label verbatim because it is written into the model's
+ * required `[Language]` marker rather than translated into the UI locale. */
 export const SPEECH_LANGUAGES = [
   "Arabic",
   "Chinese",
@@ -27,7 +28,7 @@ export const SPEECH_LANGUAGES = [
   "Russian",
   "Spanish",
 ] as const;
-export const speechLanguageSchema = z.enum(SPEECH_LANGUAGES);
+export const speechLanguageSchema = z.string();
 export type SpeechLanguage = z.infer<typeof speechLanguageSchema>;
 export const DEFAULT_SPEECH_LANGUAGE: SpeechLanguage = "English";
 

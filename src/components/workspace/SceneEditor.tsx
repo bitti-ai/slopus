@@ -120,6 +120,10 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);
   const settings = shot.settings ?? {};
   const shotNumber = index + 1;
+  const speechLanguage = shot.speechLanguage ?? DEFAULT_SPEECH_LANGUAGE;
+  const speechLanguages: readonly string[] = SPEECH_LANGUAGES.some((language) => language === speechLanguage)
+    ? SPEECH_LANGUAGES
+    : [...SPEECH_LANGUAGES, speechLanguage];
 
   /* The line, written the way the user reads and types it. What is STORED is
      `@[ref:<id>]`, which survives a rename and a reorder; what is SHOWN is
@@ -227,12 +231,12 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         <label className="shot-speech__language">
           <span>Language</span>
           <select
-            value={shot.speechLanguage ?? DEFAULT_SPEECH_LANGUAGE}
+            value={speechLanguage}
             disabled={disabled}
             aria-label={`Speech language for shot ${shotNumber}`}
-            onChange={(event) => onChange({ speechLanguage: event.target.value as SceneShot["speechLanguage"] })}
+            onChange={(event) => onChange({ speechLanguage: event.target.value })}
           >
-            {SPEECH_LANGUAGES.map((language) => <option key={language} value={language}>{language}</option>)}
+            {speechLanguages.map((language) => <option key={language} value={language}>{language}</option>)}
           </select>
         </label>
       </div>

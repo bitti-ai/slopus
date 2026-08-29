@@ -162,6 +162,17 @@ describe("Generator scene controls", () => {
     expect(snapshot.prompt).toContain("<d>[Korean] 문을 열어 주세요.</d>");
   });
 
+  it("keeps an LLM-authored custom speech language in the language list", () => {
+    const initial = project();
+    initial.generationJobs[0].shots![0].speechLanguage = "Klingon";
+    setup(parseProjectConfig(initial));
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+
+    const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
+    expect(language).toHaveValue("Klingon");
+    expect(within(language).getByRole("option", { name: "Klingon" })).toBeInTheDocument();
+  });
+
   it("reorders shots inside a scene while keeping its cut slots", () => {
     const state = setup();
     const shotTransfer = transfer();
