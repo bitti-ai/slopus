@@ -435,8 +435,9 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           </label>
 
         </div>
+      </section>
 
-        <h2>What this export will be</h2>
+      <section className="export-details" aria-label="Export details">
         <dl className="export-summary">
           {summary.map(([term, value, detail]) => <div key={term}>
             <dt>{term}</dt>
