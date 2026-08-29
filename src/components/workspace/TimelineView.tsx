@@ -27,6 +27,7 @@ import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { sceneShape, STATUS_WORD } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
+import { CommittedNumberInput } from "./CommittedNumberInput";
 
 const MIN_DURATION = 10_000;
 /* How long a dropped clip is when the file itself cannot say.
@@ -855,12 +856,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <section className="inspector-section">
               <h3>Transform</h3>
               <div className="field-pair">
-                <label><span>Scale (%)</span><input type="number" min="10" max="400" step="1" value={selectedTransform?.scale ?? 100} disabled={visualControlsDisabled} onChange={(event) => updateTransform("scale", Number(event.target.value))} /></label>
-                <label><span>Rotation (°)</span><input type="number" min="-180" max="180" step="1" value={selectedTransform?.rotation ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("rotation", Number(event.target.value))} /></label>
+                <label><span>Scale (%)</span><CommittedNumberInput minimum={10} maximum={400} step="1" value={selectedTransform?.scale ?? 100} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("scale", value)} /></label>
+                <label><span>Rotation (°)</span><CommittedNumberInput minimum={-180} maximum={180} step="1" value={selectedTransform?.rotation ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("rotation", value)} /></label>
               </div>
               <div className="field-pair">
-                <label><span>Position X (%)</span><input type="number" min="-100" max="100" step="1" value={selectedTransform?.positionX ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("positionX", Number(event.target.value))} /></label>
-                <label><span>Position Y (%)</span><input type="number" min="-100" max="100" step="1" value={selectedTransform?.positionY ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("positionY", Number(event.target.value))} /></label>
+                <label><span>Position X (%)</span><CommittedNumberInput minimum={-100} maximum={100} step="1" value={selectedTransform?.positionX ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("positionX", value)} /></label>
+                <label><span>Position Y (%)</span><CommittedNumberInput minimum={-100} maximum={100} step="1" value={selectedTransform?.positionY ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("positionY", value)} /></label>
               </div>
             </section>
             <section className="inspector-section">
