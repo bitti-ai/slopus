@@ -415,7 +415,7 @@
 
 .agent-conversation p {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 80px minmax(0, 1fr);
   gap: var(--space-3);
   margin: 0;
   padding: var(--space-3);

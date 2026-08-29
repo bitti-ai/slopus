@@ -301,7 +301,7 @@
 }
 
 /* --- Tabs -------------------------------------------------------------------
-   One row of two, each naming the panel below it. They carry the whole job the
+   One row, each tab naming the panel below it. They carry the whole job the
    section headings used to do, so those are gone with them. */
 
 .settings-tabs {
@@ -498,6 +498,133 @@
   color: var(--accent-bright);
 }
 
+/* --- Prompt LLMs ----------------------------------------------------------- */
+
+.llm-settings__intro {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.llm-provider {
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+
+.llm-provider + .llm-provider {
+  margin-top: var(--space-4);
+}
+
+.llm-provider--configured {
+  border-color: var(--success-line);
+}
+
+.llm-provider > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.llm-provider h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+}
+
+.llm-provider header p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.llm-provider header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.llm-provider--configured header > span {
+  color: var(--success);
+}
+
+.llm-provider__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.llm-provider__fields label {
+  min-width: 0;
+}
+
+.llm-provider__fields label > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.llm-provider__fields label em {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: var(--weight-regular);
+  text-transform: uppercase;
+}
+
+.llm-provider__fields input {
+  width: 100%;
+  min-width: 0;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--field-bg);
+  font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
+}
+
+.llm-provider__model {
+  grid-column: 1 / -1;
+}
+
+.llm-provider__model > div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.llm-provider__model input {
+  flex: 1 1 auto;
+}
+
+.llm-provider__model button {
+  flex: 0 0 auto;
+}
+
+.llm-provider__model .spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.llm-provider__error {
+  margin: var(--space-3) 0 0;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
 /* Five of these, and stacked (name, hint, field, state) each one was four
    rows tall — the reason this screen needed scrolling at all. Side by side the
    same five fit in a window without losing a word of what they say. */
@@ -636,6 +763,18 @@
 
   .theme-choice {
     grid-template-columns: 1fr;
+  }
+
+  .llm-provider__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .llm-provider__model {
+    grid-column: auto;
+  }
+
+  .llm-provider__model > div {
+    flex-direction: column;
   }
 
 }

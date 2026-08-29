@@ -1963,6 +1963,16 @@ async fn runtime_status(
 }
 
 #[tauri::command]
+async fn list_agent_models(
+    provider: agent::ProviderId,
+    setting: ProviderSetting,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || agent::compatible_models(provider, &setting))
+        .await
+        .map_err(|error| format!("Could not load agent models: {error}"))?
+}
+
+#[tauri::command]
 async fn run_agent_turn(
     app: AppHandle,
     state: tauri::State<'_, agent::AgentRuntime>,
@@ -2305,6 +2315,7 @@ pub fn run() {
             create_project,
             save_project,
             runtime_status,
+            list_agent_models,
             vidfab_status,
             choose_engine_path,
             run_agent_turn,

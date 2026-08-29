@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, saveProject } from "./persistence";
 import { compileMiniMaxH3Prompt, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
-import { engineProviderSetting, loadEngineSettings, withEngineSettings, type EnginePathField } from "./settings";
+import {
+  agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
+  loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
+  type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
+} from "./settings";
 
-export type ProviderId = "claude" | "codex";
+export type ProviderId = "claude" | "codex" | EndpointProviderId;
 export interface ProviderStatus {
   id: ProviderId;
   label: string;
@@ -91,7 +95,9 @@ const DEMO_STATUS: RuntimeStatus = {
  *  startup and every project shares the answer. */
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   if (!isTauri()) return DEMO_STATUS;
-  return invoke<RuntimeStatus>("runtime_status", { settings: { vidfab: engineProviderSetting(loadEngineSettings()) } });
+  return invoke<RuntimeStatus>("runtime_status", {
+    settings: { vidfab: engineProviderSetting(loadEngineSettings()), ...agentEndpointProviderSettings() },
+  });
 }
 
 /** The placeholder every caller shows until the startup probe lands. */
@@ -117,13 +123,18 @@ export async function chooseEnginePath(field: EnginePathField): Promise<string |
   });
 }
 
+export async function getAgentModels(provider: EndpointProviderId, settings: EndpointProviderSettings): Promise<string[]> {
+  if (!isTauri()) return [];
+  return invoke<string[]>("list_agent_models", { provider, setting: endpointProviderSetting(settings) });
+}
+
 export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string): Promise<AgentTurnResponse> {
   const createdAt = new Date().toISOString();
   const userMessageId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
   if (isTauri()) {
     const response = await invoke<AgentTurnResponse>("run_agent_turn", { request: {
-      requestId, folderPath: record.folderPath, provider, prompt, config: record.config,
+      requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
       userMessageId, assistantMessageId, createdAt,
     } });
     return { ...response, record: { ...response.record, config: parseProjectConfig(response.record.config) } };

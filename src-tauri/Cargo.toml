@@ -22,6 +22,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 libloading = "0.8"
 getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }

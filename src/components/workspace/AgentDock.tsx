@@ -26,7 +26,9 @@ export function AgentDock({ context, record, providers, onRecord }: {
   onRecord: (record: ProjectRecord) => void;
 }) {
   const configured = loadAgentProvider() ?? record.config.providerSettings.agent?.options.selectedProvider;
-  const initial = configured === "codex" || configured === "claude" ? configured : providers.find((item) => item.state === "ready")?.id ?? "claude";
+  const initial = providers.some((item) => item.id === configured)
+    ? configured as ProviderId
+    : providers.find((item) => item.state === "ready")?.id ?? "claude";
   const [provider, setProvider] = useState<ProviderId>(initial);
   const [prompt, setPrompt] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -154,7 +156,7 @@ const activityLabel = (kind: AgentActivity["kind"]): string => {
 
 function activityFromEvent(event: AgentTurnEvent): AgentActivity | null {
   switch (event.type) {
-    case "started": return { kind: "system", text: `${event.provider === "claude" ? "Claude Code" : "Codex"} started processing.` };
+    case "started": return { kind: "system", text: `${providerLabel(event.provider)} started processing.` };
     case "completed": return { kind: "system", text: "The provider returned a response." };
     case "validation": return { kind: "validation", text: `Correction ${event.round} of ${event.maxRounds}: ${event.text}` };
     case "diagnostic": return event.text.trim() ? { kind: "diagnostic", text: event.text.trim() } : null;
@@ -164,6 +166,13 @@ function activityFromEvent(event: AgentTurnEvent): AgentActivity | null {
     }
   }
 }
+
+const providerLabel = (provider: ProviderId) => ({
+  claude: "Claude Code",
+  codex: "Codex",
+  openrouter: "OpenRouter",
+  local: "Local OpenAI-compatible",
+})[provider];
 
 /** Provider CLIs stream NDJSON. Pull out the model-authored text so the panel
  *  shows what Pol is saying instead of transport records. */
