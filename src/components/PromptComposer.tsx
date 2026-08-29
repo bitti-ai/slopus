@@ -118,8 +118,6 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
         <h2 id="create-heading">What do you want to make?</h2></div>
         <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label="Close new project"><X size={18} /></button>
       </header>
-      <div className="composer-shell__glow" />
-
       <div className="composer">
         <div className="composer__input-row">
           <PolStudioLogo compact decorative className="composer__brand-mark" />

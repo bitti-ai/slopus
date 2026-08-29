@@ -10,9 +10,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-6) var(--space-7) var(--space-7);
-  background:
-    radial-gradient(circle at 80% -20%, var(--glow-accent), transparent 38%),
-    var(--bg);
+  background: var(--bg);
 }
 
 /* Title, notification, action. The middle column holds its place whether or

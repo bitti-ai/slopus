@@ -75,18 +75,6 @@
   box-shadow: var(--shadow);
 }
 
-.composer-shell__glow {
-  position: absolute;
-  width: 360px;
-  height: 240px;
-  right: -80px;
-  top: -120px;
-  border-radius: 50%;
-  background: var(--glow-accent);
-  filter: blur(50px);
-  pointer-events: none;
-}
-
 .composer-heading {
   position: relative;
   z-index: 1;
@@ -463,12 +451,11 @@
   border-radius: var(--radius-lg);
   background: var(--panel);
   overflow: hidden;
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
 }
 
 .project-card:hover,
 .project-card:focus-within {
-  transform: translateY(-2px);
   border-color: var(--accent-line);
   box-shadow: var(--shadow-sm);
 }
