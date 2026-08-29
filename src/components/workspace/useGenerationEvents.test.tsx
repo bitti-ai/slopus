@@ -33,11 +33,11 @@ afterEach(() => {
 
 /** A project with one draft scene, and a harness that keeps whatever the hook
  *  writes — the same shape the workspace holds it in. */
-function harness(onCompleted?: (jobId: string) => void) {
+function harness(onCompleted?: (jobId: string) => void, onEstimate?: (jobId: string, completionAt: number | null) => void) {
   const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
   const state = { config: fresh };
   function Harness() {
-    useGenerationEvents({ folderPath: "C:\\Ceramic Lamp", onChange: (update) => { state.config = update(state.config); }, onCompleted });
+    useGenerationEvents({ folderPath: "C:\\Ceramic Lamp", onChange: (update) => { state.config = update(state.config); }, onCompleted, onEstimate });
     return null;
   }
   render(<Harness />);
@@ -152,6 +152,26 @@ describe("what the app does with the engine's events", () => {
     await emit("vidfab-progress", { jobId, stage: "audioDecode", step: 0, totalSteps: 0 });
     expect(job().progress).toBe(furthest);
     expect(job().progress).toBeGreaterThan(0.7);
+  });
+
+  it("estimates render completion from observed progress and clears it when rendering ends", async () => {
+    const onEstimate = vi.fn();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const { jobId } = harness(undefined, onEstimate);
+
+    await emit("vidfab-progress", { jobId, stage: "denoising", step: 10, totalSteps: 100 });
+    expect(onEstimate).toHaveBeenLastCalledWith(jobId, null);
+
+    now.mockReturnValue(11_000);
+    await emit("vidfab-progress", { jobId, stage: "denoising", step: 20, totalSteps: 100 });
+    const completionAt = onEstimate.mock.lastCall?.[1];
+    expect(completionAt).toBeTypeOf("number");
+    expect(completionAt).toBeGreaterThan(11_000);
+
+    vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 1, note: null });
+    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    expect(onEstimate).toHaveBeenLastCalledWith(jobId, null);
+    now.mockRestore();
   });
 
   it("passes queued, failed and cancelled through as themselves", async () => {

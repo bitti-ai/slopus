@@ -55,6 +55,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const [dirty, setDirty] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [leaveGuard, setLeaveGuard] = useState(false);
+  const [generationCompletionTimes, setGenerationCompletionTimes] = useState<Readonly<Record<string, number>>>({});
   /** Every save is ordered. Without this, an older manual save and a generation
    *  completion save could race and whichever disk write happened to finish
    *  last would win, even if it held the older project. */
@@ -107,6 +108,16 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     folderPath: project.folderPath,
     onChange: (update) => { applyConfig(update); dirtyRevision.current += 1; setDirty(true); },
     onCompleted: () => { void persist({ ...project, config: configRef.current }); },
+    onEstimate: (jobId, completionAt) => setGenerationCompletionTimes((current) => {
+      if (completionAt === null) {
+        if (!(jobId in current)) return current;
+        const next = { ...current };
+        delete next[jobId];
+        return next;
+      }
+      if (current[jobId] === completionAt) return current;
+      return { ...current, [jobId]: completionAt };
+    }),
   });
 
   /* Derived through a key of identity and status rather than from the job
@@ -210,8 +221,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     </header>
 
     <div className={`project-content project-content--${view}`}>
-      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>

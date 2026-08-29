@@ -701,6 +701,14 @@
   text-align: center;
 }
 
+.shot-thumb__eta {
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-tight);
+  text-align: center;
+}
+
 .shot-thumb--generating,
 .shot-thumb--ready {
   color: var(--accent-bright);

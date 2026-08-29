@@ -131,9 +131,10 @@ const parseDuration = (value: string, frameRate: number): number | null => {
  *  previous one having already come back down as a prop. */
 export type ConfigUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
 
-export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenGenerator }: {
+export function TimelineView({ config, folderPath, generationCompletionTimes = {}, onChange, onMeasured, onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
+  generationCompletionTimes?: Readonly<Record<string, number>>;
   onChange: (next: ConfigUpdate) => void;
   /** What a decode learned about a file the project already had — a length, a
    *  size. Worth keeping, but the user did not edit anything by looking at the
@@ -743,7 +744,7 @@ export function TimelineView({ config, folderPath, onChange, onMeasured, onOpenG
                   title={`${job.title} — drag onto a video track below`}
                 >
                   <span className="scene-card__thumb">
-                    <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} posterOffsetSeconds={0} />
+                    <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
                   <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>

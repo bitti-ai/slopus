@@ -236,7 +236,17 @@ function placeholder(job: GenerationJob, failed: boolean, cancelling: boolean): 
   }
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, posterOffsetSeconds = 0, cancelling = false }: {
+export function formatEstimatedTimeLeft(milliseconds: number): string {
+  const totalSeconds = Math.max(1, Math.ceil(milliseconds / 1_000));
+  if (totalSeconds < 60) return `About ${totalSeconds}s left`;
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `About ${hours}h ${minutes}m left`;
+  return `About ${minutes}m ${seconds}s left`;
+}
+
+export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, estimatedCompletionAt = null, cancelling = false }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
@@ -245,13 +255,13 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   /** The next cut (or scene end). Playback never crosses this point. */
   endSeconds?: number;
   shotNumber: number;
-  /** Optional caller-selected offset from the exact cut. */
-  posterOffsetSeconds?: number;
+  /** Live rendering estimate derived from observed progress; never persisted. */
+  estimatedCompletionAt?: number | null;
   /** Cancel was requested but the engine has not reported its terminal state. */
   cancelling?: boolean;
 }) {
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
-  const at = seconds + posterOffsetSeconds;
+  const at = seconds;
   const playbackId = `${job.id}@${seconds}`;
   const [result, setResult] = useState<PosterResult>(() =>
     relativePath ? { poster: POSTERS.get(posterKey(fileKey(folderPath, relativePath), at)) ?? null, failed: false } : NOTHING);
@@ -259,6 +269,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   const [loadingPlayback, setLoadingPlayback] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [playFailed, setPlayFailed] = useState(false);
+  const [estimateNow, setEstimateNow] = useState(() => Date.now());
   const videoRef = useRef<HTMLVideoElement>(null);
   const requestRef = useRef(0);
   const cutTimerRef = useRef<number | null>(null);
@@ -315,6 +326,13 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   useEffect(() => () => {
     if (playbackUrl) URL.revokeObjectURL(playbackUrl);
   }, [playbackUrl]);
+
+  useEffect(() => {
+    if (job.status !== "generating" || estimatedCompletionAt === null || cancelling) return;
+    setEstimateNow(Date.now());
+    const timer = window.setInterval(() => setEstimateNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [job.status, estimatedCompletionAt, cancelling]);
 
   const stopAtCut = () => {
     const video = videoRef.current;
@@ -386,9 +404,15 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
     </button>;
   }
   const { icon, word } = placeholder(job, result.failed, cancelling);
-  return <span className={`shot-thumb shot-thumb--${job.status}`} role="img" aria-label={`Shot ${shotNumber} — ${word}`}>
+  const estimateLine = job.status === "generating" && !cancelling
+    ? estimatedCompletionAt === null
+      ? "Estimating time left…"
+      : formatEstimatedTimeLeft(estimatedCompletionAt - estimateNow)
+    : null;
+  return <span className={`shot-thumb shot-thumb--${job.status}`} role="img" aria-label={`Shot ${shotNumber} — ${word}${estimateLine ? `. ${estimateLine}` : ""}`}>
     {icon}
     <em>{word}</em>
+    {estimateLine && <small className="shot-thumb__eta">{estimateLine}</small>}
     {job.status === "generating" && <span className="shot-thumb__progress" aria-hidden="true">
       <i style={{ width: `${Math.max(0, Math.min(100, job.progress * 100))}%` }} />
     </span>}
