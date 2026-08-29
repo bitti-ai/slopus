@@ -14,7 +14,11 @@ afterEach(cleanup);
  *  actually draws. jsdom does none of that, so it is stood in for — and every
  *  seek the component asks for is recorded, because WHICH frame each card gets
  *  is the whole point of this component. */
-async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: number[]; reads: () => number }) => Promise<void>) {
+async function withFakeFile(file: { seconds: number }, body: (seen: {
+  seeks: number[];
+  reads: () => number;
+  posters: () => Array<{ width: number; height: number; type: string; quality: number | undefined }>;
+}) => Promise<void>) {
   const { invoke } = await import("@tauri-apps/api/core");
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(8));
@@ -30,9 +34,11 @@ async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: num
   HTMLMediaElement.prototype.pause = vi.fn();
   HTMLCanvasElement.prototype.getContext = (() => ({ drawImage: () => undefined })) as unknown as typeof getContext;
   const seeks: number[] = [];
+  const posters: Array<{ width: number; height: number; type: string; quality: number | undefined }> = [];
   // The drawn frame is named after the moment it was taken from, so a test can
   // tell one card's picture from another's.
-  HTMLCanvasElement.prototype.toDataURL = function () {
+  HTMLCanvasElement.prototype.toDataURL = function (this: HTMLCanvasElement, type?: string, quality?: number) {
+    posters.push({ width: this.width, height: this.height, type: type ?? "", quality });
     return `data:image/jpeg;base64,frame-${seeks.length === 0 ? 0 : seeks[seeks.length - 1]}`;
   } as unknown as typeof toDataURL;
   const create = document.createElement.bind(document);
@@ -60,7 +66,7 @@ async function withFakeFile(file: { seconds: number }, body: (seen: { seeks: num
     return element;
   });
   try {
-    await body({ seeks, reads: () => vi.mocked(invoke).mock.calls.length });
+    await body({ seeks, reads: () => vi.mocked(invoke).mock.calls.length, posters: () => posters });
   } finally {
     spy.mockRestore();
     HTMLMediaElement.prototype.load = load;
@@ -98,7 +104,7 @@ describe("a shot's picture", () => {
     const folder = "C:\\Exact first frame";
     const job = rendered(folder);
     await withFakeFile({ seconds: 9 }, async (seen) => {
-      render(<ShotThumbnail folderPath={folder} job={job} seconds={0} shotNumber={1} posterOffsetSeconds={0} />);
+      render(<ShotThumbnail folderPath={folder} job={job} seconds={0} shotNumber={1} />);
       const control = await screen.findByRole("button", { name: "Play shot 1 of First scene" });
       const picture = control.querySelector("img") as HTMLImageElement;
       expect(seen.seeks).toEqual([]);
@@ -124,11 +130,14 @@ describe("a shot's picture", () => {
       const pictures = drawn().map((control) => control.querySelector("img") as HTMLImageElement);
       // The file was read once, for both cards.
       expect(seen.reads()).toBe(1);
-      /* And each card got ITS shot's frame: a quarter of a second past the cut,
-         which is inside the shot and past a fade-in that would otherwise hand
-         the first card a black rectangle. */
-      expect(seen.seeks).toEqual([0.25, 4.75]);
+      // Each card gets the exact frame where its shot starts. Frame zero is
+      // already loaded, so only shot 2 requires an explicit seek.
+      expect(seen.seeks).toEqual([4.5]);
       expect(pictures[0].src).not.toBe(pictures[1].src);
+      expect(seen.posters()).toEqual([
+        { width: 640, height: 360, type: "image/jpeg", quality: 0.92 },
+        { width: 640, height: 360, type: "image/jpeg", quality: 0.92 },
+      ]);
     });
   });
 
