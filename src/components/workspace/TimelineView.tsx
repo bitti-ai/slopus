@@ -723,8 +723,13 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
           </div>
           {panelTab === "media" && <div className="scene-panel__head">
-            <h2>Project media</h2>
-              <div className="layout-toggle" role="group" aria-label="Media layout">
+            <button
+              className="media-import-button"
+              onClick={() => void importMedia()}
+              disabled={importing || !isTauri()}
+              title={isTauri() ? "Add video, sound, or image files — video and sound stay where they are, images are copied in" : "Importing files is available in the desktop app"}
+            ><Upload size={16} /> {importing ? "Importing…" : "Import"}</button>
+            <div className="layout-toggle" role="group" aria-label="Media layout">
                 <button
                   className={mediaLayout === "grid" ? "active" : ""}
                   aria-pressed={mediaLayout === "grid"}
@@ -800,14 +805,6 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   onClick={() => removeMediaAsset(asset.id)}
                 ><X size={14} /></button>
               </div>)}
-              <button
-                className="media-import"
-                onClick={() => void importMedia()}
-                disabled={importing || !isTauri()}
-                title={isTauri() ? "Add video, sound, or image files — video and sound stay where they are, images are copied in" : "Importing files is available in the desktop app"}
-              >
-                <Upload size={20} /><b>{importing ? "Importing…" : "Import media"}</b>
-              </button>
               {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
           )}

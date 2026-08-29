@@ -327,6 +327,9 @@ describe("project workspace timecode", () => {
     expect(screen.queryByRole("heading", { name: "Generator scenes" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Media" }));
     const media = container.querySelector(".media-grid")! as HTMLElement;
+    expect(screen.queryByRole("heading", { name: "Project media" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Import" })).not.toBeNull();
+    expect(media.querySelector(".media-import")).toBeNull();
     expect(within(media).getByText("Macro footage")).not.toBeNull();
     expect(within(media).getByText("Room tone")).not.toBeNull();
   });

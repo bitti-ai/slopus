@@ -90,10 +90,9 @@
 }
 
 /* --- Region headings -------------------------------------------------------
-   Media and the program monitor retain real h2 headings; Scenes starts
-   directly below its already-labelled tab. */
+   The program monitor retains its h2; the asset tabs already name the left
+   panel's two regions. */
 
-.scene-panel__head h2,
 .program-panel > .panel-chrome h2 {
   display: flex;
   align-items: center;
@@ -117,6 +116,29 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
+}
+
+.media-import-button {
+  min-height: var(--control-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--wash-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.media-import-button:hover:not(:disabled) {
+  border-color: var(--line-hover);
+  background: var(--wash-2);
+}
+
+.media-import-button:disabled {
+  opacity: 0.6;
 }
 
 /* Scenes start directly below the tabs; they do not need a second heading. */
@@ -313,8 +335,7 @@
   grid-column: 1 / -1;
 }
 
-.media-grid .media-card__source,
-.media-grid .media-import {
+.media-grid .media-card__source {
   min-width: 0;
   /* Floor the hit target even if a card ever renders without its labels. */
   min-height: var(--control-sm);
@@ -326,15 +347,12 @@
   background: var(--panel-2);
 }
 
-.media-grid .media-card__source:hover:not(:disabled),
-.media-grid .media-import:hover:not(:disabled) {
+.media-grid .media-card__source:hover:not(:disabled) {
   border-color: var(--line-strong);
 }
 
 .media-grid .media-card__source b,
-.media-grid .media-card__source small,
-.media-grid .media-import b,
-.media-grid .media-import small {
+.media-grid .media-card__source small {
   display: block;
   padding: 0 var(--space-2);
   overflow: hidden;
@@ -342,8 +360,7 @@
   text-overflow: ellipsis;
 }
 
-.media-grid .media-card__source b,
-.media-grid .media-import b {
+.media-grid .media-card__source b {
   margin-top: var(--space-2);
   color: var(--text-primary);
   font-size: var(--text-sm);
@@ -351,8 +368,7 @@
   line-height: var(--leading-snug);
 }
 
-.media-grid .media-card__source small,
-.media-grid .media-import small {
+.media-grid .media-card__source small {
   margin-top: var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -463,72 +479,8 @@
   cursor: grabbing;
 }
 
-.media-grid .media-import {
-  min-height: 120px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  border-style: dashed;
-  background: none;
-}
-
-.media-grid .media-import:hover:not(:disabled) {
-  color: var(--text-primary);
-  border-color: var(--accent-bright);
-  background: var(--accent-soft);
-}
-
-/* Only in the browser preview, where there is no project folder to copy into. */
-.media-grid .media-import:disabled {
-  opacity: 0.6;
-}
-
 .panel-hint--error {
   color: var(--danger);
-}
-
-.media-import b {
-  width: auto;
-  margin-top: 0 !important;
-  padding: 0 !important;
-  text-align: center;
-}
-
-/* In list mode the import control is one row like every other, not the tall
-   dashed plate the grid needs — and not a centred label either: it reuses the
-   row grid above, so its words start on the same pixel as every file name
-   beside it and its icon sits in the same column as their stills. These have
-   the same specificity as the grid rules above, so they MUST stay below them —
-   moved up, the 120px plate won. */
-.media-grid--list .media-import {
-  /* The rows beside it are 42px tall: a 40px still between two 1px borders.
-     This row carries the same border, so it has to add the same two pixels. */
-  min-height: calc(var(--space-7) + 2px);
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  /* The grid-mode plate packs its icon and label together; a row uses the same
-     column gap as the file rows, or the name lands four pixels short of theirs. */
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-}
-
-.media-grid--list .media-import svg {
-  justify-self: center;
-}
-
-/* The file rows push their name down onto the baseline of a two-line stack.
-   This row has one line, so it centres instead — bottom-aligned, it sat ten
-   pixels below its own icon. */
-.media-grid--list .media-import b {
-  width: auto;
-  margin-top: 0;
-  padding-left: 0;
-  text-align: left;
-  align-self: center;
 }
 
 /* --- Program monitor ------------------------------------------------------- */
