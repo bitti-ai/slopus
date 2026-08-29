@@ -52,7 +52,9 @@ describe("the program monitor", () => {
   it("shows move, scale, and rotate widgets after the timeline picture is selected", () => {
     const config = project([clip()]);
     function Harness() {
-      const [selected, setSelected] = useState<string | null>(null);
+      // The clip already being selected on the timeline must not show handles;
+      // the click on the picture below is the explicit direct-edit action.
+      const [selected, setSelected] = useState<string | null>("clip-1");
       return <ProgramMonitor
         config={config}
         folderPath="C:\\Ceramic Lamp"
