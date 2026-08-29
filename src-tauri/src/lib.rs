@@ -890,27 +890,6 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                         shot.id, job.id, shot.start_seconds
                     ));
                 }
-                if shot.speech_language.as_deref().is_some_and(|language| {
-                    !matches!(
-                        language,
-                        "Arabic"
-                            | "Chinese"
-                            | "English"
-                            | "French"
-                            | "German"
-                            | "Italian"
-                            | "Japanese"
-                            | "Korean"
-                            | "Portuguese"
-                            | "Russian"
-                            | "Spanish"
-                    )
-                }) {
-                    return Err(format!(
-                        "Shot '{}' in scene '{}' has an unsupported speech language.",
-                        shot.id, job.id
-                    ));
-                }
                 shot.settings = normalize_shot_tags(shot.settings.take())
                     .map_err(|reason| format!("Shot '{}' {reason}", shot.id))?;
             }
@@ -4007,7 +3986,7 @@ mod tests {
     }
 
     #[test]
-    fn shot_speech_and_its_supported_language_survive_the_project_round_trip() {
+    fn shot_speech_and_custom_languages_survive_the_project_round_trip() {
         let mut config = scene_fixture();
         let shot = &mut config.generation_jobs[0].shots.as_mut().unwrap()[0];
         shot.speech = Some("行こう！ Keep this punctuation.".into());
@@ -4022,10 +4001,17 @@ mod tests {
         );
         assert_eq!(shot.speech_language.as_deref(), Some("Japanese"));
 
-        let mut invalid = scene_fixture();
-        invalid.generation_jobs[0].shots.as_mut().unwrap()[0].speech_language =
+        let mut custom = scene_fixture();
+        custom.generation_jobs[0].shots.as_mut().unwrap()[0].speech_language =
             Some("Klingon".into());
-        assert!(validate_and_normalize_config(invalid).is_err());
+        let normalized = validate_and_normalize_config(custom)
+            .expect("custom speech languages are not validator errors");
+        assert_eq!(
+            normalized.generation_jobs[0].shots.as_ref().unwrap()[0]
+                .speech_language
+                .as_deref(),
+            Some("Klingon")
+        );
     }
 
     #[test]
