@@ -1,6 +1,8 @@
 import { Plus, Sparkles, Square, WandSparkles } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { isTauri } from "../../lib/persistence";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
@@ -51,6 +53,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [, setPlanNotes] = useState<Record<string, string>>({});
   const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
+  const [startFrameError, setStartFrameError] = useState<string | null>(null);
 
   useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
 
@@ -64,7 +67,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
   const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
-  const boundRefs = useMemo(() => config.references.filter((ref) => selected?.referenceIds.includes(ref.id)), [config.references, selected]);
+  const boundRefs = useMemo(() => selected ? sceneGenerationReferences(selected, config.references) : [], [config.references, selected]);
   const runtimeReady = runtime?.state === "ready";
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
@@ -94,6 +97,35 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) =>
     updateJob(job.id, mergeSceneUpdates(job, updates));
+
+  const addStartFrame = async (job: GenerationJob) => {
+    if (!isTauri()) return;
+    setStartFrameError(null);
+    try {
+      const imported = await invoke<{ name: string; relativePath: string } | null>("choose_reference_image", { folderPath });
+      if (!imported) return;
+      const current = configRef.current;
+      const id = `ref-${Date.now()}`;
+      const reference: ProjectReference = {
+        id,
+        kind: "image",
+        name: imported.name,
+        description: "",
+        relativePath: imported.relativePath,
+        intendedUse: [],
+        createdAt: new Date().toISOString(),
+      };
+      onChange({
+        ...current,
+        references: [reference, ...current.references],
+        generationJobs: current.generationJobs.map((candidate) => candidate.id === job.id
+          ? { ...candidate, startFrameReferenceId: id, updatedAt: new Date().toISOString() }
+          : candidate),
+      });
+    } catch (reason) {
+      setStartFrameError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
 
   /* --- The shots of a scene ------------------------------------------------
      Every one of these goes through writeShots, so the mirrored `prompt` and
@@ -198,7 +230,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     // ordered list drives the <Subject N> / <Picture N> numbering inside the
     // compiled prompt, because vidfab.rs adds reference_paths sequentially — so
     // array index 0 must be the asset the prompt calls <Picture 1>.
-    const bound = configRef.current.references.filter((reference) => job.referenceIds.includes(reference.id));
+    const bound = sceneGenerationReferences(job, configRef.current.references);
     return {
       jobId: job.id,
       // Recompiled from current state so edits to a bound reference or a
@@ -527,6 +559,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               job={selected}
               shots={selectedShots}
               disabled={false}
+              references={config.references}
+              importAvailable={isTauri()}
+              importError={startFrameError}
+              onAddStartFrame={() => void addStartFrame(selected)}
               onChange={(updates) => updateScene(selected, updates)}
               onShots={(next) => setShots(selected, next)}
             />

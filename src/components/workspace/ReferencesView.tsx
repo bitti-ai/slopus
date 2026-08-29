@@ -79,7 +79,11 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   };
   const remove = () => {
     if (!selected) return;
-    onChange({ ...config, references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({ ...job, referenceIds: job.referenceIds.filter((id) => id !== selected.id) })) });
+    onChange({ ...config, references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({
+      ...job,
+      referenceIds: job.referenceIds.filter((id) => id !== selected.id),
+      startFrameReferenceId: job.startFrameReferenceId === selected.id ? undefined : job.startFrameReferenceId,
+    })) });
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };
   const openPresetPicker = () => {

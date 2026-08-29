@@ -1069,6 +1069,27 @@
   line-height: var(--leading-snug);
 }
 
+.scene-settings__start-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+
+.scene-settings__start-frame select {
+  width: 100%;
+}
+
+.scene-settings__start-frame button {
+  min-height: var(--field-height);
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  white-space: nowrap;
+}
+
+.scene-settings__field .scene-settings__error {
+  color: var(--danger);
+}
+
 .scene-settings__numbers {
   display: grid;
   grid-template-columns: 1fr 1fr;

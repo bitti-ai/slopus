@@ -247,6 +247,9 @@ struct GenerationJob {
     generation_snapshot: Option<String>,
     #[serde(default)]
     reference_ids: Vec<String>,
+    /// Optional image reference that initializes the scene's first frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start_frame_reference_id: Option<String>,
     /// The H3 vocabulary tags this shot was built from: group id -> option ids.
     /// zod spells it `.nullish()` (src/lib/project.ts `shotTagSelectionSchema`),
     /// so `null` IS readable on the frontend — but the key is still skipped
@@ -1094,6 +1097,20 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 "Generation job '{}' references unknown reference '{}'.",
                 job.id, reference_id
             ));
+        }
+        if let Some(start_frame_id) = &job.start_frame_reference_id {
+            let Some(reference) = config.references.iter().find(|reference| reference.id == *start_frame_id) else {
+                return Err(format!(
+                    "Generation job '{}' uses unknown start-frame reference '{}'.",
+                    job.id, start_frame_id
+                ));
+            };
+            if reference.kind != "image" {
+                return Err(format!(
+                    "Generation job '{}' start-frame reference '{}' is not an image.",
+                    job.id, start_frame_id
+                ));
+            }
         }
     }
     Ok(config)

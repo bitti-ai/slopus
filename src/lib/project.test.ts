@@ -38,6 +38,7 @@ import {
   referenceToken,
   sceneBriefText,
   sceneDurationSeconds,
+  sceneGenerationReferences,
   sceneShots,
   splitActionText,
   DEFAULT_SCENE_SECONDS,
@@ -419,6 +420,30 @@ describe("project schema", () => {
       mutate(config);
       expect(() => parseProjectConfig(config)).toThrow();
     }
+  });
+
+  it("uses a dedicated image as Picture 1 and the scene's first frame", () => {
+    const image = (id: string, name: string, path: string): ProjectReference => projectReferenceSchema.parse({
+      id, kind: "image", name, description: "", relativePath: path,
+      intendedUse: [], createdAt: new Date().toISOString(),
+    });
+    const opening = image("opening", "Opening still", "references/opening.jpg");
+    const subject = image("subject", "Product", "references/product.jpg");
+    const job = createDraftGenerationJob("The product turns towards camera.", {
+      id: "scene-with-frame",
+      references: [opening, subject],
+      referenceIds: ["subject"],
+      startFrameReferenceId: "opening",
+    });
+    const ordered = sceneGenerationReferences(job, [subject, opening]);
+    const compiled = compileGenerationJobPrompt(job, ordered);
+
+    expect(ordered.map((reference) => reference.id)).toEqual(["opening", "subject"]);
+    expect(compiled).toContain("<Picture 1> is the first frame of the video.");
+    expect(compiled).toContain("The video begins with <Picture 1>.");
+    expect(compiled).toContain("The opening frame matches <Picture 1>.");
+    expect(compiled).toContain("<Subject 1> is the content shown in <Picture 2>.");
+    expect(compiled).not.toContain("<Subject 2>");
   });
 
   it("allows a generated scene asset to wait for its render without relaxing imported media", () => {
