@@ -85,26 +85,26 @@
 
 /* --- Layout ---------------------------------------------------------------- */
 
-/* Settings stay compact on the left while the video gets the wider working
-   area. Export facts and run state span both columns below them. */
+/* Video gets the wider working area on the left. Settings fill the full height
+   of the matching right-hand panel, and export facts span both below them. */
 .export-layout {
   max-width: var(--content-max);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(280px, 0.65fr) minmax(0, 1.6fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.65fr);
   grid-template-areas:
-    "settings preview"
+    "preview settings"
     "details details";
   gap: var(--space-5);
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 900px) {
   .export-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "settings"
       "preview"
+      "settings"
       "details";
   }
 }
