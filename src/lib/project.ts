@@ -492,7 +492,17 @@ export const DEFAULT_CLIP_TRANSFORM: ClipTransform = { scale: 100, rotation: 0, 
 export const DEFAULT_CLIP_LOOK: ClipLook = { opacity: 100, temperature: 0 };
 export const DEFAULT_CLIP_TRANSITION: ClipTransition = { type: "cut", durationMs: 500 };
 
-export const clipTransform = (clip: TimelineClip): ClipTransform => clip.transform ?? DEFAULT_CLIP_TRANSFORM;
+const roundTransformValue = (value: number): number => {
+  const rounded = Number(value.toFixed(2));
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+export const roundClipTransform = (transform: ClipTransform): ClipTransform => ({
+  scale: roundTransformValue(transform.scale),
+  rotation: roundTransformValue(transform.rotation),
+  positionX: roundTransformValue(transform.positionX),
+  positionY: roundTransformValue(transform.positionY),
+});
+export const clipTransform = (clip: TimelineClip): ClipTransform => roundClipTransform(clip.transform ?? DEFAULT_CLIP_TRANSFORM);
 export const clipLook = (clip: TimelineClip): ClipLook => clip.look ?? DEFAULT_CLIP_LOOK;
 export const clipTransition = (clip: TimelineClip): ClipTransition => clip.transition ?? DEFAULT_CLIP_TRANSITION;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
