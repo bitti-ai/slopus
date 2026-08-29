@@ -1,4 +1,4 @@
-import { Clock3, Folder, MoreHorizontal, Play, Ratio, Sparkles, Trash2 } from "lucide-react";
+import { Clock3, Folder, MoreHorizontal, Ratio, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resolutionLabel, visibleClipAt } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
@@ -83,7 +83,6 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
           />}
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>
           <span className="project-card__quality">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)}</span>
-          <span className="project-card__play"><Play size={18} fill="currentColor" /></span>
           <div className="project-card__art-copy"><Sparkles size={15} /><span>{config.brief.prompt}</span></div>
         </div>
       </button>

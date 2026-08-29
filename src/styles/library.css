@@ -512,8 +512,8 @@
 /* Generated cover artwork — decorative, sizes intentionally unchanged.
 
    THEME-INDEPENDENT ON PURPOSE. Everything from here to .project-card__body is
-   a picture, not a surface: four generated cover illustrations and the badges,
-   play button and caption that sit ON TOP of one. A cover does not become a
+   a picture, not a surface: four generated cover illustrations and the badges
+   and caption that sit ON TOP of one. A cover does not become a
    light-theme cover any more than a photograph does, and running these through
    --text-* would put one theme's ink on a picture that is the same in both.
 
@@ -531,13 +531,11 @@
    thumbnail set through ProjectCard's inline background-image, which this file
    cannot see. theme.test.ts recomputes all three from the literals below.
 
-   The badges and the play button did NOT always carry that. The sentence here
-   used to say they did, and the numbers say otherwise: over a white thumbnail
-   the badges measured 3.78:1 and the play triangle 3.22:1, because a plate at
-   0.55 and a disc at 0.45 composite to mid-grey over white and `backdrop-filter`
-   blurs without darkening. Their alphas were raised to 0.70 and 0.64, which is
-   what makes the paragraph above true rather than aspirational; a plate that
-   thin was the same defect as the caption's old text-shadow, one rule over. */
+   The badges did NOT always carry that. The sentence here used to say they did,
+   and the numbers say otherwise: over a white thumbnail the badges measured
+   3.78:1 because a plate at 0.55 composites to mid-grey over white and
+   `backdrop-filter` blurs without darkening. Its alpha was raised to 0.70,
+   which makes the paragraph above true rather than aspirational. */
 .project-card__art--aurora {
   background: linear-gradient(155deg, #101c38, #172d55 45%, #6e6d4d);
 }
@@ -640,29 +638,6 @@
 
 .project-card__quality {
   right: var(--space-3);
-}
-
-.project-card__play {
-  position: absolute;
-  z-index: 3;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%) scale(0.8);
-  width: var(--control-lg);
-  height: var(--control-lg);
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(5, 7, 11, 0.64);
-  opacity: 0;
-  transition: 0.2s;
-  backdrop-filter: blur(8px);
-}
-
-.project-card:hover .project-card__play {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
 }
 
 /* The user's own project brief, over artwork this file cannot predict. A strip
