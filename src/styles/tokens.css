@@ -111,9 +111,12 @@
   --topbar-height: 72px;
   --content-max: 1180px;
 
-  /* Step 1's primary button transition consumes this immediately. Step 2 adds
-     the slower panel duration and the full motion policy. */
+  /* --- Motion -------------------------------------------------------------
+     Two durations. State changes are fast; things that actually open are not.
+     Motion in an editor belongs to the content — the playhead, a clip being
+     dragged, a render bar filling — not to the furniture. */
   --motion-fast: 120ms;
+  --motion-panel: 200ms;
 
   /* ==========================================================================
      COLOUR — dark (the base palette; light redefines every name below)
@@ -174,7 +177,6 @@
   --accent-line: rgba(107, 141, 255, 0.28);
   --accent-line-strong: rgba(103, 138, 245, 0.55);
   --accent-ring: rgba(63, 94, 198, 0.1);   /* 3px halo on a focused composite */
-  --glow-accent: rgba(49, 76, 153, 0.11);  /* blurred page-corner light */
   --eyebrow: #8fa0d8;                  /* uppercase accent-tinted section label */
 
   /* --- On-accent -----------------------------------------------------------
@@ -331,7 +333,6 @@
     --accent-line: rgba(45, 91, 215, 0.3);
     --accent-line-strong: rgba(30, 79, 208, 0.6);
     --accent-ring: rgba(45, 91, 215, 0.14);
-    --glow-accent: rgba(45, 91, 215, 0.07);
     --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
     --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 — the old --accent-fill value */
@@ -435,7 +436,6 @@
   --accent-line: rgba(45, 91, 215, 0.3);
   --accent-line-strong: rgba(30, 79, 208, 0.6);
   --accent-ring: rgba(45, 91, 215, 0.14);
-  --glow-accent: rgba(45, 91, 215, 0.07);
   --eyebrow: #47549a;
 
   --button-primary-bg: #2d5bd7;
