@@ -38,8 +38,17 @@ interface ProgressEvent {
  *  looking stalled while the encoder works. */
 const RENDER_CEILING = 0.9;
 const ENCODE_FLOOR = 0.9;
+const RENDER_PROGRESS_END = RENDER_CEILING - 0.02;
+const MAX_ESTIMATE_MS = 24 * 60 * 60 * 1_000;
 
-export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
+interface ProgressTiming {
+  at: number;
+  progress: number;
+  /** Overall render progress gained per millisecond. */
+  rate: number | null;
+}
+
+export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstimate }: {
   folderPath: string;
   /** The updater form, always: every write here happens after an await, so the
    *  config this component last saw is not the one to build from. */
@@ -49,6 +58,10 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
    *  exact boundary to persist the finished generation without waiting for the
    *  user to click Save. */
   onCompleted?: (jobId: string) => void;
+  /** A transient prediction of when rendering (not file encoding) will finish.
+   *  It is deliberately kept out of ProjectConfig: an estimate is live UI
+   *  telemetry, not project data worth saving. */
+  onEstimate?: (jobId: string, completionAt: number | null) => void;
 }) {
   /* Held in refs so the subscription is made ONCE. It has to be: re-subscribing
      on every progress tick would drop events in the gap, and these events are
@@ -57,11 +70,14 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
   write.current = onChange;
   const completed = useRef(onCompleted);
   completed.current = onCompleted;
+  const estimate = useRef(onEstimate);
+  estimate.current = onEstimate;
   const folder = useRef(folderPath);
   folder.current = folderPath;
   /** Scenes already being encoded, so a repeated event — or a remount in
    *  StrictMode — cannot start a second encode of the same frames. */
   const saving = useRef(new Set<string>());
+  const progressTimings = useRef(new Map<string, ProgressTiming>());
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -88,6 +104,37 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
           };
         }),
       }));
+    };
+    const clearEstimate = (jobId: string) => {
+      progressTimings.current.delete(jobId);
+      estimate.current?.(jobId, null);
+    };
+    const updateEstimate = (jobId: string, progress: number) => {
+      const now = Date.now();
+      const previous = progressTimings.current.get(jobId);
+      if (!previous) {
+        progressTimings.current.set(jobId, { at: now, progress, rate: null });
+        // Also clears an estimate left by an earlier run of the same scene.
+        estimate.current?.(jobId, null);
+        return;
+      }
+
+      const nextProgress = Math.max(previous.progress, progress);
+      const elapsed = now - previous.at;
+      if (nextProgress <= previous.progress || elapsed < 250) return;
+
+      const measuredRate = (nextProgress - previous.progress) / elapsed;
+      const rate = previous.rate === null
+        ? measuredRate
+        : previous.rate * 0.65 + measuredRate * 0.35;
+      progressTimings.current.set(jobId, { at: now, progress: nextProgress, rate });
+
+      const remainingMs = (RENDER_PROGRESS_END - nextProgress) / rate;
+      if (!Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs > MAX_ESTIMATE_MS) {
+        estimate.current?.(jobId, null);
+        return;
+      }
+      estimate.current?.(jobId, now + remainingMs);
     };
 
     /** Encode the frames the engine just finished, and write the file.
@@ -158,8 +205,9 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
       listen<ProgressEvent>("vidfab-progress", ({ payload }) => {
         if (disposed) return;
         const progress = payload.totalSteps > 0
-          ? Math.min(RENDER_CEILING - 0.02, 0.12 + (Math.max(0, payload.step) / payload.totalSteps) * (RENDER_CEILING - 0.14))
-          : payload.stage === "delivering" ? RENDER_CEILING - 0.02 : 0.08;
+          ? Math.min(RENDER_PROGRESS_END, 0.12 + (Math.max(0, payload.step) / payload.totalSteps) * (RENDER_CEILING - 0.14))
+          : payload.stage === "delivering" ? RENDER_PROGRESS_END : 0.08;
+        updateEstimate(payload.jobId, progress);
         updateProgress(
           payload.jobId,
           progress,
@@ -169,9 +217,11 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted }: {
       listen<JobEvent>("vidfab-job", ({ payload }) => {
         if (disposed) return;
         if (payload.state === "framesReady") {
+          clearEstimate(payload.jobId);
           void save(payload.jobId);
           return;
         }
+        clearEstimate(payload.jobId);
         updateJob(payload.jobId, payload.state === "failed"
           ? { status: "failed", stage: "failed", error: payload.detail }
           : payload.state === "cancelled"

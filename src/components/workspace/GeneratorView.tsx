@@ -10,6 +10,7 @@ interface GeneratorViewProps {
   config: ProjectConfig;
   folderPath: string;
   runtime?: VidfabStatus | null;
+  generationCompletionTimes?: Readonly<Record<string, number>>;
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
   selectedJobId?: string;
@@ -30,7 +31,7 @@ type RemovalTarget =
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, onChange, selectedJobId }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId }: GeneratorViewProps) {
   const jobs = config.generationJobs;
   const configRef = useRef(config);
   configRef.current = config;
@@ -429,6 +430,7 @@ export function GeneratorView({ config, folderPath, runtime = null, onChange, se
       {jobs.length > 0 && <SceneBoard
         jobs={jobs}
         folderPath={folderPath}
+        generationCompletionTimes={generationCompletionTimes}
         references={config.references}
         selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
         onSelect={setSelection}

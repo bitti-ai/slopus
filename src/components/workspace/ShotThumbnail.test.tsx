@@ -178,6 +178,17 @@ describe("a shot's picture", () => {
     });
   });
 
+  it("shows the render ETA on its own line beneath the percentage", () => {
+    const fresh = createProjectConfig({ name: "Draft", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const job: GenerationJob = { ...fresh.generationJobs[0], status: "generating", stage: "generating", progress: 0.42 };
+    render(<ShotThumbnail folderPath="C:\\Rendering" job={job} seconds={0} shotNumber={1} estimatedCompletionAt={Date.now() + 90_000} />);
+
+    const rendering = screen.getByText("Rendering 42%");
+    expect(rendering.tagName).toBe("EM");
+    expect(rendering.nextElementSibling?.classList.contains("shot-thumb__eta")).toBe(true);
+    expect(rendering.nextElementSibling?.textContent).toMatch(/^About 1m 30s left$/);
+  });
+
   it("says a finished scene could not be previewed rather than showing nothing", async () => {
     const folder = "C:\\Unreadable";
     const job = rendered(folder);

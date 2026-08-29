@@ -46,6 +46,7 @@ const readShotDrag = (value: string): ShotDragData | null => {
 export function SceneBoard({
   jobs,
   folderPath,
+  generationCompletionTimes,
   references,
   selection,
   onSelect,
@@ -61,6 +62,7 @@ export function SceneBoard({
 }: {
   jobs: GenerationJob[];
   folderPath: string;
+  generationCompletionTimes?: Readonly<Record<string, number>>;
   references: ProjectReference[];
   selection: GeneratorSelection;
   onSelect: (selection: GeneratorSelection) => void;
@@ -200,6 +202,7 @@ export function SceneBoard({
               index={index}
               endsAt={index + 1 < shots.length ? shots[index + 1].startSeconds : duration}
               folderPath={folderPath}
+              estimatedCompletionAt={generationCompletionTimes?.[job.id] ?? null}
               order={order}
               named={named}
               cancelling={cancellingJobIds.has(job.id) && cancellable}
@@ -243,12 +246,13 @@ export function SceneBoard({
   </div>;
 }
 
-function ShotCard({ job, shot, index, endsAt, folderPath, order, named, cancelling, open, draggable, onOpen, onDragStart }: {
+function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt, order, named, cancelling, open, draggable, onOpen, onDragStart }: {
   job: GenerationJob;
   shot: SceneShot;
   index: number;
   endsAt: number;
   folderPath: string;
+  estimatedCompletionAt: number | null;
   order: string[];
   named: Map<string, string>;
   cancelling: boolean;
@@ -268,7 +272,7 @@ function ShotCard({ job, shot, index, endsAt, folderPath, order, named, cancelli
     draggable={draggable}
     onDragStart={onDragStart}
   >
-    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} cancelling={cancelling} />
+    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} estimatedCompletionAt={estimatedCompletionAt} cancelling={cancelling} />
     <button
       type="button"
       className="shot-card__open-control"
