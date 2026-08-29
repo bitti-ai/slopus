@@ -134,6 +134,34 @@ struct TimelineClip {
     color: Option<String>,
     #[serde(default = "default_clip_status")]
     status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    transform: Option<ClipTransform>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    look: Option<ClipLook>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    transition: Option<ClipTransition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipTransform {
+    scale: f64,
+    rotation: f64,
+    position_x: f64,
+    position_y: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct ClipLook {
+    opacity: f64,
+    temperature: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipTransition {
+    r#type: String,
+    duration_ms: u64,
 }
 
 fn default_clip_status() -> String {
@@ -792,6 +820,37 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             }
             if !matches!(clip.status.as_str(), "draft" | "generated" | "approved") {
                 return Err(format!("Unsupported clip status '{}'.", clip.status));
+            }
+            if let Some(transform) = &clip.transform {
+                if !transform.scale.is_finite()
+                    || !(10.0..=400.0).contains(&transform.scale)
+                    || !transform.rotation.is_finite()
+                    || !(-180.0..=180.0).contains(&transform.rotation)
+                    || !transform.position_x.is_finite()
+                    || !(-100.0..=100.0).contains(&transform.position_x)
+                    || !transform.position_y.is_finite()
+                    || !(-100.0..=100.0).contains(&transform.position_y)
+                {
+                    return Err(format!("Clip '{}' has an invalid transform.", clip.id));
+                }
+            }
+            if let Some(look) = &clip.look {
+                if !look.opacity.is_finite()
+                    || !(0.0..=100.0).contains(&look.opacity)
+                    || !look.temperature.is_finite()
+                    || !(-100.0..=100.0).contains(&look.temperature)
+                {
+                    return Err(format!("Clip '{}' has an invalid look.", clip.id));
+                }
+            }
+            if let Some(transition) = &clip.transition {
+                if !matches!(
+                    transition.r#type.as_str(),
+                    "cut" | "fade" | "wipe-left" | "wipe-right"
+                ) || !(100..=3000).contains(&transition.duration_ms)
+                {
+                    return Err(format!("Clip '{}' has an invalid transition.", clip.id));
+                }
             }
         }
     }

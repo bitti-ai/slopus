@@ -8,6 +8,9 @@ import { resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import {
+  clipLook,
+  clipTransform,
+  clipTransition,
   generationAssetId,
   sceneDurationSeconds,
   type GenerationJob,
@@ -26,7 +29,6 @@ import { sceneShape, STATUS_WORD } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
 
 const MIN_DURATION = 10_000;
-const NOT_YET = "Not available yet. This control doesn’t change your project.";
 /* How long a dropped clip is when the file itself cannot say.
    A drop normally lasts as long as the footage: the media panel decodes each
    file to draw its thumbnail and records the duration it read there (see
@@ -185,6 +187,10 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
+  const selectedTransform = selected ? clipTransform(selected) : null;
+  const selectedLook = selected ? clipLook(selected) : null;
+  const selectedTransition = selected ? clipTransition(selected) : null;
+  const visualControlsDisabled = selectedTrack?.kind !== "video";
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
   /** Where the last clip ends — where playback stops, which is not the same as
    *  where the ruler stops (the canvas is at least as long as the film the user
@@ -269,6 +275,18 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     onChange((current) => ({ ...current, timeline: { tracks: nextTracks } }));
   const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
+  const updateTransform = (key: keyof NonNullable<TimelineClip["transform"]>, value: number) => {
+    if (!selected || !selectedTransform || !Number.isFinite(value)) return;
+    const limits = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
+    const [minimum, maximum] = limits[key];
+    updateClip(selected.id, { transform: { ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) } });
+  };
+  const updateLook = (key: keyof NonNullable<TimelineClip["look"]>, value: number) => {
+    if (!selected || !selectedLook || !Number.isFinite(value)) return;
+    const limits = { opacity: [0, 100], temperature: [-100, 100] } as const;
+    const [minimum, maximum] = limits[key];
+    updateClip(selected.id, { look: { ...selectedLook, [key]: Math.max(minimum, Math.min(maximum, value)) } });
+  };
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   /* Every removal — the toolbar, the key, the × on the clip itself — goes
      through one function, so a locked track refuses all three. */
@@ -297,7 +315,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const splitSelected = () => {
     if (!selected || !selectedTrack || selectedTrack.locked || playhead <= selected.startMs || playhead >= selected.startMs + selected.durationMs) return;
     const leftDuration = playhead - selected.startMs;
-    const right: TimelineClip = { ...selected, id: `${selected.id}-split-${Date.now()}`, startMs: playhead, durationMs: selected.durationMs - leftDuration, sourceStartMs: selected.sourceStartMs + leftDuration, label: `${selected.label} · B` };
+    const right: TimelineClip = { ...selected, id: `${selected.id}-split-${Date.now()}`, startMs: playhead, durationMs: selected.durationMs - leftDuration, sourceStartMs: selected.sourceStartMs + leftDuration, label: `${selected.label} · B`, transition: undefined };
     updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: track.clips.flatMap((clip) => clip.id === selected.id ? [{ ...clip, durationMs: leftDuration, label: `${clip.label} · A` }, right] : [clip]) } : track));
     setSelectedId(right.id);
   };
@@ -834,21 +852,31 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 /></label>
               </div>
             </section>
-            <section className="inspector-section inspector-section--pending">
-              <h3>Transform <em>Not available yet</em></h3>
+            <section className="inspector-section">
+              <h3>Transform</h3>
               <div className="field-pair">
-                <label><span>Scale</span><input defaultValue="100%" disabled title={NOT_YET} /></label>
-                <label><span>Rotation</span><input defaultValue="0°" disabled title={NOT_YET} /></label>
+                <label><span>Scale (%)</span><input type="number" min="10" max="400" step="1" value={selectedTransform?.scale ?? 100} disabled={visualControlsDisabled} onChange={(event) => updateTransform("scale", Number(event.target.value))} /></label>
+                <label><span>Rotation (°)</span><input type="number" min="-180" max="180" step="1" value={selectedTransform?.rotation ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("rotation", Number(event.target.value))} /></label>
               </div>
               <div className="field-pair">
-                <label><span>Position X</span><input defaultValue="0" disabled title={NOT_YET} /></label>
-                <label><span>Position Y</span><input defaultValue="0" disabled title={NOT_YET} /></label>
+                <label><span>Position X (%)</span><input type="number" min="-100" max="100" step="1" value={selectedTransform?.positionX ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("positionX", Number(event.target.value))} /></label>
+                <label><span>Position Y (%)</span><input type="number" min="-100" max="100" step="1" value={selectedTransform?.positionY ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateTransform("positionY", Number(event.target.value))} /></label>
               </div>
             </section>
-            <section className="inspector-section inspector-section--pending">
-              <h3>Look <em>Not available yet</em></h3>
-              <label className="range-field"><span>Opacity <b>100%</b></span><input type="range" defaultValue="100" disabled title={NOT_YET} /></label>
-              <label className="range-field"><span>Temperature <b>+4</b></span><input type="range" defaultValue="54" disabled title={NOT_YET} /></label>
+            <section className="inspector-section">
+              <h3>Look</h3>
+              <label className="range-field"><span>Opacity <b>{selectedLook?.opacity ?? 100}%</b></span><input aria-label="Clip opacity" type="range" min="0" max="100" step="1" value={selectedLook?.opacity ?? 100} disabled={visualControlsDisabled} onChange={(event) => updateLook("opacity", Number(event.target.value))} /></label>
+              <label className="range-field"><span>Temperature <b>{(selectedLook?.temperature ?? 0) > 0 ? "+" : ""}{selectedLook?.temperature ?? 0}</b></span><input aria-label="Clip temperature" type="range" min="-100" max="100" step="1" value={selectedLook?.temperature ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateLook("temperature", Number(event.target.value))} /></label>
+            </section>
+            <section className="inspector-section">
+              <h3>Transition</h3>
+              <label><span>When this clip begins</span><select aria-label="Clip transition" value={selectedTransition?.type ?? "cut"} disabled={visualControlsDisabled} onChange={(event) => selected && selectedTransition && updateClip(selected.id, { transition: { ...selectedTransition, type: event.target.value as NonNullable<TimelineClip["transition"]>["type"] } })}>
+                <option value="cut">Cut</option>
+                <option value="fade">Fade in</option>
+                <option value="wipe-left">Wipe from left</option>
+                <option value="wipe-right">Wipe from right</option>
+              </select></label>
+              <label className="range-field"><span>Duration <b>{selectedTransition?.durationMs ?? 500} ms</b></span><input aria-label="Transition duration" type="range" min="100" max="3000" step="100" value={selectedTransition?.durationMs ?? 500} disabled={visualControlsDisabled || selectedTransition?.type === "cut"} onChange={(event) => selected && selectedTransition && updateClip(selected.id, { transition: { ...selectedTransition, durationMs: Number(event.target.value) } })} /></label>
             </section>
           </> : clipCount === 0
             ? <div className="inspector-empty"><MouseSelection /><b>Nothing to edit yet</b><span>Once a scene lands on the timeline, select it here to rename it and check its timing.</span></div>

@@ -164,6 +164,27 @@ export const projectAssetSchema = z.object({
   }
 });
 
+export const clipTransformSchema = z.object({
+  /** Percentage of the fitted source size. */
+  scale: z.number().min(10).max(400),
+  /** Clockwise degrees around the centre of the picture. */
+  rotation: z.number().min(-180).max(180),
+  /** Percentage of the output frame in either direction. */
+  positionX: z.number().min(-100).max(100),
+  positionY: z.number().min(-100).max(100),
+});
+
+export const clipLookSchema = z.object({
+  opacity: z.number().min(0).max(100),
+  /** Cool at -100, neutral at 0, warm at +100. */
+  temperature: z.number().min(-100).max(100),
+});
+
+export const clipTransitionSchema = z.object({
+  type: z.enum(["cut", "fade", "wipe-left", "wipe-right"]),
+  durationMs: z.number().int().min(100).max(3000),
+});
+
 export const timelineClipSchema = z.object({
   id: idSchema,
   assetId: idSchema,
@@ -175,6 +196,11 @@ export const timelineClipSchema = z.object({
   // See the note on projectAssetSchema.durationMs — nullish, never bare optional.
   color: z.string().nullish(),
   status: z.enum(["draft", "generated", "approved"]).default("approved"),
+  /** Optional so projects written before clip styling keep their exact shape. */
+  transform: clipTransformSchema.nullish(),
+  look: clipLookSchema.nullish(),
+  /** Applied at this clip's head when the cut changes to it. */
+  transition: clipTransitionSchema.nullish(),
 });
 
 export const timelineTrackSchema = z.object({
@@ -455,6 +481,17 @@ export type Resolution = z.infer<typeof resolutionSchema>;
 export type ProjectAsset = z.infer<typeof projectAssetSchema>;
 export type TimelineClip = z.infer<typeof timelineClipSchema>;
 export type TimelineTrack = z.infer<typeof timelineTrackSchema>;
+export type ClipTransform = z.infer<typeof clipTransformSchema>;
+export type ClipLook = z.infer<typeof clipLookSchema>;
+export type ClipTransition = z.infer<typeof clipTransitionSchema>;
+
+export const DEFAULT_CLIP_TRANSFORM: ClipTransform = { scale: 100, rotation: 0, positionX: 0, positionY: 0 };
+export const DEFAULT_CLIP_LOOK: ClipLook = { opacity: 100, temperature: 0 };
+export const DEFAULT_CLIP_TRANSITION: ClipTransition = { type: "cut", durationMs: 500 };
+
+export const clipTransform = (clip: TimelineClip): ClipTransform => clip.transform ?? DEFAULT_CLIP_TRANSFORM;
+export const clipLook = (clip: TimelineClip): ClipLook => clip.look ?? DEFAULT_CLIP_LOOK;
+export const clipTransition = (clip: TimelineClip): ClipTransition => clip.transition ?? DEFAULT_CLIP_TRANSITION;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
 export type ProjectReference = z.infer<typeof projectReferenceSchema>;
 export type GenerationJob = z.infer<typeof generationJobSchema>;

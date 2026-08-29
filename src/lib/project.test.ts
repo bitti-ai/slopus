@@ -102,6 +102,36 @@ describe("project schema", () => {
     expect(project.providerSettings).toEqual({});
   });
 
+  it("persists clip transforms, looks, and transitions while old clips keep defaults", () => {
+    const project = createProjectConfig({
+      name: "Treated cut",
+      prompt: "A graded product cut",
+      aspectRatio: "16:9",
+      resolution: "1080p",
+      targetDurationSeconds: 30,
+    });
+    project.timeline.tracks[0].clips.push({
+      id: "clip-treated",
+      assetId: "asset-a",
+      trackId: STORY_TRACK_ID,
+      startMs: 0,
+      durationMs: 2_000,
+      sourceStartMs: 0,
+      label: "Treated",
+      color: null,
+      status: "approved",
+      transform: { scale: 115, rotation: -4, positionX: 8, positionY: -3 },
+      look: { opacity: 72, temperature: 20 },
+      transition: { type: "wipe-left", durationMs: 600 },
+    });
+
+    expect(parseProjectConfig(project).timeline.tracks[0].clips[0]).toMatchObject({
+      transform: { scale: 115, rotation: -4, positionX: 8, positionY: -3 },
+      look: { opacity: 72, temperature: 20 },
+      transition: { type: "wipe-left", durationMs: 600 },
+    });
+  });
+
   it("compiles the initial brief into exactly the three MiniMax H3 core fields", () => {
     const project = createProjectConfig({
       name: "Launch film",

@@ -1,6 +1,6 @@
 import { Film, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { visibleClipAt } from "../../lib/export";
+import { clipFrameStyle, clipVisualSettings, visibleClipAt } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
@@ -84,6 +84,24 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     () => (clip ? config.assets.find((candidate) => candidate.id === clip.assetId) : undefined),
     [clip, config.assets],
   );
+  const frameStyle = useMemo(
+    () => clip ? clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs) : null,
+    [clip, playheadMs],
+  );
+  const mediaStyle = useMemo<React.CSSProperties | undefined>(() => {
+    if (!frameStyle) return undefined;
+    const { transform, look, opacity, revealStart, revealEnd } = frameStyle;
+    const warmth = look.temperature / 100;
+    const filter = warmth === 0
+      ? "none"
+      : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`;
+    return {
+      transform: `translate(${transform.positionX}%, ${transform.positionY}%) scale(${transform.scale / 100}) rotate(${transform.rotation}deg)`,
+      opacity,
+      filter,
+      clipPath: `inset(0 ${(1 - revealEnd) * 100}% 0 ${revealStart * 100}%)`,
+    };
+  }, [frameStyle]);
   /* Sound that should be audible at this moment: every audio clip the playhead
      is inside, minus the tracks the user has muted. A muted track is dropped
      here rather than played silently, so nothing is decoded for it at all. */
@@ -315,13 +333,14 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     {asset && !isImage(asset) && url && <video
       ref={videoRef}
       src={url}
+      style={mediaStyle}
       muted={videoTrackMuted}
       playsInline
       preload="auto"
       onLoadedData={() => setReady(true)}
       onError={() => setError("This file could not be decoded.")}
     />}
-    {asset && isImage(asset) && url && <img src={url} alt={clip?.label ?? ""} />}
+    {asset && isImage(asset) && url && <img src={url} alt={clip?.label ?? ""} style={mediaStyle} />}
     {audioClips.map((audioClip) => {
       const audioUrl = audioUrls[audioClip.assetId];
       return audioUrl

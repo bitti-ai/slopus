@@ -11,7 +11,19 @@
    has to come from, are the two questions an editor gets wrong silently.
    ========================================================================== */
 
-import type { AspectRatio, ProjectConfig, Resolution, TimelineClip, TimelineTrack } from "./project";
+import {
+  clipLook,
+  clipTransform,
+  clipTransition,
+  type AspectRatio,
+  type ClipLook,
+  type ClipTransform,
+  type ClipTransition,
+  type ProjectConfig,
+  type Resolution,
+  type TimelineClip,
+  type TimelineTrack,
+} from "./project";
 
 export type FrameRate = ProjectConfig["settings"]["frameRate"];
 export type OutputCodecId = "h264" | "vp9" | "av1";
@@ -22,6 +34,40 @@ export interface ExportSettings {
   frameRate: FrameRate;
   codec: OutputCodecId;
   quality: QualityId;
+}
+
+export interface ClipVisualSettings {
+  transform: ClipTransform;
+  look: ClipLook;
+  transition: ClipTransition;
+}
+
+export interface ClipFrameStyle extends ClipVisualSettings {
+  /** Opacity after both Look and the transition at this moment are applied. */
+  opacity: number;
+  /** Horizontal source reveal, used by wipe transitions. */
+  revealStart: number;
+  revealEnd: number;
+}
+
+export const clipVisualSettings = (clip: TimelineClip): ClipVisualSettings => ({
+  transform: clipTransform(clip),
+  look: clipLook(clip),
+  transition: clipTransition(clip),
+});
+
+/** Resolve the time-varying part of a clip's visual treatment. */
+export function clipFrameStyle(visual: ClipVisualSettings, elapsedMs: number): ClipFrameStyle {
+  const transition = visual.transition;
+  const progress = transition.type === "cut"
+    ? 1
+    : Math.max(0, Math.min(1, elapsedMs / transition.durationMs));
+  return {
+    ...visual,
+    opacity: (visual.look.opacity / 100) * (transition.type === "fade" ? progress : 1),
+    revealStart: transition.type === "wipe-right" ? 1 - progress : 0,
+    revealEnd: transition.type === "wipe-left" ? progress : 1,
+  };
 }
 
 export interface OutputCodec {
@@ -186,6 +232,7 @@ export type ExportSegment =
       clipStartMs: number;
       /** Where inside the source file the clip begins, in ms. */
       clipSourceStartMs: number;
+      visual: ClipVisualSettings;
     }
   | { kind: "gap"; startFrame: number; endFrame: number };
 
@@ -365,6 +412,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       endFrame: frame + 1,
       clipStartMs: clip.startMs,
       clipSourceStartMs: clip.sourceStartMs,
+      visual: clipVisualSettings(clip),
     });
   }
 

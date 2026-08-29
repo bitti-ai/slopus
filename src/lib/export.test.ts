@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   bitrateFor,
   buildExportPlan,
+  clipFrameStyle,
+  clipVisualSettings,
   defaultExportSettings,
   estimatedBytes,
   fitRect,
@@ -201,6 +203,33 @@ describe("which clip is on screen at time T", () => {
 });
 
 describe("the plan", () => {
+  it("carries clip transforms, looks, and transitions into every rendered segment", () => {
+    const treated = clip("a", "track-story", 0, 2_000, {
+      transform: { scale: 125, rotation: 8, positionX: -12, positionY: 6 },
+      look: { opacity: 80, temperature: 35 },
+      transition: { type: "fade", durationMs: 500 },
+    });
+    const plan = buildExportPlan(project([treated], [asset("asset-a")]), settings());
+    const [segment] = clipSegments(plan.segments);
+
+    expect(segment.visual).toEqual(clipVisualSettings(treated));
+    expect(clipFrameStyle(segment.visual, 250)).toMatchObject({
+      transform: treated.transform,
+      look: treated.look,
+      opacity: 0.4,
+      revealStart: 0,
+      revealEnd: 1,
+    });
+  });
+
+  it("reveals wipe transitions in the selected direction", () => {
+    const base = clipVisualSettings(clip("a", "track-story", 0, 1_000));
+    expect(clipFrameStyle({ ...base, transition: { type: "wipe-left", durationMs: 1_000 } }, 250))
+      .toMatchObject({ revealStart: 0, revealEnd: 0.25 });
+    expect(clipFrameStyle({ ...base, transition: { type: "wipe-right", durationMs: 1_000 } }, 250))
+      .toMatchObject({ revealStart: 0.75, revealEnd: 1 });
+  });
+
   it("turns two back-to-back clips into two segments of the right length", () => {
     const config = project(
       [clip("a", "track-story", 0, 2_000), clip("b", "track-story", 2_000, 1_000)],
