@@ -587,6 +587,65 @@
   will-change: transform, opacity, filter, clip-path;
 }
 
+.program-picture--selectable video,
+.program-picture--selectable img {
+  cursor: pointer;
+}
+
+/* Timeline-only direct manipulation. The export monitor never receives the
+   editing callbacks, so none of this chrome can appear in an exported preview. */
+.program-transform {
+  position: absolute;
+  z-index: 3;
+  inset: 10px;
+  border: 2px solid var(--accent-bright);
+  outline: 1px solid color-mix(in srgb, var(--bg) 65%, transparent);
+  cursor: move;
+  touch-action: none;
+  transform-origin: center;
+}
+
+.program-transform::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 1px;
+  height: 18px;
+  background: var(--accent-bright);
+}
+
+.program-transform button {
+  position: absolute;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid var(--accent-bright);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--bg) 65%, transparent);
+  touch-action: none;
+}
+
+.program-transform__rotate {
+  left: 50%;
+  top: -26px;
+  translate: -50% 0;
+  cursor: grab;
+}
+
+.program-transform__scale {
+  right: -9px;
+  bottom: -9px;
+  cursor: nwse-resize;
+}
+
+.program-transform:active,
+.program-transform__rotate:active {
+  cursor: grabbing;
+}
+
 /* What the monitor has to say when there is no picture to show: a gap under the
    playhead, a file it could not read, a file still being read. Over the frame
    rather than instead of it, so the black stays black. */
