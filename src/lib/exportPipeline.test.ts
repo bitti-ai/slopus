@@ -440,7 +440,20 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
       public height: number,
     ) {}
     getContext(kind: string) {
-      return kind === "2d" ? { fillStyle: "", fillRect() {}, drawImage() {} } : null;
+      return kind === "2d" ? {
+        fillStyle: "",
+        filter: "none",
+        globalAlpha: 1,
+        fillRect() {},
+        drawImage() {},
+        save() {},
+        restore() {},
+        beginPath() {},
+        rect() {},
+        clip() {},
+        translate() {},
+        rotate() {},
+      } : null;
     }
   };
 
