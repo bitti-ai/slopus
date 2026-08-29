@@ -224,7 +224,7 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2) 0 var(--space-3);
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
   background: var(--dock-bg);
   box-shadow:

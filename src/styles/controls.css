@@ -260,7 +260,6 @@
   height: 100%;
   border-radius: var(--radius-xs);
   background: var(--progress-fill);
-  box-shadow: 0 0 8px var(--progress-glow);
 }
 
 .mini-progress {
@@ -275,8 +274,11 @@
   display: block;
   height: 100%;
   border-radius: var(--radius-xs);
-  background: var(--accent-fill);
+  background: var(--progress-fill);
 }
+
+.progress-track i[data-state="done"],
+.mini-progress em[data-state="done"] { background: var(--success); }
 
 /* --- Toast ----------------------------------------------------------------- */
 

@@ -220,8 +220,7 @@
 
   /* --- Progress ----------------------------------------------------------- */
   --track: #20252e;
-  --progress-fill: linear-gradient(90deg, #4468db, #7d9aff);
-  --progress-glow: rgba(91, 126, 224, 0.53);
+  --progress-fill: #9aa2b1;            /* 6.0:1 on --track */
 
   /* --- Status --------------------------------------------------------------
      Each hue has a text/dot value, a border tint and a surface tint. */
@@ -271,7 +270,7 @@
     rgba(13, 16, 23, 0.95) 55%,
     #0d1016
   );
-  --dock-bg: linear-gradient(90deg, #121827, #11151f);
+  --dock-bg: #12151d;
 
   /* --- Elevation ---------------------------------------------------------- */
   --shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
@@ -353,8 +352,7 @@
     --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
 
     --track: #dfe3ec;
-    --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
-    --progress-glow: rgba(45, 91, 215, 0.35);
+    --progress-fill: #4a5365;          /* 6.0:1 on --track */
 
     --success: #0f7a45;                /* 5.4:1 */
     --success-line: rgba(15, 122, 69, 0.35);
@@ -393,7 +391,7 @@
       rgba(248, 250, 253, 0.96) 55%,
       #ffffff
     );
-    --dock-bg: linear-gradient(90deg, #eef3fd, #f8f9fc);
+    --dock-bg: #f5f7fa;
 
     --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
     --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
@@ -459,8 +457,7 @@
   --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
 
   --track: #dfe3ec;
-  --progress-fill: linear-gradient(90deg, #1e4fd0, #4573e4);
-  --progress-glow: rgba(45, 91, 215, 0.35);
+  --progress-fill: #4a5365;
 
   --success: #0f7a45;
   --success-line: rgba(15, 122, 69, 0.35);
@@ -499,7 +496,7 @@
     rgba(248, 250, 253, 0.96) 55%,
     #ffffff
   );
-  --dock-bg: linear-gradient(90deg, #eef3fd, #f8f9fc);
+  --dock-bg: #f5f7fa;
 
   --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
   --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
