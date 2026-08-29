@@ -722,9 +722,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <button className={panelTab === "scenes" ? "active" : ""} onClick={() => setPanelTab("scenes")}><Layers3 size={16} /> Scenes</button>
             <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
           </div>
-          <div className="scene-panel__head">
-            <h2>{panelTab === "scenes" ? "Generator scenes" : "Project media"}</h2>
-            {panelTab === "media" && (
+          {panelTab === "media" && <div className="scene-panel__head">
+            <h2>Project media</h2>
               <div className="layout-toggle" role="group" aria-label="Media layout">
                 <button
                   className={mediaLayout === "grid" ? "active" : ""}
@@ -739,8 +738,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   title="Show media as a list"
                 ><List size={16} /><span className="sr-only">List</span></button>
               </div>
-            )}
-          </div>
+          </div>}
           {panelTab === "scenes" ? (
             <div className="scene-list">
               {config.generationJobs.map((job, index) => {
@@ -764,7 +762,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   title={`${job.title} — drag onto a video track below`}
                 >
                   <span className="scene-card__thumb">
-                    <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
+                    {job.status !== "draft" && <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
                   <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>

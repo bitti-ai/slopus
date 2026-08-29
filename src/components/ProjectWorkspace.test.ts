@@ -321,6 +321,10 @@ describe("project workspace timecode", () => {
 
     expect(container.querySelector(".scene-list")!.textContent).toContain("First scene");
     expect(container.querySelector(".scene-list")!.textContent).not.toContain("Macro footage");
+    expect(container.querySelector(".scene-list")!.textContent).not.toContain("Not rendered yet");
+    expect(container.querySelector(".scene-card__thumb")).not.toBeNull();
+    expect(container.querySelector(".scene-card__thumb .shot-thumb")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Generator scenes" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Media" }));
     const media = container.querySelector(".media-grid")! as HTMLElement;
     expect(within(media).getByText("Macro footage")).not.toBeNull();
