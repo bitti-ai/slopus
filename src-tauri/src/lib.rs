@@ -2206,7 +2206,7 @@ fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
 /// the encoder only ever wants the next one.
 #[tauri::command]
 fn generated_frame(job_id: String, index: u32) -> Result<tauri::ipc::Response, String> {
-    rendered::frame(&job_id, index)
+    rendered::frame(&job_id, index)?
         .map(tauri::ipc::Response::new)
         .ok_or_else(|| {
             format!("Frame {index} of {job_id} is not in memory. The render was released, dropped to make room, or never finished.")

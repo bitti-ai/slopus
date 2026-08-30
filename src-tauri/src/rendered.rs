@@ -7,21 +7,15 @@
 //! and PolStudio ships no FFmpeg by design (see docs/architecture.md, and
 //! CLAUDE.md on the licensing reason).
 //!
-//! So this module is the hand-off. It takes one copy of the pictures on the way
-//! out of the C API — converting them to the 8-bit RGBA the webview can make a
-//! `VideoFrame` from — holds them until the webview has read them, and hands
-//! them over a frame at a time. The webview encodes, muxes, and asks Rust to
-//! write the file.
+//! So this module is the hand-off. It keeps the finished generation handle
+//! alive, asks vidfab to convert only the frame the webview currently needs,
+//! and releases the handle after WebCodecs has encoded and muxed the file.
 //!
 //! ## What this costs
 //!
-//! A frame of RGBA at 1344×768 is 4.1 MB, so a five-second scene at 24 fps is
-//! about 500 MB and the longest a scene can be (15 s) is 1.5 GB. That is real
-//! memory, held from the moment a render finishes until the webview says it is
-//! done with it. It is also the smallest the hand-off can be: the source floats
-//! are three times larger, the copy is forced (the C API frees its buffers with
-//! the generation), and a temporary file on disk would trade the memory for a
-//! gigabyte of writing and reading that ends up in the same place.
+//! Only one RGBA frame is allocated per IPC request. Vidfab's decoded planar
+//! floats remain owned by its generation handle, avoiding the former second
+//! whole-video allocation and eager conversion pass.
 //!
 //! [`CAPACITY`] is what stops that growing without limit.
 
@@ -40,16 +34,18 @@ use std::{
 /// the machine gives out.
 const CAPACITY: usize = 2;
 
-/// A finished render, converted once and kept whole.
+pub trait FrameSource: Send {
+    fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String>;
+}
+
+/// A finished render whose vidfab source is kept alive until encoding ends.
 pub struct RenderedVideo {
     pub job_id: String,
     pub width: u32,
     pub height: u32,
     pub frame_count: u32,
     pub fps: f64,
-    /// RGBA8, frame after frame, rows top to bottom. `frame_count * width *
-    /// height * 4` bytes exactly.
-    rgba: Vec<u8>,
+    source: Box<dyn FrameSource>,
     /// Interleaved samples, as vidfab returned them.
     audio: Vec<f32>,
     pub audio_channels: u32,
@@ -57,15 +53,14 @@ pub struct RenderedVideo {
 }
 
 impl RenderedVideo {
-    pub fn frame_bytes(&self) -> usize {
-        self.width as usize * self.height as usize * 4
-    }
-
-    /// One frame's pixels, or None when there is no such frame.
-    pub fn frame(&self, index: u32) -> Option<&[u8]> {
-        let size = self.frame_bytes();
-        let start = (index as usize).checked_mul(size)?;
-        self.rgba.get(start..start.checked_add(size)?)
+    /// One frame's pixels, converted on demand, or None past the last frame.
+    pub fn frame(&self, index: u32) -> Result<Option<Vec<u8>>, String> {
+        if index >= self.frame_count {
+            return Ok(None);
+        }
+        self.source
+            .frame_rgba(index, self.width, self.height)
+            .map(Some)
     }
 
     /// The soundtrack as little-endian f32 bytes, which is what the webview's
@@ -88,6 +83,7 @@ impl RenderedVideo {
 /// assumed, from the first frame, which is the smallest sample that can settle
 /// it: a picture with any meaningfully negative value cannot be 0…1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(test)]
 pub enum Range {
     /// 0.0 is black, 1.0 is white.
     Unit,
@@ -95,6 +91,7 @@ pub enum Range {
     Signed,
 }
 
+#[cfg(test)]
 impl Range {
     /// Anything below this is a negative the 0…1 convention has no room for.
     /// Not zero, because a decoder that clamps at zero still lands a whisker
@@ -133,6 +130,7 @@ impl Range {
 ///
 /// One channel is greyscale and is written to all three; more than three means
 /// the first three are the colour and the rest is not ours to interpret.
+#[cfg(test)]
 pub fn rgba_from_planar(
     video: &[f32],
     frame_count: u32,
@@ -194,22 +192,36 @@ pub fn rgba_from_planar(
     Ok(rgba)
 }
 
-/// Builds the hand-off from one vidfab output. Everything is copied here,
-/// because the C API frees its own buffers as soon as the generation is
-/// destroyed — which happens the moment this returns.
+/// Builds the hand-off around a source that owns the finished vidfab handle.
 #[allow(clippy::too_many_arguments)]
-pub fn from_output(
+pub fn from_source(
     job_id: &str,
-    video: &[f32],
+    source: Box<dyn FrameSource>,
     audio: &[f32],
     frame_count: u32,
     width: u32,
     height: u32,
     channels: u32,
+    video_float_count: usize,
     fps: f64,
     audio_channels: u32,
     audio_sample_rate: u32,
 ) -> Result<RenderedVideo, String> {
+    let expected_video_values = (frame_count as usize)
+        .checked_mul(width as usize)
+        .and_then(|value| value.checked_mul(height as usize))
+        .and_then(|value| value.checked_mul(channels as usize))
+        .ok_or_else(|| "The render's dimensions do not fit in memory.".to_string())?;
+    if frame_count == 0 || width == 0 || height == 0 || channels != 3 {
+        return Err(format!(
+            "The render returned {frame_count} frames of {width}x{height}x{channels}."
+        ));
+    }
+    if video_float_count < expected_video_values {
+        return Err(format!(
+            "The decoded video needs {expected_video_values} values but only {video_float_count} came back."
+        ));
+    }
     if !audio.is_empty()
         && (audio_channels == 0
             || audio_sample_rate == 0
@@ -226,11 +238,56 @@ pub fn from_output(
         height,
         frame_count,
         fps,
-        rgba: rgba_from_planar(video, frame_count, width, height, channels)?,
+        source,
         audio: audio.to_vec(),
         audio_channels,
         audio_sample_rate,
     })
+}
+
+#[cfg(test)]
+struct OwnedRgba(Vec<u8>);
+
+#[cfg(test)]
+impl FrameSource for OwnedRgba {
+    fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let size = width as usize * height as usize * 4;
+        let start = index as usize * size;
+        self.0
+            .get(start..start + size)
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| format!("Frame {index} is outside the owned test video."))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn from_output(
+    job_id: &str,
+    video: &[f32],
+    audio: &[f32],
+    frame_count: u32,
+    width: u32,
+    height: u32,
+    channels: u32,
+    fps: f64,
+    audio_channels: u32,
+    audio_sample_rate: u32,
+) -> Result<RenderedVideo, String> {
+    let rgba = rgba_from_planar(video, frame_count, width, height, channels)?;
+    from_source(
+        job_id,
+        Box::new(OwnedRgba(rgba)),
+        audio,
+        frame_count,
+        width,
+        height,
+        channels,
+        video.len(),
+        fps,
+        audio_channels,
+        audio_sample_rate,
+    )
 }
 
 static WAITING: LazyLock<Mutex<VecDeque<RenderedVideo>>> = LazyLock::new(Default::default);
@@ -259,8 +316,14 @@ fn with<T>(job_id: &str, read: impl FnOnce(&RenderedVideo) -> T) -> Option<T> {
     waiting.iter().find(|held| held.job_id == job_id).map(read)
 }
 
-pub fn frame(job_id: &str, index: u32) -> Option<Vec<u8>> {
-    with(job_id, |video| video.frame(index).map(<[u8]>::to_vec))?
+pub fn frame(job_id: &str, index: u32) -> Result<Option<Vec<u8>>, String> {
+    let waiting = WAITING
+        .lock()
+        .map_err(|_| "Finished-render lock failed.".to_string())?;
+    match waiting.iter().find(|held| held.job_id == job_id) {
+        Some(video) => video.frame(index),
+        None => Ok(None),
+    }
 }
 
 pub fn audio(job_id: &str) -> Option<Vec<u8>> {
@@ -391,20 +454,20 @@ mod tests {
     #[test]
     fn a_render_is_held_until_it_is_released() {
         release("held");
-        assert!(frame("held", 0).is_none());
+        assert!(frame("held", 0).unwrap().is_none());
         keep(sample("held"));
-        assert_eq!(frame("held", 0).unwrap(), vec![128, 128, 128, 255]);
+        assert_eq!(frame("held", 0).unwrap().unwrap(), vec![128, 128, 128, 255]);
         assert_eq!(
             summary("held").unwrap(),
             RenderedSummary { job_id: "held".into(), width: 1, height: 1, frame_count: 1, fps: 24.0, audio_channels: 2, audio_sample_rate: 48_000, audio_samples: 2 },
         );
         // Past the last frame is an absence, not a panic and not a short read.
-        assert!(frame("held", 1).is_none());
+        assert!(frame("held", 1).unwrap().is_none());
         // f32 little-endian, which is what the webview reads it back as.
         assert_eq!(audio("held").unwrap(), 0.25f32.to_le_bytes().iter().chain(&(-0.25f32).to_le_bytes()).copied().collect::<Vec<u8>>());
         assert!(release("held"));
         assert!(!release("held"));
-        assert!(frame("held", 0).is_none());
+        assert!(frame("held", 0).unwrap().is_none());
     }
 
     #[test]
