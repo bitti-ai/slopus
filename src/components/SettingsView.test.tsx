@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-beforeEach(() => localStorage.clear());
-afterEach(cleanup);
+beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+});
+afterEach(() => {
+  cleanup();
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+});
 
 const open = () => render(<SettingsView onClose={() => undefined} />);
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
@@ -35,6 +43,21 @@ describe("the settings screen", () => {
     // a settings screen that draws both panels is the tall screen tabs replaced.
     expect(screen.queryByLabelText("Appearance")).toBeNull();
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Browser preview"));
+  });
+
+  it("shows the compute platform selected by the desktop engine probe", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+    vi.mocked(invoke).mockResolvedValue({
+      state: "ready",
+      dllPath: "C:\\PolStudio\\vidfab.dll",
+      version: "1.4.0",
+      platform: "CUDA 13",
+      detail: "Ready.",
+      models: [],
+    });
+    open();
+    await waitFor(() => expect(screen.getByText("CUDA 13")).toBeTruthy());
+    expect(screen.getByText("Platform")).toBeTruthy();
   });
 
   it("swaps panels when a tab is chosen, and follows the arrow keys", () => {
