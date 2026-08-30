@@ -1,7 +1,8 @@
 import { Plus, Sparkles, Square, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
@@ -231,6 +232,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     // compiled prompt, because vidfab.rs adds reference_paths sequentially — so
     // array index 0 must be the asset the prompt calls <Picture 1>.
     const bound = sceneGenerationReferences(job, configRef.current.references);
+    const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
     return {
       jobId: job.id,
       // Recompiled from current state so edits to a bound reference or a
@@ -239,10 +241,11 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // the same string the compiled-prompt panel shows.
       prompt: compileGenerationJobPrompt(job, bound),
       // The scene's own length, not a fixed six seconds.
-      frames: Math.round(sceneDurationSeconds(job) * config.settings.frameRate),
+      frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
       steps: sceneGenerationSteps(job),
       seed: sceneGenerationSeed(job),
-      aspectRatio: config.settings.aspectRatio,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
       referencePaths: usableImageReferences(bound)
         .map((reference) => projectItemPath(folderPath, reference) ?? "")
         .filter((path) => path.length > 0),

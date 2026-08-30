@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, saveProject } from "./persistence";
-import { compileMiniMaxH3Prompt, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
+import { compileMiniMaxH3Prompt, GENERATION_FRAME_RATE, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
   loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
@@ -60,7 +60,8 @@ export interface VidfabGenerationRequest {
   frames: number;
   steps: number;
   seed: number;
-  aspectRatio: string;
+  canvasWidth: number;
+  canvasHeight: number;
   referencePaths: string[];
 }
 
@@ -159,18 +160,16 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
 
 export async function resolveVidfabPlan(request: VidfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
   if (isTauri()) return invoke<ResolvedPlan>("resolve_vidfab_plan", { request, config: withEngineSettings(config) });
-  const [ratioWidth, ratioHeight] = request.aspectRatio.split(":").map(Number);
-  const vertical = ratioHeight > ratioWidth;
   const alignedFrames = Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
-    canvasWidth: vertical ? 768 : request.aspectRatio === "1:1" ? 768 : 1344,
-    canvasHeight: vertical ? 1344 : 768,
+    canvasWidth: request.canvasWidth,
+    canvasHeight: request.canvasHeight,
     alignedFrames,
-    durationSeconds: alignedFrames / config.settings.frameRate,
+    durationSeconds: alignedFrames / GENERATION_FRAME_RATE,
     modelEvaluations: request.steps - 1,
     sequenceRowsWithoutText: 0,
     latentFrames: Math.ceil(alignedFrames / 17), latentWidth: 0, latentHeight: 0,
-    description: `Browser demo plan: ${alignedFrames} aligned frames at ${config.settings.frameRate} fps.`,
+    description: `Browser demo plan: ${alignedFrames} aligned frames at ${GENERATION_FRAME_RATE} fps.`,
     boundary: "Deterministic plan only. No weights were opened and no media file was created.",
   };
 }
