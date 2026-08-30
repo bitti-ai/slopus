@@ -9,6 +9,7 @@ import {
   fitRect,
   formatBytes,
   formatDuration,
+  generationDimensions,
   outputDimensions,
   resolutionLabel,
   sourceTimeMsForFrame,
@@ -157,8 +158,8 @@ describe("output geometry", () => {
 
 describe("defaults", () => {
   it("starts from the project's own settings instead of inventing numbers", () => {
-    const config = project([], [], { resolution: "4k", frameRate: 24 });
-    expect(defaultExportSettings(config)).toEqual({ resolution: "4k", frameRate: 24, codec: "h264", quality: "balanced" });
+    const config = project([], [], { resolution: "4k", frameRate: 60 });
+    expect(defaultExportSettings(config)).toEqual({ resolution: "4k", frameRate: 60, codec: "h264", quality: "balanced" });
   });
 
   it("derives the bitrate from the frame size and rate", () => {
@@ -220,6 +221,12 @@ describe("the plan", () => {
       revealStart: 0,
       revealEnd: 1,
     });
+  });
+
+  it("expands legacy generation canvases to H3's 32-pixel grid without changing export pixels", () => {
+    expect(generationDimensions("1080p", "16:9")).toEqual({ width: 1920, height: 1088 });
+    expect(generationDimensions("720p", "9:16")).toEqual({ width: 736, height: 1280 });
+    expect(generationDimensions("768p", "4:5")).toEqual(outputDimensions("768p", "4:5"));
   });
 
   it("reveals wipe transitions in the selected direction", () => {

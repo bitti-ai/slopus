@@ -20,6 +20,7 @@ const readyRuntime: VidfabStatus = {
   state: "ready",
   dllPath: "test",
   version: "test",
+  platform: "CUDA 13",
   detail: "Ready",
   models: [],
 };
@@ -126,7 +127,9 @@ describe("Generator scene controls", () => {
   });
 
   it("shows scene generation controls and sends their values in the render snapshot", async () => {
-    const state = setup();
+    const initial = project();
+    initial.settings = { ...initial.settings, resolution: "416p", frameRate: 60 };
+    const state = setup(initial);
     const generation = screen.getByRole("region", { name: "Generation" });
     expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
     expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
@@ -137,7 +140,13 @@ describe("Generator scene controls", () => {
 
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
-    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({ steps: 28, seed: 9173 }));
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({
+      steps: 28,
+      seed: 9173,
+      frames: 144,
+      canvasWidth: 736,
+      canvasHeight: 416,
+    }));
   });
 
   it("edits shot speech and sends it with the selected language in dialogue tags", async () => {

@@ -183,6 +183,17 @@ export function outputDimensions(resolution: Resolution, aspectRatio: AspectRati
   return { width, height };
 }
 
+/** The canvas sent to MiniMax H3. Current project sizes already satisfy the
+ * model's 32-pixel grid. Legacy export sizes remain exact on disk and at
+ * export, but their generation canvas is expanded to the nearest valid grid. */
+export function generationDimensions(resolution: Resolution, aspectRatio: AspectRatio): { width: number; height: number } {
+  const { width, height } = outputDimensions(resolution, aspectRatio);
+  return {
+    width: Math.ceil(width / 32) * 32,
+    height: Math.ceil(height / 32) * 32,
+  };
+}
+
 /** A frame size in the only terms that mean anything to the person choosing it.
  *  Everywhere a resolution is SHOWN uses this rather than the id: "416p" names
  *  the short edge and leaves the other one a guess, and at 16:9 the guess is

@@ -24,9 +24,12 @@ describe("deterministic browser runtime", () => {
     expect(status.vidfab.state).toBe("demo");
     const plan = await resolveVidfabPlan({
       jobId: "job-plan", prompt: "three field prompt", frames: 180, steps: 50,
-      seed: 1, aspectRatio: "16:9", referencePaths: [],
+      seed: 1, canvasWidth: 1920, canvasHeight: 1088, referencePaths: [],
     }, record.config);
     expect(plan.alignedFrames).toBe(192);
+    expect(plan.canvasWidth).toBe(1920);
+    expect(plan.canvasHeight).toBe(1088);
+    expect(plan.durationSeconds).toBe(8);
     expect(plan.boundary).toContain("No weights");
   });
 

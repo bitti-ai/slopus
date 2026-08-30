@@ -8,6 +8,9 @@ export const PROJECT_FILE_NAME = "polstudio.json";
 export const LEGACY_PROJECT_FILE_NAMES = ["pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_GENERATION_STEPS = 20;
+/** Vidfab's native generation clock. Project frame rate is an editing/export
+ * target; higher rates are produced later by interpolation and retiming. */
+export const GENERATION_FRAME_RATE = 24;
 export const MAX_GENERATION_STEPS = 2_147_483_647;
 export const RANDOM_GENERATION_SEED = -1;
 
@@ -775,7 +778,8 @@ export interface SceneGenerationInput {
   frames: number;
   steps: number;
   seed: number;
-  aspectRatio: string;
+  canvasWidth: number;
+  canvasHeight: number;
   referencePaths: readonly string[];
 }
 
@@ -793,7 +797,8 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     frames: input.frames,
     steps: input.steps,
     seed: input.seed,
-    aspectRatio: input.aspectRatio,
+    canvasWidth: input.canvasWidth,
+    canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
     shots,
   });
