@@ -182,7 +182,7 @@ export function withAgentEndpointSettings(config: ProjectConfig): ProjectConfig 
 
 /* --- Agent provider -------------------------------------------------------- */
 
-/* Which coding agent drives Pol is a property of the computer — it depends on
+/* Which coding agent drives Slop is a property of the computer — it depends on
  * what is installed and signed in here — so it is remembered across restarts
  * next to the engine paths, not inside a project file. Projects written before
  * this existed still carry their own choice; that is read as a seed the first

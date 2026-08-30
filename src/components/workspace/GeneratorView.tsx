@@ -285,7 +285,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      line for anyone, so the scene arrives with no words and carries
      UNTITLED_SCENE as its name rather than a phrase this app made up.
 
-     A scene built FROM a prompt is Pol’s job: the bar along the bottom of the
+     A scene built FROM a prompt is Slop’s job: the bar along the bottom of the
      window hands the request to Claude Code or Codex, which returns the whole
      project with the new scene in it. Nothing is auto-bound either way — which
      references steer a scene is decided by writing them into a line or by the
@@ -482,7 +482,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
       {/* No scenes at all — which, on a new project, is where everyone starts.
           This is the whole of the "how do I start" advice now that the composer
-          is gone, so it has to name both doors: the button below, and Pol. */}
+          is gone, so it has to name both doors: the button below, and Slop. */}
       {jobs.length === 0 && <div className="job-empty">
         <span className="job-empty__icon"><Sparkles size={26} /></span>
         <h2>Start with one scene</h2>
@@ -492,7 +492,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <li>Each shot is a card. Choose one to write its line and set it up.</li>
           <li>Drag a reference into a line and the prompt cites it as a subject.</li>
           <li>You can read the finished prompt before anything is sent.</li>
-          <li>Or ask Pol in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
+          <li>Or ask Slop in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
         </ul>
         <button className="primary-button job-empty__add" onClick={newScene}><Plus size={16} /> Add an empty scene</button>
       </div>}
