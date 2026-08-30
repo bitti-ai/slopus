@@ -45,6 +45,7 @@ Shots are sequential, later shots carry increasing cut timestamps, camera moves 
 
 The vidfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. PolStudio therefore owns:
 
+- compute-platform selection: CUDA 13 when usable, then CUDA 12, then Vulkan with exact attention;
 - a serial generation queue and cancellation;
 - thread-safe progress marshaling into Tauri events;
 - safe lifetime management for request and generation handles;

@@ -307,6 +307,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
             <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
               <span><i />{engineHeadline(status, desktop)}</span>
               <p>{engineDetail(status, desktop, missing.length)}</p>
+              {status?.platform && <small className="settings-status__platform"><b>Platform</b>{status.platform}</small>}
             </div>
             {ENGINE_PATH_FIELDS.map((field) => {
               const value = settings[field.id];

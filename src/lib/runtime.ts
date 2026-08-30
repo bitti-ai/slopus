@@ -25,6 +25,7 @@ export interface VidfabStatus {
   state: "ready" | "modelsMissing" | "runtimeMissing" | "incompatible" | "demo";
   dllPath: string;
   version: string | null;
+  platform: string | null;
   detail: string;
   models: ModelStatus[];
 }
@@ -84,7 +85,7 @@ const DEMO_STATUS: RuntimeStatus = {
     { id: "claude", label: "Claude Code", state: "ready", executable: null, version: "Browser demo", detail: "Deterministic local demo provider." },
     { id: "codex", label: "Codex", state: "ready", executable: null, version: "Browser demo", detail: "Deterministic local demo provider." },
   ],
-  vidfab: { state: "demo", dllPath: "Browser demo", version: null, detail: "Deterministic plans only. No model runs or media files are created in the browser.", models: [] },
+  vidfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Deterministic plans only. No model runs or media files are created in the browser.", models: [] },
 };
 
 /* Every vidfab command is handed the project config with THIS machine's engine
