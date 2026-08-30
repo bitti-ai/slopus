@@ -137,7 +137,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
   };
 
   return <div className="llm-settings">
-    <p className="llm-settings__intro">Configured providers appear in Pol’s prompt LLM list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
+    <p className="llm-settings__intro">Configured providers appear in Slop’s prompt LLM list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
     {endpointProviders.map((provider) => {
       const value = settings[provider.id];
       const configured = isEndpointProviderConfigured(provider.id, value);

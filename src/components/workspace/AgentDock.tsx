@@ -75,7 +75,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
   const placeholder = ready
-    ? `Ask Pol to write a new scene from a prompt, refine ${context}, or make an edit…`
+    ? `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
 
   const send = async () => {
@@ -102,21 +102,21 @@ export function AgentDock({ context, record, providers, onRecord }: {
 
   return (
     <div className={`agent-dock-wrap${expanded ? " agent-dock-wrap--expanded" : ""}`}>
-      {expanded && <div ref={conversation} className="agent-conversation" role="log" aria-label="Pol output" aria-live="polite">
-        {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Pol"}</b><span>{message.content}</span></p>)}
+      {expanded && <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
+        {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
         {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
           <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
         </p>)}
-        {messages.length === 0 && activity.length === 0 && !error && <p className="agent-conversation__empty"><b>Pol</b><span>No activity yet. Send a prompt to start.</span></p>}
-        {error && <p className="agent-conversation__error"><b>Pol</b><span>Couldn’t finish that request. {error}</span></p>}
+        {messages.length === 0 && activity.length === 0 && !error && <p className="agent-conversation__empty"><b>Slop</b><span>No activity yet. Send a prompt to start.</span></p>}
+        {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
       </div>}
       <div className="agent-dock-row">
         <button
           type="button"
           className="agent-panel-toggle"
           aria-expanded={expanded}
-          aria-label={expanded ? "Collapse Pol output" : "Expand Pol output"}
-          title={expanded ? "Collapse Pol output" : "Expand Pol output"}
+          aria-label={expanded ? "Collapse Slop output" : "Expand Slop output"}
+          title={expanded ? "Collapse Slop output" : "Expand Slop output"}
           onClick={() => setExpanded((visible) => !visible)}
         >{expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</button>
         <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
@@ -127,7 +127,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
           </select>
         </label>
         <input
-          aria-label={`Ask Pol about ${context}`}
+          aria-label={`Ask Slop about ${context}`}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           placeholder={placeholder}
@@ -136,7 +136,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
         />
         {requestId ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button> : <>
           {!ready && <span className="agent-dock__blocked"><TriangleAlert size={14} aria-hidden="true" /> {selected ? providerStateLabel(selected.state) : "Unavailable"}</span>}
-          <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Pol" title={ready ? "Send to Pol — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>
+          <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>
         </>}
         {requestId && <LoaderCircle className="agent-busy" size={16} />}
         </form>
@@ -175,7 +175,7 @@ const providerLabel = (provider: ProviderId) => ({
 })[provider];
 
 /** Provider CLIs stream NDJSON. Pull out the model-authored text so the panel
- *  shows what Pol is saying instead of transport records. */
+ *  shows what Slop is saying instead of transport records. */
 export function readableProviderOutput(line: string): string | null {
   const clean = line.trim();
   if (!clean) return null;

@@ -622,12 +622,12 @@ impl AgentRuntime {
                         }
                         if issue_retry_round > MAX_RETRIES_PER_VALIDATION_ISSUE {
                             return Err(format!(
-                                "Pol stopped after {MAX_RETRIES_PER_VALIDATION_ISSUE} correction rounds because the validator kept reporting the same failure: {failure}"
+                                "Slop stopped after {MAX_RETRIES_PER_VALIDATION_ISSUE} correction rounds because the validator kept reporting the same failure: {failure}"
                             ));
                         }
                         if total_retries >= MAX_TOTAL_VALIDATION_RETRIES {
                             return Err(format!(
-                                "Pol stopped after {MAX_TOTAL_VALIDATION_RETRIES} total correction rounds without reaching a valid project. Last validator failure: {failure}"
+                                "Slop stopped after {MAX_TOTAL_VALIDATION_RETRIES} total correction rounds without reaching a valid project. Last validator failure: {failure}"
                             ));
                         }
                         total_retries += 1;

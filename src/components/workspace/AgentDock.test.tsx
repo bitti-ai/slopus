@@ -49,7 +49,7 @@ afterEach(() => {
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 });
 
-describe("Pol output panel", () => {
+describe("Slop output panel", () => {
   it("can always expand and collapse, and expands itself while a turn is running", async () => {
     let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
     vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
@@ -57,26 +57,26 @@ describe("Pol output panel", () => {
     render(<AgentDock context="this generation queue" record={record} providers={providers} onRecord={() => undefined} />);
     await act(async () => { await Promise.resolve(); });
 
-    expect(screen.queryByRole("log", { name: "Pol output" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Expand Pol output" }));
-    expect(screen.getByRole("log", { name: "Pol output" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Collapse Pol output" }));
+    expect(screen.queryByRole("log", { name: "Slop output" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Slop output" }));
+    expect(screen.getByRole("log", { name: "Slop output" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Slop output" }));
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Ask Pol about this generation queue" }), { target: { value: "Create four shots" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send to Pol" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" }), { target: { value: "Create four shots" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
-    const log = screen.getByRole("log", { name: "Pol output" });
+    const log = screen.getByRole("log", { name: "Slop output" });
     expect(log).toHaveTextContent("Sending this request to Codex");
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
-    const toggle = screen.getByRole("button", { name: "Collapse Pol output" });
+    const toggle = screen.getByRole("button", { name: "Collapse Slop output" });
     expect(toggle.closest(".agent-dock-row")).not.toBeNull();
     expect(toggle.closest(".agent-dock")).toBeNull();
 
     const requestId = vi.mocked(runAgentTurn).mock.calls[0][3];
     act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"kind\\\":\\\"mutation\\\",\\\"summary\\\":\\\"Drafted the scene.\\\",\\\"project\\\":{}}\"}}" } } }));
     act(() => eventHandler?.({ payload: { requestId, event: { type: "validation", round: 1, maxRounds: 3, text: "Shot 4 starts at 18 seconds." } } }));
-    expect(screen.getByRole("log", { name: "Pol output" })).toHaveTextContent("Drafted the scene.");
-    expect(screen.getByRole("log", { name: "Pol output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
+    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Drafted the scene.");
+    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
     expect(log.scrollTop).toBe(900);
 
     await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], record }));
