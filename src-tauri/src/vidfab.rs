@@ -39,7 +39,56 @@ pub fn default_dll_path() -> PathBuf {
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;
 const CANCELLED: i32 = -8;
-const DEFAULT_ATTENTION: &str = "sage2";
+const CUDA_ATTENTION: &str = "sage2";
+const VULKAN_ATTENTION: &str = "exact";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComputePlatform {
+    Cuda13,
+    Cuda12,
+    Vulkan,
+}
+
+impl ComputePlatform {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cuda13 => "CUDA 13",
+            Self::Cuda12 => "CUDA 12",
+            Self::Vulkan => "Vulkan",
+        }
+    }
+
+    fn backend(self) -> i32 {
+        match self {
+            Self::Cuda13 | Self::Cuda12 => 0,
+            Self::Vulkan => 1,
+        }
+    }
+
+    fn attention(self) -> &'static str {
+        match self {
+            Self::Cuda13 | Self::Cuda12 => CUDA_ATTENTION,
+            Self::Vulkan => VULKAN_ATTENTION,
+        }
+    }
+}
+
+fn platform_from_cuda_probe(result: Result<i32, String>) -> ComputePlatform {
+    match result {
+        Ok(13) => ComputePlatform::Cuda13,
+        Ok(12) => ComputePlatform::Cuda12,
+        _ => ComputePlatform::Vulkan,
+    }
+}
+
+fn detect_platform(api: &ffi::Api) -> ComputePlatform {
+    // Explicit "auto" makes PolStudio's order deterministic even if the host
+    // process carries VIDFAB_CUDA_VERSION. If this DLL instance was already
+    // initialized, the setter is expected to refuse the change and the loaded
+    // major below remains the authority.
+    let _ = api.set_cuda_version("auto");
+    platform_from_cuda_probe(api.cuda_loaded_major())
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +96,7 @@ pub struct VidfabStatus {
     pub state: &'static str,
     pub dll_path: String,
     pub version: Option<String>,
+    pub platform: Option<&'static str>,
     pub detail: String,
     pub models: Vec<ModelStatus>,
 }
@@ -69,7 +119,8 @@ pub struct GenerationRequest {
     pub steps: i32,
     /// -1 asks the host to draw a fresh seed for this generation.
     pub seed: i64,
-    pub aspect_ratio: String,
+    pub canvas_width: i32,
+    pub canvas_height: i32,
     #[serde(default)]
     pub reference_paths: Vec<String>,
 }
@@ -162,7 +213,21 @@ impl Default for VidfabRuntime {
                     Err(error) => ("failed", error, None),
                 };
                 let _ = item.app.emit("vidfab-job", JobEvent { job_id: item.request.job_id.clone(), state, detail, output });
-                if let Ok(mut flags) = worker_flags.lock() { flags.remove(&item.request.job_id); }
+                let queue_empty = if let Ok(mut flags) = worker_flags.lock() {
+                    flags.remove(&item.request.job_id);
+                    flags.is_empty()
+                } else {
+                    false
+                };
+                // Reuse is scoped to one contiguous batch. Keeping it while a
+                // queued scene exists avoids repeating conditioning and
+                // reference preparation; clearing at the drain boundary gives
+                // the otherwise multi-gigabyte cache a deterministic lifetime.
+                if queue_empty {
+                    if let Err(error) = clear_reused_models(&item.configuration) {
+                        eprintln!("Could not clear vidfab's reused models: {error}");
+                    }
+                }
             }
         }).expect("could not start vidfab queue worker");
         Self {
@@ -170,6 +235,12 @@ impl Default for VidfabRuntime {
             cancellations,
         }
     }
+}
+
+fn clear_reused_models(configuration: &Configuration) -> Result<(), String> {
+    let api = ffi::Api::load(&configuration.dll_path)?;
+    api.version()?;
+    api.clear_reused_models()
 }
 
 impl VidfabRuntime {
@@ -293,6 +364,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
     match ffi::Api::load(&configuration.dll_path) {
         Ok(api) => match api.version() {
             Ok(version) => {
+                let platform = detect_platform(&api);
                 let missing = models
                     .iter()
                     .filter(|model| !model.available && model.id != "tokenizer")
@@ -305,6 +377,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
                     },
                     dll_path,
                     version: Some(version),
+                    platform: Some(platform.label()),
                     detail: if missing == 0 {
                         "Runtime and required model paths are available.".into()
                     } else {
@@ -317,6 +390,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
                 state: "incompatible",
                 dll_path,
                 version: None,
+                platform: None,
                 detail: error,
                 models,
             },
@@ -325,6 +399,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
             state: "runtimeMissing",
             dll_path,
             version: None,
+            platform: None,
             detail: format!("vidfab is unavailable: {error}. Editing remains available."),
             models,
         },
@@ -339,8 +414,9 @@ pub fn resolve_plan(
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;
     api.version()?;
+    let platform = detect_platform(&api);
     let handle = RequestHandle::new(&api)?;
-    configure_request(&api, handle.0, request, &configuration, false)?;
+    configure_request(&api, handle.0, request, &configuration, platform, false)?;
     let plan = api.resolve(handle.0)?;
     let description = api.describe(handle.0)?;
     Ok(ResolvedPlan {
@@ -365,6 +441,9 @@ fn validate_generation_controls(request: &GenerationRequest) -> Result<(), Strin
     if request.seed < -1 {
         return Err("Generation seed must be -1 or greater.".into());
     }
+    if request.canvas_width <= 0 || request.canvas_height <= 0 {
+        return Err("Generation canvas dimensions must be positive.".into());
+    }
     Ok(())
 }
 
@@ -384,22 +463,19 @@ fn configure_request(
     handle: *mut ffi::Request,
     request: &GenerationRequest,
     configuration: &Configuration,
+    platform: ComputePlatform,
     include_models: bool,
 ) -> Result<(), String> {
     api.set_prompt(handle, &request.prompt)?;
     api.set_frames(handle, request.frames)?;
     api.set_steps(handle, request.steps)?;
     api.set_seed(handle, generation_seed(request.seed)?)?;
-    let (width, height) = match request.aspect_ratio.as_str() {
-        "9:16" => (9, 16),
-        "1:1" => (1, 1),
-        "4:5" => (4, 5),
-        _ => (16, 9),
-    };
-    api.set_aspect(handle, width, height)?;
-    api.set_attention(handle, DEFAULT_ATTENTION)?;
+    api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
+    api.set_inference_backend(handle, platform.backend())?;
+    api.set_attention(handle, platform.attention())?;
     api.set_verbose(handle, false)?;
     if include_models {
+        api.set_reuse_models(handle, true)?;
         for (id, _, path) in &configuration.models {
             if let Some(path) = path {
                 api.set_model(handle, *id, path)?;
@@ -412,20 +488,45 @@ fn configure_request(
     Ok(())
 }
 
-/// Runs one generation and takes a copy of everything it produced.
-///
-/// The copy is not optional: `api.output` hands back pointers into memory the
-/// generation owns, and `destroy_generation` — which this function always
-/// reaches — frees it. Everything the app will ever have of a render is taken
-/// here or lost here.
+/// Runs one generation and retains its terminal handle for frame streaming.
+/// Audio is copied once; video stays owned by vidfab until encoding completes.
+struct FinishedGeneration {
+    api: ffi::Api,
+    generation: *mut ffi::Generation,
+}
+
+// Created by the serial worker and moved into a mutex-protected render store
+// only after reaching a terminal state. Finished output is read-only.
+unsafe impl Send for FinishedGeneration {}
+
+impl rendered::FrameSource for FinishedGeneration {
+    fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        self.api.frame_rgba8(self.generation, index, width, height)
+    }
+}
+
+impl Drop for FinishedGeneration {
+    fn drop(&mut self) {
+        self.api.destroy_generation(self.generation);
+    }
+}
+
 fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     if item.cancel.load(Ordering::Acquire) {
         return Err("Generation was cancelled before it started.".into());
     }
     let api = ffi::Api::load(&item.configuration.dll_path)?;
     api.version()?;
+    let platform = detect_platform(&api);
     let request = RequestHandle::new(&api)?;
-    configure_request(&api, request.0, &item.request, &item.configuration, true)?;
+    configure_request(
+        &api,
+        request.0,
+        &item.request,
+        &item.configuration,
+        platform,
+        true,
+    )?;
     api.resolve(request.0)?;
     let context = Box::new(CallbackContext {
         app: item.app.clone(),
@@ -478,32 +579,18 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
             return Err(error);
         }
     };
-    /* SAFETY: `output` describes buffers the generation owns and keeps alive
-       until `destroy_generation`, which is below and after the copy. The counts
-       are the C API's own, and a null pointer is read as an empty slice rather
-       than dereferenced. */
-    let video = if output.video.is_null() {
-        &[][..]
-    } else {
-        unsafe { std::slice::from_raw_parts(output.video, output.video_float_count) }
-    };
+    if output.audio.is_null() && output.audio_float_count != 0 {
+        api.destroy_generation(generation);
+        unsafe { drop(Box::from_raw(context_ptr)) };
+        return Err("Vidfab returned a null audio buffer with a non-zero size.".into());
+    }
+    // Audio is small enough to own directly. Video remains in the generation
+    // and is converted through frame_rgba8 only as WebCodecs asks for it.
     let audio = if output.audio.is_null() {
-        &[][..]
+        Vec::new()
     } else {
-        unsafe { std::slice::from_raw_parts(output.audio, output.audio_float_count) }
+        unsafe { std::slice::from_raw_parts(output.audio, output.audio_float_count) }.to_vec()
     };
-    let pictures = rendered::from_output(
-        &item.request.job_id,
-        video,
-        audio,
-        output.frames.max(0) as u32,
-        output.width.max(0) as u32,
-        output.height.max(0) as u32,
-        output.channels.max(0) as u32,
-        output.fps,
-        output.audio_channels.max(0) as u32,
-        output.audio_sample_rate.max(0) as u32,
-    );
     let metadata = OutputMetadata {
         frames: output.frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
@@ -513,15 +600,27 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         } else {
             0.0
         },
-        boundary: "Raw decoded buffers were copied out and released. The webview encodes them; vidfab wrote no file.",
+        boundary: "Decoded buffers remain owned by vidfab and frames are converted on demand. The webview encodes them; vidfab wrote no file.",
     };
-    api.destroy_generation(generation);
     unsafe {
         drop(Box::from_raw(context_ptr));
     }
-    // Only now, with the C API's memory handed back: a conversion that failed
-    // must not leave the generation handle alive behind it.
-    Ok((metadata, pictures?))
+    drop(request);
+    let source = Box::new(FinishedGeneration { api, generation });
+    let pictures = rendered::from_source(
+        &item.request.job_id,
+        source,
+        &audio,
+        output.frames.max(0) as u32,
+        output.width.max(0) as u32,
+        output.height.max(0) as u32,
+        output.channels.max(0) as u32,
+        output.video_float_count,
+        output.fps,
+        output.audio_channels.max(0) as u32,
+        output.audio_sample_rate.max(0) as u32,
+    )?;
+    Ok((metadata, pictures))
 }
 
 struct RequestHandle<'a>(*mut ffi::Request, &'a ffi::Api);
@@ -642,17 +741,22 @@ mod ffi {
         version_string: unsafe extern "C" fn() -> *const c_char,
         last_error: unsafe extern "C" fn() -> *const c_char,
         free_string: unsafe extern "C" fn(*mut c_char),
+        cuda_set_version: unsafe extern "C" fn(*const c_char) -> i32,
+        cuda_loaded_major: unsafe extern "C" fn(*mut i32) -> i32,
         request_create: unsafe extern "C" fn() -> *mut Request,
         request_destroy: unsafe extern "C" fn(*mut Request),
         set_prompt: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
-        set_aspect: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
+        set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
         set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
         add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
+        set_inference_backend: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_verbose: unsafe extern "C" fn(*mut Request, i32) -> i32,
+        set_reuse_models: unsafe extern "C" fn(*mut Request, i32) -> i32,
+        reused_models_clear: unsafe extern "C" fn() -> i32,
         resolve_plan: unsafe extern "C" fn(*const Request, *mut Plan) -> i32,
         describe_plan: unsafe extern "C" fn(*const Request, *mut *mut c_char) -> i32,
         generation_start: unsafe extern "C" fn(
@@ -665,6 +769,8 @@ mod ffi {
         generation_wait: unsafe extern "C" fn(*mut Generation, i32) -> i32,
         generation_error: unsafe extern "C" fn(*const Generation) -> *const c_char,
         generation_output: unsafe extern "C" fn(*const Generation, *mut Output) -> i32,
+        generation_frame_rgba8:
+            unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32,
         generation_destroy: unsafe extern "C" fn(*mut Generation),
     }
 
@@ -693,6 +799,14 @@ mod ffi {
                         unsafe extern "C" fn() -> *const c_char
                     ),
                     free_string: symbol!("vidfab_free_string", unsafe extern "C" fn(*mut c_char)),
+                    cuda_set_version: symbol!(
+                        "vidfab_cuda_set_version",
+                        unsafe extern "C" fn(*const c_char) -> i32
+                    ),
+                    cuda_loaded_major: symbol!(
+                        "vidfab_cuda_loaded_major",
+                        unsafe extern "C" fn(*mut i32) -> i32
+                    ),
                     request_create: symbol!(
                         "vidfab_request_create",
                         unsafe extern "C" fn() -> *mut Request
@@ -705,8 +819,8 @@ mod ffi {
                         "vidfab_request_set_prompt",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
-                    set_aspect: symbol!(
-                        "vidfab_request_set_aspect",
+                    set_resolution: symbol!(
+                        "vidfab_request_set_resolution",
                         unsafe extern "C" fn(*mut Request, i32, i32) -> i32
                     ),
                     set_frames: symbol!(
@@ -733,9 +847,21 @@ mod ffi {
                         "vidfab_request_set_attention",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
+                    set_inference_backend: symbol!(
+                        "vidfab_request_set_inference_backend",
+                        unsafe extern "C" fn(*mut Request, i32) -> i32
+                    ),
                     set_verbose: symbol!(
                         "vidfab_request_set_verbose",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
+                    ),
+                    set_reuse_models: symbol!(
+                        "vidfab_request_set_reuse_models",
+                        unsafe extern "C" fn(*mut Request, i32) -> i32
+                    ),
+                    reused_models_clear: symbol!(
+                        "vidfab_reused_models_clear",
+                        unsafe extern "C" fn() -> i32
                     ),
                     resolve_plan: symbol!(
                         "vidfab_resolve_plan",
@@ -769,6 +895,10 @@ mod ffi {
                     generation_output: symbol!(
                         "vidfab_generation_output",
                         unsafe extern "C" fn(*const Generation, *mut Output) -> i32
+                    ),
+                    generation_frame_rgba8: symbol!(
+                        "vidfab_generation_frame_rgba8",
+                        unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32
                     ),
                     generation_destroy: symbol!(
                         "vidfab_generation_destroy",
@@ -814,12 +944,22 @@ mod ffi {
         pub fn destroy_request(&self, request: *mut Request) {
             unsafe { (self.request_destroy)(request) }
         }
+        pub fn set_cuda_version(&self, value: &str) -> Result<(), String> {
+            let value = CString::new(value)
+                .map_err(|_| "CUDA version contains a null byte.".to_string())?;
+            self.error(unsafe { (self.cuda_set_version)(value.as_ptr()) })
+        }
+        pub fn cuda_loaded_major(&self) -> Result<i32, String> {
+            let mut major = 0;
+            self.error(unsafe { (self.cuda_loaded_major)(&mut major) })?;
+            Ok(major)
+        }
         pub fn set_prompt(&self, r: *mut Request, v: &str) -> Result<(), String> {
             let v = CString::new(v).map_err(|_| "Prompt contains a null byte.".to_string())?;
             self.error(unsafe { (self.set_prompt)(r, v.as_ptr()) })
         }
-        pub fn set_aspect(&self, r: *mut Request, w: i32, h: i32) -> Result<(), String> {
-            self.error(unsafe { (self.set_aspect)(r, w, h) })
+        pub fn set_resolution(&self, r: *mut Request, w: i32, h: i32) -> Result<(), String> {
+            self.error(unsafe { (self.set_resolution)(r, w, h) })
         }
         pub fn set_frames(&self, r: *mut Request, v: i32) -> Result<(), String> {
             self.error(unsafe { (self.set_frames)(r, v) })
@@ -833,10 +973,19 @@ mod ffi {
         pub fn set_verbose(&self, r: *mut Request, v: bool) -> Result<(), String> {
             self.error(unsafe { (self.set_verbose)(r, v as i32) })
         }
+        pub fn set_reuse_models(&self, r: *mut Request, v: bool) -> Result<(), String> {
+            self.error(unsafe { (self.set_reuse_models)(r, v as i32) })
+        }
+        pub fn clear_reused_models(&self) -> Result<(), String> {
+            self.error(unsafe { (self.reused_models_clear)() })
+        }
         pub fn set_attention(&self, r: *mut Request, v: &str) -> Result<(), String> {
             let v = CString::new(v)
                 .map_err(|_| "Attention mode contains a null byte.".to_string())?;
             self.error(unsafe { (self.set_attention)(r, v.as_ptr()) })
+        }
+        pub fn set_inference_backend(&self, r: *mut Request, backend: i32) -> Result<(), String> {
+            self.error(unsafe { (self.set_inference_backend)(r, backend) })
         }
         pub fn set_model(&self, r: *mut Request, id: i32, path: &Path) -> Result<(), String> {
             let v = path_cstring(path)?;
@@ -917,6 +1066,25 @@ mod ffi {
             self.error(unsafe { (self.generation_output)(generation, &mut value) })?;
             Ok(value)
         }
+        pub fn frame_rgba8(
+            &self,
+            generation: *mut Generation,
+            index: u32,
+            width: u32,
+            height: u32,
+        ) -> Result<Vec<u8>, String> {
+            let index = i32::try_from(index)
+                .map_err(|_| "Frame index does not fit the vidfab API.".to_string())?;
+            let bytes = (width as usize)
+                .checked_mul(height as usize)
+                .and_then(|value| value.checked_mul(4))
+                .ok_or_else(|| "Frame dimensions do not fit in memory.".to_string())?;
+            let mut rgba = vec![0_u8; bytes];
+            self.error(unsafe {
+                (self.generation_frame_rgba8)(generation, index, rgba.as_mut_ptr(), rgba.len())
+            })?;
+            Ok(rgba)
+        }
         pub fn destroy_generation(&self, generation: *mut Generation) {
             unsafe { (self.generation_destroy)(generation) }
         }
@@ -977,6 +1145,19 @@ mod tests {
         let packed = (1_u32 << 24) | (37 << 12) | 5;
         assert_eq!(packed >> 24, EXPECTED_CAPI_MAJOR);
     }
+    #[test]
+    fn platform_selection_prefers_supported_cuda_majors_and_falls_back_to_vulkan() {
+        assert_eq!(platform_from_cuda_probe(Ok(13)), ComputePlatform::Cuda13);
+        assert_eq!(platform_from_cuda_probe(Ok(12)), ComputePlatform::Cuda12);
+        assert_eq!(platform_from_cuda_probe(Ok(11)), ComputePlatform::Vulkan);
+        assert_eq!(
+            platform_from_cuda_probe(Err("no CUDA toolkit".into())),
+            ComputePlatform::Vulkan
+        );
+        assert_eq!(ComputePlatform::Cuda13.backend(), 0);
+        assert_eq!(ComputePlatform::Vulkan.backend(), 1);
+        assert_eq!(ComputePlatform::Vulkan.attention(), "exact");
+    }
 
     /// Under `cargo test` the executable is a test harness in target/debug, so
     /// this resolves to the development path — which is exactly the build this
@@ -991,6 +1172,7 @@ mod tests {
                 .version
                 .as_deref()
                 .is_some_and(|value| value.starts_with("1.")));
+            assert!(matches!(runtime.platform, Some("CUDA 13" | "CUDA 12" | "Vulkan")));
         }
     }
     #[test]
