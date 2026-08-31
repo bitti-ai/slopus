@@ -314,11 +314,15 @@ describe("Generator scene controls", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "Shot 2 of First scene" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Rename shot 2" }), { target: { value: "Doorway reveal" } });
+    const shotHeader = screen.getByRole("textbox", { name: "Rename shot 2" }).closest("header");
+    const removeButton = within(shotHeader!).getByRole("button", { name: "Remove shot 2" });
+    expect(removeButton).toHaveClass("inspector-remove-button");
+    expect(removeButton).toHaveTextContent("");
     expect(sceneShots(state.latest().generationJobs[0])[1].name).toBe("Doorway reveal");
     expect(parseProjectConfig(state.latest()).generationJobs[0].shots?.[1].name).toBe("Doorway reveal");
     expect(screen.getByRole("button", { name: "Doorway reveal of First scene" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove shot 2" }));
+    fireEvent.click(removeButton);
     expect(screen.getByRole("alertdialog", { name: "Remove shot?" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(sceneShots(state.latest().generationJobs[0])).toHaveLength(2);

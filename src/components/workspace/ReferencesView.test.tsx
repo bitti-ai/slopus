@@ -50,7 +50,7 @@ describe("Reference type presets", () => {
 
     expect(name).toHaveValue("Hero");
     expect(header).not.toBeNull();
-    expect(within(header!).getByRole("button", { name: "Remove reference" })).toBeInTheDocument();
+    expect(within(header!).getByRole("button", { name: "Remove reference" })).toHaveClass("inspector-remove-button");
     fireEvent.change(name, { target: { value: "Lead traveler" } });
 
     expect(state.latest().references[0].name).toBe("Lead traveler");

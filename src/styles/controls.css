@@ -141,6 +141,25 @@
   border-color: var(--line);
 }
 
+/* Destructive icon action shared by inspector headers. */
+.inspector-remove-button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  background: none;
+}
+
+.inspector-remove-button:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 /* --- Search field ---------------------------------------------------------- */
 
 .search-field {

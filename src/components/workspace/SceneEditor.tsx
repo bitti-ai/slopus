@@ -1,4 +1,4 @@
-import { ImagePlus, Trash2, X } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import {
   actionReferenceIds,
@@ -92,7 +92,7 @@ export function writeShots(job: GenerationJob, next: readonly SceneShot[], extra
 /** Everything about ONE shot: when it starts, the line the user wrote for it,
  *  the references that line cites, and the settings hung off it. This is what
  *  clicking a card on the board opens. */
-export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, removable, onChange, onRemove }: {
+export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, onChange }: {
   job: GenerationJob;
   /** Every shot of the scene, so the panel can number the references the same
    *  way the compiler does and warn about the ones no line can still cite. */
@@ -108,9 +108,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
    *  this: the current run keeps its captured snapshot while edits prepare the
    *  next one. */
   disabled: boolean;
-  removable: boolean;
   onChange: (updates: Partial<SceneShot>) => void;
-  onRemove: () => void;
 }) {
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const citable = useMemo(() => citableReferences(references), [references]);
@@ -178,13 +176,6 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         />
         <em>to {seconds(endsAt)}</em>
       </label>
-      {removable && <button
-        type="button"
-        className="shot-card__remove"
-        disabled={disabled}
-        aria-label={`Remove shot ${shotNumber}`}
-        onClick={onRemove}
-      ><Trash2 size={15} /> Remove</button>}
     </div>
 
     <div className="shot-card__action">

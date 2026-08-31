@@ -1,4 +1,4 @@
-import { Plus, Sparkles, Square, WandSparkles } from "lucide-react";
+import { Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
@@ -507,14 +507,23 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             <button type="button" className="panel-head__up" onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
               {selected.title}
             </button>
-            <h2><input
-              className="shot-title__name"
-              value={openShot.name ?? ""}
-              placeholder={`Shot ${shotIndex + 1}`}
-              aria-label={`Rename shot ${shotIndex + 1}`}
-              title="Rename this shot"
-              onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
-            /></h2>
+            <div className="panel-head__shot-title">
+              <h2><input
+                className="shot-title__name"
+                value={openShot.name ?? ""}
+                placeholder={`Shot ${shotIndex + 1}`}
+                aria-label={`Rename shot ${shotIndex + 1}`}
+                title="Rename this shot"
+                onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
+              /></h2>
+              {selectedShots.length > 1 && <button
+                type="button"
+                className="inspector-remove-button"
+                aria-label={`Remove shot ${shotIndex + 1}`}
+                title="Remove this shot"
+                onClick={() => setRemovalTarget({ kind: "shot", job: selected, shotId: openShot.id, shotName: openShot.name ?? `Shot ${shotIndex + 1}` })}
+              ><Trash2 size={16} aria-hidden="true" /></button>}
+            </div>
           </header>
           <div className="panel-scroll">
             <ShotInspector
@@ -527,9 +536,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               duration={sceneDurationSeconds(selected)}
               references={config.references}
               disabled={false}
-              removable={selectedShots.length > 1}
               onChange={(updates) => patchShot(selected, openShot.id, updates)}
-              onRemove={() => setRemovalTarget({ kind: "shot", job: selected, shotId: openShot.id, shotName: openShot.name ?? `Shot ${shotIndex + 1}` })}
             />
           </div>
         </>
