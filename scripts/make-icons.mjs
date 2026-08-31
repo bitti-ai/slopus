@@ -13,8 +13,8 @@
  * visible in the terminal instead of only in a taskbar.
  *
  * The mark is the film ticket from the in-app logo (src/components/PolStudioLogo.tsx):
- * a blue plate with a column of four perforations punched clean through it and a
- * heavy white letter. Every size carries a single "P" — "PolS" is four letters in
+ * a flat blue plate with a column of four perforations punched clean through it
+ * and a heavy white letter. Every size carries a single "P" — "PolS" is four letters in
  * the space that fits one, and at 16px it was an illegible smudge.
  *
  * The perforations are transparent, not white, at every size. They are 2x2 at
@@ -32,12 +32,8 @@ const ICONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri
 
 /* ---------------------------------------------------------------- geometry */
 
-/** Gradient stops of .pol-logo__ticket: linear-gradient(145deg, ...). */
-const PLATE_STOPS = [
-  [0.0, [0x08, 0x78, 0xf5]],
-  [0.48, [0x07, 0x5b, 0xe3]],
-  [1.0, [0x15, 0x3b, 0xc5]],
-];
+/** Stable brand blue shared with .pol-logo__ticket. */
+const PLATE_COLOR = [0x3f, 0x64, 0xd9];
 
 /**
  * Layout for one canvas size, in pixel units.
@@ -141,27 +137,6 @@ function inLetter(L, x, y) {
   return !inRoundRect(x, y, ix0, iy0, ix1, iy1, 0, rIn, rIn, 0);
 }
 
-function plateColor(L, x, y) {
-  // linear-gradient(145deg, ...): axis points down-and-right.
-  const ax = Math.sin((145 * Math.PI) / 180);
-  const ay = -Math.cos((145 * Math.PI) / 180);
-  const { x0, y0, x1, y1 } = L.plate;
-  const proj = (px, py) => px * ax + py * ay;
-  const lo = Math.min(proj(x0, y0), proj(x1, y0), proj(x0, y1), proj(x1, y1));
-  const hi = Math.max(proj(x0, y0), proj(x1, y0), proj(x0, y1), proj(x1, y1));
-  const t = Math.max(0, Math.min(1, (proj(x, y) - lo) / (hi - lo || 1)));
-  for (let i = 1; i < PLATE_STOPS.length; i++) {
-    const [t1, c1] = PLATE_STOPS[i];
-    const [t0, c0] = PLATE_STOPS[i - 1];
-    if (t <= t1 || i === PLATE_STOPS.length - 1) {
-      const k = (t - t0) / (t1 - t0 || 1);
-      const kk = Math.max(0, Math.min(1, k));
-      return [0, 1, 2].map((j) => Math.round(c0[j] + (c1[j] - c0[j]) * kk));
-    }
-  }
-  return PLATE_STOPS[0][1];
-}
-
 const SS = 8; // supersampling factor per axis (64 samples/pixel)
 
 /** Rasterise one square canvas to RGBA bytes. */
@@ -187,8 +162,7 @@ function render(size) {
       if (solid === 0) continue; // outside the plate, or entirely inside a hole
       const a = solid / n;
       const inkShare = ink / solid;
-      const base = plateColor(L, px + 0.5, py + 0.5);
-      for (let j = 0; j < 3; j++) out[i + j] = Math.round(base[j] + (255 - base[j]) * inkShare);
+      for (let j = 0; j < 3; j++) out[i + j] = Math.round(PLATE_COLOR[j] + (255 - PLATE_COLOR[j]) * inkShare);
       out[i + 3] = Math.round(a * 255);
     }
   }
@@ -389,7 +363,7 @@ function buildICNS(images) {
 const RAMP = ".:-=+*#%@";
 
 /** Prints a decoded image as ASCII, ramped on the red channel: the plate is
- *  blue (r ~ 0x08-0x15) and the ink is white (r = 0xff), so red *is* the ink.
+ *  blue and the ink is white (r = 0xff), so red distinguishes the ink.
  *  A blank is transparent — outside the plate, or one of the four perforations
  *  punched through it, which is why the holes show as gaps in the column. */
 function ascii({ width, height, rgba }) {
@@ -403,7 +377,7 @@ function ascii({ width, height, rgba }) {
         line += " ";
         continue;
       }
-      const ink = Math.max(0, Math.min(1, (rgba[i] - 0x18) / (0xff - 0x18)));
+      const ink = Math.max(0, Math.min(1, (rgba[i] - PLATE_COLOR[0]) / (0xff - PLATE_COLOR[0])));
       line += RAMP[Math.min(RAMP.length - 1, Math.round(ink * (RAMP.length - 1)))];
     }
     lines.push(line);
