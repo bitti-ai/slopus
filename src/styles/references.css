@@ -104,24 +104,6 @@
   outline: none;
 }
 
-.reference-inspector__head button {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  color: var(--text-muted);
-  background: none;
-}
-
-.reference-inspector__head button:hover {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
 /* --- Reference cards ------------------------------------------------------- */
 
 .reference-grid {

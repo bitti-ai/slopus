@@ -172,7 +172,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           title="Rename this reference"
           onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })}
         /></h2>
-        <button onClick={remove} aria-label="Remove reference" title="Remove this reference"><Trash2 size={16} /></button>
+        <button className="inspector-remove-button" onClick={remove} aria-label="Remove reference" title="Remove this reference"><Trash2 size={16} aria-hidden="true" /></button>
       </> : <h2>Reference details</h2>}</header>
       <div className="reference-inspector__scroll">
         {selected ? <>
