@@ -91,6 +91,8 @@ describe("project library controls", () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     expect(container.querySelector(".brand .pol-logo")).not.toBeNull();
+    expect(container.querySelector(".brand .pol-logo__monogram")?.textContent).toBe("PolS");
+    expect(container.querySelector(".brand .pol-logo__wordmark")?.textContent).toBe("tudio");
     expect(container.querySelector(".brand img")).toBeNull();
 
     const search = screen.getByRole("textbox", { name: "Search projects" });

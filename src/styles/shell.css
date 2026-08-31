@@ -37,14 +37,9 @@
 
 /* --- Logo mark (decorative artwork — proportions preserved) ----------------- */
 
-/* No plate behind the mark: it sits directly on whatever surface hosts it —
-   the topbar and the composer, both near-black. The wordmark therefore takes
-   the app's own text colour rather than the ink-on-white it used to need.
-
-   Every horizontal size here is intrinsic. The ticket used to be a fixed 51px
-   while "PolS" only measures ~36px, so the mark carried ~15px of dead blue
-   between the S and the wordmark; the box around it was fixed too, adding more
-   dead space on the right. Both now size to the artwork. */
+/* A flat film badge and wordmark. The badge uses one stable brand blue in every
+   theme and at every size; its silhouette and punched perforations provide the
+   visual character without gradients, highlights, or shadows. */
 .pol-logo {
   /* Perforation geometry, in one place. The strip in the flex row
      (.pol-logo__perforations) and the mask that punches the holes out of the
@@ -58,61 +53,45 @@
   --pol-perf-gap: 1px;
   --pol-perf-span: calc(4 * var(--pol-perf-h) + 3 * var(--pol-perf-gap));
   --pol-perf-y: calc((var(--pol-ticket-h) - var(--pol-perf-span)) / 2);
+  --pol-logo-blue: #3f64d9;
   /* One hole: a 4x3 rounded rect, used as a mask layer so a punched hole has
      the same soft corners the fallback rectangles carry. */
   --pol-perf-hole: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'%3E%3Crect width='4' height='3' rx='1' fill='%23000'/%3E%3C/svg%3E");
 
-  height: 39px;
+  height: 36px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   overflow: hidden;
-  padding: 4px 5px;
+  padding: 4px 3px;
   color: var(--text-primary);
   background: transparent;
   white-space: nowrap;
 }
 
-/* The ticket is only the box now: its blue plate moved to ::before so a mask can
-   take bites out of it. The drop shadow stays here, where it is clipped to the
-   outside of the border box and so cannot leak in through a perforation. */
+/* The plate lives on ::before so the perforations can be punched out without
+   masking the white monogram. */
 .pol-logo__ticket {
   position: relative;
   z-index: 1;
   height: var(--pol-ticket-h);
   flex: 0 0 auto;
-  padding-right: var(--space-1);
+  padding-right: 3px;
   display: flex;
   align-items: center;
-  border-radius: 4px 1px 1px 4px;
+  border-radius: 7px;
   color: #fff;
   background: transparent;
-  box-shadow: 0 1px 3px #123cac55;
 }
 
-/* The plate. A layer of its own purely so the perforations can be masked out of
-   it without the mask also eating the letter, the diamond tail or the shadow. */
+/* The plate is a separate layer so its mask does not also eat the monogram. */
 .pol-logo__ticket::before {
   content: "";
   position: absolute;
   z-index: 0;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(145deg, #0878f5 0%, #075be3 48%, #153bc5 100%);
-  box-shadow: inset 0 1px #ffffff35;
-}
-
-.pol-logo__ticket::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  width: 13px;
-  height: 13px;
-  right: -6px;
-  top: 7px;
-  border-radius: 2px;
-  background: linear-gradient(135deg, #075be3, #153bc5);
-  transform: rotate(45deg);
+  background: var(--pol-logo-blue);
 }
 
 /* Positioned above the plate, so the fallback squares below are not painted
@@ -145,7 +124,7 @@
 @supports (mask-composite: exclude) {
   .pol-logo__ticket::before {
     mask-image: var(--pol-perf-hole), var(--pol-perf-hole), var(--pol-perf-hole), var(--pol-perf-hole),
-      linear-gradient(#000 0 0);
+      linear-gradient(currentColor 0 0);
     mask-repeat: no-repeat;
     mask-size: var(--pol-perf-w) var(--pol-perf-h), var(--pol-perf-w) var(--pol-perf-h),
       var(--pol-perf-w) var(--pol-perf-h), var(--pol-perf-w) var(--pol-perf-h), 100% 100%;
@@ -161,44 +140,43 @@
   }
 }
 
-.pol-logo__pols {
+.pol-logo__monogram {
   position: relative;
   z-index: 2;
   margin-left: 3px;
   font-size: var(--text-lg);
   font-weight: 800;
   line-height: 1;
-  letter-spacing: -1.5px;
+  letter-spacing: -1.2px;
 }
 
-.pol-logo__tudio {
+.pol-logo__wordmark {
   position: relative;
   z-index: 2;
-  margin-left: var(--space-2);
-  padding-left: 1px;
+  margin-left: 0;
   color: var(--text-primary);
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   line-height: 1;
-  letter-spacing: -1.3px;
+  letter-spacing: -0.7px;
 }
 
 /* Compact mark: the ticket with a single P in it. One letter has room to be
    read at icon size, so it takes the body size rather than the 12px floor. */
 .pol-logo--compact {
-  --pol-ticket-h: 21px;
-  height: 29px;
-  padding: 4px 5px;
+  --pol-ticket-h: 22px;
+  height: 30px;
+  padding: 4px 3px;
 }
 
-.pol-logo--compact .pol-logo__ticket::after {
-  top: 4px;
-}
-
-.pol-logo--compact .pol-logo__pols {
-  margin-right: 1px;
+.pol-logo--compact .pol-logo__monogram {
+  margin-left: 3px;
   font-size: var(--text-base);
-  letter-spacing: 0;
+  letter-spacing: -0.3px;
+}
+
+.pol-logo--compact .pol-logo__ticket {
+  padding-right: 7px;
 }
 
 /* --- Settings launcher ------------------------------------------------------

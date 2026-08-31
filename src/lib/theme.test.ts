@@ -441,11 +441,10 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
        read for its ALPHA, so `fill='%23000'` means "opaque here" and nothing is
        ever painted this colour — but it was legitimate by luck rather than by
        anyone's decision, which is the state the allowlist exists to end. */
-    ".pol-logo": "the fill of a mask image: mask-image reads alpha, so this black paints nothing",
+    ".pol-logo":
+      "brand mark: its fixed flat blue is shared with packaged icons; the data-URI black only supplies mask alpha",
     ".pol-logo__ticket":
       "brand mark: the PolStudio ticket is one artwork, blue plate and white letter, in both themes",
-    ".pol-logo__ticket::before": "the ticket's blue plate, and the mask that cuts its perforations",
-    ".pol-logo__ticket::after": "the ticket's diamond tail, the same blue as the plate",
     ".pol-logo__perforations i":
       "fallback perforations: painted black because a hole reads as a hole on any backdrop",
   },

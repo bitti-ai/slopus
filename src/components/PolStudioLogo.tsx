@@ -20,12 +20,12 @@ export function PolStudioLogo({ compact = false, decorative = false, className =
             strip they occupy in the row, and the black fallback squares for a
             browser that cannot composite the mask. See .pol-logo* in shell.css. */}
         <span className="pol-logo__perforations" aria-hidden="true"><i /><i /><i /><i /></span>
-        {/* The compact mark is the small application icon: one letter inside
-            the film ticket. "PolS" at icon size was four letters squeezed into
-            a space that fits one. */}
-        <span className="pol-logo__pols">{compact ? "P" : "PolS"}</span>
+        {/* The full lockup keeps “PolS” inside the film badge: it is “Slop” in
+            reverse and the visual idea behind the name. The compact application
+            mark uses one letter so it remains legible at icon size. */}
+        <span className="pol-logo__monogram">{compact ? "P" : "PolS"}</span>
       </span>
-      {!compact && <span className="pol-logo__tudio">tudio</span>}
+      {!compact && <span className="pol-logo__wordmark">tudio</span>}
     </span>
   );
 }
