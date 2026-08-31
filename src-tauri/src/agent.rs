@@ -82,7 +82,8 @@ Complete scene-level direction when it contributes to the user's result:
 
 Use shot.settings when a supported setting materially clarifies how an individual shot should be generated:
 - Choose only exact group and option ids from the catalog below. Do not invent ids, add decorative settings, or duplicate observable action in settings.
-- Prefer a small purposeful set: framing (shotSize, cameraAngle, lens), camera behavior, lighting/time, mood, or motionPace only when each choice makes sense for that shot and fits its duration.
+- Start with no settings. Add a group only when that control is important to this specific shot and omitting it would materially change the intended result. Never fill categories merely because options are available, and never copy a general-purpose settings bundle across every shot.
+- Most shots should use zero to three setting groups. Exceed that only when the user explicitly asks for several distinct controls on that specific shot; otherwise let the shot action and scene direction carry the result.
 - visualStyle is scene-wide and belongs only on the earliest shot. Single-choice groups take one option; cameraMovement, lighting, and mood may take more than one only when the choices are compatible.
 - A non-static cameraMovement must also have one cameraSpeed and one cameraAmplitude. static-shot cannot be combined with another movement, speed, or amplitude.
 - Keep settings consistent with shot.action, references, scene Look, and adjacent shots. Do not over-specify a short shot or add mutually contradictory choices.
@@ -1618,6 +1619,9 @@ mod tests {
             "Sound is generationJob.soundscape",
             "Music is generationJob.music",
             "Use shot.settings when a supported setting materially clarifies",
+            "Start with no settings",
+            "Most shots should use zero to three setting groups",
+            "Never fill categories merely because options are available",
             "A non-static cameraMovement must also have one cameraSpeed and one cameraAmplitude",
             "visualStyle: live-action-cinematic",
             "shotSize: extreme-wide",
