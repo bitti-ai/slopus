@@ -12,7 +12,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env,
     ffi::OsString,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -930,9 +930,8 @@ impl AgentProvider for ClaudeProvider {
             "--verbose".into(),
             "--output-format".into(),
             "stream-json".into(),
-            // `--tools` is variadic, so it must never be the last flag before
-            // the positional prompt or it would swallow it. `--system-prompt`
-            // below keeps that from happening.
+            // `--tools` is variadic, so another flag must terminate its values
+            // before Claude reads the actual request from stdin.
             "--tools".into(),
             "".into(),
             "--system-prompt".into(),
@@ -941,11 +940,11 @@ impl AgentProvider for ClaudeProvider {
         if let Some(model) = setting.and_then(|value| value.model.as_deref()) {
             args.extend(["--model".into(), model.into()]);
         }
-        args.push(context_prompt(config, prompt)?.into());
         Ok(CommandSpec {
             executable: executable.into(),
             args,
             current_dir: root.into(),
+            stdin_payload: Some(context_prompt(config, prompt)?),
         })
     }
 }
@@ -969,7 +968,7 @@ impl AgentProvider for CodexProvider {
         setting: Option<&ProviderSetting>,
     ) -> Result<CommandSpec, String> {
         // Every flag here is scoped to the `exec` subcommand, so `exec` stays
-        // first and the positional prompt stays last. `--skip-git-repo-check`
+        // first and the stdin marker stays last. `--skip-git-repo-check`
         // and `--json` do not exist on the top-level `codex` command at all;
         // put them before `exec` and clap fails the invocation.
         let mut args: Vec<OsString> = vec![
@@ -989,18 +988,19 @@ impl AgentProvider for CodexProvider {
         if let Some(model) = setting.and_then(|value| value.model.as_deref()) {
             args.extend(["--model".into(), model.into()]);
         }
-        args.push(
-            format!(
-                "{}\n\n{}",
-                full_agent_system_prompt(),
-                context_prompt(config, prompt)?
-            )
-            .into(),
-        );
+        // An explicit `-` tells `codex exec` to read the initial instructions
+        // from stdin instead of the Windows command line. Project JSON and
+        // validation retries can easily exceed CreateProcessW's 32K limit.
+        args.push("-".into());
         Ok(CommandSpec {
             executable: executable.into(),
             args,
             current_dir: root.into(),
+            stdin_payload: Some(format!(
+                "{}\n\n{}",
+                full_agent_system_prompt(),
+                context_prompt(config, prompt)?
+            )),
         })
     }
 }
@@ -1023,6 +1023,7 @@ struct CommandSpec {
     executable: PathBuf,
     args: Vec<OsString>,
     current_dir: PathBuf,
+    stdin_payload: Option<String>,
 }
 
 /// Windows gives every child process started by a GUI application its own
@@ -1054,10 +1055,11 @@ fn run_subprocess(
     timeout: Duration,
     on_event: &dyn Fn(&AgentEvent),
 ) -> Result<(Vec<AgentEvent>, String), String> {
+    let has_stdin_payload = spec.stdin_payload.is_some();
     let mut child = quiet_command(&spec.executable)
         .args(&spec.args)
         .current_dir(&spec.current_dir)
-        .stdin(Stdio::null())
+        .stdin(if has_stdin_payload { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1078,6 +1080,18 @@ fn run_subprocess(
         }
     });
     drop(sender);
+    if let Some(payload) = spec.stdin_payload {
+        let write_result = child
+            .stdin
+            .take()
+            .expect("configured child stdin")
+            .write_all(payload.as_bytes());
+        if let Err(error) = write_result {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("Could not send request to agent provider: {error}"));
+        }
+    }
     let started = Instant::now();
     let mut lines = Vec::new();
     let started_event = AgentEvent::Started { provider };
@@ -1751,9 +1765,10 @@ mod tests {
             0
         );
         assert!(claude
-            .args
-            .iter()
-            .any(|arg| arg.to_string_lossy().contains("hello; rm -rf .")));
+            .stdin_payload
+            .as_deref()
+            .unwrap()
+            .contains("hello; rm -rf ."));
         assert!(claude
             .args
             .iter()
@@ -1766,10 +1781,9 @@ mod tests {
             .windows(2)
             .any(|pair| pair[0] == "--sandbox" && pair[1] == "workspace-write"));
         assert!(codex
-            .args
-            .last()
+            .stdin_payload
+            .as_deref()
             .unwrap()
-            .to_string_lossy()
             .contains("Use shot.settings when a supported setting materially clarifies"));
     }
 
@@ -1802,20 +1816,19 @@ mod tests {
                 ""
             ]
         );
-        // `--tools` takes a variadic list. If it were the last flag before the
-        // positional prompt it would eat the prompt, so a flag must follow it.
+        // `--tools` takes a variadic list, so another flag must terminate it.
         let tools = args.iter().position(|arg| arg == "--tools").unwrap();
         assert!(args[tools + 2].starts_with("--"));
-        // The prompt is positional and therefore last.
-        assert!(args.last().unwrap().contains("hello"));
+        assert!(!args.iter().any(|arg| arg.contains("hello")));
+        assert!(spec.stdin_payload.as_deref().unwrap().contains("hello"));
     }
 
     /// `--skip-git-repo-check` and `--json` exist only on `codex exec`; the
     /// top-level `codex` command rejects them. Order matters
-    /// twice over: after the subcommand, before the positional prompt.
+    /// twice over: after the subcommand, before the stdin marker.
     /// Verified against codex-cli 0.147.0.
     #[test]
-    fn codex_flags_sit_between_the_exec_subcommand_and_the_prompt() {
+    fn codex_flags_sit_between_the_exec_subcommand_and_the_stdin_marker() {
         let root = tempfile::tempdir().unwrap();
         let config: ProjectConfig =
             serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
@@ -1829,20 +1842,54 @@ mod tests {
             .collect();
 
         assert_eq!(args[0], "exec");
-        let prompt = args.len() - 1;
-        assert!(args[prompt].contains("hello"));
+        let stdin_marker = args.len() - 1;
+        assert_eq!(args[stdin_marker], "-");
+        assert!(spec.stdin_payload.as_deref().unwrap().contains("hello"));
         for flag in ["--skip-git-repo-check", "--json", "--ephemeral"] {
             let at = args
                 .iter()
                 .position(|arg| arg == flag)
                 .unwrap_or_else(|| panic!("{flag} is missing from the codex invocation"));
-            assert!(at > 0 && at < prompt, "{flag} is out of position");
+            assert!(at > 0 && at < stdin_marker, "{flag} is out of position");
         }
         // A read-only sandbox cannot write the project file a mutation turn
         // proposes.
         let sandbox = args.iter().position(|arg| arg == "--sandbox").unwrap();
         assert_eq!(args[sandbox + 1], "workspace-write");
-        assert!(sandbox < prompt);
+        assert!(sandbox < stdin_marker);
+    }
+
+    #[test]
+    fn large_requests_are_piped_instead_of_crossing_the_windows_command_line_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let config: ProjectConfig =
+            serde_json::from_str(include_str!("../../fixtures/project-v1-complete.json")).unwrap();
+        let request = "long validation retry ".repeat(4_000);
+
+        for spec in [
+            ClaudeProvider
+                .command_spec(root.path(), Path::new("claude"), &config, &request, None)
+                .unwrap(),
+            CodexProvider
+                .command_spec(root.path(), Path::new("codex"), &config, &request, None)
+                .unwrap(),
+        ] {
+            let command_line_units = spec
+                .args
+                .iter()
+                .map(|arg| arg.to_string_lossy().encode_utf16().count() + 1)
+                .sum::<usize>();
+            assert!(command_line_units < 32_000);
+            assert!(!spec
+                .args
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("long validation retry")));
+            assert!(spec
+                .stdin_payload
+                .as_deref()
+                .unwrap()
+                .contains(&request));
+        }
     }
 
     /// `canonicalize` returns `\\?\C:\...` on Windows. Windows normalises that
@@ -1976,6 +2023,7 @@ mod tests {
             executable,
             args: vec!["/c".into(), script.into_os_string()],
             current_dir: root.path().into(),
+            stdin_payload: None,
         };
         let streamed = std::cell::RefCell::new(Vec::new());
         let (_, output) = run_subprocess(
