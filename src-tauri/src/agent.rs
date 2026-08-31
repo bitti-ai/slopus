@@ -442,6 +442,7 @@ pub enum AgentEvent {
     Diagnostic { text: String },
     Validation {
         round: usize,
+        #[serde(rename = "maxRounds")]
         max_rounds: usize,
         text: String,
     },
@@ -1565,6 +1566,19 @@ mod tests {
         assert!(prompt.contains("Create four shots"));
         assert!(prompt.contains(r#"{"kind":"mutation"}"#));
         assert!(AGENT_SYSTEM_PROMPT.contains("durationSeconds must be between 0 and 15"));
+    }
+
+    #[test]
+    fn validation_events_use_the_frontend_field_name() {
+        let event = serde_json::to_value(AgentEvent::Validation {
+            round: 1,
+            max_rounds: 3,
+            text: "Fix the reference type.".into(),
+        })
+        .unwrap();
+
+        assert_eq!(event["maxRounds"], 3);
+        assert!(event.get("max_rounds").is_none());
     }
 
     #[test]
