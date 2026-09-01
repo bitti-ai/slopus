@@ -272,7 +272,7 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
     draggable={draggable}
     onDragStart={onDragStart}
   >
-    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} estimatedCompletionAt={estimatedCompletionAt} cancelling={cancelling} />
+    <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} estimatedCompletionAt={estimatedCompletionAt} cancelling={cancelling} onPlay={onOpen} />
     <button
       type="button"
       className="shot-card__open-control"

@@ -144,9 +144,11 @@ describe("a shot's picture", () => {
   it("plays from this shot's cut and stops at the next cut", async () => {
     const folder = "C:\\Shot playback";
     const job = rendered(folder);
+    const onPlay = vi.fn();
     await withFakeFile({ seconds: 9 }, async (seen) => {
-      render(<ShotThumbnail folderPath={folder} job={job} seconds={4.5} endSeconds={6} shotNumber={2} />);
+      render(<ShotThumbnail folderPath={folder} job={job} seconds={4.5} endSeconds={6} shotNumber={2} onPlay={onPlay} />);
       fireEvent.click(await screen.findByRole("button", { name: "Play shot 2 of First scene" }));
+      expect(onPlay).toHaveBeenCalledTimes(1);
 
       const video = await waitFor(() => {
         const found = document.querySelector("video");
