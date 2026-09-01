@@ -1,7 +1,7 @@
 import { Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableImageReferences, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
@@ -109,10 +109,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       const id = `ref-${Date.now()}`;
       const reference: ProjectReference = {
         id,
-        kind: "image",
+        kind: "text",
         name: imported.name,
         description: "",
-        relativePath: imported.relativePath,
+        images: [{ id: `${id}-image`, name: imported.name, relativePath: imported.relativePath }],
         intendedUse: [],
         createdAt: new Date().toISOString(),
       };
@@ -246,8 +246,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       seed: sceneGenerationSeed(job),
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      referencePaths: usableImageReferences(bound)
-        .map((reference) => projectItemPath(folderPath, reference) ?? "")
+      referencePaths: usableReferenceImages(bound)
+        .map((image) => projectItemPath(folderPath, image) ?? "")
         .filter((path) => path.length > 0),
     };
   };
