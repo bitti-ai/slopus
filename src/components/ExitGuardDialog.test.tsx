@@ -21,7 +21,7 @@ function withJobs(statuses: GenerationJob["status"][]): ProjectConfig {
     id: `job-${index}`, title: `Shot ${index + 1}`, prompt: "a slow push across the launch pad",
     status, stage: status === "generating" ? "generating" : "queued", progress: 0,
     providerId: "minimax-h3", creativeBrief: "a slow push across the launch pad",
-    compiledPrompt: "a slow push across the launch pad", referenceIds: [], createdAt: now, updatedAt: now,
+    referenceIds: [], createdAt: now, updatedAt: now,
   }));
   return { ...config, generationJobs: [...jobs, ...config.generationJobs] };
 }

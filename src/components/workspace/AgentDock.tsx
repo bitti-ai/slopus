@@ -13,9 +13,10 @@ import {
 } from "../../lib/runtime";
 import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
+import type { AgentMessage } from "../../lib/project";
 
 interface AgentActivity {
-  kind: "output" | "diagnostic" | "validation" | "system";
+  kind: "output" | "diagnostic" | "validation";
   text: string;
 }
 
@@ -35,11 +36,18 @@ export function AgentDock({ context, record, providers, onRecord }: {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [activity, setActivity] = useState<AgentActivity[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
   const activeRequest = useRef<string | null>(null);
   const conversation = useRef<HTMLDivElement | null>(null);
   const selected = providers.find((item) => item.id === provider);
   const ready = selected?.state === "ready";
-  const messages = useMemo(() => record.config.agentConversation.messages.slice(-4), [record.config.agentConversation.messages]);
+  const messages = useMemo(() => sessionMessages.slice(-4), [sessionMessages]);
+
+  useEffect(() => {
+    setSessionMessages([]);
+  }, [record.config.id]);
 
   /* One listener lives for the dock's lifetime. A request id filters out any
      delayed event from a turn the user already cancelled or replaced. */
@@ -49,6 +57,8 @@ export function AgentDock({ context, record, providers, onRecord }: {
     let stop: (() => void) | undefined;
     void listen<AgentTurnEventPayload>(AGENT_TURN_EVENT, ({ payload }) => {
       if (payload.requestId !== activeRequest.current) return;
+      const nextStatus = statusFromEvent(payload.event);
+      if (nextStatus) setStatus(nextStatus);
       const item = activityFromEvent(payload.event);
       if (!item) return;
       setActivity((current) => {
@@ -69,7 +79,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
   useEffect(() => {
     const panel = conversation.current;
     if (expanded && panel) panel.scrollTop = panel.scrollHeight;
-  }, [activity, messages, error, expanded]);
+  }, [activity, messages, error, expanded, status, pendingPrompt]);
 
   const blockedDetail = selected && !ready
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
@@ -85,15 +95,20 @@ export function AgentDock({ context, record, providers, onRecord }: {
     activeRequest.current = id;
     setRequestId(id);
     setError(null);
-    setActivity([{ kind: "system", text: `Sending this request to ${selected?.label ?? provider}.` }]);
+    setPendingPrompt(clean);
+    setStatus(`Sending this request to ${selected?.label ?? provider}.`);
+    setActivity([]);
     setExpanded(true);
     try {
-      const response = await runAgentTurn(record, provider, clean, id);
+      const response = await runAgentTurn(record, provider, clean, id, sessionMessages);
       onRecord(response.record);
+      setSessionMessages(response.messages);
+      setPendingPrompt(null);
       setPrompt("");
     } catch (reason) {
       const detail = reason instanceof Error ? reason.message : String(reason);
       setError(detail);
+      setStatus(null);
     } finally {
       activeRequest.current = null;
       setRequestId(null);
@@ -102,14 +117,18 @@ export function AgentDock({ context, record, providers, onRecord }: {
 
   return (
     <div className={`agent-dock-wrap${expanded ? " agent-dock-wrap--expanded" : ""}`}>
-      {expanded && <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
-        {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
-        {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
-          <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
-        </p>)}
-        {messages.length === 0 && activity.length === 0 && !error && <p className="agent-conversation__empty"><b>Slop</b><span>No activity yet. Send a prompt to start.</span></p>}
-        {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
-      </div>}
+      <div className="agent-expanded-content" aria-hidden={!expanded}>
+        <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
+          {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
+          {pendingPrompt && <p className="agent-conversation__user agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
+          {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
+            <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
+          </p>)}
+          {messages.length === 0 && !pendingPrompt && activity.length === 0 && !error && <p className="agent-conversation__empty"><b>Slop</b><span>No activity yet. Send a prompt to start.</span></p>}
+          {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
+        </div>
+        {expanded && status && <div className="agent-latest-status" role="status"><b>Status</b><span>{status}</span></div>}
+      </div>
       <div className="agent-dock-row">
         <button
           type="button"
@@ -150,14 +169,23 @@ const activityLabel = (kind: AgentActivity["kind"]): string => {
     case "output": return "LLM";
     case "validation": return "Validator";
     case "diagnostic": return "Error";
-    case "system": return "Status";
+  }
+};
+
+const statusFromEvent = (event: AgentTurnEvent): string | null => {
+  switch (event.type) {
+    case "started": return `${providerLabel(event.provider)} started processing.`;
+    case "completed": return "The provider returned a response.";
+    case "message":
+    case "validation":
+    case "diagnostic": return null;
   }
 };
 
 function activityFromEvent(event: AgentTurnEvent): AgentActivity | null {
   switch (event.type) {
-    case "started": return { kind: "system", text: `${providerLabel(event.provider)} started processing.` };
-    case "completed": return { kind: "system", text: "The provider returned a response." };
+    case "started":
+    case "completed": return null;
     case "validation": return { kind: "validation", text: `Correction ${event.round} of ${event.maxRounds}: ${event.text}` };
     case "diagnostic": return event.text.trim() ? { kind: "diagnostic", text: event.text.trim() } : null;
     case "message": {

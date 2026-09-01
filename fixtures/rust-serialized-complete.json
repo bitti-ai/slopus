@@ -101,7 +101,6 @@
       "progress": 1.0,
       "providerId": "minimax-h3",
       "creativeBrief": "Reveal the product through a slow macro push.",
-      "compiledPrompt": "integrated_multimodal_description: [Shot 1] Slow macro push toward the product.",
       "referenceIds": [
         "reference-product",
         "reference-tone"
@@ -136,22 +135,6 @@
       "updatedAt": "2026-01-01T00:20:00.000Z"
     }
   ],
-  "agentConversation": {
-    "messages": [
-      {
-        "id": "message-user",
-        "role": "user",
-        "content": "Make the opening feel more tactile.",
-        "createdAt": "2026-01-01T00:11:00.000Z"
-      },
-      {
-        "id": "message-assistant",
-        "role": "assistant",
-        "content": "I will use a slower macro push and restrained highlights.",
-        "createdAt": "2026-01-01T00:12:00.000Z"
-      }
-    ]
-  },
   "providerSettings": {
     "minimax-h3": {
       "enabled": true,

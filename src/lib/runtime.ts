@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri, saveProject } from "./persistence";
-import { compileMiniMaxH3Prompt, GENERATION_FRAME_RATE, parseProjectConfig, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
+import { GENERATION_FRAME_RATE, parseProjectConfig, type AgentMessage, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
   loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
@@ -53,6 +53,7 @@ export interface AgentTurnResponse {
   result: AgentTurnResult;
   events: AgentTurnEvent[];
   record: ProjectRecord;
+  messages: AgentMessage[];
 }
 
 export interface VidfabGenerationRequest {
@@ -130,29 +131,41 @@ export async function getAgentModels(provider: EndpointProviderId, settings: End
   return invoke<string[]>("list_agent_models", { provider, setting: endpointProviderSetting(settings) });
 }
 
-export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string): Promise<AgentTurnResponse> {
+export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string, conversation: AgentMessage[] = []): Promise<AgentTurnResponse> {
   const createdAt = new Date().toISOString();
   const userMessageId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
   if (isTauri()) {
-    const response = await invoke<AgentTurnResponse>("run_agent_turn", { request: {
+    const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
       requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
-      userMessageId, assistantMessageId, createdAt,
+      conversation,
     } });
-    return { ...response, record: { ...response.record, config: parseProjectConfig(response.record.config) } };
+    const assistantContent = response.result.kind === "mutation" ? response.result.summary : response.result.content;
+    return {
+      ...response,
+      record: { ...response.record, config: parseProjectConfig(response.record.config) },
+      messages: [
+        ...conversation,
+        { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
+        { id: assistantMessageId, role: "assistant", content: assistantContent, createdAt },
+      ],
+    };
   }
   const result = demoTurn(record.config, prompt);
   const mutated = result.kind === "mutation" ? result.project : record.config;
-  const config = parseProjectConfig({
-    ...mutated,
-    agentConversation: { messages: [
-      ...mutated.agentConversation.messages,
-      { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
-      { id: assistantMessageId, role: "assistant", content: result.kind === "mutation" ? result.summary : result.content, createdAt },
-    ] },
-  });
+  const config = parseProjectConfig(mutated);
   const next = await saveProject({ ...record, config });
-  return { result, record: next, events: [{ type: "started", provider }, { type: "completed" }] };
+  const assistantContent = result.kind === "mutation" ? result.summary : result.content;
+  return {
+    result,
+    record: next,
+    events: [{ type: "started", provider }, { type: "completed" }],
+    messages: [
+      ...conversation,
+      { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
+      { id: assistantMessageId, role: "assistant", content: assistantContent, createdAt },
+    ],
+  };
 }
 
 export async function cancelAgentTurn(requestId: string): Promise<boolean> {
@@ -193,9 +206,6 @@ function demoTurn(config: ProjectConfig, prompt: string): AgentTurnResult {
     const job: GenerationJob = {
       id: `job-demo-${Date.now()}`, title: clean.split(/\s+/).slice(0, 5).join(" "), prompt: clean,
       status: "draft", stage: "queued", progress: 0, providerId: "minimax-h3", creativeBrief: clean,
-      // Share the one compiler so the demo agent cannot drift from the guides.
-      // Bound to no references, so it compiles to the T2VA three-field shape.
-      compiledPrompt: compileMiniMaxH3Prompt(clean, []),
       referenceIds: [], createdAt: now, updatedAt: now,
     };
     const project = parseProjectConfig({ ...config, generationJobs: [job, ...config.generationJobs] });

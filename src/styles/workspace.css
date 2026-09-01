@@ -175,9 +175,11 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-4) var(--space-5);
+  height: calc(var(--control-lg) + var(--space-8) + 1px);
   border-top: 1px solid var(--line-solid);
   background: var(--panel);
   box-shadow: var(--shadow-up);
+  transition: height 180ms ease;
 }
 
 /* Expanded means the Slop panel owns the workspace below the project top bar.
@@ -206,6 +208,30 @@
 .agent-dock-wrap--expanded {
   height: 100%;
   min-height: 0;
+}
+
+.agent-expanded-content {
+  min-height: 0;
+  flex: 0 1 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition:
+    flex-grow 180ms ease,
+    opacity 140ms ease,
+    transform 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+.agent-dock-wrap--expanded .agent-expanded-content {
+  flex-grow: 1;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
 }
 
 .agent-dock-row {
@@ -466,6 +492,36 @@
 .agent-conversation__error,
 .agent-conversation__error b {
   color: var(--danger) !important;
+}
+
+.agent-latest-status {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-solid);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--panel-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.agent-latest-status b {
+  color: var(--accent-bright);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-agent-row,
+  .agent-expanded-content {
+    transition: none;
+  }
 }
 
 /* --- Responsive ------------------------------------------------------------ */
