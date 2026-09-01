@@ -29,6 +29,7 @@ import {
   PROJECT_RESOLUTIONS,
   STORY_TRACK_ID,
   usableImageReferences,
+  usableReferenceImages,
   actionReferenceIds,
   compileGenerationJobPrompt,
   compileGenerationJobSegments,
@@ -105,7 +106,7 @@ describe("project schema", () => {
     expect(project.generationJobs).toHaveLength(1);
     expect(project.generationJobs[0].creativeBrief).toBe("A tactile product launch");
     expect(project.generationJobs[0].status).toBe("draft");
-    expect(project.agentConversation).toEqual({ messages: [] });
+    expect(project).not.toHaveProperty("agentConversation");
     expect(project.providerSettings).toEqual({});
   });
 
@@ -148,18 +149,20 @@ describe("project schema", () => {
       targetDurationSeconds: 30,
     });
     const job = project.generationJobs[0];
+    const compiled = compileGenerationJobPrompt(job);
     expect(job.creativeBrief).toBe(project.brief.prompt);
-    expect(job.compiledPrompt.match(/^[a-z_]+:/gm)).toEqual([
+    expect(job).not.toHaveProperty("compiledPrompt");
+    expect(compiled.match(/^[a-z_]+:/gm)).toEqual([
       "integrated_multimodal_description:",
       "overall_soundscape:",
       "non_diegetic_music:",
     ]);
-    expect(job.compiledPrompt).toContain(project.brief.prompt);
+    expect(compiled).toContain(project.brief.prompt);
     // Base guide §4.1: [Shot 1] opens with the style, and carries no timestamp (§4.2).
-    expect(job.compiledPrompt).toMatch(/integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, /);
-    expect(job.compiledPrompt).not.toMatch(/\[Shot 1\] At \d/);
+    expect(compiled).toMatch(/integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, /);
+    expect(compiled).not.toMatch(/\[Shot 1\] At \d/);
     // §4.7: no abstract mood words or statements of emotional function.
-    expect(job.compiledPrompt).toContain("non_diegetic_music: N/A");
+    expect(compiled).toContain("non_diegetic_music: N/A");
   });
 
   it("selects the H3 style from the user's own words rather than inventing one", () => {
@@ -428,6 +431,23 @@ describe("project schema", () => {
     }
   });
 
+  it("keeps multiple pictures attached to one text reference and sends each one", () => {
+    const reference = projectReferenceSchema.parse({
+      id: "product", kind: "text", name: "Product", description: "Matte ceramic lamp.",
+      images: [
+        { id: "front", name: "Front", relativePath: "references/front.png" },
+        { id: "side", name: "Side", relativePath: "references/side.png" },
+      ],
+      intendedUse: ["product"], createdAt: new Date().toISOString(),
+    });
+    expect(isReferenceUsable(reference)).toBe(true);
+    expect(usableReferenceImages([reference]).map((image) => image.relativePath)).toEqual([
+      "references/front.png", "references/side.png",
+    ]);
+    expect(compileMiniMaxH3Prompt("A shot", [reference]))
+      .toContain("<Subject 1> is the content shown in <Picture 1> and <Picture 2>.");
+  });
+
   it("uses a dedicated image as Picture 1 and the scene's first frame", () => {
     const image = (id: string, name: string, path: string): ProjectReference => projectReferenceSchema.parse({
       id, kind: "image", name, description: "", relativePath: path,
@@ -548,8 +568,11 @@ describe("project schema", () => {
     expect(LEGACY_PROJECT_FILE_NAMES).not.toContain(PROJECT_FILE_NAME);
   });
 
-  it("parses the complete cross-layer fixture without losing data", () => {
-    expect(parseProjectConfig(completeFixture)).toEqual(completeFixture);
+  it("parses the complete cross-layer fixture while dropping derived project state", () => {
+    const expected = structuredClone(completeFixture) as Record<string, unknown>;
+    delete expected.agentConversation;
+    for (const job of expected.generationJobs as Array<Record<string, unknown>>) delete job.compiledPrompt;
+    expect(parseProjectConfig(completeFixture)).toEqual(expected);
   });
 
   it("normalizes portable paths to project-root relative forward slashes", () => {

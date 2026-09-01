@@ -75,7 +75,6 @@
       "progress": 0.0,
       "providerId": "minimax-h3",
       "creativeBrief": "@[ref:reference-woman] walks towards the camera on @[ref:reference-street]\n\nshe stops at a doorway and looks up\n\nthe door opens and light spills across @[ref:reference-street]",
-      "compiledPrompt": "a stale draft-time snapshot; the sender recompiles from the scene",
       "referenceIds": [
         "reference-woman",
         "reference-street"
@@ -125,8 +124,5 @@
       "updatedAt": "2026-02-01T00:30:00.000Z"
     }
   ],
-  "agentConversation": {
-    "messages": []
-  },
   "providerSettings": {}
 }

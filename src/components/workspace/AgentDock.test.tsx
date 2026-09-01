@@ -66,7 +66,9 @@ describe("Slop output panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
     const log = screen.getByRole("log", { name: "Slop output" });
-    expect(log).toHaveTextContent("Sending this request to Codex");
+    expect(log).toHaveTextContent("Create four shots");
+    expect(log).not.toHaveTextContent("Sending this request to Codex");
+    expect(screen.getByRole("status")).toHaveTextContent("Sending this request to Codex");
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
     const toggle = screen.getByRole("button", { name: "Collapse Slop output" });
     expect(toggle.closest(".agent-dock-row")).not.toBeNull();
@@ -79,7 +81,28 @@ describe("Slop output panel", () => {
     expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
     expect(log.scrollTop).toBe(900);
 
-    await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], record }));
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Slop output" }));
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+
+    await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], record, messages: [] }));
+  });
+
+  it("keeps a follow-up visible when the provider times out", async () => {
+    vi.mocked(runAgentTurn).mockRejectedValue(new Error("Agent turn timed out after 300 seconds."));
+    render(<AgentDock context="this generation queue" record={project()} providers={providers} onRecord={() => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+
+    const field = screen.getByRole("textbox", { name: "Ask Slop about this generation queue" });
+    fireEvent.change(field, { target: { value: "Leonard and Penny, in live action" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+
+    const log = await screen.findByRole("log", { name: "Slop output" });
+    expect(log).toHaveTextContent("Leonard and Penny, in live action");
+    expect(log).toHaveTextContent("Agent turn timed out after 300 seconds.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(field).toHaveValue("Leonard and Penny, in live action");
   });
 
   it("extracts model-authored content from provider transport records", () => {

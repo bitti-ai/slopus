@@ -225,12 +225,25 @@ export const generationBriefSchema = z.object({
   resolution: resolutionSchema,
 });
 
+export const projectReferenceImageSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1),
+  relativePath: projectRelativePathSchema.nullable().optional(),
+  sourcePath: externalPathSchema.nullish(),
+}).superRefine((image, context) => {
+  checkOneLocation(image, context, `Reference image '${image.id}'`);
+  if (!image.relativePath && !image.sourcePath) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom, path: ["relativePath"],
+      message: `Reference image '${image.id}' needs the file it refers to.`,
+    });
+  }
+});
+
 export const projectReferenceSchema = z.object({
   id: idSchema,
-  // `video` and `audio` are file-backed like an image, but are never copied
-  // into the project: only their absolute path is recorded. Nothing in the UI
-  // creates one yet — both reference pickers are image-only — so this is what
-  // the file format can hold, not a promise about a button.
+  // `image` remains readable for legacy projects. New pictures live in
+  // `images`, alongside a text definition rather than replacing it.
   kind: z.enum(["text", "image", "video", "audio"]),
   name: z.string().min(1),
   // May be empty: a reference can exist before the user has described it, and
@@ -238,13 +251,23 @@ export const projectReferenceSchema = z.object({
   description: z.string(),
   content: z.string().min(1).nullable().optional(),
   relativePath: projectRelativePathSchema.nullable().optional(),
-  // An image reference is copied into `references/`; a video or audio one is
-  // pointed at where it lives. See the note on projectAssetSchema.sourcePath.
+  // Legacy file location. New image attachments carry their own locations.
   sourcePath: externalPathSchema.nullish(),
+  // Pictures are attachments, not a mutually exclusive reference kind. A
+  // written definition can carry any number of images, and an image-only
+  // reference is simply a definition whose description is still blank.
+  images: z.array(projectReferenceImageSchema).optional(),
   intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
   createdAt: isoDateSchema,
 }).superRefine((reference, context) => {
   checkOneLocation(reference, context, `Reference '${reference.id}'`);
+  const imageIds = new Set<string>();
+  for (const image of reference.images ?? []) {
+    if (imageIds.has(image.id)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["images"], message: `Reference '${reference.id}' has two images with the id '${image.id}'.` });
+    }
+    imageIds.add(image.id);
+  }
   if (reference.kind !== "text" && !reference.relativePath && !reference.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],
@@ -375,11 +398,6 @@ export const generationJobSchema = z.object({
   // finds the user's words where it expects them. Nothing reads it once `shots`
   // is present: `compileGenerationJobSegments` compiles the shots.
   creativeBrief: z.string(),
-  // Snapshot of the compiled prompt taken when the draft was created. NOT what
-  // gets sent: GeneratorView.requestFor recompiles from live state at send
-  // time, so this copy goes stale as soon as the brief or the bound references
-  // change. Never treat it as the authoritative prompt.
-  compiledPrompt: z.string().min(1),
   /** Exact render inputs from the most recently started generation. Absent on
    * drafts that have never run and on projects saved before change tracking. */
   generationSnapshot: z.string().min(1).nullish(),
@@ -479,7 +497,6 @@ export const projectConfigSchema = z.object({
   timeline: z.object({ tracks: z.array(timelineTrackSchema) }),
   references: z.array(projectReferenceSchema).default([]),
   generationJobs: z.array(generationJobSchema).default([]),
-  agentConversation: agentConversationSchema.default({ messages: [] }),
   providerSettings: providerSettingsSchema.default({}),
 });
 
@@ -510,6 +527,7 @@ export const clipTransform = (clip: TimelineClip): ClipTransform => roundClipTra
 export const clipLook = (clip: TimelineClip): ClipLook => clip.look ?? DEFAULT_CLIP_LOOK;
 export const clipTransition = (clip: TimelineClip): ClipTransition => clip.transition ?? DEFAULT_CLIP_TRANSITION;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
+export type ProjectReferenceImage = z.infer<typeof projectReferenceImageSchema>;
 export type ProjectReference = z.infer<typeof projectReferenceSchema>;
 export type GenerationJob = z.infer<typeof generationJobSchema>;
 
@@ -571,6 +589,20 @@ export function referenceDefinition(reference: ProjectReference): string {
   return (reference.description.trim() || reference.content?.trim() || "").trim();
 }
 
+/** Every picture carried by one reference. The synthesized entry keeps image
+ * references written by older builds usable without rewriting their record. */
+export function referenceImages(reference: ProjectReference): ProjectReferenceImage[] {
+  const legacy = reference.kind === "image" && (reference.relativePath || reference.sourcePath)
+    ? [{
+      id: `${reference.id}-image`,
+      name: reference.name,
+      relativePath: reference.relativePath ?? null,
+      sourcePath: reference.sourcePath ?? null,
+    }]
+    : [];
+  return [...legacy, ...(reference.images ?? [])];
+}
+
 /** Whether the user has said anything about this reference yet. An IMAGE is
  *  still usable without it — the picture itself is real payload — but it is not
  *  complete, and the UI has to say so rather than letting an empty definition
@@ -584,9 +616,7 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  An image qualifies on its file alone: it can be sent to the engine and cited
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
-  return reference.kind === "image"
-    ? Boolean(reference.relativePath ?? reference.sourcePath)
-    : isReferenceDescribed(reference);
+  return referenceImages(reference).length > 0 || isReferenceDescribed(reference);
 }
 
 /** Reference guide §2.1: `<Subject N>` is VISIBLE content. A reference tagged
@@ -685,16 +715,22 @@ const referenceLabel = (reference: ProjectReference, index: number) => `<Subject
  *  the compiler's list; if one of them drops a reference the other keeps, every
  *  <Picture N> citation silently points at the wrong image. */
 export function usableImageReferences(references: ProjectReference[]): ProjectReference[] {
-  return references.filter((reference) => reference.kind === "image")
+  return references.filter((reference) => referenceImages(reference).length > 0)
     .filter(isReferenceUsable)
     .filter(isVisualReference);
+}
+
+/** Image payloads in exactly the order VidFab receives them. Multiple images
+ * on one reference stay adjacent and share that reference's subject. */
+export function usableReferenceImages(references: ProjectReference[]): ProjectReferenceImage[] {
+  return usableImageReferences(references).flatMap(referenceImages);
 }
 
 /** References in the exact order both the prompt compiler and VidFab consume.
  *  A start frame must be Picture 1; ordinary bound references retain project
  *  order after it and a frame that is also bound is still sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
-  const start = references.find((reference) => reference.id === job.startFrameReferenceId && reference.kind === "image" && isReferenceUsable(reference));
+  const start = references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const bound = references.filter((reference) => job.referenceIds.includes(reference.id) && reference.id !== start?.id);
   return start ? [start, ...bound] : bound;
 }
@@ -863,7 +899,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // <Picture N> / reference_paths lockstep note on that function. An
   // audio-only-tagged reference is dropped here (ref guide §2.1), so a scene
   // whose only reference is audio-tagged correctly falls back to T2VA.
-  const startFrame = references.find((reference) => reference.id === scene.startFrameReferenceId && reference.kind === "image" && isReferenceUsable(reference)) ?? null;
+  const startFrame = references.find((reference) => reference.id === scene.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference)) ?? null;
   const usable = references.filter(isReferenceUsable).filter(isVisualReference).filter((reference) => reference.id !== startFrame?.id);
   const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
 
@@ -963,8 +999,13 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     ].filter((segment) => segment.value.length > 0);
   }
 
-  const images = usableImageReferences(references);
-  const pictureNumber = new Map(images.map((reference, index) => [reference.id, index + 1]));
+  const imageReferenceIds = usableImageReferences(references).flatMap((reference) =>
+    referenceImages(reference).map(() => reference.id));
+  const pictureNumbers = new Map<string, number[]>();
+  imageReferenceIds.forEach((referenceId, index) => pictureNumbers.set(referenceId, [...(pictureNumbers.get(referenceId) ?? []), index + 1]));
+  const listOf = (values: string[]): string => values.length === 1
+    ? values[0]
+    : `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
 
   // §2.2: an image that only defines a character, scene, costume or style is
   // cited INSIDE its <Subject N> definition. A scene's explicit first frame is
@@ -983,24 +1024,22 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // real payload — so it is cited without any claim about what it contains.
   const definitions = usable.flatMap((reference, index): PromptSegment[] => {
     const detail = referenceDefinition(reference).replace(/\s+/g, " ");
-    const picture = pictureNumber.get(reference.id);
+    const pictures = pictureNumbers.get(reference.id) ?? [];
     const label = referenceLabel(reference, index);
     const lead = index === 0 ? "" : "\n";
-    if (!picture) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
+    if (pictures.length === 0) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
+    const pictureList = listOf(pictures.map((picture) => `<Picture ${picture}>`));
     return [
-      frame(`${lead}${label} is the content shown in <Picture ${picture}>.`),
+      frame(`${lead}${label} is the content shown in ${pictureList}.`),
       ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),
     ];
   });
-  const startPicture = startFrame ? pictureNumber.get(startFrame.id) : null;
+  const startPicture = startFrame ? pictureNumbers.get(startFrame.id)?.[0] ?? null : null;
   const startDefinition = startPicture
     ? [frame(`<Picture ${startPicture}> is the first frame of the video.${definitions.length > 0 ? "\n" : ""}`)]
     : [];
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
-  const listOf = (values: string[]): string => values.length === 1
-    ? values[0]
-    : `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
   const labelList = listOf(labels);
 
   /* Which subjects each shot is said to feature.
@@ -1133,7 +1172,6 @@ export function createDraftGenerationJob(
   const shots = normalizeSceneShots(options.shots ?? [{ id: `${id}-shot-1`, startSeconds: 0, action: brief, ...(shotTags ? { settings: shotTags } : {}) }]);
   const durationSeconds = Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, options.durationSeconds ?? DEFAULT_SCENE_SECONDS));
   const text = sceneBriefText(shots);
-  const scene: ScenePrompt = { shots };
   return generationJobSchema.parse({
     id,
     // Their own words, cut short — and only ever their words. See UNTITLED_SCENE.
@@ -1144,12 +1182,6 @@ export function createDraftGenerationJob(
     progress: 0,
     providerId: "minimax-h3",
     creativeBrief: text,
-    // Draft-time snapshot only — it is NOT the prompt that gets sent.
-    // GeneratorView.requestFor recompiles from live state at send time, so this
-    // value is stale the moment the scene or the bound references change (a
-    // project created with reference images keeps a T2VA snapshot here while
-    // the scene later holds bound image references). Do not read it as current.
-    compiledPrompt: compileScenePromptSegments(scene, options.references ?? []).map((segment) => segment.value).join(""),
     referenceIds: options.referenceIds ?? [],
     startFrameReferenceId: options.startFrameReferenceId ?? undefined,
     shots,
@@ -1199,12 +1231,9 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
     ] },
     references: [],
     generationJobs: brief ? [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })] : [],
-    agentConversation: { messages: [] }, providerSettings: {},
+    providerSettings: {},
   });
 }
-
-const h3Prompt = (description: string, sound = "Quiet room tone.") =>
-  `integrated_multimodal_description: [Shot 1] ${description}\n\noverall_soundscape: ${sound}\n\nnon_diegetic_music: N/A`;
 
 export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectConfig {
   if (config.assets.length > 0 || config.timeline.tracks.some((track) => track.clips.length > 0)) return config;
@@ -1229,9 +1258,9 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     { id: "ref-building", kind: "image", name: "Harbor facade", description: "Primary material and geometry reference. Retain pale stone fins, deep window reveals, and cool northern daylight.", relativePath: "references/harbor-facade.jpg", intendedUse: ["location", "style"], createdAt },
     { id: "ref-grade", kind: "text", name: "Blue-hour grade", description: "Slate shadows, warm practicals, restrained saturation, subtle 35 mm texture. Skin tones remain natural and luminous.", content: "Slate shadows, warm practicals, restrained saturation, subtle 35 mm texture.", intendedUse: ["style"], createdAt },
   ];
-  const job = (value: Omit<GenerationJob, "providerId" | "creativeBrief" | "compiledPrompt" | "updatedAt">): GenerationJob => ({
+  const job = (value: Omit<GenerationJob, "providerId" | "creativeBrief" | "updatedAt">): GenerationJob => ({
     ...value, providerId: "minimax-h3", creativeBrief: value.prompt,
-    compiledPrompt: h3Prompt(value.prompt), updatedAt: value.createdAt,
+    updatedAt: value.createdAt,
   });
   const generationJobs: GenerationJob[] = [
     job({ id: "job-active", title: "Macro model details", prompt: "Slow controlled push across the scale model as morning light catches its edges.", status: "generating", stage: "generating", progress: 0.68, clipId: "clip-03", referenceIds: ["ref-building", "ref-grade"], createdAt }),

@@ -141,7 +141,6 @@
       "progress": 0.0,
       "providerId": "minimax-h3",
       "creativeBrief": "a rocket launch over the ocean at dawn",
-      "compiledPrompt": "integrated_multimodal_description: [Shot 1] Live-action, cinematic, a rocket launch over the ocean at dawn\n\noverall_soundscape: The ambient sound and physical action sounds are those the scene and actions described above naturally produce. Nothing beyond what that description already establishes is added.\n\nnon_diegetic_music: N/A",
       "referenceIds": [],
       "outputRelativePath": null,
       "error": null,
@@ -149,8 +148,5 @@
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
-  "agentConversation": {
-    "messages": []
-  },
   "providerSettings": {}
 }

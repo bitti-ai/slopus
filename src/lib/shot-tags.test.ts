@@ -6,6 +6,7 @@ import wireCreated from "../../fixtures/rust-serialized-created.json";
 import {
   compileMiniMaxH3Prompt,
   compileMiniMaxH3PromptSegments,
+  compileGenerationJobPrompt,
   createDraftGenerationJob,
   parseProjectConfig,
   projectReferenceSchema,
@@ -124,7 +125,7 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
     // Every existing project is tagless. The tag work must not silently move a
     // single character of the prompt those shots already send.
     const withoutTags = compileMiniMaxH3Prompt("a rocket launch over the ocean at dawn");
-    expect(withoutTags).toBe(createdFixture.generationJobs[0].compiledPrompt);
+    expect(withoutTags).toBe(compileGenerationJobPrompt(parseProjectConfig(createdFixture).generationJobs[0]));
     expect(compileMiniMaxH3Prompt("a rocket launch over the ocean at dawn", [], {})).toBe(withoutTags);
     expect(compileMiniMaxH3Prompt("a rocket launch over the ocean at dawn", [], null)).toBe(withoutTags);
   });
@@ -193,13 +194,14 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
     expect(segments.some((segment) => segment.kind === "frame" && segment.value === ".")).toBe(true);
   });
 
-  it("puts a draft's tags on the shot inside the scene, and into its compiled snapshot", () => {
+  it("puts a draft's tags on the shot and compiles them from scene data", () => {
     // Tags are per-SHOT now, so a draft made from one line puts them on the one
     // shot it opens with. The legacy per-job `shotTags` key is not written any
     // more; it is only ever read, off files that already carry it.
     const job = createDraftGenerationJob("hands shaping wet clay", { shotTags: { cameraMovement: ["push-in"], mood: [] }, now });
     expect(job.shots?.[0].settings).toEqual({ cameraMovement: ["push-in"] });
-    expect(job.compiledPrompt).toContain("Camera movement: push in.");
+    expect(job).not.toHaveProperty("compiledPrompt");
+    expect(compileGenerationJobPrompt(job)).toContain("Camera movement: push in.");
     // Nothing tagged means no key at all, so an untagged shot writes the file
     // it always wrote.
     expect("settings" in (createDraftGenerationJob("hands shaping wet clay", { now }).shots?.[0] ?? {})).toBe(false);

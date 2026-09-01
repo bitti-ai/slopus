@@ -45,7 +45,9 @@ struct ProjectConfig {
     references: Vec<ReusableReference>,
     #[serde(default)]
     generation_jobs: Vec<GenerationJob>,
-    #[serde(default)]
+    // Conversation is session state. Read the legacy key so old projects open,
+    // but never write it back to polstudio.json.
+    #[serde(default, skip_serializing)]
     agent_conversation: AgentConversation,
     #[serde(default)]
     provider_settings: BTreeMap<String, ProviderSetting>,
@@ -184,9 +186,24 @@ struct ReusableReference {
     /// reference is not, and points at wherever the user keeps it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_path: Option<String>,
+    /// Pictures attached to this definition. The top-level paths above remain
+    /// readable for projects made when an image was a separate reference kind.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    images: Vec<ReferenceImage>,
     #[serde(default)]
     intended_use: Vec<String>,
     created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceImage {
+    id: String,
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_path: Option<String>,
 }
 
 /// One shot inside a scene. Mirrors `sceneShotSchema` in src/lib/project.ts.
@@ -240,6 +257,9 @@ struct GenerationJob {
     progress: f64,
     provider_id: Option<String>,
     creative_brief: String,
+    // Legacy derived cache. The frontend compiles from shots and references at
+    // preview/send time; accept old files but never persist this stale copy.
+    #[serde(default, skip_serializing)]
     compiled_prompt: String,
     /// Exact inputs of the latest generation attempt. Missing on drafts that
     /// have never been sent to the renderer and on older project files.
@@ -306,7 +326,7 @@ struct AgentConversation {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AgentMessage {
+pub(crate) struct AgentMessage {
     id: String,
     role: String,
     content: String,
@@ -761,6 +781,30 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 reference.id
             ));
         }
+        let mut image_ids = BTreeSet::new();
+        for image in &mut reference.images {
+            if image.id.trim().is_empty() || image.name.trim().is_empty() {
+                return Err(format!("Reference '{}' has an image with an empty id or name.", reference.id));
+            }
+            if !image_ids.insert(image.id.as_str()) {
+                return Err(format!("Reference '{}' has duplicate image id '{}'.", reference.id, image.id));
+            }
+            image.relative_path = image
+                .relative_path
+                .as_deref()
+                .map(normalize_project_path)
+                .transpose()?;
+            image.source_path = image
+                .source_path
+                .as_deref()
+                .map(normalize_external_path)
+                .transpose()?;
+            check_one_location(
+                &format!("Reference image '{}'", image.id),
+                image.relative_path.as_ref(),
+                image.source_path.as_ref(),
+            )?;
+        }
         match reference.kind.as_str() {
             // A text reference may legitimately be blank: the UI creates one the
             // moment "New definition" is clicked, before the user has typed. It
@@ -936,11 +980,10 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         let has_shots = job.shots.as_ref().is_some_and(|shots| !shots.is_empty());
         if job.id.trim().is_empty()
             || job.title.trim().is_empty()
-            || job.compiled_prompt.trim().is_empty()
             || (!has_shots && (job.prompt.trim().is_empty() || job.creative_brief.trim().is_empty()))
         {
             return Err(
-                "Generation job id, title, prompt, creative brief, and compiled prompt cannot be empty.".into(),
+                "Generation job id, title, prompt, and creative brief cannot be empty.".into(),
             );
         }
         if !matches!(
@@ -1084,7 +1127,7 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                     job.id, start_frame_id
                 ));
             };
-            if reference.kind != "image" {
+            if reference.kind != "image" && reference.images.is_empty() {
                 return Err(format!(
                     "Generation job '{}' start-frame reference '{}' is not an image.",
                     job.id, start_frame_id
@@ -1136,7 +1179,8 @@ fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
         .map_err(|error| format!("Could not read {}: {error}", config_path.to_string_lossy()))?;
     let config: ProjectConfig = serde_json::from_str(&json)
         .map_err(|error| format!("Project config is not valid: {error}"))?;
-    let config = validate_and_normalize_config(config)?;
+    let mut config = validate_and_normalize_config(config)?;
+    config.agent_conversation = AgentConversation::default();
     Ok(ProjectRecord {
         folder_path: display_path(&canonical_folder),
         config,
@@ -1454,6 +1498,35 @@ fn choose_reference_image(
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
     copy_reference_image(&source, &project_folder).map(Some)
+}
+
+#[tauri::command]
+fn choose_reference_images(
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Vec<ImportedReferenceImage>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Add reference images")
+        .add_filter("Images", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_files()
+        .unwrap_or_default();
+    if selected.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project_folder = PathBuf::from(folder_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+    selected
+        .into_iter()
+        .map(|path| {
+            let source = path
+                .into_path()
+                .map_err(|error| format!("Could not access selected image: {error}"))?;
+            copy_reference_image(&source, &project_folder)
+        })
+        .collect()
 }
 
 /// One reference the user added: an image copied into `references/`, or a
@@ -1928,6 +2001,7 @@ fn create_project_in_with_references(
                 content: None,
                 relative_path: imported.relative_path,
                 source_path: imported.source_path,
+                images: Vec::new(),
                 intended_use: vec!["style".into()],
                 created_at: config.created_at.clone(),
             });
@@ -2364,6 +2438,7 @@ pub fn run() {
             choose_project_folder,
             choose_initial_reference_images,
             choose_reference_image,
+            choose_reference_images,
             import_media_files,
             read_project_file,
             read_external_media_file,
@@ -2410,6 +2485,14 @@ mod tests {
     /// shape that broke every create and open.
     fn created_fixture() -> ProjectConfig {
         serde_json::from_str(include_str!("../../fixtures/project-v1-created.json")).unwrap()
+    }
+
+    fn without_derived_project_state(mut config: ProjectConfig) -> ProjectConfig {
+        for job in &mut config.generation_jobs {
+            job.compiled_prompt.clear();
+        }
+        config.agent_conversation = AgentConversation::default();
+        config
     }
 
     /// A project whose video and audio live OUTSIDE the folder, alongside a
@@ -2657,7 +2740,7 @@ mod tests {
             ("complete", fixture()),
             ("scene", scene_fixture()),
         ] {
-            let normalized = validate_and_normalize_config(config).unwrap();
+            let normalized = without_derived_project_state(validate_and_normalize_config(config).unwrap());
             let json = serde_json::to_string_pretty(&normalized).unwrap();
             let reparsed: ProjectConfig = serde_json::from_str(&json).unwrap();
             assert_eq!(
@@ -2680,7 +2763,7 @@ mod tests {
         config.assets[0].height = None;
         config.timeline.tracks[0].clips[0].color = None;
         config.generation_jobs[0].clip_id = None;
-        let config = validate_and_normalize_config(config).unwrap();
+        let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
 
         let found = forbidden_nulls(&config);
         assert!(found.is_empty(), "emitted forbidden nulls: {found:?}");
@@ -2864,7 +2947,7 @@ mod tests {
     #[test]
     fn complete_project_create_open_save_reopen_is_lossless() {
         let root = tempfile::tempdir().unwrap();
-        let expected = validate_and_normalize_config(fixture()).unwrap();
+        let expected = without_derived_project_state(validate_and_normalize_config(fixture()).unwrap());
         let created = create_project_in(root.path(), &expected).unwrap();
         assert_eq!(created.config, expected);
 
@@ -2874,12 +2957,6 @@ mod tests {
 
         let mut saved = opened.config.clone();
         saved.updated_at = "2026-02-03T04:05:06.000Z".into();
-        saved.agent_conversation.messages.push(AgentMessage {
-            id: "message-save".into(),
-            role: "user".into(),
-            content: "Save this portable project.".into(),
-            created_at: "2026-02-03T04:05:06.000Z".into(),
-        });
         write_project(&project_folder, &saved).unwrap();
         assert_eq!(read_project(&project_folder).unwrap().config, saved);
 
@@ -3021,7 +3098,7 @@ mod tests {
 
         assert!(error.contains("simulated replacement failure"));
         assert_eq!(fs::read(&destination).unwrap(), original_bytes);
-        assert_eq!(read_project(root.path()).unwrap().config, original);
+        assert_eq!(read_project(root.path()).unwrap().config, without_derived_project_state(original));
         assert_eq!(
             fs::read_dir(root.path())
                 .unwrap()
@@ -3656,6 +3733,7 @@ mod tests {
             content: None,
             relative_path: None,
             source_path: None,
+            images: Vec::new(),
             intended_use: Vec::new(),
             created_at: "2026-01-01T00:07:00.000Z".into(),
         });
@@ -3663,6 +3741,30 @@ mod tests {
             validate_and_normalize_config(config).is_ok(),
             "a blank text reference must never block saving the project"
         );
+    }
+
+    #[test]
+    fn reference_images_are_attachments_and_derived_state_is_not_serialized() {
+        let mut config = fixture();
+        config.references[0].images = vec![
+            ReferenceImage {
+                id: "tone-front".into(),
+                name: "Front".into(),
+                relative_path: Some("references/front.png".into()),
+                source_path: None,
+            },
+            ReferenceImage {
+                id: "tone-side".into(),
+                name: "Side".into(),
+                relative_path: Some("references/side.png".into()),
+                source_path: None,
+            },
+        ];
+        let config = validate_and_normalize_config(config).unwrap();
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(value["references"][0]["images"].as_array().unwrap().len(), 2);
+        assert!(value.get("agentConversation").is_none());
+        assert!(value["generationJobs"][0].get("compiledPrompt").is_none());
     }
 
     #[test]

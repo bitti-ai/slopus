@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { createProjectConfig } from "./project";
+import { compileGenerationJobPrompt, createProjectConfig } from "./project";
 import { getRuntimeStatus, resolveVidfabPlan, runAgentTurn } from "./runtime";
 
 const project = () => ({
@@ -33,11 +33,17 @@ describe("deterministic browser runtime", () => {
     expect(plan.boundary).toContain("No weights");
   });
 
-  it("persists a provider-neutral mutation and both conversation turns", async () => {
+  it("persists a provider-neutral mutation while conversation stays in memory", async () => {
     const response = await runAgentTurn(project(), "codex", "Add a cinematic shot to the queue", "turn-1");
     expect(response.result.kind).toBe("mutation");
     expect(response.record.config.generationJobs[0].status).toBe("draft");
-    expect(response.record.config.agentConversation.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
-    expect(response.record.config.generationJobs[0].compiledPrompt).toContain("overall_soundscape:");
+    expect(response.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(response.record.config).not.toHaveProperty("agentConversation");
+    expect(response.record.config.generationJobs[0]).not.toHaveProperty("compiledPrompt");
+    expect(compileGenerationJobPrompt(response.record.config.generationJobs[0])).toContain("overall_soundscape:");
+
+    const followUp = await runAgentTurn(response.record, "codex", "Make it warmer", "turn-2", response.messages);
+    expect(followUp.messages.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(followUp.record.config).not.toHaveProperty("agentConversation");
   });
 });
