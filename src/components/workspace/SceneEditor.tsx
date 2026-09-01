@@ -5,6 +5,7 @@ import {
   danglingReferenceTokens,
   isReferenceUsable,
   isVisualReference,
+  referenceImages,
   normalizeSceneShots,
   referenceToken,
   sceneBriefText,
@@ -281,7 +282,7 @@ export function SceneInspector({ job, shots, references, disabled, importAvailab
   // is written. One place, never a second field that could disagree with it.
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
   const imageReferences = useMemo(
-    () => references.filter((reference) => reference.kind === "image" && isReferenceUsable(reference)),
+    () => references.filter((reference) => referenceImages(reference).length > 0 && isReferenceUsable(reference)),
     [references],
   );
 

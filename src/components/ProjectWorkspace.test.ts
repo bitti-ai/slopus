@@ -22,7 +22,7 @@ afterEach(cleanup);
 
 /** Runs `body` with the app believing it is inside the desktop shell, so the
  *  REAL Tauri import path executes instead of the browser fallback. */
-async function asDesktopApp(importedImage: { name: string; relativePath: string }, body: () => void | Promise<void>) {
+async function asDesktopApp(importedImage: { name: string; relativePath: string } | Array<{ name: string; relativePath: string }>, body: () => void | Promise<void>) {
   const { invoke } = await import("@tauri-apps/api/core");
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.mocked(invoke).mockResolvedValue(importedImage);
@@ -1053,14 +1053,19 @@ describe("project workspace timecode", () => {
     // which is exactly why this shipped.
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const onChange = vi.fn();
-    await asDesktopApp({ name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }, async () => {
+    await asDesktopApp([{ name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }], async () => {
       render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
-      fireEvent.click(screen.getByRole("button", { name: "Add image" }));
+      fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+      const dialog = screen.getByRole("dialog", { name: "Add a reference" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Image" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Choose images" }));
       await waitFor(() => expect(onChange).toHaveBeenCalled());
     });
 
     const imported = onChange.mock.calls[0][0].references[0];
-    expect(imported.relativePath).toBe("references/IMG_4821.jpg");
+    expect(imported.kind).toBe("text");
+    expect(imported.relativePath).toBeUndefined();
+    expect(imported.images[0].relativePath).toBe("references/IMG_4821.jpg");
     // The import writes no prose: description is what the compiler hands the
     // model as the user's own account of the picture.
     expect(imported.description).toBe("");
@@ -1083,7 +1088,7 @@ describe("project workspace timecode", () => {
     // file is sent.
     cleanup();
     const withImport = onChange.mock.calls[0][0];
-    expect(withImport.references[0].relativePath).toBeTruthy();
+    expect(withImport.references[0].images).toHaveLength(1);
     const { container } = render(createElement(ReferencesView, { config: withImport, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined }));
     const screenText = container.textContent ?? "";
     for (const staleRule of ["you’ve described", "described references", "skipped", "is skipped until you write"]) {
@@ -1097,8 +1102,8 @@ describe("project workspace timecode", () => {
     const { container } = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined }));
     const view = container.querySelector(".references-view")!;
     expect(Array.from(view.children).slice(0, 2).map((element) => element.className)).toEqual(["references-main", "reference-inspector"]);
-    expect(container.querySelector(".references-heading__actions")!.textContent).toContain("New definition");
-    expect(container.querySelector(".references-heading__actions")!.textContent).toContain("Add image");
+    expect(container.querySelector(".references-heading__actions")).toBeNull();
+    expect(screen.getByRole("button", { name: /Add a reference/ })).not.toBeNull();
     expect(container.querySelector(".reference-inspector__scroll")).not.toBeNull();
     expect(container.querySelector(".reference-layout")).toBeNull();
     expect(container.querySelector(".reference-library__toolbar")).toBeNull();

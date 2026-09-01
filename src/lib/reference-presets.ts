@@ -15,7 +15,7 @@ export interface ReferencePreset {
 }
 
 export const REFERENCE_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
-  { id: "custom", label: "Custom" },
+  { id: "custom", label: "Text" },
   { id: "character", label: "Character" },
   { id: "product", label: "Product" },
   { id: "location", label: "Location" },
@@ -156,7 +156,7 @@ export function referenceType(reference: ProjectReference): ReferenceType {
 }
 
 export const referenceTypeLabel = (type: ReferenceType): string =>
-  REFERENCE_TYPES.find((candidate) => candidate.id === type)?.label ?? "Custom";
+  REFERENCE_TYPES.find((candidate) => candidate.id === type)?.label ?? "Text";
 
 export const selectedReferencePreset = (reference: ProjectReference): ReferencePreset | undefined => {
   const preset = presetForReference(reference);
