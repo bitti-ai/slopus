@@ -246,7 +246,7 @@ export function formatEstimatedTimeLeft(milliseconds: number): string {
   return `About ${minutes}m ${seconds}s left`;
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, estimatedCompletionAt = null, cancelling = false }: {
+export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, estimatedCompletionAt = null, cancelling = false, onPlay }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
@@ -259,6 +259,8 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   estimatedCompletionAt?: number | null;
   /** Cancel was requested but the engine has not reported its terminal state. */
   cancelling?: boolean;
+  /** Opens this shot in the editor when playback begins. */
+  onPlay?: () => void;
 }) {
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
   const at = seconds;
@@ -350,6 +352,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
         video.pause();
         setPlaying(false);
       } else {
+        onPlay?.();
         window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
         if (video.currentTime < seconds || video.currentTime >= endSeconds) video.currentTime = seconds;
         await playToCut(video);
@@ -358,6 +361,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
     }
 
     const request = ++requestRef.current;
+    onPlay?.();
     window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
     setLoadingPlayback(true);
     setPlayFailed(false);
