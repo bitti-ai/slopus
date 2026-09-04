@@ -772,6 +772,140 @@ impl Drop for RequestHandle<'_> {
     }
 }
 
+struct GenerationHandle<'a>(*mut ffi::Generation, &'a ffi::Api);
+impl Drop for GenerationHandle<'_> {
+    fn drop(&mut self) {
+        self.1.destroy_generation(self.0);
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceIconSpec {
+    pub id: String,
+    pub prompt: String,
+    pub seed: u64,
+    pub destination: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct ReferenceIconBatchConfig {
+    pub dll_path: PathBuf,
+    pub transformer: PathBuf,
+    pub text_encoder: PathBuf,
+    pub video_vae: PathBuf,
+    pub backend: String,
+}
+
+fn write_reference_icon(
+    api: &ffi::Api,
+    configuration: &Configuration,
+    platform: ComputePlatform,
+    spec: &ReferenceIconSpec,
+) -> Result<(), String> {
+    let request = GenerationRequest {
+        job_id: spec.id.clone(),
+        prompt: spec.prompt.clone(),
+        frames: 6,
+        steps: 30,
+        seed: i64::try_from(spec.seed)
+            .map_err(|_| format!("Icon '{}' seed is too large.", spec.id))?,
+        canvas_width: 256,
+        canvas_height: 256,
+        reference_paths: Vec::new(),
+    };
+    let handle = RequestHandle::new(api)?;
+    configure_request(api, handle.0, &request, configuration, platform, true)?;
+    api.resolve(handle.0)?;
+    let generation = GenerationHandle(api.start(handle.0, None, std::ptr::null_mut())?, api);
+    let status = api.wait(generation.0, -1);
+    if status != 0 {
+        let detail = api.generation_error(generation.0);
+        return Err(if detail.is_empty() {
+            format!("Icon '{}' failed with vidfab status {status}.", spec.id)
+        } else {
+            format!("Icon '{}' failed: {detail}", spec.id)
+        });
+    }
+    let output = api.output(generation.0)?;
+    if output.width != 256 || output.height != 256 || output.frames < 1 {
+        return Err(format!(
+            "Icon '{}' returned {}x{} with {} frames.",
+            spec.id, output.width, output.height, output.frames
+        ));
+    }
+    let rgba = api.frame_rgba8(generation.0, 0, 256, 256)?;
+    let rgb = rgba
+        .chunks_exact(4)
+        .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
+        .collect::<Vec<_>>();
+    if let Some(parent) = spec.destination.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Could not create icon folder '{}': {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let encoder = jpeg_encoder::Encoder::new_file(&spec.destination, 100).map_err(|error| {
+        format!(
+            "Could not create icon '{}': {error}",
+            spec.destination.display()
+        )
+    })?;
+    encoder
+        .encode(&rgb, 256, 256, jpeg_encoder::ColorType::Rgb)
+        .map_err(|error| {
+            format!(
+                "Could not encode icon '{}': {error}",
+                spec.destination.display()
+            )
+        })
+}
+
+pub fn generate_reference_icon_batch(
+    specs: &[ReferenceIconSpec],
+    batch: &ReferenceIconBatchConfig,
+) -> Result<(), String> {
+    let backend = match batch.backend.as_str() {
+        "cuda" => ComputePlatform::Cuda13,
+        "vulkan" => ComputePlatform::Vulkan,
+        value => return Err(format!("Unsupported icon generation backend '{value}'.")),
+    };
+    let configuration = Configuration {
+        dll_path: batch.dll_path.clone(),
+        models: [
+            (0, "transformer", Some(batch.transformer.clone())),
+            (1, "textEncoder", Some(batch.text_encoder.clone())),
+            (2, "tokenizer", None),
+            (3, "videoVae", Some(batch.video_vae.clone())),
+            // Icons keep one picture and need no decoded soundtrack.
+            (4, "audioVae", None),
+        ],
+    };
+    let api = ffi::Api::load(&configuration.dll_path)?;
+    api.version()?;
+    let platform = if backend == ComputePlatform::Cuda13 {
+        detect_platform(&api)
+    } else {
+        backend
+    };
+    let result = specs.iter().enumerate().try_for_each(|(index, spec)| {
+        let started = std::time::Instant::now();
+        write_reference_icon(&api, &configuration, platform, spec)?;
+        println!(
+            "[{}/{}] {}: generated in {:.1}s",
+            index + 1,
+            specs.len(),
+            spec.id,
+            started.elapsed().as_secs_f64()
+        );
+        Ok(())
+    });
+    let cleared = api.clear_reused_models();
+    result.and(cleared)
+}
+
 struct CallbackContext {
     app: AppHandle,
     job_id: String,

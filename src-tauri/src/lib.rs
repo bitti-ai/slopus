@@ -15,6 +15,8 @@ mod export;
 mod rendered;
 mod vidfab;
 
+pub use vidfab::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
+
 const PROJECT_FILE_NAME: &str = "polstudio.json";
 /// What the file was called before, newest first. Folders written by earlier
 /// builds still open; the next save writes `polstudio.json` and leaves the old
