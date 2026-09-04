@@ -1,7 +1,9 @@
-import { ArrowLeft, BookOpen, Download, Film, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Download, Film, Save, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { describeDiagnosticError, errorContext, writeDiagnostic } from "../lib/diagnostics";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
-import { cancelVidfabGeneration, CHECKING_PROVIDERS, type RuntimeStatus } from "../lib/runtime";
+import { cancelVidfabGeneration, CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type VidfabStatus } from "../lib/runtime";
+import { purgeTimelineThumbnails } from "../lib/timelineThumbnails";
 import { ExitGuardDialog, type OngoingGeneration } from "./ExitGuardDialog";
 import { AgentDock } from "./workspace/AgentDock";
 import { ExportView } from "./workspace/ExportView";
@@ -10,7 +12,7 @@ import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { useGenerationEvents } from "./workspace/useGenerationEvents";
 
-export type ProjectView = "timeline" | "generator" | "references" | "export";
+export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export";
 
 /** A generation the app is still working on: waiting for the engine, being
  *  rendered by it, or — `ready` — rendered and being encoded into the file that
@@ -32,7 +34,7 @@ export function formatDurationTimecode(totalSeconds: number): string {
   return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
-export function ProjectWorkspace({ project, initialView = "timeline", runtime = null, onBack, onSave, onOngoingGenerationsChange }: {
+export function ProjectWorkspace({ project, initialView = "timeline", runtime = null, onBack, onSave, onOngoingGenerationsChange, onGeneratorRuntimeChange }: {
   project: ProjectRecord;
   initialView?: ProjectView;
   /** What is installed on this computer, probed once at startup by App. Null
@@ -45,6 +47,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
    *  button: the jobs live in this component's config, which the library never
    *  sees. Optional, so a test can mount the workspace on its own. */
   onOngoingGenerationsChange?: (jobs: OngoingGeneration[]) => void;
+  /** Keeps the app-wide probe result aligned when the active generator is
+   *  changed directly from the Generator screen. */
+  onGeneratorRuntimeChange?: (runtime: VidfabStatus) => void;
 }) {
   const [config, setConfigState] = useState(project.config);
   const configRef = useRef(config);
@@ -66,6 +71,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   // responsible for, so a measurement landing during a save cannot make a
   // successfully persisted project look unsaved.
   const dirtyRevision = useRef(0);
+  const knownSceneIds = useRef(new Set(project.config.generationJobs.map((job) => job.id)));
 
   const applyConfig = (next: ConfigUpdate): ProjectConfig => {
     const resolved = typeof next === "function" ? next(configRef.current) : next;
@@ -92,7 +98,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         if (dirtyRevision.current === savedRevision) setDirty(false);
       })
       .catch((reason) => {
-        setSaveError(reason instanceof Error ? reason.message : String(reason));
+        const detail = describeDiagnosticError(reason);
+        writeDiagnostic("error", "workspace", "project.save_failed", detail, { projectId: configRef.current.id, ...errorContext(reason) });
+        setSaveError(detail);
       })
       .finally(() => {
         pendingSaves.current -= 1;
@@ -119,6 +127,17 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       return { ...current, [jobId]: completionAt };
     }),
   });
+
+  /* Scene removal can come from the Generator or from Slop replacing the
+     project document. Keep derived disk caches honest at this shared boundary
+     so neither path can leave orphaned thumbnails behind. */
+  useEffect(() => {
+    const current = new Set(config.generationJobs.map((job) => job.id));
+    for (const jobId of knownSceneIds.current) {
+      if (!current.has(jobId)) void purgeTimelineThumbnails(project.folderPath, jobId).catch(() => undefined);
+    }
+    knownSceneIds.current = current;
+  }, [config.generationJobs, project.folderPath]);
 
   /* Derived through a key of identity and status rather than from the job
      objects: a render in progress rewrites generationJobs on every progress
@@ -190,7 +209,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       </div>
 
       <nav className="project-nav" aria-label="Project views">
-        {([ ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const).map(([id, Icon, label]) => {
+        {([ ["agent", Bot, "Agent"], ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const).map(([id, Icon, label]) => {
           const running = id === "generator" ? ongoing.length : 0;
           return <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
             <Icon size={18} aria-hidden="true" /> {label}
@@ -222,19 +241,26 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.vidfab ?? null} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.vidfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>
-    <footer className="project-agent-row"><AgentDock
-      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "export" ? "this export" : "project references"}
+    <footer className={`project-agent-row${view === "agent" ? " project-agent-row--page" : ""}`}><AgentDock
+      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : view === "export" ? "this export" : "this project"}
       record={{ ...project, config }}
       providers={runtime?.providers ?? CHECKING_PROVIDERS}
-      /* Routed through the same save() as the Save button. Clearing `dirty`
-         up front reported a saved project even when the write then failed,
-         and swallowed the reason; save() clears only on success and surfaces
-         the failure in the toast. */
-      onRecord={(record) => { applyConfig(record.config); void save(record); }}
+      expanded={view === "agent"}
+      onPromptStart={() => setView("agent")}
+      /* The provider only proposes typed commands. Apply them to configRef's
+         latest state—edits can continue while it thinks—then route the result
+         through the same ordered save queue as the Save button. */
+      onCommands={async (commands) => {
+        const next = await executeAgentCommands(configRef.current, commands);
+        applyConfig(next);
+        dirtyRevision.current += 1;
+        setDirty(true);
+        await save({ ...project, config: next });
+      }}
     /></footer>
     {leaveGuard && <ExitGuardDialog jobs={ongoing} destination="library" onConfirm={leave} onCancel={() => setLeaveGuard(false)} />}
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={() => setSaveError(null)}>Dismiss</button></div>}

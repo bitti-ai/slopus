@@ -2,7 +2,7 @@
 //!
 //! All ABI declarations and `unsafe` calls live in `ffi`; the rest of the
 //! application only handles owned Rust status, plan, progress, and metadata.
-use crate::{rendered, ProviderOption, ProviderSetting};
+use crate::{diagnostics, rendered, ProviderOption, ProviderSetting};
 use getrandom::fill as fill_random;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -148,7 +148,13 @@ struct ProgressEvent {
     stage: &'static str,
     step: i32,
     total_steps: i32,
+    planned_steps: i32,
     elapsed_seconds: f64,
+    frames: i32,
+    canvas_width: i32,
+    canvas_height: i32,
+    reference_count: usize,
+    timing_profile: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -175,6 +181,15 @@ struct OutputMetadata {
     /// Interleaved samples across every channel, so the webview can tell an
     /// empty soundtrack from one it has not read yet.
     audio_samples: usize,
+    reference_count: usize,
+    timing_profile: String,
+    seconds_conditioning: f64,
+    seconds_denoise: f64,
+    seconds_video_decode: f64,
+    seconds_audio_decode: f64,
+    seconds_total: f64,
+    steps_computed: i32,
+    steps_skipped: i32,
     duration_seconds: f64,
     boundary: &'static str,
 }
@@ -192,6 +207,16 @@ impl Default for VidfabRuntime {
         let worker_flags = cancellations.clone();
         thread::Builder::new().name("vidfab-serial-queue".into()).spawn(move || {
             while let Ok(item) = receiver.recv() {
+                let started = std::time::Instant::now();
+                diagnostics::info("vidfab", "generation.started", "Native generation worker started.", serde_json::json!({
+                    "jobId": item.request.job_id,
+                    "frames": item.request.frames,
+                    "steps": item.request.steps,
+                    "canvasWidth": item.request.canvas_width,
+                    "canvasHeight": item.request.canvas_height,
+                    "referenceCount": item.request.reference_paths.len(),
+                    "randomSeed": item.request.seed == -1,
+                }));
                 let result = run_generation(&item);
                 let (state, detail, output) = match result {
                     Ok((metadata, pictures)) => {
@@ -212,6 +237,30 @@ impl Default for VidfabRuntime {
                     Err(error) if item.cancel.load(Ordering::Acquire) => ("cancelled", error, None),
                     Err(error) => ("failed", error, None),
                 };
+                let context = serde_json::json!({
+                    "jobId": item.request.job_id,
+                    "state": state,
+                    "elapsedMs": started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+                    "output": output.as_ref().map(|value| serde_json::json!({
+                        "frames": value.frames, "width": value.width, "height": value.height,
+                        "fps": value.fps, "audioChannels": value.audio_channels,
+                        "audioSamples": value.audio_samples,
+                        "secondsConditioning": value.seconds_conditioning,
+                        "secondsDenoise": value.seconds_denoise,
+                        "secondsVideoDecode": value.seconds_video_decode,
+                        "secondsAudioDecode": value.seconds_audio_decode,
+                        "secondsTotal": value.seconds_total,
+                        "stepsComputed": value.steps_computed,
+                        "stepsSkipped": value.steps_skipped,
+                    })),
+                });
+                if state == "failed" {
+                    diagnostics::error("vidfab", "generation.finished", &detail, context);
+                } else if state == "cancelled" {
+                    diagnostics::warn("vidfab", "generation.finished", &detail, context);
+                } else {
+                    diagnostics::info("vidfab", "generation.finished", &detail, context);
+                }
                 let _ = item.app.emit("vidfab-job", JobEvent { job_id: item.request.job_id.clone(), state, detail, output });
                 let queue_empty = if let Ok(mut flags) = worker_flags.lock() {
                     flags.remove(&item.request.job_id);
@@ -225,7 +274,7 @@ impl Default for VidfabRuntime {
                 // the otherwise multi-gigabyte cache a deterministic lifetime.
                 if queue_empty {
                     if let Err(error) = clear_reused_models(&item.configuration) {
-                        eprintln!("Could not clear vidfab's reused models: {error}");
+                        diagnostics::warn("vidfab", "models.clear_failed", &error, serde_json::json!({}));
                     }
                 }
             }
@@ -250,6 +299,20 @@ impl VidfabRuntime {
         request: GenerationRequest,
         settings: &BTreeMap<String, ProviderSetting>,
     ) -> Result<(), String> {
+        diagnostics::info(
+            "vidfab",
+            "generation.enqueue_requested",
+            "Generation was submitted to the native queue.",
+            serde_json::json!({
+                "jobId": request.job_id,
+                "frames": request.frames,
+                "steps": request.steps,
+                "canvasWidth": request.canvas_width,
+                "canvasHeight": request.canvas_height,
+                "referenceCount": request.reference_paths.len(),
+                "inputChars": request.prompt.chars().count(),
+            }),
+        );
         if request.job_id.trim().is_empty() || request.prompt.trim().is_empty() {
             return Err("Generation job id and prompt cannot be empty.".into());
         }
@@ -285,24 +348,44 @@ impl VidfabRuntime {
         let _ = app.emit(
             "vidfab-job",
             JobEvent {
-                job_id: queued_id,
+                job_id: queued_id.clone(),
                 state: "queued",
                 detail: "Queued behind any active vidfab generation.".into(),
                 output: None,
             },
         );
+        diagnostics::info(
+            "vidfab",
+            "generation.queued",
+            "Generation entered the native queue.",
+            serde_json::json!({ "jobId": queued_id }),
+        );
         Ok(())
     }
 
     pub fn cancel(&self, job_id: &str) -> bool {
-        self.cancellations
+        let accepted = self
+            .cancellations
             .lock()
             .ok()
             .and_then(|flags| flags.get(job_id).cloned())
             .is_some_and(|flag| {
                 flag.store(true, Ordering::Release);
                 true
-            })
+            });
+        diagnostics::info(
+            "vidfab",
+            "generation.cancel_requested",
+            if accepted {
+                "Cancellation was accepted."
+            } else {
+                "No queued generation matched the cancellation."
+            },
+            serde_json::json!({
+                "jobId": job_id, "accepted": accepted,
+            }),
+        );
+        accepted
     }
 }
 
@@ -343,6 +426,24 @@ impl Configuration {
                 (4, "audioVae", option("audioVae")),
             ],
         }
+    }
+
+    fn timing_profile(&self, version: &str, platform: ComputePlatform) -> String {
+        let models = self
+            .models
+            .iter()
+            .filter_map(|(_, id, path)| {
+                path.as_ref().map(|path| {
+                    let file = path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("unknown");
+                    format!("{id}={file}")
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(";");
+        format!("vidfab={version}|platform={}|{models}", platform.label())
     }
 }
 
@@ -516,8 +617,17 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         return Err("Generation was cancelled before it started.".into());
     }
     let api = ffi::Api::load(&item.configuration.dll_path)?;
-    api.version()?;
+    let version = api.version()?;
     let platform = detect_platform(&api);
+    let timing_profile = item.configuration.timing_profile(&version, platform);
+    diagnostics::debug(
+        "vidfab",
+        "generation.runtime_ready",
+        "vidfab runtime loaded.",
+        serde_json::json!({
+            "jobId": item.request.job_id, "version": version, "platform": platform.label(),
+        }),
+    );
     let request = RequestHandle::new(&api)?;
     configure_request(
         &api,
@@ -528,9 +638,21 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         true,
     )?;
     api.resolve(request.0)?;
+    diagnostics::debug(
+        "vidfab",
+        "generation.request_resolved",
+        "vidfab resolved the generation request.",
+        serde_json::json!({ "jobId": item.request.job_id }),
+    );
     let context = Box::new(CallbackContext {
         app: item.app.clone(),
         job_id: item.request.job_id.clone(),
+        frames: item.request.frames,
+        canvas_width: item.request.canvas_width,
+        canvas_height: item.request.canvas_height,
+        reference_count: item.request.reference_paths.len(),
+        timing_profile: timing_profile.clone(),
+        planned_steps: (item.request.steps - 1).max(0),
     });
     let context_ptr = Box::into_raw(context);
     let generation = match api.start(request.0, Some(progress_callback), context_ptr.cast()) {
@@ -542,6 +664,12 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
             return Err(error);
         }
     };
+    diagnostics::debug(
+        "vidfab",
+        "generation.api_started",
+        "vidfab accepted the generation request.",
+        serde_json::json!({ "jobId": item.request.job_id }),
+    );
     loop {
         if item.cancel.load(Ordering::Acquire) {
             api.cancel(generation);
@@ -595,6 +723,15 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         frames: output.frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
         audio_samples: output.audio_float_count,
+        reference_count: item.request.reference_paths.len(),
+        timing_profile,
+        seconds_conditioning: output.seconds_conditioning,
+        seconds_denoise: output.seconds_denoise,
+        seconds_video_decode: output.seconds_video_decode,
+        seconds_audio_decode: output.seconds_audio_decode,
+        seconds_total: output.seconds_total,
+        steps_computed: output.steps_computed,
+        steps_skipped: output.steps_skipped,
         duration_seconds: if output.fps > 0.0 {
             output.frames as f64 / output.fps
         } else {
@@ -638,6 +775,12 @@ impl Drop for RequestHandle<'_> {
 struct CallbackContext {
     app: AppHandle,
     job_id: String,
+    frames: i32,
+    canvas_width: i32,
+    canvas_height: i32,
+    reference_count: usize,
+    timing_profile: String,
+    planned_steps: i32,
 }
 unsafe extern "C" fn progress_callback(
     progress: *const ffi::Progress,
@@ -649,6 +792,19 @@ unsafe extern "C" fn progress_callback(
         }
         let progress = unsafe { &*progress };
         let context = unsafe { &*(userdata.cast::<CallbackContext>()) };
+        diagnostics::debug(
+            "vidfab",
+            "generation.progress",
+            "vidfab reported progress.",
+            serde_json::json!({
+                "jobId": context.job_id,
+                "stage": stage_name(progress.stage),
+                "step": progress.step,
+                "totalSteps": progress.total_steps,
+                "plannedSteps": context.planned_steps,
+                "elapsedSeconds": progress.elapsed_seconds,
+            }),
+        );
         let _ = context.app.emit(
             "vidfab-progress",
             ProgressEvent {
@@ -656,7 +812,13 @@ unsafe extern "C" fn progress_callback(
                 stage: stage_name(progress.stage),
                 step: progress.step,
                 total_steps: progress.total_steps,
+                planned_steps: context.planned_steps,
                 elapsed_seconds: progress.elapsed_seconds,
+                frames: context.frames,
+                canvas_width: context.canvas_width,
+                canvas_height: context.canvas_height,
+                reference_count: context.reference_count,
+                timing_profile: context.timing_profile.clone(),
             },
         );
     });
@@ -769,8 +931,7 @@ mod ffi {
         generation_wait: unsafe extern "C" fn(*mut Generation, i32) -> i32,
         generation_error: unsafe extern "C" fn(*const Generation) -> *const c_char,
         generation_output: unsafe extern "C" fn(*const Generation, *mut Output) -> i32,
-        generation_frame_rgba8:
-            unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32,
+        generation_frame_rgba8: unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32,
         generation_destroy: unsafe extern "C" fn(*mut Generation),
     }
 
@@ -980,8 +1141,8 @@ mod ffi {
             self.error(unsafe { (self.reused_models_clear)() })
         }
         pub fn set_attention(&self, r: *mut Request, v: &str) -> Result<(), String> {
-            let v = CString::new(v)
-                .map_err(|_| "Attention mode contains a null byte.".to_string())?;
+            let v =
+                CString::new(v).map_err(|_| "Attention mode contains a null byte.".to_string())?;
             self.error(unsafe { (self.set_attention)(r, v.as_ptr()) })
         }
         pub fn set_inference_backend(&self, r: *mut Request, backend: i32) -> Result<(), String> {
@@ -1172,7 +1333,10 @@ mod tests {
                 .version
                 .as_deref()
                 .is_some_and(|value| value.starts_with("1.")));
-            assert!(matches!(runtime.platform, Some("CUDA 13" | "CUDA 12" | "Vulkan")));
+            assert!(matches!(
+                runtime.platform,
+                Some("CUDA 13" | "CUDA 12" | "Vulkan")
+            ));
         }
     }
     #[test]

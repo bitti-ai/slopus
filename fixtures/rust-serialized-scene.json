@@ -30,9 +30,17 @@
         "clips": []
       },
       {
-        "id": "track-a1",
-        "kind": "audio",
-        "name": "Track 1",
+        "id": "track-v2",
+        "kind": "video",
+        "name": "Track 2",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
+        "id": "track-v3",
+        "kind": "video",
+        "name": "Track 3",
         "locked": false,
         "muted": false,
         "clips": []

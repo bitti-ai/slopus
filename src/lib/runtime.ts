@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import { isTauri, saveProject } from "./persistence";
-import { GENERATION_FRAME_RATE, parseProjectConfig, type AgentMessage, type GenerationJob, type ProjectConfig, type ProjectRecord } from "./project";
+import { isTauri } from "./persistence";
+import {
+  actionReferenceIds, createDraftGenerationJob, GENERATION_FRAME_RATE, parseProjectConfig,
+  sceneBriefText, type AgentMessage, type GenerationJob, type ProjectAsset, type ProjectConfig,
+  type ProjectRecord, type SceneShot, type TimelineClip,
+} from "./project";
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
-  loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
+  loadDefaultGenerationSteps, loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
   type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
 } from "./settings";
 
@@ -31,10 +35,26 @@ export interface VidfabStatus {
 }
 export interface RuntimeStatus { providers: ProviderStatus[]; vidfab: VidfabStatus }
 
+export type ProjectCommand =
+  | { op: "project.set"; name?: string; prompt?: string; targetSeconds?: number; aspectRatio?: string; resolution?: string; frameRate?: number; backgroundColor?: string }
+  | { op: "ref.add"; id: string; name: string; text: string; use: string[] }
+  | { op: "ref.set"; id: string; name?: string; text?: string; use?: string[] }
+  | { op: "ref.remove"; id: string }
+  | { op: "scene.add"; id: string; title: string; seconds: number; steps?: number; seed?: number; sound?: string; music?: string; startFrame?: string }
+  | { op: "scene.set"; id: string; title?: string; seconds?: number; steps?: number; seed?: number; sound?: string | null; music?: string | null; startFrame?: string | null }
+  | { op: "scene.remove"; id: string }
+  | { op: "scene.move"; id: string; before?: string | null }
+  | { op: "shot.add"; scene: string; id: string; at: number; action: string; name?: string; speech?: string; language?: string; settings?: Record<string, string[]> }
+  | { op: "shot.set"; scene: string; id: string; at?: number; action?: string; name?: string | null; speech?: string | null; language?: string | null; settings?: Record<string, string[]> | null }
+  | { op: "shot.remove"; scene: string; id: string }
+  | { op: "clip.add"; id: string; scene?: string; asset?: string; track?: string; at?: number; seconds?: number; sourceAt?: number; label?: string }
+  | { op: "clip.set"; id: string; track?: string; at?: number; seconds?: number; sourceAt?: number; label?: string }
+  | { op: "clip.remove"; id: string };
+
 export type AgentTurnResult =
   | { kind: "answer"; content: string }
   | { kind: "question"; content: string }
-  | { kind: "mutation"; summary: string; project: ProjectConfig };
+  | { kind: "commands"; summary: string; commands: ProjectCommand[] };
 
 export type AgentTurnEvent =
   | { type: "started"; provider: ProviderId }
@@ -52,7 +72,6 @@ export const AGENT_TURN_EVENT = "agent-turn-event";
 export interface AgentTurnResponse {
   result: AgentTurnResult;
   events: AgentTurnEvent[];
-  record: ProjectRecord;
   messages: AgentMessage[];
 }
 
@@ -111,9 +130,9 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */
-export async function getEngineStatus(): Promise<VidfabStatus> {
+export async function getEngineStatus(settings = loadEngineSettings()): Promise<VidfabStatus> {
   if (!isTauri()) return DEMO_STATUS.vidfab;
-  return invoke<VidfabStatus>("vidfab_status", { settings: { vidfab: engineProviderSetting(loadEngineSettings()) } });
+  return invoke<VidfabStatus>("vidfab_status", { settings: { vidfab: engineProviderSetting(settings) } });
 }
 
 /** Opens the OS picker for one engine path. Returns null when the user cancels. */
@@ -140,10 +159,9 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
       requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
       conversation,
     } });
-    const assistantContent = response.result.kind === "mutation" ? response.result.summary : response.result.content;
+    const assistantContent = response.result.kind === "commands" ? response.result.summary : response.result.content;
     return {
       ...response,
-      record: { ...response.record, config: parseProjectConfig(response.record.config) },
       messages: [
         ...conversation,
         { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
@@ -152,13 +170,9 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
     };
   }
   const result = demoTurn(record.config, prompt);
-  const mutated = result.kind === "mutation" ? result.project : record.config;
-  const config = parseProjectConfig(mutated);
-  const next = await saveProject({ ...record, config });
-  const assistantContent = result.kind === "mutation" ? result.summary : result.content;
+  const assistantContent = result.kind === "commands" ? result.summary : result.content;
   return {
     result,
-    record: next,
     events: [{ type: "started", provider }, { type: "completed" }],
     messages: [
       ...conversation,
@@ -166,6 +180,17 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
       { id: assistantMessageId, role: "assistant", content: assistantContent, createdAt },
     ],
   };
+}
+
+/** The provider plans against its request snapshot, then this applies the
+ * accepted commands to the editor's latest state. Rust is authoritative in the
+ * desktop app; this mirror keeps the deterministic browser preview useful. */
+export async function executeAgentCommands(config: ProjectConfig, commands: ProjectCommand[]): Promise<ProjectConfig> {
+  if (isTauri()) {
+    const next = await invoke<ProjectConfig>("execute_agent_commands", { config, commands, executedAt: new Date().toISOString() });
+    return parseProjectConfig(next);
+  }
+  return executeDemoCommands(config, commands);
 }
 
 export async function cancelAgentTurn(requestId: string): Promise<boolean> {
@@ -196,20 +221,262 @@ export async function cancelVidfabGeneration(jobId: string): Promise<boolean> {
   return isTauri() ? invoke<boolean>("cancel_vidfab_generation", { jobId }) : true;
 }
 
-function demoTurn(config: ProjectConfig, prompt: string): AgentTurnResult {
+function demoTurn(_config: ProjectConfig, prompt: string): AgentTurnResult {
   const clean = prompt.trim();
   if (/\b(which|what)\b.*\?/i.test(clean)) {
     return { kind: "question", content: "Should I apply that direction to the selected shot or to the full sequence?" };
   }
   if (/\b(add|create|queue|generate)\b.*\b(shot|clip)\b/i.test(clean)) {
-    const now = new Date().toISOString();
-    const job: GenerationJob = {
-      id: `job-demo-${Date.now()}`, title: clean.split(/\s+/).slice(0, 5).join(" "), prompt: clean,
-      status: "draft", stage: "queued", progress: 0, providerId: "minimax-h3", creativeBrief: clean,
-      referenceIds: [], createdAt: now, updatedAt: now,
+    const id = `job-demo-${Date.now()}`;
+    return {
+      kind: "commands",
+      summary: "Added a schema-valid draft scene. No media was generated.",
+      commands: [
+        { op: "scene.add", id, title: clean.split(/\s+/).slice(0, 5).join(" "), seconds: 6 },
+        { op: "shot.add", scene: id, id: `${id}-shot-1`, at: 0, action: clean },
+        { op: "clip.add", id: `clip-${id}`, scene: id },
+      ],
     };
-    const project = parseProjectConfig({ ...config, generationJobs: [job, ...config.generationJobs] });
-    return { kind: "mutation", summary: "Added a schema-valid draft shot using the official MiniMax H3 prompt format. No media was generated.", project };
   }
   return { kind: "answer", content: `I reviewed the project context. A safe next step is to refine “${clean.slice(0, 72)}” into a shot brief before generation.` };
+}
+
+function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]): ProjectConfig {
+  const next = structuredClone(config);
+  const now = new Date().toISOString();
+  const scene = (id: string): GenerationJob => {
+    const found = next.generationJobs.find((job) => job.id === id);
+    if (!found) throw new Error(`Scene '${id}' was not found.`);
+    return found;
+  };
+  const milliseconds = (seconds: number, field: string, allowZero: boolean) => {
+    if (!Number.isFinite(seconds) || seconds < 0 || (!allowZero && seconds <= 0)) throw new Error(`${field} must be ${allowZero ? "non-negative" : "positive"} finite seconds.`);
+    const value = Math.round(seconds * 1000);
+    if (!Number.isSafeInteger(value) || (!allowZero && value < 1)) throw new Error(`${field} is outside the supported range.`);
+    return value;
+  };
+  const clipLocation = (id: string) => next.timeline.tracks.flatMap((track, trackIndex) =>
+    track.clips.map((clip, clipIndex) => ({ track, trackIndex, clip, clipIndex })))
+    .find((item) => item.clip.id === id);
+  const targetTrack = (id?: string) => {
+    const track = id
+      ? next.timeline.tracks.find((candidate) => candidate.id === id)
+      : next.timeline.tracks.find((candidate) => candidate.kind === "video" && !candidate.locked);
+    if (!track) throw new Error(id ? `Track '${id}' was not found.` : "No unlocked video track is available.");
+    if (track.locked) throw new Error(`Track '${track.id}' is locked.`);
+    return track;
+  };
+  const validateSource = (clip: TimelineClip) => {
+    const asset = next.assets.find((candidate) => candidate.id === clip.assetId);
+    if (!asset) throw new Error(`Asset '${clip.assetId}' was not found.`);
+    if (asset.kind !== "image" && asset.durationMs && clip.sourceStartMs + clip.durationMs > asset.durationMs) {
+      throw new Error(`Clip source range extends past asset '${asset.id}'.`);
+    }
+  };
+  for (const command of commands) {
+    switch (command.op) {
+      case "project.set":
+        if (command.name !== undefined) next.name = command.name;
+        if (command.prompt !== undefined) next.brief.prompt = command.prompt;
+        if (command.targetSeconds !== undefined) next.brief.targetDurationSeconds = command.targetSeconds;
+        if (command.aspectRatio !== undefined) {
+          next.settings.aspectRatio = command.aspectRatio as ProjectConfig["settings"]["aspectRatio"];
+          next.brief.aspectRatio = command.aspectRatio as ProjectConfig["brief"]["aspectRatio"];
+        }
+        if (command.resolution !== undefined) {
+          next.settings.resolution = command.resolution as ProjectConfig["settings"]["resolution"];
+          next.brief.resolution = command.resolution as ProjectConfig["brief"]["resolution"];
+        }
+        if (command.frameRate !== undefined) next.settings.frameRate = command.frameRate as ProjectConfig["settings"]["frameRate"];
+        if (command.backgroundColor !== undefined) next.settings.backgroundColor = command.backgroundColor;
+        break;
+      case "ref.add":
+        if (next.references.some((reference) => reference.id === command.id)) throw new Error(`Reference '${command.id}' already exists.`);
+        next.references.push({ id: command.id, kind: "text", name: command.name, description: command.text, intendedUse: command.use as ProjectConfig["references"][number]["intendedUse"], createdAt: now });
+        break;
+      case "ref.set": {
+        const reference = next.references.find((candidate) => candidate.id === command.id);
+        if (!reference) throw new Error(`Reference '${command.id}' was not found.`);
+        if (command.name !== undefined) reference.name = command.name;
+        if (command.text !== undefined) { reference.description = command.text; reference.content = null; }
+        if (command.use !== undefined) reference.intendedUse = command.use as typeof reference.intendedUse;
+        break;
+      }
+      case "ref.remove": {
+        const token = `@[ref:${command.id}]`;
+        if (next.generationJobs.some((job) => job.startFrameReferenceId === command.id || job.shots?.some((shot) => shot.action.includes(token)))) {
+          throw new Error(`Reference '${command.id}' is still used by a scene.`);
+        }
+        const at = next.references.findIndex((reference) => reference.id === command.id);
+        if (at < 0) throw new Error(`Reference '${command.id}' was not found.`);
+        next.references.splice(at, 1);
+        next.generationJobs.forEach((job) => { job.referenceIds = job.referenceIds.filter((id) => id !== command.id); });
+        break;
+      }
+      case "scene.add": {
+        if (next.generationJobs.some((job) => job.id === command.id)) throw new Error(`Scene '${command.id}' already exists.`);
+        const job = createDraftGenerationJob("", { id: command.id, title: command.title, durationSeconds: command.seconds, steps: command.steps ?? loadDefaultGenerationSteps(), seed: command.seed, now });
+        job.shots = [];
+        job.prompt = "";
+        job.creativeBrief = "";
+        job.soundscape = command.sound;
+        job.music = command.music;
+        job.startFrameReferenceId = command.startFrame;
+        next.generationJobs.push(job);
+        break;
+      }
+      case "scene.set": {
+        const job = scene(command.id);
+        if (command.title !== undefined) job.title = command.title;
+        if (command.seconds !== undefined) job.durationSeconds = command.seconds;
+        if (command.steps !== undefined) job.steps = command.steps;
+        if (command.seed !== undefined) job.seed = command.seed;
+        if ("sound" in command) job.soundscape = command.sound;
+        if ("music" in command) job.music = command.music;
+        if ("startFrame" in command) job.startFrameReferenceId = command.startFrame;
+        job.updatedAt = now;
+        break;
+      }
+      case "scene.remove": {
+        const at = next.generationJobs.findIndex((job) => job.id === command.id);
+        if (at < 0) throw new Error(`Scene '${command.id}' was not found.`);
+        next.generationJobs.splice(at, 1);
+        break;
+      }
+      case "scene.move": {
+        const at = next.generationJobs.findIndex((job) => job.id === command.id);
+        if (at < 0) throw new Error(`Scene '${command.id}' was not found.`);
+        const [moving] = next.generationJobs.splice(at, 1);
+        const destination = command.before == null ? next.generationJobs.length : next.generationJobs.findIndex((job) => job.id === command.before);
+        if (destination < 0) throw new Error(`Destination scene '${command.before}' was not found.`);
+        next.generationJobs.splice(destination, 0, moving);
+        break;
+      }
+      case "shot.add": {
+        const job = scene(command.scene);
+        const shots = job.shots ?? (job.shots = []);
+        if (shots.some((shot) => shot.id === command.id)) throw new Error(`Shot '${command.id}' already exists.`);
+        shots.push({ id: command.id, name: command.name, startSeconds: command.at, action: command.action, speech: command.speech, speechLanguage: command.language, settings: command.settings });
+        job.updatedAt = now;
+        break;
+      }
+      case "shot.set": {
+        const job = scene(command.scene);
+        const shot = job.shots?.find((candidate) => candidate.id === command.id);
+        if (!shot) throw new Error(`Shot '${command.id}' was not found in scene '${command.scene}'.`);
+        if (command.at !== undefined) shot.startSeconds = command.at;
+        if (command.action !== undefined) shot.action = command.action;
+        if ("name" in command) shot.name = command.name;
+        if ("speech" in command) shot.speech = command.speech;
+        if ("language" in command) shot.speechLanguage = command.language;
+        if ("settings" in command) shot.settings = command.settings;
+        job.updatedAt = now;
+        break;
+      }
+      case "shot.remove": {
+        const job = scene(command.scene);
+        const at = job.shots?.findIndex((shot) => shot.id === command.id) ?? -1;
+        if (at < 0) throw new Error(`Shot '${command.id}' was not found in scene '${command.scene}'.`);
+        job.shots!.splice(at, 1);
+        job.updatedAt = now;
+        break;
+      }
+      case "clip.add": {
+        if (clipLocation(command.id)) throw new Error(`Clip '${command.id}' already exists.`);
+        if (Boolean(command.scene) === Boolean(command.asset)) throw new Error("Exactly one of scene or asset is required.");
+        let asset: ProjectAsset;
+        let defaultDurationMs: number;
+        let status: TimelineClip["status"];
+        if (command.scene) {
+          const job = scene(command.scene);
+          const plannedId = `asset-${job.id}`;
+          const existing = next.assets.find((candidate) => candidate.id === plannedId)
+            ?? next.assets.find((candidate) => Boolean(job.outputRelativePath) && candidate.kind === "generated" && candidate.relativePath === job.outputRelativePath);
+          defaultDurationMs = Math.max(Math.round(1000 / next.settings.frameRate), Math.round((job.durationSeconds ?? 6) * 1000));
+          asset = existing ?? {
+            id: plannedId,
+            kind: "generated",
+            name: job.title,
+            relativePath: job.outputRelativePath ?? null,
+            sourcePath: null,
+            mimeType: "video/mp4",
+            durationMs: defaultDurationMs,
+            width: null,
+            height: null,
+            createdAt: job.createdAt,
+          };
+          if (!existing) next.assets.push(asset);
+          status = job.status === "completed" && Boolean(job.outputRelativePath) ? "generated" : "draft";
+        } else {
+          const existing = next.assets.find((candidate) => candidate.id === command.asset);
+          if (!existing) throw new Error(`Asset '${command.asset}' was not found.`);
+          asset = existing;
+          if (asset.kind === "caption") throw new Error(`Asset '${asset.id}' cannot be placed on an audiovisual track.`);
+          defaultDurationMs = Math.max(1, asset.durationMs ?? 5_000);
+          status = "approved";
+        }
+        const track = targetTrack(command.track);
+        if (command.scene && track.kind !== "video") throw new Error(`Scene clips require a video track, not '${track.id}'.`);
+        const startMs = command.at === undefined
+          ? track.clips.reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0)
+          : milliseconds(command.at, "Clip start", true);
+        const clip: TimelineClip = {
+          id: command.id,
+          assetId: asset.id,
+          trackId: track.id,
+          startMs,
+          durationMs: command.seconds === undefined ? defaultDurationMs : milliseconds(command.seconds, "Clip duration", false),
+          sourceStartMs: command.sourceAt === undefined ? 0 : milliseconds(command.sourceAt, "Clip source start", true),
+          label: command.label ?? asset.name,
+          color: null,
+          status,
+        };
+        if (!clip.label.trim()) throw new Error("Clip label cannot be empty.");
+        validateSource(clip);
+        track.clips.push(clip);
+        break;
+      }
+      case "clip.set": {
+        if (command.track === undefined && command.at === undefined && command.seconds === undefined && command.sourceAt === undefined && command.label === undefined) throw new Error("Clip command has no fields to change.");
+        const location = clipLocation(command.id);
+        if (!location) throw new Error(`Clip '${command.id}' was not found.`);
+        if (location.track.locked) throw new Error(`Track '${location.track.id}' is locked.`);
+        const track = command.track === undefined ? location.track : targetTrack(command.track);
+        const clip = { ...location.clip };
+        if (command.at !== undefined) clip.startMs = milliseconds(command.at, "Clip start", true);
+        if (command.seconds !== undefined) clip.durationMs = milliseconds(command.seconds, "Clip duration", false);
+        if (command.sourceAt !== undefined) clip.sourceStartMs = milliseconds(command.sourceAt, "Clip source start", true);
+        if (command.label !== undefined) clip.label = command.label;
+        if (!clip.label.trim()) throw new Error("Clip label cannot be empty.");
+        validateSource(clip);
+        clip.trackId = track.id;
+        location.track.clips.splice(location.clipIndex, 1);
+        track.clips.push(clip);
+        break;
+      }
+      case "clip.remove": {
+        const location = clipLocation(command.id);
+        if (!location) throw new Error(`Clip '${command.id}' was not found.`);
+        if (location.track.locked) throw new Error(`Track '${location.track.id}' is locked.`);
+        location.track.clips.splice(location.clipIndex, 1);
+        next.generationJobs.forEach((job) => { if (job.clipId === command.id) job.clipId = null; });
+        break;
+      }
+    }
+  }
+  const knownReferences = new Set(next.references.map((reference) => reference.id));
+  const changedScenes = new Set(commands.flatMap((command) =>
+    command.op === "shot.add" || command.op === "shot.set" || command.op === "shot.remove" ? [command.scene] : []));
+  next.generationJobs.forEach((job) => {
+    if (!changedScenes.has(job.id) || !job.shots) return;
+    job.shots.sort((left, right) => left.startSeconds - right.startSeconds);
+    const text = sceneBriefText(job.shots as SceneShot[]);
+    job.prompt = text;
+    job.creativeBrief = text;
+    job.shotTags = null;
+    job.shots.flatMap((shot) => actionReferenceIds(shot.action)).forEach((id) => {
+      if (knownReferences.has(id) && !job.referenceIds.includes(id)) job.referenceIds.push(id);
+    });
+  });
+  return parseProjectConfig(next);
 }

@@ -23,9 +23,9 @@ The JSON document is versioned and includes project metadata, canvas settings, o
 
 ## Agent boundary
 
-Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--print --output-format stream-json` (never `--bare`, which reads neither OAuth nor the keychain and so rejects every subscription login); Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. PolStudio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Provider output is treated as an untrusted proposal until it validates against the project schema.
+Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--print --output-format stream-json` (never `--bare`, which reads neither OAuth nor the keychain and so rejects every subscription login); Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. PolStudio owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Each provider receives the complete validated project document as read-only context, including fields the agent cannot modify. Machine-injected endpoint credentials are removed because they are not project data. Provider output is treated as an untrusted proposal until it validates against the project schema.
 
-An agent can answer, ask the user a question, or propose a full project mutation. Every mutation is applied by PolStudio and persisted atomically; providers never receive authority to write arbitrary files directly.
+An agent can answer, ask the user a question, or propose a compact JSONL command stream ending in a `commit` summary. Commands target project, reference, scene, and shot domains by stable ID and expose only fields an agent may author; paths, assets, provider settings, generated output, progress, project identity, and schema version are not commandable. PolStudio parses the stream into a typed Rust enum, dry-runs the complete batch, and returns it to the editor. The editor executes it again against its latest in-memory state, validates the complete resulting project, and persists it once through the normal atomic save queue. A failing command applies nothing, and providers never receive authority to write arbitrary files directly.
 
 ## MiniMax H3 prompt contract
 
@@ -59,5 +59,5 @@ The application must fail gracefully when the DLL, model files, WebCodecs, or We
 
 1. Foundation: desktop shell, library, portable project persistence, schema, and always-visible agent prompt.
 2. Timeline: preview, track controls, clips, playhead, selection, and credible editing interactions.
-3. Agent and generation: provider adapters, validated mutations, H3 prompt compiler, vidfab queue, progress, and cancellation.
+3. Agent and generation: provider adapters, validated command batches, H3 prompt compiler, vidfab queue, progress, and cancellation.
 4. References and polish: reusable text/image inputs, binding them to jobs, accessibility, responsive behavior, and end-to-end verification.

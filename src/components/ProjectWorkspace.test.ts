@@ -161,6 +161,47 @@ describe("project workspace timecode", () => {
     expect(formatDurationTimecode(600)).toBe("00:10:00");
   });
 
+  it("opens a centered two-line Agent page from its first tab and moves the prompt down after submit", async () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    render(createElement(ProjectWorkspace, {
+      project: { folderPath: "C:\\Ceramic Lamp", config },
+      initialView: "timeline",
+      runtime: {
+        providers: [{ id: "codex", label: "Codex", state: "ready", executable: "codex", version: "test", detail: "Ready" }],
+        vidfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Demo", models: [] },
+      },
+      onBack: () => undefined,
+      onSave: async () => undefined,
+    }));
+
+    const navigation = screen.getByRole("navigation", { name: "Project views" });
+    expect(within(navigation).getAllByRole("button").map((button) => button.textContent?.trim())).toEqual([
+      "Agent", "Timeline", "Generator", "References",
+    ]);
+    const field = screen.getByRole("textbox", { name: "Ask Slop about the edit" });
+    expect(field.getAttribute("rows")).toBe("1");
+    expect(screen.queryByRole("combobox", { name: "Agent provider" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Codex status: Ready" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Slop output/ })).toBeNull();
+
+    fireEvent.click(within(navigation).getByRole("button", { name: "Agent" }));
+    expect(within(navigation).getByRole("button", { name: "Agent" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "What should we create today?" })).not.toBeNull();
+    expect(screen.queryByText("No activity yet. Send a prompt to start.")).toBeNull();
+    expect(document.querySelector(".agent-dock-wrap--welcome")).not.toBeNull();
+    expect(screen.getByRole("textbox", { name: "Ask Slop about this project" }).getAttribute("rows")).toBe("2");
+    expect(screen.getByRole("combobox", { name: "Agent provider" }).textContent).toBe("Codex");
+    expect(screen.getByRole("combobox", { name: "Agent provider" }).closest(".agent-dock__actions")).not.toBeNull();
+    expect(document.querySelector(".project-agent-row--page")).not.toBeNull();
+
+    fireEvent.click(within(navigation).getByRole("button", { name: "Timeline" }));
+    const compactField = screen.getByRole("textbox", { name: "Ask Slop about the edit" });
+    fireEvent.change(compactField, { target: { value: "Review this project" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await waitFor(() => expect(within(navigation).getByRole("button", { name: "Agent" }).getAttribute("aria-current")).toBe("page"));
+    expect(document.querySelector(".agent-dock-wrap--welcome")).toBeNull();
+  });
+
   it("surfaces native save failures in the workspace", async () => {
     render(createElement(ProjectWorkspace, {
       project: { folderPath: "C:\\Portable Launch Film", config: parseProjectConfig(completeFixture) },
@@ -289,8 +330,7 @@ describe("project workspace timecode", () => {
   }
 
   /** The lane for the first track of this kind, and the card for that asset. */
-  const laneFor = (container: HTMLElement, config: ProjectConfig, kind: "video" | "audio") =>
-    container.querySelectorAll(".track-lane")[config.timeline.tracks.findIndex((track) => track.kind === kind)];
+  const laneAt = (container: HTMLElement, index: number) => container.querySelectorAll(".track-lane")[index];
   const cardFor = (asset: ProjectAsset) => screen.getByTitle(new RegExp(`^${asset.name} —`));
 
   function mediaPanel(config: ProjectConfig, onChange = vi.fn()) {
@@ -334,6 +374,83 @@ describe("project workspace timecode", () => {
     expect(within(media).getByText("Room tone")).not.toBeNull();
   });
 
+  it("keeps the Import label while an import is in progress", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    let finish!: () => void;
+    const pending = new Promise<unknown[]>((resolve) => { finish = () => resolve([]); });
+    vi.mocked(invoke).mockReturnValue(pending as never);
+    try {
+      mediaPanel(projectWithMedia());
+      const button = screen.getByRole("button", { name: "Import" });
+      fireEvent.click(button);
+      expect(button.textContent).toContain("Import");
+      expect(button.textContent).not.toContain("Importing");
+      expect(button).toHaveProperty("disabled", true);
+      await act(async () => { finish(); await pending; });
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      vi.mocked(invoke).mockReset();
+    }
+  });
+
+  it("shows audio-only waveforms without restoring clip name panels", () => {
+    const base = projectWithMedia();
+    const config = parseProjectConfig({
+      ...base,
+      assets: base.assets.map((asset) => asset.kind === "video" ? { ...asset, hasAudio: true } : asset),
+      timeline: { tracks: base.timeline.tracks.map((track, index) => ({
+        ...track,
+        clips: index === 0 ? [{
+          id: "clip-video", assetId: "asset-macro", trackId: track.id, startMs: 0, durationMs: 5_000,
+          sourceStartMs: 0, label: "Macro footage", color: null, status: "approved" as const,
+        }] : index === 1 ? [{
+          id: "clip-audio", assetId: "asset-room", trackId: track.id, startMs: 0, durationMs: 5_000,
+          sourceStartMs: 0, label: "Room tone", color: null, status: "approved" as const,
+        }] : [],
+      })) },
+    });
+    const onChange = vi.fn();
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
+
+    expect(container.querySelectorAll(".clip-audio-visualization")).toHaveLength(2);
+    expect(container.querySelector(".clip-audio-visualization__center")).toBeNull();
+    expect(container.querySelector(".clip-audio-visualization__envelope")).toBeNull();
+    expect(container.querySelector("polyline")).toBeNull();
+    expect(container.querySelector(".clip-audio-visualization i")).toBeNull();
+    expect(container.querySelectorAll(".timeline-clip--audio-only")).toHaveLength(1);
+    expect(container.querySelector(".clip-text")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mute audio on Track 1" }));
+    expect(wrote(onChange.mock.calls[0][0], config).timeline.tracks[0].muted).toBe(true);
+  });
+
+  it("shows the waveform below thumbnails for generated files from older projects", () => {
+    const base = createProjectConfig({ name: "Older render", prompt: "A harbour", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 10 });
+    const job = {
+      ...base.generationJobs[0], status: "ready" as const, stage: "completed" as const, progress: 1,
+      outputRelativePath: "media/generated/job-initial-brief.mp4",
+    };
+    const assetId = "asset-job-initial-brief";
+    const config = parseProjectConfig({
+      ...base,
+      generationJobs: [job],
+      assets: [{
+        id: assetId, kind: "generated", name: job.title, relativePath: job.outputRelativePath,
+        mimeType: "video/mp4", durationMs: 10_000, width: 1920, height: 1080, createdAt: base.createdAt,
+      }],
+      timeline: { tracks: base.timeline.tracks.map((track, index) => ({
+        ...track,
+        clips: index === 0 ? [{
+          id: "clip-old", assetId, trackId: track.id, startMs: 0, durationMs: 10_000,
+          sourceStartMs: 0, label: job.title, color: null, status: "generated" as const,
+        }] : [],
+      })) },
+    });
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Older render", onChange: () => undefined, onOpenGenerator: () => undefined }));
+    const clip = container.querySelector(".timeline-clip--has-audio");
+    expect(clip?.querySelector(".clip-audio-visualization")).not.toBeNull();
+  });
+
   it("removes project media and every timeline use of it", () => {
     const base = projectWithMedia();
     const config = parseProjectConfig({
@@ -353,18 +470,15 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(next)).toBeTruthy();
   });
 
-  it("drops an ungenerated Generator scene onto a video track as a valid draft clip", () => {
+  it("drops an ungenerated Generator scene onto an audiovisual track as a valid draft clip", () => {
     const config = projectWithMedia();
     const onChange = vi.fn();
     const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
-    const scene = screen.getByTitle(/^First scene — drag onto a video track/);
+    const scene = screen.getByTitle(/^First scene — drag onto a track/);
     const dataTransfer = fakeDataTransfer();
 
     fireEvent.dragStart(scene, { dataTransfer });
-    fireEvent.drop(laneFor(container, config, "audio"), { dataTransfer });
-    expect(onChange).not.toHaveBeenCalled();
-
-    fireEvent.drop(laneFor(container, config, "video"), { dataTransfer });
+    fireEvent.drop(laneAt(container, 1), { dataTransfer });
     const next = wrote(onChange.mock.calls[0][0], config);
     const generatedAsset = next.assets.find((asset) => asset.id === "asset-job-initial-brief")!;
     const clip = next.timeline.tracks.flatMap((track) => track.clips).find((item) => item.assetId === generatedAsset.id)!;
@@ -375,25 +489,19 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(next)).toBeTruthy();
   });
 
-  it("drops a video from the media panel onto a video track, and refuses the audio track", () => {
+  it("drops a video onto any audiovisual track", () => {
     const config = projectWithMedia();
     const video = config.assets[0];
     const { container, onChange } = mediaPanel(config);
     const card = screen.getByTitle(new RegExp(`^${video.name} —`));
-    const lanes = container.querySelectorAll(".track-lane");
-    const videoLane = lanes[config.timeline.tracks.findIndex((track) => track.kind === "video")];
-    const audioLane = lanes[config.timeline.tracks.findIndex((track) => track.kind === "audio")];
+    const lane = laneAt(container, 1);
 
     const dataTransfer = fakeDataTransfer();
     fireEvent.dragStart(card, { dataTransfer });
-    fireEvent.dragOver(audioLane, { dataTransfer });
-    fireEvent.drop(audioLane, { dataTransfer });
-    expect(onChange).not.toHaveBeenCalled();
-
-    fireEvent.dragOver(videoLane, { dataTransfer });
-    fireEvent.drop(videoLane, { dataTransfer });
+    fireEvent.dragOver(lane, { dataTransfer });
+    fireEvent.drop(lane, { dataTransfer });
     const next = wrote(onChange.mock.calls[0][0], config);
-    const track = next.timeline.tracks.find((item) => item.kind === "video")!;
+    const track = next.timeline.tracks[1];
     const dropped = track.clips.find((clip) => clip.assetId === video.id)!;
     expect(dropped.label).toBe(video.name);
     // A zero-width lane in jsdom must still yield a real start time, not NaN.
@@ -401,7 +509,7 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(next)).toBeTruthy();
   });
 
-  it("drops a sound onto an audio track, and refuses every video track", () => {
+  it("drops an audio-only file onto an audiovisual track", () => {
     const config = projectWithMedia();
     const sound = config.assets[1];
     const { container, onChange } = mediaPanel(config);
@@ -411,15 +519,10 @@ describe("project workspace timecode", () => {
     // Video and audio are separated in BOTH directions. The video test beside
     // this one only proved the video half; a sound landing on a video track
     // makes a clip with a picture track and no picture.
-    fireEvent.dragOver(laneFor(container, config, "video"), { dataTransfer });
-    fireEvent.drop(laneFor(container, config, "video"), { dataTransfer });
-    expect(onChange).not.toHaveBeenCalled();
-
-    fireEvent.drop(laneFor(container, config, "audio"), { dataTransfer });
+    fireEvent.drop(laneAt(container, 2), { dataTransfer });
     const next = wrote(onChange.mock.calls[0][0], config);
-    const audioTrack = next.timeline.tracks.find((track) => track.kind === "audio")!;
-    expect(audioTrack.clips.map((clip) => clip.assetId)).toEqual([sound.id]);
-    expect(next.timeline.tracks.filter((track) => track.kind === "video").every((track) => track.clips.length === 0)).toBe(true);
+    expect(next.timeline.tracks[2].clips.map((clip) => clip.assetId)).toEqual([sound.id]);
+    expect(container.querySelectorAll(".track-lane")).toHaveLength(3);
     expect(parseProjectConfig(next)).toBeTruthy();
   });
 
@@ -427,7 +530,7 @@ describe("project workspace timecode", () => {
     const config = projectWithMedia();
     const video = config.assets[0];
     const { container, onChange, rerender } = mediaPanel(config);
-    const lane = laneFor(container, config, "video") as HTMLElement;
+    const lane = laneAt(container, 0) as HTMLElement;
     // jsdom lays nothing out, so the lane has to be told how wide it is — the
     // drop reads exactly this to turn a pointer position into a start time.
     lane.getBoundingClientRect = () => ({ left: 100, width: 1000, top: 0, right: 1100, bottom: 72, height: 72, x: 100, y: 0, toJSON: () => ({}) });
@@ -451,11 +554,15 @@ describe("project workspace timecode", () => {
     rerender(createElement(TimelineView, { config: next, folderPath: "C:\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
     const clip = container.querySelector(".timeline-clip.selected");
     expect(clip).not.toBeNull();
-    expect(clip!.textContent).toContain(video.name);
+    expect(clip!.getAttribute("title")).toContain(video.name);
   });
 
-  it("marks the lanes that cannot take what is being dragged", () => {
-    const config = projectWithMedia();
+  it("marks a locked lane as unavailable while media is being dragged", () => {
+    const base = projectWithMedia();
+    const config = {
+      ...base,
+      timeline: { tracks: base.timeline.tracks.map((track, index) => index === 1 ? { ...track, locked: true } : track) },
+    };
     const { container } = mediaPanel(config);
     const rejected = () => Array.from(container.querySelectorAll(".track-lane--reject"));
 
@@ -464,7 +571,7 @@ describe("project workspace timecode", () => {
     fireEvent.dragStart(cardFor(config.assets[1]), { dataTransfer });
     // Every video track, for the whole drag — not only the one under the
     // pointer. A dark lane on its own says nothing the user can act on.
-    expect(rejected()).toHaveLength(config.timeline.tracks.filter((track) => track.kind === "video").length);
+    expect(rejected()).toHaveLength(1);
     fireEvent.dragEnd(cardFor(config.assets[1]));
     expect(rejected()).toHaveLength(0);
   });
@@ -495,7 +602,7 @@ describe("project workspace timecode", () => {
     const first = mediaPanel(known);
     const transfer = fakeDataTransfer();
     fireEvent.dragStart(cardFor(known.assets[0]), { dataTransfer: transfer });
-    fireEvent.drop(laneFor(first.container, known, "video"), { dataTransfer: transfer });
+    fireEvent.drop(laneAt(first.container, 0), { dataTransfer: transfer });
     expect(droppedClip(first.onChange, known).durationMs).toBe(40_000);
     expect(parseProjectConfig(wrote(first.onChange.mock.calls[0][0], known))).toBeTruthy();
     cleanup();
@@ -506,7 +613,7 @@ describe("project workspace timecode", () => {
     const second = mediaPanel(unknown);
     const transferTwo = fakeDataTransfer();
     fireEvent.dragStart(cardFor(unknown.assets[0]), { dataTransfer: transferTwo });
-    fireEvent.drop(laneFor(second.container, unknown, "video"), { dataTransfer: transferTwo });
+    fireEvent.drop(laneAt(second.container, 0), { dataTransfer: transferTwo });
     expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
   });
 
@@ -590,7 +697,7 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(view.written()!)).toBeTruthy();
   });
 
-  it("drags a clip onto another video track, and onto no audio track", () => {
+  it("drags a clip onto another audiovisual track", () => {
     const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 4_000 }]);
     const view = timeline(config);
     overLane(view.laneOf("track-v2"));
@@ -599,27 +706,20 @@ describe("project workspace timecode", () => {
     expect(view.clipsOn("track-v2")[0]).toMatchObject({ startMs: 6_000, trackId: "track-v2" });
     expect(parseProjectConfig(view.written()!)).toBeTruthy();
 
-    // A picture held over a sound lane is refused outright: nothing is written,
-    // so the clip stays where it was rather than landing where it cannot play.
-    cleanup();
-    const second = timeline(config);
-    overLane(second.laneOf("track-a1"));
-    drag(second.container.querySelector(".timeline-clip")!, 20, 220);
-    expect(second.onChange).not.toHaveBeenCalled();
     stopHitTesting();
   });
 
-  it("moves sound from one sound track to another", () => {
+  it("moves audio-only media from one audiovisual track to another", () => {
     const measured = parseProjectConfig({
       ...projectWithMedia(),
       assets: projectWithMedia().assets.map((asset) => asset.kind === "audio" ? { ...asset, durationMs: 20_000 } : asset),
     });
-    const config = withClips(measured, [{ startMs: 0, durationMs: 6_000, assetId: "asset-room", label: "Room tone" }], "track-a1");
+    const config = withClips(measured, [{ startMs: 0, durationMs: 6_000, assetId: "asset-room", label: "Room tone" }], "track-v2");
     const view = timeline(config);
-    overLane(view.laneOf("track-a2"));
+    overLane(view.laneOf("track-v3"));
     drag(view.container.querySelector(".timeline-clip")!, 10, 110);
-    expect(view.clipsOn("track-a1")).toHaveLength(0);
-    expect(view.clipsOn("track-a2")[0]).toMatchObject({ startMs: 3_000, trackId: "track-a2" });
+    expect(view.clipsOn("track-v2")).toHaveLength(0);
+    expect(view.clipsOn("track-v3")[0]).toMatchObject({ startMs: 3_000, trackId: "track-v3" });
     stopHitTesting();
   });
 
@@ -1030,7 +1130,7 @@ describe("project workspace timecode", () => {
     ] });
     const onChange = vi.fn();
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
     // It would take a binding slot and then be dropped by the compiler, so the
     // shot would claim a reference its prompt never mentions.
     expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual([]);
@@ -1097,6 +1197,18 @@ describe("project workspace timecode", () => {
     expect(screenText).toContain("Not described yet — the picture is sent, but nothing tells the engine what to keep.");
   });
 
+  it("makes timelines longer than one minute horizontally scrollable at a readable scale", () => {
+    const short = createProjectConfig({ name: "Short", prompt: "", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 60 });
+    const view = render(createElement(TimelineView, { config: short, folderPath: "C:\\Short", onChange: () => undefined, onOpenGenerator: () => undefined }));
+    expect((view.container.querySelector(".timeline-grid") as HTMLElement).style.width).toBe("100%");
+    expect(view.container.querySelector(".timeline-grid-scroll--wide")).toBeNull();
+
+    const long = createProjectConfig({ name: "Long", prompt: "", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 120 });
+    view.rerender(createElement(TimelineView, { config: long, folderPath: "C:\\Long", onChange: () => undefined, onOpenGenerator: () => undefined }));
+    expect((view.container.querySelector(".timeline-grid") as HTMLElement).style.width).toBe("200%");
+    expect(view.container.querySelector(".timeline-grid-scroll--wide")).toBeTruthy();
+  });
+
   it("lays references out as a scrolling main area beside a full-height inspector", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const { container } = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined }));
@@ -1122,7 +1234,7 @@ describe("project workspace timecode", () => {
   /** Opens the scene's own settings, which live on the line that separates its
    *  row of cards from the next scene's. */
   const openScene = (sceneTitle = "First scene") =>
-    fireEvent.click(screen.getByRole("button", { name: `Settings for ${sceneTitle}` }));
+    fireEvent.click(screen.getByRole("button", { name: `Select scene ${sceneTitle}` }));
 
   /** Opens the exact prompt preview without accidentally closing it when a
    *  test returns to the scene panel more than once. */
@@ -1160,7 +1272,7 @@ describe("project workspace timecode", () => {
          that it does. */
       expect(screen.queryByRole("heading", { name: "Start another scene" })).toBeNull();
       expect(container.querySelector(".generation-composer")).toBeNull();
-      expect(screen.getByRole("button", { name: "Add Scene" })).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Add a scene" })).not.toBeNull();
       unmount();
     }
   });
@@ -1224,7 +1336,7 @@ describe("project workspace timecode", () => {
     const config = lampProject();
     const onChange = vi.fn();
     const { rerender } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
 
     const next = onChange.mock.calls.at(-1)![0];
     // It goes to the bottom and does not disturb the scene already there.

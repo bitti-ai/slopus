@@ -154,6 +154,8 @@ export const projectAssetSchema = z.object({
   durationMs: z.number().int().nonnegative().nullish(),
   width: z.number().int().positive().nullish(),
   height: z.number().int().positive().nullish(),
+  /** Whether the container has an audio stream. */
+  hasAudio: z.boolean().nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
@@ -546,7 +548,7 @@ export interface CreateProjectInput {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   targetDurationSeconds: number;
-  parentDirectory?: string;
+  projectDirectory?: string;
   referenceImages?: PendingReferenceImage[];
 }
 
@@ -801,8 +803,8 @@ export function sceneDurationSeconds(job: GenerationJob): number {
   return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, stored));
 }
 
-export function sceneGenerationSteps(job: GenerationJob): number {
-  return job.steps ?? DEFAULT_GENERATION_STEPS;
+export function sceneGenerationSteps(job: GenerationJob, fallback = DEFAULT_GENERATION_STEPS): number {
+  return job.steps ?? fallback;
 }
 
 export function sceneGenerationSeed(job: GenerationJob): number {
@@ -1201,6 +1203,41 @@ export function createDraftGenerationJob(
    still resolve to the same track. */
 export const STORY_TRACK_ID = "track-story";
 
+/** The editor is three audiovisual layers. Clips from older separate lanes
+ * are moved into them; their mute/lock state comes with them while the new
+ * lanes keep the canonical Track 1–3 names. */
+export function normalizeTimelineTracks(tracks: TimelineTrack[]): TimelineTrack[] {
+  const videoTracks = tracks.filter((track) => track.kind === "video");
+  const kept = videoTracks.slice(0, 3).map((track) => ({ ...track, clips: [...track.clips] }));
+  const retainedIds = new Set(kept.map((track) => track.id));
+  const retired = tracks.filter((track) => !retainedIds.has(track.id));
+  const originalLayerCount = kept.length;
+  const used = new Set(tracks.map((track) => track.id));
+  const preferred = [STORY_TRACK_ID, "track-v2", "track-v3"];
+  while (kept.length < 3) {
+    const at = kept.length;
+    let id = preferred[at];
+    let suffix = 2;
+    while (used.has(id)) id = `${preferred[at]}-${suffix++}`;
+    used.add(id);
+    kept.push({ id, kind: "video", name: `Track ${at + 1}`, locked: false, muted: false, clips: [] });
+  }
+  retired.forEach((track, index) => {
+    const targetIndex = Math.min(2, originalLayerCount + index);
+    const target = kept[targetIndex];
+    if (targetIndex >= originalLayerCount && target.clips.length === 0) {
+      target.locked = track.locked;
+      target.muted = track.muted;
+    } else if (targetIndex >= originalLayerCount) {
+      target.name = `Track ${targetIndex + 1}`;
+      target.locked = target.locked && track.locked;
+      target.muted = target.muted && track.muted;
+    }
+    target.clips.push(...track.clips.map((clip) => ({ ...clip, trackId: target.id })));
+  });
+  return kept;
+}
+
 export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
   const now = new Date().toISOString();
   const brief = input.prompt.trim();
@@ -1217,17 +1254,12 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       aspectRatio: input.aspectRatio, resolution: input.resolution,
     },
     assets: [],
-    /* Two video layers and two audio, named the way an editor numbers them.
-       The old set named the layers after a job — Overlays, Story, B-roll — which
-       decided for the user what each one was for; a numbered pair says only
-       where it sits, and every track stays renameable. Two of each is what a
-       cut needs to work at all: something to lay over, and something to lay
-       under. */
+    /* Three audiovisual layers. A video's sound follows it on its own track,
+       and the track mute controls that embedded audio. */
     timeline: { tracks: [
       { id: STORY_TRACK_ID, kind: "video", name: "Track 1", locked: false, muted: false, clips: [] },
       { id: "track-v2", kind: "video", name: "Track 2", locked: false, muted: false, clips: [] },
-      { id: "track-a1", kind: "audio", name: "Track 1", locked: false, muted: false, clips: [] },
-      { id: "track-a2", kind: "audio", name: "Track 2", locked: false, muted: false, clips: [] },
+      { id: "track-v3", kind: "video", name: "Track 3", locked: false, muted: false, clips: [] },
     ] },
     references: [],
     generationJobs: brief ? [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })] : [],
@@ -1274,16 +1306,18 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
     assets,
     timeline: { tracks: [
       { id: STORY_TRACK_ID, kind: "video", name: "Track 1", locked: false, muted: false, clips: videoClips },
-      { id: "track-v2", kind: "video", name: "Track 2", locked: false, muted: false, clips: [] },
-      { id: "track-a1", kind: "audio", name: "Track 1", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-a1", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
-      { id: "track-a2", kind: "audio", name: "Track 2", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-a2", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
+      { id: "track-v2", kind: "video", name: "Track 2", locked: false, muted: false, clips: [{ id: "clip-voice", assetId: "asset-voice", trackId: "track-v2", startMs: 1800, durationMs: 28000, sourceStartMs: 0, label: "Mara · narration", color: "#3d817c", status: "approved" }] },
+      { id: "track-v3", kind: "video", name: "Track 3", locked: false, muted: false, clips: [{ id: "clip-score", assetId: "asset-score", trackId: "track-v3", startMs: 0, durationMs: 34000, sourceStartMs: 0, label: "Glass & concrete", color: "#6b5790", status: "approved" }] },
     ] },
     references,
     generationJobs,
   });
 }
 
-export function parseProjectConfig(value: unknown): ProjectConfig { return projectConfigSchema.parse(value); }
+export function parseProjectConfig(value: unknown): ProjectConfig {
+  const config = projectConfigSchema.parse(value);
+  return { ...config, timeline: { tracks: normalizeTimelineTracks(config.timeline.tracks) } };
+}
 
 export function projectNameFromPrompt(prompt: string): string {
   const cleaned = prompt.replace(/^(create|make|generate|build|produce)\s+(me\s+)?(a|an|the)?\s*/i, "").replace(/[.!?]+$/g, "").trim();

@@ -43,11 +43,20 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
   const menuAnchor = useRef<HTMLDivElement>(null);
   const { config } = project;
   const style = config.thumbnail ? { backgroundImage: `url(${JSON.stringify(config.thumbnail).slice(1, -1)})` } : undefined;
+  const assetsById = new Map(config.assets.map((asset) => [asset.id, asset]));
   const firstVisualMs = config.timeline.tracks
     .filter((track) => track.kind === "video")
     .flatMap((track) => track.clips)
+    .filter((clip) => {
+      const asset = assetsById.get(clip.assetId);
+      return asset?.kind !== "audio" && asset?.kind !== "caption";
+    })
     .reduce<number | null>((first, clip) => first === null ? clip.startMs : Math.min(first, clip.startMs), null);
-  const firstClip = firstVisualMs === null ? null : visibleClipAt(config.timeline.tracks, firstVisualMs);
+  const firstClip = firstVisualMs === null ? null : visibleClipAt(
+    config.timeline.tracks,
+    firstVisualMs,
+    assetsById,
+  );
   const firstAsset = firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
 
   useEffect(() => {
