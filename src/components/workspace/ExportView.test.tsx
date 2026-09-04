@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import audioFixture from "../../../fixtures/project-v1-audio-mix.json";
 import externalFixture from "../../../fixtures/project-v1-external-media.json";
@@ -59,7 +59,7 @@ describe("the export view where nothing can encode", () => {
 
   it("states the real duration of the planned file", () => {
     render(<ExportView config={project([clip("a", 0, 2_000), clip("b", 2_000, 1_000)])} folderPath="/tmp/project" />);
-    expect(screen.getByText("00:03.000")).toBeTruthy();
+    expect(within(screen.getByText("Duration").parentElement!).getByText("00:03.000")).toBeTruthy();
     expect(screen.getByText("72 frames at 24 fps")).toBeTruthy();
     /* The frame size is named where it is CHOSEN — in the resolution select —
        rather than repeated in a summary row beside it. */
@@ -103,7 +103,8 @@ describe("the export view where nothing can encode", () => {
 describe("the shape of the export screen", () => {
   it("names its two panels after what they hold", () => {
     const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    expect(screen.getByRole("heading", { name: "Video" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Video" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Video preview" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Preview" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Export Settings" })).toBeNull();
@@ -132,6 +133,24 @@ describe("the shape of the export screen", () => {
     expect(stage.style.aspectRatio).toBe("1920 / 1080");
   });
 
+  it("embeds playback controls over the video and hides them when the pointer rests", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+      const stage = container.querySelector(".export-stage") as HTMLElement;
+      const controls = screen.getByRole("group", { name: "Video playback controls" });
+      expect(stage.contains(controls)).toBe(true);
+      expect(stage.classList.contains("export-stage--controls-visible")).toBe(false);
+
+      fireEvent.pointerMove(stage);
+      expect(stage.classList.contains("export-stage--controls-visible")).toBe(true);
+      act(() => vi.advanceTimersByTime(1_800));
+      expect(stage.classList.contains("export-stage--controls-visible")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says nothing about a finished export until there is one", () => {
     const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
     expect(container.querySelector(".export-toast")).toBeNull();
@@ -153,7 +172,7 @@ describe("the export view on media the project does not contain", () => {
     const reasons = screen.getByRole("alert").textContent ?? "";
     expect(reasons).not.toMatch(/not in this project/i);
     expect(reasons).not.toMatch(/no file recorded/i);
-    expect(screen.getByText("00:12.000")).toBeTruthy();
+    expect(within(screen.getByText("Duration").parentElement!).getByText("00:12.000")).toBeTruthy();
     expect(screen.getByText("360 frames at 30 fps")).toBeTruthy();
   });
 });

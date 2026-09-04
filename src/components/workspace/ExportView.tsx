@@ -46,6 +46,9 @@ const describe = (reason: unknown) => (reason instanceof Error ? reason.message 
 
 /** How long the Saved notification stays up before it takes itself away. */
 const SAVED_NOTICE_MS = 4_000;
+/** A moving pointer reveals the transport; once it rests, the picture gets the
+ * full frame again. Long enough to cross the controls without racing them. */
+const PLAYER_CONTROLS_IDLE_MS = 1_800;
 
 /* What the finished run left OUT of the soundtrack. Everything else an export
    used to report on the page — path, size, codec, compositor — is gone: the
@@ -76,7 +79,9 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const [previewTimeMs, setPreviewTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
+  const controlsTimerRef = useRef<number | null>(null);
 
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   /* The finished run says one word, in the middle of the header, and stops
@@ -95,6 +100,23 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
      See ProgramMonitor. */
   const seek = useCallback((ms: number) => setPreviewTimeMs(ms), []);
   const changePlaying = useCallback((value: boolean) => setPlaying(value), []);
+  const clearControlsTimer = useCallback(() => {
+    if (controlsTimerRef.current === null) return;
+    window.clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = null;
+  }, []);
+  const hideControlsAfterIdle = useCallback(() => {
+    clearControlsTimer();
+    controlsTimerRef.current = window.setTimeout(() => {
+      controlsTimerRef.current = null;
+      if (stageRef.current?.contains(document.activeElement)) return;
+      setControlsVisible(false);
+    }, PLAYER_CONTROLS_IDLE_MS);
+  }, [clearControlsTimer]);
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    hideControlsAfterIdle();
+  }, [hideControlsAfterIdle]);
 
   /* Switching tabs unmounts this view, and an export that kept running would
      finish and write a file with nothing on screen to say so. Leaving stops it
@@ -102,6 +124,8 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   useEffect(() => () => {
     cancelRef.current = true;
   }, []);
+
+  useEffect(() => () => clearControlsTimer(), [clearControlsTimer]);
 
   useEffect(() => {
     let live = true;
@@ -145,10 +169,13 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
      the window chrome both end it without asking this component — so the
      button reads the document rather than remembering what it did. */
   useEffect(() => {
-    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    const sync = () => {
+      setFullscreen(document.fullscreenElement === stageRef.current);
+      revealControls();
+    };
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
+  }, [revealControls]);
 
   /* The notification takes itself away. Re-armed on every run, and cleared on
      the way out so a saved export that is left behind does not fire into an
@@ -297,8 +324,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     </header>
 
     <div className="export-layout">
-      <section className="export-preview" aria-labelledby="export-preview-heading">
-        <h2 id="export-preview-heading">Video</h2>
+      <section className="export-preview" aria-label="Video preview">
         {/* The same player the timeline uses, on the same cut: it decodes the
             real files and plays them with their sound, rather than decoding one
             still frame per scrub. What the export will contain is what this
@@ -310,9 +336,23 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             shrink it back — the export writes one frame size for the whole
             file, and this shows that size the whole time. */}
         <div
-          className="export-stage"
+          className={`export-stage${controlsVisible ? " export-stage--controls-visible" : ""}`}
           ref={stageRef}
           style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}
+          onPointerEnter={revealControls}
+          onPointerMove={revealControls}
+          onPointerDown={revealControls}
+          onPointerLeave={() => {
+            clearControlsTimer();
+            if (!stageRef.current?.contains(document.activeElement)) setControlsVisible(false);
+          }}
+          onFocusCapture={() => {
+            clearControlsTimer();
+            setControlsVisible(true);
+          }}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hideControlsAfterIdle();
+          }}
         >
           <ProgramMonitor
             config={config}
@@ -322,48 +362,49 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
             onSeek={seek}
             onPlayingChange={changePlaying}
           />
-        </div>
-        <div className="export-transport">
-          <button
-            type="button"
-            onClick={() => step(-1000)}
-            disabled={plan.frameCount === 0}
-            aria-label="Back one second"
-            title="Back one second"
-          ><SkipBack size={16} aria-hidden="true" /></button>
-          <button
-            type="button"
-            className="export-transport__play"
-            onClick={() => setPlaying((value) => !value)}
-            disabled={plan.frameCount === 0}
-            aria-label={playing ? "Pause" : "Play"}
-            title={plan.frameCount === 0 ? "There is nothing on the timeline to play" : playing ? "Pause" : "Play"}
-          >{playing ? <Pause size={16} fill="currentColor" aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}</button>
-          <button
-            type="button"
-            onClick={() => step(1000)}
-            disabled={plan.frameCount === 0}
-            aria-label="Forward one second"
-            title="Forward one second"
-          ><SkipForward size={16} aria-hidden="true" /></button>
-          <input
-            id="export-scrub"
-            type="range"
-            min={0}
-            max={Math.max(0, plan.durationMs - 1)}
-            step={Math.max(1, Math.round(1000 / plan.frameRate))}
-            value={previewTimeMs}
-            disabled={plan.frameCount === 0}
-            aria-label="Playhead"
-            onChange={(event) => { setPlaying(false); setPreviewTimeMs(Number(event.target.value)); }}
-          />
-          <output htmlFor="export-scrub">{formatDuration(previewTimeMs)}</output>
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            aria-label={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
-            title={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
-          >{fullscreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}</button>
+          <div className="export-transport" role="group" aria-label="Video playback controls">
+            <button
+              type="button"
+              onClick={() => step(-1000)}
+              disabled={plan.frameCount === 0}
+              aria-label="Back one second"
+              title="Back one second"
+            ><SkipBack size={18} aria-hidden="true" /></button>
+            <button
+              type="button"
+              className="export-transport__play"
+              onClick={() => setPlaying((value) => !value)}
+              disabled={plan.frameCount === 0}
+              aria-label={playing ? "Pause" : "Play"}
+              title={plan.frameCount === 0 ? "There is nothing on the timeline to play" : playing ? "Pause" : "Play"}
+            >{playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" aria-hidden="true" />}</button>
+            <button
+              type="button"
+              onClick={() => step(1000)}
+              disabled={plan.frameCount === 0}
+              aria-label="Forward one second"
+              title="Forward one second"
+            ><SkipForward size={18} aria-hidden="true" /></button>
+            <input
+              id="export-scrub"
+              type="range"
+              min={0}
+              max={Math.max(0, plan.durationMs - 1)}
+              step={Math.max(1, Math.round(1000 / plan.frameRate))}
+              value={previewTimeMs}
+              style={{ "--scrub-progress": `${plan.durationMs > 1 ? previewTimeMs / (plan.durationMs - 1) * 100 : 0}%` } as React.CSSProperties}
+              disabled={plan.frameCount === 0}
+              aria-label="Playhead"
+              onChange={(event) => { setPlaying(false); setPreviewTimeMs(Number(event.target.value)); }}
+            />
+            <output htmlFor="export-scrub"><span>{formatDuration(previewTimeMs)}</span><i aria-hidden="true">/</i><span>{formatDuration(plan.durationMs)}</span></output>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
+              title={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
+            >{fullscreen ? <Minimize size={19} aria-hidden="true" /> : <Maximize size={19} aria-hidden="true" />}</button>
+          </div>
         </div>
         {/* The one thing left to say under the picture: that there is no
             picture. The frame-by-frame caption that used to live here named a
