@@ -9,6 +9,8 @@ use tauri::{ipc::InvokeBody, ipc::Request, AppHandle, Emitter as _};
 use tauri_plugin_dialog::DialogExt;
 
 mod agent;
+mod agent_commands;
+mod diagnostics;
 mod export;
 mod rendered;
 mod vidfab;
@@ -26,6 +28,8 @@ const PROJECT_DIRECTORIES: [&str; 6] = [
     "cache",
     "exports",
 ];
+const PROJECT_ROOT_DIRECTORIES: [&str; 5] =
+    ["media", "references", "thumbnails", "cache", "exports"];
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,6 +103,8 @@ struct ProjectAsset {
     width: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_audio: Option<bool>,
     created_at: String,
 }
 
@@ -750,9 +756,7 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         // A Generator scene can be cut before it is rendered. Its generated
         // asset deliberately has no file until the render completes, while
         // every imported asset still has exactly one stored location.
-        if asset.kind != "generated"
-            || asset.relative_path.is_some()
-            || asset.source_path.is_some()
+        if asset.kind != "generated" || asset.relative_path.is_some() || asset.source_path.is_some()
         {
             check_one_location(
                 &format!("Asset '{}'", asset.id),
@@ -784,10 +788,16 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         let mut image_ids = BTreeSet::new();
         for image in &mut reference.images {
             if image.id.trim().is_empty() || image.name.trim().is_empty() {
-                return Err(format!("Reference '{}' has an image with an empty id or name.", reference.id));
+                return Err(format!(
+                    "Reference '{}' has an image with an empty id or name.",
+                    reference.id
+                ));
             }
             if !image_ids.insert(image.id.as_str()) {
-                return Err(format!("Reference '{}' has duplicate image id '{}'.", reference.id, image.id));
+                return Err(format!(
+                    "Reference '{}' has duplicate image id '{}'.",
+                    reference.id, image.id
+                ));
             }
             image.relative_path = image
                 .relative_path
@@ -848,6 +858,67 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             }
         }
     }
+    // The timeline is three audiovisual layers. Clips from old separate audio
+    // tracks (and excess video tracks) are retained and moved onto those lanes.
+    let old_tracks = std::mem::take(&mut config.timeline.tracks);
+    for track in &old_tracks {
+        if !matches!(track.kind.as_str(), "video" | "audio" | "caption") {
+            return Err(format!("Unsupported track kind '{}'.", track.kind));
+        }
+    }
+    let mut used_track_ids: BTreeSet<String> =
+        old_tracks.iter().map(|track| track.id.clone()).collect();
+    let mut video_tracks: Vec<TimelineTrack> = old_tracks
+        .iter()
+        .filter(|track| track.kind == "video")
+        .take(3)
+        .cloned()
+        .collect();
+    let retained_track_ids: BTreeSet<String> =
+        video_tracks.iter().map(|track| track.id.clone()).collect();
+    let retired_tracks: Vec<TimelineTrack> = old_tracks
+        .into_iter()
+        .filter(|track| !retained_track_ids.contains(&track.id))
+        .collect();
+    let original_layer_count = video_tracks.len();
+    for (index, preferred) in ["track-story", "track-v2", "track-v3"].iter().enumerate() {
+        if video_tracks.len() > index {
+            continue;
+        }
+        let mut id = (*preferred).to_string();
+        let mut suffix = 2;
+        while used_track_ids.contains(&id) {
+            id = format!("{preferred}-{suffix}");
+            suffix += 1;
+        }
+        used_track_ids.insert(id.clone());
+        video_tracks.push(TimelineTrack {
+            id,
+            kind: "video".into(),
+            name: format!("Track {}", index + 1),
+            locked: false,
+            muted: false,
+            clips: Vec::new(),
+        });
+    }
+    for (index, mut track) in retired_tracks.into_iter().enumerate() {
+        let target_index = std::cmp::min(2, original_layer_count + index);
+        let target_id = video_tracks[target_index].id.clone();
+        if target_index >= original_layer_count && video_tracks[target_index].clips.is_empty() {
+            video_tracks[target_index].locked = track.locked;
+            video_tracks[target_index].muted = track.muted;
+        } else if target_index >= original_layer_count {
+            video_tracks[target_index].name = format!("Track {}", target_index + 1);
+            video_tracks[target_index].locked &= track.locked;
+            video_tracks[target_index].muted &= track.muted;
+        }
+        for clip in &mut track.clips {
+            clip.track_id = target_id.clone();
+        }
+        video_tracks[target_index].clips.extend(track.clips);
+    }
+    config.timeline.tracks = video_tracks;
+
     for track in &config.timeline.tracks {
         if !matches!(track.kind.as_str(), "video" | "audio" | "caption") {
             return Err(format!("Unsupported track kind '{}'.", track.kind));
@@ -903,13 +974,13 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
     }
     for job in &mut config.generation_jobs {
         /* Normalise the scene BEFORE anything is judged, so both layers judge
-           the same thing. An empty `shots` array collapses to no key at all —
-           the same three-step tidy `normalize_shot_tags` performs, for the same
-           reason: two builds must write the same bytes for the same scene. The
-           ORDER of the shots is left exactly as given; the frontend orders them
-           by start time when it reads them (`normalizeSceneShots`), and a layer
-           that reordered on write would produce a spurious diff on every save.
-           Both layers ACCEPT the same files either way, which is the contract. */
+        the same thing. An empty `shots` array collapses to no key at all —
+        the same three-step tidy `normalize_shot_tags` performs, for the same
+        reason: two builds must write the same bytes for the same scene. The
+        ORDER of the shots is left exactly as given; the frontend orders them
+        by start time when it reads them (`normalizeSceneShots`), and a layer
+        that reordered on write would produce a spurious diff on every save.
+        Both layers ACCEPT the same files either way, which is the contract. */
         if let Some(shots) = job.shots.as_mut() {
             let mut seen: BTreeSet<String> = BTreeSet::new();
             for shot in shots.iter_mut() {
@@ -973,14 +1044,15 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             }
         }
         /* The words live in ONE of two places. A scene keeps them on its shots,
-           so `prompt` and `creativeBrief` are only its mirror and may be blank;
-           a job with no shots — every project written before scenes existed —
-           keeps them here, where blank would mean the user's words were lost.
-           `generationJobSchema.superRefine` in src/lib/project.ts is this rule. */
+        so `prompt` and `creativeBrief` are only its mirror and may be blank;
+        a job with no shots — every project written before scenes existed —
+        keeps them here, where blank would mean the user's words were lost.
+        `generationJobSchema.superRefine` in src/lib/project.ts is this rule. */
         let has_shots = job.shots.as_ref().is_some_and(|shots| !shots.is_empty());
         if job.id.trim().is_empty()
             || job.title.trim().is_empty()
-            || (!has_shots && (job.prompt.trim().is_empty() || job.creative_brief.trim().is_empty()))
+            || (!has_shots
+                && (job.prompt.trim().is_empty() || job.creative_brief.trim().is_empty()))
         {
             return Err(
                 "Generation job id, title, prompt, and creative brief cannot be empty.".into(),
@@ -1121,7 +1193,11 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             ));
         }
         if let Some(start_frame_id) = &job.start_frame_reference_id {
-            let Some(reference) = config.references.iter().find(|reference| reference.id == *start_frame_id) else {
+            let Some(reference) = config
+                .references
+                .iter()
+                .find(|reference| reference.id == *start_frame_id)
+            else {
                 return Err(format!(
                     "Generation job '{}' uses unknown start-frame reference '{}'.",
                     job.id, start_frame_id
@@ -1918,17 +1994,17 @@ fn import_media_files(
 #[tauri::command]
 fn create_project(
     app: AppHandle,
-    parent_directory: Option<String>,
+    project_directory: Option<String>,
     config: ProjectConfig,
     initial_reference_paths: Option<Vec<String>>,
 ) -> Result<Option<ProjectRecord>, String> {
     let config = validate_and_normalize_config(config)?;
-    let parent = match parent_directory {
+    let project_folder = match project_directory {
         Some(path) => PathBuf::from(path),
         None => match app
             .dialog()
             .file()
-            .set_title("Choose where to create this project")
+            .set_title("Choose an empty folder for this project")
             .blocking_pick_folder()
         {
             Some(path) => path
@@ -1942,7 +2018,7 @@ fn create_project(
         .into_iter()
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    create_project_in_with_references(&parent, &config, &reference_paths).map(Some)
+    create_project_at_with_references(&project_folder, &config, &reference_paths).map(Some)
 }
 
 #[cfg(test)]
@@ -1950,29 +2026,48 @@ fn create_project_in(parent: &Path, config: &ProjectConfig) -> Result<ProjectRec
     create_project_in_with_references(parent, config, &[])
 }
 
+#[cfg(test)]
 fn create_project_in_with_references(
     parent: &Path,
     config: &ProjectConfig,
     reference_paths: &[PathBuf],
 ) -> Result<ProjectRecord, String> {
-    let mut config = validate_and_normalize_config(config.clone())?;
-    if !parent.is_dir() {
-        return Err("The selected parent folder does not exist.".into());
-    }
     let project_folder = parent.join(safe_folder_name(&config.name));
-    if project_folder.exists() {
-        return Err(format!(
-            "A folder named ‘{}’ already exists there. Rename the project or choose another location.",
-            safe_folder_name(&config.name)
-        ));
-    }
     fs::create_dir(&project_folder)
         .map_err(|error| format!("Could not create project folder: {error}"))?;
-    for child in PROJECT_DIRECTORIES {
-        fs::create_dir_all(project_folder.join(child))
-            .map_err(|error| format!("Could not create {child} folder: {error}"))?;
+    create_project_at_with_references(&project_folder, config, reference_paths)
+}
+
+fn create_project_at_with_references(
+    project_folder: &Path,
+    config: &ProjectConfig,
+    reference_paths: &[PathBuf],
+) -> Result<ProjectRecord, String> {
+    let mut config = validate_and_normalize_config(config.clone())?;
+    if !project_folder.is_dir() {
+        return Err("The selected project folder does not exist.".into());
+    }
+    let mut entries = fs::read_dir(project_folder)
+        .map_err(|error| format!("Could not inspect the selected project folder: {error}"))?;
+    match entries.next() {
+        Some(Ok(_)) => {
+            return Err(
+                "The selected folder is not empty. Choose an empty folder for the new project."
+                    .into(),
+            );
+        }
+        Some(Err(error)) => {
+            return Err(format!(
+                "Could not inspect the selected project folder: {error}"
+            ));
+        }
+        None => {}
     }
     let prepare_result = (|| -> Result<(), String> {
+        for child in PROJECT_DIRECTORIES {
+            fs::create_dir_all(project_folder.join(child))
+                .map_err(|error| format!("Could not create {child} folder: {error}"))?;
+        }
         for (index, source) in reference_paths.iter().enumerate() {
             let imported = import_reference_file(source, &project_folder)?;
             let mut reference_id = format!("ref-initial-{}", index + 1);
@@ -2009,13 +2104,18 @@ fn create_project_in_with_references(
                 job.reference_ids.push(reference_id);
             }
         }
-        write_project(&project_folder, &config)
+        write_project(project_folder, &config)
     })();
     if let Err(error) = prepare_result {
-        let _ = fs::remove_dir_all(&project_folder);
+        // The selected root belonged to the user before creation. Roll back
+        // only paths PolStudio could have created after the empty-folder check.
+        let _ = fs::remove_file(project_folder.join(PROJECT_FILE_NAME));
+        for child in PROJECT_ROOT_DIRECTORIES {
+            let _ = fs::remove_dir_all(project_folder.join(child));
+        }
         return Err(error);
     }
-    read_project(&project_folder)
+    read_project(project_folder)
 }
 
 #[tauri::command]
@@ -2038,7 +2138,21 @@ struct RuntimeStatus {
 /// project file — so it cannot go through `runtime_status`.
 #[tauri::command]
 fn vidfab_status(settings: BTreeMap<String, ProviderSetting>) -> vidfab::VidfabStatus {
-    vidfab::status(&settings)
+    let status = vidfab::status(&settings);
+    diagnostics::info(
+        "runtime",
+        "vidfab.probed",
+        "Video engine probe completed.",
+        serde_json::json!({
+            "state": status.state,
+            "version": status.version,
+            "platform": status.platform,
+            "models": status.models.iter().map(|model| serde_json::json!({
+                "id": model.id, "configured": model.configured, "available": model.available,
+            })).collect::<Vec<_>>(),
+        }),
+    );
+    status
 }
 
 /// One OS picker for one engine path. `directory` picks a folder (the
@@ -2083,12 +2197,34 @@ fn choose_engine_path(
 async fn runtime_status(
     settings: BTreeMap<String, ProviderSetting>,
 ) -> Result<RuntimeStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
+    let result = tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
         providers: agent::provider_statuses(&settings),
         vidfab: vidfab::status(&settings),
     })
     .await
-    .map_err(|error| format!("Could not probe this computer: {error}"))
+    .map_err(|error| format!("Could not probe this computer: {error}"));
+    match &result {
+        Ok(status) => diagnostics::info(
+            "runtime",
+            "application.probed",
+            "Application runtime probe completed.",
+            serde_json::json!({
+                "vidfabState": status.vidfab.state,
+                "vidfabVersion": status.vidfab.version,
+                "platform": status.vidfab.platform,
+                "providers": status.providers.iter().map(|provider| serde_json::json!({
+                    "id": provider.id, "state": provider.state, "version": provider.version,
+                })).collect::<Vec<_>>(),
+            }),
+        ),
+        Err(error) => diagnostics::error(
+            "runtime",
+            "application.probe_failed",
+            error,
+            serde_json::json!({}),
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -2120,8 +2256,8 @@ async fn run_agent_turn(
             );
         })
     })
-        .await
-        .map_err(|error| format!("Agent task failed: {error}"))?
+    .await
+    .map_err(|error| format!("Agent task failed: {error}"))?
 }
 
 #[derive(Clone, Serialize)]
@@ -2141,8 +2277,33 @@ fn resolve_vidfab_plan(
     request: vidfab::GenerationRequest,
     config: ProjectConfig,
 ) -> Result<vidfab::ResolvedPlan, String> {
-    let config = validate_and_normalize_config(config)?;
-    vidfab::resolve_plan(&request, &config.provider_settings)
+    let context = serde_json::json!({
+        "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
+        "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
+        "referenceCount": request.reference_paths.len(), "inputChars": request.prompt.chars().count(),
+    });
+    diagnostics::info(
+        "vidfab",
+        "plan.requested",
+        "Generation plan requested.",
+        context.clone(),
+    );
+    let result = validate_and_normalize_config(config)
+        .and_then(|config| vidfab::resolve_plan(&request, &config.provider_settings));
+    match &result {
+        Ok(plan) => diagnostics::info(
+            "vidfab",
+            "plan.resolved",
+            "Generation plan resolved.",
+            serde_json::json!({
+                "jobId": request.job_id, "frames": plan.aligned_frames,
+                "canvasWidth": plan.canvas_width, "canvasHeight": plan.canvas_height,
+                "durationSeconds": plan.duration_seconds, "modelEvaluations": plan.model_evaluations,
+            }),
+        ),
+        Err(error) => diagnostics::error("vidfab", "plan.failed", error, context),
+    }
+    result
 }
 
 #[tauri::command]
@@ -2152,8 +2313,18 @@ fn enqueue_vidfab_generation(
     request: vidfab::GenerationRequest,
     config: ProjectConfig,
 ) -> Result<(), String> {
-    let config = validate_and_normalize_config(config)?;
-    state.enqueue(app, request, &config.provider_settings)
+    let job_id = request.job_id.clone();
+    let result = validate_and_normalize_config(config)
+        .and_then(|config| state.enqueue(app, request, &config.provider_settings));
+    if let Err(error) = &result {
+        diagnostics::error(
+            "vidfab",
+            "generation.enqueue_failed",
+            error,
+            serde_json::json!({ "jobId": job_id }),
+        );
+    }
+    result
 }
 
 #[tauri::command]
@@ -2165,16 +2336,19 @@ fn cancel_vidfab_generation(
 }
 
 /* ── A finished render, on its way to a file ─────────────────────────────────
-   vidfab produces pictures, not files. The webview turns them into an MP4 —
-   WebCodecs owns the hardware encoder and there is no FFmpeg here (CLAUDE.md) —
-   which means the pictures have to cross into the webview and the bytes have to
-   come back. These four commands are that round trip: three that read what a
-   finished generation left in memory (see `rendered`), and one that writes the
-   encoded file into the project.
-   -------------------------------------------------------------------------- */
+vidfab produces pictures, not files. The webview turns them into an MP4 —
+WebCodecs owns the hardware encoder and there is no FFmpeg here (CLAUDE.md) —
+which means the pictures have to cross into the webview and the bytes have to
+come back. These four commands are that round trip: three that read what a
+finished generation left in memory (see `rendered`), and one that writes the
+encoded file into the project.
+-------------------------------------------------------------------------- */
 
 const GENERATED_FOLDER_HEADER: &str = "x-generated-folder";
 const GENERATED_JOB_HEADER: &str = "x-generated-job";
+const THUMBNAIL_FOLDER_HEADER: &str = "x-thumbnail-folder";
+const THUMBNAIL_JOB_HEADER: &str = "x-thumbnail-job";
+const THUMBNAIL_TIME_HEADER: &str = "x-thumbnail-time";
 /// Where a rendered scene lands, relative to the project root. Created by
 /// `create_project` along with the rest of the folder layout.
 const GENERATED_DIRECTORY: &str = "media/generated";
@@ -2208,13 +2382,15 @@ fn generated_file_stem(job_id: &str) -> Result<String, String> {
 /// which [`generated_file_stem`] has already refused unless it is inert — so
 /// unlike an export, there is no destination to authorise, because the webview
 /// never names one.
-fn generated_video_destination(folder_path: &str, job_id: &str) -> Result<(PathBuf, String), String> {
+fn generated_video_destination(
+    folder_path: &str,
+    job_id: &str,
+) -> Result<(PathBuf, String), String> {
     let root = project_root(folder_path)?;
     let stem = generated_file_stem(job_id)?;
     let directory = root.join(GENERATED_DIRECTORY);
-    fs::create_dir_all(&directory).map_err(|error| {
-        format!("Could not make {}: {error}", display_path(&directory))
-    })?;
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("Could not make {}: {error}", display_path(&directory)))?;
     Ok((
         directory.join(format!("{stem}.mp4")),
         format!("{GENERATED_DIRECTORY}/{stem}.mp4"),
@@ -2239,11 +2415,89 @@ struct GeneratedVideoFile {
 /// Windows path is not.
 #[tauri::command]
 fn write_generated_video(request: Request<'_>) -> Result<GeneratedVideoFile, String> {
+    let mut logged_job_id: Option<String> = None;
+    let result = (|| {
+        let InvokeBody::Raw(bytes) = request.body() else {
+            return Err("The rendered scene was sent as JSON instead of raw bytes.".to_string());
+        };
+        if bytes.is_empty() {
+            return Err("The encoder produced no bytes, so nothing was written.".to_string());
+        }
+        let header = |name: &str| -> Result<String, String> {
+            let value = request
+                .headers()
+                .get(name)
+                .ok_or_else(|| format!("The request carried no {name} header."))?;
+            export::percent_decode(
+                value
+                    .to_str()
+                    .map_err(|_| format!("The {name} header is not readable text."))?,
+            )
+        };
+        let folder = header(GENERATED_FOLDER_HEADER)?;
+        let job_id = header(GENERATED_JOB_HEADER)?;
+        logged_job_id = Some(job_id.clone());
+        diagnostics::info(
+            "generated-video",
+            "write.started",
+            "Writing encoded scene to the project.",
+            serde_json::json!({
+                "jobId": job_id, "bytes": bytes.len(),
+            }),
+        );
+        let (destination, relative_path) = generated_video_destination(&folder, &job_id)?;
+        export::write_atomically(&destination, bytes)?;
+        Ok(GeneratedVideoFile {
+            relative_path,
+            bytes: bytes.len() as u64,
+        })
+    })();
+    match &result {
+        Ok(file) => diagnostics::info(
+            "generated-video",
+            "write.completed",
+            "Encoded scene was written.",
+            serde_json::json!({
+                "jobId": logged_job_id, "bytes": file.bytes, "relativePath": file.relative_path,
+            }),
+        ),
+        Err(error) => diagnostics::error(
+            "generated-video",
+            "write.failed",
+            error,
+            serde_json::json!({ "jobId": logged_job_id }),
+        ),
+    }
+    result
+}
+
+/** Execute an already provider-validated command batch against the latest
+ * config held by the editor. The provider can take minutes to answer; applying
+ * here, after it returns, keeps edits made while it was thinking instead of
+ * replacing them with the older prompt snapshot. Persistence remains in the
+ * workspace's ordered save queue. */
+#[tauri::command]
+fn execute_agent_commands(
+    config: ProjectConfig,
+    commands: Vec<agent_commands::ProjectCommand>,
+    executed_at: String,
+) -> Result<ProjectConfig, String> {
+    let current = validate_and_normalize_config(config)?;
+    let mut next = agent_commands::execute_commands_at(&current, &commands, &executed_at)?;
+    agent::validate_agent_scene_conventions(&current, &next)?;
+    next.agent_conversation = AgentConversation::default();
+    validate_and_normalize_config(next)
+}
+
+/// Writes one small, derived timeline still. Its location is deterministic,
+/// so it never needs to enter polstudio.json and can be rebuilt from the MP4.
+#[tauri::command]
+fn write_timeline_thumbnail(request: Request<'_>) -> Result<(), String> {
     let InvokeBody::Raw(bytes) = request.body() else {
-        return Err("The rendered scene was sent as JSON instead of raw bytes.".to_string());
+        return Err("The timeline thumbnail was sent as JSON instead of raw bytes.".into());
     };
     if bytes.is_empty() {
-        return Err("The encoder produced no bytes, so nothing was written.".to_string());
+        return Err("The timeline thumbnail contains no bytes.".into());
     }
     let header = |name: &str| -> Result<String, String> {
         let value = request
@@ -2256,15 +2510,30 @@ fn write_generated_video(request: Request<'_>) -> Result<GeneratedVideoFile, Str
                 .map_err(|_| format!("The {name} header is not readable text."))?,
         )
     };
-    let (destination, relative_path) = generated_video_destination(
-        &header(GENERATED_FOLDER_HEADER)?,
-        &header(GENERATED_JOB_HEADER)?,
-    )?;
-    export::write_atomically(&destination, bytes)?;
-    Ok(GeneratedVideoFile {
-        relative_path,
-        bytes: bytes.len() as u64,
-    })
+    let root = project_root(&header(THUMBNAIL_FOLDER_HEADER)?)?;
+    let stem = generated_file_stem(&header(THUMBNAIL_JOB_HEADER)?)?;
+    let time_ms = header(THUMBNAIL_TIME_HEADER)?.parse::<u32>().map_err(|_| {
+        "The timeline thumbnail time is not a non-negative millisecond value.".to_string()
+    })?;
+    let directory = root.join("thumbnails").join("timeline").join(stem);
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("Could not make {}: {error}", display_path(&directory)))?;
+    export::write_atomically(&directory.join(format!("{time_ms:08}.jpg")), bytes)
+}
+
+/// Removes only one scene's derived stills. The scene id is validated before
+/// it becomes a path component, keeping recursive deletion pinned below the
+/// project's timeline-thumbnail directory.
+#[tauri::command]
+fn purge_timeline_thumbnails(folder_path: String, job_id: String) -> Result<(), String> {
+    let root = project_root(&folder_path)?;
+    let stem = generated_file_stem(&job_id)?;
+    let directory = root.join("thumbnails").join("timeline").join(stem);
+    if directory.exists() {
+        fs::remove_dir_all(&directory)
+            .map_err(|error| format!("Could not remove {}: {error}", display_path(&directory)))?;
+    }
+    Ok(())
 }
 
 /// What is waiting to be encoded for this scene, or None when nothing is. The
@@ -2305,16 +2574,16 @@ fn release_generated_frames(job_id: String) -> bool {
 }
 
 /* ── Exit guard ──────────────────────────────────────────────────────────────
-   The video engine runs inside this process, so closing the window ends a
-   generation outright — and vidfab writes no file of its own, so an unfinished
-   run leaves nothing behind. The webview therefore has to be able to answer the
-   close request before the window goes away.
+The video engine runs inside this process, so closing the window ends a
+generation outright — and vidfab writes no file of its own, so an unfinished
+run leaves nothing behind. The webview therefore has to be able to answer the
+close request before the window goes away.
 
-   The window is held open ONLY while the frontend has said something is
-   generating (`set_generation_active`). A webview that never loaded, or one
-   with nothing to lose, closes on the first click exactly as before: the guard
-   can never be the reason a user is stuck in a window that will not shut.
-   -------------------------------------------------------------------------- */
+The window is held open ONLY while the frontend has said something is
+generating (`set_generation_active`). A webview that never loaded, or one
+with nothing to lose, closes on the first click exactly as before: the guard
+can never be the reason a user is stuck in a window that will not shut.
+-------------------------------------------------------------------------- */
 
 #[derive(Default)]
 struct ExitGuard {
@@ -2390,11 +2659,40 @@ fn answer_app_close(window: tauri::Window, state: tauri::State<'_, ExitGuard>, c
 const GROUND_DARK: tauri::window::Color = tauri::window::Color(0x08, 0x0a, 0x0f, 0xff);
 const GROUND_LIGHT: tauri::window::Color = tauri::window::Color(0xee, 0xf1, 0xf6, 0xff);
 
+#[tauri::command]
+fn write_diagnostic_log(entry: diagnostics::FrontendLogEvent) -> Result<(), String> {
+    diagnostics::write_frontend(entry)
+}
+
+#[tauri::command]
+fn diagnostic_log_info() -> Result<diagnostics::DiagnosticLogInfo, String> {
+    diagnostics::log_info()
+}
+
+#[tauri::command]
+fn reveal_diagnostic_log() -> Result<diagnostics::DiagnosticLogInfo, String> {
+    diagnostics::reveal_log()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             use tauri::Manager as _;
+            match diagnostics::initialize(app.handle()) {
+                Ok(info) => diagnostics::info(
+                    "app",
+                    "startup",
+                    "PolStudio started.",
+                    serde_json::json!({
+                        "version": app.package_info().version.to_string(),
+                        "os": std::env::consts::OS,
+                        "architecture": std::env::consts::ARCH,
+                        "sessionId": info.session_id,
+                    }),
+                ),
+                Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let ground = if matches!(window.theme(), Ok(tauri::Theme::Light)) {
                     GROUND_LIGHT
@@ -2433,6 +2731,9 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            write_diagnostic_log,
+            diagnostic_log_info,
+            reveal_diagnostic_log,
             open_project,
             delete_project,
             choose_project_folder,
@@ -2449,6 +2750,7 @@ pub fn run() {
             vidfab_status,
             choose_engine_path,
             run_agent_turn,
+            execute_agent_commands,
             cancel_agent_turn,
             resolve_vidfab_plan,
             enqueue_vidfab_generation,
@@ -2456,6 +2758,8 @@ pub fn run() {
             set_generation_active,
             answer_app_close,
             write_generated_video,
+            write_timeline_thumbnail,
+            purge_timeline_thumbnails,
             generated_summary,
             generated_frame,
             generated_audio,
@@ -2740,7 +3044,8 @@ mod tests {
             ("complete", fixture()),
             ("scene", scene_fixture()),
         ] {
-            let normalized = without_derived_project_state(validate_and_normalize_config(config).unwrap());
+            let normalized =
+                without_derived_project_state(validate_and_normalize_config(config).unwrap());
             let json = serde_json::to_string_pretty(&normalized).unwrap();
             let reparsed: ProjectConfig = serde_json::from_str(&json).unwrap();
             assert_eq!(
@@ -2947,7 +3252,8 @@ mod tests {
     #[test]
     fn complete_project_create_open_save_reopen_is_lossless() {
         let root = tempfile::tempdir().unwrap();
-        let expected = without_derived_project_state(validate_and_normalize_config(fixture()).unwrap());
+        let expected =
+            without_derived_project_state(validate_and_normalize_config(fixture()).unwrap());
         let created = create_project_in(root.path(), &expected).unwrap();
         assert_eq!(created.config, expected);
 
@@ -3017,8 +3323,8 @@ mod tests {
         let parent = tempfile::tempdir().unwrap();
         let project = project_folder_at(&parent.path().join("Keep this project"));
 
-        let error = delete_project_folder(&project.to_string_lossy(), "some-other-project")
-            .unwrap_err();
+        let error =
+            delete_project_folder(&project.to_string_lossy(), "some-other-project").unwrap_err();
 
         assert!(error.contains("not the project selected for deletion"));
         assert!(project.is_dir());
@@ -3098,7 +3404,10 @@ mod tests {
 
         assert!(error.contains("simulated replacement failure"));
         assert_eq!(fs::read(&destination).unwrap(), original_bytes);
-        assert_eq!(read_project(root.path()).unwrap().config, without_derived_project_state(original));
+        assert_eq!(
+            read_project(root.path()).unwrap().config,
+            without_derived_project_state(validate_and_normalize_config(original).unwrap())
+        );
         assert_eq!(
             fs::read_dir(root.path())
                 .unwrap()
@@ -3107,6 +3416,38 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn new_project_uses_the_selected_empty_folder_itself() {
+        let selected = tempfile::tempdir().unwrap();
+        let expected_root = selected.path().canonicalize().unwrap();
+
+        let created = create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap();
+
+        assert_eq!(
+            PathBuf::from(created.folder_path).canonicalize().unwrap(),
+            expected_root
+        );
+        assert!(selected.path().join(PROJECT_FILE_NAME).is_file());
+        assert!(!selected
+            .path()
+            .join(safe_folder_name(&created.config.name))
+            .exists());
+    }
+
+    #[test]
+    fn new_project_rejects_a_nonempty_selected_folder_without_changing_it() {
+        let selected = tempfile::tempdir().unwrap();
+        let existing = selected.path().join("keep.txt");
+        fs::write(&existing, b"user data").unwrap();
+
+        let error =
+            create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap_err();
+
+        assert!(error.contains("not empty"), "unexpected error: {error}");
+        assert_eq!(fs::read(&existing).unwrap(), b"user data");
+        assert!(!selected.path().join(PROJECT_FILE_NAME).exists());
     }
 
     #[test]
@@ -3303,6 +3644,7 @@ mod tests {
             duration_ms: None,
             width: None,
             height: None,
+            has_audio: None,
             created_at: config.created_at.clone(),
         });
         let created = create_project_in(root.path(), &config).unwrap();
@@ -3478,6 +3820,7 @@ mod tests {
                 duration_ms: None,
                 width: None,
                 height: None,
+                has_audio: None,
                 created_at: config.created_at.clone(),
             });
         }
@@ -3599,6 +3942,7 @@ mod tests {
             duration_ms: None,
             width: None,
             height: None,
+            has_audio: None,
             created_at: config.created_at.clone(),
         });
         let created = create_project_in(root.path(), &config).unwrap();
@@ -3762,7 +4106,10 @@ mod tests {
         ];
         let config = validate_and_normalize_config(config).unwrap();
         let value = serde_json::to_value(&config).unwrap();
-        assert_eq!(value["references"][0]["images"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            value["references"][0]["images"].as_array().unwrap().len(),
+            2
+        );
         assert!(value.get("agentConversation").is_none());
         assert!(value["generationJobs"][0].get("compiledPrompt").is_none());
     }
@@ -3989,12 +4336,18 @@ mod tests {
         let shots = job.shots.as_ref().expect("the scene fixture has shots");
         assert_eq!(shots.len(), 3);
         assert_eq!(
-            shots.iter().map(|shot| shot.start_seconds).collect::<Vec<_>>(),
+            shots
+                .iter()
+                .map(|shot| shot.start_seconds)
+                .collect::<Vec<_>>(),
             vec![0.0, 4.5, 9.0]
         );
         assert_eq!(job.duration_seconds, Some(12.0));
         // Per-shot settings go through the same tidy as the legacy per-job tags.
-        assert_eq!(shots[0].settings.as_ref().unwrap()["shotSize"], vec!["wide"]);
+        assert_eq!(
+            shots[0].settings.as_ref().unwrap()["shotSize"],
+            vec!["wide"]
+        );
         assert_eq!(shots[2].settings, None);
         // Its words are on the shots, and `prompt`/`creativeBrief` mirror them.
         assert!(shots[0].action.contains("@[ref:reference-woman]"));
@@ -4005,14 +4358,20 @@ mod tests {
         emptied.generation_jobs[0].shots.as_mut().unwrap()[1].settings =
             Some(BTreeMap::from([("mood".into(), Vec::new())]));
         let emptied = validate_and_normalize_config(emptied).unwrap();
-        assert_eq!(emptied.generation_jobs[0].shots.as_ref().unwrap()[1].settings, None);
+        assert_eq!(
+            emptied.generation_jobs[0].shots.as_ref().unwrap()[1].settings,
+            None
+        );
 
         let mut no_shots = scene_fixture();
         no_shots.generation_jobs[0].shots = Some(Vec::new());
         let no_shots = validate_and_normalize_config(no_shots).unwrap();
         assert_eq!(no_shots.generation_jobs[0].shots, None);
         let json = serde_json::to_string_pretty(&no_shots).unwrap();
-        assert!(!json.contains("\"shots\""), "an empty shot list must not be written: {json}");
+        assert!(
+            !json.contains("\"shots\""),
+            "an empty shot list must not be written: {json}"
+        );
     }
 
     #[test]
@@ -4045,11 +4404,11 @@ mod tests {
     #[test]
     fn an_empty_scene_survives_the_round_trip_the_plus_button_creates() {
         /* The Generator's + adds a scene holding ONE shot with nothing written
-           in it and no words in the mirror — PolStudio writes no line for
-           anyone. Rust writes that file to disk before the frontend ever parses
-           it back, so if this side accepted it and zod did not, the project
-           would save and then fail to open. `createDraftGenerationJob("")`
-           builds exactly this shape. */
+        in it and no words in the mirror — PolStudio writes no line for
+        anyone. Rust writes that file to disk before the frontend ever parses
+        it back, so if this side accepted it and zod did not, the project
+        would save and then fail to open. `createDraftGenerationJob("")`
+        builds exactly this shape. */
         let mut empty = scene_fixture();
         let job = &mut empty.generation_jobs[0];
         job.prompt = String::new();
@@ -4082,7 +4441,9 @@ mod tests {
 
         let normalized = validate_and_normalize_config(config).expect("a named shot is valid");
         assert_eq!(
-            normalized.generation_jobs[0].shots.as_ref().unwrap()[0].name.as_deref(),
+            normalized.generation_jobs[0].shots.as_ref().unwrap()[0]
+                .name
+                .as_deref(),
             Some("Doorway reveal")
         );
     }
@@ -4298,9 +4659,9 @@ mod tests {
     }
 
     /* ── Where a rendered scene is allowed to land ──────────────────────────
-       The webview names the scene, and the scene names the file. That is the
-       whole of the caller's influence over this path, and these pin it.
-       ------------------------------------------------------------------- */
+    The webview names the scene, and the scene names the file. That is the
+    whole of the caller's influence over this path, and these pin it.
+    ------------------------------------------------------------------- */
 
     fn project_folder() -> tempfile::TempDir {
         let folder = tempfile::tempdir().unwrap();
@@ -4316,13 +4677,34 @@ mod tests {
     fn a_rendered_scene_lands_in_the_project_under_its_own_id() {
         let folder = project_folder();
         let (destination, relative) =
-            generated_video_destination(&folder.path().to_string_lossy(), "job-initial-brief").unwrap();
+            generated_video_destination(&folder.path().to_string_lossy(), "job-initial-brief")
+                .unwrap();
         assert_eq!(relative, "media/generated/job-initial-brief.mp4");
         assert!(destination.ends_with("media/generated/job-initial-brief.mp4"));
         // The folder is made, so the write that follows has somewhere to go.
         assert!(destination.parent().unwrap().is_dir());
         // And it really is inside the project, not merely named as though it were.
         assert!(destination.starts_with(folder.path().canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn purging_timeline_thumbnails_removes_only_the_named_scene() {
+        let folder = project_folder();
+        let first = folder.path().join("thumbnails/timeline/job-first");
+        let second = folder.path().join("thumbnails/timeline/job-second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(first.join("00000000.jpg"), b"first").unwrap();
+        fs::write(second.join("00000000.jpg"), b"second").unwrap();
+
+        purge_timeline_thumbnails(
+            folder.path().to_string_lossy().into_owned(),
+            "job-first".into(),
+        )
+        .unwrap();
+
+        assert!(!first.exists());
+        assert!(second.join("00000000.jpg").is_file());
     }
 
     #[test]
@@ -4417,5 +4799,4 @@ mod exit_guard_tests {
         guard.generation_active.store(false, Ordering::Release);
         assert_eq!(guard.on_close_requested(), CloseDecision::Close);
     }
-
 }

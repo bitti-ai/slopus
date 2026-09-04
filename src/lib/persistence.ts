@@ -235,7 +235,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
   const config = createProjectConfig(input);
   if (isTauri()) {
     const value = await invoke<ProjectRecord | null>("create_project", {
-      parentDirectory: input.parentDirectory ?? null,
+      projectDirectory: input.projectDirectory ?? null,
       config,
       initialReferencePaths: input.referenceImages?.map((image) => image.sourcePath) ?? [],
     });

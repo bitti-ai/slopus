@@ -50,48 +50,94 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
-  it("can always expand and collapse, and expands itself while a turn is running", async () => {
+  it("shows only the provider light when compact and moves a name-only selector into the Agent controls", async () => {
+    const available: ProviderStatus[] = [
+      providers[0],
+      { id: "claude", label: "Claude Code", state: "ready", executable: "claude", version: "test", detail: "Ready" },
+    ];
+    const view = (expanded: boolean) => <AgentDock context="this project" record={project()} providers={available} expanded={expanded} onPromptStart={() => undefined} onCommands={async () => undefined} />;
+    const app = render(view(false));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Agent provider" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Codex")).not.toBeInTheDocument();
+
+    app.rerender(view(true));
+    expect(screen.getByRole("heading", { name: "What should we create today?" })).toBeInTheDocument();
+    expect(screen.queryByText("No activity yet. Send a prompt to start.")).not.toBeInTheDocument();
+    const selector = screen.getByRole("combobox", { name: "Agent provider" }) as HTMLSelectElement;
+    expect([...selector.options].map((option) => option.textContent)).toEqual(["Codex", "Claude Code"]);
+    expect(selector.closest(".agent-dock__actions")).not.toBeNull();
+    fireEvent.change(selector, { target: { value: "claude" } });
+    expect(selector.value).toBe("claude");
+    expect(screen.getByRole("img", { name: "Claude Code status: Ready" })).toBeInTheDocument();
+  });
+
+  it("hands an accepted command batch to the workspace before completing the turn", async () => {
+    const commands = [{ op: "scene.set" as const, id: "job-initial-brief", title: "Warmer opening" }];
+    vi.mocked(runAgentTurn).mockResolvedValue({
+      result: { kind: "commands", summary: "Made the opening warmer.", commands },
+      events: [],
+      messages: [],
+    });
+    const onCommands = vi.fn(async () => undefined);
+    const onPromptStart = vi.fn();
+    render(<AgentDock context="this generation queue" record={project()} providers={providers} expanded={false} onPromptStart={onPromptStart} onCommands={onCommands} />);
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" }), { target: { value: "Make it warmer" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+
+    await waitFor(() => expect(onCommands).toHaveBeenCalledWith(commands));
+    expect(onPromptStart).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the Agent page as its expanded view and requests it when a turn starts", async () => {
     let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
     vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     const record = project();
-    render(<AgentDock context="this generation queue" record={record} providers={providers} onRecord={() => undefined} />);
+    const onPromptStart = vi.fn();
+    const view = (expanded: boolean) => <AgentDock context="this generation queue" record={record} providers={providers} expanded={expanded} onPromptStart={onPromptStart} onCommands={async () => undefined} />;
+    const app = render(view(false));
     await act(async () => { await Promise.resolve(); });
 
     expect(screen.queryByRole("log", { name: "Slop output" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Expand Slop output" }));
-    expect(screen.getByRole("log", { name: "Slop output" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Collapse Slop output" }));
+    expect(screen.queryByRole("button", { name: /Slop output/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Agent provider" })).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "1");
 
     fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" }), { target: { value: "Create four shots" } });
     fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
+    expect(onPromptStart).toHaveBeenCalledTimes(1);
+
+    app.rerender(view(true));
     const log = screen.getByRole("log", { name: "Slop output" });
+    expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "2");
+    expect(screen.getByRole("combobox", { name: "Agent provider" })).toHaveTextContent("Codex");
+    expect(screen.getByRole("combobox", { name: "Agent provider" })).not.toHaveTextContent("Ready");
     expect(log).toHaveTextContent("Create four shots");
     expect(log).not.toHaveTextContent("Sending this request to Codex");
     expect(screen.getByRole("status")).toHaveTextContent("Sending this request to Codex");
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
-    const toggle = screen.getByRole("button", { name: "Collapse Slop output" });
-    expect(toggle.closest(".agent-dock-row")).not.toBeNull();
-    expect(toggle.closest(".agent-dock")).toBeNull();
 
     const requestId = vi.mocked(runAgentTurn).mock.calls[0][3];
-    act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"kind\\\":\\\"mutation\\\",\\\"summary\\\":\\\"Drafted the scene.\\\",\\\"project\\\":{}}\"}}" } } }));
+    act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"op\\\":\\\"scene.remove\\\",\\\"id\\\":\\\"old-scene\\\"}\\n{\\\"op\\\":\\\"commit\\\",\\\"summary\\\":\\\"Drafted the scene.\\\"}\"}}" } } }));
     act(() => eventHandler?.({ payload: { requestId, event: { type: "validation", round: 1, maxRounds: 3, text: "Shot 4 starts at 18 seconds." } } }));
     expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Drafted the scene.");
     expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
     expect(log.scrollTop).toBe(900);
-
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Expand Slop output" }));
     expect(screen.getAllByRole("status")).toHaveLength(1);
 
-    await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], record, messages: [] }));
+    await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], messages: [] }));
   });
 
   it("keeps a follow-up visible when the provider times out", async () => {
     vi.mocked(runAgentTurn).mockRejectedValue(new Error("Agent turn timed out after 300 seconds."));
-    render(<AgentDock context="this generation queue" record={project()} providers={providers} onRecord={() => undefined} />);
+    render(<AgentDock context="this generation queue" record={project()} providers={providers} expanded onPromptStart={() => undefined} onCommands={async () => undefined} />);
     await act(async () => { await Promise.resolve(); });
 
     const field = screen.getByRole("textbox", { name: "Ask Slop about this generation queue" });
@@ -109,5 +155,7 @@ describe("Slop output panel", () => {
     expect(readableProviderOutput('{"type":"assistant","message":{"content":[{"type":"text","text":"{\\"kind\\":\\"answer\\",\\"content\\":\\"Ready to render.\\"}"}]}}'))
       .toBe("Ready to render.");
     expect(readableProviderOutput("plain provider output")).toBe("plain provider output");
+    expect(readableProviderOutput('{"type":"item.completed","item":{"text":"{\\"op\\":\\"scene.remove\\",\\"id\\":\\"old\\"}\\n{\\"op\\":\\"commit\\",\\"summary\\":\\"Removed it.\\"}"}}'))
+      .toBe("Removed it.");
   });
 });

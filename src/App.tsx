@@ -9,9 +9,10 @@ import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
+import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
 import { chooseAndOpenProject, createProject, deleteProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
-import { getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
+import { CHECKING_PROVIDERS, getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
 interface LibraryError {
   /** What failed, in the user’s terms. */
@@ -21,6 +22,9 @@ interface LibraryError {
 }
 
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
+const logFailure = (event: string, reason: unknown, context: Record<string, unknown> = {}) => {
+  writeDiagnostic("error", "app", event, describeDiagnosticError(reason), { ...context, ...errorContext(reason) });
+};
 
 function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -95,12 +99,16 @@ function App() {
         // dropped from this list with no message at all.
         setProjects(loaded);
         if (unreadable.length === 0) return;
+        writeDiagnostic("warn", "app", "projects.partially_loaded", "Some recent project files could not be read.", { unreadableCount: unreadable.length, loadedCount: loaded.length });
         setError({
           title: unreadable.length === 1 ? "This project file couldn’t be read" : `${unreadable.length} project files couldn’t be read`,
           detail: unreadable.map((item) => `${item.folderPath} — ${item.detail}`).join(" · "),
         });
       })
-      .catch((reason: unknown) => setError({ title: "Couldn’t load your projects", detail: describe(reason) }))
+      .catch((reason: unknown) => {
+        logFailure("projects.load_failed", reason);
+        setError({ title: "Couldn’t load your projects", detail: describe(reason) });
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -113,6 +121,7 @@ function App() {
       .then((status) => { if (live) setRuntime(status); })
       .catch((reason: unknown) => {
         if (!live) return;
+        logFailure("runtime.probe_failed", reason);
         setError({ title: "Couldn’t check what’s installed on this computer", detail: describe(reason) });
       });
     return () => { live = false; };
@@ -146,6 +155,7 @@ function App() {
       setActiveProjectInitialView("timeline");
       setActiveProject(project);
     } catch (reason) {
+      logFailure("project.open_failed", reason);
       setError({ title: "Couldn’t open that folder", detail: describe(reason) });
     }
   };
@@ -158,9 +168,12 @@ function App() {
       if (!project) return;
       setProjects((current) => [project, ...current]);
       setNewProjectOpen(false);
-      setActiveProjectInitialView(input.prompt.trim() ? "generator" : "timeline");
+      // Creative direction now begins in the Agent page; project creation only
+      // establishes the empty workspace and its format.
+      setActiveProjectInitialView("agent");
       setActiveProject(project);
     } catch (reason) {
+      logFailure("project.create_failed", reason);
       setError({ title: "Couldn’t create that project", detail: describe(reason) });
     } finally {
       setBusy(false);
@@ -177,6 +190,7 @@ function App() {
       setProjects((current) => current.filter((project) => project.config.id !== target.config.id || project.folderPath !== target.folderPath));
       setProjectToDelete(null);
     } catch (reason) {
+      logFailure("project.delete_failed", reason, { projectId: target.config.id });
       setError({ title: "Couldn’t delete that project", detail: describe(reason) });
     } finally {
       setDeletingProject(false);
@@ -194,7 +208,7 @@ function App() {
 
   if (activeProject) {
     return <>
-      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
+      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onGeneratorRuntimeChange={(vidfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, vidfab }))} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
         const saved = await saveProject(project);
         setActiveProject(saved);
         setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
@@ -241,7 +255,7 @@ function App() {
               <div className="library-empty">
                 <FolderOpen size={28} />
                 <h3>No projects yet</h3>
-                <p>Create an empty project, or add a description and start with a first scene.</p>
+                <p>Create a project, then tell the Agent what you want to make.</p>
                 <p className="library-empty__aside">Already made one on this computer?</p>
                 <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
               </div>

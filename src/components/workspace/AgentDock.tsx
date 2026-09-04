@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, ChevronDown, ChevronUp, LoaderCircle, Square, TriangleAlert } from "lucide-react";
+import { ArrowUp, LoaderCircle, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
   AGENT_TURN_EVENT,
@@ -8,6 +9,7 @@ import {
   runAgentTurn,
   type AgentTurnEvent,
   type AgentTurnEventPayload,
+  type ProjectCommand,
   type ProviderId,
   type ProviderStatus,
 } from "../../lib/runtime";
@@ -20,11 +22,13 @@ interface AgentActivity {
   text: string;
 }
 
-export function AgentDock({ context, record, providers, onRecord }: {
+export function AgentDock({ context, record, providers, expanded, onPromptStart, onCommands }: {
   context: string;
   record: ProjectRecord;
   providers: ProviderStatus[];
-  onRecord: (record: ProjectRecord) => void;
+  expanded: boolean;
+  onPromptStart: () => void;
+  onCommands: (commands: ProjectCommand[]) => Promise<void>;
 }) {
   const configured = loadAgentProvider() ?? record.config.providerSettings.agent?.options.selectedProvider;
   const initial = providers.some((item) => item.id === configured)
@@ -34,11 +38,11 @@ export function AgentDock({ context, record, providers, onRecord }: {
   const [prompt, setPrompt] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
+  const [hasStarted, setHasStarted] = useState(false);
   const activeRequest = useRef<string | null>(null);
   const conversation = useRef<HTMLDivElement | null>(null);
   const selected = providers.find((item) => item.id === provider);
@@ -47,6 +51,7 @@ export function AgentDock({ context, record, providers, onRecord }: {
 
   useEffect(() => {
     setSessionMessages([]);
+    setHasStarted(false);
   }, [record.config.id]);
 
   /* One listener lives for the dock's lifetime. A request id filters out any
@@ -87,10 +92,15 @@ export function AgentDock({ context, record, providers, onRecord }: {
   const placeholder = ready
     ? `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
+  const providerStatusLabel = selected
+    ? `${selected.label} status: ${providerStateLabel(selected.state)}`
+    : "Agent status: Unavailable";
 
   const send = async () => {
     const clean = prompt.trim();
     if (!clean || !ready || requestId) return;
+    setHasStarted(true);
+    onPromptStart();
     const id = crypto.randomUUID();
     activeRequest.current = id;
     setRequestId(id);
@@ -98,15 +108,15 @@ export function AgentDock({ context, record, providers, onRecord }: {
     setPendingPrompt(clean);
     setStatus(`Sending this request to ${selected?.label ?? provider}.`);
     setActivity([]);
-    setExpanded(true);
     try {
       const response = await runAgentTurn(record, provider, clean, id, sessionMessages);
-      onRecord(response.record);
+      if (response.result.kind === "commands") await onCommands(response.result.commands);
       setSessionMessages(response.messages);
       setPendingPrompt(null);
       setPrompt("");
     } catch (reason) {
-      const detail = reason instanceof Error ? reason.message : String(reason);
+      const detail = describeDiagnosticError(reason);
+      writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
       setError(detail);
       setStatus(null);
     } finally {
@@ -116,48 +126,49 @@ export function AgentDock({ context, record, providers, onRecord }: {
   };
 
   return (
-    <div className={`agent-dock-wrap${expanded ? " agent-dock-wrap--expanded" : ""}`}>
-      <div className="agent-expanded-content" aria-hidden={!expanded}>
+    <div className={`agent-dock-wrap${expanded ? " agent-dock-wrap--expanded" : ""}${expanded && !hasStarted ? " agent-dock-wrap--welcome" : ""}`}>
+      {expanded && !hasStarted && <h1 className="agent-welcome-title">What should we create today?</h1>}
+      {expanded && hasStarted && <div className="agent-expanded-content">
+        <h1 className="sr-only">Agent</h1>
         <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
           {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
           {pendingPrompt && <p className="agent-conversation__user agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
           {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
             <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
           </p>)}
-          {messages.length === 0 && !pendingPrompt && activity.length === 0 && !error && <p className="agent-conversation__empty"><b>Slop</b><span>No activity yet. Send a prompt to start.</span></p>}
           {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
         </div>
-        {expanded && status && <div className="agent-latest-status" role="status"><b>Status</b><span>{status}</span></div>}
-      </div>
+        {status && <div className="agent-latest-status" role="status"><b>Status</b><span>{status}</span></div>}
+      </div>}
       <div className="agent-dock-row">
-        <button
-          type="button"
-          className="agent-panel-toggle"
-          aria-expanded={expanded}
-          aria-label={expanded ? "Collapse Slop output" : "Expand Slop output"}
-          title={expanded ? "Collapse Slop output" : "Expand Slop output"}
-          onClick={() => setExpanded((visible) => !visible)}
-        >{expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</button>
         <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-        <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={blockedDetail ?? selected?.detail}>
-          <i />
-          <select aria-label="Agent provider" value={provider} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); saveAgentProvider(next); }}>
-            {providers.map((item) => <option value={item.id} key={item.id}>{item.label} · {providerStateLabel(item.state)}</option>)}
-          </select>
-        </label>
-        <input
-          aria-label={`Ask Slop about ${context}`}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder={placeholder}
-          title={placeholder}
-          disabled={!ready || Boolean(requestId)}
-        />
-        {requestId ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button> : <>
-          {!ready && <span className="agent-dock__blocked"><TriangleAlert size={14} aria-hidden="true" /> {selected ? providerStateLabel(selected.state) : "Unavailable"}</span>}
-          <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>
-        </>}
-        {requestId && <LoaderCircle className="agent-busy" size={16} />}
+          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel}><i /></span>}
+          <textarea
+            aria-label={`Ask Slop about ${context}`}
+            rows={expanded ? 2 : 1}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }}
+            placeholder={placeholder}
+            title={placeholder}
+            disabled={!ready || Boolean(requestId)}
+          />
+          <div className="agent-dock__actions">
+            {expanded && <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={blockedDetail ?? undefined}>
+              <span className="agent-provider-light" role="img" aria-label={providerStatusLabel}><i /></span>
+              <select aria-label="Agent provider" value={provider} disabled={Boolean(requestId)} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); saveAgentProvider(next); }}>
+                {providers.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
+              </select>
+            </label>}
+            {requestId
+              ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button>
+              : <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>}
+            {requestId && <LoaderCircle className="agent-busy" size={16} />}
+          </div>
         </form>
       </div>
     </div>
@@ -222,9 +233,17 @@ export function readableProviderOutput(line: string): string | null {
     const text = candidate.trim();
     try {
       const turn = JSON.parse(text) as Record<string, unknown>;
-      const summary = turn.kind === "mutation" ? turn.summary : turn.content;
+      const summary = turn.kind === "commands" ? turn.summary : turn.content;
       if (typeof summary === "string" && summary.trim()) return summary.trim();
     } catch { /* A normal model message is already displayable text. */ }
+    for (const line of text.split(/\r?\n/).reverse()) {
+      try {
+        const command = JSON.parse(line) as Record<string, unknown>;
+        if (command.op === "commit" && typeof command.summary === "string" && command.summary.trim()) {
+          return command.summary.trim();
+        }
+      } catch { /* Keep looking for a JSONL commit line. */ }
+    }
     return text;
   }
   return null;

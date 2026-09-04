@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { installGlobalDiagnostics } from "./lib/diagnostics";
 import { applyTheme, loadTheme, watchSystemTheme } from "./lib/theme";
 import "./styles/index.css";
 
@@ -8,6 +9,7 @@ import "./styles/index.css";
    again is idempotent and covers the paths where that file never ran (a test
    renderer, a stripped index.html). */
 applyTheme(loadTheme());
+installGlobalDiagnostics();
 
 /* Only "system" needs watching, and only for the inline ground colour and the
    theme-color meta — tokens.css repaints the app itself through

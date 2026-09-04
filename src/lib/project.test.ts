@@ -17,6 +17,7 @@ import {
   isExternalItem,
   isReferenceUsable,
   normalizeProjectPath,
+  normalizeTimelineTracks,
   parseProjectConfig,
   projectFilePath,
   projectItemPath,
@@ -43,6 +44,7 @@ import {
   sceneGenerationReferences,
   sceneShots,
   splitActionText,
+  type ProjectConfig,
   DEFAULT_SCENE_SECONDS,
   DEFAULT_GENERATION_STEPS,
   RANDOM_GENERATION_SEED,
@@ -94,10 +96,10 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
-    // Two video layers over two audio, numbered rather than named after a job:
+    // Three audiovisual layers, numbered rather than named after a job:
     // the seed says where a track sits, not what the user must put on it.
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 1", "Track 2"]);
-    expect(project.timeline.tracks.map((track) => track.kind)).toEqual(["video", "video", "audio", "audio"]);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 3"]);
+    expect(project.timeline.tracks.map((track) => track.kind)).toEqual(["video", "video", "video"]);
     // GeneratorView inserts generated shots by id. Renaming the tracks must
     // not move that target off the first video track.
     expect(project.timeline.tracks[0].id).toBe(STORY_TRACK_ID);
@@ -108,6 +110,24 @@ describe("project schema", () => {
     expect(project.generationJobs[0].status).toBe("draft");
     expect(project).not.toHaveProperty("agentConversation");
     expect(project.providerSettings).toEqual({});
+  });
+
+  it("migrates legacy audio lanes onto canonical numbered tracks", () => {
+    const base = createProjectConfig({
+      name: "Legacy edit", prompt: "", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30,
+    });
+    const legacy = {
+      ...base,
+      timeline: { tracks: [
+        base.timeline.tracks[0],
+        { id: "track-music", kind: "audio" as const, name: "Music", locked: false, muted: false, clips: [] },
+        { id: "track-voice", kind: "audio" as const, name: "Voice-over", locked: false, muted: true, clips: [] },
+      ] },
+    };
+    const migrated = parseProjectConfig(legacy);
+    expect(migrated.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 3"]);
+    expect(migrated.timeline.tracks.map((track) => track.kind)).toEqual(["video", "video", "video"]);
+    expect(migrated.timeline.tracks[2].muted).toBe(true);
   });
 
   it("persists clip transforms, looks, and transitions while old clips keep defaults", () => {
@@ -572,6 +592,8 @@ describe("project schema", () => {
     const expected = structuredClone(completeFixture) as Record<string, unknown>;
     delete expected.agentConversation;
     for (const job of expected.generationJobs as Array<Record<string, unknown>>) delete job.compiledPrompt;
+    const expectedTimeline = expected.timeline as { tracks: ProjectConfig["timeline"]["tracks"] };
+    expected.timeline = { tracks: normalizeTimelineTracks(expectedTimeline.tracks) };
     expect(parseProjectConfig(completeFixture)).toEqual(expected);
   });
 
@@ -625,8 +647,8 @@ describe("project schema", () => {
       resolution: "4k",
       targetDurationSeconds: 34,
     }));
-    expect(project.timeline.tracks).toHaveLength(4);
-    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 1", "Track 2"]);
+    expect(project.timeline.tracks).toHaveLength(3);
+    expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 3"]);
     // Every demo clip has to land on a track that is actually in the seed.
     const trackIds = new Set(project.timeline.tracks.map((track) => track.id));
     expect(project.timeline.tracks.flatMap((track) => track.clips).every((clip) => trackIds.has(clip.trackId))).toBe(true);

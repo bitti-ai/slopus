@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
@@ -52,39 +53,29 @@ describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
-  it("can put back words an example chip overwrote", async () => {
+  it("uses a named, settings-only New Project form with any length from 10 seconds to 10 minutes", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    const box = screen.getByRole("textbox", { name: "Describe your video" }) as HTMLTextAreaElement;
-    fireEvent.change(box, { target: { value: "a rocket launch over the ocean at dawn" } });
-    // While the box holds the user's own words the row says what a click costs.
-    expect(container.querySelector(".idea-row__label")!.textContent).toBe("Replace what you’ve written with an example");
-    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "New project" })).not.toBeNull();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Untitled video");
+    expect(screen.queryByRole("textbox", { name: "Describe your video" })).toBeNull();
+    expect(screen.queryByText("What do you want to make?")).toBeNull();
+    expect(screen.queryByText(/Add reference images/)).toBeNull();
+    expect(screen.queryByText(/Not sure where to start/)).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Product reveal" }));
-    expect(box.value).toContain("wristwatch");
-    // A controlled textarea gives no native undo after a programmatic set, so
-    // the only route back is the one the app offers.
-    fireEvent.click(screen.getByRole("button", { name: /put my words back/ }));
-    expect(box.value).toBe("a rocket launch over the ocean at dawn");
-    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
-
-    // Browsing several examples is the ordinary way the row is used, so the
-    // offer must survive it — and must put back the ORIGINAL words, not the
-    // example the previous click left behind.
-    fireEvent.change(box, { target: { value: "a rocket launch over the ocean at dawn" } });
-    fireEvent.click(screen.getByRole("button", { name: "Product reveal" }));
-    fireEvent.click(screen.getByRole("button", { name: "Social ad" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mini documentary" }));
-    fireEvent.click(screen.getByRole("button", { name: /put my words back/ }));
-    expect(box.value).toBe("a rocket launch over the ocean at dawn");
-
-    // Replacing an untouched example is not a loss, so nothing is offered.
-    fireEvent.change(box, { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Social ad" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mini documentary" }));
-    expect(screen.queryByRole("button", { name: /put my words back/ })).toBeNull();
+    const length = screen.getByRole("slider", { name: "Length in seconds" });
+    expect(length).toHaveAttribute("min", "10");
+    expect(length).toHaveAttribute("max", "600");
+    expect(length).toHaveAttribute("step", "1");
+    expect(length).toHaveAttribute("aria-valuetext", "30 seconds");
+    expect(screen.queryByRole("spinbutton", { name: "Length in seconds" })).toBeNull();
+    fireEvent.change(length, { target: { value: "137" } });
+    expect(container.querySelector(".composer__options-value")!.textContent).toContain("2 minutes 17 seconds");
+    expect(length).toHaveAttribute("aria-valuetext", "2 minutes 17 seconds");
+    fireEvent.change(length, { target: { value: "600" } });
+    expect(length).toHaveAttribute("aria-valuetext", "10 minutes");
+    expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
   });
 
   it("focuses search with Ctrl/Cmd+K and switches between grid and list", async () => {
@@ -162,27 +153,25 @@ describe("project library controls", () => {
       .toBe("Vertical 9:16 · 544 × 960 · 30 seconds");
   });
 
-  it("opens a prompt-created project in Generator with its initial draft selected", async () => {
+  it("opens a newly named empty project on its Agent starting page", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Describe your video" }), { target: { value: "A quiet product film for a ceramic lamp" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Ceramic lamp film" } });
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-    await screen.findByRole("heading", { name: "Generator" });
-    expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
-    // The engine pill is one line now, and in the browser that line is the
-    // demo state rather than a paragraph explaining it.
-    expect(await screen.findByText("Preview mode")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "What should we create today?" })).not.toBeNull();
+    expect(screen.getByText("Ceramic lamp film")).not.toBeNull();
+    expect(screen.queryByText("First scene")).toBeNull();
   });
 
   it("creates an empty project when the new-project form is left blank", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    expect(screen.getByRole("dialog", { name: "What do you want to make?" })).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "New project" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    expect(await screen.findByRole("heading", { name: "Timeline editor" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "What should we create today?" })).not.toBeNull();
     expect(screen.getAllByText("Untitled video").length).toBeGreaterThan(0);
     expect(screen.queryByText("First scene")).toBeNull();
   });

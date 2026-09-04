@@ -109,42 +109,29 @@
     var(--shadow-sm);
 }
 
-/* The textarea fills the box, so a ring on it alone would float inside the
-   padding. Put the app's ring on the wrapper instead. Scoped with :has() so
-   the buttons and <summary> inside the composer — which draw their own rings —
-   never get a second one around the whole box. */
-.composer:has(textarea:focus-visible) {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
-}
-
-/* The description box is the hero: give it room to think in. */
-.composer__input-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
+/* Creation only names the project; creative direction starts on the Agent
+   page. Keep this field visually equal to the settings beneath it. */
+.composer__name-row {
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-5);
 }
 
-.composer__brand-mark {
-  margin-top: var(--space-1);
+.composer__name-row > span {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
-.composer textarea {
-  min-width: 0;
+.composer__name-row input {
   width: 100%;
-  min-height: calc(var(--space-9) + var(--space-5));
-  resize: none;
-  border: 0;
-  outline: 0;                          /* .composer:has(…) draws the ring */
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  background: transparent;
-  font-size: var(--text-md);
-  line-height: var(--leading-normal);
-}
-
-.composer textarea::placeholder {
-  color: var(--text-faint);
+  background: var(--panel-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
 }
 
 .composer__references {
@@ -255,7 +242,8 @@
   line-height: var(--leading-snug);
 }
 
-.composer__options-grid select {
+.composer__options-grid select,
+.composer__options-grid input {
   width: 100%;
   height: var(--field-height);
   padding: 0 var(--space-3);
@@ -267,8 +255,38 @@
   font-weight: var(--weight-medium);
 }
 
-.composer__options-grid select:hover {
+.composer__options-grid select:hover,
+.composer__options-grid input:hover {
   border-color: var(--accent-line-strong);
+}
+
+.composer__options-grid small {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+}
+
+.composer__duration > span output {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-weight: var(--weight-semibold);
+}
+
+.composer__options-grid .composer__duration input[type="range"] {
+  height: var(--field-height);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--accent-bright);
+  cursor: pointer;
+}
+
+.composer__options-grid .composer__duration input[type="range"]:hover {
+  border: 0;
+}
+
+.composer__duration-scale {
+  display: flex;
+  justify-content: space-between;
 }
 
 /* --- Composer action bar --------------------------------------------------- */
@@ -1033,7 +1051,7 @@
     padding: var(--space-5) var(--space-4);
   }
 
-  .composer__input-row,
+  .composer__name-row,
   .composer__references,
   .composer__options > summary,
   .composer__options-body {

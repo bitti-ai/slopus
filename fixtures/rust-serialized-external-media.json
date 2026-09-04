@@ -85,22 +85,6 @@
         "locked": false,
         "muted": false,
         "clips": []
-      },
-      {
-        "id": "track-voice-over",
-        "kind": "audio",
-        "name": "Voice-over",
-        "locked": false,
-        "muted": false,
-        "clips": []
-      },
-      {
-        "id": "track-music",
-        "kind": "audio",
-        "name": "Music",
-        "locked": false,
-        "muted": false,
-        "clips": []
       }
     ]
   },
