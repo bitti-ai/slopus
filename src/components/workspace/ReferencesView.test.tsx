@@ -107,6 +107,24 @@ describe("Reference type presets", () => {
     expect(screen.getByText("Sherlock Holmes · Benedict Cumberbatch")).toBeInTheDocument();
   });
 
+  it("shows a bundled MiniMax icon for an illustrated character preset", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Text" }));
+    const dialog = screen.getByRole("dialog", { name: "Choose a reference type" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Character" }));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "Abby Sciuto" } });
+    const preset = within(dialog).getByRole("button", { name: /Abby Sciuto/ });
+    expect(preset).toHaveClass("reference-preset-card--with-icon");
+    expect(preset.querySelector(".reference-preset-icon")).toHaveAttribute("src");
+    fireEvent.click(preset);
+
+    // Choosing a preset changes the definition, not the user's own reference
+    // name. The selected preset still supplies the matching artwork.
+    const detailIcon = screen.getByAltText("Hero reference icon");
+    expect(detailIcon).toHaveAttribute("src");
+    expect(detailIcon.parentElement).toHaveClass("reference-detail-art--preset");
+  });
+
   it("searches location templates and can return to a custom prompt", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "Text" }));

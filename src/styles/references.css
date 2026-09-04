@@ -115,9 +115,9 @@
 
 .reference-grid > button {
   min-width: 0;
-  min-height: 208px;
+  height: 156px;
   display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
+  grid-template-columns: 156px minmax(0, 1fr);
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--line);
@@ -203,6 +203,20 @@
   padding: var(--space-2) var(--space-2) var(--space-7);
 }
 
+.reference-detail-art--photo .reference-detail-preset-icon {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  object-fit: contain;
+}
+
+.reference-detail-art--preset {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
 .reference-detail-images {
   width: 100%;
   height: 100%;
@@ -271,13 +285,13 @@
   font: var(--weight-medium) var(--text-xs) / var(--leading-snug) var(--font-mono);
 }
 
-/* Clamp to three lines instead of a fixed pixel height that clipped mid-glyph. */
+/* Two lines keep the reference cards compact without clipping mid-glyph. */
 .reference-card__body p {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  margin: var(--space-3) 0;
+  margin: var(--space-2) 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
@@ -859,13 +873,41 @@
 }
 
 .reference-preset-grid > button {
-  min-height: 112px;
+  min-height: 104px;
   padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   background: var(--panel-3);
   text-align: left;
+  overflow: hidden;
+}
+
+.reference-preset-grid > button.reference-preset-card--with-icon {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: var(--space-3);
+  align-content: center;
+}
+
+.reference-preset-icon {
+  width: 80px;
+  height: 80px;
+  grid-column: 1;
+  grid-row: 1 / 4;
+  align-self: center;
+  object-fit: cover;
+  object-position: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.reference-preset-card--with-icon > small,
+.reference-preset-card--with-icon > b,
+.reference-preset-card--with-icon > span {
+  min-width: 0;
+  grid-column: 2;
 }
 
 .reference-preset-grid > button:hover {
@@ -1021,7 +1063,7 @@
   }
 
   .reference-grid > button {
-    grid-template-columns: 116px minmax(0, 1fr);
+    grid-template-columns: 156px minmax(0, 1fr);
   }
 
   .references-main {
