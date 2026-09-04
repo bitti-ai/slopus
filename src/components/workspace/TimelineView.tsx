@@ -1,6 +1,6 @@
 import {
-  Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen, Music2,
-  Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload, Video,
+  Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen,
+  Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload,
   Volume2, VolumeX, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,8 +29,14 @@ import { ProgramMonitor } from "./ProgramMonitor";
 import { sceneShape, STATUS_WORD } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
 import { CommittedNumberInput } from "./CommittedNumberInput";
+import { TimelineClipThumbnails } from "./TimelineClipThumbnails";
+import { TimelineClipWaveform } from "./TimelineClipWaveform";
 
 const MIN_DURATION = 10_000;
+/* One minute fills the visible ruler. Longer films keep that readable scale
+   and extend sideways inside a scrollable canvas instead of squeezing every
+   cut into the same width. */
+const VISIBLE_TIMELINE_MS = 60_000;
 /* How long a dropped clip is when the file itself cannot say.
    A drop normally lasts as long as the footage: the media panel decodes each
    file to draw its thumbnail and records the duration it read there (see
@@ -88,6 +94,7 @@ interface DragSession {
 function trackIdAtPoint(x: number, y: number): string | undefined {
   if (typeof document.elementsFromPoint !== "function") return undefined;
   for (const element of document.elementsFromPoint(x, y)) {
+    if (!element) continue;
     const lane = (element as HTMLElement).closest?.("[data-track-id]") as HTMLElement | null;
     if (lane?.dataset.trackId) return lane.dataset.trackId;
   }
@@ -189,17 +196,23 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
+  const selectedMediaAsset = config.assets.find((asset) => asset.id === selected?.assetId);
   const selectedTransform = selected ? clipTransform(selected) : null;
   const selectedLook = selected ? clipLook(selected) : null;
   const selectedTransition = selected ? clipTransition(selected) : null;
-  const visualControlsDisabled = selectedTrack?.kind !== "video" || selectedTrack.locked;
+  const visualControlsDisabled = selectedMediaAsset?.kind === "audio" || selectedTrack?.kind !== "video" || selectedTrack.locked;
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
   /** Where the last clip ends — where playback stops, which is not the same as
    *  where the ruler stops (the canvas is at least as long as the film the user
    *  asked for, however little of it is cut yet). */
   const contentEndMs = tracks.reduce((end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clipEndMs(clip)), end), 0);
   const duration = useMemo(() => canvasDuration(config), [config]);
+  const timelineWidth = `${Math.max(100, duration / VISIBLE_TIMELINE_MS * 100)}%`;
   const mediaAssets = useMemo(() => config.assets.filter((asset) => asset.kind !== "generated"), [config.assets]);
+  const assetsById = useMemo(() => new Map(config.assets.map((asset) => [asset.id, asset])), [config.assets]);
+  const generatedJobsByAssetId = useMemo(() => new Map(
+    config.generationJobs.map((job) => [generationAssetId(job.id), job]),
+  ), [config.generationJobs]);
   const ticks = useMemo(() => rulerTicks(duration), [duration]);
   /* The lanes are ruled at the SAME interval as the ruler above them, so a line
      under a clip is a line under a number. They used to be a fixed 14.7% of the
@@ -209,9 +222,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
 
-  /* The playhead is driven by the program monitor while playing — it reads
-     where the decoder actually is, so the picture and the playhead cannot
-     drift apart. These two are handed down rather than declared inline
+  /* The playhead is driven by the program monitor's monotonic animation clock
+     while playing. These two are handed down rather than declared inline
      because the monitor's animation loop depends on their identity: a new
      closure per render would tear its clock down sixty times a second. */
   const seek = useCallback((ms: number) => setPlayhead(ms), []);
@@ -233,6 +245,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const grid = timelineGrid.current;
     if (!grid) return;
     const onWheel = (event: WheelEvent) => {
+      // Preserve a trackpad's horizontal gesture for the long timeline's
+      // native scroll container. Vertical wheel movement remains scrubbing.
+      if (duration > VISIBLE_TIMELINE_MS && Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       const raw = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
       if (raw === 0) return;
       event.preventDefault();
@@ -364,6 +379,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
         durationMs: null,
         width: null,
         height: null,
+        hasAudio: file.kind === "audio" ? true : null,
         createdAt: now,
       }));
       onChange({ ...config, assets: [...config.assets, ...assets] });
@@ -375,11 +391,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     }
   };
 
-  /* A video or image belongs on a video track and a sound on an audio track;
-     dropping either on the other would make a clip nothing can ever play. */
+  /* Every lane is audiovisual, so video, stills, and sound can be arranged on
+     any unlocked track. */
   const acceptsAsset = (track: ProjectConfig["timeline"]["tracks"][number], asset: ProjectAsset | undefined) => {
     if (!asset || track.locked) return false;
-    return track.kind === "audio" ? asset.kind === "audio" : asset.kind !== "audio";
+    return asset.kind !== "caption";
   };
 
   const acceptsScene = (track: ProjectConfig["timeline"]["tracks"][number] | undefined, scene: GenerationJob | undefined) =>
@@ -399,6 +415,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     durationMs: asset.durationMs ?? value.durationMs,
     width: asset.width ?? value.width,
     height: asset.height ?? value.height,
+    hasAudio: asset.hasAudio ?? value.hasAudio,
   });
   /* Measurements arrive from asynchronous decodes, and two of them can land
      between one render and the next. They queue here so that two arriving in
@@ -433,7 +450,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
         const value = pending.get(asset.id);
         if (!value) return asset;
         const next = applyMeasured(asset, value);
-        if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height) return asset;
+        if (next.durationMs === asset.durationMs && next.width === asset.width && next.height === asset.height && next.hasAudio === asset.hasAudio) return asset;
         learned = true;
         return next;
       });
@@ -728,7 +745,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               onClick={() => void importMedia()}
               disabled={importing || !isTauri()}
               title={isTauri() ? "Add video, sound, or image files — video and sound stay where they are, images are copied in" : "Importing files is available in the desktop app"}
-            ><Upload size={16} /> {importing ? "Importing…" : "Import"}</button>
+            ><Upload size={16} /> Import</button>
             <div className="layout-toggle" role="group" aria-label="Media layout">
                 <button
                   className={mediaLayout === "grid" ? "active" : ""}
@@ -764,7 +781,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     setDraggedAsset(undefined);
                   }}
                   onDragEnd={() => { setDraggedScene(undefined); setDropTrackId(null); }}
-                  title={`${job.title} — drag onto a video track below`}
+                  title={`${job.title} — drag onto a track below`}
                 >
                   <span className="scene-card__thumb">
                     {job.status !== "draft" && <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />}
@@ -923,11 +940,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
           </div>
         </header>
-        <div
-          className="timeline-grid"
-          ref={timelineGrid}
-          style={{ "--lane-grid": `${(tickStepMs / duration) * 100}%` } as React.CSSProperties}
-          title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
+        <div className={`timeline-grid-scroll${duration > VISIBLE_TIMELINE_MS ? " timeline-grid-scroll--wide" : ""}`}>
+          <div
+            className="timeline-grid"
+            ref={timelineGrid}
+            style={{ "--lane-grid": `${(tickStepMs / duration) * 100}%`, width: timelineWidth } as React.CSSProperties}
+            title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
           <div className="track-corner"><span>Tracks</span></div>
           {/* Press to jump, hold and drag to scrub. The monitor seeks to wherever
               this lands, so dragging along the ruler runs the picture past under
@@ -952,15 +970,17 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             key={track.id}
             track={track}
             duration={duration}
+            folderPath={folderPath}
+            generatedJobsByAssetId={generatedJobsByAssetId}
+            assetsById={assetsById}
             selectedId={selectedId}
             draggingId={dragging ? dragRef.current?.clipId : undefined}
             onClipPointerDown={beginDrag}
             onDeleteClip={deleteClip}
             dropActive={dropTrackId === track.id}
             /* A lane that stays dark is indistinguishable from a lane the
-               pointer simply is not over, so a sound held above a video track
-               looked like it had not been picked up rather than like it was
-               being refused. Marked for the whole drag, not just on hover. */
+               pointer simply is not over. Mark incompatible or locked lanes
+               for the whole drag, not just on hover. */
             dropBlocked={(draggedAsset !== undefined && !acceptsAsset(track, draggedAsset))
               || (draggedScene !== undefined && !acceptsScene(track, draggedScene))}
             onSelect={setSelectedId}
@@ -992,16 +1012,20 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               dropAsset(track.id, assetId, ratio, rect.width);
             }}
           />)}
-          <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
+            <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlocked, onSelect, onToggle, onRename, onClipPointerDown, onDeleteClip, onDragOverLane, onDragLeaveLane, onDropLane }: {
+function TrackRow({ track, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, onSelect, onToggle, onRename, onClipPointerDown, onDeleteClip, onDragOverLane, onDragLeaveLane, onDropLane }: {
   track: ProjectConfig["timeline"]["tracks"][number];
   duration: number;
+  folderPath: string;
+  generatedJobsByAssetId: ReadonlyMap<string, GenerationJob>;
+  assetsById: ReadonlyMap<string, ProjectAsset>;
   selectedId: string;
   /** The clip currently being dragged, so it can be drawn as the thing under
    *  the pointer rather than as one more clip sitting on the lane. */
@@ -1017,14 +1041,10 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
   onDragLeaveLane: () => void;
   onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
 }) {
-  /* The name no longer carries its kind ("Track 1, Video" is now "Track 1"),
-     which the icon and the line under the field already say — but that leaves a
-     video and an audio track both called "Track 1", and a button announced as
-     "Mute Track 1" twice names neither. The controls say which one in full. */
-  const named = `${track.kind === "audio" ? "audio" : "video"} ${track.name}`;
+  const named = track.name;
   return <>
     <div className="track-head">
-      <span className={`track-kind track-kind--${track.kind}`}>{track.kind === "audio" ? <Music2 size={16} /> : <Video size={16} />}</span>
+      <span className="track-kind"><Film size={16} /></span>
       {/* The name is an editable field, not a label: a project with three video
           layers needs the user's own words on them, and an always-live input
           needs no discovery. Blanking it falls back the way a clip name does,
@@ -1035,8 +1055,8 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
         aria-label={`Rename ${named}`}
         title="Rename this track"
         onChange={(event) => onRename(track.id, event.target.value || "Untitled track")}
-      /><small>{track.kind === "audio" ? "Audio" : "Video"}</small></div>
-      <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} ${named}`} title={`${track.muted ? "Unmute" : "Mute"} ${named}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+      /></div>
+      <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`} title={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
       <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} title={`${track.locked ? "Unlock" : "Lock"} ${named}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
     </div>
     <div
@@ -1045,12 +1065,25 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
          lanes is hit-tested against the document, and the id is how the answer
          gets back to the model. */
       data-track-id={track.id}
-      title={dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} only takes ${track.kind === "audio" ? "sound" : "video and pictures"}`) : undefined}
+      title={dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} cannot take this item`) : undefined}
       onDragOver={onDragOverLane}
       onDragLeave={onDragLeaveLane}
       onDrop={onDropLane}
     >
-      {track.clips.map((clip) => <div
+      {track.clips.map((clip) => {
+        const asset = assetsById.get(clip.assetId);
+        const audioOnly = asset?.kind === "audio";
+        const generation = generatedJobsByAssetId.get(clip.assetId);
+        /* Current renders record this exactly. Completed files from projects
+           saved before that metadata existed use the successful saved output
+           as the compatibility signal; an explicit false always wins. */
+        const hasAudio = audioOnly || asset?.hasAudio === true || Boolean(
+          asset?.kind === "generated"
+          && asset.hasAudio == null
+          && generation?.outputRelativePath
+          && !generation.error?.startsWith("Saved without sound"),
+        );
+        return <div
         key={clip.id}
         className={`clip-slot ${selectedId === clip.id ? "selected" : ""} ${draggingId === clip.id ? "clip-slot--dragging" : ""}`}
         style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties}
@@ -1061,7 +1094,7 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
             can make sense of. Everything a button gave it is still here —
             focus, Enter, the pressed state, a name. */}
         <div
-          className={`timeline-clip timeline-clip--${track.kind} ${selectedId === clip.id ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
+          className={`timeline-clip ${audioOnly ? "timeline-clip--audio-only" : ""} ${hasAudio ? "timeline-clip--has-audio" : ""} ${selectedId === clip.id ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
           role="button"
           tabIndex={0}
           aria-pressed={selectedId === clip.id}
@@ -1072,7 +1105,19 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
           onClick={() => onSelect(clip.id)}
           onKeyDown={(event) => { if (event.key === "Enter") onSelect(clip.id); }}
           onPointerDown={(event) => onClipPointerDown(event, clip, "move")}
-        ><span className="clip-text"><b>{clip.label}</b><small>{track.kind === "audio" ? "▂▅▃▆▂▃▇▅▂▆▃▅▂" : `${(clip.durationMs / 1000).toFixed(1)}s · ${clip.status}`}</small></span></div>
+        >
+          {!audioOnly && generation && <TimelineClipThumbnails
+            folderPath={folderPath}
+            job={generation}
+            clip={clip}
+          />}
+          {hasAudio && asset && <TimelineClipWaveform
+            folderPath={folderPath}
+            asset={asset}
+            clip={clip}
+            cacheVersion={generation?.updatedAt}
+          />}
+        </div>
         {/* The two ends, which cut rather than move. They stop the press from
             reaching the clip body, or every trim would also be a move. A locked
             track gets none of them: nothing on it can be changed. */}
@@ -1095,7 +1140,8 @@ function TrackRow({ track, duration, selectedId, draggingId, dropActive, dropBlo
             onClick={(event) => { event.stopPropagation(); onDeleteClip(clip.id); }}
           ><X size={12} /></button>
         </>}
-      </div>)}
+      </div>;
+      })}
     </div>
   </>;
 }

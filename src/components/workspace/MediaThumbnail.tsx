@@ -44,11 +44,28 @@ export interface MeasuredMedia {
   durationMs: number | null;
   width: number | null;
   height: number | null;
+  hasAudio: boolean | null;
 }
 
-const NOTHING_MEASURED: MeasuredMedia = { durationMs: null, width: null, height: null };
+const NOTHING_MEASURED: MeasuredMedia = { durationMs: null, width: null, height: null, hasAudio: null };
 const measuredSomething = (measured: MeasuredMedia) =>
-  measured.durationMs !== null || measured.width !== null || measured.height !== null;
+  measured.durationMs !== null || measured.width !== null || measured.height !== null || measured.hasAudio !== null;
+
+type AudioAwareVideo = HTMLVideoElement & {
+  mozHasAudio?: boolean;
+  webkitAudioDecodedByteCount?: number;
+  audioTracks?: { length: number };
+};
+
+/** Browser engines expose audio-stream presence through different optional
+ * properties. Unknown stays null; guessing false would hide real sound. */
+const videoHasAudio = (element: HTMLVideoElement): boolean | null => {
+  const video = element as AudioAwareVideo;
+  if (typeof video.mozHasAudio === "boolean") return video.mozHasAudio;
+  if (video.audioTracks) return video.audioTracks.length > 0;
+  if (typeof video.webkitAudioDecodedByteCount === "number" && video.webkitAudioDecodedByteCount > 0) return true;
+  return null;
+};
 
 /* A media element reports `duration` as NaN before metadata arrives and
    Infinity for a live or unseekable stream. Neither is a length. */
@@ -131,6 +148,7 @@ async function videoPoster(url: string, posterTimeSeconds: number, jpegQuality: 
     durationMs: durationMsOf(video),
     width: pixelsOf(video.videoWidth),
     height: pixelsOf(video.videoHeight),
+    hasAudio: videoHasAudio(video),
   };
   const target = Number.isFinite(video.duration)
     ? Math.min(Math.max(0, video.duration - 0.05), Math.max(0, posterTimeSeconds))
@@ -156,7 +174,7 @@ async function imagePoster(url: string, jpegQuality: number): Promise<{ poster: 
   // point: how long a still is on screen is the cut's decision, not the file's.
   return {
     poster: tryDraw(image, image.naturalWidth, image.naturalHeight, jpegQuality),
-    measured: { durationMs: null, width: pixelsOf(image.naturalWidth), height: pixelsOf(image.naturalHeight) },
+    measured: { durationMs: null, width: pixelsOf(image.naturalWidth), height: pixelsOf(image.naturalHeight), hasAudio: false },
   };
 }
 
@@ -167,7 +185,7 @@ async function measureAudio(url: string): Promise<MeasuredMedia> {
   audio.preload = "metadata";
   audio.src = url;
   await settled(audio, "loadedmetadata");
-  const measured: MeasuredMedia = { durationMs: durationMsOf(audio), width: null, height: null };
+  const measured: MeasuredMedia = { durationMs: durationMsOf(audio), width: null, height: null, hasAudio: true };
   release(audio);
   return measured;
 }
@@ -176,7 +194,9 @@ async function measureAudio(url: string): Promise<MeasuredMedia> {
  *  a duration, so asking for one forever would re-read the file on every
  *  mount; sound never gets a size. */
 const wantsMeasuring = (asset: ProjectAsset) =>
-  asset.kind === "image" ? !asset.width || !asset.height : !asset.durationMs;
+  asset.kind === "image"
+    ? !asset.width || !asset.height
+    : !asset.durationMs || (asset.kind === "video" && asset.hasAudio == null);
 
 export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS, jpegQuality = DEFAULT_JPEG_QUALITY }: {
   folderPath: string;

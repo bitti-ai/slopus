@@ -19,6 +19,7 @@ import {
   type ClipLook,
   type ClipTransform,
   type ClipTransition,
+  type ProjectAsset,
   type ProjectConfig,
   type Resolution,
   type TimelineClip,
@@ -291,6 +292,21 @@ export interface AudioSegment {
   sourceStartMs: number;
 }
 
+const assetCarriesAudio = (asset: ProjectAsset | undefined): boolean => Boolean(
+  asset && (asset.kind === "audio" || ((asset.kind === "video" || asset.kind === "generated") && asset.hasAudio === true)),
+);
+
+const assetCarriesPicture = (asset: ProjectAsset | undefined): boolean =>
+  asset?.kind !== "audio" && asset?.kind !== "caption";
+
+const audioTimelineClips = (config: ProjectConfig, muted: boolean) => {
+  const assets = new Map(config.assets.map((asset) => [asset.id, asset]));
+  return config.timeline.tracks
+    .filter((track) => track.muted === muted)
+    .flatMap((track) => track.clips)
+    .filter((clip) => assetCarriesAudio(assets.get(clip.assetId)));
+};
+
 /** Every audio clip's audible part, in timeline order.
  *
  *  Overlaps are NOT resolved here: two clips over the same moment are two
@@ -298,9 +314,11 @@ export interface AudioSegment {
  *  not a segment — a gap is simply a stretch no segment covers. */
 export function audioSegments(config: ProjectConfig, durationMs: number): AudioSegment[] {
   const segments: AudioSegment[] = [];
+  const assets = new Map(config.assets.map((asset) => [asset.id, asset]));
   for (const track of config.timeline.tracks) {
-    if (track.kind !== "audio" || track.muted) continue;
+    if (track.muted) continue;
     for (const clip of track.clips) {
+      if (!assetCarriesAudio(assets.get(clip.assetId))) continue;
       const start = Math.max(0, clip.startMs);
       const end = Math.min(durationMs, clip.startMs + clip.durationMs);
       if (end <= start) continue;
@@ -330,7 +348,7 @@ export interface ExportPlan {
   clipCount: number;
   /** Frames with nothing over them; they get the project's background colour. */
   gapFrames: number;
-  /** Clips on audio tracks, muted tracks included. */
+  /** Clips carrying audio streams, muted tracks included. */
   audioClipCount: number;
   /** The audible part of each one. Empty means the file has no sound, and the
    *  notes say why. */
@@ -365,11 +383,16 @@ export function sourceTimeMsForFrame(
  *  has something at this moment wins — an overlay covers the story beneath it.
  *  Within one track two clips can overlap after a drag; the later one is the
  *  more recent edit, so it is the one on top. */
-export function visibleClipAt(tracks: TimelineTrack[], timeMs: number): TimelineClip | null {
+export function visibleClipAt(
+  tracks: TimelineTrack[],
+  timeMs: number,
+  assetsById?: ReadonlyMap<string, ProjectAsset>,
+): TimelineClip | null {
   for (const track of tracks) {
     if (track.kind !== "video") continue;
     let best: TimelineClip | null = null;
     for (const clip of track.clips) {
+      if (assetsById && !assetCarriesPicture(assetsById.get(clip.assetId))) continue;
       if (timeMs < clip.startMs || timeMs >= clip.startMs + clip.durationMs) continue;
       if (!best || clip.startMs >= best.startMs) best = clip;
     }
@@ -382,9 +405,11 @@ export function visibleClipAt(tracks: TimelineTrack[], timeMs: number): Timeline
  *  past the last shot cannot extend the file — claiming otherwise would promise
  *  frames that do not exist. */
 export function videoDurationMs(config: ProjectConfig): number {
+  const assets = new Map(config.assets.map((asset) => [asset.id, asset]));
   return config.timeline.tracks
     .filter((track) => track.kind === "video")
     .flatMap((track) => track.clips)
+    .filter((clip) => assetCarriesPicture(assets.get(clip.assetId)))
     .reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
 }
 
@@ -393,6 +418,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   const frameRate = settings.frameRate;
   const tracks = config.timeline.tracks;
   const videoTracks = tracks.filter((track) => track.kind === "video");
+  const assetsById = new Map(config.assets.map((asset) => [asset.id, asset]));
   const durationMs = videoDurationMs(config);
   const frameCount = Math.round((durationMs * frameRate) / 1000);
 
@@ -402,7 +428,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   const segments: ExportSegment[] = [];
   let gapFrames = 0;
   for (let frame = 0; frame < frameCount; frame += 1) {
-    const clip = visibleClipAt(videoTracks, (frame * 1000) / frameRate);
+    const clip = visibleClipAt(videoTracks, (frame * 1000) / frameRate, assetsById);
     const last = segments[segments.length - 1];
     if (!clip) {
       gapFrames += 1;
@@ -428,9 +454,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   }
 
   const usedClipIds = new Set(segments.flatMap((segment) => (segment.kind === "clip" ? [segment.clipId] : [])));
-  const audioClipCount = tracks
-    .filter((track) => track.kind === "audio")
-    .reduce((total, track) => total + track.clips.length, 0);
+  const audioClipCount = audioTimelineClips(config, false).length + audioTimelineClips(config, true).length;
 
   const blockers: string[] = [];
   if (frameCount === 0) {
@@ -497,9 +521,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   /* Audio the file cannot hold, counted rather than dropped in silence. The
      picture decides the length; sound past the last frame has nowhere to go. */
   const audible = new Set(audio.map((segment) => segment.clipId));
-  const beyondPicture = tracks
-    .filter((track) => track.kind === "audio" && !track.muted)
-    .flatMap((track) => track.clips)
+  const beyondPicture = audioTimelineClips(config, false)
     .filter((clip) => !audible.has(clip.id)).length;
   if (beyondPicture > 0) {
     notes.push(
@@ -512,9 +534,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       `The sound stops with the picture at ${formatDuration(durationMs)}, where ${trimmed === 1 ? "one clip is" : `${trimmed} clips are`} cut off.`,
     );
   }
-  const mutedClips = tracks
-    .filter((track) => track.kind === "audio" && track.muted)
-    .reduce((total, track) => total + track.clips.length, 0);
+  const mutedClips = audioTimelineClips(config, true).length;
   if (mutedClips > 0) {
     notes.push(`${mutedClips} audio ${mutedClips === 1 ? "clip is" : "clips are"} on a muted track and will not be heard.`);
   }
@@ -525,6 +545,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   }
   const unusedClips = videoTracks
     .flatMap((track) => track.clips)
+    .filter((clip) => assetCarriesPicture(assetsById.get(clip.assetId)))
     .filter((clip) => !usedClipIds.has(clip.id));
   if (unusedClips.length > 0) {
     notes.push(
