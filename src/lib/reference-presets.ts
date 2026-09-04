@@ -12,7 +12,21 @@ export interface ReferencePreset {
   name: string;
   prompt: string;
   searchTerms?: string;
+  /** A build-time MiniMax render bundled by Vite. It is presentation only and
+   *  is never silently attached to a generation as a reference image. */
+  icon?: string;
 }
+
+const referenceIconModules = import.meta.glob("../assets/reference-icons/*.jpg", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const iconForPreset = (id: string): string | undefined =>
+  referenceIconModules[`../assets/reference-icons/${id}.jpg`];
+
+const withIcon = (preset: ReferencePreset): ReferencePreset => ({ ...preset, icon: iconForPreset(preset.id) });
 
 export const REFERENCE_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
   { id: "custom", label: "Text" },
@@ -60,7 +74,7 @@ const safeId = (value: string) => value.toLocaleLowerCase().normalize("NFKD")
 const duplicateNames = new Map<string, number>();
 for (const [name] of KNOWN_CHARACTERS) duplicateNames.set(name, (duplicateNames.get(name) ?? 0) + 1);
 
-const knownCharacterPresets: ReferencePreset[] = KNOWN_CHARACTERS.map(([name, actor, franchise], index) => ({
+const knownCharacterPresets: ReferencePreset[] = KNOWN_CHARACTERS.map<ReferencePreset>(([name, actor, franchise], index) => ({
   id: `character-known-${safeId(name)}-${index + 1}`,
   type: "character",
   subcategory: characterSubcategory(franchise),
@@ -69,7 +83,7 @@ const knownCharacterPresets: ReferencePreset[] = KNOWN_CHARACTERS.map(([name, ac
     ? `${name}.`
     : (duplicateNames.get(name) ?? 0) > 1 ? `${name}, ${actor} portrayal.` : `${name} from ${franchise}.`,
   searchTerms: `${actor} ${franchise}`,
-}));
+})).map(withIcon);
 
 /** Product, location and style catalogs contain unique subjects. Qualifying
  * adjectives no longer multiply each subject into five near-duplicates. */
@@ -82,9 +96,9 @@ const optionsAsPresets = (type: PresetReferenceType, groups: readonly OptionGrou
     prompt: `${option}.`,
   })));
 
-const productPresets = optionsAsPresets("product", PRODUCT_GROUPS);
-const locationPresets = optionsAsPresets("location", LOCATION_GROUPS);
-const stylePresets = optionsAsPresets("style", STYLE_GROUPS);
+const productPresets = optionsAsPresets("product", PRODUCT_GROUPS).map(withIcon);
+const locationPresets = optionsAsPresets("location", LOCATION_GROUPS).map(withIcon);
+const stylePresets = optionsAsPresets("style", STYLE_GROUPS).map(withIcon);
 
 export type LocationSettings = Partial<Record<(typeof LOCATION_SETTING_GROUPS)[number]["id"], string>>;
 
@@ -124,7 +138,7 @@ export function locationSelectionFromPrompt(prompt: string): LocationSelection |
   return undefined;
 }
 
-const curatedCharacterPresets: ReferencePreset[] = [
+const curatedCharacterPresets: ReferencePreset[] = ([
   { id: "character-alice", type: "character", subcategory: "Literature & legend", name: "Alice in Wonderland", prompt: "Alice in her blue dress and white apron." },
   { id: "character-dracula", type: "character", subcategory: "Literature & legend", name: "Count Dracula", prompt: "Count Dracula in formal black evening wear." },
   { id: "character-robin-hood", type: "character", subcategory: "Literature & legend", name: "Robin Hood", prompt: "Robin Hood in practical forest-green clothing." },
@@ -132,7 +146,7 @@ const curatedCharacterPresets: ReferencePreset[] = [
   { id: "character-frankenstein", type: "character", subcategory: "Literature & legend", name: "Frankenstein's Creature", prompt: "Frankenstein's towering, solemn creature." },
   { id: "character-dorothy-gale", type: "character", subcategory: "Literature & legend", name: "Dorothy Gale", prompt: "Dorothy Gale in a blue gingham dress." },
   { id: "character-king-arthur", type: "character", subcategory: "Literature & legend", name: "King Arthur", prompt: "King Arthur in polished medieval armor." },
-];
+] as ReferencePreset[]).map(withIcon);
 
 export const REFERENCE_PRESETS: readonly ReferencePreset[] = [
   ...knownCharacterPresets,

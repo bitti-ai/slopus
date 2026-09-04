@@ -31,6 +31,12 @@ describe("reference preset catalog", () => {
     expect(Math.max(...REFERENCE_PRESETS.map((preset) => preset.prompt.length))).toBeLessThanOrEqual(100);
   });
 
+  it("bundles an icon for every concrete visual preset without treating it as a generation reference", () => {
+    const visual = REFERENCE_PRESETS.filter((preset) => preset.type === "character" || preset.type === "product" || preset.type === "location" || preset.type === "style");
+    expect(visual).toHaveLength(810);
+    expect(visual.every((preset) => typeof preset.icon === "string" && preset.icon.length > 0)).toBe(true);
+  });
+
   it("does not multiply products or styles by adjectives", () => {
     expect(REFERENCE_PRESETS.some((preset) => /^(Eco|Premium|Rugged|Textured|Bright) /.test(preset.name))).toBe(false);
   });

@@ -40,6 +40,8 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const [locationSettings, setLocationSettings] = useState<LocationSettings>({});
   const selected = config.references.find((ref) => ref.id === selectedId);
   const selectedImages = selected ? referenceImages(selected) : [];
+  const selectedPreset = selected ? selectedReferencePreset(selected) : undefined;
+  const selectedPresetIcon = selectedImages.length === 0 ? selectedPreset?.icon : undefined;
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => onChange({ ...config, references: config.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
   // Starts empty on purpose. Seeding it with the instruction text meant an
@@ -165,9 +167,12 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
           {config.references.map((ref) => {
             const images = referenceImages(ref);
             const cover = images[0];
+            const presetIcon = selectedReferencePreset(ref)?.icon;
             return <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {cover
               ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={cover.relativePath} sourcePath={cover.sourcePath} alt={cover.name} /></span>
+              : presetIcon
+                ? <span className="reference-art reference-art--photo"><img src={presetIcon} alt="" /></span>
               : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
             <span className="reference-card__body"><span><b>{ref.name}</b><small>{referenceKindLabel(ref)}</small></span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
@@ -194,14 +199,16 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </> : <h2>Reference details</h2>}</header>
       <div className="reference-inspector__scroll">
         {selected ? <>
-          <div className={`reference-detail-art${selectedImages.length > 0 ? " reference-detail-art--photo" : " reference-detail-art--text"}`}>
+          <div className={`reference-detail-art${selectedImages.length > 0 || selectedPresetIcon ? " reference-detail-art--photo" : " reference-detail-art--text"}${selectedPresetIcon ? " reference-detail-art--preset" : ""}`}>
             {selectedImages.length > 0
               ? <div className="reference-detail-images">{selectedImages.map((image) => <ReferenceImage key={image.id} folderPath={folderPath} relativePath={image.relativePath} sourcePath={image.sourcePath} alt={image.name} />)}</div>
+              : selectedPresetIcon
+                ? <img className="reference-detail-preset-icon" src={selectedPresetIcon} alt={`${selected.name} reference icon`} />
               : <span><Users size={30} /></span>}
             {/* A caption only where there is no picture to look at. It used
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
-            {selectedImages.length === 0 && <em>{referenceKindLabel(selected)}</em>}
+            {selectedImages.length === 0 && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
           </div>
           <div className="reference-fields">
             {referenceType(selected) === "custom" ? <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label> : <div className="reference-preset-summary">
@@ -268,7 +275,8 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
               <small className="reference-location-settings__preview">{composeLocationPrompt(chosenLocationPreset, locationSettings)}</small>
             </div>}
             <div className="reference-preset-grid">
-              {visiblePresets.map((preset) => <button key={preset.id} className={preset.id === locationPresetId ? "active" : ""} aria-pressed={preset.type === "location" ? preset.id === locationPresetId : undefined} onClick={() => choosePreset(preset)}>
+              {visiblePresets.map((preset) => <button key={preset.id} className={`${preset.id === locationPresetId ? "active" : ""}${preset.icon ? " reference-preset-card--with-icon" : ""}`.trim()} aria-pressed={preset.type === "location" ? preset.id === locationPresetId : undefined} onClick={() => choosePreset(preset)}>
+                {preset.icon && <img className="reference-preset-icon" src={preset.icon} alt="" loading="lazy" />}
                 <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
               </button>)}
               {visiblePresets.length === 0 && <p>No options match that search.</p>}
