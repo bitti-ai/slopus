@@ -188,7 +188,7 @@ describe("a shot's picture", () => {
     const rendering = screen.getByText("Rendering 42%");
     expect(rendering.tagName).toBe("EM");
     expect(rendering.nextElementSibling?.classList.contains("shot-thumb__eta")).toBe(true);
-    expect(rendering.nextElementSibling?.textContent).toMatch(/^About 1m 30s left$/);
+    expect(rendering.nextElementSibling?.textContent).toBe("1m 30s left");
   });
 
   it("says a finished scene could not be previewed rather than showing nothing", async () => {

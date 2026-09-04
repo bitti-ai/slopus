@@ -1,14 +1,17 @@
-import { AlertCircle, Check, FolderSearch, LoaderCircle, Monitor, Moon, RefreshCw, RotateCcw, Sun, X } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type VidfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
-  isEndpointProviderConfigured, loadAgentEndpointSettings, loadEngineSettings,
-  saveAgentEndpointSettings, saveEngineSettings,
+  createGeneratorTemplate, defaultGeneratorTemplate,
+  isEndpointProviderConfigured, loadAgentEndpointSettings,
+  loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
-  type EnginePathField, type EnginePathId, type EngineSettings,
+  type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplateSettings,
 } from "../lib/settings";
+import { MAX_GENERATION_STEPS } from "../lib/project";
 import {
   applyTheme, loadTheme, saveTheme, systemTheme, watchSystemTheme,
   type ResolvedTheme, type ThemeChoice,
@@ -137,7 +140,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
   };
 
   return <div className="llm-settings">
-    <p className="llm-settings__intro">Configured providers appear in Slop’s prompt LLM list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
+    <p className="llm-settings__intro">Configured providers appear in Slop’s agent list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
     {endpointProviders.map((provider) => {
       const value = settings[provider.id];
       const configured = isEndpointProviderConfigured(provider.id, value);
@@ -173,6 +176,45 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
   </div>;
 }
 
+function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
+  const [info, setInfo] = useState<DiagnosticLogInfo | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!desktop) return;
+    void getDiagnosticLogInfo().then(setInfo).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [desktop]);
+
+  const reveal = async () => {
+    setOpening(true);
+    setError(null);
+    try {
+      const next = await revealDiagnosticLog();
+      if (next) setInfo(next);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return <div className="diagnostics-setting">
+    <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
+    <div>
+      <h2>Application log</h2>
+      <p>PolStudio records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
+      <p>Prompt text and credentials are not recorded. Sensitive fields are redacted again when each record is written.</p>
+      <code title={info?.path}>{desktop ? info?.path ?? "Locating the log…" : "Available in the desktop app"}</code>
+      {info?.previousPath && <small>A previous rotated log is stored beside this file.</small>}
+      <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()}>
+        {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
+      </button>
+      {error && <p className="diagnostics-setting__error" role="alert">{error}</p>}
+    </div>
+  </div>;
+}
+
 /* Two things live on this screen and they have nothing to do with each other:
    how the app looks, and where this computer keeps the model files. Stacked,
    they made a screen taller than the window — five path fields is a long list —
@@ -180,8 +222,9 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
    each, and neither scrolls on an ordinary window. */
 const TABS = [
   { id: "engine", label: "Video engine" },
-  { id: "llms", label: "Prompt LLMs" },
+  { id: "llms", label: "Agents" },
   { id: "appearance", label: "Appearance" },
+  { id: "diagnostics", label: "Diagnostics" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -190,14 +233,20 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
      before anything can be rendered, and its status line answers "is PolStudio
      ready?" without a click. */
   const [tab, setTab] = useState<TabId>("engine");
-  const [settings, setSettings] = useState<EngineSettings>(() => loadEngineSettings());
+  const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState<VidfabStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
 
-  const probe = useCallback(() => {
+  const defaultTemplate = defaultGeneratorTemplate(templateSettings);
+  const selectedTemplate = templateSettings.templates.find((template) => template.id === editingTemplateId)
+    ?? defaultTemplate;
+  const settings = selectedTemplate.paths;
+
+  const probe = useCallback((paths?: EngineSettings) => {
     setStatus(null);
-    void getEngineStatus().then(setStatus).catch(() => setStatus(null));
+    void getEngineStatus(paths).then(setStatus).catch(() => setStatus(null));
   }, []);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
@@ -205,14 +254,19 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
      The probe is deliberately NOT per keystroke: it touches the disk and loads
      the engine library. It runs when a field is left or a path is picked. */
   const update = (id: EnginePathId, value: string) => {
-    setSettings((current) => {
-      const next = { ...current, [id]: value };
-      saveEngineSettings(next);
+    setTemplateSettings((current) => {
+      const next = {
+        ...current,
+        templates: current.templates.map((template) => template.id === selectedTemplate.id
+          ? { ...template, paths: { ...template.paths, [id]: value } }
+          : template),
+      };
+      saveGeneratorTemplateSettings(next);
       return next;
     });
   };
 
-  useEffect(probe, [probe]);
+  useEffect(() => { probe(settings); }, [probe, editingTemplateId, templateSettings.defaultTemplateId]);
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -226,16 +280,63 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
       const picked = await chooseEnginePath(field);
       if (!picked) return;
       update(field.id, picked);
-      probe();
+      probe({ ...settings, [field.id]: picked });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
 
   const clearAll = () => {
-    setSettings({ ...EMPTY_ENGINE_SETTINGS });
-    saveEngineSettings({ ...EMPTY_ENGINE_SETTINGS });
-    probe();
+    setTemplateSettings((current) => {
+      const next = {
+        ...current,
+        templates: current.templates.map((template) => template.id === selectedTemplate.id
+          ? { ...template, paths: { ...EMPTY_ENGINE_SETTINGS } }
+          : template),
+      };
+      saveGeneratorTemplateSettings(next);
+      return next;
+    });
+    probe({ ...EMPTY_ENGINE_SETTINGS });
+  };
+
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps">>) => {
+    setTemplateSettings((current) => {
+      const next = {
+        ...current,
+        templates: current.templates.map((template) => template.id === selectedTemplate.id ? { ...template, ...updates } : template),
+      };
+      saveGeneratorTemplateSettings(next);
+      return next;
+    });
+  };
+
+  const addTemplate = () => {
+    const created = createGeneratorTemplate(`Generator ${templateSettings.templates.length + 1}`);
+    setTemplateSettings((current) => {
+      const next = { ...current, templates: [...current.templates, created] };
+      saveGeneratorTemplateSettings(next);
+      return next;
+    });
+    setEditingTemplateId(created.id);
+  };
+
+  const removeTemplate = (id: string) => {
+    if (templateSettings.templates.length <= 1) return;
+    const remaining = templateSettings.templates.filter((template) => template.id !== id);
+    const next: GeneratorTemplateSettings = {
+      templates: remaining,
+      defaultTemplateId: id === templateSettings.defaultTemplateId ? remaining[0].id : templateSettings.defaultTemplateId,
+    };
+    setTemplateSettings(next);
+    saveGeneratorTemplateSettings(next);
+    if (editingTemplateId === id) setEditingTemplateId(null);
+  };
+
+  const makeDefault = (id: string) => {
+    const next = { ...templateSettings, defaultTemplateId: id };
+    setTemplateSettings(next);
+    saveGeneratorTemplateSettings(next);
   };
 
   const missing = ENGINE_PATH_FIELDS.filter((field) => field.required && pathState(field, settings[field.id], status) !== "found");
@@ -252,7 +353,9 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
             tablist rather than two buttons that happen to swap the content:
             the arrow keys move between them, and the panel below is named by
             the tab that opened it. */}
-        <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        {editingTemplateId ? <div className="settings-tabs settings-tabs--editor">
+          <button type="button" className="generator-editor__back" onClick={() => setEditingTemplateId(null)}><ChevronLeft size={16} /> Generators</button>
+        </div> : <div className="settings-tabs" role="tablist" aria-label="Settings sections">
           {TABS.map((item, index) => (
             <button
               key={item.id}
@@ -277,7 +380,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
               {item.id === "engine" && missing.length > 0 && <em title={`${missing.length} model ${missing.length === 1 ? "path" : "paths"} still to set`}>{missing.length}</em>}
             </button>
           ))}
-        </div>
+        </div>}
 
         <div className="settings-view__body">
           {tab === "llms" && <section
@@ -298,61 +401,112 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
             <AppearanceSetting />
           </section>}
 
+          {tab === "diagnostics" && <section
+            className="settings-section"
+            id="settings-panel-diagnostics"
+            role="tabpanel"
+            aria-labelledby="settings-tab-diagnostics"
+          >
+            <DiagnosticsSetting desktop={desktop} />
+          </section>}
+
           {tab === "engine" && <section
             className="settings-section"
             id="settings-panel-engine"
-            role="tabpanel"
-            aria-labelledby="settings-tab-engine"
+            role={editingTemplateId ? "region" : "tabpanel"}
+            aria-labelledby={editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
           >
-            <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
-              <span><i />{engineHeadline(status, desktop)}</span>
-              <p>{engineDetail(status, desktop, missing.length)}</p>
-              {status?.platform && <small className="settings-status__platform"><b>Platform</b>{status.platform}</small>}
-            </div>
-            {ENGINE_PATH_FIELDS.map((field) => {
-              const value = settings[field.id];
-              const state = pathState(field, value, status);
-              return (
-                <div className={`settings-path settings-path--${state}`} key={field.id}>
-                  <label htmlFor={`engine-${field.id}`}>
-                    <b>{field.label}{!field.required && <em>Optional</em>}</b>
-                    <small>{field.hint}</small>
-                  </label>
-                  <div className="settings-path__row">
-                    <input
-                      id={`engine-${field.id}`}
-                      value={value}
-                      spellCheck={false}
-                      placeholder={field.directory ? "Folder on this computer" : "File on this computer"}
-                      onChange={(event) => update(field.id, event.target.value)}
-                      onBlur={probe}
-                    />
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => void browse(field)}
-                      disabled={!desktop}
-                      title={desktop ? `Browse for ${field.label}` : "Browsing for files is available in the desktop app"}
-                    >
-                      <FolderSearch size={16} /> Browse
-                    </button>
-                    <span className="settings-path__state">
-                      {state === "found" ? <Check size={14} aria-hidden="true" /> : state === "missing" ? <AlertCircle size={14} aria-hidden="true" /> : null}
-                      {stateLabel[state]}
-                    </span>
-                  </div>
+            {!editingTemplateId ? <section className="generator-templates" aria-labelledby="generators-heading">
+              <header>
+                <div>
+                  <h2 id="generators-heading">Generators</h2>
+                  <p>Choose the generator used by default, or open one to edit its model setup.</p>
                 </div>
-              );
-            })}
+                <button type="button" className="secondary-button" onClick={addTemplate}><Plus size={16} /> New generator</button>
+              </header>
+              <div className="generator-template-list" role="list" aria-label="Generators">
+                {templateSettings.templates.map((template) => (
+                  <div className={`generator-template-item${template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
+                    <label className="generator-template-item__default" title="Use this generator for generation by default">
+                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
+                    </label>
+                    <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
+                      <b>{template.name}</b><small>{template.defaultSteps} steps</small>
+                    </button>
+                    <button type="button" className="icon-button" disabled={templateSettings.templates.length === 1} onClick={() => removeTemplate(template.id)} aria-label={`Remove generator ${template.name}`} title={templateSettings.templates.length === 1 ? "At least one generator is required" : `Remove ${template.name}`}><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            </section> : <div className="generator-editor">
+              <header className="generator-editor__head">
+                <div>
+                  <h2 id="generator-editor-heading">Edit generator</h2>
+                  <p>Set its name, generation steps, and model locations on this computer.</p>
+                </div>
+              </header>
+              <div className="generator-template-fields">
+                <label>
+                  <span>Name</span>
+                  <input aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
+                </label>
+                <label>
+                  <span>Default steps</span>
+                  <input aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
+                  }} />
+                </label>
+              </div>
+              <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
+                <span><i />{engineHeadline(status, desktop)}</span>
+                <p>{engineDetail(status, desktop, missing.length)}</p>
+                {status?.platform && <small className="settings-status__platform"><b>Platform</b>{status.platform}</small>}
+              </div>
+              {ENGINE_PATH_FIELDS.map((field) => {
+                const value = settings[field.id];
+                const state = pathState(field, value, status);
+                return (
+                  <div className={`settings-path settings-path--${state}`} key={field.id}>
+                    <label htmlFor={`engine-${field.id}`}>
+                      <b>{field.label}{!field.required && <em>Optional</em>}</b>
+                      <small>{field.hint}</small>
+                    </label>
+                    <div className="settings-path__row">
+                      <input
+                        id={`engine-${field.id}`}
+                        value={value}
+                        spellCheck={false}
+                        placeholder={field.directory ? "Folder on this computer" : "File on this computer"}
+                        onChange={(event) => update(field.id, event.target.value)}
+                        onBlur={() => probe(settings)}
+                      />
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void browse(field)}
+                        disabled={!desktop}
+                        title={desktop ? `Browse for ${field.label}` : "Browsing for files is available in the desktop app"}
+                      >
+                        <FolderSearch size={16} /> Browse
+                      </button>
+                      <span className="settings-path__state">
+                        {state === "found" ? <Check size={14} aria-hidden="true" /> : state === "missing" ? <AlertCircle size={14} aria-hidden="true" /> : null}
+                        {stateLabel[state]}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
           </section>}
         </div>
 
-        <footer className="settings-view__foot">
+        {(tab === "diagnostics" || (tab === "engine" && editingTemplateId)) && <footer className="settings-view__foot">
           {/* Clearing the paths is an engine action, so it is only offered
-              beside them. The saving note is true of the whole screen. */}
-          {tab === "engine" && <button className="secondary-button" onClick={clearAll}><RotateCcw size={16} /> Clear all paths</button>}
-          <span>Changes are saved as you type.</span>
-        </footer>
+              beside them. */}
+          {tab === "engine" && editingTemplateId && <button className="secondary-button" onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>}
+          {tab === "diagnostics" && <span>Logs stay on this computer.</span>}
+        </footer>}
 
         {error && <div className="toast" role="alert"><strong>Couldn’t open the file picker</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       </div>

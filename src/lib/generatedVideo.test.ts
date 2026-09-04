@@ -42,8 +42,10 @@ beforeEach(() => {
   delete scope.VideoFrame;
   delete scope.AudioEncoder;
   delete scope.AudioData;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   delete scope.__TAURI_INTERNALS__;
   delete scope.VideoEncoder;
   delete scope.VideoFrame;
@@ -176,6 +178,7 @@ describe("generated audio at the Rust/webview boundary", () => {
     await expect(saveGeneratedScene({ folderPath: "C:\\Project", jobId: "job-01" })).resolves.toMatchObject({
       relativePath: "media/generated/job-01.mp4",
       note: expect.stringMatching(/without sound/),
+      hasAudio: false,
     });
     expect(invoked).not.toHaveBeenCalledWith("generated_audio", expect.anything());
     expect(muxed.configs[0]).not.toHaveProperty("audio");
@@ -231,6 +234,7 @@ describe("generated audio at the Rust/webview boundary", () => {
     await expect(saveGeneratedScene({ folderPath: "C:\\Project", jobId: "job-01" })).resolves.toMatchObject({
       relativePath: "media/generated/job-01.mp4",
       note: null,
+      hasAudio: true,
     });
     expect(muxed.videoChunks).toBe(1);
     expect(muxed.audioChunks).toBeGreaterThan(0);

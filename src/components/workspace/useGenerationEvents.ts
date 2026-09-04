@@ -1,5 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
+import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
+import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "../../lib/generationTiming";
 import { saveGeneratedScene } from "../../lib/generatedVideo";
 import { isTauri } from "../../lib/persistence";
 import { generationAssetId, type GenerationJob, type ProjectConfig } from "../../lib/project";
@@ -24,14 +26,10 @@ interface JobEvent {
   jobId: string;
   state: "queued" | "framesReady" | "failed" | "cancelled" | string;
   detail: string;
+  output?: CompletedGenerationTiming | null;
 }
 
-interface ProgressEvent {
-  jobId: string;
-  stage: string;
-  step: number;
-  totalSteps: number;
-}
+type ProgressEvent = GenerationTimingProgress;
 
 /** Rendering is most of the wait, so it owns most of the bar; encoding is the
  *  last slice, and it gets its own so a finished render does not sit at 92%
@@ -39,14 +37,6 @@ interface ProgressEvent {
 const RENDER_CEILING = 0.9;
 const ENCODE_FLOOR = 0.9;
 const RENDER_PROGRESS_END = RENDER_CEILING - 0.02;
-const MAX_ESTIMATE_MS = 24 * 60 * 60 * 1_000;
-
-interface ProgressTiming {
-  at: number;
-  progress: number;
-  /** Overall render progress gained per millisecond. */
-  rate: number | null;
-}
 
 export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstimate }: {
   folderPath: string;
@@ -58,9 +48,10 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
    *  exact boundary to persist the finished generation without waiting for the
    *  user to click Save. */
   onCompleted?: (jobId: string) => void;
-  /** A transient prediction of when rendering (not file encoding) will finish.
-   *  It is deliberately kept out of ProjectConfig: an estimate is live UI
-   *  telemetry, not project data worth saving. */
+  /** A transient prediction of when rendering (not file encoding) will finish,
+   *  based on vidfab's elapsed time and completed steps. It is deliberately
+   *  kept out of ProjectConfig: an estimate is live UI telemetry, not project
+   *  data worth saving. */
   onEstimate?: (jobId: string, completionAt: number | null) => void;
 }) {
   /* Held in refs so the subscription is made ONCE. It has to be: re-subscribing
@@ -77,7 +68,8 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
   /** Scenes already being encoded, so a repeated event — or a remount in
    *  StrictMode — cannot start a second encode of the same frames. */
   const saving = useRef(new Set<string>());
-  const progressTimings = useRef(new Map<string, ProgressTiming>());
+  const timingEstimator = useRef<GenerationTimingEstimator | null>(null);
+  if (timingEstimator.current === null) timingEstimator.current = new GenerationTimingEstimator();
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -106,35 +98,8 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
       }));
     };
     const clearEstimate = (jobId: string) => {
-      progressTimings.current.delete(jobId);
+      timingEstimator.current?.clear(jobId);
       estimate.current?.(jobId, null);
-    };
-    const updateEstimate = (jobId: string, progress: number) => {
-      const now = Date.now();
-      const previous = progressTimings.current.get(jobId);
-      if (!previous) {
-        progressTimings.current.set(jobId, { at: now, progress, rate: null });
-        // Also clears an estimate left by an earlier run of the same scene.
-        estimate.current?.(jobId, null);
-        return;
-      }
-
-      const nextProgress = Math.max(previous.progress, progress);
-      const elapsed = now - previous.at;
-      if (nextProgress <= previous.progress || elapsed < 250) return;
-
-      const measuredRate = (nextProgress - previous.progress) / elapsed;
-      const rate = previous.rate === null
-        ? measuredRate
-        : previous.rate * 0.65 + measuredRate * 0.35;
-      progressTimings.current.set(jobId, { at: now, progress: nextProgress, rate });
-
-      const remainingMs = (RENDER_PROGRESS_END - nextProgress) / rate;
-      if (!Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs > MAX_ESTIMATE_MS) {
-        estimate.current?.(jobId, null);
-        return;
-      }
-      estimate.current?.(jobId, now + remainingMs);
     };
 
     /** Encode the frames the engine just finished, and write the file.
@@ -147,6 +112,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
     const save = async (jobId: string) => {
       if (saving.current.has(jobId)) return;
       saving.current.add(jobId);
+      writeDiagnostic("info", "generation", "encoding.started", "Encoding rendered frames into a project video.", { jobId });
       updateJob(jobId, { status: "ready", stage: "encoding", progress: ENCODE_FLOOR, error: null });
       try {
         const saved = await saveGeneratedScene({
@@ -178,6 +144,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
             relativePath: saved.relativePath,
             sourcePath: null,
             mimeType: "video/mp4",
+            hasAudio: saved.hasAudio ?? asset.hasAudio ?? null,
           } : asset),
           timeline: {
             tracks: current.timeline.tracks.map((track) => ({
@@ -186,15 +153,20 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
             })),
           },
         }));
+        writeDiagnostic(saved.note ? "warn" : "info", "generation", "encoding.completed", saved.note ?? "Rendered scene was encoded and written.", {
+          jobId, bytes: saved.bytes, relativePath: saved.relativePath, hasAudio: saved.hasAudio ?? null,
+        });
         completed.current?.(jobId);
       } catch (reason) {
         /* The render happened and the file did not. Failed is the honest state:
            there is nothing to insert into the timeline, and the only way to get
            this scene is to run it again. */
+        const detail = describeDiagnosticError(reason);
+        writeDiagnostic("error", "generation", "encoding.failed", detail, { jobId, ...errorContext(reason) });
         updateJob(jobId, {
           status: "failed",
           stage: "failed",
-          error: `The scene rendered but could not be saved as a video file. ${reason instanceof Error ? reason.message : String(reason)}`,
+          error: `The scene rendered but could not be saved as a video file. ${detail}`,
         });
       } finally {
         saving.current.delete(jobId);
@@ -207,7 +179,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
         const progress = payload.totalSteps > 0
           ? Math.min(RENDER_PROGRESS_END, 0.12 + (Math.max(0, payload.step) / payload.totalSteps) * (RENDER_CEILING - 0.14))
           : payload.stage === "delivering" ? RENDER_PROGRESS_END : 0.08;
-        updateEstimate(payload.jobId, progress);
+        estimate.current?.(payload.jobId, timingEstimator.current?.update(payload) ?? null);
         updateProgress(
           payload.jobId,
           progress,
@@ -216,7 +188,23 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
       }),
       listen<JobEvent>("vidfab-job", ({ payload }) => {
         if (disposed) return;
+        writeDiagnostic(payload.state === "failed" ? "error" : payload.state === "cancelled" ? "warn" : "info", "generation", "native_event.received", payload.detail || `Generation state changed to ${payload.state}.`, {
+          jobId: payload.jobId, state: payload.state,
+        });
         if (payload.state === "framesReady") {
+          if (payload.output) {
+            timingEstimator.current?.record(payload.output);
+            writeDiagnostic("info", "generation", "timing.calibrated", "Generation timing calibration was updated.", {
+              jobId: payload.jobId,
+              secondsConditioning: payload.output.secondsConditioning,
+              secondsDenoise: payload.output.secondsDenoise,
+              secondsVideoDecode: payload.output.secondsVideoDecode,
+              secondsAudioDecode: payload.output.secondsAudioDecode,
+              secondsTotal: payload.output.secondsTotal,
+              stepsComputed: payload.output.stepsComputed,
+              stepsSkipped: payload.output.stepsSkipped,
+            });
+          }
           clearEstimate(payload.jobId);
           void save(payload.jobId);
           return;
@@ -229,6 +217,9 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
             : { status: "queued", stage: "queued" });
       }),
     ]);
+    void subscriptions.catch((reason) => {
+      writeDiagnostic("error", "generation", "event_subscription.failed", describeDiagnosticError(reason), errorContext(reason));
+    });
     return () => {
       disposed = true;
       void subscriptions.then((unlisten) => unlisten.forEach((stop) => stop()));

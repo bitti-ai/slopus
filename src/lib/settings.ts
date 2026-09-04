@@ -12,7 +12,7 @@
  * in src-tauri/src/vidfab.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
-import type { ProjectConfig, ProviderSetting } from "./project";
+import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
 
@@ -54,32 +54,123 @@ export const EMPTY_ENGINE_SETTINGS: EngineSettings = {
 };
 
 const ENGINE_KEY = "polstudio.engine-paths.v1";
+const GENERATOR_TEMPLATES_KEY = "polstudio.generator-templates.v1";
+
+export interface GeneratorTemplate {
+  id: string;
+  name: string;
+  defaultSteps: number;
+  paths: EngineSettings;
+}
+
+export interface GeneratorTemplateSettings {
+  templates: GeneratorTemplate[];
+  defaultTemplateId: string;
+}
+
+const copyPaths = (paths: EngineSettings): EngineSettings => ({ ...paths });
+
+const pathsFrom = (value: unknown): EngineSettings => {
+  const result = copyPaths(EMPTY_ENGINE_SETTINGS);
+  if (!value || typeof value !== "object") return result;
+  const record = value as Partial<Record<EnginePathId, unknown>>;
+  for (const field of ENGINE_PATH_FIELDS) {
+    const path = record[field.id];
+    if (typeof path === "string") result[field.id] = path;
+  }
+  return result;
+};
+
+export function createGeneratorTemplate(name = "New template"): GeneratorTemplate {
+  return {
+    id: `generator-template-${crypto.randomUUID()}`,
+    name,
+    defaultSteps: DEFAULT_GENERATION_STEPS,
+    paths: copyPaths(EMPTY_ENGINE_SETTINGS),
+  };
+}
+
+const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, paths: copyPaths(paths) }],
+  defaultTemplateId: "default",
+});
+
+const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as { templates?: unknown; defaultTemplateId?: unknown };
+  if (!Array.isArray(record.templates)) return null;
+  const ids = new Set<string>();
+  const templates = record.templates.flatMap((item): GeneratorTemplate[] => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as Partial<Record<keyof GeneratorTemplate, unknown>>;
+    const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
+    if (!id || ids.has(id)) return [];
+    ids.add(id);
+    const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim() : "Untitled template";
+    const defaultSteps = typeof candidate.defaultSteps === "number"
+      && Number.isInteger(candidate.defaultSteps)
+      && candidate.defaultSteps >= 2
+      && candidate.defaultSteps <= MAX_GENERATION_STEPS
+      ? candidate.defaultSteps
+      : DEFAULT_GENERATION_STEPS;
+    return [{ id, name, defaultSteps, paths: pathsFrom(candidate.paths) }];
+  });
+  if (templates.length === 0) return null;
+  const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
+  return {
+    templates,
+    defaultTemplateId: templates.some((template) => template.id === requestedDefault) ? requestedDefault : templates[0].id,
+  };
+};
+
+/** Generator templates are machine-local because every path names this
+ * computer. A pre-template installation is migrated in memory into its one
+ * Default template; the next edit persists the new format. */
+export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
+  try {
+    const stored = localStorage.getItem(GENERATOR_TEMPLATES_KEY);
+    if (stored) {
+      const normalized = normalizeTemplateSettings(JSON.parse(stored));
+      if (normalized) return normalized;
+    }
+    const legacy = localStorage.getItem(ENGINE_KEY);
+    return initialTemplateSettings(legacy ? pathsFrom(JSON.parse(legacy)) : EMPTY_ENGINE_SETTINGS);
+  } catch {
+    return initialTemplateSettings();
+  }
+}
+
+export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSettings): void {
+  const normalized = normalizeTemplateSettings(settings) ?? initialTemplateSettings();
+  try {
+    localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+  } catch {
+    /* The current React state remains usable for this session. */
+  }
+}
+
+export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
+  return settings.templates.find((template) => template.id === settings.defaultTemplateId) ?? settings.templates[0];
+}
+
+export function loadDefaultGenerationSteps(): number {
+  return defaultGeneratorTemplate().defaultSteps;
+}
 
 /** Reads what is stored, ignoring anything that is not a string: a hand-edited
  *  or half-written entry must not take the whole settings screen down. */
 export function loadEngineSettings(): EngineSettings {
-  try {
-    const raw = localStorage.getItem(ENGINE_KEY);
-    if (!raw) return { ...EMPTY_ENGINE_SETTINGS };
-    const parsed = JSON.parse(raw) as Partial<Record<EnginePathId, unknown>>;
-    const settings = { ...EMPTY_ENGINE_SETTINGS };
-    for (const field of ENGINE_PATH_FIELDS) {
-      const value = parsed?.[field.id];
-      if (typeof value === "string") settings[field.id] = value;
-    }
-    return settings;
-  } catch {
-    return { ...EMPTY_ENGINE_SETTINGS };
-  }
+  return copyPaths(defaultGeneratorTemplate().paths);
 }
 
 export function saveEngineSettings(settings: EngineSettings): void {
-  try {
-    localStorage.setItem(ENGINE_KEY, JSON.stringify(settings));
-  } catch {
-    /* A full or disabled localStorage costs the user the saved paths, not the
-       session: the values they just typed are still in the fields. */
-  }
+  const current = loadGeneratorTemplateSettings();
+  saveGeneratorTemplateSettings({
+    ...current,
+    templates: current.templates.map((template) => template.id === current.defaultTemplateId
+      ? { ...template, paths: copyPaths(settings) }
+      : template),
+  });
 }
 
 /** The `vidfab` provider setting these paths describe, with blanks dropped so

@@ -236,14 +236,26 @@ function placeholder(job: GenerationJob, failed: boolean, cancelling: boolean): 
   }
 }
 
+/** Drops every in-memory still derived from one generated file. Regeneration
+ * overwrites that file in place, so keeping its old posters would make a fresh
+ * render look unchanged until the app restarted. */
+export function forgetShotPosters(folderPath: string, relativePath: string): void {
+  const file = fileKey(folderPath, relativePath);
+  for (const key of POSTERS.keys()) {
+    if (key.startsWith(`${file}@`)) POSTERS.delete(key);
+  }
+  UNREADABLE.delete(file);
+  ABSENT.delete(file);
+}
+
 export function formatEstimatedTimeLeft(milliseconds: number): string {
   const totalSeconds = Math.max(1, Math.ceil(milliseconds / 1_000));
-  if (totalSeconds < 60) return `About ${totalSeconds}s left`;
+  if (totalSeconds < 60) return `${totalSeconds}s left`;
   const hours = Math.floor(totalSeconds / 3_600);
   const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
-  if (hours > 0) return `About ${hours}h ${minutes}m left`;
-  return `About ${minutes}m ${seconds}s left`;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m ${seconds}s left`;
 }
 
 export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, estimatedCompletionAt = null, cancelling = false, onPlay }: {
@@ -255,7 +267,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   /** The next cut (or scene end). Playback never crosses this point. */
   endSeconds?: number;
   shotNumber: number;
-  /** Live rendering estimate derived from observed progress; never persisted. */
+  /** Live rendering estimate derived from vidfab timing; never persisted. */
   estimatedCompletionAt?: number | null;
   /** Cancel was requested but the engine has not reported its terminal state. */
   cancelling?: boolean;

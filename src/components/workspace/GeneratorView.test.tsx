@@ -3,17 +3,22 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
-import { cancelVidfabGeneration, type VidfabStatus } from "../../lib/runtime";
+import { cancelVidfabGeneration, getEngineStatus, type VidfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
   cancelVidfabGeneration: vi.fn().mockResolvedValue(true),
+  getEngineStatus: vi.fn(),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeAll(() => vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined));
+beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
+});
 afterEach(cleanup);
 
 const readyRuntime: VidfabStatus = {
@@ -212,7 +217,7 @@ describe("Generator scene controls", () => {
     expect(sceneShots(target).map((shot) => shot.startSeconds)).toEqual([0, 4]);
   });
 
-  it("puts scene length and confirmed removal in the header without a Draft indicator", () => {
+  it("selects a scene from its header and keeps confirmed removal in the inspector", () => {
     const state = setup();
     expect(screen.queryByText("DRAFT")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Draft/)).not.toBeInTheDocument();
@@ -221,7 +226,14 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs[0].durationSeconds).toBe(10);
     expect(screen.queryByText("CHANGED")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove scene First scene" }));
+    const scene = screen.getByRole("region", { name: "First scene" });
+    expect(within(scene).queryByRole("button", { name: "Remove scene First scene" })).not.toBeInTheDocument();
+    expect(within(scene).queryByRole("button", { name: "Settings for First scene" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+    fireEvent.click(scene.querySelector(".scene-rule")!);
+    expect(screen.getByRole("textbox", { name: "Rename First scene" })).toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByRole("complementary", { name: "Scene: First scene" })).getByRole("button", { name: "Remove scene First scene" }));
     expect(screen.getByRole("alertdialog", { name: "Remove scene?" })).toBeInTheDocument();
     expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
     fireEvent.click(screen.getByRole("button", { name: "Remove scene" }));
@@ -230,9 +242,66 @@ describe("Generator scene controls", () => {
 
   it("adds new scenes at the bottom", () => {
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Add Scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
     expect(state.latest().generationJobs.slice(0, 2).map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
     expect(state.latest().generationJobs.at(-1)?.title).toBe("Untitled scene");
+  });
+
+  it("uses the default generator template's steps for a new scene", () => {
+    localStorage.setItem("polstudio.generator-templates.v1", JSON.stringify({
+      defaultTemplateId: "draft",
+      templates: [{
+        id: "draft",
+        name: "Draft",
+        defaultSteps: 9,
+        paths: { transformer: "", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+      }],
+    }));
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+    expect(state.latest().generationJobs.at(-1)?.steps).toBe(9);
+  });
+
+  it("switches the active generator from the ready status control and probes its model paths", async () => {
+    localStorage.setItem("polstudio.generator-templates.v1", JSON.stringify({
+      defaultTemplateId: "quality",
+      templates: [
+        {
+          id: "quality",
+          name: "Quality",
+          defaultSteps: 20,
+          paths: { transformer: "quality.safetensors", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+        },
+        {
+          id: "draft",
+          name: "Fast draft",
+          defaultSteps: 8,
+          paths: { transformer: "draft.safetensors", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+        },
+      ],
+    }));
+    vi.mocked(getEngineStatus).mockResolvedValueOnce({
+      state: "modelsMissing",
+      dllPath: "test",
+      version: "test",
+      platform: "CUDA 13",
+      detail: "Draft weights are missing.",
+      models: [],
+    });
+    setup();
+
+    expect(document.querySelector(".generator-runtime--ready > i")).not.toBeNull();
+    expect(screen.getByText("Generator:")).toBeInTheDocument();
+    expect(screen.queryByText("Video generator ready")).not.toBeInTheDocument();
+    const template = screen.getByRole("combobox", { name: /Video generator template/ });
+    expect(template).toHaveTextContent("Quality");
+    fireEvent.click(template);
+    fireEvent.click(screen.getByRole("option", { name: "Fast draft" }));
+
+    await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
+    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }));
+    expect(JSON.parse(localStorage.getItem("polstudio.generator-templates.v1")!).defaultTemplateId).toBe("draft");
+    expect(screen.getByText("Video model files missing")).toBeInTheDocument();
   });
 
   it("marks a finished scene yellow when scene settings change", async () => {
@@ -338,6 +407,62 @@ describe("Generator scene controls", () => {
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]));
     expect(state.latest().generationJobs.every((job) => Boolean(job.generationSnapshot))).toBe(true);
     expect(parseProjectConfig(state.latest())).toBeTruthy();
+  });
+
+  it("keeps Generate All available and skips unchanged completed fixed-seed scenes", async () => {
+    const initial = project();
+    initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 100 + index }));
+    const state = setup(initial);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    await waitFor(() => expect(state.latest().generationJobs.every((job) => job.status === "queued")).toBe(true));
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job) => ({
+        ...job,
+        status: "completed",
+        stage: "completed",
+        progress: 1,
+        outputRelativePath: `media/generated/${job.id}.mp4`,
+      })),
+    });
+
+    const generateAll = screen.getByRole("button", { name: "Generate All" });
+    expect(generateAll).toBeEnabled();
+    fireEvent.click(generateAll);
+    expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["completed", "completed"]);
+
+    const changed = state.latest().generationJobs[0];
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job) => job.id === changed.id
+        ? { ...job, shots: sceneShots(job).map((shot, index) => index === 0 ? { ...shot, action: `${shot.action} Changed.` } : shot) }
+        : job),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "completed"]));
+  });
+
+  it("regenerates an unchanged completed random-seed scene while skipping fixed-seed output", async () => {
+    const initial = project();
+    initial.generationJobs[1].seed = 417;
+    const state = setup(initial);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    await waitFor(() => expect(state.latest().generationJobs.every((job) => job.status === "queued")).toBe(true));
+    state.replace({
+      ...state.latest(),
+      generationJobs: state.latest().generationJobs.map((job) => ({
+        ...job,
+        status: "completed",
+        stage: "completed",
+        progress: 1,
+        outputRelativePath: `media/generated/${job.id}.mp4`,
+      })),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "completed"]));
   });
 
   it("turns active generation actions into per-scene and batch cancellation", async () => {
