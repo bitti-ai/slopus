@@ -1,13 +1,17 @@
-import { Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
+import { ChevronDown, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
-import { cancelVidfabGeneration, enqueueVidfabGeneration, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
+import { cancelVidfabGeneration, enqueueVidfabGeneration, getEngineStatus, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
 import { statusIcon } from "./sceneStatus";
+import { forgetShotPosters } from "./ShotThumbnail";
+import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
+import { defaultGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, type GeneratorTemplate } from "../../lib/settings";
 
 interface GeneratorViewProps {
   config: ProjectConfig;
@@ -17,6 +21,7 @@ interface GeneratorViewProps {
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
   selectedJobId?: string;
+  onRuntimeChange?: (runtime: VidfabStatus) => void;
 }
 
 type RemovalTarget =
@@ -34,8 +39,14 @@ type RemovalTarget =
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onRuntimeChange }: GeneratorViewProps) {
   const jobs = config.generationJobs;
+  const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
+  const selectedTemplate = defaultGeneratorTemplate(templateSettings);
+  const defaultGenerationSteps = selectedTemplate.defaultSteps;
+  const [generatorRuntime, setGeneratorRuntime] = useState<VidfabStatus | null>(runtime);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const runtimeProbe = useRef(0);
   const configRef = useRef(config);
   configRef.current = config;
   // A scene is displayed as queued while its plan is resolving, just before
@@ -56,6 +67,33 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
   const [startFrameError, setStartFrameError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setTemplateSettings(loadGeneratorTemplateSettings());
+    setGeneratorRuntime(runtime);
+    setRuntimeError(null);
+  }, [runtime]);
+
+  useEffect(() => () => { runtimeProbe.current += 1; }, []);
+
+  const chooseGeneratorTemplate = (templateId: string) => {
+    const template = templateSettings.templates.find((candidate) => candidate.id === templateId);
+    if (!template || template.id === templateSettings.defaultTemplateId) return;
+    const next = { ...templateSettings, defaultTemplateId: template.id };
+    saveGeneratorTemplateSettings(next);
+    setTemplateSettings(next);
+    setGeneratorRuntime(null);
+    setRuntimeError(null);
+    const probe = ++runtimeProbe.current;
+    void getEngineStatus(template.paths).then((status) => {
+      if (probe !== runtimeProbe.current) return;
+      setGeneratorRuntime(status);
+      onRuntimeChange?.(status);
+    }).catch((reason: unknown) => {
+      if (probe !== runtimeProbe.current) return;
+      setRuntimeError(reason instanceof Error ? reason.message : String(reason));
+    });
+  };
+
   useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
 
   /* A scene can be deleted, and a shot can be removed, from under the panel.
@@ -69,7 +107,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const queued = jobs.filter((job) => job.status === "queued");
   const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
   const boundRefs = useMemo(() => selected ? sceneGenerationReferences(selected, config.references) : [], [config.references, selected]);
-  const runtimeReady = runtime?.state === "ready";
+  const runtimeReady = generatorRuntime?.state === "ready";
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
@@ -242,7 +280,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       prompt: compileGenerationJobPrompt(job, bound),
       // The scene's own length, not a fixed six seconds.
       frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
-      steps: sceneGenerationSteps(job),
+      steps: sceneGenerationSteps(job, defaultGenerationSteps),
       seed: sceneGenerationSeed(job),
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
@@ -254,6 +292,27 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
+
+  const logRequest = (event: string, message: string, request: VidfabGenerationRequest) => writeDiagnostic("info", "generator", event, message, {
+    jobId: request.jobId,
+    frames: request.frames,
+    steps: request.steps,
+    canvasWidth: request.canvasWidth,
+    canvasHeight: request.canvasHeight,
+    referenceCount: request.referencePaths.length,
+    inputChars: request.prompt.length,
+  });
+
+  const logFailure = (event: string, jobId: string, reason: unknown) => {
+    const detail = describeDiagnosticError(reason);
+    writeDiagnostic("error", "generator", event, detail, { jobId, ...errorContext(reason) });
+    return detail;
+  };
+
+  const purgeSceneThumbnails = async (job: GenerationJob) => {
+    if (job.outputRelativePath) forgetShotPosters(folderPath, job.outputRelativePath);
+    await purgeTimelineThumbnails(folderPath, job.id).catch(() => undefined);
+  };
 
   /* The engine's own events are listened for by the project screen
      (useGenerationEvents), not here: a render outlives this view, and the
@@ -268,15 +327,23 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       : current);
     const now = new Date().toISOString();
     const request = requestFor(job);
+    if (runtimeReady) await purgeSceneThumbnails(job);
     updateJob(job.id, {
       status: runtimeReady ? "queued" : "draft",
       stage: "queued",
       progress: 0,
-      error: runtimeReady ? null : runtime?.detail ?? "The video engine isn’t available on this computer right now.",
+      error: runtimeReady ? null : runtimeError ?? generatorRuntime?.detail ?? "The video engine isn’t available on this computer right now.",
       generationSnapshot: runtimeReady ? snapshotFor(job, request) : job.generationSnapshot,
       updatedAt: now,
     });
-    if (runtimeReady) await enqueueVidfabGeneration(request, configRef.current);
+    if (runtimeReady) {
+      logRequest("generation.retry_requested", "Generation retry requested.", request);
+      try {
+        await enqueueVidfabGeneration(request, configRef.current);
+      } catch (reason) {
+        updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.retry_failed", job.id, reason) });
+      }
+    }
   };
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a
@@ -286,12 +353,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      UNTITLED_SCENE as its name rather than a phrase this app made up.
 
      A scene built FROM a prompt is Slop’s job: the bar along the bottom of the
-     window hands the request to Claude Code or Codex, which returns the whole
-     project with the new scene in it. Nothing is auto-bound either way — which
+     window hands the request to Claude Code or Codex, which returns a compact
+     command batch that PolStudio applies. Nothing is auto-bound either way — which
      references steer a scene is decided by writing them into a line or by the
      references already named by its shots. */
   const newScene = () => {
-    const job = createDraftGenerationJob("");
+    const job = createDraftGenerationJob("", { steps: defaultGenerationSteps });
     onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
@@ -300,6 +367,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const current = configRef.current;
     const at = current.generationJobs.findIndex((item) => item.id === job.id);
     if (at < 0) return;
+    void purgeSceneThumbnails(job);
     if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
     const generationJobs = current.generationJobs.filter((item) => item.id !== job.id);
     onChange({ ...current, generationJobs });
@@ -311,11 +379,13 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const startDraft = async (job: GenerationJob) => {
     if (!runtimeReady) return;
+    await purgeSceneThumbnails(job);
     cancellationRequests.current.delete(job.id);
     setCancellingJobIds((current) => current.has(job.id)
       ? new Set([...current].filter((id) => id !== job.id))
       : current);
     const request = requestFor(job);
+    logRequest("generation.requested", "Generation requested from the scene board.", request);
     updateJob(job.id, {
       status: "queued",
       stage: "queued",
@@ -335,7 +405,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       await enqueueVidfabGeneration(request, configRef.current);
     } catch (reason) {
       if (cancellationRequests.current.has(job.id)) return;
-      updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
+      updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
     }
   };
 
@@ -349,7 +419,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const accepted = await Promise.all(next.map(async (job) => {
       try {
         return await cancelVidfabGeneration(job.id);
-      } catch {
+      } catch (reason) {
+        logFailure("generation.cancel_failed", job.id, reason);
         return false;
       }
     }));
@@ -377,18 +448,31 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     else void prepareOrRetry(job);
   };
 
-  const draftScenesReady = jobs.filter((job) => job.status === "draft" && !sendBlocker(job, config.references));
+  /** Generate All is an idempotent update for fixed seeds, but a deliberate
+   * reroll for random ones. A completed fixed-seed scene is current only when
+   * both its output and the exact renderer-input snapshot still exist. */
+  const batchScenesReady = jobs.filter((job) => {
+    if (job.status === "queued" || job.status === "generating" || job.status === "ready") return false;
+    if (sendBlocker(job, config.references)) return false;
+    if (sceneGenerationSeed(job) === RANDOM_GENERATION_SEED) return true;
+    return job.status !== "completed"
+      || !job.outputRelativePath
+      || !job.generationSnapshot
+      || job.generationSnapshot !== snapshotFor(job);
+  });
 
   const generateAll = async () => {
-    if (!runtimeReady || draftScenesReady.length === 0) return;
-    draftScenesReady.forEach((job) => cancellationRequests.current.delete(job.id));
-    const startingIds = new Set(draftScenesReady.map((job) => job.id));
+    if (!runtimeReady || batchScenesReady.length === 0) return;
+    await Promise.all(batchScenesReady.map(purgeSceneThumbnails));
+    batchScenesReady.forEach((job) => cancellationRequests.current.delete(job.id));
+    const startingIds = new Set(batchScenesReady.map((job) => job.id));
     setCancellingJobIds((current) => {
       const next = new Set([...current].filter((id) => !startingIds.has(id)));
       return next.size === current.size ? current : next;
     });
     const current = configRef.current;
-    const requests = draftScenesReady.map((job) => ({ job, request: requestFor(job) }));
+    const requests = batchScenesReady.map((job) => ({ job, request: requestFor(job) }));
+    requests.forEach(({ request }) => logRequest("generation.requested", "Generation requested by Generate All.", request));
     const ids = new Map(requests.map(({ job, request }) => [job.id, snapshotFor(job, request)]));
     const now = new Date().toISOString();
     onChange({
@@ -407,13 +491,13 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         await enqueueVidfabGeneration(request, current);
       } catch (reason) {
         if (cancellationRequests.current.has(job.id)) continue;
-        updateJob(job.id, { status: "failed", stage: "failed", error: reason instanceof Error ? reason.message : String(reason) });
+        updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
       }
     }
   };
 
   const generationBlocker = (job: GenerationJob): string | null => {
-    if (!runtimeReady) return runtime?.detail ?? "The video generator is not ready.";
+    if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
     return sendBlocker(job, config.references);
   };
@@ -434,25 +518,27 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         </div>
         <div className="generator-heading__actions">
           {/* One line: the headline already IS the status. */}
-          <span className={`generator-runtime generator-runtime--${runtime?.state ?? "checking"}`}>
-            <i aria-hidden="true" /> {runtimeHeadline(runtime)}
-          </span>
-          {/* Adds the scene and leaves it empty. PolStudio still writes no words
-              for anyone — it gives the user somewhere to write them, and the
-              scene keeps the name UNTITLED_SCENE until they rename it. */}
-          <button className="secondary-button" onClick={newScene} title="Add an empty scene — you write the shots">
-            <Plus size={16} aria-hidden="true" /> Add Scene
-          </button>
+          <div
+            className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}
+            title={runtimeError ?? generatorRuntime?.detail ?? runtimeHeadline(generatorRuntime)}
+          >
+            <i role="img" aria-label={runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime)} />
+            <span className="generator-runtime__label">Generator:</span>
+            <GeneratorTemplateCombobox templates={templateSettings.templates} selected={selectedTemplate} onChange={chooseGeneratorTemplate} />
+            {(runtimeError || generatorRuntime?.state !== "ready") && <span className="generator-runtime__status" aria-hidden="true">{runtimeError ? "Unavailable" : runtimeHeadline(generatorRuntime)}</span>}
+          </div>
           <button
             className={cancellable.length > 0 ? "danger-button generator-heading__cancel" : "primary-button"}
-            disabled={cancellable.length === 0 && (!runtimeReady || draftScenesReady.length === 0)}
+            disabled={cancellable.length === 0 && active.length > 0}
             title={cancellable.length > 0
               ? `Cancel ${cancellable.length} ${cancellable.length === 1 ? "generation" : "generations"}`
               : !runtimeReady
-                ? runtime?.detail ?? "The video generator is not ready."
-                : draftScenesReady.length === 0
-                  ? "There are no ready draft scenes to generate."
-                  : `Generate ${draftScenesReady.length} draft ${draftScenesReady.length === 1 ? "scene" : "scenes"}`}
+                ? runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready."
+                : active.length > 0
+                  ? "Generation is still being saved."
+                  : batchScenesReady.length === 0
+                    ? "Every fixed-seed scene is already up to date."
+                    : `Generate ${batchScenesReady.length} ${batchScenesReady.length === 1 ? "scene" : "scenes"}`}
             onClick={() => cancellable.length > 0 ? void cancelScenes(cancellable) : void generateAll()}
           >
             {cancellable.length > 0
@@ -469,9 +555,9 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         references={config.references}
         selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
         onSelect={setSelection}
+        onAddScene={newScene}
         onAddShot={addShot}
         onDuration={setDuration}
-        onRemoveScene={(job) => setRemovalTarget({ kind: "scene", job })}
         onGenerate={generateScene}
         generationBlocker={generationBlocker}
         changedJobIds={changedJobIds}
@@ -494,8 +580,17 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <li>You can read the finished prompt before anything is sent.</li>
           <li>Or ask Slop in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
         </ul>
-        <button className="primary-button job-empty__add" onClick={newScene}><Plus size={16} /> Add an empty scene</button>
       </div>}
+
+      {jobs.length === 0 && <button
+        type="button"
+        className="shot-card shot-card--add scene-card--add"
+        onClick={newScene}
+        title="Add an empty scene — you write the shots"
+      >
+        <Plus size={18} aria-hidden="true" />
+        <span>Add a scene</span>
+      </button>}
     </main>
 
     {selected && <aside className="generator-panel" aria-label={openShot ? `${openShot.name ?? `Shot ${shotIndex + 1}`} of ${selected.title}` : `Scene: ${selected.title}`}>
@@ -542,24 +637,33 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         </>
         : <>
           <header className="panel-head">
-            <div className="job-title">
-              {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
-              <div>
-                {/* The badge is on the scene's own line on the board, where the
-                    eye compares one scene against the next. A second copy of it
-                    an inch away from the first says nothing new. */}
-                {/* The title is the one part of a scene PolStudio writes for the
-                    user — taken from their first words — so it has to be theirs
-                    to change. Blanking it falls back rather than saving a
-                    nameless scene the schema would reject. */}
-                <h2><input
-                  className="job-title__name"
-                  value={selected.title}
-                  aria-label={`Rename ${selected.title}`}
-                  title="Rename this scene"
-                  onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
-                /></h2>
+            <div className="panel-head__scene-title">
+              <div className="job-title">
+                {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
+                <div>
+                  {/* The badge is on the scene's own line on the board, where the
+                      eye compares one scene against the next. A second copy of it
+                      an inch away from the first says nothing new. */}
+                  {/* The title is the one part of a scene PolStudio writes for the
+                      user — taken from their first words — so it has to be theirs
+                      to change. Blanking it falls back rather than saving a
+                      nameless scene the schema would reject. */}
+                  <h2><input
+                    className="job-title__name"
+                    value={selected.title}
+                    aria-label={`Rename ${selected.title}`}
+                    title="Rename this scene"
+                    onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
+                  /></h2>
+                </div>
               </div>
+              <button
+                type="button"
+                className="inspector-remove-button"
+                aria-label={`Remove scene ${selected.title}`}
+                title="Remove this scene"
+                onClick={() => setRemovalTarget({ kind: "scene", job: selected })}
+              ><Trash2 size={16} aria-hidden="true" /></button>
             </div>
           </header>
 
@@ -568,6 +672,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               key={selected.id}
               job={selected}
               shots={selectedShots}
+              defaultSteps={defaultGenerationSteps}
               disabled={false}
               references={config.references}
               importAvailable={isTauri()}
@@ -655,3 +760,110 @@ const runtimeHeadline = (runtime: VidfabStatus | null) => {
     case "incompatible": return "Video engine doesn’t match";
   }
 };
+
+function GeneratorTemplateCombobox({ templates, selected, onChange }: {
+  templates: GeneratorTemplate[];
+  selected: GeneratorTemplate;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [scrollDistance, setScrollDistance] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    const measure = () => {
+      const value = valueRef.current;
+      setScrollDistance(value ? Math.max(0, value.scrollWidth - value.clientWidth) : 0);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [selected.id, selected.name]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    optionRefs.current[templates.findIndex((template) => template.id === selected.id)]?.focus();
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open, selected.id, templates]);
+
+  const closeAndFocus = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const pick = (id: string) => {
+    onChange(id);
+    closeAndFocus();
+  };
+
+  const moveOptionFocus = (index: number, direction: number) => {
+    const next = (index + direction + templates.length) % templates.length;
+    optionRefs.current[next]?.focus();
+  };
+
+  return <div className={`generator-runtime__select${open ? " generator-runtime__select--open" : ""}`} ref={rootRef}>
+    <button
+      ref={triggerRef}
+      type="button"
+      className="generator-runtime__trigger"
+      role="combobox"
+      aria-label={`Video generator template: ${selected.name}`}
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-controls="generator-template-options"
+      onClick={() => setOpen((value) => !value)}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          setOpen(true);
+        } else if (event.key === "Escape" && open) {
+          event.preventDefault();
+          setOpen(false);
+        }
+      }}
+    >
+      <span
+        ref={valueRef}
+        className={`generator-runtime__value${scrollDistance > 0 ? " generator-runtime__value--overflow" : ""}`}
+        style={{ "--template-scroll-distance": `-${scrollDistance}px` } as React.CSSProperties}
+        title={selected.name}
+      ><span>{selected.name}</span></span>
+      <ChevronDown size={15} aria-hidden="true" />
+    </button>
+    {open && <div className="generator-runtime__options" id="generator-template-options" role="listbox" aria-label="Generator templates">
+      {templates.map((template, index) => <button
+        ref={(element) => { optionRefs.current[index] = element; }}
+        type="button"
+        role="option"
+        aria-selected={template.id === selected.id}
+        title={template.name}
+        key={template.id}
+        onClick={() => pick(template.id)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveOptionFocus(index, 1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveOptionFocus(index, -1);
+          } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            optionRefs.current[event.key === "Home" ? 0 : templates.length - 1]?.focus();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            closeAndFocus();
+          } else if (event.key === "Tab") {
+            setOpen(false);
+          }
+        }}
+      ><span>{template.name}</span>{template.id === selected.id && <i aria-hidden="true" />}</button>)}
+    </div>}
+  </div>;
+}

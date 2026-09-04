@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import { writeDiagnostic } from "./diagnostics";
 import { bitrateFor, outputCodec } from "./export";
 import { isTauri } from "./persistence";
+import { TIMELINE_THUMBNAIL_INTERVAL_MS, writeTimelineThumbnail } from "./timelineThumbnails";
 
 /* Turning a finished render into a file in the project folder.
  *
@@ -41,6 +43,8 @@ export interface SavedGeneration {
   /** Null when everything the render produced is in the file. A sentence when
    *  something was left out, so a silent video is never silently silent. */
   note: string | null;
+  /** Whether the saved MP4 actually contains an audio stream. */
+  hasAudio?: boolean;
 }
 
 /** How often a keyframe is written: every two seconds, so the file can be
@@ -55,9 +59,46 @@ const AUDIO_BITRATE = 192_000;
 /** Generated footage is a MASTER, not a delivery file: it is what every later
  *  export is cut from, so it is encoded at the highest preset the app has. */
 const GENERATED_QUALITY = "high" as const;
+const TIMELINE_THUMBNAIL_WIDTH = 192;
+const TIMELINE_THUMBNAIL_JPEG_QUALITY = 0.82;
 
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** Downsamples one RGBA render frame directly into a small JPEG. Sampling the
+ * pixels avoids allocating a second full-resolution canvas merely to shrink
+ * it, and this runs only at the timeline cache interval. */
+async function timelineThumbnailJpeg(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array | null> {
+  try {
+    const outputWidth = Math.min(width, TIMELINE_THUMBNAIL_WIDTH);
+    const outputHeight = Math.max(1, Math.round(height * outputWidth / width));
+    const canvas = document.createElement("canvas");
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    const image = context.createImageData(outputWidth, outputHeight);
+    for (let y = 0; y < outputHeight; y += 1) {
+      const sourceY = Math.min(height - 1, Math.floor(y * height / outputHeight));
+      for (let x = 0; x < outputWidth; x += 1) {
+        const sourceX = Math.min(width - 1, Math.floor(x * width / outputWidth));
+        const source = (sourceY * width + sourceX) * 4;
+        const target = (y * outputWidth + x) * 4;
+        image.data[target] = pixels[source];
+        image.data[target + 1] = pixels[source + 1];
+        image.data[target + 2] = pixels[source + 2];
+        image.data[target + 3] = pixels[source + 3];
+      }
+    }
+    context.putImageData(image, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", TIMELINE_THUMBNAIL_JPEG_QUALITY));
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+  } catch {
+    // A missing canvas encoder must not cost the user the rendered video. The
+    // timeline can build this disposable cache later from the saved MP4.
+    return null;
+  }
+}
 
 /** What Rust still holds for this scene, or null if nothing does. */
 export async function renderedSummary(jobId: string): Promise<RenderedSummary | null> {
@@ -300,11 +341,18 @@ export async function saveGeneratedScene(options: {
   if (summary.frameCount <= 0 || summary.width <= 0 || summary.height <= 0) {
     throw new Error("The render came back with no pictures in it.");
   }
+  writeDiagnostic("info", "generated-video", "render.loaded", "Rendered buffers are available for encoding.", {
+    jobId, width: summary.width, height: summary.height, frames: summary.frameCount, fps: summary.fps,
+    audioChannels: summary.audioChannels, audioSampleRate: summary.audioSampleRate, audioSamples: summary.audioSamples,
+  });
 
   try {
     const fps = summary.fps > 0 ? summary.fps : 24;
     const bitrate = bitrateFor(summary.width, summary.height, fps, GENERATED_QUALITY);
     const { codec } = await pickCodec(summary.width, summary.height, fps, bitrate);
+    writeDiagnostic("info", "generated-video", "video_encoder.selected", "WebCodecs accepted a video encoder configuration.", {
+      jobId, codec, bitrate, fps, width: summary.width, height: summary.height,
+    });
     const sound = await audioConfig(summary);
     const audioChunks: Array<{ chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }> = [];
     let note: string | null = null;
@@ -319,6 +367,7 @@ export async function saveGeneratedScene(options: {
         note = "Saved without sound: this computer's encoder would not take the render's audio.";
       }
     }
+    if (note) writeDiagnostic("warn", "generated-video", "audio.omitted", note, { jobId });
     const withAudio = audioChunks.length > 0;
 
     const { ArrayBufferTarget, Muxer } = await import("mp4-muxer");
@@ -347,11 +396,17 @@ export async function saveGeneratedScene(options: {
        away from the clock. */
     const timestampUs = (index: number) => Math.round((index * 1_000_000) / fps);
     const keyframeEvery = Math.max(1, Math.round(fps * KEYFRAME_SECONDS));
+    const thumbnailEvery = Math.max(1, Math.round(fps * TIMELINE_THUMBNAIL_INTERVAL_MS / 1_000));
+    const timelineThumbnails: Array<{ timeMs: number; bytes: Uint8Array }> = [];
 
     try {
       for (let index = 0; index < summary.frameCount; index += 1) {
         if (failure.reason) throw failure.reason;
         const pixels = await renderedFrame(jobId, index);
+        if (index % thumbnailEvery === 0) {
+          const thumbnail = await timelineThumbnailJpeg(pixels, summary.width, summary.height);
+          if (thumbnail) timelineThumbnails.push({ timeMs: Math.round(index * 1_000 / fps), bytes: thumbnail });
+        }
         const frame = makeFrame(pixels, timestampUs(index), timestampUs(index + 1) - timestampUs(index));
         encoder.encode(frame, { keyFrame: index % keyframeEvery === 0 });
         frame.close();
@@ -371,7 +426,9 @@ export async function saveGeneratedScene(options: {
 
     muxer.finalize();
     const written = await writeGeneratedVideo(folderPath, jobId, new Uint8Array(target.buffer));
-    return { relativePath: written.relativePath, bytes: written.bytes, note };
+    await Promise.allSettled(timelineThumbnails.map((thumbnail) =>
+      writeTimelineThumbnail(folderPath, jobId, thumbnail.timeMs, thumbnail.bytes)));
+    return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio };
   } finally {
     // Whatever happened, the render stops occupying memory here.
     await releaseRendered(jobId);

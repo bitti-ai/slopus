@@ -266,10 +266,11 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, references, disabled, importAvailable, importError, onAddStartFrame, onChange, onShots }: {
+export function SceneInspector({ job, shots, references, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onChange, onShots }: {
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
+  defaultSteps: number;
   disabled: boolean;
   importAvailable: boolean;
   importError: string | null;
@@ -362,7 +363,7 @@ export function SceneInspector({ job, shots, references, disabled, importAvailab
             minimum={2}
             maximum={MAX_GENERATION_STEPS}
             step={1}
-            value={sceneGenerationSteps(job)}
+            value={sceneGenerationSteps(job, defaultSteps)}
             integer
             disabled={disabled}
             aria-label="Generation step count"

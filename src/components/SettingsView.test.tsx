@@ -20,6 +20,7 @@ afterEach(() => {
 
 const open = () => render(<SettingsView onClose={() => undefined} />);
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+const editDefaultGenerator = () => fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
 
 /* jsdom does no layout, so the one thing that can be checked here is that the
    rule which makes the two tabs the same height is still in the sheet: the
@@ -38,6 +39,9 @@ describe("the settings screen", () => {
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
     open();
     expect(tab("Video engine").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Generators" })).toBeTruthy();
+    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    editDefaultGenerator();
     expect(screen.getByLabelText(/Transformer weights/)).toBeTruthy();
     // The other tab's contents are not merely hidden, they are not rendered:
     // a settings screen that draws both panels is the tall screen tabs replaced.
@@ -56,12 +60,16 @@ describe("the settings screen", () => {
       models: [],
     });
     open();
+    editDefaultGenerator();
     await waitFor(() => expect(screen.getByText("CUDA 13")).toBeTruthy());
     expect(screen.getByText("Platform")).toBeTruthy();
   });
 
   it("swaps panels when a tab is chosen, and follows the arrow keys", () => {
     open();
+    expect(screen.getAllByRole("tab").map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
+      "Video engine", "Agents", "Appearance", "Diagnostics",
+    ]);
     fireEvent.click(tab("Appearance"));
     expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
@@ -70,8 +78,8 @@ describe("the settings screen", () => {
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("settings-tab-appearance");
 
     fireEvent.keyDown(tab("Appearance"), { key: "ArrowRight" });
-    expect(tab("Video engine").getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tab("Video engine"), { key: "ArrowLeft" });
+    expect(tab("Diagnostics").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Diagnostics"), { key: "ArrowLeft" });
     expect(tab("Appearance").getAttribute("aria-selected")).toBe("true");
   });
 
@@ -92,25 +100,90 @@ describe("the settings screen", () => {
     }
     expect(screen.queryByText("This computer")).toBeNull();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
+    editDefaultGenerator();
     expect(screen.getByText("Reads your prompt so the transformer can act on it.")).toBeTruthy();
   });
 
   it("puts the optional tokenizer setting last", () => {
     const { container } = open();
+    editDefaultGenerator();
     const labels = Array.from(container.querySelectorAll(".settings-path label b")).map((label) => label.textContent);
     expect(labels.at(-1)).toContain("Tokenizer");
   });
 
-  it("offers Clear all paths only beside the paths", () => {
+  it("offers Clear generator paths only on the generator editor page", () => {
     open();
-    expect(screen.getByRole("button", { name: /Clear all paths/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
+    editDefaultGenerator();
+    expect(screen.getByRole("button", { name: /Clear generator paths/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
     fireEvent.click(tab("Appearance"));
-    expect(screen.queryByRole("button", { name: /Clear all paths/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
+  });
+
+  it("replaces the settings tabs with the Generators back button while editing", () => {
+    open();
+    expect(screen.queryByText("Changes are saved as you type.")).toBeNull();
+    editDefaultGenerator();
+    const back = screen.getByRole("button", { name: "Generators" });
+    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
+    expect(back.closest(".settings-tabs")).not.toBeNull();
+
+    fireEvent.click(back);
+    expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
+  });
+
+  it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {
+    open();
+    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New generator" }));
+    expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe("Generator 2");
+    expect((screen.getByLabelText("Generator default steps") as HTMLInputElement).value).toBe("20");
+
+    fireEvent.change(screen.getByLabelText("Generator name"), { target: { value: "Fast draft" } });
+    fireEvent.change(screen.getByLabelText("Generator default steps"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText(/Transformer weights/), { target: { value: "D:\\Models\\draft.safetensors" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Use Fast draft as the default generator" }));
+
+    const stored = JSON.parse(localStorage.getItem("polstudio.generator-templates.v1") ?? "null");
+    const selected = stored.templates.find((template: { id: string }) => template.id === stored.defaultTemplateId);
+    expect(selected).toMatchObject({ name: "Fast draft", defaultSteps: 12, paths: { transformer: "D:\\Models\\draft.safetensors" } });
+  });
+
+  it("puts each generator's radio first without a visible Default label", () => {
+    open();
+    const radio = screen.getByRole("radio", { name: "Use Default as the default generator" });
+    const row = radio.closest(".generator-template-item");
+    expect(row?.firstElementChild).toBe(radio.closest("label"));
+    expect(radio.closest("label")?.textContent).toBe("");
+  });
+
+  it("shows where diagnostic logs live and can reveal the current file", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+    const info = {
+      path: "C:\\Users\\Editor\\AppData\\Local\\studio.pol.desktop\\logs\\polstudio.log",
+      previousPath: null,
+      sessionId: "42-1",
+      maxFileBytes: 5_242_880,
+    };
+    vi.mocked(invoke).mockImplementation(async (command) => command === "diagnostic_log_info" || command === "reveal_diagnostic_log"
+      ? info
+      : { state: "ready", dllPath: "C:\\PolStudio\\vidfab.dll", version: "1.4.0", platform: "CUDA 13", detail: "Ready.", models: [] });
+
+    open();
+    fireEvent.click(tab("Diagnostics"));
+    expect(await screen.findByText(info.path)).toBeTruthy();
+    expect(screen.getByText(/Prompt text and credentials are not recorded/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show log file" }));
+    await waitFor(() => expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).toContain("reveal_diagnostic_log"));
   });
 
   it("configures OpenRouter and local OpenAI-compatible models without requiring a local API key", () => {
     open();
-    fireEvent.click(tab("Prompt LLMs"));
+    fireEvent.click(tab("Agents"));
 
     const openrouter = screen.getByRole("heading", { name: "OpenRouter" }).closest("section")!;
     expect((within(openrouter).getByLabelText("OpenRouter endpoint") as HTMLInputElement).value).toBe("https://openrouter.ai/api/v1");

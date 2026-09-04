@@ -17,6 +17,7 @@ const handlers = new Map<string, (event: { payload: unknown }) => void>();
 
 beforeEach(() => {
   handlers.clear();
+  localStorage.clear();
   scope.__TAURI_INTERNALS__ = {};
   // Cleared, not just re-implemented: one test asserts it was never called.
   vi.mocked(listen).mockReset();
@@ -50,6 +51,21 @@ const emit = async (name: string, payload: unknown) => {
     await Promise.resolve();
   });
 };
+
+const timingProgress = (jobId: string, updates: Record<string, unknown> = {}) => ({
+  jobId,
+  stage: "denoising",
+  step: 0,
+  totalSteps: 4,
+  plannedSteps: 4,
+  elapsedSeconds: 20,
+  frames: 360,
+  canvasWidth: 416,
+  canvasHeight: 416,
+  referenceCount: 0,
+  timingProfile: "vidfab=1.4.0|platform=CUDA 13|transformer=test.safetensors",
+  ...updates,
+});
 
 describe("what the app does with the engine's events", () => {
   it("saves the frames the moment the engine says they are ready, and records the file", async () => {
@@ -154,19 +170,19 @@ describe("what the app does with the engine's events", () => {
     expect(job().progress).toBeGreaterThan(0.7);
   });
 
-  it("estimates render completion from observed progress and clears it when rendering ends", async () => {
+  it("estimates render completion from vidfab elapsed time and completed steps", async () => {
     const onEstimate = vi.fn();
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     const { jobId } = harness(undefined, onEstimate);
 
-    await emit("vidfab-progress", { jobId, stage: "denoising", step: 10, totalSteps: 100 });
+    await emit("vidfab-progress", timingProgress(jobId));
     expect(onEstimate).toHaveBeenLastCalledWith(jobId, null);
 
     now.mockReturnValue(11_000);
-    await emit("vidfab-progress", { jobId, stage: "denoising", step: 20, totalSteps: 100 });
+    await emit("vidfab-progress", timingProgress(jobId, { step: 1, elapsedSeconds: 30 }));
     const completionAt = onEstimate.mock.lastCall?.[1];
-    expect(completionAt).toBeTypeOf("number");
-    expect(completionAt).toBeGreaterThan(11_000);
+    // Ten measured seconds per step and two steps remain.
+    expect(completionAt).toBe(31_000);
 
     vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 1, note: null });
     await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });

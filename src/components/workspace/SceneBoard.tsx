@@ -1,4 +1,4 @@
-import { GripVertical, Plus, SlidersHorizontal, Square, Trash2, WandSparkles } from "lucide-react";
+import { GripVertical, Plus, Square, WandSparkles } from "lucide-react";
 import {
   SCENE_MAX_SECONDS,
   SCENE_MIN_SECONDS,
@@ -50,9 +50,9 @@ export function SceneBoard({
   references,
   selection,
   onSelect,
+  onAddScene,
   onAddShot,
   onDuration,
-  onRemoveScene,
   onGenerate,
   generationBlocker,
   changedJobIds,
@@ -66,9 +66,9 @@ export function SceneBoard({
   references: ProjectReference[];
   selection: GeneratorSelection;
   onSelect: (selection: GeneratorSelection) => void;
+  onAddScene: () => void;
   onAddShot: (job: GenerationJob) => void;
   onDuration: (job: GenerationJob, value: number) => void;
-  onRemoveScene: (job: GenerationJob) => void;
   onGenerate: (job: GenerationJob) => void;
   generationBlocker: (job: GenerationJob) => string | null;
   changedJobIds: ReadonlySet<string>;
@@ -107,7 +107,14 @@ export function SceneBoard({
         }}
         onDrop={dropScene}
       >
-        <header className="scene-rule">
+        <header
+          className="scene-rule"
+          onClick={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest("button, input, label, [role='button']")) return;
+            onSelect({ jobId: job.id, shotId: null });
+          }}
+        >
           <span
             className="scene-rule__drag"
             role="button"
@@ -130,13 +137,19 @@ export function SceneBoard({
             }}
           ><GripVertical size={17} aria-hidden="true" /></span>
 
-          <div className="scene-rule__summary">
+          <button
+            type="button"
+            className="scene-rule__summary"
+            aria-label={`Select scene ${job.title}`}
+            aria-pressed={sceneOpen}
+            onClick={() => onSelect({ jobId: job.id, shotId: null })}
+          >
             {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${indicator}`}>{statusIcon(indicator, 15)}</span>}
             <span className="scene-rule__text">
               <b>{job.title}</b>
             </span>
             {job.status !== "draft" && indicator !== "generating" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
-          </div>
+          </button>
 
           <label className="scene-rule__length">
             <span>Length</span>
@@ -151,22 +164,6 @@ export function SceneBoard({
             />
             <b>{seconds(duration)}</b>
           </label>
-
-          <button
-            type="button"
-            className="secondary-button scene-rule__settings-button"
-            aria-pressed={sceneOpen}
-            aria-label={`Settings for ${job.title}`}
-            onClick={() => onSelect({ jobId: job.id, shotId: null })}
-          ><SlidersHorizontal size={15} aria-hidden="true" /></button>
-
-          <button
-            type="button"
-            className="scene-rule__remove"
-            aria-label={`Remove scene ${job.title}`}
-            title={`Remove ${job.title}`}
-            onClick={() => onRemoveScene(job)}
-          ><Trash2 size={16} aria-hidden="true" /></button>
 
           <button
             type="button"
@@ -243,6 +240,15 @@ export function SceneBoard({
         </ol>
       </section>;
     })}
+    <button
+      type="button"
+      className="shot-card shot-card--add scene-card--add"
+      onClick={onAddScene}
+      title="Add an empty scene — you write the shots"
+    >
+      <Plus size={18} aria-hidden="true" />
+      <span>Add a scene</span>
+    </button>
   </div>;
 }
 
