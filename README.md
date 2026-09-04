@@ -55,3 +55,11 @@ My project/
 `polstudio.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback.
 
 The web fallback seeds three deterministic showcase projects on first launch. Remove the `polstudio.web-projects.v1` local-storage entry to restore that initial demo library.
+
+### Reference icons
+
+`npm run reference-icons` renders every missing character, product, location, and style preset with MiniMax H3 at 30 steps. The generator reads the application catalogue directly, requests the model's minimum temporal span, and writes frame 0 directly as a high-quality 4:4:4 256×256 JPEG without creating an intermediate video or audio file. Character entries use controlled headshot lighting; product and location entries use a complete-subject view; style entries use a representative composition with lighting and rendering tailored to the named style.
+
+VidFab, Cargo, and FFmpeg must be installed. The script uses the development paths under `D:\Projects\vidfab` by default; `VIDFAB_EXE`, `VIDFAB_TRANSFORMER`, `VIDFAB_TEXT_ENCODER`, `VIDFAB_VIDEO_VAE`, `VIDFAB_AUDIO_VAE`, `VIDFAB_BACKEND`, `CARGO_EXE`, and `FFMPEG_EXE` can override them. Use `node scripts/generate-reference-icons.mjs --id=<preset-id> --force` to regenerate one entry.
+
+The batch defaults to two GPU workers. Set `REFERENCE_ICON_WORKERS=1` or pass `--workers=1` on a lower-memory card. Use `--type=style` to generate or replace only style icons; `--shard=1/2` selects the first alternating half for a resumable recovery pass.
