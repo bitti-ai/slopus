@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
@@ -10,6 +10,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 });
 
@@ -105,5 +107,29 @@ describe("the program monitor", () => {
     const { container } = monitor(project([]), 0);
     expect(container.querySelector(".program-note")).toBeNull();
     expect(container.querySelector(".program-picture")).not.toBeNull();
+  });
+
+  it("advances from its local animation clock when renders are delayed", () => {
+    const frames: FrameRequestCallback[] = [];
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const onSeek = vi.fn();
+    render(<ProgramMonitor
+      config={project([clip({ startMs: 0, sourceStartMs: 0 })])}
+      folderPath="C:\\Ceramic Lamp"
+      playheadMs={0}
+      playing
+      onSeek={onSeek}
+      onPlayingChange={() => undefined}
+    />);
+
+    act(() => { now = 16; frames.shift()?.(now); });
+    act(() => { now = 32; frames.shift()?.(now); });
+    expect(onSeek.mock.calls.map(([position]) => position)).toEqual([16, 32]);
   });
 });

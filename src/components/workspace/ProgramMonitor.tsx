@@ -17,14 +17,12 @@ import { PreviewSources } from "../../lib/exportPipeline";
  *    re-points the same element at the next file.
  *  * Timeline time and source time are different numbers. A clip trimmed to
  *    start 8s into a rush shows second 8 of the file at second 0 of the cut.
- *  * Sound on the audio tracks plays alongside, each clip in its own element,
+ *  * Sound from every audiovisual track plays alongside, each additional clip in its own element,
  *    corrected back into step whenever it drifts.
  *
- * While playing, the VIDEO element is the clock: the playhead is derived from
- * where the decoder actually is, not from a timer running beside it, so the
- * picture and the playhead cannot disagree. Over a gap — or with nothing
- * readable — a wall clock takes over, because a black stretch still has to
- * play through.
+ * While playing, a monotonic animation clock advances the playhead and the
+ * media element plays alongside it. Explicit jumps and cuts seek the decoder;
+ * the same clock also carries playback through gaps and still images.
  *
  * The whole file is read into a blob, as everywhere else in PolStudio (see
  * MediaThumbnail): the project's media lives outside the webview's reach and
@@ -37,12 +35,10 @@ const AUDIO_DRIFT_LIMIT_S = 0.25;
 /** Seeks below this are not worth the stutter — a paused element is already
  *  showing that frame. Roughly one frame at 30fps. */
 const SEEK_EPSILON_S = 0.033;
-/** How far outside a clip's own stretch of its file the decoder may read and
- *  still be believed. A frame or two of slack, so ordinary rounding at a cut
- *  does not hand the clock to the wall. */
-const CUT_SLACK_MS = 120;
-
 const isImage = (asset: ProjectAsset) => asset.mimeType.startsWith("image/") || asset.kind === "image";
+const carriesAudio = (asset: ProjectAsset | undefined) => Boolean(
+  asset && (asset.kind === "audio" || ((asset.kind === "video" || asset.kind === "generated") && asset.hasAudio === true)),
+);
 
 /** Where inside the FILE this moment of the timeline lives. */
 const sourceTimeMs = (clip: TimelineClip, timelineMs: number) => clip.sourceStartMs + (timelineMs - clip.startMs);
@@ -92,8 +88,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   folderPath: string;
   playheadMs: number;
   playing: boolean;
-  /** Where playback has reached. The view owns the playhead; this only ever
-   *  reports where the decoder actually is. */
+  /** Where playback has reached. The view owns the playhead; this reports the
+   *  monitor's monotonic playback clock. */
   onSeek: (ms: number) => void;
   onPlayingChange: (playing: boolean) => void;
   /** Timeline-only direct manipulation. Export omits these props and therefore
@@ -104,7 +100,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   onTransformChange?: (clipId: string, transform: ClipTransform) => void;
 }) {
   const tracks = config.timeline.tracks;
-  const clip = useMemo(() => visibleClipAt(tracks, playheadMs), [tracks, playheadMs]);
+  const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
+  const clip = useMemo(() => visibleClipAt(tracks, playheadMs, assetsById), [tracks, playheadMs, assetsById]);
   const asset = useMemo(
     () => (clip ? config.assets.find((candidate) => candidate.id === clip.assetId) : undefined),
     [clip, config.assets],
@@ -127,14 +124,15 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       clipPath: `inset(0 ${(1 - revealEnd) * 100}% 0 ${revealStart * 100}%)`,
     };
   }, [frameStyle]);
-  /* Sound that should be audible at this moment: every audio clip the playhead
-     is inside, minus the tracks the user has muted. A muted track is dropped
-     here rather than played silently, so nothing is decoded for it at all. */
+  /* Sound that should be audible at this moment: audio-only files and embedded
+     sound from every active video, minus muted tracks. The visible video plays
+     its own stream, so a second audio element is only needed for the rest. */
   const audioClips = useMemo(() => tracks
-    .filter((track) => track.kind === "audio" && !track.muted)
+    .filter((track) => !track.muted)
     .flatMap((track) => track.clips)
-    .filter((candidate) => playheadMs >= candidate.startMs && playheadMs < clipEndMs(candidate)),
-    [tracks, playheadMs]);
+    .filter((candidate) => playheadMs >= candidate.startMs && playheadMs < clipEndMs(candidate))
+    .filter((candidate) => candidate.id !== clip?.id && carriesAudio(assetsById.get(candidate.assetId))),
+    [tracks, playheadMs, clip?.id, assetsById]);
   const videoTrackMuted = useMemo(
     () => tracks.find((track) => track.id === clip?.trackId)?.muted ?? false,
     [tracks, clip],
@@ -195,6 +193,9 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 
   const report = useCallback((ms: number) => {
     const rounded = Math.round(ms);
+    /* Keep the local clock advancing even when React batches visual updates
+       while pointer and hover events are busy. */
+    positionRef.current = rounded;
     advancedTo.current = rounded;
     onSeek(rounded);
   }, [onSeek]);
@@ -239,8 +240,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 
   /* Scrubbing, every other jump, and the first frame of every new shot.
      While playing this deliberately does nothing for the playhead's own
-     advance — the element is the clock then, and seeking it to its own reading
-     would stutter every frame. It does have to fire on the two other cases:
+     advance — seeking the element to every animation tick would stutter. It
+     does have to fire on the two other cases:
      a playhead that moved for some other reason (the ruler, the wheel, a scene
      card), and a CUT. Crossing a cut re-points the element at another file, or
      at another moment of the same file, and neither knows where in the footage
@@ -284,10 +285,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     else video.pause();
   }, [playing, url, clip?.id]);
 
-  /* The clock. One frame at a time: read where the decoder is, turn that back
-     into a position on the ruler, and hand it up. With no picture to read —
-     a gap, an unreadable file, a still image — the wall clock stands in, so a
-     black stretch still plays through at the right speed. */
+  /* The clock advances one animation frame at a time. It deliberately does
+     not rely on the media element's coarser currentTime update cadence. */
   useEffect(() => {
     if (!playing) return;
     let frame = 0;
@@ -296,22 +295,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       const now = performance.now();
       const elapsed = now - lastTick;
       lastTick = now;
-      const video = videoRef.current;
-      /* The decoder is only the clock while it is actually inside THIS clip's
-         stretch of the file. Just after a cut it is not: the element has been
-         re-pointed and its currentTime still reads 0 (or the last shot's
-         position) until the seek lands. Believing it there would put the
-         playhead before the clip that is on screen, which hands the render back
-         to the previous clip and bounces between the two. The wall clock covers
-         those few frames instead. */
-      const sourceNowMs = video ? video.currentTime * 1000 : 0;
-      const insideThisClip = clip !== null
-        && sourceNowMs >= clip.sourceStartMs - CUT_SLACK_MS
-        && sourceNowMs <= clip.sourceStartMs + clip.durationMs + CUT_SLACK_MS;
-      const decoded = clip && video && url && !video.paused && !video.seeking && Number.isFinite(video.currentTime) && insideThisClip
-        ? clip.startMs + (sourceNowMs - clip.sourceStartMs)
-        : null;
-      const next = decoded ?? positionRef.current + elapsed;
+      /* Media currentTime can be exposed in coarse jumps while Chromium is
+         handling pointer/hover work. A monotonic local clock keeps the ruler
+         smooth; media is still sought at cuts and explicit user jumps. */
+      const next = positionRef.current + elapsed;
       // Past the end of everything there is nothing left to show, so playback
       // stops there instead of running the clock over an empty ruler.
       if (next >= contentEndMs) {

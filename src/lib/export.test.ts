@@ -47,7 +47,7 @@ const clip = (id: string, trackId: string, startMs: number, durationMs: number, 
   ...overrides,
 });
 
-/** A project with the app's own four tracks, `clips` distributed by trackId.
+/** A project with the app's three audiovisual tracks, `clips` distributed by trackId.
  *  `track-story` is the video "Track 1" — the FIRST video track, and the one
  *  that composites over the video "Track 2" (`track-v2`), because the timeline draws
  *  tracks in array order from the top. */
@@ -287,7 +287,7 @@ describe("the plan", () => {
 
   it("mixes the audio that lands inside the picture, and cuts it where the picture ends", () => {
     const config = project(
-      [clip("a", "track-story", 0, 1_000), clip("score", "track-a2", 0, 5_000)],
+      [clip("a", "track-story", 0, 1_000), clip("score", "track-v3", 0, 5_000)],
       [asset("asset-a"), asset("asset-score", { kind: "audio", mimeType: "audio/wav" })],
     );
     const plan = buildExportPlan(config, settings());
@@ -306,7 +306,7 @@ describe("the plan", () => {
     const config = project(
       [
         clip("a", "track-story", 0, 8_000),
-        clip("vo", "track-a1", 2_000, 3_000, { sourceStartMs: 4_500 }),
+        clip("vo", "track-v2", 2_000, 3_000, { sourceStartMs: 4_500 }),
       ],
       [asset("asset-a"), asset("asset-vo", { kind: "audio", mimeType: "audio/wav" })],
     );
@@ -317,7 +317,7 @@ describe("the plan", () => {
 
   it("leaves out audio that starts after the last frame, and says how much", () => {
     const config = project(
-      [clip("a", "track-story", 0, 1_000), clip("late", "track-a1", 4_000, 2_000)],
+      [clip("a", "track-story", 0, 1_000), clip("late", "track-v2", 4_000, 2_000)],
       [asset("asset-a"), asset("asset-late", { kind: "audio", mimeType: "audio/wav" })],
     );
     const plan = buildExportPlan(config, settings());
@@ -327,13 +327,13 @@ describe("the plan", () => {
 
   it("does not mix a muted track, and says that too", () => {
     const config = project(
-      [clip("a", "track-story", 0, 4_000), clip("score", "track-a2", 0, 4_000)],
+      [clip("a", "track-story", 0, 4_000), clip("score", "track-v3", 0, 4_000)],
       [asset("asset-a"), asset("asset-score", { kind: "audio", mimeType: "audio/wav" })],
     );
     const muted = {
       ...config,
       timeline: {
-        tracks: config.timeline.tracks.map((track) => (track.id === "track-a2" ? { ...track, muted: true } : track)),
+        tracks: config.timeline.tracks.map((track) => (track.id === "track-v3" ? { ...track, muted: true } : track)),
       },
     };
     const plan = buildExportPlan(muted, settings());
@@ -345,8 +345,8 @@ describe("the plan", () => {
     const config = project(
       [
         clip("a", "track-story", 0, 6_000),
-        clip("vo", "track-a1", 0, 4_000),
-        clip("score", "track-a2", 2_000, 4_000),
+        clip("vo", "track-v2", 0, 4_000),
+        clip("score", "track-v3", 2_000, 4_000),
       ],
       [
         asset("asset-a"),
@@ -357,6 +357,20 @@ describe("the plan", () => {
     const plan = buildExportPlan(config, settings());
     expect(plan.audio).toHaveLength(2);
     expect(plan.notes.join(" ")).toContain("overlaps are summed");
+  });
+
+  it("mixes embedded video audio and removes it when that audiovisual track is muted", () => {
+    const config = project(
+      [clip("a", "track-story", 0, 2_000), clip("under", "track-v2", 0, 2_000)],
+      [asset("asset-a", { hasAudio: true }), asset("asset-under", { hasAudio: true })],
+    );
+    expect(buildExportPlan(config, settings()).audio.map((segment) => segment.clipId)).toEqual(["a", "under"]);
+
+    const muted = {
+      ...config,
+      timeline: { tracks: config.timeline.tracks.map((track) => track.id === "track-v2" ? { ...track, muted: true } : track) },
+    };
+    expect(buildExportPlan(muted, settings()).audio.map((segment) => segment.clipId)).toEqual(["a"]);
   });
 
   it("blocks on an empty timeline, on missing media and on a container it cannot demux", () => {

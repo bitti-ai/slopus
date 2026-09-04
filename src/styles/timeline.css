@@ -987,6 +987,17 @@
 
 /* --- Track grid ------------------------------------------------------------ */
 
+.timeline-grid-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+.timeline-grid-scroll--wide {
+  overflow-x: auto;
+}
+
 .timeline-grid {
   /* Wide enough for a track name to be read in full beside the kind icon and
      the two toggles. It was cut to fit the seeded names when those still ended
@@ -996,10 +1007,17 @@
   display: grid;
   grid-template-columns: var(--track-column) minmax(0, 1fr);
   grid-template-rows: 36px;
-  grid-auto-rows: 72px;
-  height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
+  grid-auto-rows: 96px;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+/* Track controls remain available while the ruler and clips move sideways. */
+.timeline-grid-scroll--wide .track-corner,
+.timeline-grid-scroll--wide .track-head {
+  position: sticky;
+  left: 0;
+  z-index: 10;
 }
 
 .track-corner {
@@ -1059,11 +1077,6 @@
   border-radius: var(--radius-sm);
   color: var(--accent-bright);
   background: var(--accent-soft-strong);
-}
-
-.track-kind--audio {
-  color: var(--audio);
-  background: var(--audio-soft);
 }
 
 .track-head .track-name,
@@ -1143,8 +1156,8 @@
   background-size: var(--lane-grid, 14.7%) 100%;
 }
 
-.track-lane.muted {
-  opacity: 0.46;
+.track-lane.muted .clip-audio-visualization {
+  opacity: 0.24;
 }
 
 /* Lit while a compatible media file is held over this lane. A drop target the
@@ -1180,7 +1193,7 @@
 .clip-slot {
   position: absolute;
   top: var(--space-2);
-  height: 56px;
+  height: 80px;
   min-width: 22px;
 }
 
@@ -1216,16 +1229,79 @@
 .timeline-clip::before {
   content: "";
   position: absolute;
+  z-index: 1;
   inset: 0;
   background: repeating-linear-gradient(90deg, var(--clip-stripe) 0 18px, transparent 18px 21px);
+  pointer-events: none;
 }
 
-.timeline-clip--audio {
+.timeline-clip__thumbnails {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.timeline-clip--has-audio:not(.timeline-clip--audio-only) .timeline-clip__thumbnails {
+  bottom: 24px;
+}
+
+.timeline-clip__thumbnails img {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  user-select: none;
+}
+
+.timeline-clip--audio-only {
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 62%, var(--clip-audio-shade-top)),
     color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 38%, var(--clip-audio-shade-bottom))
   );
+}
+
+.clip-audio-visualization {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 24px;
+  padding: 3px 4px;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: color-mix(in srgb, var(--panel) 34%, transparent);
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.timeline-clip--audio-only .clip-audio-visualization {
+  top: 0;
+  height: auto;
+  background: transparent;
+}
+
+.clip-audio-visualization svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.clip-audio-visualization__samples {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-primary) 82%, var(--clip-color, var(--audio)));
+  stroke-width: 1px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.clip-audio-visualization.loading {
+  opacity: 0.48;
 }
 
 .timeline-clip:hover {
@@ -1325,35 +1401,6 @@
 
 .timeline-view--dragging .timeline-clip {
   cursor: grabbing;
-}
-
-.clip-text {
-  position: relative;
-  z-index: 2;
-  display: block;
-  padding: var(--space-2);
-}
-
-.clip-text b,
-.clip-text small {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.clip-text b {
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.clip-text small {
-  margin-top: var(--space-1);
-  color: var(--text-primary);
-  opacity: 0.78;
-  font: var(--weight-medium) var(--text-2xs) / 1.1 var(--font-mono);
 }
 
 .timeline-playhead {
