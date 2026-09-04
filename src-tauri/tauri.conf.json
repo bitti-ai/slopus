@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PolStudio",
+        "title": "PolStudio - 0.1.0",
         "width": 1440,
         "height": 920,
         "minWidth": 900,

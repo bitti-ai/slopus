@@ -24,3 +24,16 @@
 @import "./references.css";
 @import "./export.css";
 @import "./exit-guard.css";
+
+/* Text entry uses one reading size everywhere. This matches the Speech field
+   in Shot settings; sliders, checkboxes, number controls and selects retain
+   their purpose-specific typography. */
+:root input:not([type]),
+:root input[type="text"],
+:root input[type="search"],
+:root input[type="password"],
+:root input[type="url"],
+:root input[type="email"],
+:root textarea {
+  font-size: var(--text-sm);
+}
