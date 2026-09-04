@@ -146,7 +146,7 @@
   position: relative;
   width: 100%;
   max-width: calc(68vh * var(--frame-aspect, 1.7778));
-  margin: 0 auto var(--space-3);
+  margin: 0 auto;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -157,6 +157,10 @@
      is black in BOTH themes, everything painted on it uses the --stage-*
      tokens rather than the palette — see tokens.css. */
   background: var(--stage-bg);
+}
+
+.export-stage:not(.export-stage--controls-visible):not(:focus-within) {
+  cursor: none;
 }
 
 /* The player fills the stage; the letterboxing inside it is the project's own
@@ -173,6 +177,10 @@
   border: 0;
   border-radius: 0;
   background: var(--stage-bg);
+}
+
+.export-stage:fullscreen .export-transport {
+  padding: 56px max(var(--space-5), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
 }
 
 .export-stage__note {
@@ -210,13 +218,33 @@
   line-height: var(--leading-normal);
 }
 
-/* Play, step, scrub, fullscreen — one row, and the scrub takes whatever the
-   buttons leave. */
+/* A translucent playback surface over the picture. Pointer movement reveals
+   it; keyboard focus keeps it present independently of the idle timer. */
 .export-transport {
-  min-height: var(--control-sm);
+  position: absolute;
+  z-index: 5;
+  inset: auto 0 0;
+  min-height: 76px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  padding: 30px var(--space-3) var(--space-3);
+  color: var(--on-stage);
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--stage-bg) 82%, transparent));
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.22s;
+}
+
+.export-stage--controls-visible .export-transport,
+.export-stage:focus-within .export-transport {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition-delay: 0s;
 }
 
 .export-transport button {
@@ -226,54 +254,118 @@
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--panel-2);
+  border: 0;
+  border-radius: 50%;
+  color: var(--on-stage);
+  background: transparent;
   cursor: pointer;
-  transition: 0.14s ease;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--stage-bg) 55%, transparent));
+  transition: color 0.14s ease, background-color 0.14s ease, transform 0.14s ease;
 }
 
 .export-transport button:hover:not(:disabled) {
-  border-color: var(--line-hover);
-  color: var(--text-primary);
-  background: var(--panel-3);
+  color: var(--on-stage);
+  background: color-mix(in srgb, var(--on-stage) 16%, transparent);
+  transform: scale(1.06);
+}
+
+.export-transport button:focus-visible {
+  outline: 2px solid var(--on-stage);
+  outline-offset: 1px;
 }
 
 .export-transport button:disabled {
   cursor: not-allowed;
-  color: var(--text-faint);
-  opacity: 0.7;
+  opacity: 0.42;
 }
 
 .export-transport__play:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--on-accent);
-  background: var(--accent);
+  color: var(--on-stage);
 }
 
 .export-transport__play:hover:not(:disabled) {
-  border-color: var(--accent-bright);
-  color: var(--on-accent);
-  background: var(--accent-bright);
+  color: var(--on-stage);
+  background: color-mix(in srgb, var(--on-stage) 20%, transparent);
 }
 
 .export-transport input[type="range"] {
+  --scrub-progress: 0%;
   flex: 1 1 auto;
   min-width: 0;
-  height: var(--control-sm);
-  margin: 0 var(--space-1);
-  accent-color: var(--accent-bright);
+  height: 24px;
+  margin: 0 var(--space-2);
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
   cursor: pointer;
+}
+
+.export-transport input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(to right, var(--accent-bright) 0 var(--scrub-progress), color-mix(in srgb, var(--on-stage) 38%, transparent) var(--scrub-progress) 100%);
+}
+
+.export-transport input[type="range"]::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  appearance: none;
+  border: 2px solid var(--on-stage);
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
+}
+
+.export-transport input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--on-stage) 38%, transparent);
+}
+
+.export-transport input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bright);
+}
+
+.export-transport input[type="range"]::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--on-stage);
+  border-radius: 50%;
+  background: var(--accent-bright);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
+}
+
+.export-transport input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--on-stage) 35%, transparent), 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
 }
 
 .export-transport output {
   flex: 0 0 auto;
-  min-width: 8ch;
-  color: var(--text-secondary);
+  min-width: 17ch;
+  display: flex;
+  justify-content: center;
+  gap: var(--space-1);
+  color: var(--on-stage);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  text-align: right;
+  text-align: center;
+  text-shadow: 0 1px 2px var(--stage-bg);
+}
+
+.export-transport output i {
+  color: color-mix(in srgb, var(--on-stage) 55%, transparent);
+  font-style: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-transport,
+  .export-transport button {
+    transition: none;
+  }
 }
 
 /* --- Settings -------------------------------------------------------------- */
