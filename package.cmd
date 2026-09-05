@@ -9,9 +9,9 @@ set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\pol-studio.exe"
 
 rem The generation runtime is built by a separate project. Override with
-rem   set VIDFAB_DIR=...\build\Release
+rem   set SLOPFAB_DIR=...\build\Release
 rem before running if it lives somewhere else.
-if not defined VIDFAB_DIR set "VIDFAB_DIR=D:\Projects\vidfab\build\Release"
+if not defined SLOPFAB_DIR set "SLOPFAB_DIR=D:\Projects\slopfab\build\Release"
 
 where.exe npm.cmd >nul 2>nul || (
   echo ERROR: npm was not found on PATH.
@@ -124,17 +124,17 @@ if exist "%OUTPUT_DIR%" (
 mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\PolStudio.exe" >nul || goto :fail
 
-set "VIDFAB_BUNDLED=no"
-if exist "%VIDFAB_DIR%\vidfab.dll" (
+set "SLOPFAB_BUNDLED=no"
+if exist "%SLOPFAB_DIR%\slopfab.dll" (
   rem Beside PolStudio.exe, not in a subfolder. That is where the app looks,
-  rem so there is nothing left for anyone to configure - and vidfab.dll is
+  rem so there is nothing left for anyone to configure - and slopfab.dll is
   rem loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its dependencies have to
   rem sit in the same folder as it anyway.
-  copy /Y "%VIDFAB_DIR%\vidfab.dll" "%OUTPUT_DIR%\" >nul || goto :fail
-  set "VIDFAB_BUNDLED=yes"
-  echo        Runtime:   vidfab.dll included.
+  copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\" >nul || goto :fail
+  set "SLOPFAB_BUNDLED=yes"
+  echo        Runtime:   slopfab.dll included.
 ) else (
-  echo        Runtime:   vidfab not found at %VIDFAB_DIR% - shipping without it.
+  echo        Runtime:   slopfab not found at %SLOPFAB_DIR% - shipping without it.
   echo                   The app still runs; it reports the generator as unavailable.
 )
 
@@ -172,8 +172,8 @@ exit /b 0
 >>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.
 >>"%~1" echo.
 >>"%~1" echo VIDEO GENERATION
-if /I "%VIDFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The runtime is included. Keep vidfab.dll beside PolStudio.exe.
+if /I "%SLOPFAB_BUNDLED%"=="yes" (
+  >>"%~1" echo   The runtime is included. Keep slopfab.dll beside PolStudio.exe.
 ) else (
   >>"%~1" echo   The runtime is not included. Editing still works.
 )

@@ -43,7 +43,7 @@ Shots are sequential, later shots carry increasing cut timestamps, camera moves 
 
 ## Generation boundary
 
-The vidfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. PolStudio therefore owns:
+The slopfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. PolStudio therefore owns:
 
 - compute-platform selection: CUDA 13 when usable, then CUDA 12, then Vulkan with exact attention;
 - a serial generation queue and cancellation;
@@ -59,5 +59,5 @@ The application must fail gracefully when the DLL, model files, WebCodecs, or We
 
 1. Foundation: desktop shell, library, portable project persistence, schema, and always-visible agent prompt.
 2. Timeline: preview, track controls, clips, playhead, selection, and credible editing interactions.
-3. Agent and generation: provider adapters, validated command batches, H3 prompt compiler, vidfab queue, progress, and cancellation.
+3. Agent and generation: provider adapters, validated command batches, H3 prompt compiler, slopfab queue, progress, and cancellation.
 4. References and polish: reusable text/image inputs, binding them to jobs, accessibility, responsive behavior, and end-to-end verification.
