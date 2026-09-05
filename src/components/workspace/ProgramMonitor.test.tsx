@@ -19,7 +19,7 @@ afterEach(() => {
    frame reached the screen. What it CAN prove is everything around the picture
    — which clip the playhead is over, which file that clip's element is pointed
    at, and what the monitor says when there is no picture to show. The decode
-   itself is the webview's, and the one thing PolStudio does not implement. */
+   itself is the webview's, and the one thing Slopus does not implement. */
 
 const clip = (over: Partial<TimelineClip> = {}): TimelineClip => ({
   id: "clip-1", assetId: "asset-macro", trackId: STORY_TRACK_ID,

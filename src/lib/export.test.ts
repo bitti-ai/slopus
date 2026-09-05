@@ -455,6 +455,6 @@ describe("formatting", () => {
   it("turns a project name into something a filesystem accepts", () => {
     expect(suggestedFileName("Northern Light — Brand Film")).toBe("Northern Light — Brand Film.mp4");
     expect(suggestedFileName("a/b:c*d?")).toBe("a b c d.mp4");
-    expect(suggestedFileName("   ")).toBe("PolStudio export.mp4");
+    expect(suggestedFileName("   ")).toBe("Slopus export.mp4");
   });
 });

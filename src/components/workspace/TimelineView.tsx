@@ -47,8 +47,8 @@ const VISIBLE_TIMELINE_MS = 60_000;
 const DROPPED_CLIP_MS = 5_000;
 /* The drag payload is the asset id. A custom type keeps files dragged in from
    the desktop, and text dragged from anywhere else, out of the drop handler. */
-const ASSET_DRAG_TYPE = "application/x-polstudio-asset";
-const SCENE_DRAG_TYPE = "application/x-polstudio-generator-scene";
+const ASSET_DRAG_TYPE = "application/x-slopus-asset";
+const SCENE_DRAG_TYPE = "application/x-slopus-generator-scene";
 
 /* How close two edges have to be ON SCREEN before they snap together. In
    pixels, not milliseconds, because that is how close they LOOK — the same
@@ -832,7 +832,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           <div className="program-canvas">
             {/* The real picture now: the clip under the playhead, decoded from
                 its own file. What used to stand here was a panel explaining
-                that PolStudio could not play footage back — true when it was
+                that Slopus could not play footage back — true when it was
                 written, and no longer. An empty timeline still shows an empty
                 monitor, which says by itself that nothing is cut yet. */}
             {clipCount > 0

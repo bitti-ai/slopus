@@ -8,7 +8,7 @@ import { PreviewSources } from "../../lib/exportPipeline";
 
 /* The picture, played back.
  *
- * PolStudio has no player of its own and does not need one: the webview owns a
+ * Slopus has no player of its own and does not need one: the webview owns a
  * hardware decoder, and a <video> pointed at the right file at the right offset
  * IS the shot. What this component adds is the part a media element cannot do —
  * being a TIMELINE rather than a file:
@@ -24,7 +24,7 @@ import { PreviewSources } from "../../lib/exportPipeline";
  * media element plays alongside it. Explicit jumps and cuts seek the decoder;
  * the same clock also carries playback through gaps and still images.
  *
- * The whole file is read into a blob, as everywhere else in PolStudio (see
+ * The whole file is read into a blob, as everywhere else in Slopus (see
  * MediaThumbnail): the project's media lives outside the webview's reach and
  * comes back through Tauri. Blobs are cached per asset for the life of the
  * view, so scrubbing back and forth across a cut re-reads nothing. */
@@ -179,7 +179,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
      and forth across a cut re-reads nothing. The cost is real and worth stating:
      a blob is the WHOLE file, so a timeline built from four 300 MB rushes holds
      1.2 GB once all four have been under the playhead. Everything else in
-     PolStudio that shows footage does the same (MediaThumbnail, the export
+     Slopus that shows footage does the same (MediaThumbnail, the export
      preview) because project media lives outside the webview and arrives
      through Tauri as bytes. The cleanup revokes every URL handed out, so
      leaving the timeline — or opening another project — gives all of it back. */

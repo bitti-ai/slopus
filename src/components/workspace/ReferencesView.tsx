@@ -211,7 +211,7 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             {selectedImages.length === 0 && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
           </div>
           <div className="reference-fields">
-            {referenceType(selected) === "custom" ? <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe PolStudio should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label> : <div className="reference-preset-summary">
+            {referenceType(selected) === "custom" ? <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null })} /></label> : <div className="reference-preset-summary">
               <span>Selection</span>
               <button onClick={openPresetPicker}>
                 <span><b>{selectedReferencePreset(selected)?.name ?? `${referenceTypeLabel(referenceType(selected))} selection`}</b><small>{selected.description}</small></span>

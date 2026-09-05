@@ -6,7 +6,7 @@ pushd "%~dp0" || exit /b 1
 set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
-set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\pol-studio.exe"
+set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"
 
 rem The generation runtime is built by a separate project. Override with
 rem   set SLOPFAB_DIR=...\build\Release
@@ -53,7 +53,7 @@ set "PACKAGE_ARCH=%PROCESSOR_ARCHITECTURE%"
 if /I "%PACKAGE_ARCH%"=="AMD64" set "PACKAGE_ARCH=x64"
 if /I "%PACKAGE_ARCH%"=="ARM64" set "PACKAGE_ARCH=arm64"
 if /I "%PACKAGE_ARCH%"=="x86" set "PACKAGE_ARCH=x86"
-set "OUTPUT_STEM=PolStudio-%APP_VERSION%-windows-%PACKAGE_ARCH%"
+set "OUTPUT_STEM=Slopus-%APP_VERSION%-windows-%PACKAGE_ARCH%"
 set "OUTPUT_SETUP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-setup.exe"
 set "OUTPUT_MSI=%ARTIFACTS_DIR%\%OUTPUT_STEM%.msi"
 set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
@@ -122,11 +122,11 @@ if exist "%OUTPUT_DIR%" (
   goto :fail
 )
 mkdir "%OUTPUT_DIR%" || goto :fail
-copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\PolStudio.exe" >nul || goto :fail
+copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
 
 set "SLOPFAB_BUNDLED=no"
 if exist "%SLOPFAB_DIR%\slopfab.dll" (
-  rem Beside PolStudio.exe, not in a subfolder. That is where the app looks,
+  rem Beside Slopus.exe, not in a subfolder. That is where the app looks,
   rem so there is nothing left for anyone to configure - and slopfab.dll is
   rem loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its dependencies have to
   rem sit in the same folder as it anyway.
@@ -164,16 +164,16 @@ popd
 exit /b 0
 
 :write_readme
-> "%~1" echo PolStudio %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
+> "%~1" echo Slopus %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
 >>"%~1" echo.
->>"%~1" echo Run "PolStudio.exe". Projects are folders you choose on disk.
+>>"%~1" echo Run "Slopus.exe". Projects are folders you choose on disk.
 >>"%~1" echo.
 >>"%~1" echo REQUIREMENTS
 >>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.
 >>"%~1" echo.
 >>"%~1" echo VIDEO GENERATION
 if /I "%SLOPFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The runtime is included. Keep slopfab.dll beside PolStudio.exe.
+  >>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe.
 ) else (
   >>"%~1" echo   The runtime is not included. Editing still works.
 )

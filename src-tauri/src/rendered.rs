@@ -4,7 +4,7 @@
 //! another, with every frame of a channel contiguous — and frees them when the
 //! generation handle is destroyed. Nothing in this process can turn those into
 //! an MP4: encoding is the webview's job, because WebCodecs owns the OS encoder
-//! and PolStudio ships no FFmpeg by design (see docs/architecture.md, and
+//! and Slopus ships no FFmpeg by design (see docs/architecture.md, and
 //! CLAUDE.md on the licensing reason).
 //!
 //! So this module is the hand-off. It keeps the finished generation handle
@@ -381,14 +381,22 @@ pub fn release(job_id: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn planar(frames: usize, width: usize, height: usize, channels: usize, value: impl Fn(usize) -> f32) -> Vec<f32> {
+    fn planar(
+        frames: usize,
+        width: usize,
+        height: usize,
+        channels: usize,
+        value: impl Fn(usize) -> f32,
+    ) -> Vec<f32> {
         (0..frames * channels * width * height).map(value).collect()
     }
 
     #[test]
     fn planes_become_pixels_in_the_right_order() {
         // One 2×1 frame: red plane, then green, then blue.
-        let video = vec![1.0, 0.0, /* R */ 0.0, 1.0, /* G */ 0.0, 0.0 /* B */];
+        let video = vec![
+            1.0, 0.0, /* R */ 0.0, 1.0, /* G */ 0.0, 0.0, /* B */
+        ];
         let rgba = rgba_from_planar(&video, 1, 2, 1, 3).unwrap();
         assert_eq!(rgba, vec![255, 0, 0, 255, 0, 255, 0, 255]);
     }
@@ -409,7 +417,10 @@ mod tests {
         assert_eq!(Range::of(&[-1.0, 0.0, 1.0]), Range::Signed);
         let video = vec![-1.0, 0.0, 1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0];
         let rgba = rgba_from_planar(&video, 1, 3, 1, 3).unwrap();
-        assert_eq!(&rgba[..12], &[0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255]);
+        assert_eq!(
+            &rgba[..12],
+            &[0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255]
+        );
     }
 
     #[test]
@@ -417,14 +428,30 @@ mod tests {
         assert_eq!(Range::of(&[0.0, 0.5, 1.0]), Range::Unit);
         let video = vec![0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.5, 1.0];
         let rgba = rgba_from_planar(&video, 1, 3, 1, 3).unwrap();
-        assert_eq!(&rgba[..12], &[0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255]);
+        assert_eq!(
+            &rgba[..12],
+            &[0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255]
+        );
     }
 
     #[test]
     fn out_of_range_and_not_a_number_land_inside_the_byte() {
-        let video = vec![2.0, f32::NAN, -0.001, 2.0, f32::NAN, -0.001, 2.0, f32::NAN, -0.001];
+        let video = vec![
+            2.0,
+            f32::NAN,
+            -0.001,
+            2.0,
+            f32::NAN,
+            -0.001,
+            2.0,
+            f32::NAN,
+            -0.001,
+        ];
         let rgba = rgba_from_planar(&video, 1, 3, 1, 3).unwrap();
-        assert_eq!(&rgba[..12], &[255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255]);
+        assert_eq!(
+            &rgba[..12],
+            &[255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255]
+        );
     }
 
     #[test]
@@ -443,12 +470,48 @@ mod tests {
 
     #[test]
     fn malformed_interleaved_audio_is_refused_at_the_handoff() {
-        assert!(from_output("bad-audio", &[0.5, 0.5, 0.5], &[0.1, 0.2, 0.3], 1, 1, 1, 3, 24.0, 2, 32_000).is_err());
-        assert!(from_output("bad-rate", &[0.5, 0.5, 0.5], &[0.1, 0.2], 1, 1, 1, 3, 24.0, 2, 0).is_err());
+        assert!(from_output(
+            "bad-audio",
+            &[0.5, 0.5, 0.5],
+            &[0.1, 0.2, 0.3],
+            1,
+            1,
+            1,
+            3,
+            24.0,
+            2,
+            32_000
+        )
+        .is_err());
+        assert!(from_output(
+            "bad-rate",
+            &[0.5, 0.5, 0.5],
+            &[0.1, 0.2],
+            1,
+            1,
+            1,
+            3,
+            24.0,
+            2,
+            0
+        )
+        .is_err());
     }
 
     fn sample(job_id: &str) -> RenderedVideo {
-        from_output(job_id, &[0.5, 0.5, 0.5], &[0.25, -0.25], 1, 1, 1, 3, 24.0, 2, 48_000).unwrap()
+        from_output(
+            job_id,
+            &[0.5, 0.5, 0.5],
+            &[0.25, -0.25],
+            1,
+            1,
+            1,
+            3,
+            24.0,
+            2,
+            48_000,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -459,12 +522,29 @@ mod tests {
         assert_eq!(frame("held", 0).unwrap().unwrap(), vec![128, 128, 128, 255]);
         assert_eq!(
             summary("held").unwrap(),
-            RenderedSummary { job_id: "held".into(), width: 1, height: 1, frame_count: 1, fps: 24.0, audio_channels: 2, audio_sample_rate: 48_000, audio_samples: 2 },
+            RenderedSummary {
+                job_id: "held".into(),
+                width: 1,
+                height: 1,
+                frame_count: 1,
+                fps: 24.0,
+                audio_channels: 2,
+                audio_sample_rate: 48_000,
+                audio_samples: 2
+            },
         );
         // Past the last frame is an absence, not a panic and not a short read.
         assert!(frame("held", 1).unwrap().is_none());
         // f32 little-endian, which is what the webview reads it back as.
-        assert_eq!(audio("held").unwrap(), 0.25f32.to_le_bytes().iter().chain(&(-0.25f32).to_le_bytes()).copied().collect::<Vec<u8>>());
+        assert_eq!(
+            audio("held").unwrap(),
+            0.25f32
+                .to_le_bytes()
+                .iter()
+                .chain(&(-0.25f32).to_le_bytes())
+                .copied()
+                .collect::<Vec<u8>>()
+        );
         assert!(release("held"));
         assert!(!release("held"));
         assert!(frame("held", 0).unwrap().is_none());

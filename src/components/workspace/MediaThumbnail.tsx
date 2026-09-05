@@ -14,7 +14,7 @@ import type { ProjectAsset } from "../../lib/project";
  *
  * The same <video> that gives up the frame already knows `duration`,
  * `videoWidth`, and `videoHeight`, so measuring the asset costs nothing beyond
- * the read this component was already doing. Nothing else in PolStudio has
+ * the read this component was already doing. Nothing else in Slopus has
  * decoded these files yet, so this is where an imported asset stops being
  * `durationMs: null` and becomes a number — and a clip dropped from it stops
  * being a stand-in five seconds long.
@@ -284,6 +284,6 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
     className="media-thumb"
     role="img"
     aria-label={failed ? `${asset.name} — preview unavailable` : asset.name}
-    title={failed ? "PolStudio couldn’t read this file to make a preview." : undefined}
+    title={failed ? "Slopus couldn’t read this file to make a preview." : undefined}
   >{icon}</span>;
 }

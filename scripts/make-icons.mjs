@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generates the PolStudio application icons into src-tauri/icons/.
+ * Generates the Slopus application icons into src-tauri/icons/.
  *
  *   node scripts/make-icons.mjs          # write the icons
  *   node scripts/make-icons.mjs --check  # decode what is on disk and print it as ASCII
@@ -12,9 +12,9 @@
  * re-running, and `--check` decodes the real files back so a regression is
  * visible in the terminal instead of only in a taskbar.
  *
- * The mark is the film ticket from the in-app logo (src/components/PolStudioLogo.tsx):
+ * The mark is the film ticket from the in-app logo (src/components/SlopusLogo.tsx):
  * a flat blue plate with a column of four perforations punched clean through it
- * and a heavy white letter. Every size carries a single "P" — "PolS" is four letters in
+ * and a heavy white letter. Every size carries a single "S" — "Slop" is four letters in
  * the space that fits one, and at 16px it was an illegible smudge.
  *
  * The perforations are transparent, not white, at every size. They are 2x2 at
@@ -32,14 +32,14 @@ const ICONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri
 
 /* ---------------------------------------------------------------- geometry */
 
-/** Stable brand blue shared with .pol-logo__ticket. */
+/** Stable brand blue shared with .slopus-logo__ticket. */
 const PLATE_COLOR = [0x3f, 0x64, 0xd9];
 
 /**
  * Layout for one canvas size, in pixel units.
  *
  * Small canvases are snapped to whole pixels: a 2px-wide perforation that
- * starts at x=1.84 is two columns of grey, and grey is how "PolS" became a
+ * starts at x=1.84 is two columns of grey, and grey is how "Slop" became a
  * smudge in the first place.
  */
 function layout(size) {
@@ -51,34 +51,33 @@ function layout(size) {
   const plate = { x0: margin, y0: margin, x1: margin + D, y1: margin + D, r: D * 0.2 };
 
   // The letter, in heavy grotesque proportions keyed off its cap height.
-  const Ph = r(D * 0.72);
-  const t = Math.max(1, r(Ph * 0.19));
-  const Pw = r(Ph * 0.66);
-  const Bh = r(Ph * 0.58);
+  const Sh = r(D * 0.72);
+  const t = Math.max(1, r(Sh * 0.18));
+  const Sw = r(Sh * 0.66);
 
   // Four perforations down the left, wider than tall like the CSS ones, and
   // spanning the same height as the letter beside them.
-  const perfH = Math.max(1, r(Ph * 0.17));
-  const perfGap = Math.max(1, r(Ph * 0.09));
+  const perfH = Math.max(1, r(Sh * 0.17));
+  const perfGap = Math.max(1, r(Sh * 0.09));
   const perfW = Math.max(1, r(perfH * 1.1));
   const perfSpan = 4 * perfH + 3 * perfGap;
 
   // Perforations + letter are one group, centred in the plate as a unit; a
   // letter centred on its own leaves the mark visibly shoved to the right.
   const inner = Math.max(1, r(D * 0.1));
-  const gx = margin + r((D - (perfW + inner + Pw)) / 2);
+  const gx = margin + r((D - (perfW + inner + Sw)) / 2);
   const cy = margin + D / 2;
 
   // Every edge but the plate's corners and the bowl's curve lands on a pixel
   // boundary. A 2px-wide perforation that starts at x=1.84 is two columns of
-  // grey, and grey is how "PolS" became a smudge in the first place.
+  // grey, and grey is how "Slop" became a smudge in the first place.
   return {
     size,
     margin,
     D,
     plate,
     perf: { x: gx, y: r(cy - perfSpan / 2), w: perfW, h: perfH, gap: perfGap, r: perfW >= 5 ? 1 : 0 },
-    p: { x: gx + perfW + inner, y: r(cy - Ph / 2), w: Pw, h: Ph, t, bowl: Bh },
+    s: { x: gx + perfW + inner, y: r(cy - Sh / 2), w: Sw, h: Sh, t },
   };
 }
 
@@ -117,24 +116,17 @@ function inPerf(L, x, y) {
   return false;
 }
 
-/** The white ink: the letter P. */
+/** The white ink: a heavy geometric letter S. */
 function inLetter(L, x, y) {
-  const { p } = L;
-
-  // Stem.
-  if (x >= p.x && x <= p.x + p.t && y >= p.y && y <= p.y + p.h) return true;
-
-  // Bowl: a D-shape minus its counter, both rounded only on the right.
-  const rOut = Math.min(p.bowl / 2, p.w * 0.55);
-  const outer = inRoundRect(x, y, p.x, p.y, p.x + p.w, p.y + p.bowl, 0, rOut, rOut, 0);
-  if (!outer) return false;
-  const ix0 = p.x + p.t;
-  const iy0 = p.y + p.t;
-  const ix1 = p.x + p.w - p.t;
-  const iy1 = p.y + p.bowl - p.t;
-  if (ix1 <= ix0 || iy1 <= iy0) return true;
-  const rIn = Math.max(0, Math.min((iy1 - iy0) / 2, rOut - p.t));
-  return !inRoundRect(x, y, ix0, iy0, ix1, iy1, 0, rIn, rIn, 0);
+  const { s } = L;
+  const mid = s.y + s.h / 2;
+  const radius = s.t / 2;
+  const bar = (y0) => inRoundRect(x, y, s.x, y0, s.x + s.w, y0 + s.t,
+    radius, radius, radius, radius);
+  if (bar(s.y) || bar(mid - s.t / 2) || bar(s.y + s.h - s.t)) return true;
+  if (inRoundRect(x, y, s.x, s.y, s.x + s.t, mid, radius, radius, radius, radius)) return true;
+  return inRoundRect(x, y, s.x + s.w - s.t, mid, s.x + s.w, s.y + s.h,
+    radius, radius, radius, radius);
 }
 
 const SS = 8; // supersampling factor per axis (64 samples/pixel)

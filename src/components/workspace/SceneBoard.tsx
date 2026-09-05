@@ -19,8 +19,8 @@ export interface GeneratorSelection {
   shotId: string | null;
 }
 
-export const SCENE_DRAG_TYPE = "application/x-polstudio-scene";
-export const SHOT_DRAG_TYPE = "application/x-polstudio-shot";
+export const SCENE_DRAG_TYPE = "application/x-slopus-scene";
+export const SHOT_DRAG_TYPE = "application/x-slopus-shot";
 
 const seconds = (value: number): string => `${value.toFixed(1)}s`;
 const hasDragType = (types: readonly string[], type: string): boolean => Array.from(types).includes(type);

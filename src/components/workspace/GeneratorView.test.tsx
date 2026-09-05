@@ -248,7 +248,7 @@ describe("Generator scene controls", () => {
   });
 
   it("uses the default generator template's steps for a new scene", () => {
-    localStorage.setItem("polstudio.generator-templates.v1", JSON.stringify({
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({
       defaultTemplateId: "draft",
       templates: [{
         id: "draft",
@@ -263,7 +263,7 @@ describe("Generator scene controls", () => {
   });
 
   it("switches the active generator from the ready status control and probes its model paths", async () => {
-    localStorage.setItem("polstudio.generator-templates.v1", JSON.stringify({
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({
       defaultTemplateId: "quality",
       templates: [
         {
@@ -300,7 +300,7 @@ describe("Generator scene controls", () => {
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
     expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }));
-    expect(JSON.parse(localStorage.getItem("polstudio.generator-templates.v1")!).defaultTemplateId).toBe("draft");
+    expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
     expect(screen.getByText("Video model files missing")).toBeInTheDocument();
   });
 

@@ -202,7 +202,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const blockers = [...plan.blockers];
   if (!support.desktop) {
     blockers.push(
-      "This is the browser preview. There is no project folder to read media from and nowhere on disk to write a file, so exporting is only available in the PolStudio desktop app.",
+      "This is the browser preview. There is no project folder to read media from and nowhere on disk to write a file, so exporting is only available in the Slopus desktop app.",
     );
   }
   if (!support.encoder || !support.decoder) {
@@ -289,7 +289,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
 
   return <div className="export-view">
     {/* The action lives beside the title, where every other screen in
-        PolStudio puts its main button (see the References header). It used to
+        Slopus puts its main button (see the References header). It used to
         sit at the bottom of the right-hand column, below everything the page
         had to say — which is a long way to scroll to press the one control the
         screen exists for. */}

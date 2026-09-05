@@ -24,7 +24,7 @@ describe("application diagnostics bridge", () => {
 
   it("writes structured entries and retrieves the native log location", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
-    const info = { path: "C:\\Logs\\polstudio.log", previousPath: null, sessionId: "42-1", maxFileBytes: 5_242_880 };
+    const info = { path: "C:\\Logs\\slopus.log", previousPath: null, sessionId: "42-1", maxFileBytes: 5_242_880 };
     vi.mocked(invoke).mockResolvedValue(info);
 
     writeDiagnostic("error", "generation", "encoding.failed", "Encoder stopped", { jobId: "job-1", frames: 48 });

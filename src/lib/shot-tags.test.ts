@@ -178,7 +178,7 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
     expect(segments.map((segment) => segment.value).join("")).toBe(compileMiniMaxH3Prompt(brief, [], macroPush));
     expect(segments.filter((segment) => segment.kind === "brief").map((segment) => segment.value)).toEqual([brief]);
     // Every tag-attributed run is terms straight out of the taxonomy. The field
-    // names around them ("Camera movement: ", "Lighting: ") are PolStudio's own
+    // names around them ("Camera movement: ", "Lighting: ") are Slopus's own
     // scaffolding and must NOT be coloured as something the user chose.
     expect(segments.filter((segment) => segment.kind === "tag").map((segment) => segment.value)).toEqual([
       "Live-action, cinematic",
@@ -190,7 +190,7 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
       "slow motion",
     ]);
     expect(segments.some((segment) => segment.kind === "frame" && segment.value === " Camera movement: ")).toBe(true);
-    // The stop after the user's words is PolStudio's punctuation, not theirs.
+    // The stop after the user's words is Slopus's punctuation, not theirs.
     expect(segments.some((segment) => segment.kind === "frame" && segment.value === ".")).toBe(true);
   });
 

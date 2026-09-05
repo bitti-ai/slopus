@@ -81,9 +81,9 @@ describe("project library controls", () => {
   it("focuses search with Ctrl/Cmd+K and switches between grid and list", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
-    expect(container.querySelector(".brand .pol-logo")).not.toBeNull();
-    expect(container.querySelector(".brand .pol-logo__monogram")?.textContent).toBe("PolS");
-    expect(container.querySelector(".brand .pol-logo__wordmark")?.textContent).toBe("tudio");
+    expect(container.querySelector(".brand .slopus-logo")).not.toBeNull();
+    expect(container.querySelector(".brand .slopus-logo__monogram")?.textContent).toBe("Slop");
+    expect(container.querySelector(".brand .slopus-logo__wordmark")?.textContent).toBe("us");
     expect(container.querySelector(".brand img")).toBeNull();
 
     const search = screen.getByRole("textbox", { name: "Search projects" });
@@ -107,7 +107,7 @@ describe("project library controls", () => {
 
     const dialog = screen.getByRole("alertdialog", { name: "Delete “Northern Light — Brand Film”?" });
     expect(dialog.textContent).toContain("permanently deletes the project folder and every file inside it");
-    expect(dialog.textContent).toContain("~/PolStudio/Northern Light");
+    expect(dialog.textContent).toContain("~/Slopus/Northern Light");
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Northern Light — Brand Film")).not.toBeNull();
@@ -117,7 +117,7 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
 
     await waitFor(() => expect(screen.queryByText("Northern Light — Brand Film")).toBeNull());
-    const stored = JSON.parse(localStorage.getItem("polstudio.web-projects.v1") ?? "[]") as Array<{ config: { id: string } }>;
+    const stored = JSON.parse(localStorage.getItem("slopus.web-projects.v1") ?? "[]") as Array<{ config: { id: string } }>;
     expect(stored.some((project) => project.config.id === "sample-1")).toBe(false);
     expect(screen.getByText("2 projects")).not.toBeNull();
   });
@@ -178,10 +178,10 @@ describe("project library controls", () => {
 
   it("reports a project it can’t read instead of dropping it from the library", async () => {
     const readable = createProjectConfig({ name: "Readable film", prompt: "A calm kitchen scene", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
-    localStorage.setItem("polstudio.web-projects.v1", JSON.stringify([
-      { folderPath: "~/PolStudio/Readable", config: readable },
+    localStorage.setItem("slopus.web-projects.v1", JSON.stringify([
+      { folderPath: "~/Slopus/Readable", config: readable },
       // Written by a looser validator than the zod schema, so it fails to parse.
-      { folderPath: "~/PolStudio/Broken", config: { ...readable, schemaVersion: 99 } },
+      { folderPath: "~/Slopus/Broken", config: { ...readable, schemaVersion: 99 } },
     ]));
     render(<App />);
     // The good row still loads…
@@ -189,6 +189,6 @@ describe("project library controls", () => {
     // …and the bad one is named rather than silently vanishing.
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("couldn’t be read");
-    expect(alert.textContent).toContain("~/PolStudio/Broken");
+    expect(alert.textContent).toContain("~/Slopus/Broken");
   });
 });

@@ -1,4 +1,4 @@
-use pol_studio_lib::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
+use slopus_lib::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 use std::{env, fs, path::PathBuf};
 
 fn required(name: &str) -> Result<String, String> {

@@ -348,13 +348,13 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a
      scene any more: the + button adds a scene holding one blank shot, and the
-     shots are written in the panel beside the board. PolStudio still writes no
+     shots are written in the panel beside the board. Slopus still writes no
      line for anyone, so the scene arrives with no words and carries
      UNTITLED_SCENE as its name rather than a phrase this app made up.
 
      A scene built FROM a prompt is Slop’s job: the bar along the bottom of the
      window hands the request to Claude Code or Codex, which returns a compact
-     command batch that PolStudio applies. Nothing is auto-bound either way — which
+     command batch that Slopus applies. Nothing is auto-bound either way — which
      references steer a scene is decided by writing them into a line or by the
      references already named by its shots. */
   const newScene = () => {
@@ -644,7 +644,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
                   {/* The badge is on the scene's own line on the board, where the
                       eye compares one scene against the next. A second copy of it
                       an inch away from the first says nothing new. */}
-                  {/* The title is the one part of a scene PolStudio writes for the
+                  {/* The title is the one part of a scene Slopus writes for the
                       user — taken from their first words — so it has to be theirs
                       to change. Blanking it falls back rather than saving a
                       nameless scene the schema would reject. */}

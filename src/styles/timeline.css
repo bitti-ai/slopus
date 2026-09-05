@@ -620,7 +620,7 @@
   color: var(--text-primary);
 }
 
-/* One honest monitor state for both cases: PolStudio cannot decode footage in
+/* One honest monitor state for both cases: Slopus cannot decode footage in
    the editor yet, so it names the real project instead of drawing a stand-in. */
 .program-empty {
   width: min(100%, 640px);

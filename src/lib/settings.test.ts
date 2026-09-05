@@ -16,7 +16,7 @@ describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
 
   it("migrates the former flat engine paths into the Default template", () => {
-    localStorage.setItem("polstudio.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
+    localStorage.setItem("slopus.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
     const settings = loadGeneratorTemplateSettings();
     expect(settings.defaultTemplateId).toBe("default");
     expect(settings.templates).toHaveLength(1);

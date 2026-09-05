@@ -3,7 +3,7 @@
  * The video engine and its weights are a property of THIS computer, not of a
  * project: a project folder copied from another machine carries paths that do
  * not exist here. They therefore live in localStorage rather than in
- * polstudio.json, and are merged into `providerSettings.slopfab` only
+ * slopus.json, and are merged into `providerSettings.slopfab` only
  * on the way into a Tauri command — never on the way into a saved config.
  * Keep it that way: writing them into a project file would put one machine's
  * disk layout into a file the user is invited to move, copy, and share.
@@ -35,7 +35,7 @@ export interface EnginePathField {
   required: boolean;
 }
 
-/* No entry for the engine library itself: it ships beside PolStudio.exe and is
+/* No entry for the engine library itself: it ships beside Slopus.exe and is
    loaded from there, so there was never a path worth asking anyone for — only
    one that could be set wrong. Weights are different: they are large, they are
    downloaded separately, and they live wherever the user put them. */
@@ -53,8 +53,18 @@ export const EMPTY_ENGINE_SETTINGS: EngineSettings = {
   transformer: "", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "",
 };
 
-const ENGINE_KEY = "polstudio.engine-paths.v1";
-const GENERATOR_TEMPLATES_KEY = "polstudio.generator-templates.v1";
+const ENGINE_KEY = "slopus.engine-paths.v1";
+const GENERATOR_TEMPLATES_KEY = "slopus.generator-templates.v1";
+const LEGACY_ENGINE_KEY = "polstudio.engine-paths.v1";
+const LEGACY_GENERATOR_TEMPLATES_KEY = "polstudio.generator-templates.v1";
+
+function migratedStorageItem(key: string, legacyKey: string): string | null {
+  const current = localStorage.getItem(key);
+  if (current !== null) return current;
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy !== null) localStorage.setItem(key, legacy);
+  return legacy;
+}
 
 export interface GeneratorTemplate {
   id: string;
@@ -128,12 +138,12 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
  * Default template; the next edit persists the new format. */
 export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
   try {
-    const stored = localStorage.getItem(GENERATOR_TEMPLATES_KEY);
+    const stored = migratedStorageItem(GENERATOR_TEMPLATES_KEY, LEGACY_GENERATOR_TEMPLATES_KEY);
     if (stored) {
       const normalized = normalizeTemplateSettings(JSON.parse(stored));
       if (normalized) return normalized;
     }
-    const legacy = localStorage.getItem(ENGINE_KEY);
+    const legacy = migratedStorageItem(ENGINE_KEY, LEGACY_ENGINE_KEY);
     return initialTemplateSettings(legacy ? pathsFrom(JSON.parse(legacy)) : EMPTY_ENGINE_SETTINGS);
   } catch {
     return initialTemplateSettings();
@@ -212,7 +222,8 @@ export const EMPTY_AGENT_ENDPOINT_SETTINGS: AgentEndpointSettings = {
   local: { endpoint: "", apiKey: "", model: "" },
 };
 
-const AGENT_ENDPOINTS_KEY = "polstudio.agent-endpoints.v1";
+const AGENT_ENDPOINTS_KEY = "slopus.agent-endpoints.v1";
+const LEGACY_AGENT_ENDPOINTS_KEY = "polstudio.agent-endpoints.v1";
 
 export function loadAgentEndpointSettings(): AgentEndpointSettings {
   const fallback = {
@@ -220,7 +231,7 @@ export function loadAgentEndpointSettings(): AgentEndpointSettings {
     local: { ...EMPTY_AGENT_ENDPOINT_SETTINGS.local },
   };
   try {
-    const raw = localStorage.getItem(AGENT_ENDPOINTS_KEY);
+    const raw = migratedStorageItem(AGENT_ENDPOINTS_KEY, LEGACY_AGENT_ENDPOINTS_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<Record<EndpointProviderId, Partial<Record<keyof EndpointProviderSettings, unknown>>>>;
     for (const id of ["openrouter", "local"] as const) {
@@ -278,11 +289,12 @@ export function withAgentEndpointSettings(config: ProjectConfig): ProjectConfig 
  * next to the engine paths, not inside a project file. Projects written before
  * this existed still carry their own choice; that is read as a seed the first
  * time and then this preference takes over. */
-const AGENT_PROVIDER_KEY = "polstudio.agent-provider.v1";
+const AGENT_PROVIDER_KEY = "slopus.agent-provider.v1";
+const LEGACY_AGENT_PROVIDER_KEY = "polstudio.agent-provider.v1";
 
 export function loadAgentProvider(): ProviderId | null {
   try {
-    const value = localStorage.getItem(AGENT_PROVIDER_KEY);
+    const value = migratedStorageItem(AGENT_PROVIDER_KEY, LEGACY_AGENT_PROVIDER_KEY);
     return value === "claude" || value === "codex" || value === "openrouter" || value === "local" ? value : null;
   } catch {
     return null;
@@ -300,16 +312,17 @@ export function saveAgentProvider(provider: ProviderId): void {
 /* --- Panel layout ----------------------------------------------------------
    How the media panel lays its footage out. A working habit, not a property of
    any one project, so it lives beside the engine paths rather than in
-   polstudio.json — a project file the user may copy to another machine should not
+   slopus.json — a project file the user may copy to another machine should not
    carry one editor's panel preference with it. */
 
 export type MediaLayout = "grid" | "list";
 
-const MEDIA_LAYOUT_KEY = "polstudio.media-layout.v1";
+const MEDIA_LAYOUT_KEY = "slopus.media-layout.v1";
+const LEGACY_MEDIA_LAYOUT_KEY = "polstudio.media-layout.v1";
 
 export function loadMediaLayout(): MediaLayout {
   try {
-    return localStorage.getItem(MEDIA_LAYOUT_KEY) === "list" ? "list" : "grid";
+    return migratedStorageItem(MEDIA_LAYOUT_KEY, LEGACY_MEDIA_LAYOUT_KEY) === "list" ? "list" : "grid";
   } catch {
     return "grid";
   }

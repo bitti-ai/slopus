@@ -35,7 +35,7 @@ import { CommittedNumberInput } from "./CommittedNumberInput";
 /** What a reference chip carries when it is dragged into a shot's line. A
  *  private type, so a file dragged in from the desktop is never mistaken for
  *  one — the drop handler checks for it before it touches the text. */
-export const REFERENCE_DRAG_TYPE = "application/x-polstudio-reference";
+export const REFERENCE_DRAG_TYPE = "application/x-slopus-reference";
 
 /** The step the length slider and the cut handles move in. Half a second is the
  *  finest cut the timestamp format prints exactly (`formatSceneSeconds`), so

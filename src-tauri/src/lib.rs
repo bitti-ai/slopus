@@ -17,11 +17,12 @@ mod slopfab;
 
 pub use slopfab::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
-const PROJECT_FILE_NAME: &str = "polstudio.json";
+const PROJECT_FILE_NAME: &str = "slopus.json";
 /// What the file was called before, newest first. Folders written by earlier
-/// builds still open; the next save writes `polstudio.json` and leaves the old
+/// builds still open; the next save writes `slopus.json` and leaves the old
 /// file alone, so a project stays readable by the build that made it.
-const LEGACY_PROJECT_FILE_NAMES: [&str; 2] = ["pols.json", "polstudio.project.json"];
+const LEGACY_PROJECT_FILE_NAMES: [&str; 3] =
+    ["polstudio.json", "pols.json", "polstudio.project.json"];
 const PROJECT_DIRECTORIES: [&str; 6] = [
     "media/imported",
     "media/generated",
@@ -52,7 +53,7 @@ struct ProjectConfig {
     #[serde(default)]
     generation_jobs: Vec<GenerationJob>,
     // Conversation is session state. Read the legacy key so old projects open,
-    // but never write it back to polstudio.json.
+    // but never write it back to slopus.json.
     #[serde(default, skip_serializing)]
     agent_conversation: AgentConversation,
     #[serde(default)]
@@ -308,7 +309,7 @@ struct GenerationJob {
     seed: Option<i64>,
     /// Base guide §4.6 and §4.7 — per-prompt fields, so they sit on the scene
     /// rather than on a shot. Absent means the compiler writes its own
-    /// content-neutral line and marks it as PolStudio's own words.
+    /// content-neutral line and marks it as Slopus's own words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     soundscape: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -378,7 +379,7 @@ struct ImportedReferenceImage {
 /// because copying a rush or a stem doubles gigabytes on disk for no benefit.
 /// Exactly one of the two is ever set.
 ///
-/// Deliberately carries no duration or dimensions: PolStudio has no decoder
+/// Deliberately carries no duration or dimensions: Slopus has no decoder
 /// yet, and a made-up number here would be indistinguishable from a measured
 /// one everywhere downstream.
 #[derive(Debug, Clone, Serialize)]
@@ -1232,7 +1233,7 @@ fn unique_ids<'a>(
 /// The settings file to READ from a project folder: the current name if it is
 /// there, otherwise the first legacy name that is. Returns the current name
 /// when the folder holds none of them, so the caller reports a missing
-/// `polstudio.json` rather than a file nobody has written since 2025.
+/// `slopus.json` rather than a file nobody has written since 2025.
 fn project_file_in(folder: &Path) -> PathBuf {
     let current = folder.join(PROJECT_FILE_NAME);
     if current.is_file() {
@@ -1462,7 +1463,7 @@ fn choose_project_folder(app: AppHandle) -> Result<Option<ProjectRecord>, String
     let selected = app
         .dialog()
         .file()
-        .set_title("Open a PolStudio project folder")
+        .set_title("Open a Slopus project folder")
         .blocking_pick_folder();
     selected
         .map(|path| {
@@ -1732,7 +1733,7 @@ fn import_reference_file(
     }
 }
 
-/// Extensions PolStudio accepts, and what each one is. Anything not listed is
+/// Extensions Slopus accepts, and what each one is. Anything not listed is
 /// refused rather than imported as an unknown blob.
 fn media_kind_and_mime(extension: &str) -> Option<(&'static str, &'static str)> {
     Some(match extension {
@@ -1773,7 +1774,7 @@ fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMed
         .map(str::to_ascii_lowercase)
         .ok_or_else(|| "The selected file needs a file extension.".to_string())?;
     let (kind, mime_type) = media_kind_and_mime(&extension)
-        .ok_or_else(|| format!("PolStudio cannot import .{extension} files yet."))?;
+        .ok_or_else(|| format!("Slopus cannot import .{extension} files yet."))?;
     if kind != "image" {
         return Ok(ImportedMediaFile {
             kind,
@@ -1815,7 +1816,7 @@ fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMed
     })
 }
 
-/// The canonical folder of a folder that actually holds a PolStudio project.
+/// The canonical folder of a folder that actually holds a Slopus project.
 ///
 /// Every read command takes the folder from its caller, and "a folder" is not
 /// the same claim as "a project". Requiring the settings file to be there means
@@ -1831,7 +1832,7 @@ fn project_root(folder_path: &str) -> Result<PathBuf, String> {
     }
     if !project_file_in(&root).is_file() {
         return Err(format!(
-            "{} does not hold a PolStudio project.",
+            "{} does not hold a Slopus project.",
             display_path(&root)
         ));
     }
@@ -1843,7 +1844,7 @@ fn project_root(folder_path: &str) -> Result<PathBuf, String> {
 /// over: the folder must actually contain the settings file, and the relative
 /// path goes through the same normaliser every stored path does and is then
 /// checked to still sit under the canonical root. So a crafted `..` in a
-/// hand-edited polstudio.json cannot read the rest of the disk, and a caller
+/// hand-edited slopus.json cannot read the rest of the disk, and a caller
 /// that names some other folder entirely does not get a reader for it.
 #[tauri::command]
 fn read_project_file(
@@ -1889,18 +1890,18 @@ fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
 /// picked this file" and pretending otherwise is how the next reader is fooled:
 ///
 /// 1. The folder named must actually hold a project, and the path asked for
-///    must be one that project NAMES — either written in its `polstudio.json`
+///    must be one that project NAMES — either written in its `slopus.json`
 ///    on disk (canonicalised on both sides before comparing), or picked from a
 ///    native dialog for THAT project earlier in this run. The session list
 ///    exists because saving is deliberate: a clip imported a moment ago is not
 ///    in the project file yet.
-/// 2. It must still carry a media extension PolStudio imports (checked on the
+/// 2. It must still carry a media extension Slopus imports (checked on the
 ///    canonicalised path, so a symlink is judged by its target), so no project
 ///    file can turn this into a reader for keys, wallets or documents.
 /// 3. It must be a regular file that exists now.
 ///
 /// So the actor whose choice opens a file is the PROJECT FILE, not necessarily
-/// the person. A `polstudio.json` the user merely OPENED — a template a
+/// the person. A `slopus.json` the user merely OPENED — a template a
 /// colleague sent, an unzipped project, anything they double-clicked without
 /// reading — can name `C:\Users\NN\Pictures\private.jpg` and this command will
 /// serve those bytes to the webview. What bounds the damage is rule 2 (media
@@ -1913,7 +1914,7 @@ fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
 /// exists and has NOT been built is a per-installation approval list, kept by
 /// Rust beside the settings file (never in localStorage — the webview must not
 /// be the authority on what it may read): a project created or approved on this
-/// machine reopens silently, while a `polstudio.json` that arrived from
+/// machine reopens silently, while a `slopus.json` that arrived from
 /// somewhere else has its external paths treated as offline until relinked.
 /// That is also better product behaviour, because an absolute path written on
 /// another machine is almost certainly wrong here — if it resolves at all, it
@@ -1956,9 +1957,7 @@ fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>,
         .map(str::to_ascii_lowercase)
         .unwrap_or_default();
     if media_kind_and_mime(&extension).is_none() || !requested.is_file() {
-        return Err(format!(
-            "{source_path} is not a media file PolStudio reads."
-        ));
+        return Err(format!("{source_path} is not a media file Slopus reads."));
     }
     fs::read(&requested).map_err(|error| format!("Could not read {source_path}: {error}"))
 }
@@ -2110,7 +2109,7 @@ fn create_project_at_with_references(
     })();
     if let Err(error) = prepare_result {
         // The selected root belonged to the user before creation. Roll back
-        // only paths PolStudio could have created after the empty-folder check.
+        // only paths Slopus could have created after the empty-folder check.
         let _ = fs::remove_file(project_folder.join(PROJECT_FILE_NAME));
         for child in PROJECT_ROOT_DIRECTORIES {
             let _ = fs::remove_dir_all(project_folder.join(child));
@@ -2360,7 +2359,7 @@ const GENERATED_DIRECTORY: &str = "media/generated";
 /// The webview names the job, so this is caller-controlled text about to become
 /// a path — the exact shape of a traversal. Rather than sanitising it, the id
 /// is REFUSED unless it is already only letters, digits, dash and underscore,
-/// which is what every id PolStudio generates looks like. There is nothing to
+/// which is what every id Slopus generates looks like. There is nothing to
 /// strip and nothing to get wrong: no dots (so no `..` and no second
 /// extension), no separators, no length worth arguing about.
 fn generated_file_stem(job_id: &str) -> Result<String, String> {
@@ -2400,7 +2399,7 @@ fn generated_video_destination(
 }
 
 /// What was written, in the project's own terms: the path that goes into
-/// `polstudio.json` and the size of the file that demonstrably exists.
+/// `slopus.json` and the size of the file that demonstrably exists.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GeneratedVideoFile {
@@ -2492,7 +2491,7 @@ fn execute_agent_commands(
 }
 
 /// Writes one small, derived timeline still. Its location is deterministic,
-/// so it never needs to enter polstudio.json and can be rebuilt from the MP4.
+/// so it never needs to enter slopus.json and can be rebuilt from the MP4.
 #[tauri::command]
 fn write_timeline_thumbnail(request: Request<'_>) -> Result<(), String> {
     let InvokeBody::Raw(bytes) = request.body() else {
@@ -2685,7 +2684,7 @@ pub fn run() {
                 Ok(info) => diagnostics::info(
                     "app",
                     "startup",
-                    "PolStudio started.",
+                    "Slopus started.",
                     serde_json::json!({
                         "version": app.package_info().version.to_string(),
                         "os": std::env::consts::OS,
@@ -2770,7 +2769,7 @@ pub fn run() {
             export::write_export_file
         ])
         .run(tauri::generate_context!())
-        .expect("error while running PolStudio");
+        .expect("error while running Slopus");
 }
 
 #[cfg(test)]
@@ -3788,7 +3787,7 @@ mod tests {
 
     /// S1: the perimeter this command actually has, pinned so nobody has to
     /// take the docstring's word for it. The actor that opens a file here is
-    /// the PROJECT FILE, not the person — a `polstudio.json` the user merely
+    /// the PROJECT FILE, not the person — a `slopus.json` the user merely
     /// opened can name any media file on the disk and get its bytes. That
     /// follows from trusting any project file the user opens; the unbuilt
     /// narrowing is a per-installation approval list (see the command's
@@ -3903,7 +3902,7 @@ mod tests {
         };
         let error = read(&ssh, "id_rsa").expect("a folder with no project was read");
         assert!(
-            error.contains("does not hold a PolStudio project"),
+            error.contains("does not hold a Slopus project"),
             "unexpected error: {error}"
         );
         // Same shape for the external read, which takes the folder too.
@@ -3912,7 +3911,7 @@ mod tests {
             &ssh.join("id_rsa").to_string_lossy()
         )
         .unwrap_err()
-        .contains("does not hold a PolStudio project"));
+        .contains("does not hold a Slopus project"));
 
         // A real project still reads its own files.
         let project = project_folder_at(&root.path().join("project"));
@@ -4029,12 +4028,12 @@ mod tests {
     }
 
     #[test]
-    fn the_settings_file_is_polstudio_json_and_the_older_names_still_open() {
-        assert_eq!(PROJECT_FILE_NAME, "polstudio.json");
+    fn the_settings_file_is_slopus_json_and_the_older_names_still_open() {
+        assert_eq!(PROJECT_FILE_NAME, "slopus.json");
         let root = tempfile::tempdir().unwrap();
         let created = create_project_in(root.path(), &fixture()).unwrap();
         let folder = PathBuf::from(&created.folder_path);
-        assert!(folder.join("polstudio.json").is_file());
+        assert!(folder.join("slopus.json").is_file());
 
         // Every older name still opens, one folder per name, because a project
         // written by an earlier build must not become unopenable.
@@ -4406,7 +4405,7 @@ mod tests {
     #[test]
     fn an_empty_scene_survives_the_round_trip_the_plus_button_creates() {
         /* The Generator's + adds a scene holding ONE shot with nothing written
-        in it and no words in the mirror — PolStudio writes no line for
+        in it and no words in the mirror — Slopus writes no line for
         anyone. Rust writes that file to disk before the frontend ever parses
         it back, so if this side accepted it and zod did not, the project
         would save and then fail to open. `createDraftGenerationJob("")`
@@ -4730,7 +4729,7 @@ mod tests {
                 "'{hostile}' must not name a file"
             );
         }
-        // A dot is refused too — nothing PolStudio generates has one, and
+        // A dot is refused too — nothing Slopus generates has one, and
         // allowing it is how a second extension gets in.
         assert!(generated_file_stem("job-01_A").is_ok());
         assert!(generated_file_stem("job.01").is_err());

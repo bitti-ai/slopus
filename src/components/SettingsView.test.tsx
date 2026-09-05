@@ -53,7 +53,7 @@ describe("the settings screen", () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     vi.mocked(invoke).mockResolvedValue({
       state: "ready",
-      dllPath: "C:\\PolStudio\\slopfab.dll",
+      dllPath: "C:\\Slopus\\slopfab.dll",
       version: "1.4.0",
       platform: "CUDA 13",
       detail: "Ready.",
@@ -148,7 +148,7 @@ describe("the settings screen", () => {
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
     fireEvent.click(screen.getByRole("radio", { name: "Use Fast draft as the default generator" }));
 
-    const stored = JSON.parse(localStorage.getItem("polstudio.generator-templates.v1") ?? "null");
+    const stored = JSON.parse(localStorage.getItem("slopus.generator-templates.v1") ?? "null");
     const selected = stored.templates.find((template: { id: string }) => template.id === stored.defaultTemplateId);
     expect(selected).toMatchObject({ name: "Fast draft", defaultSteps: 12, paths: { transformer: "D:\\Models\\draft.safetensors" } });
   });
@@ -164,14 +164,14 @@ describe("the settings screen", () => {
   it("shows where diagnostic logs live and can reveal the current file", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     const info = {
-      path: "C:\\Users\\Editor\\AppData\\Local\\studio.pol.desktop\\logs\\polstudio.log",
+      path: "C:\\Users\\Editor\\AppData\\Local\\com.slopus.desktop\\logs\\slopus.log",
       previousPath: null,
       sessionId: "42-1",
       maxFileBytes: 5_242_880,
     };
     vi.mocked(invoke).mockImplementation(async (command) => command === "diagnostic_log_info" || command === "reveal_diagnostic_log"
       ? info
-      : { state: "ready", dllPath: "C:\\PolStudio\\slopfab.dll", version: "1.4.0", platform: "CUDA 13", detail: "Ready.", models: [] });
+      : { state: "ready", dllPath: "C:\\Slopus\\slopfab.dll", version: "1.4.0", platform: "CUDA 13", detail: "Ready.", models: [] });
 
     open();
     fireEvent.click(tab("Diagnostics"));
@@ -196,7 +196,7 @@ describe("the settings screen", () => {
     fireEvent.change(within(local).getByLabelText("Local OpenAI-compatible model"), { target: { value: "local-model" } });
     expect(local.textContent).toContain("Configured");
 
-    const stored = JSON.parse(localStorage.getItem("polstudio.agent-endpoints.v1") ?? "null");
+    const stored = JSON.parse(localStorage.getItem("slopus.agent-endpoints.v1") ?? "null");
     expect(stored.openrouter).toMatchObject({ apiKey: "sk-or-test", model: "openai/gpt-test" });
     expect(stored.local).toMatchObject({ endpoint: "http://localhost:1234/v1", model: "local-model", apiKey: "" });
   });

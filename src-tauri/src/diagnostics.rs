@@ -18,8 +18,8 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
-const ACTIVE_FILE: &str = "polstudio.log";
-const PREVIOUS_FILE: &str = "polstudio.previous.log";
+const ACTIVE_FILE: &str = "slopus.log";
+const PREVIOUS_FILE: &str = "slopus.previous.log";
 const MAX_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_TEXT_CHARS: usize = 8 * 1024;
 
@@ -290,7 +290,7 @@ pub fn initialize(app: &AppHandle) -> Result<DiagnosticLogInfo, String> {
     let directory = app
         .path()
         .app_log_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("polstudio").join("logs"));
+        .unwrap_or_else(|_| std::env::temp_dir().join("slopus").join("logs"));
     let writer = LogWriter::new(&directory, MAX_BYTES)?;
     let info = writer.info();
     LOGGER
@@ -454,9 +454,6 @@ mod tests {
         drop(writer);
         assert!(folder.path().join(ACTIVE_FILE).is_file());
         assert!(folder.path().join(PREVIOUS_FILE).is_file());
-        assert!(!folder
-            .path()
-            .join("polstudio.previous.previous.log")
-            .exists());
+        assert!(!folder.path().join("slopus.previous.previous.log").exists());
     }
 }

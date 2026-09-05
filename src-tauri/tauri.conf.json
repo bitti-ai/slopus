@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "PolStudio",
+  "productName": "Slopus",
   "version": "0.1.0",
-  "identifier": "studio.pol.desktop",
+  "identifier": "com.slopus.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "PolStudio - 0.1.0",
+        "title": "Slopus - 0.1.0",
         "width": 1440,
         "height": 920,
         "minWidth": 900,
@@ -40,7 +40,7 @@
       "icons/icon.ico"
     ],
     "shortDescription": "Agentic video creation workspace",
-    "longDescription": "PolStudio keeps professional AI-assisted video projects in folders you control."
+    "longDescription": "Slopus keeps professional AI-assisted video projects in folders you control."
   }
 }
 

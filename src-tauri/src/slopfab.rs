@@ -22,7 +22,7 @@ const DLL_FILE_NAME: &str = "slopfab.dll";
 /// source tree still finds it.
 const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\slopfab\build\Release\slopfab.dll";
 
-/// The runtime ships beside PolStudio.exe and is loaded from there — there is
+/// The runtime ships beside Slopus.exe and is loaded from there — there is
 /// no path for anyone to configure and no way for one to go stale. slopfab.dll
 /// is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its own dependencies sit in
 /// that folder too, which is the same reason a subfolder never bought anything.
@@ -82,7 +82,7 @@ fn platform_from_cuda_probe(result: Result<i32, String>) -> ComputePlatform {
 }
 
 fn detect_platform(api: &ffi::Api) -> ComputePlatform {
-    // Explicit "auto" makes PolStudio's order deterministic even if the host
+    // Explicit "auto" makes Slopus's order deterministic even if the host
     // process carries SLOPFAB_CUDA_VERSION. If this DLL instance was already
     // initialized, the setter is expected to refuse the change and the loaded
     // major below remains the authority.

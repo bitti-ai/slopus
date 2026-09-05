@@ -90,7 +90,7 @@ export const SHOT_TAG_GROUPS: readonly ShotTagGroup[] = [
   {
     id: "visualStyle",
     label: "Look",
-    help: "Opens the scene. Choosing one replaces the style PolStudio would otherwise guess from your words.",
+    help: "Opens the scene. Choosing one replaces the style Slopus would otherwise guess from your words.",
     multiple: false,
     sceneWide: true,
     options: VISUAL_STYLES,
@@ -345,11 +345,11 @@ export function hasCameraMovement(selection: ShotTagSelection | null | undefined
 }
 
 /** One sentence the tags contribute after the user's description. Kept split
- *  so the compiler can mark the LABEL as PolStudio's own scaffolding and the
+ *  so the compiler can mark the LABEL as Slopus's own scaffolding and the
  *  TERMS as the user's choices — a pre-joined sentence would have to be
  *  attributed to one or the other, and both answers would be wrong. */
 export interface ShotTagClause {
-  /** The field name PolStudio writes, e.g. "Camera movement". */
+  /** The field name Slopus writes, e.g. "Camera movement". */
   label: string;
   /** The chosen terms, in taxonomy order. */
   terms: string[];

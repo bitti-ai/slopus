@@ -38,7 +38,7 @@ fn safe_file_name(value: &str) -> String {
         .collect();
     let trimmed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
     if trimmed.is_empty() {
-        "PolStudio export.mp4".to_string()
+        "Slopus export.mp4".to_string()
     } else {
         trimmed
     }
@@ -253,7 +253,7 @@ mod tests {
             safe_file_name("../../etc/passwd.mp4"),
             ".. .. etc passwd.mp4"
         );
-        assert_eq!(safe_file_name("   "), "PolStudio export.mp4");
+        assert_eq!(safe_file_name("   "), "Slopus export.mp4");
         assert_eq!(safe_file_name("Northern Light.mp4"), "Northern Light.mp4");
     }
 

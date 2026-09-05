@@ -1360,7 +1360,7 @@
 /* --- The compiled prompt --------------------------------------------------- */
 
 /* Shown before anything is committed, and coloured by authorship, because the
-   one thing this panel must never do is let PolStudio's own scaffolding read as
+   one thing this panel must never do is let Slopus's own scaffolding read as
    the user's writing. */
 .compiled-prompt {
   margin-top: var(--space-4);

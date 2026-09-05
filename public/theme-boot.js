@@ -19,7 +19,11 @@
   var GROUND = { dark: "#080a0f", light: "#eef1f6" };
   var choice = "system";
   try {
-    var stored = localStorage.getItem("polstudio.theme.v1");
+    var stored = localStorage.getItem("slopus.theme.v1");
+    if (!stored) {
+      stored = localStorage.getItem("polstudio.theme.v1");
+      if (stored) localStorage.setItem("slopus.theme.v1", stored);
+    }
     if (stored === "light" || stored === "dark" || stored === "system") choice = stored;
   } catch (error) {
     /* Private mode, or storage disabled: fall through to following the OS. */

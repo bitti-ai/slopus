@@ -10,8 +10,10 @@ import {
   type StoredLocation,
 } from "./project";
 
-const RECENTS_KEY = "polstudio.recent-projects.v1";
-const WEB_PROJECTS_KEY = "polstudio.web-projects.v1";
+const RECENTS_KEY = "slopus.recent-projects.v1";
+const WEB_PROJECTS_KEY = "slopus.web-projects.v1";
+const LEGACY_RECENTS_KEY = "polstudio.recent-projects.v1";
+const LEGACY_WEB_PROJECTS_KEY = "polstudio.web-projects.v1";
 
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
@@ -33,9 +35,11 @@ export interface RecentProjects {
 
 const describeReason = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
-function readJson<T>(key: string, fallback: T): T {
+function readJson<T>(key: string, fallback: T, legacyKey?: string): T {
   try {
-    const value = localStorage.getItem(key);
+    const current = localStorage.getItem(key);
+    const value = current ?? (legacyKey ? localStorage.getItem(legacyKey) : null);
+    if (!current && value) localStorage.setItem(key, value);
     return value ? (JSON.parse(value) as T) : fallback;
   } catch {
     return fallback;
@@ -43,12 +47,12 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function rememberPath(path: string): void {
-  const paths = readJson<string[]>(RECENTS_KEY, []).filter((item) => item !== path);
+  const paths = readJson<string[]>(RECENTS_KEY, [], LEGACY_RECENTS_KEY).filter((item) => item !== path);
   localStorage.setItem(RECENTS_KEY, JSON.stringify([path, ...paths].slice(0, 12)));
 }
 
 function forgetPath(path: string): void {
-  const paths = readJson<string[]>(RECENTS_KEY, []).filter((item) => item !== path);
+  const paths = readJson<string[]>(RECENTS_KEY, [], LEGACY_RECENTS_KEY).filter((item) => item !== path);
   localStorage.setItem(RECENTS_KEY, JSON.stringify(paths));
 }
 
@@ -56,7 +60,7 @@ function webSeedProjects(): ProjectRecord[] {
   const now = new Date();
   const seeds = [
     {
-      path: "~/PolStudio/Northern Light",
+      path: "~/Slopus/Northern Light",
       prompt: "A cinematic brand film following an architect from sketch to skyline",
       name: "Northern Light — Brand Film",
       ratio: "16:9" as const,
@@ -64,7 +68,7 @@ function webSeedProjects(): ProjectRecord[] {
       offset: 12,
     },
     {
-      path: "~/PolStudio/Field Notes",
+      path: "~/Slopus/Field Notes",
       prompt: "A warm vertical travel journal through Helsinki's hidden cafés",
       name: "Helsinki Field Notes",
       ratio: "9:16" as const,
@@ -72,7 +76,7 @@ function webSeedProjects(): ProjectRecord[] {
       offset: 46,
     },
     {
-      path: "~/PolStudio/Aether Launch",
+      path: "~/Slopus/Aether Launch",
       prompt: "A crisp product launch teaser with macro details and kinetic typography",
       name: "Aether Product Reveal",
       ratio: "16:9" as const,
@@ -96,7 +100,7 @@ function webSeedProjects(): ProjectRecord[] {
 }
 
 function getWebProjects(): RecentProjects {
-  const stored = readJson<ProjectRecord[] | null>(WEB_PROJECTS_KEY, null);
+  const stored = readJson<ProjectRecord[] | null>(WEB_PROJECTS_KEY, null, LEGACY_WEB_PROJECTS_KEY);
   if (stored) {
     const projects: ProjectRecord[] = [];
     const unreadable: UnreadableProject[] = [];
@@ -118,7 +122,7 @@ function getWebProjects(): RecentProjects {
 
 export async function listRecentProjects(): Promise<RecentProjects> {
   if (!isTauri()) return getWebProjects();
-  const paths = readJson<string[]>(RECENTS_KEY, []);
+  const paths = readJson<string[]>(RECENTS_KEY, [], LEGACY_RECENTS_KEY);
   const rows = await Promise.all(
     paths.map(async (folderPath) => {
       try {
@@ -168,7 +172,7 @@ export async function chooseInitialReferenceImages(): Promise<PendingReferenceIm
  *  duplicate gigabytes of footage to call itself portable. Exactly one of the
  *  two is set.
  *
- *  No duration or dimensions: PolStudio has no decoder yet, and a guessed
+ *  No duration or dimensions: Slopus has no decoder yet, and a guessed
  *  number would be indistinguishable from a measured one downstream. */
 export interface ImportedMediaFile {
   kind: "video" | "audio" | "image";
@@ -245,7 +249,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
     return record;
   }
   const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const record = { folderPath: `~/PolStudio/${slug || config.id}`, config };
+  const record = { folderPath: `~/Slopus/${slug || config.id}`, config };
   const projects = [record, ...getWebProjects().projects];
   localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify(projects));
   return record;
