@@ -16,11 +16,11 @@ fn run() -> Result<(), String> {
     generate_reference_icon_batch(
         &specs,
         &ReferenceIconBatchConfig {
-            dll_path: PathBuf::from(required("VIDFAB_EXE")?).with_file_name("vidfab.dll"),
-            transformer: required("VIDFAB_TRANSFORMER")?.into(),
-            text_encoder: required("VIDFAB_TEXT_ENCODER")?.into(),
-            video_vae: required("VIDFAB_VIDEO_VAE")?.into(),
-            backend: env::var("VIDFAB_BACKEND").unwrap_or_else(|_| "cuda".into()),
+            dll_path: PathBuf::from(required("SLOPFAB_EXE")?).with_file_name("slopfab.dll"),
+            transformer: required("SLOPFAB_TRANSFORMER")?.into(),
+            text_encoder: required("SLOPFAB_TEXT_ENCODER")?.into(),
+            video_vae: required("SLOPFAB_VIDEO_VAE")?.into(),
+            backend: env::var("SLOPFAB_BACKEND").unwrap_or_else(|_| "cuda".into()),
         },
     )
 }

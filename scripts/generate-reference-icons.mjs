@@ -10,20 +10,20 @@ const repository = resolve(scriptDirectory, "..");
 const outputDirectory = join(repository, "src", "assets", "reference-icons");
 
 const defaults = {
-  executable: "D:\\Projects\\vidfab\\build\\Release\\vidfab.exe",
-  transformer: "D:\\Projects\\vidfab\\weights\\transformer\\MiniMax_H3_FL2VA_pruned_nvfp4.safetensors",
-  textEncoder: "D:\\Projects\\vidfab\\weights\\text_encoder\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-  videoVae: "D:\\Projects\\vidfab\\weights\\vae\\video_vae_nf4.safetensors",
-  audioVae: "D:\\Projects\\vidfab\\weights\\vae\\audio_vae_nf4.safetensors",
+  executable: "D:\\Projects\\slopfab\\build\\Release\\slopfab.exe",
+  transformer: "D:\\Projects\\slopfab\\weights\\transformer\\MiniMax_H3_FL2VA_pruned_nvfp4.safetensors",
+  textEncoder: "D:\\Projects\\slopfab\\weights\\text_encoder\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  videoVae: "D:\\Projects\\slopfab\\weights\\vae\\video_vae_nf4.safetensors",
+  audioVae: "D:\\Projects\\slopfab\\weights\\vae\\audio_vae_nf4.safetensors",
   cargo: "C:\\Users\\NN\\.cargo\\bin\\cargo.exe",
 };
 
 const settings = {
-  executable: process.env.VIDFAB_EXE || defaults.executable,
-  transformer: process.env.VIDFAB_TRANSFORMER || defaults.transformer,
-  textEncoder: process.env.VIDFAB_TEXT_ENCODER || defaults.textEncoder,
-  videoVae: process.env.VIDFAB_VIDEO_VAE || defaults.videoVae,
-  audioVae: process.env.VIDFAB_AUDIO_VAE || defaults.audioVae,
+  executable: process.env.SLOPFAB_EXE || defaults.executable,
+  transformer: process.env.SLOPFAB_TRANSFORMER || defaults.transformer,
+  textEncoder: process.env.SLOPFAB_TEXT_ENCODER || defaults.textEncoder,
+  videoVae: process.env.SLOPFAB_VIDEO_VAE || defaults.videoVae,
+  audioVae: process.env.SLOPFAB_AUDIO_VAE || defaults.audioVae,
   cargo: process.env.CARGO_EXE || defaults.cargo,
   ffmpeg: process.env.FFMPEG_EXE || "ffmpeg",
 };
@@ -75,8 +75,8 @@ function loadCatalog() {
 }
 
 function backend() {
-  if (process.env.VIDFAB_BACKEND === "cuda" || process.env.VIDFAB_BACKEND === "vulkan") {
-    return process.env.VIDFAB_BACKEND;
+  if (process.env.SLOPFAB_BACKEND === "cuda" || process.env.SLOPFAB_BACKEND === "vulkan") {
+    return process.env.SLOPFAB_BACKEND;
   }
   const devices = spawnSync(settings.executable, ["devices"], { encoding: "utf8", windowsHide: true });
   return devices.status === 0 && /^device\s+\d+/m.test(devices.stdout || "") ? "cuda" : "vulkan";
@@ -267,11 +267,11 @@ try {
     const executable = join(repository, "src-tauri", "target", "debug", "reference_icons.exe");
     const environment = {
       ...process.env,
-      VIDFAB_EXE: settings.executable,
-      VIDFAB_TRANSFORMER: settings.transformer,
-      VIDFAB_TEXT_ENCODER: settings.textEncoder,
-      VIDFAB_VIDEO_VAE: settings.videoVae,
-      VIDFAB_BACKEND: inferenceBackend,
+      SLOPFAB_EXE: settings.executable,
+      SLOPFAB_TRANSFORMER: settings.transformer,
+      SLOPFAB_TEXT_ENCODER: settings.textEncoder,
+      SLOPFAB_VIDEO_VAE: settings.videoVae,
+      SLOPFAB_BACKEND: inferenceBackend,
     };
     const batchPaths = await Promise.all(batches.map(async (batch, index) => {
       const batchPath = join(temporaryDirectory, `batch-${index + 1}.json`);
