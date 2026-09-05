@@ -53,7 +53,7 @@ describe("the settings screen", () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     vi.mocked(invoke).mockResolvedValue({
       state: "ready",
-      dllPath: "C:\\PolStudio\\vidfab.dll",
+      dllPath: "C:\\PolStudio\\slopfab.dll",
       version: "1.4.0",
       platform: "CUDA 13",
       detail: "Ready.",
@@ -171,7 +171,7 @@ describe("the settings screen", () => {
     };
     vi.mocked(invoke).mockImplementation(async (command) => command === "diagnostic_log_info" || command === "reveal_diagnostic_log"
       ? info
-      : { state: "ready", dllPath: "C:\\PolStudio\\vidfab.dll", version: "1.4.0", platform: "CUDA 13", detail: "Ready.", models: [] });
+      : { state: "ready", dllPath: "C:\\PolStudio\\slopfab.dll", version: "1.4.0", platform: "CUDA 13", detail: "Ready.", models: [] });
 
     open();
     fireEvent.click(tab("Diagnostics"));

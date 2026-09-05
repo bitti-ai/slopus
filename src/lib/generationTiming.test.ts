@@ -14,7 +14,7 @@ const progress = (updates: Partial<GenerationTimingProgress> = {}): GenerationTi
   canvasWidth: 416,
   canvasHeight: 416,
   referenceCount: 0,
-  timingProfile: "vidfab=1.4.0|platform=CUDA 13|transformer=model.safetensors",
+  timingProfile: "slopfab=1.4.0|platform=CUDA 13|transformer=model.safetensors",
   ...updates,
 });
 
@@ -23,7 +23,7 @@ const completed = (updates: Partial<CompletedGenerationTiming> = {}): CompletedG
   width: 416,
   height: 416,
   referenceCount: 0,
-  timingProfile: "vidfab=1.4.0|platform=CUDA 13|transformer=model.safetensors",
+  timingProfile: "slopfab=1.4.0|platform=CUDA 13|transformer=model.safetensors",
   secondsConditioning: 5,
   secondsDenoise: 40,
   secondsVideoDecode: 8,
@@ -34,10 +34,10 @@ const completed = (updates: Partial<CompletedGenerationTiming> = {}): CompletedG
   ...updates,
 });
 
-describe("vidfab generation timing", () => {
+describe("slopfab generation timing", () => {
   beforeEach(() => localStorage.clear());
 
-  it("matches vidfab frame alignment", () => {
+  it("matches slopfab frame alignment", () => {
     expect(alignedGenerationFrames(5)).toBe(5);
     expect(alignedGenerationFrames(360)).toBe(362);
   });

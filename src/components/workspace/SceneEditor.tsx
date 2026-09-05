@@ -330,7 +330,7 @@ export function SceneInspector({ job, shots, references, defaultSteps, disabled,
             onClick={onAddStartFrame}
           ><ImagePlus size={15} /> Add image</button>
         </div>
-        <small>The selected image is sent to VidFab as Picture 1 and anchors the opening frame.</small>
+        <small>The selected image is sent to SlopFab as Picture 1 and anchors the opening frame.</small>
         {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
       </div>
       <label className="scene-settings__field">

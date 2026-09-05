@@ -267,7 +267,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   /** The next cut (or scene end). Playback never crosses this point. */
   endSeconds?: number;
   shotNumber: number;
-  /** Live rendering estimate derived from vidfab timing; never persisted. */
+  /** Live rendering estimate derived from slopfab timing; never persisted. */
   estimatedCompletionAt?: number | null;
   /** Cancel was requested but the engine has not reported its terminal state. */
   cancelling?: boolean;

@@ -237,7 +237,7 @@ describe("project schema", () => {
   });
 
   it("numbers <Picture N> in the order the engine consumes reference_paths", () => {
-    // vidfab.rs iterates reference_paths sequentially, so index 0 is <Picture 1>.
+    // slopfab.rs iterates reference_paths sequentially, so index 0 is <Picture 1>.
     const img = (id: string, name: string, path: string): ProjectReference => projectReferenceSchema.parse({
       id, kind: "image", name, description: "A reference.", relativePath: path,
       intendedUse: ["style"], createdAt: new Date().toISOString(),
@@ -333,7 +333,7 @@ describe("project schema", () => {
   it("drops an audio-tagged image from both the prompt and reference_paths together", () => {
     // The two filters must agree: GeneratorView builds referencePaths from
     // usableImageReferences while the prompt numbers <Picture N> from the
-    // compiler's list, and vidfab.rs consumes the array positionally.
+    // compiler's list, and slopfab.rs consumes the array positionally.
     const audioImage = imageReference({ id: "img-audio", name: "Waveform note", relativePath: "references/waveform.png", intendedUse: ["audio"] });
     const visualImage = imageReference({ id: "img-visual", name: "Harbor facade", relativePath: "references/harbor.jpg", intendedUse: ["location"] });
     const references = [audioImage, visualImage];
@@ -513,7 +513,7 @@ describe("project schema", () => {
   });
 
   it("resolves project-relative reference paths to absolute for the engine", () => {
-    // enqueue_vidfab_generation never receives the project folder and vidfab.rs
+    // enqueue_slopfab_generation never receives the project folder and slopfab.rs
     // uses the string verbatim, so the frontend must send an absolute path.
     expect(projectFilePath("C:\\Projects\\Lighthouse", "references/a.jpg")).toBe("C:\\Projects\\Lighthouse\\references\\a.jpg");
     expect(projectFilePath("/home/nn/lighthouse", "references/a.jpg")).toBe("/home/nn/lighthouse/references/a.jpg");

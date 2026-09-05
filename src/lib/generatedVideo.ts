@@ -6,7 +6,7 @@ import { TIMELINE_THUMBNAIL_INTERVAL_MS, writeTimelineThumbnail } from "./timeli
 
 /* Turning a finished render into a file in the project folder.
  *
- * vidfab makes pictures, not files: it hands Rust raw frames and raw audio and
+ * slopfab makes pictures, not files: it hands Rust raw frames and raw audio and
  * frees them. Encoding is this side's job — WebCodecs owns the machine's
  * hardware encoder and PolStudio ships no FFmpeg by design (CLAUDE.md) — so a
  * saved scene is a round trip:
@@ -122,7 +122,7 @@ async function renderedFrame(jobId: string, index: number): Promise<Uint8Array> 
   return bytesFromIpc(await invoke<IpcBytes>("generated_frame", { jobId, index }));
 }
 
-/** Turns the raw IPC body into the interleaved samples vidfab produced. */
+/** Turns the raw IPC body into the interleaved samples slopfab produced. */
 export function audioSamplesFromIpc(raw: IpcBytes, expectedSamples: number): Float32Array {
   const bytes = bytesFromIpc(raw);
   if (bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
@@ -130,7 +130,7 @@ export function audioSamplesFromIpc(raw: IpcBytes, expectedSamples: number): Flo
   }
   // Copy the exact view. Constructing Float32Array from Uint8Array would turn
   // each byte into a sample; constructing it from an offset view can also fail
-  // alignment. vidfab and Rust both use native little-endian f32 PCM.
+  // alignment. slopfab and Rust both use native little-endian f32 PCM.
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   const samples = new Float32Array(copy.buffer);
@@ -247,7 +247,7 @@ async function audioConfig(summary: RenderedSummary): Promise<AudioEncoderConfig
   return null;
 }
 
-/** Linear PCM resampling is enough here: vidfab's soundtrack is already the
+/** Linear PCM resampling is enough here: slopfab's soundtrack is already the
  * final mix, and this only adapts its rate to an AAC configuration the OS
  * exposes. Channels remain interleaved throughout. */
 export function resampleInterleaved(samples: Float32Array, channels: number, fromRate: number, toRate: number): Float32Array {
@@ -292,7 +292,7 @@ async function encodeAudio(
     for (let offset = 0; offset < total; offset += AUDIO_BLOCK) {
       if (failure.reason) throw failure.reason;
       const count = Math.min(AUDIO_BLOCK, total - offset);
-      // vidfab's C API returns [frame0-L, frame0-R, frame1-L, frame1-R, ...].
+      // slopfab's C API returns [frame0-L, frame0-R, frame1-L, frame1-R, ...].
       // WebCodecs calls that layout `f32`; `f32-planar` means something else.
       const interleaved = prepared.slice(offset * channels, (offset + count) * channels);
       const data = new AudioData({

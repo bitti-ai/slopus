@@ -168,7 +168,7 @@ describe("project workspace timecode", () => {
       initialView: "timeline",
       runtime: {
         providers: [{ id: "codex", label: "Codex", state: "ready", executable: "codex", version: "test", detail: "Ready" }],
-        vidfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Demo", models: [] },
+        slopfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Demo", models: [] },
       },
       onBack: () => undefined,
       onSave: async () => undefined,
@@ -244,9 +244,9 @@ describe("project workspace timecode", () => {
         onBack: () => undefined,
         onSave,
       }));
-      await waitFor(() => expect(handlers.has("vidfab-job")).toBe(true));
+      await waitFor(() => expect(handlers.has("slopfab-job")).toBe(true));
       await act(async () => {
-        handlers.get("vidfab-job")?.({ payload: { jobId, state: "framesReady", detail: "Frames ready." } });
+        handlers.get("slopfab-job")?.({ payload: { jobId, state: "framesReady", detail: "Frames ready." } });
         await Promise.resolve();
       });
       await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));

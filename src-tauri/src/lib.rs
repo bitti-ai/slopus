@@ -13,9 +13,9 @@ mod agent_commands;
 mod diagnostics;
 mod export;
 mod rendered;
-mod vidfab;
+mod slopfab;
 
-pub use vidfab::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
+pub use slopfab::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
 const PROJECT_FILE_NAME: &str = "polstudio.json";
 /// What the file was called before, newest first. Folders written by earlier
@@ -2132,18 +2132,18 @@ fn save_project(folder_path: String, config: ProjectConfig) -> Result<(), String
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
     providers: Vec<agent::ProviderStatus>,
-    vidfab: vidfab::VidfabStatus,
+    slopfab: slopfab::SlopfabStatus,
 }
 
 /// Probes the video engine from provider settings alone. The settings screen
 /// has no project in hand — engine paths belong to the machine, not to a
 /// project file — so it cannot go through `runtime_status`.
 #[tauri::command]
-fn vidfab_status(settings: BTreeMap<String, ProviderSetting>) -> vidfab::VidfabStatus {
-    let status = vidfab::status(&settings);
+fn slopfab_status(settings: BTreeMap<String, ProviderSetting>) -> slopfab::SlopfabStatus {
+    let status = slopfab::status(&settings);
     diagnostics::info(
         "runtime",
-        "vidfab.probed",
+        "slopfab.probed",
         "Video engine probe completed.",
         serde_json::json!({
             "state": status.state,
@@ -2201,7 +2201,7 @@ async fn runtime_status(
 ) -> Result<RuntimeStatus, String> {
     let result = tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
         providers: agent::provider_statuses(&settings),
-        vidfab: vidfab::status(&settings),
+        slopfab: slopfab::status(&settings),
     })
     .await
     .map_err(|error| format!("Could not probe this computer: {error}"));
@@ -2211,9 +2211,9 @@ async fn runtime_status(
             "application.probed",
             "Application runtime probe completed.",
             serde_json::json!({
-                "vidfabState": status.vidfab.state,
-                "vidfabVersion": status.vidfab.version,
-                "platform": status.vidfab.platform,
+                "slopfabState": status.slopfab.state,
+                "slopfabVersion": status.slopfab.version,
+                "platform": status.slopfab.platform,
                 "providers": status.providers.iter().map(|provider| serde_json::json!({
                     "id": provider.id, "state": provider.state, "version": provider.version,
                 })).collect::<Vec<_>>(),
@@ -2275,26 +2275,26 @@ fn cancel_agent_turn(state: tauri::State<'_, agent::AgentRuntime>, request_id: S
 }
 
 #[tauri::command]
-fn resolve_vidfab_plan(
-    request: vidfab::GenerationRequest,
+fn resolve_slopfab_plan(
+    request: slopfab::GenerationRequest,
     config: ProjectConfig,
-) -> Result<vidfab::ResolvedPlan, String> {
+) -> Result<slopfab::ResolvedPlan, String> {
     let context = serde_json::json!({
         "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
         "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
         "referenceCount": request.reference_paths.len(), "inputChars": request.prompt.chars().count(),
     });
     diagnostics::info(
-        "vidfab",
+        "slopfab",
         "plan.requested",
         "Generation plan requested.",
         context.clone(),
     );
     let result = validate_and_normalize_config(config)
-        .and_then(|config| vidfab::resolve_plan(&request, &config.provider_settings));
+        .and_then(|config| slopfab::resolve_plan(&request, &config.provider_settings));
     match &result {
         Ok(plan) => diagnostics::info(
-            "vidfab",
+            "slopfab",
             "plan.resolved",
             "Generation plan resolved.",
             serde_json::json!({
@@ -2303,16 +2303,16 @@ fn resolve_vidfab_plan(
                 "durationSeconds": plan.duration_seconds, "modelEvaluations": plan.model_evaluations,
             }),
         ),
-        Err(error) => diagnostics::error("vidfab", "plan.failed", error, context),
+        Err(error) => diagnostics::error("slopfab", "plan.failed", error, context),
     }
     result
 }
 
 #[tauri::command]
-fn enqueue_vidfab_generation(
+fn enqueue_slopfab_generation(
     app: AppHandle,
-    state: tauri::State<'_, vidfab::VidfabRuntime>,
-    request: vidfab::GenerationRequest,
+    state: tauri::State<'_, slopfab::SlopfabRuntime>,
+    request: slopfab::GenerationRequest,
     config: ProjectConfig,
 ) -> Result<(), String> {
     let job_id = request.job_id.clone();
@@ -2320,7 +2320,7 @@ fn enqueue_vidfab_generation(
         .and_then(|config| state.enqueue(app, request, &config.provider_settings));
     if let Err(error) = &result {
         diagnostics::error(
-            "vidfab",
+            "slopfab",
             "generation.enqueue_failed",
             error,
             serde_json::json!({ "jobId": job_id }),
@@ -2330,15 +2330,15 @@ fn enqueue_vidfab_generation(
 }
 
 #[tauri::command]
-fn cancel_vidfab_generation(
-    state: tauri::State<'_, vidfab::VidfabRuntime>,
+fn cancel_slopfab_generation(
+    state: tauri::State<'_, slopfab::SlopfabRuntime>,
     job_id: String,
 ) -> bool {
     state.cancel(&job_id)
 }
 
 /* ── A finished render, on its way to a file ─────────────────────────────────
-vidfab produces pictures, not files. The webview turns them into an MP4 —
+slopfab produces pictures, not files. The webview turns them into an MP4 —
 WebCodecs owns the hardware encoder and there is no FFmpeg here (CLAUDE.md) —
 which means the pictures have to cross into the webview and the bytes have to
 come back. These four commands are that round trip: three that read what a
@@ -2577,7 +2577,7 @@ fn release_generated_frames(job_id: String) -> bool {
 
 /* ── Exit guard ──────────────────────────────────────────────────────────────
 The video engine runs inside this process, so closing the window ends a
-generation outright — and vidfab writes no file of its own, so an unfinished
+generation outright — and slopfab writes no file of its own, so an unfinished
 run leaves nothing behind. The webview therefore has to be able to answer the
 close request before the window goes away.
 
@@ -2708,7 +2708,7 @@ pub fn run() {
             Ok(())
         })
         .manage(agent::AgentRuntime::default())
-        .manage(vidfab::VidfabRuntime::default())
+        .manage(slopfab::SlopfabRuntime::default())
         .manage(ExitGuard::default())
         .on_window_event(|window, event| {
             use tauri::{Emitter as _, Manager as _};
@@ -2749,14 +2749,14 @@ pub fn run() {
             save_project,
             runtime_status,
             list_agent_models,
-            vidfab_status,
+            slopfab_status,
             choose_engine_path,
             run_agent_turn,
             execute_agent_commands,
             cancel_agent_turn,
-            resolve_vidfab_plan,
-            enqueue_vidfab_generation,
-            cancel_vidfab_generation,
+            resolve_slopfab_plan,
+            enqueue_slopfab_generation,
+            cancel_slopfab_generation,
             set_generation_active,
             answer_app_close,
             write_generated_video,

@@ -2,7 +2,7 @@ import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, Lo
 import { useCallback, useEffect, useState } from "react";
 import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
-import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type VidfabStatus } from "../lib/runtime";
+import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
   createGeneratorTemplate, defaultGeneratorTemplate,
@@ -19,7 +19,7 @@ import {
 
 type PathState = "unset" | "checking" | "found" | "missing";
 
-function pathState(field: EnginePathField, value: string, status: VidfabStatus | null): PathState {
+function pathState(field: EnginePathField, value: string, status: SlopfabStatus | null): PathState {
   if (!value.trim()) return "unset";
   if (!status) return "checking";
   const model: ModelStatus | undefined = status.models.find((item) => item.id === field.id);
@@ -235,7 +235,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<TabId>("engine");
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [status, setStatus] = useState<VidfabStatus | null>(null);
+  const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
 
@@ -514,7 +514,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
   );
 }
 
-const engineHeadline = (status: VidfabStatus | null, desktop: boolean) => {
+const engineHeadline = (status: SlopfabStatus | null, desktop: boolean) => {
   if (!desktop) return "Browser preview";
   if (!status) return "Checking this computer…";
   switch (status.state) {
@@ -526,10 +526,10 @@ const engineHeadline = (status: VidfabStatus | null, desktop: boolean) => {
   }
 };
 
-const engineDetail = (status: VidfabStatus | null, desktop: boolean, missing: number) => {
+const engineDetail = (status: SlopfabStatus | null, desktop: boolean, missing: number) => {
   if (!desktop) return "Paths are saved here, but only the desktop app can check them or render with them.";
   if (!status) return "Looking for the engine and the model files.";
-  if (status.state === "runtimeMissing") return `${status.detail} vidfab.dll should sit next to PolStudio.exe.`;
+  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should sit next to PolStudio.exe.`;
   if (status.state === "ready") return "Everything PolStudio needs to render a shot is in place.";
   if (missing > 0) return `${status.detail} ${missing === 1 ? "One path" : `${missing} paths`} still need setting below.`;
   return status.detail;

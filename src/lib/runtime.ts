@@ -25,7 +25,7 @@ export interface ProviderStatus {
   detail: string;
 }
 export interface ModelStatus { id: string; configured: boolean; available: boolean; path: string | null }
-export interface VidfabStatus {
+export interface SlopfabStatus {
   state: "ready" | "modelsMissing" | "runtimeMissing" | "incompatible" | "demo";
   dllPath: string;
   version: string | null;
@@ -33,7 +33,7 @@ export interface VidfabStatus {
   detail: string;
   models: ModelStatus[];
 }
-export interface RuntimeStatus { providers: ProviderStatus[]; vidfab: VidfabStatus }
+export interface RuntimeStatus { providers: ProviderStatus[]; slopfab: SlopfabStatus }
 
 export type ProjectCommand =
   | { op: "project.set"; name?: string; prompt?: string; targetSeconds?: number; aspectRatio?: string; resolution?: string; frameRate?: number; backgroundColor?: string }
@@ -75,7 +75,7 @@ export interface AgentTurnResponse {
   messages: AgentMessage[];
 }
 
-export interface VidfabGenerationRequest {
+export interface SlopfabGenerationRequest {
   jobId: string;
   prompt: string;
   frames: number;
@@ -105,10 +105,10 @@ const DEMO_STATUS: RuntimeStatus = {
     { id: "claude", label: "Claude Code", state: "ready", executable: null, version: "Browser demo", detail: "Deterministic local demo provider." },
     { id: "codex", label: "Codex", state: "ready", executable: null, version: "Browser demo", detail: "Deterministic local demo provider." },
   ],
-  vidfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Deterministic plans only. No model runs or media files are created in the browser.", models: [] },
+  slopfab: { state: "demo", dllPath: "Browser demo", version: null, platform: null, detail: "Deterministic plans only. No model runs or media files are created in the browser.", models: [] },
 };
 
-/* Every vidfab command is handed the project config with THIS machine's engine
+/* Every slopfab command is handed the project config with THIS machine's engine
    paths merged in (see lib/settings.ts). The merged copy is passed straight to
    the command and dropped; it is never the config that gets saved. */
 
@@ -118,7 +118,7 @@ const DEMO_STATUS: RuntimeStatus = {
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   if (!isTauri()) return DEMO_STATUS;
   return invoke<RuntimeStatus>("runtime_status", {
-    settings: { vidfab: engineProviderSetting(loadEngineSettings()), ...agentEndpointProviderSettings() },
+    settings: { slopfab: engineProviderSetting(loadEngineSettings()), ...agentEndpointProviderSettings() },
   });
 }
 
@@ -130,9 +130,9 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */
-export async function getEngineStatus(settings = loadEngineSettings()): Promise<VidfabStatus> {
-  if (!isTauri()) return DEMO_STATUS.vidfab;
-  return invoke<VidfabStatus>("vidfab_status", { settings: { vidfab: engineProviderSetting(settings) } });
+export async function getEngineStatus(settings = loadEngineSettings()): Promise<SlopfabStatus> {
+  if (!isTauri()) return DEMO_STATUS.slopfab;
+  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings) } });
 }
 
 /** Opens the OS picker for one engine path. Returns null when the user cancels. */
@@ -197,8 +197,8 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
   return isTauri() ? invoke<boolean>("cancel_agent_turn", { requestId }) : true;
 }
 
-export async function resolveVidfabPlan(request: VidfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
-  if (isTauri()) return invoke<ResolvedPlan>("resolve_vidfab_plan", { request, config: withEngineSettings(config) });
+export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
+  if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config: withEngineSettings(config) });
   const alignedFrames = Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
     canvasWidth: request.canvasWidth,
@@ -213,12 +213,12 @@ export async function resolveVidfabPlan(request: VidfabGenerationRequest, config
   };
 }
 
-export async function enqueueVidfabGeneration(request: VidfabGenerationRequest, config: ProjectConfig): Promise<void> {
-  if (isTauri()) await invoke("enqueue_vidfab_generation", { request, config: withEngineSettings(config) });
+export async function enqueueSlopfabGeneration(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<void> {
+  if (isTauri()) await invoke("enqueue_slopfab_generation", { request, config: withEngineSettings(config) });
 }
 
-export async function cancelVidfabGeneration(jobId: string): Promise<boolean> {
-  return isTauri() ? invoke<boolean>("cancel_vidfab_generation", { jobId }) : true;
+export async function cancelSlopfabGeneration(jobId: string): Promise<boolean> {
+  return isTauri() ? invoke<boolean>("cancel_slopfab_generation", { jobId }) : true;
 }
 
 function demoTurn(_config: ProjectConfig, prompt: string): AgentTurnResult {

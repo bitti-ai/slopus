@@ -1,7 +1,7 @@
 /**
  * Stage-aware generation timing.
  *
- * vidfab reports elapsed wall time and completed denoising steps while a run
+ * slopfab reports elapsed wall time and completed denoising steps while a run
  * is active, then returns the measured duration of each expensive stage. The
  * live samples give an honest seconds-per-step rate; successful runs supply a
  * small machine-local calibration for the work before and after denoising.
@@ -63,7 +63,7 @@ type TimingStorage = Pick<Storage, "getItem" | "setItem">;
 
 const finiteNonNegative = (value: number) => Number.isFinite(value) && value >= 0;
 
-/** The frame alignment used by vidfab's resolved plan: 17*k + 5. */
+/** The frame alignment used by slopfab's resolved plan: 17*k + 5. */
 export function alignedGenerationFrames(frames: number): number {
   return Math.ceil((Math.max(5, Math.round(frames)) - 5) / 17) * 17 + 5;
 }
