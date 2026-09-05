@@ -468,7 +468,7 @@ export async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSo
   }
 
   if (state.failure) throw new Error(`${name} could not be read: ${state.failure}`);
-  if (!state.movie) throw new Error(`${name} has no MP4 header PolStudio could parse.`);
+  if (!state.movie) throw new Error(`${name} has no MP4 header Slopus could parse.`);
   const track = state.movie.videoTracks[0];
   if (!track) throw new Error(`${name} has no video track in it.`);
   if (raw.length === 0) throw new Error(`${name} has a video track with no readable frames in it.`);
@@ -844,7 +844,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   const { plan, settings, config, folderPath, bitrate, onProgress, cancelled } = options;
   const support = detectExportSupport();
   if (!support.encoder || !support.decoder) {
-    throw new Error("This webview has no WebCodecs VideoEncoder/VideoDecoder, so PolStudio cannot encode video here.");
+    throw new Error("This webview has no WebCodecs VideoEncoder/VideoDecoder, so Slopus cannot encode video here.");
   }
   if (plan.blockers.length > 0) throw new Error(plan.blockers.join(" "));
   if (plan.frameCount === 0) throw new Error("There is nothing on the timeline to render.");

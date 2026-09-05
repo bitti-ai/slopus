@@ -5,7 +5,7 @@ import { compileGenerationJobPrompt, createProjectConfig } from "./project";
 import { executeAgentCommands, getRuntimeStatus, resolveSlopfabPlan, runAgentTurn } from "./runtime";
 
 const project = () => ({
-  folderPath: "~/PolStudio/runtime-test",
+  folderPath: "~/Slopus/runtime-test",
   config: createProjectConfig({
     name: "Runtime test",
     prompt: "A quiet architectural film",

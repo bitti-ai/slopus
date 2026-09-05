@@ -5,10 +5,11 @@
  * is active, then returns the measured duration of each expensive stage. The
  * live samples give an honest seconds-per-step rate; successful runs supply a
  * small machine-local calibration for the work before and after denoising.
- * Nothing here is project data, so none of it belongs in polstudio.json.
+ * Nothing here is project data, so none of it belongs in slopus.json.
  */
 
-const STORAGE_KEY = "polstudio.generation-timing.v1";
+const STORAGE_KEY = "slopus.generation-timing.v1";
+const LEGACY_STORAGE_KEY = "polstudio.generation-timing.v1";
 const MAX_PROFILES = 32;
 const MAX_REMAINING_SECONDS = 24 * 60 * 60;
 
@@ -75,7 +76,10 @@ function profileKey(profile: string, width: number, height: number, frames: numb
 function readProfiles(storage: TimingStorage | null): ProfileStore {
   if (!storage) return {};
   try {
-    const parsed = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}") as unknown;
+    const current = storage.getItem(STORAGE_KEY);
+    const raw = current ?? storage.getItem(LEGACY_STORAGE_KEY);
+    if (!current && raw) storage.setItem(STORAGE_KEY, raw);
+    const parsed = JSON.parse(raw ?? "{}") as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     return Object.fromEntries(Object.entries(parsed).filter(([, value]) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return false;

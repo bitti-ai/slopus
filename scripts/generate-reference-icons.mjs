@@ -229,7 +229,7 @@ if (requestedShard) {
 }
 if (Number.isFinite(requestedLimit) && requestedLimit > 0) entries = entries.slice(0, requestedLimit);
 await mkdir(outputDirectory, { recursive: true });
-const temporaryDirectory = await mkdtemp(join(tmpdir(), "polstudio-reference-icons-"));
+const temporaryDirectory = await mkdtemp(join(tmpdir(), "slopus-reference-icons-"));
 const inferenceBackend = backend();
 
 try {

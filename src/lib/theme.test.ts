@@ -441,11 +441,11 @@ const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
        read for its ALPHA, so `fill='%23000'` means "opaque here" and nothing is
        ever painted this colour — but it was legitimate by luck rather than by
        anyone's decision, which is the state the allowlist exists to end. */
-    ".pol-logo":
+    ".slopus-logo":
       "brand mark: its fixed flat blue is shared with packaged icons; the data-URI black only supplies mask alpha",
-    ".pol-logo__ticket":
-      "brand mark: the PolStudio ticket is one artwork, blue plate and white letter, in both themes",
-    ".pol-logo__perforations i":
+    ".slopus-logo__ticket":
+      "brand mark: the Slopus ticket is one artwork, blue plate and white letter, in both themes",
+    ".slopus-logo__perforations i":
       "fallback perforations: painted black because a hole reads as a hole on any backdrop",
   },
   "library.css": {

@@ -19,7 +19,7 @@ watchSystemTheme(() => {
   if (loadTheme() === "system") applyTheme("system");
 });
 
-/* PolStudio is an application window, not a web page. The browser's own
+/* Slopus is an application window, not a web page. The browser's own
    context menu offers Back, Reload, View source and Inspect — none of which
    mean anything here, and Reload throws away unsaved project edits. Text
    fields keep theirs: cut/copy/paste/undo are real editing commands, and

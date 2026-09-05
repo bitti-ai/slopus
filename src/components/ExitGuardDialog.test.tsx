@@ -152,6 +152,6 @@ describe("the dialog on its own", () => {
 
   it("says the window is what ends the run when that is the exit", () => {
     render(createElement(ExitGuardDialog, { jobs, destination: "quit", onConfirm: () => undefined, onCancel: () => undefined }));
-    expect(screen.getByRole("alertdialog").textContent).toContain("The video engine runs inside PolStudio, so closing the window stops them.");
+    expect(screen.getByRole("alertdialog").textContent).toContain("The video engine runs inside Slopus, so closing the window stops them.");
   });
 });

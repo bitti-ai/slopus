@@ -488,7 +488,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   }
   if (undecodable.length > 0) {
     blockers.push(
-      `PolStudio can only take apart .mp4 and .mov video and still images so far. These clips use something else: ${undecodable.join(", ")}.`,
+      `Slopus can only take apart .mp4 and .mov video and still images so far. These clips use something else: ${undecodable.join(", ")}.`,
     );
   }
 
@@ -624,5 +624,5 @@ export function suggestedFileName(projectName: string): string {
     .replace(/[\\/:*?"<>|]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return `${cleaned || "PolStudio export"}.mp4`;
+  return `${cleaned || "Slopus export"}.mp4`;
 }

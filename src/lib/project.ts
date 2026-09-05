@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
-export const PROJECT_FILE_NAME = "polstudio.json";
-/** What the settings file used to be called, newest first. Both are still
+export const PROJECT_FILE_NAME = "slopus.json";
+/** What the settings file used to be called, newest first. All are still
  *  opened (`project_file_in` in src-tauri/src/lib.rs); only the current name is
  *  ever written. */
-export const LEGACY_PROJECT_FILE_NAMES = ["pols.json", "polstudio.project.json"] as const;
+export const LEGACY_PROJECT_FILE_NAMES = ["polstudio.json", "pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_GENERATION_STEPS = 20;
 /** Slopfab's native generation clock. Project frame rate is an editing/export
@@ -325,7 +325,7 @@ export const sceneShotSchema = z.object({
   startSeconds: z.number().min(SCENE_MIN_SECONDS).max(SCENE_MAX_SECONDS),
   /** The user's own line, character for character, with reference citations
    *  held as `@[ref:<id>]` tokens (see `splitActionText`). May be empty: a shot
-   *  that has just been added has nothing written in it yet, and PolStudio
+   *  that has just been added has nothing written in it yet, and Slopus
    *  never writes that line for anyone. */
   action: z.string(),
   /** Dialogue is separate from the visual action so the compiler can guarantee
@@ -741,7 +741,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
 
    - "brief" is the user's own prose, character for character.
    - "tag"   is a term they picked from the H3 vocabulary in shot-tags.ts.
-   - "frame" is everything PolStudio adds: field names, the [Shot N] marker,
+   - "frame" is everything Slopus adds: field names, the [Shot N] marker,
      punctuation it inserted, and the two default sound lines.
 
    The preview in the generator renders these, and `compileMiniMaxH3Prompt` is
@@ -757,7 +757,7 @@ const tagged = (value: string): PromptSegment => ({ kind: "tag", value });
 const capitalize = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1);
 
 /** The stop `endSentence` would add, as its own segment — it is punctuation
- *  PolStudio inserted, not something the user typed. */
+ *  Slopus inserted, not something the user typed. */
 const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text ? [] : [frame(".")]);
 
 /** One scene, as the compiler needs it. Deliberately not a `GenerationJob`:
@@ -767,7 +767,7 @@ export interface ScenePrompt {
   shots: readonly SceneShot[];
   startFrameReferenceId?: string | null;
   /** Base guide §4.6 / §4.7. Blank or absent falls back to the two default
-   *  lines below, which are marked as PolStudio's own writing. */
+   *  lines below, which are marked as Slopus's own writing. */
   soundscape?: string | null;
   music?: string | null;
 }
@@ -884,7 +884,7 @@ interface CompiledShot {
   index: number;
   startSeconds: number;
   /** The action line: the user's characters, with each reference token turned
-   *  into the `<Subject N>` citation PolStudio inserts. */
+   *  into the `<Subject N>` citation Slopus inserts. */
   body: PromptSegment[];
   /** The same thing as a plain string, for deciding whether a stop is needed. */
   text: string;
@@ -939,7 +939,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // §4.1: the description opens with ONE overall style, so the first shot that
   // carries one sets it for the scene — the picker marks that setting scene-wide
   // for the same reason. Without one, the guess from the user's own words
-  // stands and is marked as PolStudio's doing.
+  // stands and is marked as Slopus's doing.
   const styleFromTag = compiled.map((shot) => shot.tags.style).find((style) => Boolean(style)) ?? null;
   const style = styleFromTag ?? deriveH3Style(compiled.map((shot) => shot.text).join(" "));
   const styleSegment = styleFromTag ? tagged(style) : frame(style);
@@ -950,7 +950,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     shot.index === 0 ? "[Shot 1] " : `[Shot ${shot.index + 1}] (cut at ${formatSceneSeconds(shot.startSeconds)}s) `;
 
   // Sentences the settings contribute after the description. The field name is
-  // PolStudio's, the terms inside it are the user's — hence three segments per
+  // Slopus's, the terms inside it are the user's — hence three segments per
   // clause rather than one pre-joined sentence nobody could attribute.
   const tail = (shot: CompiledShot): PromptSegment[] => shot.tags.clauses.flatMap((clause) => [
     frame(` ${clause.label}: `),

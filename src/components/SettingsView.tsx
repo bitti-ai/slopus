@@ -79,7 +79,7 @@ function AppearanceSetting() {
           >
             <input
               type="radio"
-              name="polstudio-theme"
+              name="slopus-theme"
               value={option.id}
               checked={selected}
               onChange={() => pick(option.id)}
@@ -203,7 +203,7 @@ function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
     <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
     <div>
       <h2>Application log</h2>
-      <p>PolStudio records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
+      <p>Slopus records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
       <p>Prompt text and credentials are not recorded. Sensitive fields are redacted again when each record is written.</p>
       <code title={info?.path}>{desktop ? info?.path ?? "Locating the log…" : "Available in the desktop app"}</code>
       {info?.previousPath && <small>A previous rotated log is stored beside this file.</small>}
@@ -230,7 +230,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export function SettingsView({ onClose }: { onClose: () => void }) {
   /* The engine first: this screen exists because those paths have to be set
-     before anything can be rendered, and its status line answers "is PolStudio
+     before anything can be rendered, and its status line answers "is Slopus
      ready?" without a click. */
   const [tab, setTab] = useState<TabId>("engine");
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
@@ -529,8 +529,8 @@ const engineHeadline = (status: SlopfabStatus | null, desktop: boolean) => {
 const engineDetail = (status: SlopfabStatus | null, desktop: boolean, missing: number) => {
   if (!desktop) return "Paths are saved here, but only the desktop app can check them or render with them.";
   if (!status) return "Looking for the engine and the model files.";
-  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should sit next to PolStudio.exe.`;
-  if (status.state === "ready") return "Everything PolStudio needs to render a shot is in place.";
+  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should sit next to Slopus.exe.`;
+  if (status.state === "ready") return "Everything Slopus needs to render a shot is in place.";
   if (missing > 0) return `${status.detail} ${missing === 1 ? "One path" : `${missing} paths`} still need setting below.`;
   return status.detail;
 };

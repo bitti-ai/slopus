@@ -580,11 +580,11 @@ describe("project schema", () => {
     expect(() => parseProjectConfig(bothOnReference)).toThrow();
   });
 
-  it("names the settings file polstudio.json and remembers what it used to be", () => {
-    expect(PROJECT_FILE_NAME).toBe("polstudio.json");
+  it("names the settings file slopus.json and remembers what it used to be", () => {
+    expect(PROJECT_FILE_NAME).toBe("slopus.json");
     // Both older names still open a project (project_file_in, Rust side); only
     // the current one is ever written.
-    expect(LEGACY_PROJECT_FILE_NAMES).toEqual(["pols.json", "polstudio.project.json"]);
+    expect(LEGACY_PROJECT_FILE_NAMES).toEqual(["polstudio.json", "pols.json", "polstudio.project.json"]);
     expect(LEGACY_PROJECT_FILE_NAMES).not.toContain(PROJECT_FILE_NAME);
   });
 

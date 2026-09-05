@@ -90,7 +90,7 @@ export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
         <div className="exit-guard__head">
           <span className="exit-guard__mark" aria-hidden="true"><AlertCircle size={20} /></span>
           <h2 id="exit-guard-title">
-            {leaving ? "Leave the project and stop generating?" : "Close PolStudio and stop generating?"}
+            {leaving ? "Leave the project and stop generating?" : "Close Slopus and stop generating?"}
           </h2>
         </div>
 
@@ -99,8 +99,8 @@ export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
           <p>
             {leaving
               ? "Going back to your projects stops them. "
-              : "The video engine runs inside PolStudio, so closing the window stops them. "}
-            No video file is written until a shot finishes, so an unfinished run leaves nothing behind — and PolStudio
+              : "The video engine runs inside Slopus, so closing the window stops them. "}
+            No video file is written until a shot finishes, so an unfinished run leaves nothing behind — and Slopus
             can’t pick one back up. You would run those shots again from the beginning.
           </p>
         </div>

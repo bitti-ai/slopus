@@ -3,7 +3,7 @@
  * Which theme this computer shows is a property of THIS computer and of the
  * person sitting at it — not of a project. It therefore lives in localStorage
  * next to the engine paths (see settings.ts for why machine-level settings
- * never go into polstudio.json), and a project folder copied here from another
+ * never go into slopus.json), and a project folder copied here from another
  * machine does not bring somebody else's appearance with it.
  *
  * THREE states, not two:
@@ -26,7 +26,8 @@ export type ThemeChoice = "system" | "light" | "dark";
 /** What actually gets painted once the choice is resolved against the OS. */
 export type ResolvedTheme = "light" | "dark";
 
-export const THEME_KEY = "polstudio.theme.v1";
+export const THEME_KEY = "slopus.theme.v1";
+const LEGACY_THEME_KEY = "polstudio.theme.v1";
 
 export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"];
 
@@ -48,7 +49,9 @@ const isChoice = (value: unknown): value is ThemeChoice =>
  *  — reads as "system" rather than taking the whole app down. */
 export function loadTheme(): ThemeChoice {
   try {
-    const value = localStorage.getItem(THEME_KEY);
+    const current = localStorage.getItem(THEME_KEY);
+    const value = current ?? localStorage.getItem(LEGACY_THEME_KEY);
+    if (!current && value) localStorage.setItem(THEME_KEY, value);
     return isChoice(value) ? value : "system";
   } catch {
     return "system";

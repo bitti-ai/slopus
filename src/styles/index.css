@@ -1,5 +1,5 @@
 /* ============================================================================
-   PolStudio — stylesheet entry point.
+   Slopus — stylesheet entry point.
 
    This is the ONLY file imported by the app (src/main.tsx). Everything else is
    pulled in from here, in cascade order. Keep the font @import first: CSS

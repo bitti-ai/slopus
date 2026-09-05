@@ -137,7 +137,7 @@
 }
 
 /* The plate a reference sits on: a hatched panel with its kind lettered on it.
-   It was once the whole story — "PolStudio cannot render image previews yet",
+   It was once the whole story — "Slopus cannot render image previews yet",
    which stopped being true when `.reference-art--photo` below started painting
    the user's own picture, and stayed in the file for a while afterwards. What
    it is now is the BACKDROP: it shows through a transparent PNG, and it is all

@@ -1,6 +1,6 @@
-# PolStudio
+# Slopus
 
-PolStudio is a local-first, agentic video editor foundation built with React, TypeScript, and Tauri 2.
+Slopus is a local-first, agentic video editor foundation built with React, TypeScript, and Tauri 2.
 
 ## Run it
 
@@ -26,7 +26,7 @@ cd src-tauri && cargo test
 ## Application icons
 
 `src-tauri/icons/` is generated, not hand-drawn. The mark is the film ticket from
-the in-app logo -- blue plate, four perforations, and a single heavy white **P** --
+the in-app logo -- blue plate, four perforations, and a single heavy white **S** --
 and it is rasterised at every size by `scripts/make-icons.mjs`, which writes the
 PNG/BMP/ICO/ICNS containers itself (no image toolchain required).
 
@@ -36,8 +36,8 @@ node scripts/make-icons.mjs --check  # decode the files back and print them as A
 ```
 
 Edit the geometry at the top of the script and re-run to re-tune the mark. Use
-`--check` to confirm the letter is still legible at 16px; the previous icon said
-"PolS" at every size and only a decode caught it.
+`--check` to confirm the letter is still legible at 16px; full wordmarks become
+an illegible smudge at application-icon sizes.
 
 ## Project folders
 
@@ -45,16 +45,16 @@ Each project is a normal folder owned by the user:
 
 ```text
 My project/
-├── polstudio.json
+├── slopus.json
 ├── assets/
 ├── generated/
 ├── exports/
 └── cache/
 ```
 
-`polstudio.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback.
+`slopus.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback. Existing `polstudio.json`, `pols.json`, and `polstudio.project.json` projects still open and migrate to `slopus.json` on save.
 
-The web fallback seeds three deterministic showcase projects on first launch. Remove the `polstudio.web-projects.v1` local-storage entry to restore that initial demo library.
+The web fallback seeds three deterministic showcase projects on first launch. Remove the `slopus.web-projects.v1` local-storage entry to restore that initial demo library.
 
 ### Reference icons
 

@@ -46,7 +46,7 @@ async function withFakeDecoder(file: { seconds: number; width: number; height: n
   // jsdom implements neither of these, so they are installed rather than
   // replaced — and left installed, because restoring them to `undefined` turns
   // any decode still finishing into an unhandled TypeError.
-  URL.createObjectURL = () => "blob:polstudio-test";
+  URL.createObjectURL = () => "blob:slopus-test";
   URL.revokeObjectURL = () => undefined;
   /* jsdom answers `load` and `getContext` by raising a "not implemented" error
      on its virtual console, which vitest counts as an error in the run. The
@@ -100,7 +100,7 @@ async function withStagedDecoder(file: { seconds: number; width: number; height:
   const { invoke } = await import("@tauri-apps/api/core");
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(8));
-  URL.createObjectURL = () => "blob:polstudio-test";
+  URL.createObjectURL = () => "blob:slopus-test";
   URL.revokeObjectURL = () => undefined;
   const media = HTMLMediaElement.prototype.load;
   const canvas = HTMLCanvasElement.prototype.getContext;
@@ -340,7 +340,7 @@ describe("project workspace timecode", () => {
   }
 
   it("switches the media panel between grid and list, and remembers which", () => {
-    localStorage.removeItem("polstudio.media-layout.v1");
+    localStorage.removeItem("slopus.media-layout.v1");
     const { container } = mediaPanel(projectWithMedia());
     expect(container.querySelector(".media-grid--grid")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "List" }));
@@ -1345,7 +1345,7 @@ describe("project workspace timecode", () => {
     const added = next.generationJobs[1];
     expect(added.status).toBe("draft");
     // One shot with nothing in it, and a name that says so rather than a phrase
-    // PolStudio made up out of words the user never typed.
+    // Slopus made up out of words the user never typed.
     expect(sceneShots(added).map((shot) => shot.action)).toEqual([""]);
     expect(added.title).toBe(UNTITLED_SCENE);
     expect(added.prompt).toBe("");
@@ -1564,7 +1564,7 @@ describe("project workspace timecode", () => {
     const compiled = () => document.querySelector(".compiled-prompt__text")!.textContent!;
     expect(compiled()).toContain("<Subject 1> walks towards the camera on <Subject 2>");
     expect(compiled()).not.toContain("@[ref:");
-    // The citation is PolStudio's format, not something the user typed.
+    // The citation is Slopus's format, not something the user typed.
     expect([...document.querySelectorAll(".prompt-part--frame")].map((part) => part.textContent)).toContain("<Subject 1>");
     expect(document.querySelector(".prompt-part--brief")!.textContent).not.toContain("<Subject");
 

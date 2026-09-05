@@ -8,7 +8,7 @@ import { TIMELINE_THUMBNAIL_INTERVAL_MS, writeTimelineThumbnail } from "./timeli
  *
  * slopfab makes pictures, not files: it hands Rust raw frames and raw audio and
  * frees them. Encoding is this side's job — WebCodecs owns the machine's
- * hardware encoder and PolStudio ships no FFmpeg by design (CLAUDE.md) — so a
+ * hardware encoder and Slopus ships no FFmpeg by design (CLAUDE.md) — so a
  * saved scene is a round trip:
  *
  *   Rust holds the frames  →  this reads them one at a time  →  WebCodecs
@@ -184,7 +184,7 @@ async function pickCodec(width: number, height: number, fps: number, bitrate: nu
     const support = await VideoEncoder.isConfigSupported(config).catch(() => ({ supported: false }));
     if (support.supported) return { codec: candidate, tried };
   }
-  throw new Error(`This computer's encoder refused every H.264 configuration PolStudio offers (${tried.join(", ")}).`);
+  throw new Error(`This computer's encoder refused every H.264 configuration Slopus offers (${tried.join(", ")}).`);
 }
 
 /** Makes a `VideoFrame` out of raw RGBA.

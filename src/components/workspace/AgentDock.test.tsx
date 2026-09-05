@@ -27,7 +27,7 @@ const providers: ProviderStatus[] = [
 ];
 
 const project = (): ProjectRecord => ({
-  folderPath: "C:\\PolStudio\\Prompt panel",
+  folderPath: "C:\\Slopus\\Prompt panel",
   config: createProjectConfig({
     name: "Prompt panel",
     prompt: "A quiet opening",

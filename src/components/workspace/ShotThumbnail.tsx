@@ -33,7 +33,7 @@ const SEEK_LIMIT_MS = 4_000;
  *  its own startSeconds. */
 /** Small JPEGs, but not free. Bounded like MediaThumbnail's own cache. */
 const CACHE_LIMIT = 96;
-const PLAY_EVENT = "polstudio:play-generated-shot";
+const PLAY_EVENT = "slopus:play-generated-shot";
 
 /** Drawn frames, keyed by file and time. */
 const POSTERS = new Map<string, string>();

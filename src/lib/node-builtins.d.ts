@@ -1,4 +1,4 @@
-/* PolStudio ships a browser bundle, so @types/node is deliberately NOT a
+/* Slopus ships a browser bundle, so @types/node is deliberately NOT a
    dependency: pulling it in would let application code reach for `process`,
    `Buffer` and `fs` and still type-check, and none of those exist inside the
    Tauri webview.

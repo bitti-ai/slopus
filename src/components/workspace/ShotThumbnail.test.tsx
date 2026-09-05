@@ -22,7 +22,7 @@ async function withFakeFile(file: { seconds: number }, body: (seen: {
   const { invoke } = await import("@tauri-apps/api/core");
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(8));
-  URL.createObjectURL = () => "blob:polstudio-test";
+  URL.createObjectURL = () => "blob:slopus-test";
   URL.revokeObjectURL = () => undefined;
   const load = HTMLMediaElement.prototype.load;
   const play = HTMLMediaElement.prototype.play;
