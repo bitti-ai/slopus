@@ -2363,7 +2363,7 @@ mod tests {
         // a change that cannot affect its answer.
         let mut with_engine = BTreeMap::new();
         with_engine.insert(
-            "vidfab".to_string(),
+            "slopfab".to_string(),
             ProviderSetting {
                 enabled: true,
                 model: None,

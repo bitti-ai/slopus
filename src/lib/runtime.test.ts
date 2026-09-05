@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { compileGenerationJobPrompt, createProjectConfig } from "./project";
-import { executeAgentCommands, getRuntimeStatus, resolveVidfabPlan, runAgentTurn } from "./runtime";
+import { executeAgentCommands, getRuntimeStatus, resolveSlopfabPlan, runAgentTurn } from "./runtime";
 
 const project = () => ({
   folderPath: "~/PolStudio/runtime-test",
@@ -21,8 +21,8 @@ describe("deterministic browser runtime", () => {
   it("reports explicit demo status and a plan-only generation boundary", async () => {
     const record = project();
     const status = await getRuntimeStatus();
-    expect(status.vidfab.state).toBe("demo");
-    const plan = await resolveVidfabPlan({
+    expect(status.slopfab.state).toBe("demo");
+    const plan = await resolveSlopfabPlan({
       jobId: "job-plan", prompt: "three field prompt", frames: 180, steps: 50,
       seed: 1, canvasWidth: 1920, canvasHeight: 1088, referencePaths: [],
     }, record.config);

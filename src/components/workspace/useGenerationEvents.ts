@@ -16,7 +16,7 @@ import { generationAssetId, type GenerationJob, type ProjectConfig } from "../..
  * screen carries them, so a scene that finishes while the user is somewhere
  * else is still recorded and still saved.
  *
- * Saving is the second half. vidfab produces pictures and frees them; a finished
+ * Saving is the second half. slopfab produces pictures and frees them; a finished
  * render is a few hundred megabytes waiting in Rust's memory that nothing else
  * will claim. As soon as the engine says the frames are ready, this encodes
  * them (see lib/generatedVideo.ts) and writes the .mp4 into the project. */
@@ -49,7 +49,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
    *  user to click Save. */
   onCompleted?: (jobId: string) => void;
   /** A transient prediction of when rendering (not file encoding) will finish,
-   *  based on vidfab's elapsed time and completed steps. It is deliberately
+   *  based on slopfab's elapsed time and completed steps. It is deliberately
    *  kept out of ProjectConfig: an estimate is live UI telemetry, not project
    *  data worth saving. */
   onEstimate?: (jobId: string, completionAt: number | null) => void;
@@ -89,7 +89,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
             ...job,
             status: "generating",
             stage,
-            // vidfab stages do not share one counter. A later stage can report
+            // slopfab stages do not share one counter. A later stage can report
             // a smaller local percentage, but overall progress cannot regress.
             progress: Math.max(job.progress, progress),
             updatedAt: new Date().toISOString(),
@@ -174,7 +174,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
     };
 
     const subscriptions = Promise.all([
-      listen<ProgressEvent>("vidfab-progress", ({ payload }) => {
+      listen<ProgressEvent>("slopfab-progress", ({ payload }) => {
         if (disposed) return;
         const progress = payload.totalSteps > 0
           ? Math.min(RENDER_PROGRESS_END, 0.12 + (Math.max(0, payload.step) / payload.totalSteps) * (RENDER_CEILING - 0.14))
@@ -186,7 +186,7 @@ export function useGenerationEvents({ folderPath, onChange, onCompleted, onEstim
           payload.stage === "starting" || payload.stage === "transformerLoad" ? "preparing" : "generating",
         );
       }),
-      listen<JobEvent>("vidfab-job", ({ payload }) => {
+      listen<JobEvent>("slopfab-job", ({ payload }) => {
         if (disposed) return;
         writeDiagnostic(payload.state === "failed" ? "error" : payload.state === "cancelled" ? "warn" : "info", "generation", "native_event.received", payload.detail || `Generation state changed to ${payload.state}.`, {
           jobId: payload.jobId, state: payload.state,

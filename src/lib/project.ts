@@ -8,7 +8,7 @@ export const PROJECT_FILE_NAME = "polstudio.json";
 export const LEGACY_PROJECT_FILE_NAMES = ["pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_GENERATION_STEPS = 20;
-/** Vidfab's native generation clock. Project frame rate is an editing/export
+/** Slopfab's native generation clock. Project frame rate is an editing/export
  * target; higher rates are produced later by interpolation and retiming. */
 export const GENERATION_FRAME_RATE = 24;
 export const MAX_GENERATION_STEPS = 2_147_483_647;
@@ -553,8 +553,8 @@ export interface CreateProjectInput {
 }
 
 /** Absolute on-disk path for a project-relative file.
- *  The generation backend uses `reference_paths` verbatim (vidfab.rs:339 calls
- *  Path::new on each string) and enqueue_vidfab_generation is never told the
+ *  The generation backend uses `reference_paths` verbatim (slopfab.rs:339 calls
+ *  Path::new on each string) and enqueue_slopfab_generation is never told the
  *  project folder, so a relative path would resolve against the process working
  *  directory. Callers must resolve to absolute before sending. */
 export function projectFilePath(folderPath: string, relativePath: string): string {
@@ -708,7 +708,7 @@ const referenceLabel = (reference: ProjectReference, index: number) => `<Subject
 
 /** Image references are the only ones that can be sent to the engine as assets,
  *  so they carry the <Picture N> numbering. That numbering MUST match the order
- *  of `reference_paths` in the generation request: vidfab.rs iterates the array
+ *  of `reference_paths` in the generation request: slopfab.rs iterates the array
  *  and calls add_reference sequentially, so index 0 is <Picture 1>.
  *
  *  The filter pair below is therefore load-bearing and must stay identical to
@@ -722,13 +722,13 @@ export function usableImageReferences(references: ProjectReference[]): ProjectRe
     .filter(isVisualReference);
 }
 
-/** Image payloads in exactly the order VidFab receives them. Multiple images
+/** Image payloads in exactly the order SlopFab receives them. Multiple images
  * on one reference stay adjacent and share that reference's subject. */
 export function usableReferenceImages(references: ProjectReference[]): ProjectReferenceImage[] {
   return usableImageReferences(references).flatMap(referenceImages);
 }
 
-/** References in the exact order both the prompt compiler and VidFab consume.
+/** References in the exact order both the prompt compiler and SlopFab consume.
  *  A start frame must be Picture 1; ordinary bound references retain project
  *  order after it and a frame that is also bound is still sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {

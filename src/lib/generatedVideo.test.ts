@@ -186,7 +186,7 @@ describe("generated audio at the Rust/webview boundary", () => {
     expect(invoked).toHaveBeenCalledWith("release_generated_frames", { jobId: "job-01" });
   });
 
-  it("encodes vidfab's interleaved PCM and adds an AAC track to the saved MP4", async () => {
+  it("encodes slopfab's interleaved PCM and adds an AAC track to the saved MP4", async () => {
     desktop();
     const audioData: Array<Record<string, unknown>> = [];
 

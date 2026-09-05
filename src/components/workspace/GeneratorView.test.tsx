@@ -5,12 +5,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
-import { cancelVidfabGeneration, getEngineStatus, type VidfabStatus } from "../../lib/runtime";
+import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
-  cancelVidfabGeneration: vi.fn().mockResolvedValue(true),
+  cancelSlopfabGeneration: vi.fn().mockResolvedValue(true),
   getEngineStatus: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const readyRuntime: VidfabStatus = {
+const readyRuntime: SlopfabStatus = {
   state: "ready",
   dllPath: "test",
   version: "test",
@@ -487,17 +487,17 @@ describe("Generator scene controls", () => {
     expect(within(first).queryByText("RENDERING")).not.toBeInTheDocument();
 
     fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(cancelVidfabGeneration).toHaveBeenCalledWith("scene-first"));
+    await waitFor(() => expect(cancelSlopfabGeneration).toHaveBeenCalledWith("scene-first"));
     const cancelling = within(first).getAllByRole("img", { name: /Cancelling\.\.\.$/ });
     expect(cancelling).toHaveLength(2);
     expect(cancelling.every((thumbnail) => thumbnail.querySelector(".spin"))).toBe(true);
     expect(within(first).queryByText("Rendering 42%")).not.toBeInTheDocument();
 
-    vi.mocked(cancelVidfabGeneration).mockClear();
+    vi.mocked(cancelSlopfabGeneration).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Cancel All" }));
     await waitFor(() => {
-      expect(cancelVidfabGeneration).toHaveBeenCalledTimes(1);
-      expect(cancelVidfabGeneration).toHaveBeenCalledWith("scene-second");
+      expect(cancelSlopfabGeneration).toHaveBeenCalledTimes(1);
+      expect(cancelSlopfabGeneration).toHaveBeenCalledWith("scene-second");
     });
   });
 });

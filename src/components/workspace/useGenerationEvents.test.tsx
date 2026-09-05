@@ -63,7 +63,7 @@ const timingProgress = (jobId: string, updates: Record<string, unknown> = {}) =>
   canvasWidth: 416,
   canvasHeight: 416,
   referenceCount: 0,
-  timingProfile: "vidfab=1.4.0|platform=CUDA 13|transformer=test.safetensors",
+  timingProfile: "slopfab=1.4.0|platform=CUDA 13|transformer=test.safetensors",
   ...updates,
 });
 
@@ -72,7 +72,7 @@ describe("what the app does with the engine's events", () => {
     vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 4_200_000, note: null });
     const completed = vi.fn();
     const { jobId, job, state } = harness(completed);
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "Frames and audio are ready to be encoded." });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "Frames and audio are ready to be encoded." });
 
     expect(saveGeneratedScene).toHaveBeenCalledWith(expect.objectContaining({ folderPath: "C:\\Ceramic Lamp", jobId }));
     expect(job()).toMatchObject({
@@ -90,7 +90,7 @@ describe("what the app does with the engine's events", () => {
   it("keeps the note when something was left out of the file", async () => {
     vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 10, note: "Saved without sound: this computer's encoder would not take the render's audio." });
     const { jobId, job } = harness();
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
     // Finished, with the file — and still saying what is missing from it.
     expect(job().status).toBe("completed");
     expect(job().error).toMatch(/without sound/);
@@ -111,7 +111,7 @@ describe("what the app does with the engine's events", () => {
       return null;
     }
     render(<Harness />);
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
 
     expect(state.config.assets[0].relativePath).toBe("media/generated/job-initial-brief.mp4");
     expect(state.config.timeline.tracks[0].clips[0].status).toBe("generated");
@@ -121,7 +121,7 @@ describe("what the app does with the engine's events", () => {
   it("calls a render that could not be written a failure, not a finished scene", async () => {
     vi.mocked(saveGeneratedScene).mockRejectedValue(new Error("This computer's encoder refused every H.264 configuration."));
     const { jobId, job } = harness();
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
     expect(job()).toMatchObject({ status: "failed", stage: "failed" });
     expect(job().error).toMatch(/rendered but could not be saved/);
     // Nothing to insert into a timeline, and the job must not claim otherwise.
@@ -134,8 +134,8 @@ describe("what the app does with the engine's events", () => {
       release = () => resolve({ relativePath: "media/generated/job-01.mp4", bytes: 1, note: null });
     }));
     const { jobId } = harness();
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
     expect(saveGeneratedScene).toHaveBeenCalledTimes(1);
     await act(async () => { release(); await Promise.resolve(); });
   });
@@ -148,7 +148,7 @@ describe("what the app does with the engine's events", () => {
     });
     const { jobId, job } = harness();
 
-    await emit("vidfab-progress", { jobId, stage: "denoising", step: 25, totalSteps: 50 });
+    await emit("slopfab-progress", { jobId, stage: "denoising", step: 25, totalSteps: 50 });
     const rendering = job().progress;
     expect(job().status).toBe("generating");
     // Rendering never reaches the part of the bar encoding owns, so a finished
@@ -156,49 +156,49 @@ describe("what the app does with the engine's events", () => {
     expect(rendering).toBeGreaterThan(0.12);
     expect(rendering).toBeLessThan(0.9);
 
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
     await act(async () => { report?.(60, 120); await Promise.resolve(); });
     expect(job().status).toBe("completed");
   });
 
   it("never rolls overall progress back when a later stage reports a smaller local counter", async () => {
     const { jobId, job } = harness();
-    await emit("vidfab-progress", { jobId, stage: "denoising", step: 40, totalSteps: 50 });
+    await emit("slopfab-progress", { jobId, stage: "denoising", step: 40, totalSteps: 50 });
     const furthest = job().progress;
-    await emit("vidfab-progress", { jobId, stage: "audioDecode", step: 0, totalSteps: 0 });
+    await emit("slopfab-progress", { jobId, stage: "audioDecode", step: 0, totalSteps: 0 });
     expect(job().progress).toBe(furthest);
     expect(job().progress).toBeGreaterThan(0.7);
   });
 
-  it("estimates render completion from vidfab elapsed time and completed steps", async () => {
+  it("estimates render completion from slopfab elapsed time and completed steps", async () => {
     const onEstimate = vi.fn();
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     const { jobId } = harness(undefined, onEstimate);
 
-    await emit("vidfab-progress", timingProgress(jobId));
+    await emit("slopfab-progress", timingProgress(jobId));
     expect(onEstimate).toHaveBeenLastCalledWith(jobId, null);
 
     now.mockReturnValue(11_000);
-    await emit("vidfab-progress", timingProgress(jobId, { step: 1, elapsedSeconds: 30 }));
+    await emit("slopfab-progress", timingProgress(jobId, { step: 1, elapsedSeconds: 30 }));
     const completionAt = onEstimate.mock.lastCall?.[1];
     // Ten measured seconds per step and two steps remain.
     expect(completionAt).toBe(31_000);
 
     vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/job-01.mp4", bytes: 1, note: null });
-    await emit("vidfab-job", { jobId, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId, state: "framesReady", detail: "" });
     expect(onEstimate).toHaveBeenLastCalledWith(jobId, null);
     now.mockRestore();
   });
 
   it("passes queued, failed and cancelled through as themselves", async () => {
     const { jobId, job } = harness();
-    await emit("vidfab-job", { jobId, state: "queued", detail: "Queued behind any active vidfab generation." });
+    await emit("slopfab-job", { jobId, state: "queued", detail: "Queued behind any active slopfab generation." });
     expect(job()).toMatchObject({ status: "queued", stage: "queued" });
 
-    await emit("vidfab-job", { jobId, state: "failed", detail: "The transformer weights could not be read." });
+    await emit("slopfab-job", { jobId, state: "failed", detail: "The transformer weights could not be read." });
     expect(job()).toMatchObject({ status: "failed", stage: "failed", error: "The transformer weights could not be read." });
 
-    await emit("vidfab-job", { jobId, state: "cancelled", detail: "Generation cancelled at the next vidfab checkpoint." });
+    await emit("slopfab-job", { jobId, state: "cancelled", detail: "Generation cancelled at the next slopfab checkpoint." });
     expect(job()).toMatchObject({ status: "cancelled", stage: "failed" });
     expect(saveGeneratedScene).not.toHaveBeenCalled();
   });
@@ -222,7 +222,7 @@ describe("how the hook writes", () => {
       return null;
     }
     render(<Harness />);
-    await emit("vidfab-job", { jobId: fresh.generationJobs[0].id, state: "framesReady", detail: "" });
+    await emit("slopfab-job", { jobId: fresh.generationJobs[0].id, state: "framesReady", detail: "" });
     expect(writes.length).toBeGreaterThan(0);
     expect(writes.every((write) => typeof write === "function")).toBe(true);
     // Applied to a config the hook never saw — a project renamed while the

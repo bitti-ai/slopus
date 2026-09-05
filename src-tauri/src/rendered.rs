@@ -1,6 +1,6 @@
-//! What a finished generation leaves behind, between vidfab and the encoder.
+//! What a finished generation leaves behind, between slopfab and the encoder.
 //!
-//! vidfab hands back raw pictures — planar RGB floats, one channel after
+//! slopfab hands back raw pictures — planar RGB floats, one channel after
 //! another, with every frame of a channel contiguous — and frees them when the
 //! generation handle is destroyed. Nothing in this process can turn those into
 //! an MP4: encoding is the webview's job, because WebCodecs owns the OS encoder
@@ -8,12 +8,12 @@
 //! CLAUDE.md on the licensing reason).
 //!
 //! So this module is the hand-off. It keeps the finished generation handle
-//! alive, asks vidfab to convert only the frame the webview currently needs,
+//! alive, asks slopfab to convert only the frame the webview currently needs,
 //! and releases the handle after WebCodecs has encoded and muxed the file.
 //!
 //! ## What this costs
 //!
-//! Only one RGBA frame is allocated per IPC request. Vidfab's decoded planar
+//! Only one RGBA frame is allocated per IPC request. Slopfab's decoded planar
 //! floats remain owned by its generation handle, avoiding the former second
 //! whole-video allocation and eager conversion pass.
 //!
@@ -38,7 +38,7 @@ pub trait FrameSource: Send {
     fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String>;
 }
 
-/// A finished render whose vidfab source is kept alive until encoding ends.
+/// A finished render whose slopfab source is kept alive until encoding ends.
 pub struct RenderedVideo {
     pub job_id: String,
     pub width: u32,
@@ -46,7 +46,7 @@ pub struct RenderedVideo {
     pub frame_count: u32,
     pub fps: f64,
     source: Box<dyn FrameSource>,
-    /// Interleaved samples, as vidfab returned them.
+    /// Interleaved samples, as slopfab returned them.
     audio: Vec<f32>,
     pub audio_channels: u32,
     pub audio_sample_rate: u32,
@@ -74,7 +74,7 @@ impl RenderedVideo {
     }
 }
 
-/// How the floats vidfab returns map onto 0–255.
+/// How the floats slopfab returns map onto 0–255.
 ///
 /// The C API documents the layout (planar RGB) but not the range, and the two
 /// conventions a decoder can use — 0…1 and −1…1 — differ by a factor of two and
@@ -120,7 +120,7 @@ impl Range {
     }
 }
 
-/// Turns vidfab's planar float pictures into the RGBA the webview can encode.
+/// Turns slopfab's planar float pictures into the RGBA the webview can encode.
 ///
 /// The C API declares the layout as `[channels][frames][height][width]`: all
 /// red frames first, then all green frames, then all blue frames. In
@@ -192,7 +192,7 @@ pub fn rgba_from_planar(
     Ok(rgba)
 }
 
-/// Builds the hand-off around a source that owns the finished vidfab handle.
+/// Builds the hand-off around a source that owns the finished slopfab handle.
 #[allow(clippy::too_many_arguments)]
 pub fn from_source(
     job_id: &str,
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn channel_major_frames_are_not_read_as_repeated_temporal_blocks() {
-        // [R0, R1, G0, G1, B0, B1], exactly as vidfab's C API returns it.
+        // [R0, R1, G0, G1, B0, B1], exactly as slopfab's C API returns it.
         // Distinct channels and frames make a channel/frame transposition
         // visible instead of letting a greyscale fixture hide it.
         let video = vec![0.1, 0.4, 0.2, 0.5, 0.3, 0.6];

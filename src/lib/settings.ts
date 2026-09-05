@@ -3,13 +3,13 @@
  * The video engine and its weights are a property of THIS computer, not of a
  * project: a project folder copied from another machine carries paths that do
  * not exist here. They therefore live in localStorage rather than in
- * polstudio.json, and are merged into `providerSettings.vidfab` only
+ * polstudio.json, and are merged into `providerSettings.slopfab` only
  * on the way into a Tauri command — never on the way into a saved config.
  * Keep it that way: writing them into a project file would put one machine's
  * disk layout into a file the user is invited to move, copy, and share.
  *
  * The option names below are the contract with `Configuration::from_settings`
- * in src-tauri/src/vidfab.rs. Renaming one here without renaming it there
+ * in src-tauri/src/slopfab.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
@@ -173,7 +173,7 @@ export function saveEngineSettings(settings: EngineSettings): void {
   });
 }
 
-/** The `vidfab` provider setting these paths describe, with blanks dropped so
+/** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
 export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting): ProviderSetting {
@@ -192,7 +192,7 @@ export function withEngineSettings(config: ProjectConfig): ProjectConfig {
     ...config,
     providerSettings: {
       ...config.providerSettings,
-      vidfab: engineProviderSetting(loadEngineSettings(), config.providerSettings.vidfab),
+      slopfab: engineProviderSetting(loadEngineSettings(), config.providerSettings.slopfab),
     },
   };
 }

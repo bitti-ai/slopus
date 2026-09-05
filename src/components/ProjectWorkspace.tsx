@@ -2,7 +2,7 @@ import { ArrowLeft, BookOpen, Bot, Download, Film, Save, Sparkles } from "lucide
 import { useEffect, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../lib/diagnostics";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
-import { cancelVidfabGeneration, CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type VidfabStatus } from "../lib/runtime";
+import { cancelSlopfabGeneration, CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type SlopfabStatus } from "../lib/runtime";
 import { purgeTimelineThumbnails } from "../lib/timelineThumbnails";
 import { ExitGuardDialog, type OngoingGeneration } from "./ExitGuardDialog";
 import { AgentDock } from "./workspace/AgentDock";
@@ -49,7 +49,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   onOngoingGenerationsChange?: (jobs: OngoingGeneration[]) => void;
   /** Keeps the app-wide probe result aligned when the active generator is
    *  changed directly from the Generator screen. */
-  onGeneratorRuntimeChange?: (runtime: VidfabStatus) => void;
+  onGeneratorRuntimeChange?: (runtime: SlopfabStatus) => void;
 }) {
   const [config, setConfigState] = useState(project.config);
   const configRef = useRef(config);
@@ -166,7 +166,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
        belong to this component and go with it. Rather than burn the GPU for a
        result no one will keep, the runs are stopped the same way their own stop
        button stops them. */
-    ongoing.forEach((job) => { void cancelVidfabGeneration(job.id).catch(() => undefined); });
+    ongoing.forEach((job) => { void cancelSlopfabGeneration(job.id).catch(() => undefined); });
     onBack();
   };
 
@@ -241,7 +241,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.vidfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+      {view === "generator" && <GeneratorView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>

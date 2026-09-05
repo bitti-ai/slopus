@@ -18,8 +18,8 @@ const FOCUSABLE = "button:not([disabled]), [href], input, select, textarea, [tab
 /** Asks before an exit that would throw away work the engine is still doing.
  *
  *  Every claim it makes is a claim about this codebase, not a hedge:
- *   • vidfab writes no file of its own (see `run_generation` in vidfab.rs). Its
- *     frames reach the app through the `vidfab-job` event, and only once the
+ *   • slopfab writes no file of its own (see `run_generation` in slopfab.rs). Its
+ *     frames reach the app through the `slopfab-job` event, and only once the
  *     app has encoded them (useGenerationEvents → lib/generatedVideo.ts) is
  *     there an .mp4 in the project folder. Leave before that and there is
  *     nothing on disk to come back to — which is why a scene that is still

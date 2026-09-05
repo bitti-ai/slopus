@@ -5,7 +5,7 @@ import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../li
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
-import { cancelVidfabGeneration, enqueueVidfabGeneration, getEngineStatus, resolveVidfabPlan, type VidfabGenerationRequest, type VidfabStatus } from "../../lib/runtime";
+import { cancelSlopfabGeneration, enqueueSlopfabGeneration, getEngineStatus, resolveSlopfabPlan, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
 import { statusIcon } from "./sceneStatus";
@@ -16,12 +16,12 @@ import { defaultGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorT
 interface GeneratorViewProps {
   config: ProjectConfig;
   folderPath: string;
-  runtime?: VidfabStatus | null;
+  runtime?: SlopfabStatus | null;
   generationCompletionTimes?: Readonly<Record<string, number>>;
   onChange: (next: ProjectConfig) => void;
   onOpenTimeline: () => void;
   selectedJobId?: string;
-  onRuntimeChange?: (runtime: VidfabStatus) => void;
+  onRuntimeChange?: (runtime: SlopfabStatus) => void;
 }
 
 type RemovalTarget =
@@ -44,17 +44,17 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
-  const [generatorRuntime, setGeneratorRuntime] = useState<VidfabStatus | null>(runtime);
+  const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const runtimeProbe = useRef(0);
   const configRef = useRef(config);
   configRef.current = config;
   // A scene is displayed as queued while its plan is resolving, just before
   // the backend receives it. Remember cancellation here as well as sending it
-  // to vidfab, so a click in that small window prevents the later enqueue.
+  // to slopfab, so a click in that small window prevents the later enqueue.
   const cancellationRequests = useRef(new Set<string>());
   // The ref above protects asynchronous work; this set exists so the cards
-  // repaint immediately when Cancel is pressed, before vidfab reports the
+  // repaint immediately when Cancel is pressed, before slopfab reports the
   // terminal cancelled state.
   const [cancellingJobIds, setCancellingJobIds] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -264,10 +264,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setSelection({ jobId: target.id, shotId });
   };
 
-  const requestFor = (job: GenerationJob): VidfabGenerationRequest => {
+  const requestFor = (job: GenerationJob): SlopfabGenerationRequest => {
     // Only the references actually bound to this scene, in list order. The same
     // ordered list drives the <Subject N> / <Picture N> numbering inside the
-    // compiled prompt, because vidfab.rs adds reference_paths sequentially — so
+    // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
     // array index 0 must be the asset the prompt calls <Picture 1>.
     const bound = sceneGenerationReferences(job, configRef.current.references);
     const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
@@ -275,7 +275,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       jobId: job.id,
       // Recompiled from current state so edits to a bound reference or a
       // retimed shot reach the engine, rather than sending a prompt frozen at
-      // draft-creation time. This is the ONE string vidfab is given, and it is
+      // draft-creation time. This is the ONE string slopfab is given, and it is
       // the same string the compiled-prompt panel shows.
       prompt: compileGenerationJobPrompt(job, bound),
       // The scene's own length, not a fixed six seconds.
@@ -293,7 +293,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
 
-  const logRequest = (event: string, message: string, request: VidfabGenerationRequest) => writeDiagnostic("info", "generator", event, message, {
+  const logRequest = (event: string, message: string, request: SlopfabGenerationRequest) => writeDiagnostic("info", "generator", event, message, {
     jobId: request.jobId,
     frames: request.frames,
     steps: request.steps,
@@ -339,7 +339,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (runtimeReady) {
       logRequest("generation.retry_requested", "Generation retry requested.", request);
       try {
-        await enqueueVidfabGeneration(request, configRef.current);
+        await enqueueSlopfabGeneration(request, configRef.current);
       } catch (reason) {
         updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.retry_failed", job.id, reason) });
       }
@@ -368,7 +368,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const at = current.generationJobs.findIndex((item) => item.id === job.id);
     if (at < 0) return;
     void purgeSceneThumbnails(job);
-    if (job.status === "generating" || job.status === "queued") void cancelVidfabGeneration(job.id);
+    if (job.status === "generating" || job.status === "queued") void cancelSlopfabGeneration(job.id);
     const generationJobs = current.generationJobs.filter((item) => item.id !== job.id);
     onChange({ ...current, generationJobs });
     if (selection.jobId === job.id) {
@@ -399,10 +399,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
          composer used to do this for a scene it had just created; a scene is
          now created empty and generated from here, so the plan is resolved
          here or nobody ever sees it. */
-      const plan = await resolveVidfabPlan(request, configRef.current);
+      const plan = await resolveSlopfabPlan(request, configRef.current);
       setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
       if (cancellationRequests.current.has(job.id)) return;
-      await enqueueVidfabGeneration(request, configRef.current);
+      await enqueueSlopfabGeneration(request, configRef.current);
     } catch (reason) {
       if (cancellationRequests.current.has(job.id)) return;
       updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
@@ -418,14 +418,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setCancellingJobIds((current) => new Set([...current, ...next.map((job) => job.id)]));
     const accepted = await Promise.all(next.map(async (job) => {
       try {
-        return await cancelVidfabGeneration(job.id);
+        return await cancelSlopfabGeneration(job.id);
       } catch (reason) {
         logFailure("generation.cancel_failed", job.id, reason);
         return false;
       }
     }));
     // False means the scene was still in frontend planning and never reached
-    // vidfab. No backend event will arrive for it, so finish that cancellation
+    // slopfab. No backend event will arrive for it, so finish that cancellation
     // locally; accepted cancellations are finalized by the normal event path.
     const beforeEnqueue = new Set(next.filter((_, index) => !accepted[index]).map((job) => job.id));
     if (beforeEnqueue.size > 0) {
@@ -485,10 +485,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     for (const { job, request } of requests) {
       if (cancellationRequests.current.has(job.id)) continue;
       try {
-        const plan = await resolveVidfabPlan(request, current);
+        const plan = await resolveSlopfabPlan(request, current);
         setPlanNotes((notes) => ({ ...notes, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
         if (cancellationRequests.current.has(job.id)) continue;
-        await enqueueVidfabGeneration(request, current);
+        await enqueueSlopfabGeneration(request, current);
       } catch (reason) {
         if (cancellationRequests.current.has(job.id)) continue;
         updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
@@ -735,7 +735,7 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
 
 /* The compiled prompt, shown before anything is sent and coloured by who wrote
    which part. The segments come from the compiler itself, so this panel is the
-   string vidfab receives — not a re-rendering of it that could drift. */
+   string slopfab receives — not a re-rendering of it that could drift. */
 function CompiledPrompt({ segments }: { segments: PromptSegment[] }) {
   return <section className="compiled-prompt" aria-label="The compiled MiniMax H3 prompt">
     <pre className="compiled-prompt__text">{segments.map((segment, index) =>
@@ -750,7 +750,7 @@ const boardSummary = (active: number, waiting: number, total: number) => {
   return total === 1 ? "1 scene" : `${total} scenes`;
 };
 
-const runtimeHeadline = (runtime: VidfabStatus | null) => {
+const runtimeHeadline = (runtime: SlopfabStatus | null) => {
   if (!runtime) return "Checking for the video engine…";
   switch (runtime.state) {
     case "ready": return "Video generator ready";

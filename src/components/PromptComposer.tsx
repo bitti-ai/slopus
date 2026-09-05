@@ -17,7 +17,7 @@ const aspectRatioLabels: Record<AspectRatio, string> = {
   "4:5": "Portrait 4:5",
 };
 
-/* Chosen because it is the closest rung to the canvas vidfab actually plans a
+/* Chosen because it is the closest rung to the canvas slopfab actually plans a
    16:9 scene onto (1344×768), so a project made without opening this panel is
    not one that has to be rescaled the moment a scene is generated. */
 const DEFAULT_RESOLUTION: Resolution = "768p";

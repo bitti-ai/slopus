@@ -1,4 +1,4 @@
-//! Safe host-side boundary for the dynamically loaded vidfab C API.
+//! Safe host-side boundary for the dynamically loaded slopfab C API.
 //!
 //! All ABI declarations and `unsafe` calls live in `ffi`; the rest of the
 //! application only handles owned Rust status, plan, progress, and metadata.
@@ -16,14 +16,14 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 
-const DLL_FILE_NAME: &str = "vidfab.dll";
+const DLL_FILE_NAME: &str = "slopfab.dll";
 /// Where the packaged build puts the runtime while it is being developed. Used
 /// only when the DLL is NOT beside the executable, so a `cargo run` out of the
 /// source tree still finds it.
-const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\vidfab\build\Release\vidfab.dll";
+const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\slopfab\build\Release\slopfab.dll";
 
 /// The runtime ships beside PolStudio.exe and is loaded from there — there is
-/// no path for anyone to configure and no way for one to go stale. vidfab.dll
+/// no path for anyone to configure and no way for one to go stale. slopfab.dll
 /// is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its own dependencies sit in
 /// that folder too, which is the same reason a subfolder never bought anything.
 pub fn default_dll_path() -> PathBuf {
@@ -83,7 +83,7 @@ fn platform_from_cuda_probe(result: Result<i32, String>) -> ComputePlatform {
 
 fn detect_platform(api: &ffi::Api) -> ComputePlatform {
     // Explicit "auto" makes PolStudio's order deterministic even if the host
-    // process carries VIDFAB_CUDA_VERSION. If this DLL instance was already
+    // process carries SLOPFAB_CUDA_VERSION. If this DLL instance was already
     // initialized, the setter is expected to refuse the change and the loaded
     // major below remains the authority.
     let _ = api.set_cuda_version("auto");
@@ -92,7 +92,7 @@ fn detect_platform(api: &ffi::Api) -> ComputePlatform {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VidfabStatus {
+pub struct SlopfabStatus {
     pub state: &'static str,
     pub dll_path: String,
     pub version: Option<String>,
@@ -195,20 +195,20 @@ struct OutputMetadata {
 }
 
 #[derive(Clone)]
-pub struct VidfabRuntime {
+pub struct SlopfabRuntime {
     sender: mpsc::Sender<QueueItem>,
     cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 }
 
-impl Default for VidfabRuntime {
+impl Default for SlopfabRuntime {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel::<QueueItem>();
         let cancellations = Arc::new(Mutex::new(HashMap::new()));
         let worker_flags = cancellations.clone();
-        thread::Builder::new().name("vidfab-serial-queue".into()).spawn(move || {
+        thread::Builder::new().name("slopfab-serial-queue".into()).spawn(move || {
             while let Ok(item) = receiver.recv() {
                 let started = std::time::Instant::now();
-                diagnostics::info("vidfab", "generation.started", "Native generation worker started.", serde_json::json!({
+                diagnostics::info("slopfab", "generation.started", "Native generation worker started.", serde_json::json!({
                     "jobId": item.request.job_id,
                     "frames": item.request.frames,
                     "steps": item.request.steps,
@@ -255,13 +255,13 @@ impl Default for VidfabRuntime {
                     })),
                 });
                 if state == "failed" {
-                    diagnostics::error("vidfab", "generation.finished", &detail, context);
+                    diagnostics::error("slopfab", "generation.finished", &detail, context);
                 } else if state == "cancelled" {
-                    diagnostics::warn("vidfab", "generation.finished", &detail, context);
+                    diagnostics::warn("slopfab", "generation.finished", &detail, context);
                 } else {
-                    diagnostics::info("vidfab", "generation.finished", &detail, context);
+                    diagnostics::info("slopfab", "generation.finished", &detail, context);
                 }
-                let _ = item.app.emit("vidfab-job", JobEvent { job_id: item.request.job_id.clone(), state, detail, output });
+                let _ = item.app.emit("slopfab-job", JobEvent { job_id: item.request.job_id.clone(), state, detail, output });
                 let queue_empty = if let Ok(mut flags) = worker_flags.lock() {
                     flags.remove(&item.request.job_id);
                     flags.is_empty()
@@ -274,11 +274,11 @@ impl Default for VidfabRuntime {
                 // the otherwise multi-gigabyte cache a deterministic lifetime.
                 if queue_empty {
                     if let Err(error) = clear_reused_models(&item.configuration) {
-                        diagnostics::warn("vidfab", "models.clear_failed", &error, serde_json::json!({}));
+                        diagnostics::warn("slopfab", "models.clear_failed", &error, serde_json::json!({}));
                     }
                 }
             }
-        }).expect("could not start vidfab queue worker");
+        }).expect("could not start slopfab queue worker");
         Self {
             sender,
             cancellations,
@@ -292,7 +292,7 @@ fn clear_reused_models(configuration: &Configuration) -> Result<(), String> {
     api.clear_reused_models()
 }
 
-impl VidfabRuntime {
+impl SlopfabRuntime {
     pub fn enqueue(
         &self,
         app: AppHandle,
@@ -300,7 +300,7 @@ impl VidfabRuntime {
         settings: &BTreeMap<String, ProviderSetting>,
     ) -> Result<(), String> {
         diagnostics::info(
-            "vidfab",
+            "slopfab",
             "generation.enqueue_requested",
             "Generation was submitted to the native queue.",
             serde_json::json!({
@@ -346,16 +346,16 @@ impl VidfabRuntime {
             return Err("Generation queue is unavailable.".into());
         }
         let _ = app.emit(
-            "vidfab-job",
+            "slopfab-job",
             JobEvent {
                 job_id: queued_id.clone(),
                 state: "queued",
-                detail: "Queued behind any active vidfab generation.".into(),
+                detail: "Queued behind any active slopfab generation.".into(),
                 output: None,
             },
         );
         diagnostics::info(
-            "vidfab",
+            "slopfab",
             "generation.queued",
             "Generation entered the native queue.",
             serde_json::json!({ "jobId": queued_id }),
@@ -374,7 +374,7 @@ impl VidfabRuntime {
                 true
             });
         diagnostics::info(
-            "vidfab",
+            "slopfab",
             "generation.cancel_requested",
             if accepted {
                 "Cancellation was accepted."
@@ -404,9 +404,9 @@ struct Configuration {
 
 impl Configuration {
     fn from_settings(settings: &BTreeMap<String, ProviderSetting>) -> Self {
-        let vidfab = settings.get("vidfab");
+        let slopfab = settings.get("slopfab");
         let option = |name: &str| {
-            vidfab.and_then(|setting| match setting.options.get(name) {
+            slopfab.and_then(|setting| match setting.options.get(name) {
                 Some(ProviderOption::String(value)) if !value.trim().is_empty() => {
                     Some(PathBuf::from(value))
                 }
@@ -443,11 +443,11 @@ impl Configuration {
             })
             .collect::<Vec<_>>()
             .join(";");
-        format!("vidfab={version}|platform={}|{models}", platform.label())
+        format!("slopfab={version}|platform={}|{models}", platform.label())
     }
 }
 
-pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
+pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
     let configuration = Configuration::from_settings(settings);
     let models = configuration
         .models
@@ -470,7 +470,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
                     .iter()
                     .filter(|model| !model.available && model.id != "tokenizer")
                     .count();
-                VidfabStatus {
+                SlopfabStatus {
                     state: if missing == 0 {
                         "ready"
                     } else {
@@ -487,7 +487,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
                     models,
                 }
             }
-            Err(error) => VidfabStatus {
+            Err(error) => SlopfabStatus {
                 state: "incompatible",
                 dll_path,
                 version: None,
@@ -496,12 +496,12 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> VidfabStatus {
                 models,
             },
         },
-        Err(error) => VidfabStatus {
+        Err(error) => SlopfabStatus {
             state: "runtimeMissing",
             dll_path,
             version: None,
             platform: None,
-            detail: format!("vidfab is unavailable: {error}. Editing remains available."),
+            detail: format!("slopfab is unavailable: {error}. Editing remains available."),
             models,
         },
     }
@@ -590,7 +590,7 @@ fn configure_request(
 }
 
 /// Runs one generation and retains its terminal handle for frame streaming.
-/// Audio is copied once; video stays owned by vidfab until encoding completes.
+/// Audio is copied once; video stays owned by slopfab until encoding completes.
 struct FinishedGeneration {
     api: ffi::Api,
     generation: *mut ffi::Generation,
@@ -621,9 +621,9 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
     let platform = detect_platform(&api);
     let timing_profile = item.configuration.timing_profile(&version, platform);
     diagnostics::debug(
-        "vidfab",
+        "slopfab",
         "generation.runtime_ready",
-        "vidfab runtime loaded.",
+        "slopfab runtime loaded.",
         serde_json::json!({
             "jobId": item.request.job_id, "version": version, "platform": platform.label(),
         }),
@@ -639,9 +639,9 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
     )?;
     api.resolve(request.0)?;
     diagnostics::debug(
-        "vidfab",
+        "slopfab",
         "generation.request_resolved",
-        "vidfab resolved the generation request.",
+        "slopfab resolved the generation request.",
         serde_json::json!({ "jobId": item.request.job_id }),
     );
     let context = Box::new(CallbackContext {
@@ -665,9 +665,9 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         }
     };
     diagnostics::debug(
-        "vidfab",
+        "slopfab",
         "generation.api_started",
-        "vidfab accepted the generation request.",
+        "slopfab accepted the generation request.",
         serde_json::json!({ "jobId": item.request.job_id }),
     );
     loop {
@@ -683,7 +683,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
             unsafe {
                 drop(Box::from_raw(context_ptr));
             }
-            return Err("Generation cancelled at the next vidfab checkpoint.".into());
+            return Err("Generation cancelled at the next slopfab checkpoint.".into());
         }
         if code != 0 {
             let error = api.generation_error(generation);
@@ -692,7 +692,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
                 drop(Box::from_raw(context_ptr));
             }
             return Err(if error.is_empty() {
-                format!("vidfab generation failed with status {code}.")
+                format!("slopfab generation failed with status {code}.")
             } else {
                 error
             });
@@ -710,7 +710,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
     if output.audio.is_null() && output.audio_float_count != 0 {
         api.destroy_generation(generation);
         unsafe { drop(Box::from_raw(context_ptr)) };
-        return Err("Vidfab returned a null audio buffer with a non-zero size.".into());
+        return Err("Slopfab returned a null audio buffer with a non-zero size.".into());
     }
     // Audio is small enough to own directly. Video remains in the generation
     // and is converted through frame_rgba8 only as WebCodecs asks for it.
@@ -737,7 +737,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         } else {
             0.0
         },
-        boundary: "Decoded buffers remain owned by vidfab and frames are converted on demand. The webview encodes them; vidfab wrote no file.",
+        boundary: "Decoded buffers remain owned by slopfab and frames are converted on demand. The webview encodes them; slopfab wrote no file.",
     };
     unsafe {
         drop(Box::from_raw(context_ptr));
@@ -822,7 +822,7 @@ fn write_reference_icon(
     if status != 0 {
         let detail = api.generation_error(generation.0);
         return Err(if detail.is_empty() {
-            format!("Icon '{}' failed with vidfab status {status}.", spec.id)
+            format!("Icon '{}' failed with slopfab status {status}.", spec.id)
         } else {
             format!("Icon '{}' failed: {detail}", spec.id)
         });
@@ -927,9 +927,9 @@ unsafe extern "C" fn progress_callback(
         let progress = unsafe { &*progress };
         let context = unsafe { &*(userdata.cast::<CallbackContext>()) };
         diagnostics::debug(
-            "vidfab",
+            "slopfab",
             "generation.progress",
-            "vidfab reported progress.",
+            "slopfab reported progress.",
             serde_json::json!({
                 "jobId": context.job_id,
                 "stage": stage_name(progress.stage),
@@ -940,7 +940,7 @@ unsafe extern "C" fn progress_callback(
             }),
         );
         let _ = context.app.emit(
-            "vidfab-progress",
+            "slopfab-progress",
             ProgressEvent {
                 job_id: context.job_id.clone(),
                 stage: stage_name(progress.stage),
@@ -1084,90 +1084,90 @@ mod ffi {
                     };
                 }
                 Ok(Self {
-                    capi_version: symbol!("vidfab_capi_version", unsafe extern "C" fn() -> u32),
+                    capi_version: symbol!("slopfab_capi_version", unsafe extern "C" fn() -> u32),
                     version_string: symbol!(
-                        "vidfab_capi_version_string",
+                        "slopfab_capi_version_string",
                         unsafe extern "C" fn() -> *const c_char
                     ),
                     last_error: symbol!(
-                        "vidfab_last_error",
+                        "slopfab_last_error",
                         unsafe extern "C" fn() -> *const c_char
                     ),
-                    free_string: symbol!("vidfab_free_string", unsafe extern "C" fn(*mut c_char)),
+                    free_string: symbol!("slopfab_free_string", unsafe extern "C" fn(*mut c_char)),
                     cuda_set_version: symbol!(
-                        "vidfab_cuda_set_version",
+                        "slopfab_cuda_set_version",
                         unsafe extern "C" fn(*const c_char) -> i32
                     ),
                     cuda_loaded_major: symbol!(
-                        "vidfab_cuda_loaded_major",
+                        "slopfab_cuda_loaded_major",
                         unsafe extern "C" fn(*mut i32) -> i32
                     ),
                     request_create: symbol!(
-                        "vidfab_request_create",
+                        "slopfab_request_create",
                         unsafe extern "C" fn() -> *mut Request
                     ),
                     request_destroy: symbol!(
-                        "vidfab_request_destroy",
+                        "slopfab_request_destroy",
                         unsafe extern "C" fn(*mut Request)
                     ),
                     set_prompt: symbol!(
-                        "vidfab_request_set_prompt",
+                        "slopfab_request_set_prompt",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
                     set_resolution: symbol!(
-                        "vidfab_request_set_resolution",
+                        "slopfab_request_set_resolution",
                         unsafe extern "C" fn(*mut Request, i32, i32) -> i32
                     ),
                     set_frames: symbol!(
-                        "vidfab_request_set_frames",
+                        "slopfab_request_set_frames",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
                     set_steps: symbol!(
-                        "vidfab_request_set_steps",
+                        "slopfab_request_set_steps",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
                     set_seed: symbol!(
-                        "vidfab_request_set_seed",
+                        "slopfab_request_set_seed",
                         unsafe extern "C" fn(*mut Request, u64) -> i32
                     ),
                     set_model: symbol!(
-                        "vidfab_request_set_model_path",
+                        "slopfab_request_set_model_path",
                         unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32
                     ),
                     add_reference: symbol!(
-                        "vidfab_request_add_reference_image",
+                        "slopfab_request_add_reference_image",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
                     set_attention: symbol!(
-                        "vidfab_request_set_attention",
+                        "slopfab_request_set_attention",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
                     set_inference_backend: symbol!(
-                        "vidfab_request_set_inference_backend",
+                        "slopfab_request_set_inference_backend",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
                     set_verbose: symbol!(
-                        "vidfab_request_set_verbose",
+                        "slopfab_request_set_verbose",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
                     set_reuse_models: symbol!(
-                        "vidfab_request_set_reuse_models",
+                        "slopfab_request_set_reuse_models",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
                     reused_models_clear: symbol!(
-                        "vidfab_reused_models_clear",
+                        "slopfab_reused_models_clear",
                         unsafe extern "C" fn() -> i32
                     ),
                     resolve_plan: symbol!(
-                        "vidfab_resolve_plan",
+                        "slopfab_resolve_plan",
                         unsafe extern "C" fn(*const Request, *mut Plan) -> i32
                     ),
                     describe_plan: symbol!(
-                        "vidfab_describe_plan",
+                        "slopfab_describe_plan",
                         unsafe extern "C" fn(*const Request, *mut *mut c_char) -> i32
                     ),
                     generation_start: symbol!(
-                        "vidfab_generation_start",
+                        "slopfab_generation_start",
                         unsafe extern "C" fn(
                             *const Request,
                             ProgressFn,
@@ -1176,27 +1176,27 @@ mod ffi {
                         ) -> i32
                     ),
                     generation_cancel: symbol!(
-                        "vidfab_generation_cancel",
+                        "slopfab_generation_cancel",
                         unsafe extern "C" fn(*mut Generation)
                     ),
                     generation_wait: symbol!(
-                        "vidfab_generation_wait",
+                        "slopfab_generation_wait",
                         unsafe extern "C" fn(*mut Generation, i32) -> i32
                     ),
                     generation_error: symbol!(
-                        "vidfab_generation_error",
+                        "slopfab_generation_error",
                         unsafe extern "C" fn(*const Generation) -> *const c_char
                     ),
                     generation_output: symbol!(
-                        "vidfab_generation_output",
+                        "slopfab_generation_output",
                         unsafe extern "C" fn(*const Generation, *mut Output) -> i32
                     ),
                     generation_frame_rgba8: symbol!(
-                        "vidfab_generation_frame_rgba8",
+                        "slopfab_generation_frame_rgba8",
                         unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32
                     ),
                     generation_destroy: symbol!(
-                        "vidfab_generation_destroy",
+                        "slopfab_generation_destroy",
                         unsafe extern "C" fn(*mut Generation)
                     ),
                     _library: library,
@@ -1209,7 +1209,7 @@ mod ffi {
                 let major = packed >> 24;
                 if major != super::EXPECTED_CAPI_MAJOR {
                     return Err(format!(
-                        "Incompatible vidfab C API major {major}; expected {}.",
+                        "Incompatible slopfab C API major {major}; expected {}.",
                         super::EXPECTED_CAPI_MAJOR
                     ));
                 }
@@ -1222,7 +1222,7 @@ mod ffi {
             } else {
                 let message = unsafe { c_string((self.last_error)()) };
                 Err(if message.is_empty() {
-                    format!("vidfab returned status {code}.")
+                    format!("slopfab returned status {code}.")
                 } else {
                     message
                 })
@@ -1369,7 +1369,7 @@ mod ffi {
             height: u32,
         ) -> Result<Vec<u8>, String> {
             let index = i32::try_from(index)
-                .map_err(|_| "Frame index does not fit the vidfab API.".to_string())?;
+                .map_err(|_| "Frame index does not fit the slopfab API.".to_string())?;
             let bytes = (width as usize)
                 .checked_mul(height as usize)
                 .and_then(|value| value.checked_mul(4))
@@ -1386,7 +1386,7 @@ mod ffi {
     }
     fn path_cstring(path: &Path) -> Result<CString, String> {
         CString::new(path.to_string_lossy().as_bytes())
-            .map_err(|_| "A vidfab path contains a null byte.".into())
+            .map_err(|_| "A slopfab path contains a null byte.".into())
     }
 
     #[cfg(windows)]
@@ -1422,13 +1422,13 @@ mod tests {
     fn absent_dll_is_an_explicit_disabled_state() {
         let mut settings = BTreeMap::new();
         settings.insert(
-            "vidfab".into(),
+            "slopfab".into(),
             ProviderSetting {
                 enabled: true,
                 model: None,
                 options: BTreeMap::from([(
                     "dllPath".into(),
-                    ProviderOption::String("Z:/definitely-absent/vidfab.dll".into()),
+                    ProviderOption::String("Z:/definitely-absent/slopfab.dll".into()),
                 )]),
             },
         );

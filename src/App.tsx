@@ -208,7 +208,7 @@ function App() {
 
   if (activeProject) {
     return <>
-      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onGeneratorRuntimeChange={(vidfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, vidfab }))} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
+      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
         const saved = await saveProject(project);
         setActiveProject(saved);
         setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
