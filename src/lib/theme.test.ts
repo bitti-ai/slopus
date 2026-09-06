@@ -434,20 +434,6 @@ function ruleBlocks(css: string): { selector: string; body: string }[] {
 
 /** Rule → why that rule is allowed to name a colour. Keyed by file name. */
 const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
-  "shell.css": {
-    /* Found by widening the regex to `%23`, not by reading the file: this had
-       been sitting in the sheet the whole time, invisible because it is spelled
-       percent-encoded inside a data URI. It is legitimate — a mask image is
-       read for its ALPHA, so `fill='%23000'` means "opaque here" and nothing is
-       ever painted this colour — but it was legitimate by luck rather than by
-       anyone's decision, which is the state the allowlist exists to end. */
-    ".slopus-logo":
-      "brand mark: its fixed flat blue is shared with packaged icons; the data-URI black only supplies mask alpha",
-    ".slopus-logo__ticket":
-      "brand mark: the Slopus ticket is one artwork, blue plate and white letter, in both themes",
-    ".slopus-logo__perforations i":
-      "fallback perforations: painted black because a hole reads as a hole on any backdrop",
-  },
   "library.css": {
     /* library.css says all of this in prose above the rules; the point of
        repeating it here is that the guard knows, not that a reader does. */

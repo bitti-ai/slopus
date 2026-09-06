@@ -19,7 +19,7 @@
   padding: 0 var(--space-2);
 }
 
-/* Icon-only lockup for narrow rails: the ticket mark, centred, no edition tag. */
+/* Icon-only lockup for narrow rails, centred with no edition tag. */
 .brand--compact {
   gap: 0;
   padding: 0;
@@ -35,125 +35,7 @@
   padding: var(--space-1) var(--space-2);
 }
 
-/* --- Logo mark (decorative artwork — proportions preserved) ----------------- */
-
-/* A flat film badge and wordmark. The badge uses one stable brand blue in every
-   theme and at every size; its silhouette and punched perforations provide the
-   visual character without gradients, highlights, or shadows. */
-.slopus-logo {
-  /* Perforation geometry, in one place. The strip in the flex row
-     (.slopus-logo__perforations) and the mask that punches the holes out of the
-     plate (.slopus-logo__ticket::before) both read these, so the holes and the
-     space reserved for them cannot drift apart. */
-  --slopus-ticket-h: 28px;
-  --slopus-perf-x: 3px;
-  --slopus-perf-w: 4px;
-  --slopus-perf-strip: 5px;              /* the hole plus 1px of plate to its right */
-  --slopus-perf-h: 3px;
-  --slopus-perf-gap: 1px;
-  --slopus-perf-span: calc(4 * var(--slopus-perf-h) + 3 * var(--slopus-perf-gap));
-  --slopus-perf-y: calc((var(--slopus-ticket-h) - var(--slopus-perf-span)) / 2);
-  --slopus-logo-blue: #3f64d9;
-  /* One hole: a 4x3 rounded rect, used as a mask layer so a punched hole has
-     the same soft corners the fallback rectangles carry. */
-  --slopus-perf-hole: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'%3E%3Crect width='4' height='3' rx='1' fill='%23000'/%3E%3C/svg%3E");
-
-  height: 36px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  overflow: hidden;
-  padding: 4px 3px;
-  color: var(--text-primary);
-  background: transparent;
-  white-space: nowrap;
-}
-
-/* The plate lives on ::before so the perforations can be punched out without
-   masking the white monogram. */
-.slopus-logo__ticket {
-  position: relative;
-  z-index: 1;
-  height: var(--slopus-ticket-h);
-  flex: 0 0 auto;
-  padding-right: 3px;
-  display: flex;
-  align-items: center;
-  border-radius: 7px;
-  color: #fff;
-  background: transparent;
-}
-
-/* The plate is a separate layer so its mask does not also eat the monogram. */
-.slopus-logo__ticket::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--slopus-logo-blue);
-}
-
-/* Positioned above the plate, so the fallback squares below are not painted
-   underneath it and lost. */
-.slopus-logo__perforations {
-  position: relative;
-  z-index: 2;
-  width: var(--slopus-perf-strip);
-  height: var(--slopus-perf-span);
-  margin-left: var(--slopus-perf-x);
-  display: grid;
-  grid-template-rows: repeat(4, var(--slopus-perf-h));
-  gap: var(--slopus-perf-gap);
-}
-
-/* Fallback only: where the plate cannot be masked the holes are painted black,
-   which still reads as a hole on any backdrop, light theme or dark. */
-.slopus-logo__perforations i {
-  width: var(--slopus-perf-w);
-  height: var(--slopus-perf-h);
-  display: block;
-  border-radius: 1px;
-  background: #000;
-}
-
-/* Real holes: five mask layers — the plate, minus the four perforations — so
-   whatever is behind the logo shows through them. mask-composite is the whole
-   trick, hence the @supports: without it the layers would union into a solid
-   mask and the perforations would vanish, so the black squares above stay. */
-@supports (mask-composite: exclude) {
-  .slopus-logo__ticket::before {
-    mask-image: var(--slopus-perf-hole), var(--slopus-perf-hole), var(--slopus-perf-hole), var(--slopus-perf-hole),
-      linear-gradient(currentColor 0 0);
-    mask-repeat: no-repeat;
-    mask-size: var(--slopus-perf-w) var(--slopus-perf-h), var(--slopus-perf-w) var(--slopus-perf-h),
-      var(--slopus-perf-w) var(--slopus-perf-h), var(--slopus-perf-w) var(--slopus-perf-h), 100% 100%;
-    mask-position: var(--slopus-perf-x) var(--slopus-perf-y),
-      var(--slopus-perf-x) calc(var(--slopus-perf-y) + 1 * (var(--slopus-perf-h) + var(--slopus-perf-gap))),
-      var(--slopus-perf-x) calc(var(--slopus-perf-y) + 2 * (var(--slopus-perf-h) + var(--slopus-perf-gap))),
-      var(--slopus-perf-x) calc(var(--slopus-perf-y) + 3 * (var(--slopus-perf-h) + var(--slopus-perf-gap))), 0 0;
-    mask-composite: exclude;
-  }
-
-  .slopus-logo__perforations i {
-    background: transparent;
-  }
-}
-
-.slopus-logo__monogram {
-  position: relative;
-  z-index: 2;
-  margin-left: 3px;
-  font-size: var(--text-lg);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -1.2px;
-}
-
-.slopus-logo__wordmark {
-  position: relative;
-  z-index: 2;
-  margin-left: 0;
+.brand__wordmark {
   color: var(--text-primary);
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
@@ -161,22 +43,19 @@
   letter-spacing: -0.7px;
 }
 
-/* Compact mark: the ticket with a single S in it. One letter has room to be
-   read at icon size, so it takes the body size rather than the 12px floor. */
+/* --- Application icon ----------------------------------------------------- */
+
+.slopus-logo {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: block;
+  object-fit: contain;
+}
+
 .slopus-logo--compact {
-  --slopus-ticket-h: 22px;
+  width: 30px;
   height: 30px;
-  padding: 4px 3px;
-}
-
-.slopus-logo--compact .slopus-logo__monogram {
-  margin-left: 3px;
-  font-size: var(--text-base);
-  letter-spacing: -0.3px;
-}
-
-.slopus-logo--compact .slopus-logo__ticket {
-  padding-right: 7px;
 }
 
 /* --- Settings launcher ------------------------------------------------------
