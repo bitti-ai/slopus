@@ -301,7 +301,8 @@ describe("Generator scene controls", () => {
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
     expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }));
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
-    expect(screen.getByText("Video model files missing")).toBeInTheDocument();
+    expect(screen.queryByText("Video model files missing")).not.toBeInTheDocument();
+    expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();
   });
 
   it("marks a finished scene yellow when scene settings change", async () => {

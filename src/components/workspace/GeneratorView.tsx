@@ -525,7 +525,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             <i role="img" aria-label={runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime)} />
             <span className="generator-runtime__label">Generator:</span>
             <GeneratorTemplateCombobox templates={templateSettings.templates} selected={selectedTemplate} onChange={chooseGeneratorTemplate} />
-            {(runtimeError || generatorRuntime?.state !== "ready") && <span className="generator-runtime__status" aria-hidden="true">{runtimeError ? "Unavailable" : runtimeHeadline(generatorRuntime)}</span>}
+            {(runtimeError || (generatorRuntime?.state !== "ready" && generatorRuntime?.state !== "modelsMissing")) && <span className="generator-runtime__status" aria-hidden="true">{runtimeError ? "Unavailable" : runtimeHeadline(generatorRuntime)}</span>}
           </div>
           <button
             className={cancellable.length > 0 ? "danger-button generator-heading__cancel" : "primary-button"}
