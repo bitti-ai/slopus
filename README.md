@@ -25,19 +25,18 @@ cd src-tauri && cargo test
 
 ## Application icons
 
-`src-tauri/icons/` is generated, not hand-drawn. The mark is the film ticket from
-the in-app logo -- blue plate, four perforations, and a single heavy white **S** --
-and it is rasterised at every size by `scripts/make-icons.mjs`, which writes the
-PNG/BMP/ICO/ICNS containers itself (no image toolchain required).
+`marketing/icon.png` is the source artwork for the application icon, browser
+favicon, and Project Library logo. `scripts/make-icons.mjs` uses the installed
+Tauri CLI to generate the desktop PNG, ICO, and ICNS files in `src-tauri/icons/`.
 
 ```sh
 npm run icons                        # rewrite every file listed in bundle.icon
-node scripts/make-icons.mjs --check  # decode the files back and print them as ASCII
+node scripts/make-icons.mjs --check  # verify packaged icons against the source artwork
 ```
 
-Edit the geometry at the top of the script and re-run to re-tune the mark. Use
-`--check` to confirm the letter is still legible at 16px; full wordmarks become
-an illegible smudge at application-icon sizes.
+Replace the square, transparent `marketing/icon.png` and run `npm run icons` to
+update the packaged artwork. Intermediate platform assets are generated under
+the ignored `artifacts/generated-icons/` folder.
 
 ## Project folders
 
