@@ -13,12 +13,16 @@ import { GeneratorView } from "./workspace/GeneratorView";
 import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView } from "./workspace/TimelineView";
+import { saveDebugOptionsEnabled } from "../lib/settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn() }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  saveDebugOptionsEnabled(false);
+});
 
 /** Runs `body` with the app believing it is inside the desktop shell, so the
  *  REAL Tauri import path executes instead of the browser fallback. */
@@ -995,6 +999,7 @@ describe("project workspace timecode", () => {
   });
 
   it("counts only the references that actually reach the compiled prompt", () => {
+    saveDebugOptionsEnabled(true);
     const fresh = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const createdAt = fresh.createdAt;
     const references = [
@@ -1006,9 +1011,9 @@ describe("project workspace timecode", () => {
     ];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    expect(document.querySelector(".debug-prompt .compiled-prompt__text")).toBeNull();
+    expect(document.querySelector(".debug-prompt-dialog .compiled-prompt__text")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Debug Prompt" }));
-    const prompt = document.querySelector(".debug-prompt .compiled-prompt__text")!.textContent!;
+    const prompt = document.querySelector(".debug-prompt-dialog .compiled-prompt__text")!.textContent!;
     expect(prompt).toContain("<Subject 1>");
     expect(prompt).not.toContain("Lead character");
     expect(prompt).not.toContain("Score idea");
@@ -1239,6 +1244,7 @@ describe("project workspace timecode", () => {
   /** Opens the exact prompt preview without accidentally closing it when a
    *  test returns to the scene panel more than once. */
   const openDebugPrompt = () => {
+    act(() => saveDebugOptionsEnabled(true));
     const button = screen.getByRole("button", { name: "Debug Prompt" });
     if (button.getAttribute("aria-expanded") === "false") fireEvent.click(button);
   };

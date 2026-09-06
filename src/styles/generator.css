@@ -1642,12 +1642,59 @@
   background: var(--panel);
 }
 
-.debug-prompt .compiled-prompt {
-  margin: 0 0 var(--space-3);
-}
-
 .debug-prompt__toggle {
   width: 100%;
+}
+
+.debug-prompt-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+  backdrop-filter: blur(5px);
+}
+
+.debug-prompt-dialog {
+  width: min(880px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-5));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.debug-prompt-dialog__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.debug-prompt-dialog__header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+}
+
+.debug-prompt-dialog__header p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.debug-prompt-dialog .compiled-prompt__text {
+  min-height: 0;
+  max-height: none;
+  padding: var(--space-4);
 }
 
 .remove-dialog-backdrop {

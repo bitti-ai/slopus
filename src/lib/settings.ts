@@ -309,6 +309,40 @@ export function saveAgentProvider(provider: ProviderId): void {
   }
 }
 
+/* --- Debug options --------------------------------------------------------- */
+
+const DEBUG_OPTIONS_KEY = "slopus.debug-options.v1";
+const DEBUG_OPTIONS_EVENT = "slopus:debug-options-changed";
+
+export function loadDebugOptionsEnabled(): boolean {
+  try {
+    return localStorage.getItem(DEBUG_OPTIONS_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function saveDebugOptionsEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(DEBUG_OPTIONS_KEY, String(enabled));
+  } catch {
+    return;
+  }
+  window.dispatchEvent(new Event(DEBUG_OPTIONS_EVENT));
+}
+
+export function subscribeDebugOptions(listener: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === DEBUG_OPTIONS_KEY || event.key === null) listener();
+  };
+  window.addEventListener(DEBUG_OPTIONS_EVENT, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(DEBUG_OPTIONS_EVENT, listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
 /* --- Panel layout ----------------------------------------------------------
    How the media panel lays its footage out. A working habit, not a property of
    any one project, so it lives beside the engine paths rather than in

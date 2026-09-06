@@ -1,5 +1,5 @@
 import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -8,6 +8,7 @@ import {
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
+  loadDebugOptionsEnabled, saveDebugOptionsEnabled, subscribeDebugOptions,
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
   type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplateSettings,
 } from "../lib/settings";
@@ -177,6 +178,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
 }
 
 function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
+  const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [info, setInfo] = useState<DiagnosticLogInfo | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,20 +201,26 @@ function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
     }
   };
 
-  return <div className="diagnostics-setting">
-    <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
-    <div>
-      <h2>Application log</h2>
-      <p>Slopus records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
-      <p>Prompt text and credentials are not recorded. Sensitive fields are redacted again when each record is written.</p>
-      <code title={info?.path}>{desktop ? info?.path ?? "Locating the log…" : "Available in the desktop app"}</code>
-      {info?.previousPath && <small>A previous rotated log is stored beside this file.</small>}
-      <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()}>
-        {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
-      </button>
-      {error && <p className="diagnostics-setting__error" role="alert">{error}</p>}
+  return <>
+    <label className="diagnostics-debug-option">
+      <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
+      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show the Debug Prompt button in scene settings.</small></span>
+    </label>
+    <div className="diagnostics-setting">
+      <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
+      <div>
+        <h2>Application log</h2>
+        <p>Slopus records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
+        <p>Prompt text and credentials are not recorded. Sensitive fields are redacted again when each record is written.</p>
+        <code title={info?.path}>{desktop ? info?.path ?? "Locating the log…" : "Available in the desktop app"}</code>
+        {info?.previousPath && <small>A previous rotated log is stored beside this file.</small>}
+        <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()}>
+          {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
+        </button>
+        {error && <p className="diagnostics-setting__error" role="alert">{error}</p>}
+      </div>
     </div>
-  </div>;
+  </>;
 }
 
 /* Two things live on this screen and they have nothing to do with each other:

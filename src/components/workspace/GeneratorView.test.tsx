@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
+import { saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
@@ -107,6 +108,34 @@ async function finishFirst(state: ReturnType<typeof setup>) {
 }
 
 describe("Generator scene controls", () => {
+  it("only shows debug prompts when enabled, in a closable popup outside the inspector", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    act(() => saveDebugOptionsEnabled(true));
+    const button = screen.getByRole("button", { name: "Debug Prompt" });
+    button.focus();
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog", { name: "Debug Prompt" });
+    expect(dialog.closest("aside")).toBeNull();
+    expect(within(dialog).getByLabelText("The compiled MiniMax H3 prompt")).toHaveTextContent("Opening action");
+    expect(within(dialog).getByRole("button", { name: "Close debug prompt" })).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(within(dialog).getByLabelText("The compiled MiniMax H3 prompt")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: "Close debug prompt" }));
+    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    fireEvent.click(button);
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Debug Prompt" }).parentElement!);
+    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    fireEvent.click(button);
+    act(() => saveDebugOptionsEnabled(false));
+    expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+  });
+
   it("offers no inferred Look and sends a selected image as the scene's first frame", async () => {
     const initial = project();
     initial.references = [{
