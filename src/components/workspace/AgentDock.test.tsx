@@ -66,12 +66,37 @@ describe("Slop output panel", () => {
     app.rerender(view(true));
     expect(screen.getByRole("heading", { name: "What should we create today?" })).toBeInTheDocument();
     expect(screen.queryByText("No activity yet. Send a prompt to start.")).not.toBeInTheDocument();
-    const selector = screen.getByRole("combobox", { name: "Agent provider" }) as HTMLSelectElement;
-    expect([...selector.options].map((option) => option.textContent)).toEqual(["Codex", "Claude Code"]);
+    const selector = screen.getByRole("combobox", { name: "Agent provider" });
+    fireEvent.click(selector);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Codex", "Claude Code"]);
     expect(selector.closest(".agent-dock__actions")).not.toBeNull();
-    fireEvent.change(selector, { target: { value: "claude" } });
-    expect(selector.value).toBe("claude");
+    fireEvent.click(screen.getByRole("option", { name: "Claude Code" }));
+    expect(selector).toHaveTextContent("Claude Code");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Claude Code status: Ready" })).toBeInTheDocument();
+  });
+
+  it("supports keyboard selection and dismisses the provider menu without submitting a prompt", async () => {
+    const available: ProviderStatus[] = [providers[0], { ...providers[0], id: "claude", label: "Claude Code" }];
+    render(<AgentDock context="this project" record={project()} providers={available} expanded onPromptStart={() => undefined} onCommands={async () => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+    const selector = screen.getByRole("combobox", { name: "Agent provider" });
+    selector.focus();
+    fireEvent.keyDown(selector, { key: "ArrowDown" });
+    fireEvent.keyDown(selector, { key: "End" });
+    expect(selector).toHaveAttribute("aria-activedescendant", screen.getByRole("option", { name: "Claude Code" }).id);
+    fireEvent.keyDown(selector, { key: "Enter" });
+    expect(selector).toHaveTextContent("Claude Code");
+    expect(selector).toHaveFocus();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+    fireEvent.click(selector);
+    fireEvent.keyDown(selector, { key: "Home" });
+    fireEvent.keyDown(selector, { key: "Escape" });
+    expect(selector).toHaveTextContent("Claude Code");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.click(selector);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("hands an accepted command batch to the workspace before completing the turn", async () => {
@@ -116,12 +141,15 @@ describe("Slop output panel", () => {
     app.rerender(view(true));
     const log = screen.getByRole("log", { name: "Slop output" });
     expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Codex status: Processing" })).toHaveClass("agent-provider-light--busy");
     expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "2");
     expect(screen.getByRole("combobox", { name: "Agent provider" })).toHaveTextContent("Codex");
     expect(screen.getByRole("combobox", { name: "Agent provider" })).not.toHaveTextContent("Ready");
     expect(log).toHaveTextContent("Create four shots");
     expect(log).not.toHaveTextContent("Sending this request to Codex");
-    expect(screen.getByRole("status")).toHaveTextContent("Sending this request to Codex");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Agent provider" })).toBeDisabled();
+    expect(screen.getByLabelText("Waiting for the next agent response")).toBeInTheDocument();
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
 
     const requestId = vi.mocked(runAgentTurn).mock.calls[0][3];
@@ -129,10 +157,14 @@ describe("Slop output panel", () => {
     act(() => eventHandler?.({ payload: { requestId, event: { type: "validation", round: 1, maxRounds: 3, text: "Shot 4 starts at 18 seconds." } } }));
     expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Drafted the scene.");
     expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
+    expect(screen.getByLabelText("Waiting for the next agent response")).toBe(log.lastElementChild);
     expect(log.scrollTop).toBe(900);
-    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], messages: [] }));
+    expect(screen.getByRole("img", { name: "Codex status: Ready" })).not.toHaveClass("agent-provider-light--busy");
+    expect(screen.getByRole("combobox", { name: "Agent provider" })).toBeEnabled();
+    expect(screen.queryByLabelText("Waiting for the next agent response")).not.toBeInTheDocument();
   });
 
   it("keeps a follow-up visible when the provider times out", async () => {
