@@ -187,6 +187,46 @@
   box-shadow: 0 0 8px var(--success-glow);
 }
 
+/* Missing weights belong to the selected generator, so its selector uses the
+   same error treatment as the runtime indicator instead of looking ready. */
+.generator-runtime--modelsMissing .generator-runtime__trigger {
+  border-color: var(--danger-line);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel-2));
+}
+
+.generator-runtime--modelsMissing .generator-runtime__trigger:hover,
+.generator-runtime--modelsMissing .generator-runtime__select--open .generator-runtime__trigger {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, var(--panel-2));
+}
+
+.generator-runtime--modelsMissing .generator-runtime__trigger:focus-visible {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-line);
+}
+
+.generator-runtime--modelsMissing .generator-runtime__options {
+  border-color: var(--danger-line);
+  background: color-mix(in srgb, var(--danger) 9%, var(--panel-2));
+  scrollbar-color: var(--danger-line) transparent;
+}
+
+.generator-runtime--modelsMissing .generator-runtime__options button:hover,
+.generator-runtime--modelsMissing .generator-runtime__options button:focus-visible {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.generator-runtime--modelsMissing .generator-runtime__options button[aria-selected="true"] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.generator-runtime--modelsMissing .generator-runtime__options button i {
+  background: var(--danger);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .generator-runtime__value--overflow > span {
     max-width: 100%;
