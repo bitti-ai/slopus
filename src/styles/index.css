@@ -25,9 +25,8 @@
 @import "./export.css";
 @import "./exit-guard.css";
 
-/* Text entry uses one reading size everywhere. This matches the Speech field
-   in Shot settings; sliders, checkboxes, number controls and selects retain
-   their purpose-specific typography. */
+/* Body text entry uses one reading size. Editable inspector headings keep
+   their own hierarchy below. */
 :root input:not([type]),
 :root input[type="text"],
 :root input[type="search"],
@@ -36,4 +35,12 @@
 :root input[type="email"],
 :root textarea {
   font-size: var(--text-sm);
+}
+
+:root .generator-panel .job-title__name,
+:root .generator-panel .shot-title__name,
+:root .reference-inspector .reference-title__name {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
 }
