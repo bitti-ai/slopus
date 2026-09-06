@@ -1,7 +1,9 @@
+import { WorkQueue, isWorkActive, projectQueueKey } from "./lib/workQueue";
+import { WorkQueuePanel } from "./components/WorkQueuePanel";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { FolderOpen, Grid2X2, List, Plus, Search, Settings } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Brand } from "./components/Brand";
 import { DeleteProjectDialog } from "./components/DeleteProjectDialog";
 import { ExitGuardDialog, type OngoingGeneration } from "./components/ExitGuardDialog";
@@ -28,6 +30,14 @@ const logFailure = (event: string, reason: unknown, context: Record<string, unkn
 
 function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [workQueue] = useState(() => new WorkQueue(async (record) => {
+    const saved = await saveProject(record);
+    setProjects((current) => [saved, ...current.filter((item) => projectQueueKey(item) !== projectQueueKey(saved))]);
+    return saved;
+  }));
+  const workItems = useSyncExternalStore(workQueue.subscribe, workQueue.getSnapshot);
+  const [workQueueOpen, setWorkQueueOpen] = useState(false);
+  useEffect(() => workQueue.start(), [workQueue]);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
   const [activeProjectInitialView, setActiveProjectInitialView] = useState<ProjectView>("timeline");
   const [loading, setLoading] = useState(true);
@@ -56,11 +66,11 @@ function App() {
 
   /* ── Exit guard: the window's close button ───────────────────────────────
      The video engine runs inside this process, so closing the window ends a
-     generation outright, and nothing partial is written on the way. The open
-     project reports what it has running; Rust holds the close request back
+     generation outright, and nothing partial is written on the way. The app
+     queue reports work across all projects; Rust holds the close request back
      only while that list is non-empty, and this is where the question is put
      and answered. See the fenced block in src-tauri/src/lib.rs. */
-  const [ongoingGenerations, setOngoingGenerations] = useState<OngoingGeneration[]>([]);
+  const ongoingGenerations: OngoingGeneration[] = workItems.filter(isWorkActive).map((item) => ({ id: item.id, title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
   const [closeRequested, setCloseRequested] = useState(false);
 
   const answerClose = useCallback((confirmed: boolean) => {
@@ -88,7 +98,7 @@ function App() {
   }, [closeRequested, ongoingGenerations.length, answerClose]);
 
   const exitGuard = closeRequested && ongoingGenerations.length > 0
-    ? <ExitGuardDialog jobs={ongoingGenerations} destination="quit" onConfirm={() => answerClose(true)} onCancel={() => answerClose(false)} />
+    ? <ExitGuardDialog jobs={ongoingGenerations} onConfirm={() => answerClose(true)} onCancel={() => answerClose(false)} />
     : null;
 
   useEffect(() => {
@@ -186,7 +196,9 @@ function App() {
     setDeletingProject(true);
     setError(null);
     try {
+      if (workQueue.hasActiveProject(target)) throw new Error("Cancel or finish this project’s work before deleting it.");
       await deleteProject(target);
+      workQueue.forgetProject(target);
       setProjects((current) => current.filter((project) => project.config.id !== target.config.id || project.folderPath !== target.folderPath));
       setProjectToDelete(null);
     } catch (reason) {
@@ -206,14 +218,17 @@ function App() {
     </button>
   );
 
+  const queueLauncher = <button className="settings-launcher work-queue-launcher" type="button" onClick={() => setWorkQueueOpen(true)} title="Work Queue" aria-label="Work Queue" aria-haspopup="dialog" aria-expanded={workQueueOpen}>
+    <ListTodo size={22} aria-hidden="true" /><span>Work Queue</span>{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
+  </button>;
+  const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
+
   if (activeProject) {
     return <>
-      <ProjectWorkspace project={activeProject} initialView={activeProjectInitialView} runtime={runtime} onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))} onOngoingGenerationsChange={setOngoingGenerations} onBack={() => setActiveProject(null)} onSave={async (project) => {
-        const saved = await saveProject(project);
-        setActiveProject(saved);
-        setProjects((current) => [saved, ...current.filter((item) => item.config.id !== saved.config.id)]);
-      }} />
+      <ProjectWorkspace key={projectQueueKey(activeProject)} project={activeProject} initialView={activeProjectInitialView} runtime={runtime} workQueue={workQueue} onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))} onBack={() => setActiveProject(null)} onSave={async () => { await workQueue.project(activeProject).save(); }} />
       {settingsLauncher}
+      {queueLauncher}
+      {queuePanel}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
       {exitGuard}
     </>;
@@ -264,6 +279,8 @@ function App() {
         </div>
       </main>
       {settingsLauncher}
+      {queueLauncher}
+      {queuePanel}
       {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
       {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}

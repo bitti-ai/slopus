@@ -161,7 +161,7 @@ export const projectAssetSchema = z.object({
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
   /* A scene may be arranged on the timeline before it has been rendered. Its
    * generated asset is the stable thing the clip points at while the file is
-   * still absent; useGenerationEvents fills the path in when rendering ends. */
+   * still absent; WorkQueue fills the path in when rendering ends. */
   if (asset.kind !== "generated" && !asset.relativePath && !asset.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],

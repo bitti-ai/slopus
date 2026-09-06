@@ -48,78 +48,12 @@ describe("the one definition of an ongoing generation", () => {
 });
 
 describe("leaving a project", () => {
-  it("goes straight back when nothing is generating", () => {
+  it("returns to the library without a generation warning", () => {
     const onBack = vi.fn();
-    workspace(withJobs(["draft", "completed", "failed", "cancelled"]), onBack);
+    workspace(withJobs(["generating", "queued", "ready"]), onBack);
     fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("alertdialog")).toBeNull();
-  });
-
-  it("asks first mid-generation, and stays put until the answer comes", () => {
-    const onBack = vi.fn();
-    workspace(withJobs(["generating", "queued"]), onBack);
-    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
-
-    const dialog = screen.getByRole("alertdialog");
-    expect(onBack).not.toHaveBeenCalled();
-    // It says what is running and what confirming costs — both checkable
-    // claims about this codebase, not a vague warning.
-    expect(dialog.textContent).toContain("1 shot is rendering now and 1 shot is waiting in the queue.");
-    expect(dialog.textContent).toContain("No video file is written until a shot finishes");
-    expect(dialog.textContent).toContain("can’t pick one back up");
-  });
-
-  it("puts the user back exactly where they were when they cancel", () => {
-    const onBack = vi.fn();
-    workspace(withJobs(["generating"]), onBack);
-    const back = screen.getByRole("button", { name: "Back to project library" });
-    // jsdom does not move focus on a click the way a browser does, and the
-    // whole point of this test is where focus goes back TO.
-    back.focus();
-    fireEvent.click(back);
-    fireEvent.click(screen.getByRole("button", { name: "Keep generating" }));
-
-    expect(onBack).not.toHaveBeenCalled();
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    // Still in the project, on the same view, with the same shot generating.
-    expect(screen.getByRole("heading", { name: "Timeline", level: 2 })).toBeTruthy();
-    // And focus is back on the control that opened the question.
-    expect(document.activeElement).toBe(back);
-  });
-
-  it("closes on Escape without leaving", () => {
-    const onBack = vi.fn();
-    workspace(withJobs(["queued"]), onBack);
-    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(onBack).not.toHaveBeenCalled();
-  });
-
-  it("leaves once, and only once, when the answer is yes", () => {
-    const onBack = vi.fn();
-    workspace(withJobs(["generating"]), onBack);
-    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop and leave" }));
-    expect(onBack).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports what is generating to the app around it, and reports nothing once it unmounts", async () => {
-    const reported: string[][] = [];
-    const { unmount } = render(createElement(ProjectWorkspace, {
-      project: { folderPath: "C:\\Ceramic Lamp", config: withJobs(["generating", "queued", "draft"]) },
-      initialView: "timeline",
-      onBack: () => undefined,
-      onSave: async () => undefined,
-      onOngoingGenerationsChange: (jobs) => reported.push(jobs.map((job) => job.id)),
-    }));
-    await waitFor(() => expect(reported.length).toBeGreaterThan(0));
-    // The draft is not ongoing — a shot nobody has started costs nothing to
-    // walk away from.
-    expect(reported.at(-1)).toEqual(["job-0", "job-1"]);
-    unmount();
-    expect(reported.at(-1)).toEqual([]);
   });
 });
 
@@ -130,7 +64,7 @@ describe("the dialog on its own", () => {
   ];
 
   it("keeps Tab inside itself and starts on the answer that changes nothing", () => {
-    render(createElement(ExitGuardDialog, { jobs, destination: "quit", onConfirm: () => undefined, onCancel: () => undefined }));
+    render(createElement(ExitGuardDialog, { jobs, onConfirm: () => undefined, onCancel: () => undefined }));
     const keep = screen.getByRole("button", { name: "Keep generating" });
     const stop = screen.getByRole("button", { name: "Stop and close" });
     expect(document.activeElement).toBe(keep);
@@ -145,13 +79,13 @@ describe("the dialog on its own", () => {
   });
 
   it("names the shots at stake and says which are only queued", () => {
-    const { container } = render(createElement(ExitGuardDialog, { jobs, destination: "quit", onConfirm: () => undefined, onCancel: () => undefined }));
+    const { container } = render(createElement(ExitGuardDialog, { jobs, onConfirm: () => undefined, onCancel: () => undefined }));
     const rows = Array.from(container.querySelectorAll(".exit-guard__jobs li")).map((row) => row.textContent);
     expect(rows).toEqual(["Macro model detailsRendering now", "Hands sketching elevationWaiting to render"]);
   });
 
   it("says the window is what ends the run when that is the exit", () => {
-    render(createElement(ExitGuardDialog, { jobs, destination: "quit", onConfirm: () => undefined, onCancel: () => undefined }));
+    render(createElement(ExitGuardDialog, { jobs, onConfirm: () => undefined, onCancel: () => undefined }));
     expect(screen.getByRole("alertdialog").textContent).toContain("The video engine runs inside Slopus, so closing the window stops them.");
   });
 });

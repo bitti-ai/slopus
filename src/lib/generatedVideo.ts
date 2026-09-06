@@ -45,6 +45,9 @@ export interface SavedGeneration {
   note: string | null;
   /** Whether the saved MP4 actually contains an audio stream. */
   hasAudio?: boolean;
+  width?: number;
+  height?: number;
+  durationMs?: number;
 }
 
 /** How often a keyframe is written: every two seconds, so the file can be
@@ -326,6 +329,8 @@ async function encodeAudio(
 export async function saveGeneratedScene(options: {
   folderPath: string;
   jobId: string;
+  /** Queue runs have unique IDs; timeline caches still belong to the scene. */
+  thumbnailJobId?: string;
   /** Called as frames go into the encoder, for the progress bar. */
   onProgress?: (encoded: number, total: number) => void;
 }): Promise<SavedGeneration> {
@@ -427,8 +432,8 @@ export async function saveGeneratedScene(options: {
     muxer.finalize();
     const written = await writeGeneratedVideo(folderPath, jobId, new Uint8Array(target.buffer));
     await Promise.allSettled(timelineThumbnails.map((thumbnail) =>
-      writeTimelineThumbnail(folderPath, jobId, thumbnail.timeMs, thumbnail.bytes)));
-    return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio };
+      writeTimelineThumbnail(folderPath, options.thumbnailJobId ?? jobId, thumbnail.timeMs, thumbnail.bytes)));
+    return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio, width: summary.width, height: summary.height, durationMs: Math.round(summary.frameCount / summary.fps * 1000) };
   } finally {
     // Whatever happened, the render stops occupying memory here.
     await releaseRendered(jobId);

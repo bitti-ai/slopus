@@ -17,6 +17,7 @@
 
 /* Application surfaces */
 @import "./shell.css";
+@import "./work-queue.css";
 @import "./library.css";
 @import "./workspace.css";
 @import "./generator.css";
