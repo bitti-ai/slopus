@@ -28,11 +28,13 @@ import {
   type AudioSegment,
   type ClipFrameStyle,
   type ExportPlan,
+  type ExportClipLayer,
   type ExportSegment,
   type ExportSettings,
   type OutputCodecId,
 } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
+import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
 
 /* ---------------------------------------------------------------------------
    What this machine can do
@@ -135,7 +137,7 @@ interface Compositor {
   readonly kind: CompositorKind;
   /** Paints the background alone — what a frame with no clip over it looks like. */
   clear(): void;
-  /** Paints the background, then the frame scaled to fit inside it. */
+  /** Blends a frame over the current picture. Call clear before each output. */
   draw(frame: VideoFrame, style: ClipFrameStyle): void;
   /** The composited picture, ready for the encoder. Caller closes it. */
   take(timestampUs: number, durationUs: number): VideoFrame;
@@ -161,6 +163,7 @@ struct VertexOut {
 struct Style {
   primary: vec4f,
   secondary: vec4f,
+  key: vec4f,
 };
 @group(0) @binding(1) var<uniform> style: Style;
 @group(0) @binding(2) var source: texture_external;
@@ -193,7 +196,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let sampled = textureSampleBaseClampToEdge(source, source_sampler, uv);
   let temperature = style.primary.z;
   let rgb = clamp(sampled.rgb + vec3f(temperature * 0.1, 0.0, -temperature * 0.1), vec3f(0.0), vec3f(1.0));
-  return vec4f(rgb, sampled.a * style.primary.y);
+  var alpha = sampled.a * style.primary.y;
+  if (style.secondary.y > 0.0) {
+    let difference = distance(sampled.rgb, style.key.rgb) / ${RGB_DISTANCE_SCALE};
+    alpha *= smoothstep(style.key.a, style.key.a + ${KEY_FEATHER}, difference);
+  }
+  return vec4f(rgb, alpha);
 }
 `;
 
@@ -239,7 +247,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
     primitive: { topology: "triangle-list" },
   });
   const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const styleUniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const styleUniform = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   /* A device that dies mid-export would keep handing back an untouched canvas,
      which is a black frame that looks like a rendered one. Record the loss and
@@ -261,7 +269,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
     if (lost.reason) throw new Error(`This computer's GPU stopped responding during the export: ${lost.reason}`);
     const encoder = device.createCommandEncoder();
     const renderPass = encoder.beginRenderPass({
-      colorAttachments: [{ view, clearValue, loadOp: "clear", storeOp: "store" }],
+      colorAttachments: [{ view, clearValue, loadOp: bindGroup ? "load" : "clear", storeOp: "store" }],
     });
     if (bindGroup) {
       renderPass.setPipeline(pipeline);
@@ -297,9 +305,11 @@ async function createWebGpuCompositor(width: number, height: number, background:
         style.look.temperature / 100,
         style.revealStart,
         style.revealEnd,
+        style.chromaKey ? 1 : 0,
         0,
         0,
-        0,
+        ...(style.chromaKey ? keyColor(style.chromaKey.color) : [0, 0, 0]),
+        (style.chromaKey?.tolerance ?? 0) / 100,
       ]));
       // Zero copy: the decoded frame is sampled where it already lives.
       const external = device.importExternalTexture({ source: frame });
@@ -328,6 +338,7 @@ function createCanvasCompositor(width: number, height: number, background: strin
   const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext("2d", { alpha: false });
   if (!context) throw new Error("This computer gave no 2D canvas to composite into.");
+  let keyCanvas: OffscreenCanvas | null = null;
   const paintBackground = () => {
     context.fillStyle = background;
     context.fillRect(0, 0, width, height);
@@ -336,7 +347,20 @@ function createCanvasCompositor(width: number, height: number, background: strin
     kind: "canvas2d",
     clear: paintBackground,
     draw(frame, style) {
-      paintBackground();
+      let picture: VideoFrame | OffscreenCanvas = frame;
+      if (style.chromaKey) {
+        keyCanvas ??= new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
+        if (keyCanvas.width !== frame.displayWidth) keyCanvas.width = frame.displayWidth;
+        if (keyCanvas.height !== frame.displayHeight) keyCanvas.height = frame.displayHeight;
+        const keyContext = keyCanvas.getContext("2d", { willReadFrequently: true });
+        if (!keyContext) throw new Error("Could not create the Chroma Key canvas.");
+        keyContext.clearRect(0, 0, keyCanvas.width, keyCanvas.height);
+        keyContext.drawImage(frame, 0, 0);
+        const pixels = keyContext.getImageData(0, 0, keyCanvas.width, keyCanvas.height);
+        applyChromaKey(pixels.data, style.chromaKey);
+        keyContext.putImageData(pixels, 0, 0);
+        picture = keyCanvas;
+      }
       const fitted = fitRect(frame.displayWidth, frame.displayHeight, width, height);
       const scale = style.transform.scale / 100;
       const drawWidth = fitted.width * scale;
@@ -354,7 +378,7 @@ function createCanvasCompositor(width: number, height: number, background: strin
         : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`;
       context.translate(centreX, centreY);
       context.rotate((style.transform.rotation * Math.PI) / 180);
-      context.drawImage(frame, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      context.drawImage(picture, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
       context.restore();
     },
     take(timestamp, duration) {
@@ -805,6 +829,86 @@ export interface ExportRunOptions {
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+interface LayerFrameReader {
+  /** Borrowed frame, valid until the next call or dispose. Times must increase. */
+  frameAt(timestampUs: number): Promise<VideoFrame>;
+  dispose(): void;
+}
+
+/** One bounded decoder queue per visible layer. Decoded pictures stay in VRAM;
+ * only compressed samples and the current/next pictures are held per source. */
+async function openLayerFrameReader(
+  folderPath: string, asset: ProjectAsset, startUs: number, stopIfCancelled: () => void,
+): Promise<LayerFrameReader> {
+  const bytes = await readAssetBytes(folderPath, asset);
+  stopIfCancelled();
+  if (asset.mimeType.startsWith("image/")) {
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: asset.mimeType }));
+    try {
+      const frame = new VideoFrame(bitmap, { timestamp: 0 });
+      return { frameAt: async () => { stopIfCancelled(); return frame; }, dispose: () => { frame.close(); bitmap.close(); } };
+    } catch (reason) { bitmap.close(); throw reason; }
+  }
+  const source = await demux(bytes, asset.name);
+  let nextSample = 0;
+  let keyframeUs = Number.NEGATIVE_INFINITY;
+  source.samples.forEach((sample, index) => {
+    if (sample.key && sample.timestampUs <= startUs && sample.timestampUs > keyframeUs) {
+      keyframeUs = sample.timestampUs;
+      nextSample = index;
+    }
+  });
+  const pending: VideoFrame[] = [];
+  let screen: VideoFrame | null = null;
+  let flushed = false;
+  const failure: { reason: Error | null } = { reason: null };
+  const decoder = new VideoDecoder({
+    output: (frame) => pending.push(frame),
+    error: (reason) => { failure.reason = reason; },
+  });
+  const dispose = () => {
+    if (decoder.state !== "closed") decoder.close();
+    screen?.close();
+    pending.forEach((frame) => frame.close());
+    pending.length = 0;
+    screen = null;
+  };
+  try { decoder.configure(source.config); }
+  catch (reason) { dispose(); throw reason; }
+  return {
+    async frameAt(wantUs) {
+      while (true) {
+        stopIfCancelled();
+        if (failure.reason) throw failure.reason;
+        // VideoDecoder outputs presentation order, including reordered B frames.
+        while (pending.length && (!screen || pending[0].timestamp <= wantUs)) {
+          screen?.close();
+          screen = pending.shift()!;
+        }
+        if (screen && (pending.length || flushed)) return screen;
+        if (flushed) throw new Error(`${asset.name} decoded no frames.`);
+        if (nextSample >= source.samples.length) {
+          await decoder.flush();
+          flushed = true;
+        } else {
+          // Yield between small batches so output can arrive before feeding
+          // more samples. This bounds decoded frames even for long sources.
+          for (let count = 0; count < 4 && nextSample < source.samples.length; count += 1) {
+            const sample = source.samples[nextSample++];
+            decoder.decode(new EncodedVideoChunk({
+              type: sample.key ? "key" : "delta", timestamp: sample.timestampUs,
+              duration: sample.durationUs, data: sample.data,
+            }));
+          }
+          while (decoder.decodeQueueSize > 8) { stopIfCancelled(); if (failure.reason) throw failure.reason; await tick(); }
+          await tick();
+        }
+      }
+    },
+    dispose,
+  };
+}
+
 /** One sentence about the sound in the finished file, true in every case —
  *  including the cases where there is none. */
 function describeSoundtrack(
@@ -925,10 +1029,13 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
         compositor: createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
         detail: attempt.reason,
       };
-  const paint = (frame: VideoFrame | null, style: ClipFrameStyle | null) => {
+  const paint = (pictures: { frame: VideoFrame; style: ClipFrameStyle }[]) => {
+    const draw = () => {
+      stage.compositor.clear();
+      for (const picture of pictures) stage.compositor.draw(picture.frame, picture.style);
+    };
     try {
-      if (frame && style) stage.compositor.draw(frame, style);
-      else stage.compositor.clear();
+      draw();
       return;
     } catch (reason) {
       if (stage.compositor.kind === "canvas2d") throw reason;
@@ -936,8 +1043,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       stage.compositor = createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
       stage.detail = `The GPU compositor gave out ${framesDone} frames in and the rest was composited on a 2D canvas: ${reason instanceof Error ? reason.message : String(reason)}`;
     }
-    if (frame && style) stage.compositor.draw(frame, style);
-    else stage.compositor.clear();
+    draw();
   };
 
   /* Timestamps are computed from the frame index every time rather than
@@ -953,12 +1059,17 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     frame: VideoFrame | null,
     outputIndex: number,
     segment: Extract<ExportSegment, { kind: "clip" }> | null = null,
+    underlays: { frame: VideoFrame; layer: ExportClipLayer }[] = [],
   ) => {
     stopIfCancelled();
     if (encoderFailure.reason) throw encoderFailure.reason;
     const timelineMs = (outputIndex * 1000) / plan.frameRate;
     const style = segment ? clipFrameStyle(segment.visual, timelineMs - segment.clipStartMs) : null;
-    paint(frame, style);
+    const pictures = underlays.slice().reverse().map((picture) => ({
+      frame: picture.frame, style: clipFrameStyle(picture.layer.visual, timelineMs - picture.layer.clipStartMs),
+    }));
+    if (frame && style) pictures.push({ frame, style });
+    paint(pictures);
     const composited = stage.compositor.take(
       timestampUs(outputIndex),
       timestampUs(outputIndex + 1) - timestampUs(outputIndex),
@@ -1125,11 +1236,40 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     }
   };
 
+  const renderLayeredSegment = async (segment: Extract<ExportSegment, { kind: "clip" }>) => {
+    releaseLoaded();
+    loaded.assetId = null;
+    const layers = [segment, ...(segment.underlays ?? [])];
+    const readers: LayerFrameReader[] = [];
+    try {
+      for (const layer of layers) {
+        stopIfCancelled();
+        const asset = assetFor(layer.assetId);
+        if (!asset) throw new Error(`Media for ${layer.label} is missing.`);
+        report("rendering", framesDone, `Reading ${asset.name}…`);
+        readers.push(await openLayerFrameReader(folderPath, asset, sourceTimeMsForFrame(layer, segment.startFrame, plan.frameRate) * 1000, stopIfCancelled));
+      }
+      for (let index = segment.startFrame; index < segment.endFrame; index += 1) {
+        const pictures: { frame: VideoFrame; layer: ExportClipLayer }[] = [];
+        for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+          const layer = layers[layerIndex];
+          const frame = await readers[layerIndex].frameAt(sourceTimeMsForFrame(layer, index, plan.frameRate) * 1000);
+          pictures.push({ frame, layer });
+        }
+        await emit(pictures[0].frame, index, segment, pictures.slice(1));
+      }
+    } finally {
+      readers.forEach((reader) => reader.dispose());
+    }
+  };
+
   try {
     for (const segment of plan.segments) {
       stopIfCancelled();
       if (segment.kind === "gap") {
         for (let index = segment.startFrame; index < segment.endFrame; index += 1) await emit(null, index);
+      } else if (segment.underlays?.length) {
+        await renderLayeredSegment(segment);
       } else {
         await renderClipSegment(segment);
       }

@@ -17,6 +17,7 @@ import {
   clipTransition,
   type AspectRatio,
   type ClipLook,
+  type ClipChromaKey,
   type ClipTransform,
   type ClipTransition,
   type ProjectAsset,
@@ -40,6 +41,7 @@ export interface ExportSettings {
 export interface ClipVisualSettings {
   transform: ClipTransform;
   look: ClipLook;
+  chromaKey?: ClipChromaKey | null;
   transition: ClipTransition;
 }
 
@@ -54,6 +56,7 @@ export interface ClipFrameStyle extends ClipVisualSettings {
 export const clipVisualSettings = (clip: TimelineClip): ClipVisualSettings => ({
   transform: clipTransform(clip),
   look: clipLook(clip),
+  chromaKey: clip.chromaKey,
   transition: clipTransition(clip),
 });
 
@@ -230,6 +233,15 @@ export function estimatedBytes(bitrate: number, durationMs: number): number {
    The plan
    --------------------------------------------------------------------------- */
 
+export interface ExportClipLayer {
+  clipId: string;
+  assetId: string;
+  label: string;
+  clipStartMs: number;
+  clipSourceStartMs: number;
+  visual: ClipVisualSettings;
+}
+
 export type ExportSegment =
   | {
       kind: "clip";
@@ -245,6 +257,8 @@ export type ExportSegment =
       /** Where inside the source file the clip begins, in ms. */
       clipSourceStartMs: number;
       visual: ClipVisualSettings;
+      /** Lower visible tracks, nearest first. Paint in reverse order. */
+      underlays?: ExportClipLayer[];
     }
   | { kind: "gap"; startFrame: number; endFrame: number };
 
@@ -370,7 +384,7 @@ const DRAWABLE_IMAGE = new Set(["image/png", "image/jpeg", "image/webp", "image/
  *  sits at `frameIndex / frameRate` on the timeline, and the source moment is
  *  that far past the clip's start, offset by where the clip begins in its file. */
 export function sourceTimeMsForFrame(
-  segment: Extract<ExportSegment, { kind: "clip" }>,
+  segment: ExportClipLayer,
   frameIndex: number,
   frameRate: number,
 ): number {
@@ -388,6 +402,16 @@ export function visibleClipAt(
   timeMs: number,
   assetsById?: ReadonlyMap<string, ProjectAsset>,
 ): TimelineClip | null {
+  return visibleClipsAt(tracks, timeMs, assetsById)[0] ?? null;
+}
+
+/** Top to bottom, stopping once an opaque clip covers the remaining tracks. */
+export function visibleClipsAt(
+  tracks: TimelineTrack[],
+  timeMs: number,
+  assetsById?: ReadonlyMap<string, ProjectAsset>,
+): TimelineClip[] {
+  const visible: TimelineClip[] = [];
   for (const track of tracks) {
     if (track.kind !== "video") continue;
     let best: TimelineClip | null = null;
@@ -396,9 +420,14 @@ export function visibleClipAt(
       if (timeMs < clip.startMs || timeMs >= clip.startMs + clip.durationMs) continue;
       if (!best || clip.startMs >= best.startMs) best = clip;
     }
-    if (best) return best;
+    if (best) {
+      visible.push(best);
+      const revealing = best.chromaKey || (best.look?.opacity ?? 100) < 100 ||
+        (best.transition && best.transition.type !== "cut" && timeMs - best.startMs < best.transition.durationMs);
+      if (!revealing) break;
+    }
   }
-  return null;
+  return visible;
 }
 
 /** Where the picture ends. Audio is not muxed yet, so a soundtrack that runs
@@ -428,7 +457,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   const segments: ExportSegment[] = [];
   let gapFrames = 0;
   for (let frame = 0; frame < frameCount; frame += 1) {
-    const clip = visibleClipAt(videoTracks, (frame * 1000) / frameRate, assetsById);
+    const [clip, ...underlays] = visibleClipsAt(videoTracks, (frame * 1000) / frameRate, assetsById);
     const last = segments[segments.length - 1];
     if (!clip) {
       gapFrames += 1;
@@ -436,7 +465,8 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       else segments.push({ kind: "gap", startFrame: frame, endFrame: frame + 1 });
       continue;
     }
-    if (last && last.kind === "clip" && last.clipId === clip.id) {
+    if (last && last.kind === "clip" && last.clipId === clip.id &&
+      (last.underlays?.length ?? 0) === underlays.length && underlays.every((layer, index) => last.underlays?.[index].clipId === layer.id)) {
       last.endFrame = frame + 1;
       continue;
     }
@@ -450,10 +480,16 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       clipStartMs: clip.startMs,
       clipSourceStartMs: clip.sourceStartMs,
       visual: clipVisualSettings(clip),
+      ...(underlays.length ? { underlays: underlays.map((layer) => ({
+        clipId: layer.id, assetId: layer.assetId, label: layer.label,
+        clipStartMs: layer.startMs, clipSourceStartMs: layer.sourceStartMs,
+        visual: clipVisualSettings(layer),
+      })) } : {}),
     });
   }
 
-  const usedClipIds = new Set(segments.flatMap((segment) => (segment.kind === "clip" ? [segment.clipId] : [])));
+  const pictureLayers = segments.flatMap((segment) => segment.kind === "clip" ? [segment, ...(segment.underlays ?? [])] : []);
+  const usedClipIds = new Set(pictureLayers.map((layer) => layer.clipId));
   const audioClipCount = audioTimelineClips(config, false).length + audioTimelineClips(config, true).length;
 
   const blockers: string[] = [];
@@ -463,8 +499,7 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
   const missing: string[] = [];
   const locationless: string[] = [];
   const undecodable: string[] = [];
-  for (const segment of segments) {
-    if (segment.kind !== "clip") continue;
+  for (const segment of pictureLayers) {
     const asset = config.assets.find((candidate) => candidate.id === segment.assetId);
     if (!asset) {
       missing.push(segment.label);

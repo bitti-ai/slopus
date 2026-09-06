@@ -822,6 +822,7 @@ fn apply_command(
                     status: status.into(),
                     transform: None,
                     look: None,
+                    chroma_key: None,
                     transition: None,
                 });
         }

@@ -180,6 +180,11 @@ export const clipTransformSchema = z.object({
   positionY: z.number().min(-100).max(100),
 });
 
+export const clipChromaKeySchema = z.object({
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  tolerance: z.number().min(0).max(100),
+});
+
 export const clipLookSchema = z.object({
   opacity: z.number().min(0).max(100),
   /** Cool at -100, neutral at 0, warm at +100. */
@@ -205,6 +210,7 @@ export const timelineClipSchema = z.object({
   /** Optional so projects written before clip styling keep their exact shape. */
   transform: clipTransformSchema.nullish(),
   look: clipLookSchema.nullish(),
+  chromaKey: clipChromaKeySchema.nullish(),
   /** Applied at this clip's head when the cut changes to it. */
   transition: clipTransitionSchema.nullish(),
 });
@@ -509,10 +515,12 @@ export type TimelineClip = z.infer<typeof timelineClipSchema>;
 export type TimelineTrack = z.infer<typeof timelineTrackSchema>;
 export type ClipTransform = z.infer<typeof clipTransformSchema>;
 export type ClipLook = z.infer<typeof clipLookSchema>;
+export type ClipChromaKey = z.infer<typeof clipChromaKeySchema>;
 export type ClipTransition = z.infer<typeof clipTransitionSchema>;
 
 export const DEFAULT_CLIP_TRANSFORM: ClipTransform = { scale: 100, rotation: 0, positionX: 0, positionY: 0 };
 export const DEFAULT_CLIP_LOOK: ClipLook = { opacity: 100, temperature: 0 };
+export const DEFAULT_CLIP_CHROMA_KEY: ClipChromaKey = { color: "#00ff00", tolerance: 20 };
 export const DEFAULT_CLIP_TRANSITION: ClipTransition = { type: "cut", durationMs: 500 };
 
 const roundTransformValue = (value: number): number => {

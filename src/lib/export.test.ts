@@ -16,6 +16,7 @@ import {
   suggestedFileName,
   videoDurationMs,
   visibleClipAt,
+  visibleClipsAt,
   type ExportSegment,
   type ExportSettings,
 } from "./export";
@@ -70,6 +71,35 @@ const settings = (overrides: Partial<ExportSettings> = {}): ExportSettings => ({
 });
 
 const clipSegments = (segments: ExportSegment[]) => segments.flatMap((segment) => (segment.kind === "clip" ? [segment] : []));
+
+describe("effect compositing", () => {
+  it("splits keyed segments at background cuts, retaining each layer's trim", () => {
+    const foreground = clip("green", "track-story", 0, 2000, { chromaKey: { color: "#00ff00", tolerance: 25 } });
+    const first = clip("first", "track-v2", 0, 1000, { sourceStartMs: 4000 });
+    const second = clip("second", "track-v2", 1000, 1000, { sourceStartMs: 7000 });
+    const config = project([foreground, first, second], [asset("asset-green"), asset("asset-first"), asset("asset-second")]);
+    expect(visibleClipsAt(config.timeline.tracks, 500).map((item) => item.id)).toEqual(["green", "first"]);
+    const plan = buildExportPlan(config, settings());
+    const segments = clipSegments(plan.segments);
+    expect(segments.map((segment) => [segment.startFrame, segment.endFrame, segment.underlays?.[0].clipId])).toEqual([[0, 30, "first"], [30, 60, "second"]]);
+    expect(sourceTimeMsForFrame(segments[1].underlays![0], 45, 30)).toBe(7500);
+    expect(segments[0].visual.chromaKey).toEqual(foreground.chromaKey);
+    expect(plan.clipCount).toBe(3);
+    expect(plan.notes.join(" ")).not.toContain("hidden underneath");
+    expect(plan.blockers).toEqual([]);
+  });
+
+  it("validates exposed background media and excludes it when the key is removed", () => {
+    const foreground = clip("green", "track-story", 0, 2000, { chromaKey: { color: "#00ff00", tolerance: 20 } });
+    const background = clip("missing", "track-v2", 0, 2000);
+    const config = project([foreground, background], [asset("asset-green")]);
+    expect(buildExportPlan(config, settings()).blockers.join(" ")).toContain("missing");
+    foreground.chromaKey = undefined;
+    const opaque = buildExportPlan(config, settings());
+    expect(opaque.blockers).toEqual([]);
+    expect(opaque.clipCount).toBe(1);
+  });
+});
 
 describe("output geometry", () => {
   it("offers the widescreen sizes MiniMax H3 actually generates at", () => {

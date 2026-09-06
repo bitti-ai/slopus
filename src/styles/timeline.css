@@ -529,7 +529,8 @@
 }
 
 .program-picture video,
-.program-picture img {
+.program-picture img,
+.program-picture canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -539,7 +540,8 @@
 }
 
 .program-picture--selectable video,
-.program-picture--selectable img {
+.program-picture--selectable img,
+.program-picture--selectable canvas {
   cursor: pointer;
 }
 
@@ -1500,3 +1502,25 @@
     --track-column: 168px;
   }
 }
+
+/* Optional clip effects share the compact inspector controls. */
+.clip-effect > header { display: flex; align-items: center; justify-content: space-between; }
+.clip-effect fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.clip-effect__remove { display: grid; place-items: center; padding: 4px; border: 0; border-radius: var(--radius-sm); color: var(--text-muted); background: transparent; }
+.clip-effect__remove:hover:not(:disabled) { color: var(--text-primary); background: var(--panel-3); }
+.clip-effect .effect-color { display: flex; align-items: center; gap: var(--space-2); }
+.clip-effect .effect-color > span { margin: 0; margin-right: auto; }
+.clip-effect .effect-color input { width: 36px; padding: 3px; cursor: pointer; }
+.effect-color code { font-size: var(--text-xs); color: var(--text-muted); }
+.clip-effects { position: relative; padding: var(--space-3) var(--space-4); }
+.clip-effects__add { display: flex; align-items: center; justify-content: center; gap: var(--space-2); width: 100%; padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--text-primary); font-size: var(--text-sm); }
+.clip-effects__add:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-3); }
+.clip-effects__add:disabled, .clip-effect__remove:disabled { opacity: .45; cursor: not-allowed; }
+.clip-effects__picker { position: absolute; z-index: 5; bottom: calc(100% - var(--space-2)); left: var(--space-4); right: var(--space-4); padding: 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel-2); box-shadow: var(--shadow-sm); max-height: min(280px, 40vh); overflow-y: auto; }
+.clip-effects__picker button { display: flex; flex-direction: column; gap: 3px; width: 100%; border: 0; border-radius: var(--radius-sm); padding: var(--space-2); background: transparent; color: var(--text-primary); text-align: left; }
+.clip-effects__picker button:hover, .clip-effects__picker button:focus-visible { outline: none; background: var(--panel-3); }
+.clip-effects__picker strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.clip-effects__picker span { font-size: var(--text-xs); color: var(--text-muted); }
+
+.program-layer { position: absolute; inset: 0; pointer-events: none; }
+.program-picture > video, .program-picture > img, .program-keyed-picture { position: absolute; inset: 0; }
