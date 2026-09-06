@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, LoaderCircle, Square } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, Check, ChevronDown, LoaderCircle, Square } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
@@ -39,7 +39,6 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activity, setActivity] = useState<AgentActivity[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
   const [hasStarted, setHasStarted] = useState(false);
@@ -62,8 +61,6 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
     let stop: (() => void) | undefined;
     void listen<AgentTurnEventPayload>(AGENT_TURN_EVENT, ({ payload }) => {
       if (payload.requestId !== activeRequest.current) return;
-      const nextStatus = statusFromEvent(payload.event);
-      if (nextStatus) setStatus(nextStatus);
       const item = activityFromEvent(payload.event);
       if (!item) return;
       setActivity((current) => {
@@ -84,7 +81,7 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
   useEffect(() => {
     const panel = conversation.current;
     if (expanded && panel) panel.scrollTop = panel.scrollHeight;
-  }, [activity, messages, error, expanded, status, pendingPrompt]);
+  }, [activity, messages, error, expanded, pendingPrompt]);
 
   const blockedDetail = selected && !ready
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
@@ -92,7 +89,9 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
   const placeholder = ready
     ? `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
-  const providerStatusLabel = selected
+  const providerStatusLabel = requestId && selected
+    ? `${selected.label} status: Processing`
+    : selected
     ? `${selected.label} status: ${providerStateLabel(selected.state)}`
     : "Agent status: Unavailable";
 
@@ -106,7 +105,6 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
     setRequestId(id);
     setError(null);
     setPendingPrompt(clean);
-    setStatus(`Sending this request to ${selected?.label ?? provider}.`);
     setActivity([]);
     try {
       const response = await runAgentTurn(record, provider, clean, id, sessionMessages);
@@ -118,7 +116,6 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
       const detail = describeDiagnosticError(reason);
       writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
       setError(detail);
-      setStatus(null);
     } finally {
       activeRequest.current = null;
       setRequestId(null);
@@ -137,12 +134,14 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
             <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
           </p>)}
           {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
+          {requestId && <p className="agent-conversation__waiting" aria-label="Waiting for the next agent response">
+            <b>Slop</b><span className="agent-conversation__waiting-dots" aria-hidden="true"><i /><i /><i /></span>
+          </p>}
         </div>
-        {status && <div className="agent-latest-status" role="status"><b>Status</b><span>{status}</span></div>}
       </div>}
       <div className="agent-dock-row">
         <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel}><i /></span>}
+          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}${requestId ? " agent-provider-light--busy" : ""}`} role="img" aria-label={providerStatusLabel}><i /></span>}
           <textarea
             aria-label={`Ask Slop about ${context}`}
             rows={expanded ? 2 : 1}
@@ -158,12 +157,7 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
             disabled={!ready || Boolean(requestId)}
           />
           <div className="agent-dock__actions">
-            {expanded && <label className={`agent-provider agent-provider--${selected?.state ?? "unknown"}`} title={blockedDetail ?? undefined}>
-              <span className="agent-provider-light" role="img" aria-label={providerStatusLabel}><i /></span>
-              <select aria-label="Agent provider" value={provider} disabled={Boolean(requestId)} onChange={(event) => { const next = event.target.value as ProviderId; setProvider(next); saveAgentProvider(next); }}>
-                {providers.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
-              </select>
-            </label>}
+            {expanded && <AgentProviderSelector providers={providers} provider={provider} busy={Boolean(requestId)} statusLabel={providerStatusLabel} detail={blockedDetail} onChange={(next) => { setProvider(next); saveAgentProvider(next); }} />}
             {requestId
               ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button>
               : <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>}
@@ -175,21 +169,103 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
   );
 }
 
+function AgentProviderSelector({ providers, provider, busy, statusLabel, detail, onChange }: {
+  providers: ProviderStatus[];
+  provider: ProviderId;
+  busy: boolean;
+  statusLabel: string;
+  detail: string | null;
+  onChange: (provider: ProviderId) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const selected = providers.find((item) => item.id === provider);
+  const expanded = open && !busy;
+
+  useEffect(() => {
+    if (busy) setOpen(false);
+  }, [busy]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const close = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [expanded]);
+
+  const show = () => {
+    setActiveIndex(Math.max(0, providers.findIndex((item) => item.id === provider)));
+    setOpen(true);
+  };
+  const pick = (item: ProviderStatus) => {
+    if (busy) return;
+    onChange(item.id);
+    setOpen(false);
+  };
+
+  return <div ref={root} className="agent-provider" title={detail ?? undefined}>
+    <button
+      type="button"
+      className="agent-provider__trigger"
+      role="combobox"
+      aria-label="Agent provider"
+      aria-expanded={expanded}
+      aria-haspopup="listbox"
+      aria-controls={expanded ? listId : undefined}
+      aria-activedescendant={expanded && providers[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+      disabled={busy}
+      onClick={() => expanded ? setOpen(false) : show()}
+      onBlur={() => setOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!expanded) show();
+          else if (providers.length) setActiveIndex((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + providers.length) % providers.length);
+        } else if (expanded && (event.key === "Home" || event.key === "End")) {
+          event.preventDefault();
+          setActiveIndex(event.key === "Home" ? 0 : providers.length - 1);
+        } else if (expanded && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          if (providers[activeIndex]) pick(providers[activeIndex]);
+        } else if (event.key === "Escape" && expanded) {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(false);
+        } else if (event.key === "Tab") setOpen(false);
+      }}
+    >
+      <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}${busy ? " agent-provider-light--busy" : ""}`} role="img" aria-label={statusLabel}><i /></span>
+      <span className="agent-provider__name">{selected?.label ?? "Choose LLM"}</span>
+      <ChevronDown size={14} aria-hidden="true" />
+    </button>
+    {expanded && <div id={listId} className="agent-provider__options" role="listbox" aria-label="Agent providers">
+      {providers.map((item, index) => <div
+        key={item.id}
+        id={`${listId}-${index}`}
+        role="option"
+        aria-selected={item.id === provider}
+        className={`agent-provider__option${index === activeIndex ? " agent-provider__option--active" : ""}`}
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseMove={() => setActiveIndex(index)}
+        onClick={() => pick(item)}
+      >
+        <span className={`agent-provider-light agent-provider--${item.state}`} aria-hidden="true"><i /></span>
+        <span>{item.label}</span>
+        {item.id === provider && <Check size={14} aria-hidden="true" />}
+      </div>)}
+    </div>}
+  </div>;
+}
+
 const activityLabel = (kind: AgentActivity["kind"]): string => {
   switch (kind) {
     case "output": return "LLM";
     case "validation": return "Validator";
     case "diagnostic": return "Error";
-  }
-};
-
-const statusFromEvent = (event: AgentTurnEvent): string | null => {
-  switch (event.type) {
-    case "started": return `${providerLabel(event.provider)} started processing.`;
-    case "completed": return "The provider returned a response.";
-    case "message":
-    case "validation":
-    case "diagnostic": return null;
   }
 };
 
@@ -205,13 +281,6 @@ function activityFromEvent(event: AgentTurnEvent): AgentActivity | null {
     }
   }
 }
-
-const providerLabel = (provider: ProviderId) => ({
-  claude: "Claude Code",
-  codex: "Codex",
-  openrouter: "OpenRouter",
-  local: "Local OpenAI-compatible",
-})[provider];
 
 /** Provider CLIs stream NDJSON. Pull out the model-authored text so the panel
  *  shows what Slop is saying instead of transport records. */
