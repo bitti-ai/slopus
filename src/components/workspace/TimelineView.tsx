@@ -1,3 +1,4 @@
+import { ClipEffects } from "./ClipEffects";
 import {
   Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen,
   Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload,
@@ -8,9 +9,7 @@ import { resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import {
-  clipLook,
   clipTransform,
-  clipTransition,
   generationAssetId,
   roundClipTransform,
   sceneDurationSeconds,
@@ -198,8 +197,6 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
   const selectedMediaAsset = config.assets.find((asset) => asset.id === selected?.assetId);
   const selectedTransform = selected ? clipTransform(selected) : null;
-  const selectedLook = selected ? clipLook(selected) : null;
-  const selectedTransition = selected ? clipTransition(selected) : null;
   const visualControlsDisabled = selectedMediaAsset?.kind === "audio" || selectedTrack?.kind !== "video" || selectedTrack.locked;
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
   /** Where the last clip ends — where playback stops, which is not the same as
@@ -297,12 +294,6 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const limits = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
     const [minimum, maximum] = limits[key];
     updateClip(selected.id, { transform: roundClipTransform({ ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) }) });
-  };
-  const updateLook = (key: keyof NonNullable<TimelineClip["look"]>, value: number) => {
-    if (!selected || !selectedLook || !Number.isFinite(value)) return;
-    const limits = { opacity: [0, 100], temperature: [-100, 100] } as const;
-    const [minimum, maximum] = limits[key];
-    updateClip(selected.id, { look: { ...selectedLook, [key]: Math.max(minimum, Math.min(maximum, value)) } });
   };
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   /* Every removal — the toolbar, the key, the × on the clip itself — goes
@@ -881,21 +872,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 <label><span>Position Y (%)</span><CommittedNumberInput minimum={-100} maximum={100} step="1" value={selectedTransform?.positionY ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("positionY", value)} /></label>
               </div>
             </section>
-            <section className="inspector-section">
-              <h3>Look</h3>
-              <label className="range-field"><span>Opacity <b>{selectedLook?.opacity ?? 100}%</b></span><input aria-label="Clip opacity" type="range" min="0" max="100" step="1" value={selectedLook?.opacity ?? 100} disabled={visualControlsDisabled} onChange={(event) => updateLook("opacity", Number(event.target.value))} /></label>
-              <label className="range-field"><span>Temperature <b>{(selectedLook?.temperature ?? 0) > 0 ? "+" : ""}{selectedLook?.temperature ?? 0}</b></span><input aria-label="Clip temperature" type="range" min="-100" max="100" step="1" value={selectedLook?.temperature ?? 0} disabled={visualControlsDisabled} onChange={(event) => updateLook("temperature", Number(event.target.value))} /></label>
-            </section>
-            <section className="inspector-section">
-              <h3>Transition</h3>
-              <label><span>When this clip begins</span><select aria-label="Clip transition" value={selectedTransition?.type ?? "cut"} disabled={visualControlsDisabled} onChange={(event) => selected && selectedTransition && updateClip(selected.id, { transition: { ...selectedTransition, type: event.target.value as NonNullable<TimelineClip["transition"]>["type"] } })}>
-                <option value="cut">Cut</option>
-                <option value="fade">Fade in</option>
-                <option value="wipe-left">Wipe from left</option>
-                <option value="wipe-right">Wipe from right</option>
-              </select></label>
-              <label className="range-field"><span>Duration <b>{selectedTransition?.durationMs ?? 500} ms</b></span><input aria-label="Transition duration" type="range" min="100" max="3000" step="100" value={selectedTransition?.durationMs ?? 500} disabled={visualControlsDisabled || selectedTransition?.type === "cut"} onChange={(event) => selected && selectedTransition && updateClip(selected.id, { transition: { ...selectedTransition, durationMs: Number(event.target.value) } })} /></label>
-            </section>
+            <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch) => updateClip(selected.id, patch)} />
           </> : clipCount === 0
             ? <div className="inspector-empty"><MouseSelection /><b>Nothing to edit yet</b><span>Once a scene lands on the timeline, select it here to rename it and check its timing.</span></div>
             : <div className="inspector-empty"><MouseSelection /><b>Select a clip to edit it</b><span>Pick any clip on the timeline below to rename it, check its timing, and see how it was made.</span></div>}

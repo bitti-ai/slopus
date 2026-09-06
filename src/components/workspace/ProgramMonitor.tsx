@@ -1,6 +1,8 @@
+import { ChromaKeyPreview } from "./ChromaKeyPreview";
+import { ProgramLayer, previewMediaStyle } from "./ProgramLayer";
 import { Film, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clipFrameStyle, clipVisualSettings, visibleClipAt } from "../../lib/export";
+import { clipFrameStyle, clipVisualSettings, visibleClipsAt } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
@@ -101,7 +103,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 }) {
   const tracks = config.timeline.tracks;
   const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
-  const clip = useMemo(() => visibleClipAt(tracks, playheadMs, assetsById), [tracks, playheadMs, assetsById]);
+  const layers = useMemo(() => visibleClipsAt(tracks, playheadMs, assetsById), [tracks, playheadMs, assetsById]);
+  const clip = layers[0] ?? null;
   const asset = useMemo(
     () => (clip ? config.assets.find((candidate) => candidate.id === clip.assetId) : undefined),
     [clip, config.assets],
@@ -110,20 +113,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     () => clip ? clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs) : null,
     [clip, playheadMs],
   );
-  const mediaStyle = useMemo<React.CSSProperties | undefined>(() => {
-    if (!frameStyle) return undefined;
-    const { transform, look, opacity, revealStart, revealEnd } = frameStyle;
-    const warmth = look.temperature / 100;
-    const filter = warmth === 0
-      ? "none"
-      : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`;
-    return {
-      transform: `translate(${transform.positionX}%, ${transform.positionY}%) scale(${transform.scale / 100}) rotate(${transform.rotation}deg)`,
-      opacity,
-      filter,
-      clipPath: `inset(0 ${(1 - revealEnd) * 100}% 0 ${revealStart * 100}%)`,
-    };
-  }, [frameStyle]);
+  const mediaStyle = frameStyle ? previewMediaStyle(frameStyle) : undefined;
+  const sourceStyle: React.CSSProperties | undefined = clip?.chromaKey ? { ...mediaStyle, visibility: "hidden", position: "absolute" } : mediaStyle;
   /* Sound that should be audible at this moment: audio-only files and embedded
      sound from every active video, minus muted tracks. The visible video plays
      its own stream, so a second audio element is only needed for the rest. */
@@ -146,6 +137,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   );
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const pictureRef = useRef<HTMLDivElement>(null);
   const transformGesture = useRef<TransformGesture | null>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
@@ -422,19 +414,21 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onSelectClip(clip.id);
     }}
   >
+    {layers.slice(1).reverse().map((layer) => <ProgramLayer key={layer.id} clip={layer} asset={assetsById.get(layer.assetId)} sources={sources} playheadMs={playheadMs} playing={playing} />)}
     {/* One element, re-pointed at whatever the playhead is over. Rebuilding it
         per clip would drop the decoder and re-open the file on every cut. */}
     {asset && !isImage(asset) && url && <video
       ref={videoRef}
       src={url}
-      style={mediaStyle}
+      style={sourceStyle}
       muted={videoTrackMuted}
       playsInline
       preload="auto"
       onLoadedData={() => setReady(true)}
       onError={() => setError("This file could not be decoded.")}
     />}
-    {asset && isImage(asset) && url && <img src={url} alt={clip?.label ?? ""} style={mediaStyle} />}
+    {asset && isImage(asset) && url && <img ref={imageRef} src={url} alt={clip?.label ?? ""} style={sourceStyle} />}
+    {asset && url && clip?.chromaKey && <ChromaKeyPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
     {clip && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
       style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}

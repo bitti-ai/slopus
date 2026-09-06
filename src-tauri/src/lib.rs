@@ -150,6 +150,8 @@ struct TimelineClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     look: Option<ClipLook>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    chroma_key: Option<ClipChromaKey>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     transition: Option<ClipTransition>,
 }
 
@@ -166,6 +168,12 @@ struct ClipTransform {
 struct ClipLook {
     opacity: f64,
     temperature: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct ClipChromaKey {
+    color: String,
+    tolerance: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -962,6 +970,16 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                     || !(-100.0..=100.0).contains(&look.temperature)
                 {
                     return Err(format!("Clip '{}' has an invalid look.", clip.id));
+                }
+            }
+            if let Some(key) = &clip.chroma_key {
+                if key.color.len() != 7
+                    || !key.color.starts_with('#')
+                    || !key.color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+                    || !key.tolerance.is_finite()
+                    || !(0.0..=100.0).contains(&key.tolerance)
+                {
+                    return Err(format!("Clip '{}' has an invalid chroma key.", clip.id));
                 }
             }
             if let Some(transition) = &clip.transition {
@@ -3303,6 +3321,32 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(files, [PROJECT_FILE_NAME]);
+    }
+
+    #[test]
+    fn chroma_key_survives_save_and_reopen_and_validates_settings() {
+        let mut config = fixture();
+        config.timeline.tracks[0].clips[0].chroma_key = Some(ClipChromaKey {
+            color: "#12ABef".into(),
+            tolerance: 27.0,
+        });
+        let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
+        let root = tempfile::tempdir().unwrap();
+        let created = create_project_in(root.path(), &config).unwrap();
+        let folder = PathBuf::from(&created.folder_path);
+        write_project(&folder, &config).unwrap();
+        assert_eq!(read_project(&folder).unwrap().config, config);
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["timeline"]["tracks"][0]["clips"][0]["chromaKey"]["color"], "#12ABef");
+        for (color, tolerance) in [("green", 20.0), ("#12345g", 20.0), ("#00ff00", -1.0), ("#00ff00", 101.0), ("#00ff00", f64::NAN)] {
+            let mut invalid = config.clone();
+            invalid.timeline.tracks[0].clips[0].chroma_key = Some(ClipChromaKey { color: color.into(), tolerance });
+            assert!(validate_and_normalize_config(invalid).unwrap_err().contains("chroma key"));
+        }
+        let mut removed = config.clone();
+        removed.timeline.tracks[0].clips[0].chroma_key = None;
+        write_project(&folder, &removed).unwrap();
+        assert!(read_project(&folder).unwrap().config.timeline.tracks[0].clips[0].chroma_key.is_none());
     }
 
     #[test]
