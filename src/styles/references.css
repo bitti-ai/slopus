@@ -69,7 +69,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
 }
 
@@ -78,7 +78,7 @@
   flex: 1 1 auto;
   margin: 0;
   color: var(--text-primary);
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   letter-spacing: var(--tracking-tight);
@@ -372,7 +372,7 @@
 }
 
 .reference-detail-art {
-  height: 156px;
+  height: 128px;
   position: relative;
   display: grid;
   place-items: center;
@@ -400,7 +400,30 @@
 }
 
 .reference-detail-art--text > span {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
   color: var(--accent-bright);
+}
+
+.reference-detail-art--text {
+  height: var(--control-lg);
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  background: transparent;
+}
+
+.reference-detail-art--text > span svg {
+  width: 20px;
+  height: 20px;
+}
+
+.reference-detail-art.reference-detail-art--text em {
+  position: static;
+  text-align: left;
 }
 
 .reference-detail-art em {
@@ -419,13 +442,13 @@
 }
 
 .reference-fields {
-  padding: var(--space-4);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
 }
 
 .reference-fields label {
   display: block;
-  margin-bottom: var(--space-3);
+  margin: 0;
 }
 
 .reference-fields label > span {
@@ -456,9 +479,10 @@
 }
 
 .reference-fields textarea {
-  height: 128px;
+  height: 192px;
+  min-height: 192px;
   padding: var(--space-2) var(--space-3);
-  resize: none;
+  resize: vertical;
   line-height: var(--leading-normal);
 }
 
@@ -466,7 +490,7 @@
 
 .reference-type,
 .reference-used-by {
-  padding: var(--space-4);
+  padding: var(--space-3);
   border-bottom: 1px solid var(--line);
 }
 
@@ -474,9 +498,26 @@
 .reference-used-by h3 {
   margin: 0 0 var(--space-2);
   color: var(--text-primary);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
+}
+
+.reference-type {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.reference-type h3 {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.reference-type .reference-type__trigger {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 .reference-type__trigger {
@@ -508,7 +549,7 @@
 
 .reference-preset-summary > button {
   width: 100%;
-  min-height: 92px;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
