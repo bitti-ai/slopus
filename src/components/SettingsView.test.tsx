@@ -36,6 +36,21 @@ describe("the frame the tabs sit in", () => {
 });
 
 describe("the settings screen", () => {
+  it("keeps debug options off by default and remembers the Diagnostics choice", () => {
+    const view = open();
+    fireEvent.click(tab("Diagnostics"));
+    const toggle = screen.getByRole("checkbox", { name: "Enable debug options" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    view.unmount();
+    open();
+    fireEvent.click(tab("Diagnostics"));
+    const restored = screen.getByRole("checkbox", { name: "Enable debug options" }) as HTMLInputElement;
+    expect(restored.checked).toBe(true);
+    fireEvent.click(restored);
+    expect(restored.checked).toBe(false);
+  });
+
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
     open();
     expect(tab("Video engine").getAttribute("aria-selected")).toBe("true");

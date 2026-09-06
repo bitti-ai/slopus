@@ -433,6 +433,37 @@
 
 /* --- Diagnostics ---------------------------------------------------------- */
 
+.diagnostics-debug-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+  cursor: pointer;
+}
+
+.diagnostics-debug-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.diagnostics-debug-option b {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.diagnostics-debug-option small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .diagnostics-setting {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

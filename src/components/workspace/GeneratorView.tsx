@@ -1,8 +1,8 @@
 import { ChevronDown, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type PromptSegment, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, getEngineStatus, resolveSlopfabPlan, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
@@ -11,7 +11,8 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { statusIcon } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, type GeneratorTemplate } from "../../lib/settings";
+import { DebugPromptDialog } from "./DebugPromptDialog";
 
 interface GeneratorViewProps {
   config: ProjectConfig;
@@ -65,7 +66,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [, setPlanNotes] = useState<Record<string, string>>({});
   const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
+  const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [startFrameError, setStartFrameError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!debugEnabled) setShowDebugPrompt(false);
+  }, [debugEnabled]);
 
   useEffect(() => {
     setTemplateSettings(loadGeneratorTemplateSettings());
@@ -683,17 +689,23 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             />
           </div>
 
-          <div className="debug-prompt">
-            {showDebugPrompt && <CompiledPrompt segments={compileGenerationJobSegments(selected, boundRefs)} />}
+          {debugEnabled && <div className="debug-prompt">
             <button
               type="button"
               className="secondary-button debug-prompt__toggle"
               aria-expanded={showDebugPrompt}
-              onClick={() => setShowDebugPrompt((visible) => !visible)}
+              aria-haspopup="dialog"
+              onClick={() => setShowDebugPrompt(true)}
             >Debug Prompt</button>
-          </div>
+          </div>}
         </>}
     </aside>}
+
+    {debugEnabled && showDebugPrompt && selected && !openShot && <DebugPromptDialog
+      sceneTitle={selected.title}
+      segments={compileGenerationJobSegments(selected, boundRefs)}
+      onClose={() => setShowDebugPrompt(false)}
+    />}
 
     {removalTarget && <div className="remove-dialog-backdrop">
       <div className="remove-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-dialog-title">
@@ -731,16 +743,6 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
     return "A reference named in one of the lines can no longer be used, and would be left out of the prompt. Swap it for another one or take it out of the line first.";
   }
   return null;
-}
-
-/* The compiled prompt, shown before anything is sent and coloured by who wrote
-   which part. The segments come from the compiler itself, so this panel is the
-   string slopfab receives — not a re-rendering of it that could drift. */
-function CompiledPrompt({ segments }: { segments: PromptSegment[] }) {
-  return <section className="compiled-prompt" aria-label="The compiled MiniMax H3 prompt">
-    <pre className="compiled-prompt__text">{segments.map((segment, index) =>
-      <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
-  </section>;
 }
 
 const boardSummary = (active: number, waiting: number, total: number) => {
