@@ -1,3 +1,4 @@
+import { WorkQueue } from "../lib/workQueue";
 // @vitest-environment jsdom
 
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -17,7 +18,7 @@ import { saveDebugOptionsEnabled } from "../lib/settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn() }));
+vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 
 afterEach(() => {
   cleanup();
@@ -241,21 +242,30 @@ describe("project workspace timecode", () => {
     const mediaLoad = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = vi.fn();
 
+    const runtimeModule = await import("../lib/runtime");
+    const resolvePlan = vi.spyOn(runtimeModule, "resolveSlopfabPlan").mockResolvedValue({ alignedFrames: 120, canvasWidth: 736, canvasHeight: 416 } as Awaited<ReturnType<typeof runtimeModule.resolveSlopfabPlan>>);
+    const enqueue = vi.spyOn(runtimeModule, "enqueueSlopfabGeneration").mockResolvedValue(undefined);
+    const queue = new WorkQueue(onSave);
+    const record = { folderPath: "C:/Ceramic Lamp", config };
+    const stop = queue.start();
+    queue.enqueue(queue.project(record), [{ job: config.generationJobs[0], snapshot: "test", request: { jobId, prompt: "A quiet film", frames: 120, steps: 12, seed: 42, canvasWidth: 736, canvasHeight: 416, referencePaths: [] } }]);
     try {
+      await waitFor(() => expect(enqueue).toHaveBeenCalled());
       render(createElement(ProjectWorkspace, {
-        project: { folderPath: "C:\\Ceramic Lamp", config },
+        project: record,
+        workQueue: queue,
         initialView: "timeline",
         onBack: () => undefined,
         onSave,
       }));
       await waitFor(() => expect(handlers.has("slopfab-job")).toBe(true));
       await act(async () => {
-        handlers.get("slopfab-job")?.({ payload: { jobId, state: "framesReady", detail: "Frames ready." } });
+        handlers.get("slopfab-job")?.({ payload: { jobId: queue.getSnapshot()[0].id, state: "framesReady", detail: "Frames ready." } });
         await Promise.resolve();
       });
-      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
 
-      const saved = onSave.mock.calls[0][0];
+      const saved = onSave.mock.calls[1][0];
       expect(saved.config.generationJobs[0]).toMatchObject({
         status: "completed",
         outputRelativePath: "media/generated/job-initial-brief.mp4",
@@ -263,6 +273,7 @@ describe("project workspace timecode", () => {
       expect(parseProjectConfig(saved.config)).toBeTruthy();
       await waitFor(() => expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true));
     } finally {
+      stop(); resolvePlan.mockRestore(); enqueue.mockRestore();
       cleanup();
       HTMLMediaElement.prototype.load = mediaLoad;
       delete scope.__TAURI_INTERNALS__;

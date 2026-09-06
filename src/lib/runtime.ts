@@ -7,7 +7,7 @@ import {
 } from "./project";
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
-  loadDefaultGenerationSteps, loadEngineSettings, withAgentEndpointSettings, withEngineSettings,
+  loadDefaultGenerationSteps, loadEngineSettings, withAgentEndpointSettings,
   type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
 } from "./settings";
 
@@ -198,7 +198,7 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
 }
 
 export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
-  if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config: withEngineSettings(config) });
+  if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config });
   const alignedFrames = Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
     canvasWidth: request.canvasWidth,
@@ -214,7 +214,7 @@ export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, conf
 }
 
 export async function enqueueSlopfabGeneration(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<void> {
-  if (isTauri()) await invoke("enqueue_slopfab_generation", { request, config: withEngineSettings(config) });
+  if (isTauri()) await invoke("enqueue_slopfab_generation", { request, config });
 }
 
 export async function cancelSlopfabGeneration(jobId: string): Promise<boolean> {

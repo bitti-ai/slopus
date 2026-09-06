@@ -10,8 +10,6 @@ export interface OngoingGeneration {
   running: boolean;
 }
 
-/** Where the user was heading when the guard stopped them. */
-export type ExitDestination = "library" | "quit";
 
 const FOCUSABLE = "button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])";
 
@@ -20,16 +18,15 @@ const FOCUSABLE = "button:not([disabled]), [href], input, select, textarea, [tab
  *  Every claim it makes is a claim about this codebase, not a hedge:
  *   • slopfab writes no file of its own (see `run_generation` in slopfab.rs). Its
  *     frames reach the app through the `slopfab-job` event, and only once the
- *     app has encoded them (useGenerationEvents → lib/generatedVideo.ts) is
- *     there an .mp4 in the project folder. Leave before that and there is
+ *     app has encoded them (WorkQueue → lib/generatedVideo.ts) is
+ *     there an .mp4 in the project folder. Quit before that and there is
  *     nothing on disk to come back to — which is why a scene that is still
- *     being encoded counts as ongoing too (see isGenerationOngoing).
+ *     being encoded counts as ongoing too (see isWorkActive).
  *   • Nothing resumes. The only route back to a stopped shot is the Generator's
  *     "Run it again", which starts the whole render from the first step.
  */
-export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
+export function ExitGuardDialog({ jobs, onConfirm, onCancel }: {
   jobs: OngoingGeneration[];
-  destination: ExitDestination;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -75,7 +72,6 @@ export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
 
   const rendering = jobs.filter((job) => job.running);
   const queued = jobs.filter((job) => !job.running);
-  const leaving = destination === "library";
 
   return (
     <div className="exit-guard-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
@@ -90,16 +86,14 @@ export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
         <div className="exit-guard__head">
           <span className="exit-guard__mark" aria-hidden="true"><AlertCircle size={20} /></span>
           <h2 id="exit-guard-title">
-            {leaving ? "Leave the project and stop generating?" : "Close Slopus and stop generating?"}
+            Close Slopus and stop generating?
           </h2>
         </div>
 
         <div className="exit-guard__body" id="exit-guard-body">
           <p>{summary(rendering.length, queued.length)}</p>
           <p>
-            {leaving
-              ? "Going back to your projects stops them. "
-              : "The video engine runs inside Slopus, so closing the window stops them. "}
+            The video engine runs inside Slopus, so closing the window stops them.{" "}
             No video file is written until a shot finishes, so an unfinished run leaves nothing behind — and Slopus
             can’t pick one back up. You would run those shots again from the beginning.
           </p>
@@ -123,7 +117,7 @@ export function ExitGuardDialog({ jobs, destination, onConfirm, onCancel }: {
             Keep generating
           </button>
           <button className="exit-guard__confirm" type="button" onClick={onConfirm}>
-            {leaving ? "Stop and leave" : "Stop and close"}
+            Stop and close
           </button>
         </div>
       </div>

@@ -1,11 +1,11 @@
+import type { GenerationSubmission } from "../../lib/workQueue";
 import { ChevronDown, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
-import { cancelSlopfabGeneration, enqueueSlopfabGeneration, getEngineStatus, resolveSlopfabPlan, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
+import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
 import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
 import { statusIcon } from "./sceneStatus";
@@ -20,6 +20,9 @@ interface GeneratorViewProps {
   runtime?: SlopfabStatus | null;
   generationCompletionTimes?: Readonly<Record<string, number>>;
   onChange: (next: ProjectConfig) => void;
+  onGenerate?: (submissions: GenerationSubmission[]) => void;
+  onCancelGeneration?: (sceneIds: string[]) => Promise<void>;
+  cancellingJobIds?: ReadonlySet<string>;
   onOpenTimeline: () => void;
   selectedJobId?: string;
   onRuntimeChange?: (runtime: SlopfabStatus) => void;
@@ -40,7 +43,7 @@ type RemovalTarget =
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onRuntimeChange }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
@@ -50,20 +53,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const runtimeProbe = useRef(0);
   const configRef = useRef(config);
   configRef.current = config;
-  // A scene is displayed as queued while its plan is resolving, just before
-  // the backend receives it. Remember cancellation here as well as sending it
-  // to slopfab, so a click in that small window prevents the later enqueue.
-  const cancellationRequests = useRef(new Set<string>());
-  // The ref above protects asynchronous work; this set exists so the cards
-  // repaint immediately when Cancel is pressed, before slopfab reports the
-  // terminal cancelled state.
-  const [cancellingJobIds, setCancellingJobIds] = useState<ReadonlySet<string>>(() => new Set());
-
   /* A scene is always what is named; the shot inside it is what a card opens.
      Opening the Generator, or arriving from a clip in the timeline, opens the
      SCENE — the thing that has a state, a prompt and a Generate button. */
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
-  const [, setPlanNotes] = useState<Record<string, string>>({});
   const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
@@ -299,57 +292,18 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
 
-  const logRequest = (event: string, message: string, request: SlopfabGenerationRequest) => writeDiagnostic("info", "generator", event, message, {
-    jobId: request.jobId,
-    frames: request.frames,
-    steps: request.steps,
-    canvasWidth: request.canvasWidth,
-    canvasHeight: request.canvasHeight,
-    referenceCount: request.referencePaths.length,
-    inputChars: request.prompt.length,
-  });
-
-  const logFailure = (event: string, jobId: string, reason: unknown) => {
-    const detail = describeDiagnosticError(reason);
-    writeDiagnostic("error", "generator", event, detail, { jobId, ...errorContext(reason) });
-    return detail;
-  };
-
   const purgeSceneThumbnails = async (job: GenerationJob) => {
     if (job.outputRelativePath) forgetShotPosters(folderPath, job.outputRelativePath);
     await purgeTimelineThumbnails(folderPath, job.id).catch(() => undefined);
   };
 
-  /* The engine's own events are listened for by the project screen
-     (useGenerationEvents), not here: a render outlives this view, and the
-     encode that turns its frames into a file has to happen wherever the user
-     happens to be. What this view does with a scene is start it, stop it, and
-     show what became of it. */
-
-  const prepareOrRetry = async (job: GenerationJob) => {
-    cancellationRequests.current.delete(job.id);
-    setCancellingJobIds((current) => current.has(job.id)
-      ? new Set([...current].filter((id) => id !== job.id))
-      : current);
-    const now = new Date().toISOString();
-    const request = requestFor(job);
-    if (runtimeReady) await purgeSceneThumbnails(job);
-    updateJob(job.id, {
-      status: runtimeReady ? "queued" : "draft",
-      stage: "queued",
-      progress: 0,
-      error: runtimeReady ? null : runtimeError ?? generatorRuntime?.detail ?? "The video engine isn’t available on this computer right now.",
-      generationSnapshot: runtimeReady ? snapshotFor(job, request) : job.generationSnapshot,
-      updatedAt: now,
+  const submit = (scenes: GenerationJob[]) => {
+    if (!runtimeReady) return;
+    const submissions = scenes.map((job) => {
+      const request = requestFor(job);
+      return { job, request, snapshot: snapshotFor(job, request) };
     });
-    if (runtimeReady) {
-      logRequest("generation.retry_requested", "Generation retry requested.", request);
-      try {
-        await enqueueSlopfabGeneration(request, configRef.current);
-      } catch (reason) {
-        updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.retry_failed", job.id, reason) });
-      }
-    }
+    onGenerate?.(submissions);
   };
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a
@@ -374,7 +328,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const at = current.generationJobs.findIndex((item) => item.id === job.id);
     if (at < 0) return;
     void purgeSceneThumbnails(job);
-    if (job.status === "generating" || job.status === "queued") void cancelSlopfabGeneration(job.id);
+    if (job.status === "generating" || job.status === "queued") void onCancelGeneration?.([job.id]);
     const generationJobs = current.generationJobs.filter((item) => item.id !== job.id);
     onChange({ ...current, generationJobs });
     if (selection.jobId === job.id) {
@@ -383,75 +337,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     }
   };
 
-  const startDraft = async (job: GenerationJob) => {
-    if (!runtimeReady) return;
-    await purgeSceneThumbnails(job);
-    cancellationRequests.current.delete(job.id);
-    setCancellingJobIds((current) => current.has(job.id)
-      ? new Set([...current].filter((id) => id !== job.id))
-      : current);
-    const request = requestFor(job);
-    logRequest("generation.requested", "Generation requested from the scene board.", request);
-    updateJob(job.id, {
-      status: "queued",
-      stage: "queued",
-      error: null,
-      generationSnapshot: snapshotFor(job, request),
-      updatedAt: new Date().toISOString(),
-    });
-    try {
-      /* Resolved before the job is handed over, so "What actually happened"
-         reports the real frame count and canvas this run was planned as. The
-         composer used to do this for a scene it had just created; a scene is
-         now created empty and generated from here, so the plan is resolved
-         here or nobody ever sees it. */
-      const plan = await resolveSlopfabPlan(request, configRef.current);
-      setPlanNotes((current) => ({ ...current, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
-      if (cancellationRequests.current.has(job.id)) return;
-      await enqueueSlopfabGeneration(request, configRef.current);
-    } catch (reason) {
-      if (cancellationRequests.current.has(job.id)) return;
-      updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
-    }
-  };
-
-  const cancelScenes = async (scenes: GenerationJob[]) => {
-    const next = scenes.filter((job) =>
-      (job.status === "queued" || job.status === "generating")
-      && !cancellationRequests.current.has(job.id));
-    if (next.length === 0) return;
-    next.forEach((job) => cancellationRequests.current.add(job.id));
-    setCancellingJobIds((current) => new Set([...current, ...next.map((job) => job.id)]));
-    const accepted = await Promise.all(next.map(async (job) => {
-      try {
-        return await cancelSlopfabGeneration(job.id);
-      } catch (reason) {
-        logFailure("generation.cancel_failed", job.id, reason);
-        return false;
-      }
-    }));
-    // False means the scene was still in frontend planning and never reached
-    // slopfab. No backend event will arrive for it, so finish that cancellation
-    // locally; accepted cancellations are finalized by the normal event path.
-    const beforeEnqueue = new Set(next.filter((_, index) => !accepted[index]).map((job) => job.id));
-    if (beforeEnqueue.size > 0) {
-      const current = configRef.current;
-      onChange({
-        ...current,
-        generationJobs: current.generationJobs.map((job) => beforeEnqueue.has(job.id)
-          ? { ...job, status: "cancelled", stage: "failed", error: "Generation cancelled before it started.", updatedAt: new Date().toISOString() }
-          : job),
-      });
-    }
-  };
-
+  const cancelScenes = (scenes: GenerationJob[]) => onCancelGeneration?.(scenes.map((job) => job.id));
   const generateScene = (job: GenerationJob) => {
-    if (job.status === "queued" || job.status === "generating") {
-      void cancelScenes([job]);
-      return;
-    }
-    if (job.status === "draft") void startDraft(job);
-    else void prepareOrRetry(job);
+    if (job.status === "queued" || job.status === "generating") void cancelScenes([job]);
+    else submit([job]);
   };
 
   /** Generate All is an idempotent update for fixed seeds, but a deliberate
@@ -467,40 +356,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       || job.generationSnapshot !== snapshotFor(job);
   });
 
-  const generateAll = async () => {
-    if (!runtimeReady || batchScenesReady.length === 0) return;
-    await Promise.all(batchScenesReady.map(purgeSceneThumbnails));
-    batchScenesReady.forEach((job) => cancellationRequests.current.delete(job.id));
-    const startingIds = new Set(batchScenesReady.map((job) => job.id));
-    setCancellingJobIds((current) => {
-      const next = new Set([...current].filter((id) => !startingIds.has(id)));
-      return next.size === current.size ? current : next;
-    });
-    const current = configRef.current;
-    const requests = batchScenesReady.map((job) => ({ job, request: requestFor(job) }));
-    requests.forEach(({ request }) => logRequest("generation.requested", "Generation requested by Generate All.", request));
-    const ids = new Map(requests.map(({ job, request }) => [job.id, snapshotFor(job, request)]));
-    const now = new Date().toISOString();
-    onChange({
-      ...current,
-      generationJobs: current.generationJobs.map((job) => ids.has(job.id)
-        ? { ...job, status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: ids.get(job.id), updatedAt: now }
-        : job),
-    });
-
-    for (const { job, request } of requests) {
-      if (cancellationRequests.current.has(job.id)) continue;
-      try {
-        const plan = await resolveSlopfabPlan(request, current);
-        setPlanNotes((notes) => ({ ...notes, [job.id]: `Planned as ${plan.alignedFrames} frames at ${plan.canvasWidth}×${plan.canvasHeight}. ${plan.boundary}` }));
-        if (cancellationRequests.current.has(job.id)) continue;
-        await enqueueSlopfabGeneration(request, current);
-      } catch (reason) {
-        if (cancellationRequests.current.has(job.id)) continue;
-        updateJob(job.id, { status: "failed", stage: "failed", error: logFailure("generation.prepare_failed", job.id, reason) });
-      }
-    }
-  };
+  const generateAll = () => submit(batchScenesReady);
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";

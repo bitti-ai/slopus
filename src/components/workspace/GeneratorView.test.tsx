@@ -76,6 +76,7 @@ function setup(initial = project()) {
   let replace: (next: ProjectConfig) => void = () => undefined;
   function Harness() {
     const [config, setConfig] = useState(latest);
+    const [cancellingIds, setCancellingIds] = useState<ReadonlySet<string>>(() => new Set());
     latest = config;
     replace = (next) => setConfig(next);
     return <GeneratorView
@@ -83,6 +84,16 @@ function setup(initial = project()) {
       folderPath="C:\\project"
       runtime={readyRuntime}
       onChange={setConfig}
+      onGenerate={(submissions) => setConfig((current) => ({ ...current, generationJobs: current.generationJobs.map((job) => {
+        const submission = submissions.find((item) => item.job.id === job.id);
+        return submission ? { ...job, status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot } : job;
+      }) }))}
+      cancellingJobIds={cancellingIds}
+      onCancelGeneration={async (ids) => {
+        const next = ids.filter((id) => !cancellingIds.has(id));
+        setCancellingIds((current) => new Set([...current, ...next]));
+        await Promise.all(next.map((id) => cancelSlopfabGeneration(id)));
+      }}
       onOpenTimeline={() => undefined}
     />;
   }
