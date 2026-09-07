@@ -38,18 +38,33 @@ const project = (): ProjectConfig => {
   });
 };
 
-function setup(initial = project()) {
+function setup(initial = project(), onRegenerateIcon = vi.fn(), pendingIconIds = new Set<string>()) {
   let latest = initial;
   function Harness() {
     const [config, setConfig] = useState(latest);
     latest = config;
-    return <ReferencesView config={config} folderPath="C:\\project" onChange={setConfig} />;
+    return <ReferencesView config={config} folderPath="C:\\project" onChange={setConfig} onRegenerateIcon={onRegenerateIcon} pendingIconIds={pendingIconIds} />;
   }
   render(<Harness />);
   return { latest: () => latest };
 }
 
 describe("Reference type presets", () => {
+  it("requests an icon refresh for the selected reference and disables duplicate requests", () => {
+    const regenerate = vi.fn();
+    const initial = project();
+    setup(initial, regenerate);
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate reference icon" }));
+    expect(regenerate).toHaveBeenCalledWith("ref-hero");
+    cleanup();
+    setup(initial, regenerate, new Set(["ref-hero"]));
+    expect(screen.getByRole("button", { name: "Regenerate reference icon" })).toBeDisabled();
+    cleanup();
+    initial.references[0].description = "";
+    setup(initial, regenerate);
+    expect(screen.getByRole("button", { name: "Regenerate reference icon" })).toBeDisabled();
+  });
+
   it("adds an animal preset from its searchable subcategory", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
