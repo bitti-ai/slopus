@@ -23,6 +23,12 @@ npm run build
 cd src-tauri && cargo test
 ```
 
+On Windows, `package.cmd` builds the current source into a runnable portable
+folder and matching ZIP under `artifacts/`, without creating installers.
+`release.cmd` runs the full packaging workflow: setup installer, MSI when
+produced, portable folder, and ZIP. Both scripts install locked dependencies
+and build the production app before collecting outputs.
+
 ## Application icons
 
 `marketing/icon.png` is the source artwork for the application icon, browser
