@@ -209,6 +209,8 @@ struct ReusableReference {
     images: Vec<ReferenceImage>,
     #[serde(default)]
     intended_use: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subcategory: Option<String>,
     created_at: String,
 }
 
@@ -2117,6 +2119,7 @@ fn create_project_at_with_references(
                 source_path: imported.source_path,
                 images: Vec::new(),
                 intended_use: vec!["style".into()],
+                subcategory: None,
                 created_at: config.created_at.clone(),
             });
             if let Some(job) = config.generation_jobs.first_mut() {
@@ -3507,6 +3510,31 @@ mod tests {
     }
 
     #[test]
+    fn reference_categories_and_subcategories_survive_project_save() {
+        let root = tempfile::tempdir().unwrap();
+        for (category, subcategory) in [
+            ("character", "Animation"),
+            ("product", "Technology"),
+            ("location", "Urban"),
+            ("style", "Cinematic"),
+        ] {
+            let mut config = fixture();
+            let reference = &mut config.references[0];
+            reference.intended_use = vec![category.into()];
+            reference.subcategory = Some(subcategory.into());
+            reference.description.clear();
+            reference.content = None;
+            write_project(root.path(), &config).unwrap();
+            let restored = read_project(root.path()).unwrap();
+            let reference = &restored.config.references[0];
+            assert_eq!(reference.intended_use, vec![category]);
+            assert_eq!(reference.subcategory.as_deref(), Some(subcategory));
+            assert!(reference.description.is_empty());
+            assert!(reference.content.is_none());
+        }
+    }
+
+    #[test]
     fn initial_reference_images_are_copied_and_bound_to_the_first_draft() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("mood board.webp");
@@ -4124,6 +4152,7 @@ mod tests {
             source_path: None,
             images: Vec::new(),
             intended_use: Vec::new(),
+            subcategory: None,
             created_at: "2026-01-01T00:07:00.000Z".into(),
         });
         assert!(
