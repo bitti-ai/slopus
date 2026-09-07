@@ -28,17 +28,19 @@ export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; it
   const current = items.filter((item) => isWorkActive(item) && item.status !== "queued");
   const upcoming = items.filter((item) => item.status === "queued");
   const finished = items.filter((item) => !isWorkActive(item)).slice().reverse();
-  const row = (item: WorkItem) => <li className="work-queue__item" key={item.id}>
+  const row = (item: WorkItem) => <li className={`work-queue__item${isWorkActive(item) && item.status !== "queued" ? "" : " work-queue__item--compact"}`} key={item.id}>
     <div className="work-queue__item-heading">
       <span className={`work-queue__state work-queue__state--${item.status}`} aria-hidden="true">
         {item.status === "completed" ? <Check size={17} /> : item.status === "failed" ? <TriangleAlert size={17} /> : item.status === "queued" ? <Clock3 size={17} /> : item.status === "cancelled" ? <X size={17} /> : <LoaderCircle className="work-queue__spinner" size={17} />}
       </span>
-      <div><strong>{item.title}</strong><span title={item.folderPath}>{item.projectName}</span></div>
+      <div><strong title={item.title}>{item.title}</strong><span title={item.folderPath}>{item.projectName}</span></div>
       {isWorkActive(item) && item.status !== "encoding" && <button type="button" className="icon-button" disabled={item.cancelling} aria-label={`Cancel ${item.title} in ${item.projectName}`} title="Cancel this work" onClick={() => void queue.cancel(item.id)}><X size={16} /></button>}
     </div>
-    <div className="work-queue__detail"><span>{item.detail}</span>{isWorkActive(item) && item.status !== "queued" && <b>{Math.floor(item.progress * 100)}%</b>}</div>
-    {isWorkActive(item) && item.status !== "queued" && <progress max={1} value={item.progress} aria-label={`${item.title} progress`} />}
-    <p className="work-queue__settings">{item.settings.canvasWidth} × {item.settings.canvasHeight} · {(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s · {item.settings.steps} steps · {item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}</p>
+    <div className="work-queue__metadata">
+      <div className="work-queue__detail"><span>{item.detail}</span>{isWorkActive(item) && item.status !== "queued" && <b>{Math.floor(item.progress * 100)}%</b>}</div>
+      {isWorkActive(item) && item.status !== "queued" && <progress max={1} value={item.progress} aria-label={`${item.title} progress`} />}
+      <p className="work-queue__settings">{item.settings.canvasWidth} × {item.settings.canvasHeight} · {(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s · {item.settings.steps} steps · {item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}</p>
+    </div>
     {item.error && <p className="work-queue__error">{item.error}</p>}
     {item.needsSave && <button type="button" className="secondary-button" onClick={() => void queue.retrySave(item.id)}>Retry project save</button>}
   </li>;
