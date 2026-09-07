@@ -1025,6 +1025,8 @@
 .track-corner {
   display: flex;
   align-items: center;
+  /* Cover the ruler as it scrolls beneath this sticky header. */
+  background: var(--panel);
   padding-left: var(--space-4);
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
