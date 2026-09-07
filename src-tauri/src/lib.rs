@@ -869,7 +869,7 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
         for intent in &reference.intended_use {
             if !matches!(
                 intent.as_str(),
-                "character" | "product" | "location" | "style" | "audio"
+                "character" | "animal" | "product" | "location" | "style" | "audio"
             ) {
                 return Err(format!("Unsupported reference intended use '{intent}'."));
             }
@@ -3571,6 +3571,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         for (category, subcategory) in [
             ("character", "Animation"),
+            ("animal", "Pets"),
             ("product", "Technology"),
             ("location", "Urban"),
             ("style", "Cinematic"),
@@ -4738,7 +4739,7 @@ mod tests {
                 "rejected valid clip status {status}"
             );
         }
-        for intent in ["character", "product", "location", "style", "audio"] {
+        for intent in ["character", "animal", "product", "location", "style", "audio"] {
             let mut config = fixture();
             config.references[0].intended_use = vec![intent.into()];
             assert!(

@@ -138,6 +138,7 @@ function stylePrompt(entry) {
 function promptFor(entry) {
   const description = {
     character: `a tight professional headshot portrait of ${entry.subject}, head and shoulders fully visible, facing the camera, natural neutral expression, eyes tack-sharp with clean symmetrical catchlights, realistic skin texture, flattering three-point portrait lighting with a large soft key at 45 degrees, gentle fill, subtle hair light and controlled highlights, simple light gray seamless studio background`,
+    animal: `a clear animal portrait of ${entry.subject}, whole body visible, species-accurate anatomy and distinctive markings, detailed fur, feathers or scales, natural lighting, simple natural background`,
     product: `a professional full product photograph of ${entry.subject}, the entire product fully visible and centered, accurate geometry and materials, tack-sharp edges and fine surface detail, large diffused softbox key light, clean fill and precise rim separation, controlled reflections, simple light gray seamless studio background`,
     location: `a comprehensive establishing photograph of ${entry.subject}, the full location clearly visible, balanced natural cinematic illumination, crisp foreground, midground and background detail, realistic materials, clean color separation, broad dynamic range with protected highlights and open shadows`,
     style: stylePrompt(entry),
@@ -208,10 +209,10 @@ for (const entry of manifest) {
   }
   if (seenIds.has(entry.id)) throw new Error(`Duplicate reference icon id '${entry.id}'.`);
   if (!entry.name?.trim() || !entry.subject?.trim()) throw new Error(`Reference icon '${entry.id}' needs a name and subject.`);
-  if (!["character", "product", "location", "style"].includes(entry.type)) throw new Error(`Reference icon '${entry.id}' has unsupported type '${entry.type}'.`);
+  if (!["character", "animal", "product", "location", "style"].includes(entry.type)) throw new Error(`Reference icon '${entry.id}' has unsupported type '${entry.type}'.`);
   seenIds.add(entry.id);
 }
-if (requestedType && !["character", "product", "location", "style"].includes(requestedType)) {
+if (requestedType && !["character", "animal", "product", "location", "style"].includes(requestedType)) {
   throw new Error(`Unsupported reference icon type '${requestedType}'.`);
 }
 let entries = requestedId

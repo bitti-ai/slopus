@@ -1,8 +1,8 @@
 import { KNOWN_CHARACTERS } from "./known-characters";
-import { LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
+import { ANIMAL_GROUPS, LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
 import type { ProjectReference } from "./project";
 
-export type ReferenceType = "custom" | "character" | "product" | "location" | "style";
+export type ReferenceType = "custom" | "character" | "animal" | "product" | "location" | "style";
 export type PresetReferenceType = Exclude<ReferenceType, "custom">;
 
 export interface ReferencePreset {
@@ -30,6 +30,7 @@ const withIcon = (preset: ReferencePreset): ReferencePreset => ({ ...preset, ico
 
 export const REFERENCE_TYPES: ReadonlyArray<{ id: PresetReferenceType; label: string }> = [
   { id: "character", label: "Character" },
+  { id: "animal", label: "Animal" },
   { id: "product", label: "Product" },
   { id: "location", label: "Location" },
   { id: "style", label: "Style" },
@@ -95,6 +96,7 @@ const optionsAsPresets = (type: PresetReferenceType, groups: readonly OptionGrou
     prompt: `${option}.`,
   })));
 
+const animalPresets = optionsAsPresets("animal", ANIMAL_GROUPS).map(withIcon);
 const productPresets = optionsAsPresets("product", PRODUCT_GROUPS).map(withIcon);
 const locationPresets = optionsAsPresets("location", LOCATION_GROUPS).map(withIcon);
 const stylePresets = optionsAsPresets("style", STYLE_GROUPS).map(withIcon);
@@ -149,6 +151,7 @@ const curatedCharacterPresets: ReferencePreset[] = ([
 
 export const REFERENCE_PRESETS: readonly ReferencePreset[] = [
   ...knownCharacterPresets,
+  ...animalPresets,
   ...productPresets,
   ...locationPresets,
   ...stylePresets,

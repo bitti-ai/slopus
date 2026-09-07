@@ -12,7 +12,6 @@ const knownSubjects = new Map(KNOWN_CHARACTERS.map(([name, actor, franchise], in
 ]));
 
 const catalog = REFERENCE_PRESETS
-  .filter((preset) => preset.type === "character" || preset.type === "product" || preset.type === "location" || preset.type === "style")
   .map((preset) => ({
     id: preset.id,
     type: preset.type,
