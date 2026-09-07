@@ -219,7 +219,7 @@ function App() {
   );
 
   const queueLauncher = <button className="settings-launcher work-queue-launcher" type="button" onClick={() => setWorkQueueOpen(true)} title="Work Queue" aria-label="Work Queue" aria-haspopup="dialog" aria-expanded={workQueueOpen}>
-    <ListTodo size={22} aria-hidden="true" /><span>Work Queue</span>{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
+    <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
   </button>;
   const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
 
