@@ -31,7 +31,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   const [importError, setImportError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
-  const [creatingReference, setCreatingReference] = useState(false);
   const [pickerType, setPickerType] = useState<PresetReferenceType>("character");
   const [pickerSubcategory, setPickerSubcategory] = useState("all");
   const [presetSearch, setPresetSearch] = useState("");
@@ -57,7 +56,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     return id;
   };
   const openNewReference = () => {
-    setCreatingReference(true);
     setPickerType("character");
     setPickerSubcategory("all");
     setPresetSearch("");
@@ -93,28 +91,16 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
     })) });
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };
-  const openPresetPicker = () => {
-    if (!selected) return;
-    setCreatingReference(false);
-    setPickerType(selectedType === "custom" ? "character" : selectedType);
-    setPickerSubcategory("all");
-    setPresetSearch("");
-    setPresetDialog(true);
-  };
   const createEmptyReference = () => {
     addTextReference(`New ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`, "", pickerType, pickerSubcategory === "all" ? "" : pickerSubcategory);
     setPresetDialog(false);
-    setCreatingReference(false);
   };
   const choosePreset = (preset: ReferencePreset) => {
     const prompt = preset.type === "location"
-      ? composeLocationPrompt(preset, creatingReference ? {} : selectedLocation?.settings ?? {})
+      ? composeLocationPrompt(preset, {})
       : preset.prompt;
-    if (creatingReference) addTextReference(preset.name, prompt, preset.type, preset.subcategory);
-    else if (selected) update(selected.id, { intendedUse: [preset.type], subcategory: preset.subcategory, description: prompt, content: prompt });
-    else return;
+    addTextReference(preset.name, prompt, preset.type, preset.subcategory);
     setPresetDialog(false);
-    setCreatingReference(false);
   };
   const visiblePresets = REFERENCE_PRESETS.filter((preset) => {
     if (preset.type !== pickerType) return false;
@@ -143,6 +129,8 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
             return <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {cover
               ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={cover.relativePath} sourcePath={cover.sourcePath} alt={cover.name} /></span>
+              : ref.iconRelativePath
+                ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
               : presetIcon
                 ? <span className="reference-art reference-art--photo"><img src={presetIcon} alt="" /></span>
               : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
@@ -171,22 +159,23 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </> : <h2>Reference details</h2>}</header>
       <div className="reference-inspector__scroll">
         {selected ? <>
-          <div className={`reference-detail-art${selectedImages.length > 0 || selectedPresetIcon ? " reference-detail-art--photo" : " reference-detail-art--text"}${selectedPresetIcon ? " reference-detail-art--preset" : ""}`}>
+          <div className={`reference-detail-art${selectedImages.length > 0 || selected.iconRelativePath || selectedPresetIcon ? " reference-detail-art--photo" : " reference-detail-art--text"}${selectedPresetIcon || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
             {selectedImages.length > 0
               ? <div className="reference-detail-images">{selectedImages.map((image) => <ReferenceImage key={image.id} folderPath={folderPath} relativePath={image.relativePath} sourcePath={image.sourcePath} alt={image.name} />)}</div>
+              : selected.iconRelativePath
+                ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
               : selectedPresetIcon
                 ? <img className="reference-detail-preset-icon" src={selectedPresetIcon} alt={`${selected.name} reference icon`} />
               : <span><Users size={30} /></span>}
             {/* A caption only where there is no picture to look at. It used
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
-            {selectedImages.length === 0 && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
+            {selectedImages.length === 0 && !selected.iconRelativePath && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
           </div>
           <div className="reference-fields">
             <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
             <div className="reference-fields__actions">
               <button className="secondary-button" onClick={() => void addImages()}><ImagePlus size={16} /> Add images</button>
-              <button className="secondary-button" onClick={openPresetPicker} aria-haspopup="dialog">Choose preset<ChevronRight size={16} /></button>
             </div>
           </div>
           {selectedLocation && <section className="reference-location-settings" aria-label="Location settings">
@@ -218,10 +207,10 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </div>
     </aside>
-    {presetDialog && (creatingReference || selected) && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
+    {presetDialog && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
       <header>
-        <div><h2 id="reference-preset-title">{creatingReference ? "Add a reference" : "Choose a reference type"}</h2><p>Choose a preset or create a new reference, then add a prompt and images.</p></div>
-        <button onClick={() => { setPresetDialog(false); setCreatingReference(false); }} aria-label="Close type picker"><X size={18} /></button>
+        <div><h2 id="reference-preset-title">Add a reference</h2><p>Choose a preset or create a new reference, then add a prompt and images.</p></div>
+        <button onClick={() => setPresetDialog(false)} aria-label="Close type picker"><X size={18} /></button>
       </header>
       <div className="reference-preset-dialog__body">
         <nav aria-label="Reference types">

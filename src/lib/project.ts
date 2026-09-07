@@ -267,6 +267,8 @@ export const projectReferenceSchema = z.object({
   images: z.array(projectReferenceImageSchema).optional(),
   intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
   subcategory: z.string().optional(),
+  // Generated library artwork is not an image conditioning attachment.
+  iconRelativePath: projectRelativePathSchema.optional(),
   createdAt: isoDateSchema,
 }).superRefine((reference, context) => {
   checkOneLocation(reference, context, `Reference '${reference.id}'`);

@@ -1867,6 +1867,7 @@ mod tests {
             images: Vec::new(),
             intended_use: vec!["character".into()],
             subcategory: None,
+            icon_relative_path: None,
             created_at: "2026-01-02T04:00:00.000Z".into(),
         });
         let job = &mut next.generation_jobs[0];

@@ -434,6 +434,7 @@ fn apply_command(
                 images: Vec::new(),
                 intended_use: intended_use.clone(),
                 subcategory: None,
+                icon_relative_path: None,
                 created_at: timestamp.into(),
             });
         }

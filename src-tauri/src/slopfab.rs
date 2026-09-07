@@ -116,6 +116,8 @@ pub struct GenerationRequest {
     pub job_id: String,
     pub prompt: String,
     pub frames: i32,
+    #[serde(default)]
+    pub still_image: bool,
     pub steps: i32,
     /// -1 asks the host to draw a fresh seed for this generation.
     pub seed: i64,
@@ -569,6 +571,9 @@ fn configure_request(
 ) -> Result<(), String> {
     api.set_prompt(handle, &request.prompt)?;
     api.set_frames(handle, request.frames)?;
+    if request.still_image {
+        api.set_still_image(handle)?;
+    }
     api.set_steps(handle, request.steps)?;
     api.set_seed(handle, generation_seed(request.seed)?)?;
     api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
@@ -578,6 +583,9 @@ fn configure_request(
     if include_models {
         api.set_reuse_models(handle, true)?;
         for (id, _, path) in &configuration.models {
+            if request.still_image && *id == 4 {
+                continue;
+            }
             if let Some(path) = path {
                 api.set_model(handle, *id, path)?;
             }
@@ -806,7 +814,8 @@ fn write_reference_icon(
     let request = GenerationRequest {
         job_id: spec.id.clone(),
         prompt: spec.prompt.clone(),
-        frames: 6,
+        frames: 1,
+        still_image: true,
         steps: 30,
         seed: i64::try_from(spec.seed)
             .map_err(|_| format!("Icon '{}' seed is too large.", spec.id))?,
@@ -828,7 +837,7 @@ fn write_reference_icon(
         });
     }
     let output = api.output(generation.0)?;
-    if output.width != 256 || output.height != 256 || output.frames < 1 {
+    if output.width != 256 || output.height != 256 || output.frames != 1 {
         return Err(format!(
             "Icon '{}' returned {}x{} with {} frames.",
             spec.id, output.width, output.height, output.frames
@@ -1044,6 +1053,7 @@ mod ffi {
         set_prompt: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
         set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
+        set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
         set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
@@ -1122,6 +1132,9 @@ mod ffi {
                         "slopfab_request_set_frames",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
                     ),
+                    set_still_image: library
+                        .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_still_image\0")
+                        .ok().map(|symbol| *symbol),
                     set_steps: symbol!(
                         "slopfab_request_set_steps",
                         unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -1258,6 +1271,10 @@ mod ffi {
         }
         pub fn set_frames(&self, r: *mut Request, v: i32) -> Result<(), String> {
             self.error(unsafe { (self.set_frames)(r, v) })
+        }
+        pub fn set_still_image(&self, r: *mut Request) -> Result<(), String> {
+            let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate reference icons.")?;
+            self.error(unsafe { set(r, 1) })
         }
         pub fn set_steps(&self, r: *mut Request, v: i32) -> Result<(), String> {
             self.error(unsafe { (self.set_steps)(r, v) })
@@ -1477,6 +1494,19 @@ mod tests {
     fn stage_ids_are_normalized_without_assuming_an_enum() {
         assert_eq!(stage_name(4), "denoising");
         assert_eq!(stage_name(99), "unknown");
+    }
+
+    #[test]
+    fn installed_dll_resolves_icons_as_one_still_frame_when_present() {
+        if !default_dll_path().is_file() { return; }
+        let request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId": "icon-plan", "prompt": "A red toy car", "frames": 1, "stillImage": true,
+            "steps": 30, "seed": 1, "canvasWidth": 256, "canvasHeight": 256
+        })).unwrap();
+        let plan = resolve_plan(&request, &BTreeMap::new()).unwrap();
+        assert_eq!(plan.aligned_frames, 1);
+        assert_eq!(plan.latent_frames, 1);
+        assert_eq!((plan.canvas_width, plan.canvas_height), (256, 256));
     }
     #[test]
     fn generation_seed_accepts_random_and_non_negative_values() {

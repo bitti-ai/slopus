@@ -79,6 +79,7 @@ export interface SlopfabGenerationRequest {
   jobId: string;
   prompt: string;
   frames: number;
+  stillImage?: boolean;
   steps: number;
   seed: number;
   canvasWidth: number;
@@ -219,6 +220,10 @@ export async function enqueueSlopfabGeneration(request: SlopfabGenerationRequest
 
 export async function cancelSlopfabGeneration(jobId: string): Promise<boolean> {
   return isTauri() ? invoke<boolean>("cancel_slopfab_generation", { jobId }) : true;
+}
+
+export async function saveReferenceIcon(folderPath: string, jobId: string): Promise<string> {
+  return invoke<string>("save_reference_icon", { folderPath, jobId });
 }
 
 function demoTurn(_config: ProjectConfig, prompt: string): AgentTurnResult {
