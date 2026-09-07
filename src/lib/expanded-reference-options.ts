@@ -3,6 +3,17 @@ export interface OptionGroup {
   options: readonly string[];
 }
 
+export const ANIMAL_GROUPS: readonly OptionGroup[] = [
+  { subcategory: "Pets", options: ["Golden retriever", "German shepherd", "Border collie", "Siberian husky", "Tabby cat", "Siamese cat", "Maine coon cat", "Rabbit", "Guinea pig", "Hamster"] },
+  { subcategory: "Farm animals", options: ["Horse", "Pony", "Donkey", "Cow", "Sheep", "Goat", "Pig", "Alpaca", "Llama", "Chicken"] },
+  { subcategory: "Wild mammals", options: ["Lion", "Bengal tiger", "African elephant", "Giraffe", "Zebra", "Gorilla", "Chimpanzee", "Giant panda", "Kangaroo", "Hippopotamus"] },
+  { subcategory: "Forest & Arctic", options: ["Red fox", "Gray wolf", "Brown bear", "Polar bear", "Arctic fox", "Moose", "Reindeer", "Red deer", "Red squirrel", "Hedgehog"] },
+  { subcategory: "Birds", options: ["Bald eagle", "Barn owl", "Peregrine falcon", "Scarlet macaw", "Peacock", "Flamingo", "Toucan", "Hummingbird", "Emperor penguin", "Mute swan"] },
+  { subcategory: "Reptiles & amphibians", options: ["Green iguana", "Chameleon", "Gecko", "Bearded dragon", "King cobra", "Ball python", "Nile crocodile", "Giant tortoise", "Red-eyed tree frog", "Axolotl"] },
+  { subcategory: "Marine life", options: ["Bottlenose dolphin", "Humpback whale", "Orca", "Harbor seal", "Sea otter", "Green sea turtle", "Great white shark", "Manta ray", "Clownfish", "Seahorse"] },
+  { subcategory: "Invertebrates", options: ["Monarch butterfly", "Honeybee", "Ladybug", "Dragonfly", "Praying mantis", "Tarantula", "Octopus", "Moon jellyfish", "Hermit crab", "Starfish"] },
+];
+
 export const PRODUCT_GROUPS: readonly OptionGroup[] = [
   { subcategory: "Technology", options: ["Smartphone", "Laptop", "Tablet", "Smartwatch", "Wireless earbuds", "Camera", "Gaming console", "Desktop computer", "Smart speaker", "VR headset"] },
   { subcategory: "Fashion", options: ["Wristwatch", "Sneaker", "Handbag", "Sunglasses", "Jacket", "Dress", "Backpack", "Boot", "Wallet", "Headphones"] },

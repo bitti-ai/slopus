@@ -3,9 +3,17 @@ import { KNOWN_CHARACTERS } from "./known-characters";
 import { LOCATION_GROUPS } from "./expanded-reference-options";
 import { composeLocationPrompt, locationSelectionFromPrompt, REFERENCE_PRESETS, type PresetReferenceType } from "./reference-presets";
 
-const TYPES: PresetReferenceType[] = ["character", "product", "location", "style"];
+const TYPES: PresetReferenceType[] = ["animal", "character", "product", "location", "style"];
 
 describe("reference preset catalog", () => {
+  it("includes distinct animal presets with ready-to-use descriptions", () => {
+    const animals = REFERENCE_PRESETS.filter((preset) => preset.type === "animal");
+    expect(animals).toHaveLength(80);
+    expect(new Set(animals.map((preset) => preset.name)).size).toBe(80);
+    expect(animals.map((preset) => preset.name)).toEqual(expect.arrayContaining(["Golden retriever", "Bengal tiger", "Emperor penguin", "Octopus"]));
+    expect(animals.every((preset) => preset.prompt === `${preset.name}.`)).toBe(true);
+  });
+
   it("tracks the upstream known-good characters and keeps the other catalogs unique", () => {
     expect(KNOWN_CHARACTERS).toHaveLength(503);
     expect(KNOWN_CHARACTERS).toContainEqual(["Ariana Grande", "Ariana Grande", "Real Person / Celebrity"]);
@@ -31,7 +39,7 @@ describe("reference preset catalog", () => {
     expect(Math.max(...REFERENCE_PRESETS.map((preset) => preset.prompt.length))).toBeLessThanOrEqual(100);
   });
 
-  it("bundles an icon for every concrete visual preset without treating it as a generation reference", () => {
+  it("bundles icons for the existing character, product, location and style presets without treating it as a generation reference", () => {
     const visual = REFERENCE_PRESETS.filter((preset) => preset.type === "character" || preset.type === "product" || preset.type === "location" || preset.type === "style");
     expect(visual).toHaveLength(810);
     expect(visual.every((preset) => typeof preset.icon === "string" && preset.icon.length > 0)).toBe(true);

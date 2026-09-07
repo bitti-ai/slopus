@@ -265,7 +265,7 @@ export const projectReferenceSchema = z.object({
   // written definition can carry any number of images, and an image-only
   // reference is simply a definition whose description is still blank.
   images: z.array(projectReferenceImageSchema).optional(),
-  intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
+  intendedUse: z.array(z.enum(["character", "animal", "product", "location", "style", "audio"])).default([]),
   subcategory: z.string().optional(),
   // Generated library artwork is not an image conditioning attachment.
   iconRelativePath: projectRelativePathSchema.optional(),

@@ -37,7 +37,7 @@ For a response that makes no edit, return exactly one JSON object: {"kind":"answ
 
 For edits, return JSONL only: one compact JSON object per line, followed by one final commit line. Do not wrap the lines in an array or return the project document. The complete command vocabulary is:
 - {"op":"project.set","name"?:string,"prompt"?:string,"targetSeconds"?:integer,"aspectRatio"?:string,"resolution"?:string,"frameRate"?:integer,"backgroundColor"?:string}
-- {"op":"ref.add","id":string,"name":string,"text":string,"use":["character"|"product"|"location"|"style"|"audio",...]}
+- {"op":"ref.add","id":string,"name":string,"text":string,"use":["character"|"animal"|"product"|"location"|"style"|"audio",...]}
 - {"op":"ref.set","id":string,"name"?:string,"text"?:string,"use"?:string[]}
 - {"op":"ref.remove","id":string}; update every scene that uses it first
 - {"op":"scene.add","id":string,"title":string,"seconds":number,"steps"?:integer,"seed"?:integer,"sound"?:string,"music"?:string,"startFrame"?:reference-id}
@@ -70,7 +70,7 @@ Example:
 
 When creating or rewriting scenes, plan reusable visual references before writing the shots:
 - Inventory every recurring visible character, location, product, important prop, vehicle, creature, or other identity whose look must remain consistent. Reuse a matching project reference when one already exists; otherwise add a top-level text reference before adding the scenes.
-- A new ref.add command uses a unique stable id, a clear name, complete text when the user supplied enough detail, and the appropriate use value (such as "character", "location", or "product"). Slopus creates it as a text reference and supplies its timestamp. Commands cannot invent paths or image entries; only existing project JSON may describe real files.
+- A new ref.add command uses a unique stable id, a clear name, complete text when the user supplied enough detail, and the appropriate use value (such as "character", "animal", "location", or "product"). Slopus creates it as a text reference and supplies its timestamp. Commands cannot invent paths or image entries; only existing project JSON may describe real files.
 - A character reference must establish the character's stable identity in enough physical detail to reproduce them: apparent age, build, face, hair, distinguishing features, clothing, footwear, accessories, and the colours/materials of the outfit when relevant. Keep momentary action, pose, expression, and camera direction in the shot instead.
 - A location reference establishes persistent architecture, layout, materials, palette, fixtures, and lighting anchors. A product or prop reference establishes persistent shape, proportions, materials, colours, markings, and branding supplied by the user. Do not fabricate brand details.
 - Every shot that visibly contains one of these subjects must cite the same reference in its action with the exact token @[ref:<reference-id>]. Slopus derives the scene's referenceIds from these tokens. Reuse the same id across shots and scenes; do not re-describe or rename the subject independently in each shot.
@@ -396,7 +396,7 @@ pub(crate) fn validate_agent_scene_conventions(
         }
         if reference.intended_use.is_empty() {
             return Err(format!(
-                "Agent-created reference '{}' needs an intendedUse such as character, location, or product.",
+                "Agent-created reference '{}' needs an intendedUse such as character, animal, location, or product.",
                 reference.id
             ));
         }
@@ -512,7 +512,7 @@ pub(crate) fn validate_agent_scene_conventions(
                 && reference
                     .intended_use
                     .iter()
-                    .any(|usage| matches!(usage.as_str(), "character" | "location" | "product"))
+                    .any(|usage| matches!(usage.as_str(), "character" | "animal" | "location" | "product"))
         }) {
             if !cited_new_references.contains(reference.id.as_str()) {
                 return Err(format!(

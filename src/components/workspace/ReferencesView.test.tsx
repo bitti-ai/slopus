@@ -50,8 +50,22 @@ function setup(initial = project()) {
 }
 
 describe("Reference type presets", () => {
+  it("adds an animal preset from its searchable subcategory", () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const dialog = screen.getByRole("dialog", { name: "Add a reference" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Animal" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Pets" }));
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "retriever" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Golden retriever/ }));
+    expect(state.latest().references[0]).toMatchObject({ name: "Golden retriever", intendedUse: ["animal"], subcategory: "Pets", description: "Golden retriever." });
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("animal");
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("Golden retriever.");
+  });
+
   it.each([
     ["Character", "character", "Animation"],
+    ["Animal", "animal", "Pets"],
     ["Product", "product", "Technology"],
     ["Location", "location", "Urban"],
     ["Style", "style", "Cinematic"],
