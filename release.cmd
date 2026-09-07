@@ -5,6 +5,7 @@ pushd "%~dp0" || exit /b 1
 
 set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
+set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"
 
 rem The generation runtime is built by a separate project. Override with
@@ -53,6 +54,8 @@ if /I "%PACKAGE_ARCH%"=="AMD64" set "PACKAGE_ARCH=x64"
 if /I "%PACKAGE_ARCH%"=="ARM64" set "PACKAGE_ARCH=arm64"
 if /I "%PACKAGE_ARCH%"=="x86" set "PACKAGE_ARCH=x86"
 set "OUTPUT_STEM=Slopus-%APP_VERSION%-windows-%PACKAGE_ARCH%"
+set "OUTPUT_SETUP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-setup.exe"
+set "OUTPUT_MSI=%ARTIFACTS_DIR%\%OUTPUT_STEM%.msi"
 set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
 rem The portable layout is staged straight into the folder the zip is named
 rem after, and kept there afterwards so the build is runnable without unpacking.
@@ -67,10 +70,10 @@ rem binary but never runs the Tauri CLI, so the app keeps its dev configuration:
 rem it points the webview at the dev server on localhost:1420 instead of the
 rem built frontend. The result launches to ERR_CONNECTION_REFUSED on any machine
 rem without a dev server running. The CLI runs the frontend build, embeds dist/
-rem into the binary. --no-bundle skips installers; release.cmd builds those.
+rem into the binary, and produces the installers.
 echo.
-echo [2/5] Building the portable release application...
-call npm run tauri -- build --no-bundle || goto :fail
+echo [2/5] Building the release application and installers...
+call npm run tauri build || goto :fail
 
 if not exist "%RELEASE_EXE%" (
   echo ERROR: Build succeeded but the executable was not found at:
@@ -88,6 +91,27 @@ if errorlevel 1 goto :fail
 echo.
 echo [4/5] Collecting artifacts...
 if not exist "%ARTIFACTS_DIR%" mkdir "%ARTIFACTS_DIR%"
+
+rem Pick the newest bundle of each kind rather than hard-coding Tauri's file
+rem naming, which includes the product name and locale and has changed before.
+set "NSIS_SRC="
+if exist "%BUNDLE_DIR%\nsis" for /f "delims=" %%F in ('dir /b /a-d /o-d "%BUNDLE_DIR%\nsis\*.exe" 2^>nul') do if not defined NSIS_SRC set "NSIS_SRC=%BUNDLE_DIR%\nsis\%%F"
+set "MSI_SRC="
+if exist "%BUNDLE_DIR%\msi" for /f "delims=" %%F in ('dir /b /a-d /o-d "%BUNDLE_DIR%\msi\*.msi" 2^>nul') do if not defined MSI_SRC set "MSI_SRC=%BUNDLE_DIR%\msi\%%F"
+
+if not defined NSIS_SRC (
+  echo ERROR: no NSIS installer was produced under %BUNDLE_DIR%\nsis.
+  goto :fail
+)
+copy /Y "%NSIS_SRC%" "%OUTPUT_SETUP%" >nul || goto :fail
+echo        Installer: %OUTPUT_STEM%-setup.exe
+
+if defined MSI_SRC (
+  copy /Y "%MSI_SRC%" "%OUTPUT_MSI%" >nul || goto :fail
+  echo        MSI:       %OUTPUT_STEM%.msi
+) else (
+  echo        MSI:       not produced - skipping.
+)
 
 rem Portable layout: the executable plus the generation runtime beside it. The
 rem previous folder is removed first so it never mixes two builds.
@@ -124,14 +148,17 @@ powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop
 
 echo.
 echo Package complete.
+echo   %OUTPUT_SETUP%
+if defined MSI_SRC echo   %OUTPUT_MSI%
 echo   %OUTPUT_ZIP%
 echo   %OUTPUT_DIR%\
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
 echo.
-echo The portable app requires WebView2 to be installed already.
-echo Run release.cmd to also build the setup executable and MSI installer.
+echo Install with the setup executable - it installs the WebView2 runtime if the
+echo machine does not already have it. The portable archive assumes WebView2 is
+echo already present.
 echo.
 popd
 exit /b 0
