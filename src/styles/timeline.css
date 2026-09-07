@@ -730,6 +730,26 @@
 .inspector-section input:disabled,
 .inspector-section select:disabled { color: var(--text-faint); cursor: not-allowed; }
 
+.clip-inspector .inspector-section .clip-title__name {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 2px var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: none;
+  font: inherit;
+}
+
+.clip-inspector .inspector-section .clip-title__name:hover,
+.clip-inspector .inspector-section .clip-title__name:focus {
+  border-color: var(--accent-bright);
+  background: var(--panel-2);
+  outline: none;
+}
+
 .field-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;

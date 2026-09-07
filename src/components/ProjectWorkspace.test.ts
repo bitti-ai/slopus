@@ -632,7 +632,7 @@ describe("project workspace timecode", () => {
     expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
   });
 
-  it("keeps the clip inspector without its two old headers", () => {
+  it("uses an editable clip name as the inspector heading", () => {
     const config = withClip(measuredVideo(projectWithMedia(), 40_000), {});
     const onChange = vi.fn();
     const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenGenerator: () => undefined }));
@@ -640,11 +640,18 @@ describe("project workspace timecode", () => {
     expect(container.querySelector(".clip-inspector")).not.toBeNull();
     expect(screen.queryByText("Clip details")).toBeNull();
     expect(container.querySelector(".inspector-summary")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Clip" })).not.toBeNull();
+    const heading = screen.getByRole("heading", { name: "Macro footage" });
+    const name = within(heading).getByRole("textbox", { name: "Clip name" });
+    expect((name as HTMLInputElement).value).toBe("Macro footage");
+    expect(screen.queryByRole("heading", { name: "Clip" })).toBeNull();
 
     fireEvent.change(screen.getByTitle(/^How long this clip lasts/), { target: { value: "8" } });
     const next = wrote(onChange.mock.calls[0][0], config);
     expect(next.timeline.tracks.flatMap((track) => track.clips)[0].durationMs).toBe(8_000);
+    fireEvent.change(name, { target: { value: "Opening detail" } });
+    expect(wrote(onChange.mock.calls.at(-1)![0], config).timeline.tracks.flatMap((track) => track.clips)[0].label).toBe("Opening detail");
+    fireEvent.change(name, { target: { value: "" } });
+    expect(wrote(onChange.mock.calls.at(-1)![0], config).timeline.tracks.flatMap((track) => track.clips)[0].label).toBe("Untitled clip");
   });
 
   /* --- Dragging clips on the timeline --------------------------------------
