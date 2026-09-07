@@ -669,43 +669,38 @@
   text-align: center;
 }
 
-.reference-used-by > div {
+.reference-used-by > button {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 16px;
+  grid-template-columns: minmax(0, 1fr) 16px;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-sm);
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  text-align: left;
 }
 
-.job-link-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
+.reference-used-by > button:hover {
+  border-color: var(--line);
+  background: var(--panel-3);
 }
 
-.job-link-dot--completed {
-  background: var(--success);
-}
-
-.reference-used-by b,
-.reference-used-by small {
-  display: block;
+.reference-used-by > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .reference-used-by b {
+  overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-}
-
-.reference-used-by small {
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-  text-transform: capitalize;
 }
 
 .reference-used-by > p {
