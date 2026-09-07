@@ -141,7 +141,7 @@ describe("Slop output panel", () => {
     app.rerender(view(true));
     const log = screen.getByRole("log", { name: "Slop output" });
     expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Codex status: Processing" })).toHaveClass("agent-provider-light--busy");
+    expect(screen.getByRole("img", { name: "Codex status: Processing" })).toHaveClass("agent-provider--ready");
     expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "2");
     expect(screen.getByRole("combobox", { name: "Agent provider" })).toHaveTextContent("Codex");
     expect(screen.getByRole("combobox", { name: "Agent provider" })).not.toHaveTextContent("Ready");

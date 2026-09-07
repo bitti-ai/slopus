@@ -384,7 +384,7 @@
 
 .agent-busy {
   flex: 0 0 auto;
-  color: var(--accent-bright);
+  color: var(--danger);
   animation: spin 1.2s linear infinite;
 }
 
@@ -517,17 +517,6 @@
   background: var(--text-faint);
 }
 
-/* A solid dot has no visible rotational movement. While the provider is
-   working, turn it into an asymmetric ring so progress reads at a glance. */
-.agent-provider-light--busy i {
-  box-sizing: border-box;
-  border: 2px solid var(--success-line);
-  border-top-color: var(--success);
-  background: transparent;
-  box-shadow: none;
-  animation: spin 0.8s linear infinite;
-}
-
 /* --- Conversation overlay -------------------------------------------------- */
 
 .agent-conversation {
@@ -649,11 +638,6 @@
      These override the global reduced-motion animation reset in base.css. */
   .agent-busy {
     animation-duration: 1.2s !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .agent-provider-light--busy i {
-    animation-duration: 0.8s !important;
     animation-iteration-count: infinite !important;
   }
 
