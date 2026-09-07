@@ -78,7 +78,7 @@
   flex: 1 1 auto;
   margin: 0;
   color: var(--text-primary);
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   letter-spacing: var(--tracking-tight);
@@ -211,10 +211,59 @@
   object-fit: contain;
 }
 
-.reference-detail-art--preset {
+.reference-detail-art.reference-detail-art--preset {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
+}
+
+.reference-detail-art--preset > .reference-image-fallback {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.reference-detail-art .reference-icon-refresh {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--panel-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast);
+}
+
+.reference-detail-art:hover .reference-icon-refresh,
+.reference-detail-art:focus-within .reference-icon-refresh {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.reference-detail-art .reference-icon-refresh:hover:not(:disabled) {
+  background: var(--panel-3);
+  border-color: var(--accent);
+}
+
+.reference-detail-art .reference-icon-refresh:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+@media (hover: none) {
+  .reference-detail-art .reference-icon-refresh {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .reference-detail-images {

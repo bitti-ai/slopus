@@ -96,6 +96,13 @@ export class WorkQueue {
     const session = this.projects.get(projectQueueKey(record));
     return Boolean(session && this.icons.hasActiveProject(session)) || this.items.some((item) => item.projectKey === projectQueueKey(record) && isWorkActive(item));
   }
+  isReferenceIconPending(session: ProjectSession, referenceId: string) {
+    return this.icons.isPending(session, referenceId);
+  }
+  regenerateReferenceIcon(session: ProjectSession, referenceId: string) {
+    if (!isTauri()) throw new Error("Icon generation is available in the desktop app.");
+    this.icons.regenerate(session, referenceId);
+  }
   forgetProject(record: ProjectRecord) {
     if (this.hasActiveProject(record)) throw new Error("Cancel or finish this project's work before deleting it.");
     const session = this.projects.get(projectQueueKey(record));

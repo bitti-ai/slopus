@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, FileText, ImagePlus, Link2, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, ImagePlus, Link2, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -27,9 +27,16 @@ const referenceKindLabel = (reference: ProjectReference) => {
   return `${count} image${count === 1 ? "" : "s"}${isReferenceDescribed(reference) ? " + text" : ""}`;
 };
 
-export function ReferencesView({ config, folderPath, onChange }: { config: ProjectConfig; folderPath: string; onChange: (next: ProjectConfig) => void }) {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, pendingIconIds = new Set<string>() }: {
+  config: ProjectConfig;
+  folderPath: string;
+  onChange: (next: ProjectConfig) => void;
+  onRegenerateIcon?: (referenceId: string) => void;
+  pendingIconIds?: ReadonlySet<string>;
+}) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   const [importError, setImportError] = useState<string | null>(null);
+  const [iconError, setIconError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
   const [pickerType, setPickerType] = useState<PresetReferenceType>("character");
   const [pickerSubcategory, setPickerSubcategory] = useState("all");
@@ -171,6 +178,18 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
             {selectedImages.length === 0 && !selected.iconRelativePath && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
+            {selectedImages.length === 0 && onRegenerateIcon && <button
+              type="button"
+              className="reference-icon-refresh"
+              aria-label="Regenerate reference icon"
+              title={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : selected.description.trim() ? "Regenerate reference icon" : "Add a prompt to generate an icon"}
+              disabled={!selected.description.trim() || pendingIconIds.has(selected.id)}
+              onClick={() => {
+                setIconError(null);
+                try { onRegenerateIcon(selected.id); }
+                catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
+              }}
+            ><RefreshCw size={14} aria-hidden="true" /></button>}
           </div>
           <div className="reference-fields">
             <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
@@ -236,5 +255,6 @@ export function ReferencesView({ config, folderPath, onChange }: { config: Proje
       </div>
     </div></div>}
     {importError && <div className="toast" role="alert"><strong>Couldn’t add image</strong><span>{importError}</span><button onClick={() => setImportError(null)}>Dismiss</button></div>}
+    {iconError && <div className="toast" role="alert"><strong>Couldn’t regenerate icon</strong><span>{iconError}</span><button onClick={() => setIconError(null)}>Dismiss</button></div>}
   </div>;
 }

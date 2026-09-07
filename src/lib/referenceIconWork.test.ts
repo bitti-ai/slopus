@@ -175,3 +175,56 @@ it("uses a distinct composition for every reference type and preserves the user'
   expect(new Set(prompts).size).toBe(5);
   for (const prompt of prompts) expect(prompt).toContain("User description for example.");
 });
+
+it("forces replacement of bundled and generated icons in one batch behind videos", async () => {
+  const preset = REFERENCE_PRESETS.find((preset) => preset.icon)!;
+  const existing = { ...reference("existing", "animal"), iconRelativePath: "references/icons/old.jpg" };
+  const { queue, session } = setup([existing, { ...reference("preset", preset.type), description: preset.prompt }]);
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(requests()).toHaveLength(0);
+  video(queue, session);
+  queue.regenerateReferenceIcon(session, "existing");
+  queue.regenerateReferenceIcon(session, "existing");
+  queue.regenerateReferenceIcon(session, "preset");
+  await flush();
+  expect(requests()).toHaveLength(1);
+  expect(queue.isReferenceIconPending(session, "existing")).toBe(true);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(existing.iconRelativePath);
+  await finish(requests()[0].jobId);
+  expect(requests()[1]).toMatchObject({ stillImage: true, canvasWidth: 256, canvasHeight: 256 });
+  await finish(requests()[1].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(`references/icons/${requests()[1].jobId}.jpg`);
+  expect(queue.isReferenceIconPending(session, "existing")).toBe(false);
+  await finish(requests()[2].jobId);
+  expect(session.getSnapshot().config.references[1].iconRelativePath).toBe(`references/icons/${requests()[2].jobId}.jpg`);
+  expect(queue.getSnapshot().filter((item) => item.kind === "reference-icons")).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(requests()).toHaveLength(3);
+});
+
+it("keeps the previous icon after a failed refresh and allows retrying", async () => {
+  const existing = { ...reference("hero"), iconRelativePath: "references/icons/old.jpg" };
+  const { queue, session } = setup([existing]);
+  queue.regenerateReferenceIcon(session, "hero");
+  await flush();
+  await finish(requests()[0].jobId, "failed", "Render failed");
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(existing.iconRelativePath);
+  expect(queue.isReferenceIconPending(session, "hero")).toBe(false);
+  queue.clearFinished();
+  queue.regenerateReferenceIcon(session, "hero");
+  await flush();
+  await finish(requests()[1].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(`references/icons/${requests()[1].jobId}.jpg`);
+});
+
+it("regenerates with the latest prompt when a refresh result becomes stale", async () => {
+  const { queue, session } = setup([{ ...reference("hero"), iconRelativePath: "references/icons/old.jpg" }]);
+  queue.regenerateReferenceIcon(session, "hero");
+  await flush();
+  session.update((current) => ({ ...current, references: [{ ...current.references[0], description: "Updated animal prompt." }] }));
+  await finish(requests()[0].jobId);
+  expect(saveReferenceIcon).not.toHaveBeenCalled();
+  expect(requests()[1].prompt).toContain("Updated animal prompt.");
+  await finish(requests()[1].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(`references/icons/${requests()[1].jobId}.jpg`);
+});

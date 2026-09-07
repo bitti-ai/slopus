@@ -2,6 +2,7 @@ import { describeDiagnosticError } from "./diagnostics";
 import { releaseRendered } from "./generatedVideo";
 import { isTauri } from "./persistence";
 import type { ProjectSession } from "./projectSession";
+import { referenceImages, type ProjectReference } from "./project";
 import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } from "./runtime";
 import { withEngineSettings } from "./settings";
@@ -18,6 +19,7 @@ interface IconTask {
   nativeId?: string;
   submitted: boolean;
   cancelled: boolean;
+  force?: boolean;
   error?: string;
   needsSave?: boolean;
   finish?: () => void;
@@ -74,28 +76,38 @@ export class ReferenceIconWork {
     for (const task of this.tasks.values()) {
       if (task.session !== session || task.status !== "queued") continue;
       const reference = references.find((reference) => reference.id === task.referenceId);
-      if (!reference || !needsReferenceIcon(reference)) task.status = "skipped";
+      if (!reference || !this.shouldGenerate(reference, task)) task.status = "skipped";
     }
     let added = false;
     for (const reference of references) {
-      if (!needsReferenceIcon(reference)) continue;
       const key = `${session.record.folderPath}::${session.record.config.id}::${reference.id}`;
       const prompt = referenceIconPrompt(reference);
       const previous = this.tasks.get(key);
+      const force = previous?.force && previous.status === "skipped";
+      if (!this.shouldGenerate(reference, { force })) continue;
       if (previous && (previous === this.active || (previous.prompt === prompt && previous.status !== "skipped"))) continue;
-      this.tasks.set(key, { key, session, referenceId: reference.id, name: reference.name, prompt, status: "queued", submitted: false, cancelled: false });
+      this.tasks.set(key, { key, session, referenceId: reference.id, name: reference.name, prompt, status: "queued", submitted: false, cancelled: false, force });
       added = true;
-    }
-    if (added && !this.item) {
-      this.item = {
-        id: `icons-${crypto.randomUUID()}`, kind: "reference-icons", projectKey: "", folderPath: "", projectName: "", sceneId: "",
-        title: "Reference icons", submittedAt: new Date().toISOString(), status: "queued", progress: 0,
-        detail: "Waiting to generate icons", error: null, completionAt: null, cancelling: false, needsSave: false,
-        settings: { frames: 1, steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_SIZE, canvasHeight: REFERENCE_ICON_SIZE },
-      };
     }
     this.publish();
     if (added) this.wake();
+  }
+
+  private shouldGenerate(reference: ProjectReference, task: { force?: boolean }) {
+    return task.force ? Boolean(reference.description.trim()) && referenceImages(reference).length === 0 : needsReferenceIcon(reference);
+  }
+
+  isPending(session: ProjectSession, referenceId: string) {
+    return [...this.tasks.values()].some((task) => task.session === session && task.referenceId === referenceId && ["queued", "generating", "saving"].includes(task.status));
+  }
+
+  regenerate(session: ProjectSession, referenceId: string) {
+    const reference = session.getSnapshot().config.references.find((reference) => reference.id === referenceId);
+    if (!reference || !this.shouldGenerate(reference, { force: true }) || this.isPending(session, referenceId)) return;
+    const key = `${session.record.folderPath}::${session.record.config.id}::${reference.id}`;
+    this.tasks.set(key, { key, session, referenceId, name: reference.name, prompt: referenceIconPrompt(reference), status: "queued", submitted: false, cancelled: false, force: true });
+    this.publish();
+    this.wake();
   }
 
   hasQueued() { return [...this.tasks.values()].some((task) => task.status === "queued"); }
@@ -106,6 +118,14 @@ export class ReferenceIconWork {
   clearFinished(id: string) { if (this.owns(id)) this.item = undefined; }
 
   private publish() {
+    if (this.hasQueued() && !this.item) {
+      this.item = {
+        id: `icons-${crypto.randomUUID()}`, kind: "reference-icons", projectKey: "", folderPath: "", projectName: "", sceneId: "",
+        title: "Reference icons", submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+        detail: "Waiting to generate icons", error: null, completionAt: null, cancelling: false, needsSave: false,
+        settings: { frames: 1, steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_SIZE, canvasHeight: REFERENCE_ICON_SIZE },
+      };
+    }
     if (!this.item) return;
     const tasks = [...this.tasks.values()].filter((task) => task.status !== "skipped");
     const completed = tasks.filter((task) => task.status === "completed").length;
@@ -141,7 +161,7 @@ export class ReferenceIconWork {
       if (task.cancelled) return;
       if (videoWaiting()) { task.status = "queued"; return; }
       const reference = task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
-      if (!reference || !needsReferenceIcon(reference)) { task.status = "skipped"; return; }
+      if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
       task.prompt = referenceIconPrompt(reference);
       task.name = reference.name;
       task.nativeId = `icon-${crypto.randomUUID()}`;
@@ -191,11 +211,11 @@ export class ReferenceIconWork {
     try {
       const reference = task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
       if (task.cancelled) { task.status = "cancelled"; return; }
-      if (!reference || !needsReferenceIcon(reference) || referenceIconPrompt(reference) !== task.prompt) { task.status = "skipped"; return; }
+      if (!reference || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt) { task.status = "skipped"; return; }
       const iconRelativePath = await saveReferenceIcon(task.session.record.folderPath, task.nativeId!);
       let attached = false;
       task.session.update((current) => ({ ...current, references: current.references.map((reference) => {
-        if (reference.id !== task.referenceId || !needsReferenceIcon(reference) || referenceIconPrompt(reference) !== task.prompt) return reference;
+        if (reference.id !== task.referenceId || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt) return reference;
         attached = true;
         return { ...reference, iconRelativePath };
       }) }));
