@@ -11,7 +11,9 @@ export class ProjectSession {
   private writes = Promise.resolve();
   private revision = 0;
   private pending = 0;
+  private savedConfig: ProjectConfig;
   constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
+    this.savedConfig = record.config;
     this.state = { config: record.config, dirty: false, saving: false, saveError: null };
   }
   getSnapshot = () => this.state;
@@ -27,6 +29,11 @@ export class ProjectSession {
     this.publish({ config, dirty: this.state.dirty || dirty });
   };
   dismissError = () => this.publish({ saveError: null });
+  discard = async (): Promise<void> => {
+    await this.writes;
+    this.revision += 1;
+    this.publish({ config: this.savedConfig, dirty: false, saveError: null });
+  };
   save = (): Promise<void> => {
     const revision = this.revision;
     const record = { ...this.record, config: this.state.config };
@@ -35,6 +42,7 @@ export class ProjectSession {
     const write = this.writes.catch(() => undefined).then(() => this.writer(record));
     this.writes = write.then(() => undefined, () => undefined);
     return write.then(() => {
+      this.savedConfig = record.config;
       if (this.revision === revision) this.publish({ dirty: false });
     }).catch((reason) => {
       const detail = describeDiagnosticError(reason);

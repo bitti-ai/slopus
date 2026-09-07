@@ -9,6 +9,7 @@ import { ExportView } from "./workspace/ExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
+import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
 
 export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export";
 
@@ -45,6 +46,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const { config, saving, dirty, saveError } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   const [view, setView] = useState<ProjectView>(initialView);
+  const [leaving, setLeaving] = useState(false);
+  const [savingToLeave, setSavingToLeave] = useState(false);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const knownSceneIds = useRef(new Set(project.config.generationJobs.map((job) => job.id)));
   const projectItems = items.filter((item) => item.projectKey === projectQueueKey(project));
@@ -54,6 +57,15 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const changeConfig = (next: ConfigUpdate) => session.update(next);
   const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => session.update(update, false);
   const save = () => session.save().catch(() => undefined);
+  const leave = async (keepChanges: boolean) => {
+    setSavingToLeave(true);
+    try {
+      if (keepChanges) await session.save();
+      else await session.discard();
+      onBack();
+    } catch { /* The session supplies the save error and keeps the dialog open. */ }
+    finally { setSavingToLeave(false); }
+  };
 
   /* Scene removal can come from the Generator or from Slop replacing the
      project document. Keep derived disk caches honest at this shared boundary
@@ -67,11 +79,12 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   }, [config.generationJobs, project.folderPath]);
 
   return <div className="project-shell">
+    {leaving && <UnsavedProjectDialog name={config.name} busy={savingToLeave} error={saveError} onSave={() => void leave(true)} onDiscard={() => void leave(false)} />}
     <header className="project-topbar">
       <div className="project-topbar__lead">
         <button
           className="icon-button icon-button--strong"
-          onClick={onBack}
+          onClick={() => { if (dirty) setLeaving(true); else onBack(); }}
           aria-label="Back to project library"
           title="Back to your projects"
         ><ArrowLeft size={18} /></button>
