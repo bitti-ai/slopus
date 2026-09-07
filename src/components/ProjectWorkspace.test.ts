@@ -1170,11 +1170,15 @@ describe("project workspace timecode", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const onChange = vi.fn();
     await asDesktopApp([{ name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }], async () => {
-      render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
+      const view = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
       fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
       const dialog = screen.getByRole("dialog", { name: "Add a reference" });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Image" }));
-      fireEvent.click(within(dialog).getByRole("button", { name: "Choose images" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Product" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "New" }));
+      const withReference = onChange.mock.calls[0][0];
+      view.rerender(createElement(ReferencesView, { config: withReference, folderPath: "C:\\Ceramic Lamp", onChange }));
+      onChange.mockClear();
+      fireEvent.click(screen.getByRole("button", { name: "Add images" }));
       await waitFor(() => expect(onChange).toHaveBeenCalled());
     });
 
