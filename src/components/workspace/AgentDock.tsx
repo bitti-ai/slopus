@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, Check, ChevronDown, LoaderCircle, Square } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, LoaderCircle } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
@@ -141,7 +141,7 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
       </div>}
       <div className="agent-dock-row">
         <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}${requestId ? " agent-provider-light--busy" : ""}`} role="img" aria-label={providerStatusLabel}><i /></span>}
+          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel}><i /></span>}
           <textarea
             aria-label={`Ask Slop about ${context}`}
             rows={expanded ? 2 : 1}
@@ -159,9 +159,8 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
           <div className="agent-dock__actions">
             {expanded && <AgentProviderSelector providers={providers} provider={provider} busy={Boolean(requestId)} statusLabel={providerStatusLabel} detail={blockedDetail} onChange={(next) => { setProvider(next); saveAgentProvider(next); }} />}
             {requestId
-              ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><Square size={14} /></button>
+              ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><LoaderCircle className="agent-busy" size={16} aria-hidden="true" /></button>
               : <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>}
-            {requestId && <LoaderCircle className="agent-busy" size={16} />}
           </div>
         </form>
       </div>
@@ -238,7 +237,7 @@ function AgentProviderSelector({ providers, provider, busy, statusLabel, detail,
         } else if (event.key === "Tab") setOpen(false);
       }}
     >
-      <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}${busy ? " agent-provider-light--busy" : ""}`} role="img" aria-label={statusLabel}><i /></span>
+      <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={statusLabel}><i /></span>
       <span className="agent-provider__name">{selected?.label ?? "Choose LLM"}</span>
       <ChevronDown size={14} aria-hidden="true" />
     </button>
