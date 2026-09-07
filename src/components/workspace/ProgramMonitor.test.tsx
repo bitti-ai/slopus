@@ -5,6 +5,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ProgramMonitor } from "./ProgramMonitor";
+import { PreviewSources } from "../../lib/exportPipeline";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -51,6 +52,77 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it.each([0, 2_000])("continues the longer track at its timeline position after the foreground ends (source offset %i)", async (sourceStartMs) => {
+    vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const ready = new WeakSet<HTMLMediaElement>();
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockImplementation(function (this: HTMLMediaElement) {
+      return ready.has(this) ? 4 : 0;
+    });
+    let now = 0;
+    let nextFrameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.set(++nextFrameId, callback);
+      return nextFrameId;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    const advance = async (ms: number) => {
+      await act(async () => {
+        now += ms;
+        const callbacks = [...frames.values()];
+        frames.clear();
+        callbacks.forEach((callback) => callback(now));
+      });
+    };
+    const config = project([clip({ startMs: 0, sourceStartMs: 0, look: { opacity: 50, temperature: 0 } })]);
+    config.assets.push({ ...config.assets[0], id: "asset-long", sourcePath: "D:/rushes/long.mp4" });
+    config.timeline.tracks.push({
+      ...config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)!,
+      id: "long-track",
+      clips: [clip({ id: "long-clip", assetId: "asset-long", trackId: "long-track", startMs: 0, durationMs: 10_000, sourceStartMs })],
+    });
+    const onPlayingChange = vi.fn();
+    function Harness() {
+      const [playhead, setPlayhead] = useState(0);
+      const [playing, setPlaying] = useState(true);
+      return <ProgramMonitor config={config} folderPath="C:\\Film" playheadMs={playhead} playing={playing}
+        onSeek={setPlayhead} onPlayingChange={(value) => { onPlayingChange(value); setPlaying(value); }} />;
+    }
+    const { container } = render(<Harness />);
+    await act(async () => undefined);
+    const video = container.querySelector<HTMLVideoElement>(".program-picture > video")!;
+    expect(container.querySelectorAll("video")).toHaveLength(2);
+    for (const element of container.querySelectorAll("video")) {
+      ready.add(element);
+      fireEvent.loadedMetadata(element);
+      fireEvent.loadedData(element);
+    }
+
+    await advance(4_000);
+    expect(video.getAttribute("src")).toBe("blob:asset-long");
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+    // A browser resets the media position when src changes. Model a delayed
+    // load too: the correct seek must use where playback has reached by then.
+    ready.delete(video);
+    video.currentTime = 0;
+    await advance(500);
+    ready.add(video);
+    fireEvent.loadedMetadata(video);
+    fireEvent.loadedData(video);
+    expect(video.currentTime).toBe((4_500 + sourceStartMs) / 1000);
+    expect(onPlayingChange).not.toHaveBeenCalled();
+
+    await advance(5_000);
+    expect(video.isConnected).toBe(true);
+    expect(onPlayingChange).not.toHaveBeenCalled();
+    await advance(500);
+    expect(onPlayingChange).toHaveBeenCalledWith(false);
+    expect(container.querySelector("video")).toBeNull();
+  });
+
   it("shows move, scale, and rotate widgets after the timeline picture is selected", () => {
     const config = project([clip()]);
     function Harness() {

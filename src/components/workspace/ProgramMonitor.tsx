@@ -260,12 +260,18 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       seekTo(video, target, pendingVideoSeek);
     };
     video.addEventListener("seeked", flush);
-    video.addEventListener("loadeddata", flush);
     return () => {
       video.removeEventListener("seeked", flush);
-      video.removeEventListener("loadeddata", flush);
     };
   }, [url]);
+
+  /* Changing src resets the decoder after the cut's seek may have already
+     reached the previous file. Once the new file loads, seek again using the
+     current playhead, including any time spent waiting for that file. */
+  const syncLoadedVideo = (video: HTMLVideoElement) => {
+    pendingVideoSeek.current = null;
+    if (clip) seekTo(video, sourceTimeMs(clip, positionRef.current) / 1000, pendingVideoSeek);
+  };
 
   /* Play and pause the picture. A media element that is asked to play before it
      has data rejects, which is a promise nobody was awaiting — caught here so a
@@ -424,7 +430,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       muted={videoTrackMuted}
       playsInline
       preload="auto"
-      onLoadedData={() => setReady(true)}
+      onLoadedMetadata={(event) => syncLoadedVideo(event.currentTarget)}
+      onLoadedData={(event) => { syncLoadedVideo(event.currentTarget); setReady(true); }}
       onError={() => setError("This file could not be decoded.")}
     />}
     {asset && isImage(asset) && url && <img ref={imageRef} src={url} alt={clip?.label ?? ""} style={sourceStyle} />}
