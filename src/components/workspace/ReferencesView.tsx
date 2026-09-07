@@ -141,8 +141,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                 ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
               : presetIcon
                 ? <span className="reference-art reference-art--photo"><img src={presetIcon} alt="" /></span>
-              : <span className="reference-copy-art"><FileText size={26} /><em>Text definition</em></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b><small>{referenceKindLabel(ref)}</small></span>{isReferenceDescribed(ref)
+              : <span className="reference-copy-art"><FileText size={26} /></span>}
+            <span className="reference-card__body"><span><b>{ref.name}</b>{(images.length > 0 || ref.kind === "video" || ref.kind === "audio") && <small>{referenceKindLabel(ref)}</small>}</span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
               : <p className="reference-card__incomplete">{images.length > 0
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
