@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, FileText, ImagePlus, Link2, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useMemo, useState } from "react";
 import { isReferenceDescribed, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -27,12 +27,13 @@ const referenceKindLabel = (reference: ProjectReference) => {
   return `${count} image${count === 1 ? "" : "s"}${isReferenceDescribed(reference) ? " + text" : ""}`;
 };
 
-export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, pendingIconIds = new Set<string>() }: {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
   onChange: (next: ProjectConfig) => void;
   onRegenerateIcon?: (referenceId: string) => void;
   pendingIconIds?: ReadonlySet<string>;
+  onOpenGenerator?: (jobId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   const [importError, setImportError] = useState<string | null>(null);
@@ -221,7 +222,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           </section>
           <section className="reference-used-by">
             <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <div key={job.id}><span className={`job-link-dot job-link-dot--${job.status}`} /><div><b>{job.title}</b><small>{job.status} · {job.stage}</small></div><Link2 size={16} /></div>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
+            {jobs.length ? jobs.map((job) => <button type="button" key={job.id} onClick={() => onOpenGenerator?.(job.id)} title={`Open ${job.title}`}><b>{job.title}</b><ChevronRight size={16} aria-hidden="true" /></button>) : <p>No shots use this reference yet. Each new shot picks up the first two it can use from this list, so it will be used once it reaches the top two of those.</p>}
           </section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </div>
