@@ -433,6 +433,7 @@ fn apply_command(
                 source_path: None,
                 images: Vec::new(),
                 intended_use: intended_use.clone(),
+                subcategory: None,
                 created_at: timestamp.into(),
             });
         }
@@ -463,6 +464,9 @@ fn apply_command(
                 reference.content = None;
             }
             if let Some(value) = intended_use {
+                if reference.intended_use != *value {
+                    reference.subcategory = None;
+                }
                 reference.intended_use = value.clone();
             }
         }

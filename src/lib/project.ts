@@ -266,6 +266,7 @@ export const projectReferenceSchema = z.object({
   // reference is simply a definition whose description is still blank.
   images: z.array(projectReferenceImageSchema).optional(),
   intendedUse: z.array(z.enum(["character", "product", "location", "style", "audio"])).default([]),
+  subcategory: z.string().optional(),
   createdAt: isoDateSchema,
 }).superRefine((reference, context) => {
   checkOneLocation(reference, context, `Reference '${reference.id}'`);

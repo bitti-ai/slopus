@@ -28,8 +28,7 @@ const iconForPreset = (id: string): string | undefined =>
 
 const withIcon = (preset: ReferencePreset): ReferencePreset => ({ ...preset, icon: iconForPreset(preset.id) });
 
-export const REFERENCE_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
-  { id: "custom", label: "Text" },
+export const REFERENCE_TYPES: ReadonlyArray<{ id: PresetReferenceType; label: string }> = [
   { id: "character", label: "Character" },
   { id: "product", label: "Product" },
   { id: "location", label: "Location" },
@@ -164,13 +163,16 @@ const presetForReference = (reference: ProjectReference): ReferencePreset | unde
 
 export function referenceType(reference: ProjectReference): ReferenceType {
   const stored = reference.intendedUse.length === 1
-    ? REFERENCE_TYPES.find((type) => type.id !== "custom" && type.id === reference.intendedUse[0])?.id
+    ? REFERENCE_TYPES.find((type) => type.id === reference.intendedUse[0])?.id
     : undefined;
-  return stored && presetForReference(reference)?.type === stored ? stored : "custom";
+  return stored ?? "custom";
 }
 
 export const referenceTypeLabel = (type: ReferenceType): string =>
-  REFERENCE_TYPES.find((candidate) => candidate.id === type)?.label ?? "Text";
+  REFERENCE_TYPES.find((candidate) => candidate.id === type)?.label ?? "Uncategorized";
+
+export const referenceSubcategories = (type: ReferenceType): string[] =>
+  [...new Set(REFERENCE_PRESETS.filter((preset) => preset.type === type).map((preset) => preset.subcategory))];
 
 export const selectedReferencePreset = (reference: ProjectReference): ReferencePreset | undefined => {
   const preset = presetForReference(reference);
