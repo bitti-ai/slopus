@@ -217,5 +217,8 @@ describe("project sessions", () => {
     expect(session.getSnapshot().dirty).toBe(true);
     expect(session.getSnapshot().config.name).toBe("After save");
     expect(writer.mock.calls[0][0].config.name).toBe("Before save");
+    await session.discard();
+    expect(session.getSnapshot().config.name).toBe("Before save");
+    expect(session.getSnapshot().dirty).toBe(false);
   });
 });
