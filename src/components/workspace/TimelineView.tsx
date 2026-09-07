@@ -848,8 +848,13 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
         <aside className="clip-inspector" aria-label="Clip inspector">
           {selected ? <>
             <section className="inspector-section">
-              <h3>Clip</h3>
-              <label><span>Name</span><input value={selected.label} onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })} /></label>
+              <h3 aria-label={selected.label}><input
+                className="clip-title__name"
+                value={selected.label}
+                aria-label="Clip name"
+                title="Rename this clip"
+                onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })}
+              /></h3>
               <div className="field-pair">
                 <label><span>Starts at</span><input value={timecode(selected.startMs).slice(3)} readOnly /></label>
                 <label><span>Lasts</span><input

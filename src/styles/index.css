@@ -45,7 +45,8 @@
   line-height: var(--leading-snug);
 }
 
-:root .reference-inspector .reference-title__name {
+:root .reference-inspector .reference-title__name,
+:root .clip-inspector .clip-title__name {
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
