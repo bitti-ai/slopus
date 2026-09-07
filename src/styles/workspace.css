@@ -520,6 +520,7 @@
 /* --- Conversation overlay -------------------------------------------------- */
 
 .agent-conversation {
+  user-select: text;
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
