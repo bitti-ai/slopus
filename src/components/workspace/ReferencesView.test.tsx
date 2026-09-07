@@ -115,7 +115,7 @@ describe("Reference type presets", () => {
   it("keeps legacy uncategorized references editable", () => {
     setup();
     expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("custom");
-    expect(screen.getByRole("button", { name: "Choose preset" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose preset" })).not.toBeInTheDocument();
     expect(screen.queryByText("Intended use")).not.toBeInTheDocument();
     expect(screen.queryByText(/Select any that apply/)).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("A traveler with a weathered red coat.");
@@ -123,8 +123,8 @@ describe("Reference type presets", () => {
 
   it("chooses one prepared character from the scalable popup", () => {
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Choose preset" }));
-    const dialog = screen.getByRole("dialog", { name: "Choose a reference type" });
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Character" }));
     const groups = within(dialog).getByRole("group", { name: "Character subcategories" });
     expect(within(groups).getByRole("button", { name: "Film" })).toBeInTheDocument();
@@ -145,8 +145,8 @@ describe("Reference type presets", () => {
 
   it("shows a bundled MiniMax icon for an illustrated character preset", () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Choose preset" }));
-    const dialog = screen.getByRole("dialog", { name: "Choose a reference type" });
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Character" }));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "Abby Sciuto" } });
     const preset = within(dialog).getByRole("button", { name: /Abby Sciuto/ });
@@ -154,17 +154,16 @@ describe("Reference type presets", () => {
     expect(preset.querySelector(".reference-preset-icon")).toHaveAttribute("src");
     fireEvent.click(preset);
 
-    // Choosing a preset changes the definition, not the user's own reference
-    // name. The selected preset still supplies the matching artwork.
-    const detailIcon = screen.getByAltText("Hero reference icon");
+    // A built-in preset creates its own reference and supplies its artwork.
+    const detailIcon = screen.getByAltText("Abby Sciuto reference icon");
     expect(detailIcon).toHaveAttribute("src");
     expect(detailIcon.parentElement).toHaveClass("reference-detail-art--preset");
   });
 
   it("searches location templates and allows editing their prompt directly", () => {
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Choose preset" }));
-    const dialog = screen.getByRole("dialog", { name: "Choose a reference type" });
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Location" }));
     const groups = within(dialog).getByRole("group", { name: "Location subcategories" });
     fireEvent.click(within(groups).getByRole("button", { name: "Sci-fi" }));
@@ -217,11 +216,13 @@ describe("Reference type presets", () => {
       description: "Coastal village, at night, in winter.",
       content: "Coastal village, at night, in winter.",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Choose preset" }));
-    const picker = screen.getByRole("dialog", { name: "Choose a reference type" });
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const picker = screen.getByRole("dialog", { name: "Add a reference" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Location" }));
     fireEvent.change(within(picker).getByRole("textbox", { name: "Search reference options" }), { target: { value: "lunar" } });
     fireEvent.click(within(picker).getByRole("button", { name: /Lunar base/ }));
-    expect(restored.latest().references[0].description).toBe("Lunar base, at night, in winter.");
+    expect(restored.latest().references[0].description).toBe("Lunar base.");
+    expect(restored.latest().references[1].description).toBe("Coastal village, at night, in winter.");
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const newPicker = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(newPicker).getByRole("button", { name: "Location" }));

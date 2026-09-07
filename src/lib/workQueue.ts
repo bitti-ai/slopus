@@ -8,10 +8,12 @@ import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { withEngineSettings } from "./settings";
 import { purgeTimelineThumbnails } from "./timelineThumbnails";
+import { ReferenceIconWork } from "./referenceIconWork";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
 export interface WorkItem {
+  kind?: "reference-icons";
   id: string;
   projectKey: string;
   folderPath: string;
@@ -60,6 +62,12 @@ export class WorkQueue {
   private timing = new GenerationTimingEstimator();
   private connections = 0;
   private disconnect: (() => void) | null = null;
+  private icons = new ReferenceIconWork((item) => {
+    this.items = this.items.some((current) => current.id === item.id)
+      ? this.items.map((current) => current.id === item.id ? item : current)
+      : [...this.items, item];
+    this.publish();
+  }, () => { void this.pump(); });
   ready: Promise<void> = Promise.resolve();
 
   constructor(private writer: ProjectWriter = saveProject) {}
@@ -81,21 +89,29 @@ export class WorkQueue {
       session = new ProjectSession({ ...record, config }, this.writer);
       this.projects.set(key, session);
     }
+    this.icons.watch(session);
     return session;
   }
-  hasActiveProject(record: ProjectRecord) { return this.items.some((item) => item.projectKey === projectQueueKey(record) && isWorkActive(item)); }
+  hasActiveProject(record: ProjectRecord) {
+    const session = this.projects.get(projectQueueKey(record));
+    return Boolean(session && this.icons.hasActiveProject(session)) || this.items.some((item) => item.projectKey === projectQueueKey(record) && isWorkActive(item));
+  }
   forgetProject(record: ProjectRecord) {
     if (this.hasActiveProject(record)) throw new Error("Cancel or finish this project's work before deleting it.");
+    const session = this.projects.get(projectQueueKey(record));
+    if (session) this.icons.forget(session);
     this.projects.delete(projectQueueKey(record));
   }
   clearFinished() {
     const cleared = this.items.filter((item) => !isWorkActive(item) && !item.needsSave);
     cleared.forEach((item) => this.work.delete(item.id));
+    cleared.forEach((item) => this.icons.clearFinished(item.id));
     this.items = this.items.filter((item) => isWorkActive(item) || item.needsSave);
     this.publish();
   }
   start = () => {
     this.connections += 1;
+    this.projects.forEach((session) => this.icons.watch(session));
     if (this.connections === 1 && isTauri()) {
       let disposed = false;
       const stops: (() => void)[] = [];
@@ -112,7 +128,7 @@ export class WorkQueue {
     }
     return () => {
       this.connections -= 1;
-      if (this.connections === 0) { this.disconnect?.(); this.disconnect = null; }
+      if (this.connections === 0) { this.disconnect?.(); this.disconnect = null; this.icons.stop(); }
     };
   };
 
@@ -150,8 +166,12 @@ export class WorkQueue {
     this.pumping = true;
     try {
       while (true) {
-        const next = this.items.find((item) => item.status === "queued");
-        if (!next) break;
+        const next = this.items.find((item) => item.status === "queued" && item.kind !== "reference-icons");
+        if (!next) {
+          if (!this.icons.hasQueued()) break;
+          await this.icons.runNext(this.ready, () => this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons"));
+          continue;
+        }
         const work = this.work.get(next.id)!;
         this.patch(work.id, { status: "preparing", detail: "Preparing generation" });
         try {
@@ -176,6 +196,7 @@ export class WorkQueue {
     } finally { this.pumping = false; }
   }
   async cancel(id: string): Promise<void> {
+    if (this.icons.owns(id)) { await this.icons.cancel(); return; }
     const item = this.items.find((candidate) => candidate.id === id);
     const work = this.work.get(id);
     if (!item || !work || !isWorkActive(item) || item.status === "encoding" || item.cancelling) return;
@@ -219,6 +240,7 @@ export class WorkQueue {
     work.finish();
   }
   private progress(event: GenerationTimingProgress) {
+    if (this.icons.progressEvent(event)) return;
     const work = this.work.get(event.jobId);
     const item = this.items.find((candidate) => candidate.id === event.jobId);
     if (!work || !item || !["preparing", "generating"].includes(item.status)) return;
@@ -227,6 +249,7 @@ export class WorkQueue {
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
+    if (this.icons.event(event)) return;
     const work = this.work.get(event.jobId);
     const item = this.items.find((candidate) => candidate.id === event.jobId);
     if (!work || !item) return;
@@ -276,6 +299,7 @@ export class WorkQueue {
     finally { await releaseRendered(work.id); work.finish(); }
   }
   async retrySave(id: string) {
+    if (this.icons.owns(id)) { await this.icons.retrySave(); return; }
     const work = this.work.get(id);
     if (!work) return;
     try { await work.session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: "Video saved" }); }

@@ -211,6 +211,8 @@ struct ReusableReference {
     intended_use: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     subcategory: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    icon_relative_path: Option<String>,
     created_at: String,
 }
 
@@ -792,6 +794,8 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .as_deref()
             .map(normalize_external_path)
             .transpose()?;
+        reference.icon_relative_path = reference.icon_relative_path.as_deref()
+            .map(normalize_project_path).transpose()?;
         if reference.relative_path.is_some() && reference.source_path.is_some() {
             return Err(format!(
                 "Reference '{}' cannot have both a project-relative path and an external source path.",
@@ -2120,6 +2124,7 @@ fn create_project_at_with_references(
                 images: Vec::new(),
                 intended_use: vec!["style".into()],
                 subcategory: None,
+                icon_relative_path: None,
                 created_at: config.created_at.clone(),
             });
             if let Some(job) = config.generation_jobs.first_mut() {
@@ -2566,6 +2571,39 @@ fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
     rendered::summary(&job_id)
 }
 
+/// Save only a true 256x256 still-image result, directly from the DLL's frame
+/// buffer. Icon artwork is stored separately from conditioning attachments.
+#[tauri::command]
+fn save_reference_icon(folder_path: String, job_id: String) -> Result<String, String> {
+    let summary = rendered::summary(&job_id).ok_or("The reference icon is no longer available.")?;
+    if summary.width != 256 || summary.height != 256 || summary.frame_count != 1 {
+        return Err("A reference icon must be a single 256x256 frame.".into());
+    }
+    let rgba = rendered::frame(&job_id, 0)?.ok_or("The reference icon has no image.")?;
+    write_reference_icon_frame(&folder_path, &job_id, &rgba)
+}
+
+fn write_reference_icon_frame(folder_path: &str, job_id: &str, rgba: &[u8]) -> Result<String, String> {
+    if rgba.len() != 256 * 256 * 4 {
+        return Err("The reference icon has an invalid pixel buffer.".into());
+    }
+    let rgb: Vec<u8> = rgba.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect();
+    let mut bytes = Vec::new();
+    jpeg_encoder::Encoder::new(&mut bytes, 95)
+        .encode(&rgb, 256, 256, jpeg_encoder::ColorType::Rgb)
+        .map_err(|error| format!("Could not encode reference icon: {error}"))?;
+    let root = project_root(folder_path)?;
+    let stem = generated_file_stem(job_id)?;
+    let directory = root.join("references").join("icons");
+    fs::create_dir_all(&directory).map_err(|error| format!("Could not create icon directory: {error}"))?;
+    let directory = directory.canonicalize().map_err(|error| error.to_string())?;
+    if !directory.starts_with(&root) {
+        return Err("Reference icons must stay inside the project folder.".into());
+    }
+    export::write_atomically(&directory.join(format!("{stem}.jpg")), &bytes)?;
+    Ok(format!("references/icons/{stem}.jpg"))
+}
+
 /// One frame of a finished render, as RGBA the webview can build a `VideoFrame`
 /// from. A frame at a time because a whole render is hundreds of megabytes and
 /// the encoder only ever wants the next one.
@@ -2783,6 +2821,7 @@ pub fn run() {
             write_timeline_thumbnail,
             purge_timeline_thumbnails,
             generated_summary,
+            save_reference_icon,
             generated_frame,
             generated_audio,
             release_generated_frames,
@@ -3510,6 +3549,24 @@ mod tests {
     }
 
     #[test]
+    fn reference_icon_files_are_256_square_jpegs_confined_to_the_project() {
+        let root = tempfile::tempdir().unwrap();
+        write_project(root.path(), &fixture()).unwrap();
+        let rgba = vec![128; 256 * 256 * 4];
+        let folder = root.path().to_str().unwrap();
+        let relative = write_reference_icon_frame(folder, "icon-test", &rgba).unwrap();
+        assert_eq!(relative, "references/icons/icon-test.jpg");
+        let jpeg = fs::read(root.path().join(&relative)).unwrap();
+        assert_eq!(&jpeg[..2], &[0xff, 0xd8]);
+        assert_eq!(&jpeg[jpeg.len() - 2..], &[0xff, 0xd9]);
+        let frame = jpeg.windows(2).position(|bytes| bytes == [0xff, 0xc0]).unwrap();
+        assert_eq!(u16::from_be_bytes([jpeg[frame + 5], jpeg[frame + 6]]), 256);
+        assert_eq!(u16::from_be_bytes([jpeg[frame + 7], jpeg[frame + 8]]), 256);
+        assert!(write_reference_icon_frame(folder, "../escape", &rgba).is_err());
+        assert!(write_reference_icon_frame(folder, "icon-invalid", &[0; 4]).is_err());
+    }
+
+    #[test]
     fn reference_categories_and_subcategories_survive_project_save() {
         let root = tempfile::tempdir().unwrap();
         for (category, subcategory) in [
@@ -3522,6 +3579,7 @@ mod tests {
             let reference = &mut config.references[0];
             reference.intended_use = vec![category.into()];
             reference.subcategory = Some(subcategory.into());
+            reference.icon_relative_path = Some("references/icons/example.jpg".into());
             reference.description.clear();
             reference.content = None;
             write_project(root.path(), &config).unwrap();
@@ -3529,6 +3587,7 @@ mod tests {
             let reference = &restored.config.references[0];
             assert_eq!(reference.intended_use, vec![category]);
             assert_eq!(reference.subcategory.as_deref(), Some(subcategory));
+            assert_eq!(reference.icon_relative_path.as_deref(), Some("references/icons/example.jpg"));
             assert!(reference.description.is_empty());
             assert!(reference.content.is_none());
         }
@@ -4153,6 +4212,7 @@ mod tests {
             images: Vec::new(),
             intended_use: Vec::new(),
             subcategory: None,
+            icon_relative_path: None,
             created_at: "2026-01-01T00:07:00.000Z".into(),
         });
         assert!(
