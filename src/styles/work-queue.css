@@ -74,6 +74,3 @@
 .work-queue__empty p { margin: 0; font-size: var(--text-sm); }
 .work-queue__spinner { animation: work-queue-spin 1s linear infinite; }
 @keyframes work-queue-spin { to { transform: rotate(360deg); } }
-@media (max-width: 1180px) {
-  .work-queue-launcher > span { display: none; }
-}
