@@ -5,6 +5,7 @@ import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, referenceImages, type ProjectRecord, type ProjectReference } from "./project";
 import { REFERENCE_PRESETS } from "./reference-presets";
 import { referenceIconPrompt } from "./referenceIcons";
+import { loadReferenceIconAutomation, saveReferenceIconAutomation } from "./referenceIconSettings";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, saveReferenceIcon } from "./runtime";
 import { WorkQueue } from "./workQueue";
 
@@ -41,6 +42,7 @@ const video = (queue: WorkQueue, session: ReturnType<WorkQueue["project"]>) => q
 
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); localStorage.clear(); handlers.clear();
+  saveReferenceIconAutomation("enabled");
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: any }) => void) => { handlers.set(name, handler); return () => { handlers.delete(name); }; }) as typeof listen);
   vi.mocked(enqueueSlopfabGeneration).mockResolvedValue(undefined);
@@ -50,6 +52,111 @@ beforeEach(() => {
   vi.mocked(cancelSlopfabGeneration).mockResolvedValue(true);
 });
 afterEach(() => { stop?.(); vi.useRealTimers(); delete (window as any).__TAURI_INTERNALS__; });
+
+it("waits for batch confirmation without blocking video generation", async () => {
+  saveReferenceIconAutomation("ask");
+  const { queue, session } = setup([reference("hero"), reference("place", "location")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(requests()).toHaveLength(0);
+  expect(queue.getIconConfirmationCount()).toBe(2);
+  video(queue, session);
+  await flush();
+  expect(requests()).toHaveLength(1);
+  expect(requests()[0].stillImage).not.toBe(true);
+  queue.answerIconConfirmation(true, false);
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  await finish(requests()[0].jobId);
+  expect(requests()[1].stillImage).toBe(true);
+  await finish(requests()[1].jobId);
+  expect(requests()[2].stillImage).toBe(true);
+  await finish(requests()[2].jobId);
+  expect(loadReferenceIconAutomation()).toBe("ask");
+});
+
+it("cancels a pending batch without repeatedly asking for the same icons", async () => {
+  saveReferenceIconAutomation("ask");
+  const { queue, session } = setup([reference("hero")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  queue.answerIconConfirmation(false, false);
+  session.update((current) => ({ ...current, references: [...current.references] }));
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(requests()).toHaveLength(0);
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  expect(loadReferenceIconAutomation()).toBe("ask");
+  session.update((current) => ({ ...current, references: [...current.references, reference("new")] }));
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(queue.getIconConfirmationCount()).toBe(1);
+});
+
+it("remembers Start and automatically generates subsequent references", async () => {
+  saveReferenceIconAutomation("ask");
+  const { queue, session } = setup([reference("hero")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  queue.answerIconConfirmation(true, true);
+  await flush();
+  expect(loadReferenceIconAutomation()).toBe("enabled");
+  await finish(requests()[0].jobId);
+  session.update((current) => ({ ...current, references: [...current.references, reference("new")] }));
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  expect(requests()).toHaveLength(2);
+  await finish(requests()[1].jobId);
+});
+
+it("remembers Cancel as disabled but still allows manual icon generation", async () => {
+  saveReferenceIconAutomation("ask");
+  const { queue, session } = setup([reference("hero")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  queue.answerIconConfirmation(false, true);
+  expect(loadReferenceIconAutomation()).toBe("disabled");
+  session.update((current) => ({ ...current, references: [...current.references, reference("new")] }));
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  expect(requests()).toHaveLength(0);
+  queue.regenerateReferenceIcon(session, "hero");
+  await flush();
+  expect(requests()).toHaveLength(1);
+  await finish(requests()[0].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toMatch(/\.jpg$/);
+});
+
+it("reacts immediately to disabling and re-enabling automatic generation", async () => {
+  saveReferenceIconAutomation("disabled");
+  const { queue } = setup([reference("hero")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(requests()).toHaveLength(0);
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  saveReferenceIconAutomation("ask");
+  expect(queue.getIconConfirmationCount()).toBe(1);
+  saveReferenceIconAutomation("disabled");
+  expect(queue.getIconConfirmationCount()).toBe(0);
+  await flush();
+  expect(requests()).toHaveLength(0);
+  saveReferenceIconAutomation("ask");
+  expect(queue.getIconConfirmationCount()).toBe(1);
+});
+
+it("disabling automation stops waiting icons but lets the active icon save", async () => {
+  const { session } = setup([reference("hero"), reference("place")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  saveReferenceIconAutomation("disabled");
+  await finish(requests()[0].jobId);
+  expect(requests()).toHaveLength(1);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toMatch(/\.jpg$/);
+  expect(session.getSnapshot().config.references[1].iconRelativePath).toBeUndefined();
+});
+
+it("checks automation again after waiting for the project to save", async () => {
+  const { saved } = setup([reference("hero")]);
+  let finishSave!: () => void;
+  saved.mockImplementationOnce(() => new Promise<undefined>((resolve) => { finishSave = () => resolve(undefined); }));
+  await vi.advanceTimersByTimeAsync(1001);
+  expect(requests()).toHaveLength(0);
+  saveReferenceIconAutomation("disabled");
+  finishSave();
+  await flush();
+  expect(requests()).toHaveLength(0);
+});
 
 it("groups icons across projects and gives waiting videos priority between icons", async () => {
   const { queue, session } = setup([reference("hero")]);

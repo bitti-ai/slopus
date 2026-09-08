@@ -8,6 +8,7 @@ import { saveGeneratedScene } from "./lib/generatedVideo";
 import { listRecentProjects, saveProject } from "./lib/persistence";
 import { createProjectConfig, type ProjectRecord } from "./lib/project";
 import { enqueueSlopfabGeneration, type SlopfabStatus } from "./lib/runtime";
+import { loadReferenceIconAutomation } from "./lib/referenceIconSettings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -29,6 +30,36 @@ beforeEach(() => {
   vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/queued-result.mp4", bytes: 42, note: null });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it("keeps icon confirmation available after returning to the library", async () => {
+  const config = createProjectConfig({ name: "Icon project", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
+  config.references = [{ id: "hero", kind: "text", name: "Hero", description: "A friendly explorer", intendedUse: ["character"], createdAt: "2026-09-08T00:00:00.000Z" }];
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Icon project", config }], unreadable: [] });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Icon project" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Generate reference icons?" }, { timeout: 5000 });
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start generation" }));
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ stillImage: true, canvasWidth: 768, steps: 20 });
+  expect(screen.queryByRole("alertdialog", { name: "Generate reference icons?" })).toBeNull();
+});
+
+it("cancels automatic generation and exposes the remembered choice in Video engine settings", async () => {
+  const config = createProjectConfig({ name: "Cancel icons", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
+  config.references = [{ id: "hero", kind: "text", name: "Hero", description: "A friendly explorer", intendedUse: ["character"], createdAt: "2026-09-08T00:00:00.000Z" }];
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Cancel icons", config }], unreadable: [] });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Open Cancel icons" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Generate reference icons?" }, { timeout: 5000 });
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: /Don't ask again/ }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(loadReferenceIconAutomation()).toBe("disabled");
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(screen.getByRole("checkbox", { name: "Automatic reference icon generation" })).not.toBeChecked();
+});
 
 it("keeps the application queue alive while switching projects and saves results to their original project", async () => {
   const record = (name: string): ProjectRecord => ({ folderPath: `C:/${name}`, config: createProjectConfig({ name, prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 }) });

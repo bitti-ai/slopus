@@ -72,6 +72,8 @@ export class WorkQueue {
 
   constructor(private writer: ProjectWriter = saveProject) {}
   getSnapshot = () => this.items;
+  getIconConfirmationCount = () => this.icons.confirmationCount();
+  answerIconConfirmation = (confirmed: boolean, remember: boolean) => this.icons.answerConfirmation(confirmed, remember);
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish() { this.listeners.forEach((listener) => listener()); }
   private patch(id: string, patch: Partial<WorkItem>) {
@@ -175,7 +177,7 @@ export class WorkQueue {
       while (true) {
         const next = this.items.find((item) => item.status === "queued" && item.kind !== "reference-icons");
         if (!next) {
-          if (!this.icons.hasQueued()) break;
+          if (!this.icons.hasRunnable()) break;
           await this.icons.runNext(this.ready, () => this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons"));
           continue;
         }

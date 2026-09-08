@@ -6,6 +6,7 @@ import { referenceImages, type ProjectReference } from "./project";
 import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_RENDER_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } from "./runtime";
 import { withEngineSettings } from "./settings";
+import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import type { WorkItem } from "./workQueue";
 
 type TaskStatus = "queued" | "generating" | "saving" | "completed" | "failed" | "cancelled" | "skipped";
@@ -20,6 +21,7 @@ interface IconTask {
   submitted: boolean;
   cancelled: boolean;
   force?: boolean;
+  approved?: boolean;
   error?: string;
   needsSave?: boolean;
   finish?: () => void;
@@ -34,11 +36,16 @@ export class ReferenceIconWork {
   private progress = 0;
   private item?: WorkItem;
   private watches = new Map<ProjectSession, () => void>();
+  private stopSettings?: () => void;
 
   constructor(private changed: (item: WorkItem) => void, private wake: () => void) {}
 
   watch(session: ProjectSession) {
     if (!isTauri() || this.watches.has(session)) return;
+    this.stopSettings ??= subscribeReferenceIconAutomation(() => {
+      this.watches.forEach((_stop, watched) => this.scan(watched));
+      this.wake();
+    });
     let references = session.getSnapshot().config.references;
     const schedule = () => {
       clearTimeout(this.timers.get(session));
@@ -62,9 +69,12 @@ export class ReferenceIconWork {
     this.watches.get(session)?.();
     this.watches.delete(session);
     for (const [key, task] of this.tasks) if (task.session === session) this.tasks.delete(key);
+    this.publish();
   }
 
   stop() {
+    this.stopSettings?.();
+    this.stopSettings = undefined;
     this.timers.forEach(clearTimeout);
     this.timers.clear();
     this.watches.forEach((stop) => stop());
@@ -76,7 +86,7 @@ export class ReferenceIconWork {
     for (const task of this.tasks.values()) {
       if (task.session !== session || task.status !== "queued") continue;
       const reference = references.find((reference) => reference.id === task.referenceId);
-      if (!reference || !this.shouldGenerate(reference, task)) task.status = "skipped";
+      if (!reference || !this.shouldGenerate(reference, task) || (!task.force && loadReferenceIconAutomation() === "disabled")) task.status = "skipped";
     }
     let added = false;
     for (const reference of references) {
@@ -84,6 +94,7 @@ export class ReferenceIconWork {
       const prompt = referenceIconPrompt(reference);
       const previous = this.tasks.get(key);
       const force = previous?.force && previous.status === "skipped";
+      if (!force && loadReferenceIconAutomation() === "disabled") continue;
       if (!this.shouldGenerate(reference, { force })) continue;
       if (previous && (previous === this.active || (previous.prompt === prompt && previous.status !== "skipped"))) continue;
       this.tasks.set(key, { key, session, referenceId: reference.id, name: reference.name, prompt, status: "queued", submitted: false, cancelled: false, force });
@@ -111,6 +122,26 @@ export class ReferenceIconWork {
   }
 
   hasQueued() { return [...this.tasks.values()].some((task) => task.status === "queued"); }
+  private canRun(task: IconTask) {
+    const automation = loadReferenceIconAutomation();
+    return task.status === "queued" && (task.force || automation === "enabled" || (automation === "ask" && task.approved));
+  }
+  hasRunnable() { return [...this.tasks.values()].some((task) => this.canRun(task)); }
+  private awaitingConfirmation() {
+    return loadReferenceIconAutomation() === "ask"
+      ? [...this.tasks.values()].filter((task) => task.status === "queued" && !task.force && !task.approved)
+      : [];
+  }
+  confirmationCount() { return this.awaitingConfirmation().length; }
+  answerConfirmation(confirmed: boolean, remember: boolean) {
+    for (const task of this.awaitingConfirmation()) {
+      if (confirmed) task.approved = true;
+      else { task.status = "cancelled"; task.cancelled = true; }
+    }
+    if (remember) saveReferenceIconAutomation(confirmed ? "enabled" : "disabled");
+    this.publish();
+    this.wake();
+  }
   hasActiveProject(session: ProjectSession) {
     return [...this.tasks.values()].some((task) => task.session === session && ["queued", "generating", "saving"].includes(task.status));
   }
@@ -139,6 +170,7 @@ export class ReferenceIconWork {
       status: this.active ? (this.active.status === "saving" ? "encoding" : "generating") : queued ? "queued" : failed.length ? "failed" : tasks.some((task) => task.status === "cancelled") ? "cancelled" : "completed",
       progress: tasks.length ? Math.min(1, (settled + (this.active ? this.progress : 0)) / tasks.length) : 1,
       detail: this.active ? `${this.active.cancelled ? "Cancelling" : this.active.status === "saving" ? "Saving" : "Generating"} ${this.active.name} · ${completed}/${tasks.length} icons saved`
+        : this.confirmationCount() > 0 ? `${this.confirmationCount()} icons awaiting confirmation`
         : queued ? `${completed}/${tasks.length} icons saved · waiting behind videos` : `${completed}/${tasks.length} icons saved`,
       error: failed.length ? failed.map((task) => `${task.name}: ${task.error}`).join("\n") : null,
       cancelling: this.active?.cancelled ?? false,
@@ -148,7 +180,7 @@ export class ReferenceIconWork {
   }
 
   async runNext(ready: Promise<void>, videoWaiting: () => boolean) {
-    const task = [...this.tasks.values()].find((task) => task.status === "queued");
+    const task = [...this.tasks.values()].find((task) => this.canRun(task));
     if (!task) return;
     this.active = task;
     task.status = "generating";
@@ -160,6 +192,8 @@ export class ReferenceIconWork {
       await task.session.save();
       if (task.cancelled) return;
       if (videoWaiting()) { task.status = "queued"; return; }
+      if (!task.force && loadReferenceIconAutomation() === "disabled") { task.status = "skipped"; return; }
+      if (!task.force && !task.approved && loadReferenceIconAutomation() === "ask") { task.status = "queued"; return; }
       const reference = task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
       if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
       task.prompt = referenceIconPrompt(reference);
