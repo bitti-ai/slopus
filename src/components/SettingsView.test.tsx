@@ -36,6 +36,24 @@ describe("the frame the tabs sit in", () => {
 });
 
 describe("the settings screen", () => {
+  it("remembers automatic reference icon generation and confirmation preferences", () => {
+    const view = open();
+    const automatic = () => screen.getByRole("checkbox", { name: "Automatic reference icon generation" }) as HTMLInputElement;
+    const confirmation = () => screen.getByRole("checkbox", { name: "Ask before automatic icon generation" }) as HTMLInputElement;
+    expect(automatic().checked).toBe(true);
+    expect(confirmation().checked).toBe(true);
+    fireEvent.click(confirmation());
+    expect(confirmation().checked).toBe(false);
+    view.unmount();
+    open();
+    expect(confirmation().checked).toBe(false);
+    fireEvent.click(automatic());
+    expect(automatic().checked).toBe(false);
+    expect(screen.queryByRole("checkbox", { name: "Ask before automatic icon generation" })).toBeNull();
+    fireEvent.click(automatic());
+    expect(confirmation().checked).toBe(true);
+  });
+
   it("keeps debug options off by default and remembers the Diagnostics choice", () => {
     const view = open();
     fireEvent.click(tab("Diagnostics"));

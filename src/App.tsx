@@ -1,5 +1,6 @@
 import { WorkQueue, isWorkActive, projectQueueKey } from "./lib/workQueue";
 import { WorkQueuePanel } from "./components/WorkQueuePanel";
+import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerationDialog";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
@@ -36,6 +37,7 @@ function App() {
     return saved;
   }));
   const workItems = useSyncExternalStore(workQueue.subscribe, workQueue.getSnapshot);
+  const iconConfirmationCount = useSyncExternalStore(workQueue.subscribe, workQueue.getIconConfirmationCount);
   const [workQueueOpen, setWorkQueueOpen] = useState(false);
   useEffect(() => workQueue.start(), [workQueue]);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
@@ -222,6 +224,8 @@ function App() {
     <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
   </button>;
   const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
+  const iconConfirmation = iconConfirmationCount > 0 && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
+    ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
 
   if (activeProject) {
     return <>
@@ -230,6 +234,7 @@ function App() {
       {queueLauncher}
       {queuePanel}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {iconConfirmation}
       {exitGuard}
     </>;
   }
@@ -284,6 +289,7 @@ function App() {
       {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
       {settingsOpen && <SettingsView onClose={closeSettings} />}
       {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}
+      {iconConfirmation}
       {exitGuard}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>

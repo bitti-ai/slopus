@@ -433,7 +433,8 @@
 
 /* --- Diagnostics ---------------------------------------------------------- */
 
-.diagnostics-debug-option {
+.diagnostics-debug-option,
+.reference-icon-option {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -445,19 +446,22 @@
   cursor: pointer;
 }
 
-.diagnostics-debug-option input {
+.diagnostics-debug-option input,
+.reference-icon-option input {
   width: 16px;
   height: 16px;
   margin: 0;
   accent-color: var(--accent);
 }
 
-.diagnostics-debug-option b {
+.diagnostics-debug-option b,
+.reference-icon-option b {
   color: var(--text-primary);
   font-size: var(--text-sm);
 }
 
-.diagnostics-debug-option small {
+.diagnostics-debug-option small,
+.reference-icon-option small {
   display: block;
   margin-top: var(--space-1);
   color: var(--text-muted);

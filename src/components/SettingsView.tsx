@@ -13,6 +13,7 @@ import {
   type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplateSettings,
 } from "../lib/settings";
 import { MAX_GENERATION_STEPS } from "../lib/project";
+import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
 import {
   applyTheme, loadTheme, saveTheme, systemTheme, watchSystemTheme,
   type ResolvedTheme, type ThemeChoice,
@@ -50,6 +51,20 @@ const themeOptions: { id: ThemeChoice; label: string; icon: typeof Sun; detail: 
   { id: "light", label: "Light", icon: Sun, detail: () => "Always light, whatever this computer is set to." },
   { id: "dark", label: "Dark", icon: Moon, detail: () => "Always dark, whatever this computer is set to." },
 ];
+
+function ReferenceIconSetting() {
+  const automation = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconAutomation);
+  return <>
+    <label className="reference-icon-option">
+      <input type="checkbox" checked={automation !== "disabled"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "disabled")} aria-labelledby="automatic-reference-icons-label" aria-describedby="automatic-reference-icons-description" />
+      <span><b id="automatic-reference-icons-label">Automatic reference icon generation</b><small id="automatic-reference-icons-description">Generate icons for references without artwork. Turning this off skips waiting automatic icons; an icon already rendering can finish. Manual generation stays available.</small></span>
+    </label>
+    {automation !== "disabled" && <label className="reference-icon-option">
+      <input type="checkbox" checked={automation === "ask"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "enabled")} />
+      <span><b>Ask before automatic icon generation</b></span>
+    </label>}
+  </>;
+}
 
 function AppearanceSetting() {
   const [choice, setChoice] = useState<ThemeChoice>(loadTheme);
@@ -424,6 +439,7 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
             role={editingTemplateId ? "region" : "tabpanel"}
             aria-labelledby={editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
           >
+            {!editingTemplateId && <ReferenceIconSetting />}
             {!editingTemplateId ? <section className="generator-templates" aria-labelledby="generators-heading">
               <header>
                 <div>
