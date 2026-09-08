@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, type ProjectConfig } from "../../lib/project";
 import { ReferencesView } from "./ReferencesView";
+import { referenceIconPrompt } from "../../lib/referenceIcons";
+import { saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+beforeEach(() => localStorage.clear());
 
 afterEach(() => {
   cleanup();
@@ -50,6 +54,54 @@ function setup(initial = project(), onRegenerateIcon = vi.fn(), pendingIconIds =
 }
 
 describe("Reference type presets", () => {
+  it("shows the exact icon regeneration prompt in a debug-only footer dialog", () => {
+    const regenerate = vi.fn();
+    const state = setup(project(), regenerate);
+    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    act(() => saveDebugOptionsEnabled(true));
+    const button = screen.getByRole("button", { name: "Debug Icon Prompt" });
+    expect(button.closest(".reference-inspector")?.lastElementChild).toBe(button.parentElement);
+    button.focus();
+    fireEvent.click(button);
+    const dialog = screen.getByRole("dialog", { name: "Debug Icon Prompt" });
+    expect(dialog.closest("aside")).toBeNull();
+    expect(within(dialog).getByLabelText("The reference icon generation prompt").textContent).toBe(referenceIconPrompt(state.latest().references[0]));
+    expect(within(dialog).getByRole("button", { name: "Close debug icon prompt" })).toHaveFocus();
+    expect(regenerate).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(within(dialog).getByLabelText("The reference icon generation prompt")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+    fireEvent.click(button);
+    act(() => saveDebugOptionsEnabled(false));
+    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+  });
+
+  it("uses the selected reference's latest name, category, subcategory and description", () => {
+    saveDebugOptionsEnabled(true);
+    const initial = project();
+    initial.references.push({ ...initial.references[0], id: "ref-animal", name: "Pet", intendedUse: ["animal"], subcategory: "Pets", description: "A golden retriever." });
+    const state = setup(initial);
+    fireEvent.click(screen.getByRole("button", { name: /Pet A golden retriever/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reference name" }), { target: { value: "Buddy" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "A sleepy golden retriever.\nSoft light." } });
+    fireEvent.click(screen.getByRole("button", { name: "Debug Icon Prompt" }));
+    const prompt = screen.getByLabelText("The reference icon generation prompt");
+    expect(prompt.textContent).toBe(referenceIconPrompt(state.latest().references[1]));
+    expect(prompt.textContent).toContain("animal with its whole body visible");
+    expect(prompt.textContent).toContain("Subcategory: Pets");
+    fireEvent.click(screen.getByRole("button", { name: "Close debug icon prompt" }));
+    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+  });
+
+  it("does not show icon debugging without a selected reference", () => {
+    saveDebugOptionsEnabled(true);
+    setup({ ...project(), references: [] });
+    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+  });
+
   it("requests an icon refresh for the selected reference and disables duplicate requests", () => {
     const regenerate = vi.fn();
     const initial = project();

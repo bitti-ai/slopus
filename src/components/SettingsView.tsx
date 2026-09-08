@@ -219,7 +219,7 @@ function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
   return <>
     <label className="diagnostics-debug-option">
       <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
-      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show the Debug Prompt button in scene settings.</small></span>
+      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and Debug Icon Prompt in reference details.</small></span>
     </label>
     <div className="diagnostics-setting">
       <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
