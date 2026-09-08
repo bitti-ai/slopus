@@ -172,11 +172,11 @@ async function generate(entry, temporaryDirectory, inferenceBackend) {
     "--prompt-file", promptPath,
     "--out", rawBase,
     "--raw",
-    "--resolution", "256x256",
+    "--resolution", "768x768",
     // H3's decoder cannot accept one temporal frame. Six is the smallest legal
     // request and resolves to 22; only frame zero is retained below.
     "--frames", "6",
-    "--steps", "30",
+    "--steps", "20",
     "--seed", String(stableSeed(entry.id)),
     "--inference-backend", inferenceBackend,
     "--attention", inferenceBackend === "cuda" ? "sage2" : "exact",
@@ -187,7 +187,7 @@ async function generate(entry, temporaryDirectory, inferenceBackend) {
   ];
   if (dryRun) args.push("--dry-run");
 
-  if (dryRun) console.log(`\n[${entry.name}] MiniMax H3, 30 steps, ${inferenceBackend}`);
+  if (dryRun) console.log(`\n[${entry.name}] MiniMax H3, 768x768, 20 steps, ${inferenceBackend}`);
   await (dryRun ? run : runQuiet)(settings.executable, args, { cwd: repository });
   if (dryRun) return;
   await run(settings.ffmpeg, [

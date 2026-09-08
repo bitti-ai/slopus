@@ -2,7 +2,8 @@ import { referenceImages, type ProjectReference } from "./project";
 import { referenceType, selectedReferencePreset } from "./reference-presets";
 
 export const REFERENCE_ICON_SIZE = 256;
-export const REFERENCE_ICON_STEPS = 30;
+export const REFERENCE_ICON_RENDER_SIZE = 768;
+export const REFERENCE_ICON_STEPS = 20;
 
 const COMPOSITIONS = {
   character: "A clear head-and-shoulders character portrait. Emphasize recognizable facial features, hair, clothing, and personality against a simple background.",

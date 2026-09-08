@@ -12,6 +12,7 @@ mod agent;
 mod agent_commands;
 mod diagnostics;
 mod export;
+mod reference_icons;
 mod rendered;
 mod slopfab;
 
@@ -2576,22 +2577,15 @@ fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
 #[tauri::command]
 fn save_reference_icon(folder_path: String, job_id: String) -> Result<String, String> {
     let summary = rendered::summary(&job_id).ok_or("The reference icon is no longer available.")?;
-    if summary.width != 256 || summary.height != 256 || summary.frame_count != 1 {
-        return Err("A reference icon must be a single 256x256 frame.".into());
+    if summary.width != reference_icons::RENDER_SIZE || summary.height != reference_icons::RENDER_SIZE || summary.frame_count != 1 {
+        return Err("A reference icon must be a single 768x768 frame.".into());
     }
     let rgba = rendered::frame(&job_id, 0)?.ok_or("The reference icon has no image.")?;
     write_reference_icon_frame(&folder_path, &job_id, &rgba)
 }
 
 fn write_reference_icon_frame(folder_path: &str, job_id: &str, rgba: &[u8]) -> Result<String, String> {
-    if rgba.len() != 256 * 256 * 4 {
-        return Err("The reference icon has an invalid pixel buffer.".into());
-    }
-    let rgb: Vec<u8> = rgba.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect();
-    let mut bytes = Vec::new();
-    jpeg_encoder::Encoder::new(&mut bytes, 95)
-        .encode(&rgb, 256, 256, jpeg_encoder::ColorType::Rgb)
-        .map_err(|error| format!("Could not encode reference icon: {error}"))?;
+    let bytes = reference_icons::encode_jpeg(rgba)?;
     let root = project_root(folder_path)?;
     let stem = generated_file_stem(job_id)?;
     let directory = root.join("references").join("icons");
@@ -3552,11 +3546,16 @@ mod tests {
     fn reference_icon_files_are_256_square_jpegs_confined_to_the_project() {
         let root = tempfile::tempdir().unwrap();
         write_project(root.path(), &fixture()).unwrap();
-        let rgba = vec![128; 256 * 256 * 4];
+        let rgba = vec![128; 768 * 768 * 4];
         let folder = root.path().to_str().unwrap();
         let relative = write_reference_icon_frame(folder, "icon-test", &rgba).unwrap();
         assert_eq!(relative, "references/icons/icon-test.jpg");
         let jpeg = fs::read(root.path().join(&relative)).unwrap();
+        let mut expected = Vec::new();
+        jpeg_encoder::Encoder::new(&mut expected, 95)
+            .encode(&vec![128; 256 * 256 * 3], 256, 256, jpeg_encoder::ColorType::Rgb)
+            .unwrap();
+        assert_eq!(jpeg, expected);
         assert_eq!(&jpeg[..2], &[0xff, 0xd8]);
         assert_eq!(&jpeg[jpeg.len() - 2..], &[0xff, 0xd9]);
         let frame = jpeg.windows(2).position(|bytes| bytes == [0xff, 0xc0]).unwrap();

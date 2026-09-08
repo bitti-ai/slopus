@@ -3,7 +3,7 @@ import { releaseRendered } from "./generatedVideo";
 import { isTauri } from "./persistence";
 import type { ProjectSession } from "./projectSession";
 import { referenceImages, type ProjectReference } from "./project";
-import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
+import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_RENDER_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } from "./runtime";
 import { withEngineSettings } from "./settings";
 import type { WorkItem } from "./workQueue";
@@ -123,7 +123,7 @@ export class ReferenceIconWork {
         id: `icons-${crypto.randomUUID()}`, kind: "reference-icons", projectKey: "", folderPath: "", projectName: "", sceneId: "",
         title: "Reference icons", submittedAt: new Date().toISOString(), status: "queued", progress: 0,
         detail: "Waiting to generate icons", error: null, completionAt: null, cancelling: false, needsSave: false,
-        settings: { frames: 1, steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_SIZE, canvasHeight: REFERENCE_ICON_SIZE },
+        settings: { frames: 1, steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE },
       };
     }
     if (!this.item) return;
@@ -168,7 +168,7 @@ export class ReferenceIconWork {
       const done = new Promise<void>((resolve) => { task.finish = resolve; });
       await enqueueSlopfabGeneration({
         jobId: task.nativeId, prompt: task.prompt, stillImage: true, frames: 1,
-        steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_SIZE, canvasHeight: REFERENCE_ICON_SIZE, referencePaths: [],
+        steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE, referencePaths: [],
       }, withEngineSettings(task.session.getSnapshot().config));
       task.submitted = true;
       if (task.cancelled) await this.cancelNative(task);

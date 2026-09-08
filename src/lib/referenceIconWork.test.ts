@@ -60,7 +60,8 @@ it("groups icons across projects and gives waiting videos priority between icons
   expect(queue.getSnapshot().filter((item) => item.kind === "reference-icons")).toHaveLength(1);
   expect(queue.hasActiveProject(second.record)).toBe(true);
   await finish(requests()[0].jobId);
-  expect(requests()[1]).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 256, canvasHeight: 256, steps: 30 });
+  expect(requests()[1]).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 768, canvasHeight: 768, steps: 20 });
+  expect(queue.getSnapshot().find((item) => item.kind === "reference-icons")?.settings).toMatchObject({ canvasWidth: 768, canvasHeight: 768, steps: 20 });
   expect(requests()[1].prompt).toContain("User description for hero.");
   video(queue, second);
   await finish(requests()[1].jobId);
@@ -191,7 +192,7 @@ it("forces replacement of bundled and generated icons in one batch behind videos
   expect(queue.isReferenceIconPending(session, "existing")).toBe(true);
   expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(existing.iconRelativePath);
   await finish(requests()[0].jobId);
-  expect(requests()[1]).toMatchObject({ stillImage: true, canvasWidth: 256, canvasHeight: 256 });
+  expect(requests()[1]).toMatchObject({ stillImage: true, canvasWidth: 768, canvasHeight: 768, steps: 20 });
   await finish(requests()[1].jobId);
   expect(session.getSnapshot().config.references[0].iconRelativePath).toBe(`references/icons/${requests()[1].jobId}.jpg`);
   expect(queue.isReferenceIconPending(session, "existing")).toBe(false);

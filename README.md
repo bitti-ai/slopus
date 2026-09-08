@@ -64,14 +64,15 @@ The web fallback seeds three deterministic showcase projects on first launch. Re
 ### Reference icons
 
 Custom references with a prompt and no existing artwork automatically receive
-256×256 JPG icons through SlopFab's dedicated still-image mode. Category-specific
+256×256 JPG icons, generated at 768×768 with 20 steps through SlopFab's dedicated
+still-image mode, then downscaled and encoded at JPEG quality 95. Category-specific
 compositions include the user's prompt. All icon work appears in one Work Queue
 entry, and waiting video generations run before the next icon. Generated icons
 are saved under `references/icons/` in the project and are not sent to the video
 engine as image attachments. Built-in presets are added as new references from
 the Add a reference dialog.
 
-`npm run reference-icons` renders every missing character, product, location, and style preset with MiniMax H3 at 30 steps. Its DLL backend uses the dedicated still-image mode and writes a high-quality 256×256 JPEG without creating an intermediate video or audio file. Character entries use controlled headshot lighting; product and location entries use a complete-subject view; style entries use a representative composition with lighting and rendering tailored to the named style.
+`npm run reference-icons` renders every missing character, product, location, and style preset with MiniMax H3 at 768×768 and 20 steps. Its DLL backend uses the dedicated still-image mode, downsamples each 3×3 pixel block to produce a 256×256 icon, and encodes it at JPEG quality 95 without creating an intermediate video or audio file. Character entries use controlled headshot lighting; product and location entries use a complete-subject view; style entries use a representative composition with lighting and rendering tailored to the named style.
 
 SlopFab, Cargo, and FFmpeg must be installed. The script uses the development paths under `D:\Projects\slopfab` by default; `SLOPFAB_EXE`, `SLOPFAB_TRANSFORMER`, `SLOPFAB_TEXT_ENCODER`, `SLOPFAB_VIDEO_VAE`, `SLOPFAB_AUDIO_VAE`, `SLOPFAB_BACKEND`, `CARGO_EXE`, and `FFMPEG_EXE` can override them. Use `node scripts/generate-reference-icons.mjs --id=<preset-id> --force` to regenerate one entry.
 
