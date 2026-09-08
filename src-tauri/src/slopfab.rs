@@ -816,11 +816,11 @@ fn write_reference_icon(
         prompt: spec.prompt.clone(),
         frames: 1,
         still_image: true,
-        steps: 30,
+        steps: crate::reference_icons::STEPS,
         seed: i64::try_from(spec.seed)
             .map_err(|_| format!("Icon '{}' seed is too large.", spec.id))?,
-        canvas_width: 256,
-        canvas_height: 256,
+        canvas_width: crate::reference_icons::RENDER_SIZE as i32,
+        canvas_height: crate::reference_icons::RENDER_SIZE as i32,
         reference_paths: Vec::new(),
     };
     let handle = RequestHandle::new(api)?;
@@ -837,17 +837,15 @@ fn write_reference_icon(
         });
     }
     let output = api.output(generation.0)?;
-    if output.width != 256 || output.height != 256 || output.frames != 1 {
+    let render_size = crate::reference_icons::RENDER_SIZE;
+    if output.width != render_size as i32 || output.height != render_size as i32 || output.frames != 1 {
         return Err(format!(
             "Icon '{}' returned {}x{} with {} frames.",
             spec.id, output.width, output.height, output.frames
         ));
     }
-    let rgba = api.frame_rgba8(generation.0, 0, 256, 256)?;
-    let rgb = rgba
-        .chunks_exact(4)
-        .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
-        .collect::<Vec<_>>();
+    let rgba = api.frame_rgba8(generation.0, 0, render_size, render_size)?;
+    let jpeg = crate::reference_icons::encode_jpeg(&rgba)?;
     if let Some(parent) = spec.destination.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!(
@@ -856,20 +854,12 @@ fn write_reference_icon(
             )
         })?;
     }
-    let encoder = jpeg_encoder::Encoder::new_file(&spec.destination, 100).map_err(|error| {
+    std::fs::write(&spec.destination, jpeg).map_err(|error| {
         format!(
             "Could not create icon '{}': {error}",
             spec.destination.display()
         )
-    })?;
-    encoder
-        .encode(&rgb, 256, 256, jpeg_encoder::ColorType::Rgb)
-        .map_err(|error| {
-            format!(
-                "Could not encode icon '{}': {error}",
-                spec.destination.display()
-            )
-        })
+    })
 }
 
 pub fn generate_reference_icon_batch(
@@ -1501,12 +1491,12 @@ mod tests {
         if !default_dll_path().is_file() { return; }
         let request: GenerationRequest = serde_json::from_value(serde_json::json!({
             "jobId": "icon-plan", "prompt": "A red toy car", "frames": 1, "stillImage": true,
-            "steps": 30, "seed": 1, "canvasWidth": 256, "canvasHeight": 256
+            "steps": 20, "seed": 1, "canvasWidth": 768, "canvasHeight": 768
         })).unwrap();
         let plan = resolve_plan(&request, &BTreeMap::new()).unwrap();
         assert_eq!(plan.aligned_frames, 1);
         assert_eq!(plan.latent_frames, 1);
-        assert_eq!((plan.canvas_width, plan.canvas_height), (256, 256));
+        assert_eq!((plan.canvas_width, plan.canvas_height), (768, 768));
     }
     #[test]
     fn generation_seed_accepts_random_and_non_negative_values() {
