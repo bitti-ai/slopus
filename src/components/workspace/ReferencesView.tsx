@@ -1,6 +1,6 @@
 import { BookOpen, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { isReferenceDescribed, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
 import {
   composeLocationPrompt,
@@ -17,6 +17,9 @@ import {
 import { LOCATION_SETTING_GROUPS } from "../../lib/expanded-reference-options";
 import { isTauri } from "../../lib/persistence";
 import { ReferenceImage } from "./ReferenceImage";
+import { DebugPromptDialog } from "./DebugPromptDialog";
+import { referenceIconPrompt } from "../../lib/referenceIcons";
+import { loadDebugOptionsEnabled, subscribeDebugOptions } from "../../lib/settings";
 
 /** What a reference IS, in a word. This replaced the file path in both places
  *  it used to be printed: a path is a fact about the disk, not about the
@@ -36,6 +39,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   onOpenGenerator?: (jobId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
+  const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
+  const [showDebugIconPrompt, setShowDebugIconPrompt] = useState(false);
+  useEffect(() => setShowDebugIconPrompt(false), [selectedId, debugEnabled]);
   const [importError, setImportError] = useState<string | null>(null);
   const [iconError, setIconError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
@@ -226,7 +232,17 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           </section>
         </> : <div className="reference-empty"><BookOpen size={26} /><b>Select a reference</b><p>Pick one from the library, or add a new one, to edit its definition and see which generations use it.</p></div>}
       </div>
+      {debugEnabled && selected && <div className="debug-prompt">
+        <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" aria-expanded={showDebugIconPrompt} onClick={() => setShowDebugIconPrompt(true)}>Debug Icon Prompt</button>
+      </div>}
     </aside>
+    {debugEnabled && showDebugIconPrompt && selected && <DebugPromptDialog
+      title="Debug Icon Prompt"
+      promptLabel="The reference icon generation prompt"
+      sceneTitle={selected.name}
+      segments={[{ kind: "brief", value: referenceIconPrompt(selected) }]}
+      onClose={() => setShowDebugIconPrompt(false)}
+    />}
     {presetDialog && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
       <header>
         <div><h2 id="reference-preset-title">Add a reference</h2><p>Choose a preset or create a new reference, then add a prompt and images.</p></div>

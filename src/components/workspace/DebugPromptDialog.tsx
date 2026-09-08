@@ -3,10 +3,12 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { PromptSegment } from "../../lib/project";
 
-export function DebugPromptDialog({ sceneTitle, segments, onClose }: {
+export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debug Prompt", promptLabel = "The compiled MiniMax H3 prompt" }: {
   sceneTitle: string;
   segments: PromptSegment[];
   onClose: () => void;
+  title?: string;
+  promptLabel?: string;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const prompt = useRef<HTMLPreElement>(null);
@@ -37,11 +39,11 @@ export function DebugPromptDialog({ sceneTitle, segments, onClose }: {
   }}>
     <section className="debug-prompt-dialog" role="dialog" aria-modal="true" aria-labelledby="debug-prompt-title" aria-describedby="debug-prompt-scene">
       <header className="debug-prompt-dialog__header">
-        <div><h2 id="debug-prompt-title">Debug Prompt</h2><p id="debug-prompt-scene">{sceneTitle}</p></div>
-        <button ref={closeButton} type="button" className="icon-button icon-button--strong" aria-label="Close debug prompt" onClick={onClose}><X size={18} /></button>
+        <div><h2 id="debug-prompt-title">{title}</h2><p id="debug-prompt-scene">{sceneTitle}</p></div>
+        <button ref={closeButton} type="button" className="icon-button icon-button--strong" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}><X size={18} /></button>
       </header>
       {/* Render compiler segments directly to preserve the exact engine prompt. */}
-      <pre ref={prompt} tabIndex={0} className="compiled-prompt__text" aria-label="The compiled MiniMax H3 prompt">{segments.map((segment, index) =>
+      <pre ref={prompt} tabIndex={0} className="compiled-prompt__text" aria-label={promptLabel}>{segments.map((segment, index) =>
         <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
     </section>
   </div>, document.body);
