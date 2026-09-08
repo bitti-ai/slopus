@@ -39,12 +39,7 @@
 }
 
 :root .generator-panel .job-title__name,
-:root .generator-panel .shot-title__name {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
+:root .generator-panel .shot-title__name,
 :root .reference-inspector .reference-title__name,
 :root .clip-inspector .clip-title__name {
   font-size: var(--text-md);
