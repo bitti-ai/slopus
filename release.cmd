@@ -8,6 +8,16 @@ set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"
 
+rem Keep the private signing key outside the repository. CI can supply its own
+rem TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD instead.
+if not defined TAURI_SIGNING_PRIVATE_KEY if exist "%USERPROFILE%\.tauri\slopus-updater.key" set "TAURI_SIGNING_PRIVATE_KEY=%USERPROFILE%\.tauri\slopus-updater.key"
+if not defined TAURI_SIGNING_PRIVATE_KEY (
+  echo ERROR: Set TAURI_SIGNING_PRIVATE_KEY before building a signed release.
+  echo        See docs/updater.md for signing key setup.
+  goto :fail
+)
+node scripts\updater-manifest.mjs --check || goto :fail
+
 rem The generation runtime is built by a separate project. Override with
 rem   set SLOPFAB_DIR=...\build\Release
 rem before running if it lives somewhere else.
@@ -104,14 +114,18 @@ if not defined NSIS_SRC (
   goto :fail
 )
 copy /Y "%NSIS_SRC%" "%OUTPUT_SETUP%" >nul || goto :fail
+copy /Y "%NSIS_SRC%.sig" "%OUTPUT_SETUP%.sig" >nul || goto :fail
 echo        Installer: %OUTPUT_STEM%-setup.exe
 
 if defined MSI_SRC (
   copy /Y "%MSI_SRC%" "%OUTPUT_MSI%" >nul || goto :fail
+  copy /Y "%MSI_SRC%.sig" "%OUTPUT_MSI%.sig" >nul || goto :fail
   echo        MSI:       %OUTPUT_STEM%.msi
 ) else (
   echo        MSI:       not produced - skipping.
 )
+
+node scripts\updater-manifest.mjs || goto :fail
 
 rem Portable layout: the executable plus the generation runtime beside it. The
 rem previous folder is removed first so it never mixes two builds.
@@ -123,6 +137,7 @@ if exist "%OUTPUT_DIR%" (
 )
 mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
+> "%OUTPUT_DIR%\slopus-portable" echo Portable distribution - update by downloading a new portable ZIP.
 
 set "SLOPFAB_BUNDLED=no"
 if exist "%SLOPFAB_DIR%\slopfab.dll" (
@@ -149,6 +164,8 @@ powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop
 echo.
 echo Package complete.
 echo   %OUTPUT_SETUP%
+echo   %OUTPUT_SETUP%.sig
+echo   %ARTIFACTS_DIR%\latest.json
 if defined MSI_SRC echo   %OUTPUT_MSI%
 echo   %OUTPUT_ZIP%
 echo   %OUTPUT_DIR%\

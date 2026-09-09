@@ -99,6 +99,7 @@ if exist "%OUTPUT_DIR%" (
 )
 mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
+> "%OUTPUT_DIR%\slopus-portable" echo Portable distribution - update by downloading a new portable ZIP.
 
 set "SLOPFAB_BUNDLED=no"
 if exist "%SLOPFAB_DIR%\slopfab.dll" (
