@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "lucide-react": "^0.468.0",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^2.4.1",

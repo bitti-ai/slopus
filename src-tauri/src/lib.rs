@@ -2728,6 +2728,17 @@ fn reveal_diagnostic_log() -> Result<diagnostics::DiagnosticLogInfo, String> {
     diagnostics::reveal_log()
 }
 
+/// Portable distributions carry a marker because Windows updates launch an
+/// installer and cannot replace a portable folder in place.
+#[tauri::command]
+fn app_updater_enabled() -> bool {
+    !cfg!(debug_assertions)
+        && std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| !dir.join("slopus-portable").exists()))
+            .unwrap_or(false)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2784,7 +2795,10 @@ pub fn run() {
             }
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            app_updater_enabled,
             write_diagnostic_log,
             diagnostic_log_info,
             reveal_diagnostic_log,

@@ -29,6 +29,11 @@ folder and matching ZIP under `artifacts/`, without creating installers.
 produced, portable folder, and ZIP. Both scripts install locked dependencies
 and build the production app before collecting outputs.
 
+Installed releases check for updates automatically and offer **Settings → Updates**
+to install and restart. `release.cmd` signs installers and generates the GitHub
+Releases update manifest. See [desktop update setup and publishing](docs/updater.md)
+for the signing key, release steps, and portable build behavior.
+
 ## Application icons
 
 `marketing/icon.png` is the source artwork for the application icon, browser
