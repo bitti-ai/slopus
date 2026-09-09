@@ -17,7 +17,7 @@ const COMPOSITIONS = {
 export function referenceIconPrompt(reference: ProjectReference): string {
   const description = reference.description.trim();
   const visual = [
-    `${deriveH3Style(description)}, square composition, recognizable at 256 by 256 pixels.`,
+    `${deriveH3Style(description)}, square composition.`,
     COMPOSITIONS[referenceType(reference)],
     "The camera holds a static shot of a single still image.",
     "Follow the reference description's visual medium and details. No captions, lettering, watermarks, borders, or collage panels.",
