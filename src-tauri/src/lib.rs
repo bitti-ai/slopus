@@ -16,7 +16,7 @@ mod reference_icons;
 mod rendered;
 mod slopfab;
 
-pub use slopfab::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
+pub use slopfab::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
 const PROJECT_FILE_NAME: &str = "slopus.json";
 /// What the file was called before, newest first. Folders written by earlier

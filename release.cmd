@@ -18,10 +18,7 @@ if not defined TAURI_SIGNING_PRIVATE_KEY (
 )
 node scripts\updater-manifest.mjs --check || goto :fail
 
-rem The generation runtime is built by a separate project. Override with
-rem   set SLOPFAB_DIR=...\build\Release
-rem before running if it lives somewhere else.
-if not defined SLOPFAB_DIR set "SLOPFAB_DIR=D:\Projects\slopfab\build\Release"
+set "SLOPFAB_DIR=%ROOT_DIR%\lib\slopfab"
 
 where.exe npm.cmd >nul 2>nul || (
   echo ERROR: npm was not found on PATH.
@@ -139,19 +136,9 @@ mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
 > "%OUTPUT_DIR%\slopus-portable" echo Portable distribution - update by downloading a new portable ZIP.
 
-set "SLOPFAB_BUNDLED=no"
-if exist "%SLOPFAB_DIR%\slopfab.dll" (
-  rem Beside Slopus.exe, not in a subfolder. That is where the app looks,
-  rem so there is nothing left for anyone to configure - and slopfab.dll is
-  rem loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its dependencies have to
-  rem sit in the same folder as it anyway.
-  copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\" >nul || goto :fail
-  set "SLOPFAB_BUNDLED=yes"
-  echo        Runtime:   slopfab.dll included.
-) else (
-  echo        Runtime:   slopfab not found at %SLOPFAB_DIR% - shipping without it.
-  echo                   The app still runs; it reports the generator as unavailable.
-)
+rem Match the installer's resource layout: one DLL beside Slopus.exe.
+copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\slopfab.dll" >nul || goto :fail
+echo        Runtime:   slopfab.dll included.
 
 call :write_readme "%OUTPUT_DIR%\README.txt"
 echo        Folder:    %OUTPUT_STEM%-portable\
@@ -189,11 +176,7 @@ exit /b 0
 >>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.
 >>"%~1" echo.
 >>"%~1" echo VIDEO GENERATION
-if /I "%SLOPFAB_BUNDLED%"=="yes" (
-  >>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe.
-) else (
-  >>"%~1" echo   The runtime is not included. Editing still works.
-)
+>>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe.
 >>"%~1" echo   Model weights are not included. Set their paths in Settings.
 exit /b 0
 

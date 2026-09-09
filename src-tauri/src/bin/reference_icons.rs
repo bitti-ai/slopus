@@ -1,4 +1,4 @@
-use slopus_lib::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
+use slopus_lib::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 use std::{env, fs, path::PathBuf};
 
 fn required(name: &str) -> Result<String, String> {
@@ -16,7 +16,7 @@ fn run() -> Result<(), String> {
     generate_reference_icon_batch(
         &specs,
         &ReferenceIconBatchConfig {
-            dll_path: PathBuf::from(required("SLOPFAB_EXE")?).with_file_name("slopfab.dll"),
+            dll_path: env::var_os("SLOPFAB_DLL").map(PathBuf::from).unwrap_or_else(default_dll_path),
             transformer: required("SLOPFAB_TRANSFORMER")?.into(),
             text_encoder: required("SLOPFAB_TEXT_ENCODER")?.into(),
             video_vae: required("SLOPFAB_VIDEO_VAE")?.into(),
