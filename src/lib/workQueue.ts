@@ -72,6 +72,16 @@ export class WorkQueue {
 
   constructor(private writer: ProjectWriter = saveProject) {}
   getSnapshot = () => this.items;
+  updateBlockReason = (): string | null => {
+    if (this.items.some(isWorkActive) || this.icons.confirmationCount() > 0) {
+      return "Finish or cancel queued work before installing an update.";
+    }
+    if (this.items.some((item) => item.needsSave) || [...this.projects.values()].some((session) => {
+      const state = session.getSnapshot();
+      return state.dirty || state.saving || state.saveError;
+    })) return "Save your project changes and generated videos before installing an update.";
+    return null;
+  };
   getIconConfirmationCount = () => this.icons.confirmationCount();
   answerIconConfirmation = (confirmed: boolean, remember: boolean) => this.icons.answerConfirmation(confirmed, remember);
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
