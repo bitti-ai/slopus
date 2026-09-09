@@ -10,7 +10,8 @@ const repository = resolve(scriptDirectory, "..");
 const outputDirectory = join(repository, "src", "assets", "reference-icons");
 
 const defaults = {
-  executable: "D:\\Projects\\slopfab\\build\\Release\\slopfab.exe",
+  executable: "slopfab",
+  dll: join(repository, "lib", "slopfab", "slopfab.dll"),
   transformer: "D:\\Projects\\slopfab\\weights\\transformer\\MiniMax_H3_FL2VA_pruned_nvfp4.safetensors",
   textEncoder: "D:\\Projects\\slopfab\\weights\\text_encoder\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
   videoVae: "D:\\Projects\\slopfab\\weights\\vae\\video_vae_nf4.safetensors",
@@ -20,12 +21,12 @@ const defaults = {
 
 const settings = {
   executable: process.env.SLOPFAB_EXE || defaults.executable,
+  dll: process.env.SLOPFAB_DLL || defaults.dll,
   transformer: process.env.SLOPFAB_TRANSFORMER || defaults.transformer,
   textEncoder: process.env.SLOPFAB_TEXT_ENCODER || defaults.textEncoder,
   videoVae: process.env.SLOPFAB_VIDEO_VAE || defaults.videoVae,
   audioVae: process.env.SLOPFAB_AUDIO_VAE || defaults.audioVae,
   cargo: process.env.CARGO_EXE || defaults.cargo,
-  ffmpeg: process.env.FFMPEG_EXE || "ffmpeg",
 };
 
 const force = process.argv.includes("--force");
@@ -47,20 +48,6 @@ function run(command, args, options = {}) {
   });
 }
 
-function runQuiet(command, args, options = {}) {
-  return new Promise((accept, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, ...options });
-    let output = "";
-    child.stdout.on("data", (chunk) => { output = `${output}${chunk}`.slice(-12_000); });
-    child.stderr.on("data", (chunk) => { output = `${output}${chunk}`.slice(-12_000); });
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
-      if (code === 0) accept();
-      else reject(new Error(`${command} stopped with ${signal ? `signal ${signal}` : `exit code ${code}`}.\n${output}`));
-    });
-  });
-}
-
 function loadCatalog() {
   const runner = join(repository, "node_modules", "vite-node", "vite-node.mjs");
   const helper = join(scriptDirectory, "reference-icon-catalog.ts");
@@ -78,8 +65,8 @@ function backend() {
   if (process.env.SLOPFAB_BACKEND === "cuda" || process.env.SLOPFAB_BACKEND === "vulkan") {
     return process.env.SLOPFAB_BACKEND;
   }
-  const devices = spawnSync(settings.executable, ["devices"], { encoding: "utf8", windowsHide: true });
-  return devices.status === 0 && /^device\s+\d+/m.test(devices.stdout || "") ? "cuda" : "vulkan";
+  // The native DLL probes CUDA 13/12 and falls back to Vulkan itself.
+  return "cuda";
 }
 
 function stylePrompt(entry) {
@@ -160,11 +147,9 @@ function stableSeed(id) {
   return Number.parseInt(createHash("sha256").update(id).digest("hex").slice(0, 8), 16);
 }
 
-async function generate(entry, temporaryDirectory, inferenceBackend) {
-  const destination = join(outputDirectory, `${entry.id}.jpg`);
+async function previewGeneration(entry, temporaryDirectory, inferenceBackend) {
   const promptPath = join(temporaryDirectory, `${entry.id}.txt`);
   const rawBase = join(temporaryDirectory, `${entry.id}.mp4`);
-  const y4mPath = join(temporaryDirectory, `${entry.id}.y4m`);
   await writeFile(promptPath, promptFor(entry), "utf8");
 
   const args = [
@@ -173,8 +158,8 @@ async function generate(entry, temporaryDirectory, inferenceBackend) {
     "--out", rawBase,
     "--raw",
     "--resolution", "768x768",
-    // H3's decoder cannot accept one temporal frame. Six is the smallest legal
-    // request and resolves to 22; only frame zero is retained below.
+    // The CLI dry-run validates the smallest legal video request; actual icons
+    // use the DLL's still-image mode through the Rust worker below.
     "--frames", "6",
     "--steps", "20",
     "--seed", String(stableSeed(entry.id)),
@@ -185,20 +170,10 @@ async function generate(entry, temporaryDirectory, inferenceBackend) {
     "--vae", settings.videoVae,
     "--audio-vae", settings.audioVae,
   ];
-  if (dryRun) args.push("--dry-run");
+  args.push("--dry-run");
 
-  if (dryRun) console.log(`\n[${entry.name}] MiniMax H3, 768x768, 20 steps, ${inferenceBackend}`);
-  await (dryRun ? run : runQuiet)(settings.executable, args, { cwd: repository });
-  if (dryRun) return;
-  await run(settings.ffmpeg, [
-    "-hide_banner", "-loglevel", "error", "-y",
-    "-i", y4mPath,
-    "-frames:v", "1",
-    "-vf", "scale=256:256:flags=lanczos",
-    "-pix_fmt", "yuvj444p",
-    "-q:v", "1",
-    destination,
-  ]);
+  console.log(`\n[${entry.name}] MiniMax H3, 768x768, 20 steps, ${inferenceBackend}`);
+  await run(settings.executable, args, { cwd: repository });
 }
 
 const manifest = loadCatalog();
@@ -249,7 +224,7 @@ try {
     pending.push(entry);
   }
   if (dryRun) {
-    for (const entry of pending) await generate(entry, temporaryDirectory, inferenceBackend);
+    for (const entry of pending) await previewGeneration(entry, temporaryDirectory, inferenceBackend);
   } else if (pending.length > 0) {
     const specs = pending.map((entry) => ({
       id: entry.id,
@@ -268,7 +243,7 @@ try {
     const executable = join(repository, "src-tauri", "target", "debug", "reference_icons.exe");
     const environment = {
       ...process.env,
-      SLOPFAB_EXE: settings.executable,
+      SLOPFAB_DLL: settings.dll,
       SLOPFAB_TRANSFORMER: settings.transformer,
       SLOPFAB_TEXT_ENCODER: settings.textEncoder,
       SLOPFAB_VIDEO_VAE: settings.videoVae,

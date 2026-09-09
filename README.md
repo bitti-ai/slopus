@@ -15,6 +15,12 @@ For the native desktop shell, install the [Tauri prerequisites](https://v2.tauri
 npm run tauri dev
 ```
 
+The Windows x64 SlopFab runtime is included as [slopfab.dll](lib/slopfab/slopfab.dll)
+through Git LFS. Run `git lfs pull` after cloning. Development builds, installers,
+and portable packages place this DLL beside `Slopus.exe`; no external SlopFab
+checkout is needed. Model weights and GPU drivers/toolkits remain separate.
+Only `slopfab.dll` is bundled; Slopus does not require FFmpeg or companion files.
+
 Tests and production validation:
 
 ```sh
@@ -86,6 +92,12 @@ icon already rendering finish. Manual icon generation remains available.
 
 `npm run reference-icons` renders every missing character, product, location, and style preset with MiniMax H3 at 768×768 and 20 steps. Its DLL backend uses the dedicated still-image mode, downsamples each 3×3 pixel block to produce a 256×256 icon, and encodes it at JPEG quality 95 without creating an intermediate video or audio file. Character entries use controlled headshot lighting; product and location entries use a complete-subject view; style entries use a representative composition with lighting and rendering tailored to the named style.
 
-SlopFab, Cargo, and FFmpeg must be installed. The script uses the development paths under `D:\Projects\slopfab` by default; `SLOPFAB_EXE`, `SLOPFAB_TRANSFORMER`, `SLOPFAB_TEXT_ENCODER`, `SLOPFAB_VIDEO_VAE`, `SLOPFAB_AUDIO_VAE`, `SLOPFAB_BACKEND`, `CARGO_EXE`, and `FFMPEG_EXE` can override them. Use `node scripts/generate-reference-icons.mjs --id=<preset-id> --force` to regenerate one entry.
+The reference icon batch uses the vendored `lib/slopfab/slopfab.dll` and requires
+Cargo and model weights. `SLOPFAB_DLL` can explicitly override the runtime;
+`SLOPFAB_TRANSFORMER`, `SLOPFAB_TEXT_ENCODER`, `SLOPFAB_VIDEO_VAE`,
+`SLOPFAB_AUDIO_VAE`, `SLOPFAB_BACKEND`, and `CARGO_EXE` override the other settings.
+Model paths still default to the development weights under `D:\Projects\slopfab`.
+The optional `--dry-run` CLI path requires `slopfab` on PATH or `SLOPFAB_EXE`.
+Use `node scripts/generate-reference-icons.mjs --id=<preset-id> --force` to regenerate one entry.
 
 The batch defaults to two GPU workers. Set `REFERENCE_ICON_WORKERS=1` or pass `--workers=1` on a lower-memory card. Use `--type=style` to generate or replace only style icons; `--shard=1/2` selects the first alternating half for a resumable recovery pass.

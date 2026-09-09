@@ -17,24 +17,17 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 const DLL_FILE_NAME: &str = "slopfab.dll";
-/// Where the packaged build puts the runtime while it is being developed. Used
-/// only when the DLL is NOT beside the executable, so a `cargo run` out of the
-/// source tree still finds it.
-const DEVELOPMENT_DLL_PATH: &str = r"D:\Projects\slopfab\build\Release\slopfab.dll";
-
-/// The runtime ships beside Slopus.exe and is loaded from there — there is
-/// no path for anyone to configure and no way for one to go stale. slopfab.dll
-/// is loaded with LOAD_WITH_ALTERED_SEARCH_PATH, so its own dependencies sit in
-/// that folder too, which is the same reason a subfolder never bought anything.
+/// Tauri stages the repository's runtime resources in development and release
+/// builds. Installers and portable folders use the same relative layout.
 pub fn default_dll_path() -> PathBuf {
-    if let Some(beside_exe) = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join(DLL_FILE_NAME)))
-        .filter(|path| path.is_file())
-    {
-        return beside_exe;
-    }
-    DEVELOPMENT_DLL_PATH.into()
+    let executable = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Slopus.exe"));
+    let directory = executable.parent().unwrap_or_else(|| Path::new("."));
+    // Cargo test executables live one level below the staged resources.
+    #[cfg(test)]
+    let directory = if directory.file_name().is_some_and(|name| name == "deps") {
+        directory.parent().unwrap_or(directory)
+    } else { directory };
+    directory.join(DLL_FILE_NAME)
 }
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;
@@ -418,7 +411,7 @@ impl Configuration {
         Self {
             // `dllPath` is no longer written by the app and has no settings UI.
             // It is still READ so a project or a test that carries one keeps
-            // working; with none, the runtime is found beside the executable.
+            // working; with none, use the DLL beside the executable.
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             models: [
                 (0, "transformer", option("transformer")),
@@ -1461,24 +1454,21 @@ mod tests {
         assert_eq!(ComputePlatform::Vulkan.attention(), "exact");
     }
 
-    /// Under `cargo test` the executable is a test harness in target/debug, so
-    /// this resolves to the development path — which is exactly the build this
-    /// test is here to check.
     #[test]
-    fn installed_development_dll_reports_a_compatible_api_when_present() {
-        if default_dll_path().is_file() {
-            let runtime = status(&BTreeMap::new());
-            assert_ne!(runtime.state, "runtimeMissing", "{}", runtime.detail);
-            assert_ne!(runtime.state, "incompatible", "{}", runtime.detail);
-            assert!(runtime
-                .version
-                .as_deref()
-                .is_some_and(|value| value.starts_with("1.")));
-            assert!(matches!(
-                runtime.platform,
-                Some("CUDA 13" | "CUDA 12" | "Vulkan")
-            ));
-        }
+    #[cfg(windows)]
+    fn bundled_dll_reports_a_compatible_api() {
+        assert!(default_dll_path().is_file(), "The build must stage slopfab.dll beside the executable.");
+        let runtime = status(&BTreeMap::new());
+        assert_ne!(runtime.state, "runtimeMissing", "{}", runtime.detail);
+        assert_ne!(runtime.state, "incompatible", "{}", runtime.detail);
+        assert!(runtime
+            .version
+            .as_deref()
+            .is_some_and(|value| value.starts_with("1.")));
+        assert!(matches!(
+            runtime.platform,
+            Some("CUDA 13" | "CUDA 12" | "Vulkan")
+        ));
     }
     #[test]
     fn stage_ids_are_normalized_without_assuming_an_enum() {
