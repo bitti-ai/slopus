@@ -101,7 +101,7 @@ describe("the settings screen", () => {
   it("swaps panels when a tab is chosen, and follows the arrow keys", () => {
     open();
     expect(screen.getAllByRole("tab").map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Video engine", "Agents", "Appearance", "Diagnostics",
+      "Video engine", "Agents", "Appearance", "Diagnostics", "Updates",
     ]);
     fireEvent.click(tab("Appearance"));
     expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();

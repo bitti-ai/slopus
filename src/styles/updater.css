@@ -1,0 +1,9 @@
+.update-panel { display: grid; gap: var(--space-4); }
+.update-panel h2, .update-panel p { margin: 0; }
+.update-panel p { font-size: var(--text-base); line-height: var(--leading-normal); }
+.update-panel__notes { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 240px; overflow: auto; }
+.update-panel__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.update-notice { position: fixed; right: var(--space-6); bottom: var(--space-6); z-index: 30; }
+.update-progress { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg); }
+.update-progress .update-panel { width: min(480px, 90vw); padding: var(--space-6); background: var(--panel); border-radius: var(--radius-lg); }
+.update-progress progress { width: 100%; }

@@ -12,6 +12,8 @@ import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
+import { UpdatePanel, UpdateProgress } from "./components/UpdatePanel";
+import { AppUpdater } from "./lib/updater";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
 import { chooseAndOpenProject, createProject, deleteProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
@@ -57,6 +59,20 @@ function App() {
      the engine paths, and the Generator would otherwise go on reporting the
      missing weights the user just pointed it at until they reopened it. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"engine" | "updates">("engine");
+  const [updater] = useState(() => new AppUpdater());
+  const updateState = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
+  useEffect(() => { void updater.start(); }, [updater]);
+  const updateGuard = useRef<() => string | null>(() => null);
+  updateGuard.current = () => activeProject
+    ? "Close your project before installing an update."
+    : loading || busy || deletingProject || newProjectOpen || projectToDelete
+      ? "Finish the current project action before installing an update."
+      : workQueue.updateBlockReason();
+  const updateBlockReason = useCallback(() => updateGuard.current(), []);
+  const updatePanel = <UpdatePanel updater={updater} blockReason={updateBlockReason} />;
+  const updateNotice = ["available", "restart"].includes(updateState.stage) && !settingsOpen
+    ? <button className="secondary-button update-notice" onClick={() => { setSettingsInitialTab("updates"); setSettingsOpen(true); }}>{updateState.stage === "restart" ? "Restart to finish updating Slopus" : `Slopus ${updateState.version} is available`}</button> : null;
   const [settingsRevision, setSettingsRevision] = useState(0);
   const closeSettings = () => { setSettingsOpen(false); setSettingsRevision((value) => value + 1); };
   /* What is installed on this computer. Probed ONCE here rather than every
@@ -159,6 +175,7 @@ function App() {
   }, [projects, query]);
 
   const openFromFolder = async () => {
+    setBusy(true);
     setError(null);
     try {
       const project = await chooseAndOpenProject();
@@ -169,6 +186,8 @@ function App() {
     } catch (reason) {
       logFailure("project.open_failed", reason);
       setError({ title: "Couldn’t open that folder", detail: describe(reason) });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -215,7 +234,7 @@ function App() {
      paths it holds are what makes generation work at all, and finding out they
      are wrong happens inside a project, not in the library. */
   const settingsLauncher = (
-    <button className="settings-launcher" type="button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">
+    <button className="settings-launcher" type="button" onClick={() => { setSettingsInitialTab("engine"); setSettingsOpen(true); }} title="Settings" aria-label="Settings">
       <Settings size={22} aria-hidden="true" />
     </button>
   );
@@ -233,7 +252,9 @@ function App() {
       {settingsLauncher}
       {queueLauncher}
       {queuePanel}
-      {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
+      {updateNotice}
+      <UpdateProgress updater={updater} />
       {iconConfirmation}
       {exitGuard}
     </>;
@@ -287,7 +308,9 @@ function App() {
       {queueLauncher}
       {queuePanel}
       {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
-      {settingsOpen && <SettingsView onClose={closeSettings} />}
+      {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
+      {updateNotice}
+      <UpdateProgress updater={updater} />
       {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}
       {iconConfirmation}
       {exitGuard}

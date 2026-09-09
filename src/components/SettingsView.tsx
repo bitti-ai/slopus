@@ -1,5 +1,5 @@
 import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -248,14 +248,15 @@ const TABS = [
   { id: "llms", label: "Agents" },
   { id: "appearance", label: "Appearance" },
   { id: "diagnostics", label: "Diagnostics" },
+  { id: "updates", label: "Updates" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-export function SettingsView({ onClose }: { onClose: () => void }) {
+export function SettingsView({ onClose, updates, initialTab = "engine" }: { onClose: () => void; updates?: ReactNode; initialTab?: TabId }) {
   /* The engine first: this screen exists because those paths have to be set
      before anything can be rendered, and its status line answers "is Slopus
      ready?" without a click. */
-  const [tab, setTab] = useState<TabId>("engine");
+  const [tab, setTab] = useState<TabId>(initialTab);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
@@ -406,6 +407,9 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
         </div>}
 
         <div className="settings-view__body">
+          {tab === "updates" && <section className="settings-section" id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates">
+            {updates ?? <p>Updates are available in the desktop app.</p>}
+          </section>}
           {tab === "llms" && <section
             className="settings-section"
             id="settings-panel-llms"

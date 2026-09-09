@@ -25,6 +25,7 @@
 @import "./references.css";
 @import "./export.css";
 @import "./exit-guard.css";
+@import "./updater.css";
 
 /* Body text entry uses one reading size. Editable inspector headings keep
    their own hierarchy below. */

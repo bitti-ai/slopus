@@ -47,6 +47,14 @@ const finish = async (queue: WorkQueue, id: string) => {
 };
 
 describe("application work queue", () => {
+  it("blocks app updates for unsaved sessions and allows them after a successful save", async () => {
+    const { queue, first } = setup();
+    expect(queue.updateBlockReason()).toBeNull();
+    first.update((config) => ({ ...config, name: "Unsaved title" }));
+    expect(queue.updateBlockReason()).toContain("Save your project");
+    await first.save();
+    expect(queue.updateBlockReason()).toBeNull();
+  });
   it("isolates identical scene IDs across projects and freezes inputs before any asynchronous preparation", async () => {
     const { queue, first, second } = setup();
     saveEngineSettings({ ...EMPTY_ENGINE_SETTINGS, transformer: "C:/original-model" });
