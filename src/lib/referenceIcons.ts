@@ -1,4 +1,4 @@
-import { referenceImages, type ProjectReference } from "./project";
+import { deriveH3Style, referenceImages, type ProjectReference } from "./project";
 import { referenceType, selectedReferencePreset } from "./reference-presets";
 
 export const REFERENCE_ICON_SIZE = 256;
@@ -15,14 +15,23 @@ const COMPOSITIONS = {
 };
 
 export function referenceIconPrompt(reference: ProjectReference): string {
-  return [
-    "Create one square reference-library icon, composed to remain recognizable at 256 by 256 pixels.",
+  const description = reference.description.trim();
+  const visual = [
+    `${deriveH3Style(description)}, square composition, recognizable at 256 by 256 pixels.`,
     COMPOSITIONS[referenceType(reference)],
+    "The camera holds a static shot of a single still image.",
     "Follow the reference description's visual medium and details. No captions, lettering, watermarks, borders, or collage panels.",
     `Reference name: ${reference.name}`,
     reference.subcategory ? `Subcategory: ${reference.subcategory}` : "",
-    `Reference description:\n${reference.description.trim()}`,
-  ].filter(Boolean).join("\n\n");
+    `Reference description:\n${description}`,
+  ].filter(Boolean).join("\n");
+  // H3's base three-field format also applies to text-only still-image jobs.
+  // Icons have no audio, so both audio fields explicitly use N/A.
+  return [
+    `integrated_multimodal_description: [Shot 1] ${visual}`,
+    "overall_soundscape: N/A",
+    "non_diegetic_music: N/A",
+  ].join("\n\n");
 }
 
 export function needsReferenceIcon(reference: ProjectReference): boolean {
