@@ -1,103 +1,15 @@
+![Slopus logo](marketing/logo.png)
+
 # Slopus
 
-Slopus is a local-first, agentic video editor foundation built with React, TypeScript, and Tauri 2.
+Slopus is a local-first, agentic desktop application for AI-assisted video creation and editing. It brings video generation, reusable visual references, and a timeline editor into one workspace.
 
-## Run it
+Connect Claude Code, Codex, OpenRouter, or any local model served through an OpenAI-compatible API to drive your creative workflow with natural language. Ask your agent to turn an idea into scenes and shots, build reusable references, and refine your project through conversation.
 
-```sh
-npm install
-npm run dev
-```
+Describe shots with prompts and references, generate clips locally through the SlopFab engine, then arrange and trim video and audio on the timeline before exporting. Projects live in ordinary folders on your computer, keeping project data, source assets, generated media, and exports together.
 
-For the native desktop shell, install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and run:
+The interface is built with React, TypeScript, and Vite, with a Rust backend and Tauri 2 desktop shell. SlopFab powers local AI generation using separately installed model weights and GPU support.
 
-```sh
-npm run tauri dev
-```
+For Slopus, we recommend installing CUDA 13 for NVIDIA GeForce RTX 50 series (Blackwell) GPUs, or CUDA 12.8 for RTX 30 and RTX 40 series GPUs. AMD GPUs use the Vulkan backend, which also serves as the fallback for NVIDIA GPUs when CUDA is not installed.
 
-The Windows x64 SlopFab runtime is included as [slopfab.dll](lib/slopfab/slopfab.dll)
-through Git LFS. Run `git lfs pull` after cloning. Development builds, installers,
-and portable packages place this DLL beside `Slopus.exe`; no external SlopFab
-checkout is needed. Model weights and GPU drivers/toolkits remain separate.
-Only `slopfab.dll` is bundled; Slopus does not require FFmpeg or companion files.
-
-Tests and production validation:
-
-```sh
-npm test
-npm run build
-cd src-tauri && cargo test
-```
-
-On Windows, `package.cmd` builds the current source into a runnable portable
-folder and matching ZIP under `artifacts/`, without creating installers.
-`release.cmd` runs the full packaging workflow: setup installer, MSI when
-produced, portable folder, and ZIP. Both scripts install locked dependencies
-and build the production app before collecting outputs.
-
-Installed releases check for updates automatically and offer **Settings → Updates**
-to install and restart. `release.cmd` signs installers and generates the GitHub
-Releases update manifest. See [desktop update setup and publishing](docs/updater.md)
-for the signing key, release steps, and portable build behavior.
-
-## Application icons
-
-`marketing/icon.png` is the source artwork for the application icon, browser
-favicon, and Project Library logo. `scripts/make-icons.mjs` uses the installed
-Tauri CLI to generate the desktop PNG, ICO, and ICNS files in `src-tauri/icons/`.
-
-```sh
-npm run icons                        # rewrite every file listed in bundle.icon
-node scripts/make-icons.mjs --check  # verify packaged icons against the source artwork
-```
-
-Replace the square, transparent `marketing/icon.png` and run `npm run icons` to
-update the packaged artwork. Intermediate platform assets are generated under
-the ignored `artifacts/generated-icons/` folder.
-
-## Project folders
-
-Each project is a normal folder owned by the user:
-
-```text
-My project/
-├── slopus.json
-├── assets/
-├── generated/
-├── exports/
-└── cache/
-```
-
-`slopus.json` is schema-versioned and contains the creative brief, render settings, asset metadata, and timeline structure. The Rust shell validates it before reads and writes; the web build uses validated local-storage records as a development fallback. Existing `polstudio.json`, `pols.json`, and `polstudio.project.json` projects still open and migrate to `slopus.json` on save.
-
-The web fallback seeds three deterministic showcase projects on first launch. Remove the `slopus.web-projects.v1` local-storage entry to restore that initial demo library.
-
-### Reference icons
-
-Custom references with a prompt and no existing artwork automatically receive
-256×256 JPG icons, generated at 768×768 with 20 steps through SlopFab's dedicated
-still-image mode, then downscaled and encoded at JPEG quality 95. Category-specific
-compositions include the user's prompt. All icon work appears in one Work Queue
-entry, and waiting video generations run before the next icon. Generated icons
-are saved under `references/icons/` in the project and are not sent to the video
-engine as image attachments. Built-in presets are added as new references from
-the Add a reference dialog.
-
-Before an automatic icon batch starts, Slopus asks whether to start or cancel it.
-Select **Don't ask again** to remember Start as automatic generation without prompts,
-or Cancel as disabling automatic generation. **Settings → Video engine → Automatic
-reference icon generation** turns automation on or off; confirmation can also be
-re-enabled there. Turning automation off skips waiting automatic icons but lets an
-icon already rendering finish. Manual icon generation remains available.
-
-`npm run reference-icons` renders every missing character, product, location, and style preset with MiniMax H3 at 768×768 and 20 steps. Its DLL backend uses the dedicated still-image mode, downsamples each 3×3 pixel block to produce a 256×256 icon, and encodes it at JPEG quality 95 without creating an intermediate video or audio file. Character entries use controlled headshot lighting; product and location entries use a complete-subject view; style entries use a representative composition with lighting and rendering tailored to the named style.
-
-The reference icon batch uses the vendored `lib/slopfab/slopfab.dll` and requires
-Cargo and model weights. `SLOPFAB_DLL` can explicitly override the runtime;
-`SLOPFAB_TRANSFORMER`, `SLOPFAB_TEXT_ENCODER`, `SLOPFAB_VIDEO_VAE`,
-`SLOPFAB_AUDIO_VAE`, `SLOPFAB_BACKEND`, and `CARGO_EXE` override the other settings.
-Model paths still default to the development weights under `D:\Projects\slopfab`.
-The optional `--dry-run` CLI path requires `slopfab` on PATH or `SLOPFAB_EXE`.
-Use `node scripts/generate-reference-icons.mjs --id=<preset-id> --force` to regenerate one entry.
-
-The batch defaults to two GPU workers. Set `REFERENCE_ICON_WORKERS=1` or pass `--workers=1` on a lower-memory card. Use `--type=style` to generate or replace only style icons; `--shard=1/2` selects the first alternating half for a resumable recovery pass.
+Powered by MiniMax H3. MiniMax H3 model weights are licensed separately under their own MiniMax H3 COMMUNITY LICENSE AGREEMENT.
