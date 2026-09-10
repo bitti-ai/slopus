@@ -83,29 +83,29 @@ describe("the settings screen", () => {
     vi.mocked(invoke).mockResolvedValue({ state: "ready", dllPath: "slopfab.dll", version: "1.4.0", platform: "Vulkan", cudaAvailable: false, detail: "Ready.", models: [] });
     open();
     fireEvent.click(tab("Diagnostics"));
-    await screen.findByText(/AMD and Intel GPUs use Vulkan/);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("slopfab_status", expect.anything()));
     const backend = screen.getByLabelText("GPU backend") as HTMLSelectElement;
     expect(backend.disabled).toBe(true);
     expect(backend.value).toBe("vulkan");
     expect(within(backend).getAllByRole("option")).toHaveLength(1);
   });
 
-  it("remembers automatic reference icon generation and confirmation preferences", () => {
+  it("keeps the popup's saved icon choice without exposing confirmation in settings", () => {
+    localStorage.setItem("slopus.reference-icon-automation.v1", "enabled");
     const view = open();
     const automatic = () => screen.getByRole("checkbox", { name: "Automatic reference icon generation" }) as HTMLInputElement;
-    const confirmation = () => screen.getByRole("checkbox", { name: "Ask before automatic icon generation" }) as HTMLInputElement;
     expect(automatic().checked).toBe(true);
-    expect(confirmation().checked).toBe(true);
-    fireEvent.click(confirmation());
-    expect(confirmation().checked).toBe(false);
+    expect(screen.queryByRole("checkbox", { name: "Ask before automatic icon generation" })).toBeNull();
     view.unmount();
     open();
-    expect(confirmation().checked).toBe(false);
+    expect(automatic().checked).toBe(true);
+    expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("enabled");
     fireEvent.click(automatic());
     expect(automatic().checked).toBe(false);
-    expect(screen.queryByRole("checkbox", { name: "Ask before automatic icon generation" })).toBeNull();
+    expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("disabled");
     fireEvent.click(automatic());
-    expect(confirmation().checked).toBe(true);
+    expect(automatic().checked).toBe(true);
+    expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("ask");
   });
 
   it("keeps debug options off by default and remembers the Diagnostics choice", () => {
@@ -248,7 +248,7 @@ describe("the settings screen", () => {
     expect(radio.closest("label")?.textContent).toBe("");
   });
 
-  it("shows where diagnostic logs live and can reveal the current file", async () => {
+  it("offers only a button to reveal the log without fetching log details", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     const info = {
       path: "C:\\Users\\Editor\\AppData\\Local\\com.slopus.desktop\\logs\\slopus.log",
@@ -262,8 +262,10 @@ describe("the settings screen", () => {
 
     open();
     fireEvent.click(tab("Diagnostics"));
-    expect(await screen.findByText(info.path)).toBeTruthy();
-    expect(screen.getByText(/Prompt text and credentials are not recorded/)).toBeTruthy();
+    expect(screen.queryByText(info.path)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Application log" })).toBeNull();
+    expect(screen.queryByText(/Prompt text and credentials are not recorded/)).toBeNull();
+    expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).not.toContain("diagnostic_log_info");
     fireEvent.click(screen.getByRole("button", { name: "Show log file" }));
     await waitFor(() => expect(vi.mocked(invoke).mock.calls.map(([command]) => command)).toContain("reveal_diagnostic_log"));
   });
