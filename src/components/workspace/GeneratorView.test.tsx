@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
-import { saveDebugOptionsEnabled } from "../../lib/settings";
+import { minimaxOriginalTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
@@ -21,6 +21,19 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(cleanup);
+
+it("hides unfinished templates from the generator picker", () => {
+  setup();
+  fireEvent.click(screen.getByRole("combobox", { name: /Video generator template/ }));
+  expect(screen.getByRole("option", { name: "Default" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "Minimax H3 Original" })).toBeNull();
+});
+
+it("has no selected generator when all templates still need downloads", () => {
+  localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [minimaxOriginalTemplate()], defaultTemplateId: "minimax-h3-original", catalogVersion: 1 }));
+  setup();
+  expect(screen.getByRole("combobox", { name: "Video generator template: No downloaded generators" })).toBeDisabled();
+});
 
 const readyRuntime: SlopfabStatus = {
   state: "ready",

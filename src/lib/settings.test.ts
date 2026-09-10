@@ -22,7 +22,8 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
     const settings = loadGeneratorTemplateSettings();
     expect(settings.defaultTemplateId).toBe("default");
-    expect(settings.templates).toHaveLength(1);
+    expect(settings.templates).toHaveLength(2);
+    expect(settings.templates[1].name).toBe("Minimax H3 Original");
     expect(settings.templates[0]).toMatchObject({
       id: "default",
       name: "Default",

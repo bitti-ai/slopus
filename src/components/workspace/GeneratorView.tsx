@@ -11,7 +11,8 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { statusIcon } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
+import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 
 interface GeneratorViewProps {
@@ -51,6 +52,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const runtimeProbe = useRef(0);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.paths, selectedTemplate.attention]);
+  const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
   /* A scene is always what is named; the shot inside it is what a card opens.
@@ -73,17 +76,31 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   }, [runtime]);
 
   useEffect(() => () => { runtimeProbe.current += 1; }, []);
+  useEffect(() => subscribeGeneratorTemplates(() => setTemplateSettings(loadGeneratorTemplateSettings())), []);
+  useEffect(() => {
+    const refresh = () => { void refreshDownloadedWeights().catch((reason) => setRuntimeError(String(reason))); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 5000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, []);
 
   const chooseGeneratorTemplate = (templateId: string) => {
     const template = templateSettings.templates.find((candidate) => candidate.id === templateId);
-    if (!template || template.id === templateSettings.defaultTemplateId) return;
+    if (!template || templateNeedsDownload(template) || template.id === templateSettings.defaultTemplateId) return;
     const next = { ...templateSettings, defaultTemplateId: template.id };
     saveGeneratorTemplateSettings(next);
     setTemplateSettings(next);
+  };
+
+  useEffect(() => {
+    if (probedTemplate.current === templateKey) return;
+    probedTemplate.current = templateKey;
     setGeneratorRuntime(null);
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
-    void getEngineStatus(template.paths).then((status) => {
+    if (!selectedTemplate.id) return;
+    void getEngineStatus(selectedTemplate.paths).then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);
@@ -91,7 +108,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       if (probe !== runtimeProbe.current) return;
       setRuntimeError(reason instanceof Error ? reason.message : String(reason));
     });
-  };
+  }, [templateKey]);
 
   useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
 
@@ -106,7 +123,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const queued = jobs.filter((job) => job.status === "queued");
   const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
   const boundRefs = useMemo(() => selected ? sceneGenerationReferences(selected, config.references) : [], [config.references, selected]);
-  const runtimeReady = generatorRuntime?.state === "ready";
+  const runtimeReady = Boolean(selectedTemplate.id) && generatorRuntime?.state === "ready";
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
@@ -386,7 +403,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           >
             <i role="img" aria-label={runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime)} />
             <span className="generator-runtime__label">Generator:</span>
-            <GeneratorTemplateCombobox templates={templateSettings.templates} selected={selectedTemplate} onChange={chooseGeneratorTemplate} />
+            <GeneratorTemplateCombobox templates={templateSettings.templates.filter((template) => !templateNeedsDownload(template))} selected={selectedTemplate} onChange={chooseGeneratorTemplate} />
             {(runtimeError || (generatorRuntime?.state !== "ready" && generatorRuntime?.state !== "modelsMissing")) && <span className="generator-runtime__status" aria-hidden="true">{runtimeError ? "Unavailable" : runtimeHeadline(generatorRuntime)}</span>}
           </div>
           <button
@@ -672,6 +689,7 @@ function GeneratorTemplateCombobox({ templates, selected, onChange }: {
       type="button"
       className="generator-runtime__trigger"
       role="combobox"
+      disabled={templates.length === 0}
       aria-label={`Video generator template: ${selected.name}`}
       aria-expanded={open}
       aria-haspopup="listbox"

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./persistence";
+import { refreshDownloadedWeights } from "./weightDownloads";
 import {
   actionReferenceIds, createDraftGenerationJob, GENERATION_FRAME_RATE, parseProjectConfig,
   sceneBriefText, type AgentMessage, type GenerationJob, type ProjectAsset, type ProjectConfig,
@@ -120,6 +121,7 @@ const DEMO_STATUS: RuntimeStatus = {
  *  startup and every project shares the answer. */
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   if (!isTauri()) return DEMO_STATUS;
+  await refreshDownloadedWeights();
   return invoke<RuntimeStatus>("runtime_status", {
     settings: { slopfab: engineProviderSetting(loadEngineSettings()), ...agentEndpointProviderSettings() },
   });

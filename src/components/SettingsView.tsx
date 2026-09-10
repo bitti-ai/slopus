@@ -1,13 +1,16 @@
-import { AlertCircle, Check, ChevronLeft, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
+import { WeightSourcesEditor } from "./WeightSourcesEditor";
+import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
+  isDownloadUrl, subscribeGeneratorTemplates, templateNeedsDownload, type WeightSource,
   loadDebugOptionsEnabled, saveDebugOptionsEnabled, subscribeDebugOptions,
   loadInferenceBackend, saveInferenceBackend, type AttentionMode, type InferenceBackend,
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
@@ -20,10 +23,11 @@ import {
   type ResolvedTheme, type ThemeChoice,
 } from "../lib/theme";
 
-type PathState = "unset" | "checking" | "found" | "missing";
+type PathState = "unset" | "checking" | "found" | "missing" | "download";
 
 function pathState(field: EnginePathField, value: string, status: SlopfabStatus | null): PathState {
   if (!value.trim()) return "unset";
+  if (isDownloadUrl(value)) return "download";
   if (!status) return "checking";
   const model: ModelStatus | undefined = status.models.find((item) => item.id === field.id);
   if (!model) return "checking";
@@ -38,6 +42,7 @@ const stateLabel: Record<PathState, string> = {
   checking: "Checking…",
   found: "Found",
   missing: "Not found on disk",
+  download: "Download required",
 };
 
 /* The system option has to say what the computer is currently set to, or
@@ -253,6 +258,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
      ready?" without a click. */
   const [tab, setTab] = useState<TabId>(initialTab);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
+  const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const probeRevision = useRef(0);
@@ -263,6 +269,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const selectedTemplate = templateSettings.templates.find((template) => template.id === editingTemplateId)
     ?? defaultTemplate;
   const settings = selectedTemplate.paths;
+  const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
+
+  useEffect(() => subscribeGeneratorTemplates(() => setTemplateSettings(loadGeneratorTemplateSettings())), []);
+  useEffect(() => {
+    const refresh = () => { void refreshDownloadedWeights().catch((reason) => setError(String(reason))); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 5000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, []);
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
@@ -282,7 +298,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       const next = {
         ...current,
         templates: current.templates.map((template) => template.id === selectedTemplate.id
-          ? { ...template, paths: { ...template.paths, [id]: value } }
+          ? updateWeightPath(template, id, value)
           : template),
       };
       saveGeneratorTemplateSettings(next);
@@ -290,7 +306,19 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     });
   };
 
-  useEffect(() => { probe(settings); }, [probe, editingTemplateId, templateSettings.defaultTemplateId]);
+  useEffect(() => { probe(settings); }, [probe, editingTemplateId, templateSettings.defaultTemplateId, downloadState?.completed]);
+
+  const updateSources = (id: EnginePathId, sources: WeightSource[]) => {
+    const current = loadGeneratorTemplateSettings();
+    const next = { ...current, templates: current.templates.map((template) => {
+      if (template.id !== selectedTemplate.id) return template;
+      const path = template.paths[id];
+      const nextPath = !path || isDownloadUrl(path) ? (sources.find((source) => source.url === path)?.url ?? sources[0]?.url ?? "") : path;
+      return { ...template, paths: { ...template.paths, [id]: nextPath }, sources: { ...template.sources, [id]: sources } };
+    }) };
+    saveGeneratorTemplateSettings(next);
+    setTemplateSettings(next);
+  };
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -315,7 +343,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       const next = {
         ...current,
         templates: current.templates.map((template) => template.id === selectedTemplate.id
-          ? { ...template, paths: { ...EMPTY_ENGINE_SETTINGS } }
+          ? { ...template, paths: { ...EMPTY_ENGINE_SETTINGS }, sources: {} }
           : template),
       };
       saveGeneratorTemplateSettings(next);
@@ -346,9 +374,15 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   };
 
   const removeTemplate = (id: string) => {
+    const template = templateSettings.templates.find((template) => template.id === id);
+    if (template && Object.values(template.sources ?? {}).some((sources) => sources.length > 0)) {
+      void removeTemplateWeights(id).catch((reason) => setError(String(reason)));
+      return;
+    }
     if (templateSettings.templates.length <= 1) return;
     const remaining = templateSettings.templates.filter((template) => template.id !== id);
     const next: GeneratorTemplateSettings = {
+      ...templateSettings,
       templates: remaining,
       defaultTemplateId: id === templateSettings.defaultTemplateId ? remaining[0].id : templateSettings.defaultTemplateId,
     };
@@ -358,6 +392,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   };
 
   const makeDefault = (id: string) => {
+    if (templateSettings.templates.some((template) => template.id === id && templateNeedsDownload(template))) return;
     const next = { ...templateSettings, defaultTemplateId: id };
     setTemplateSettings(next);
     saveGeneratorTemplateSettings(next);
@@ -456,12 +491,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                 {templateSettings.templates.map((template) => (
                   <div className={`generator-template-item${template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
                     <label className="generator-template-item__default" title="Use this generator for generation by default">
-                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
+                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId && !templateNeedsDownload(template)} disabled={templateNeedsDownload(template)} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
                     </label>
                     <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
                       <b>{template.name}</b><small>{template.defaultSteps} steps</small>
                     </button>
-                    <button type="button" className="icon-button" disabled={templateSettings.templates.length === 1} onClick={() => removeTemplate(template.id)} aria-label={`Remove generator ${template.name}`} title={templateSettings.templates.length === 1 ? "At least one generator is required" : `Remove ${template.name}`}><Trash2 size={15} /></button>
+                    {templateNeedsDownload(template)
+                      ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>
+                        {downloadState?.active && downloadState.templateId === template.id ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />}
+                      </button>
+                      : <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || (Object.values(template.sources ?? {}).some((sources) => sources.length) ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)} aria-label={Object.values(template.sources ?? {}).some((sources) => sources.length) ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`} title={Object.values(template.sources ?? {}).some((sources) => sources.length) ? `Remove ${template.name} weights and keep the template` : `Remove ${template.name}`}><Trash2 size={15} /></button>}
                   </div>
                 ))}
               </div>
@@ -469,7 +508,6 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               <header className="generator-editor__head">
                 <div>
                   <h2 id="generator-editor-heading">Edit generator</h2>
-                  <p>Set its name, generation steps, attention, and model locations on this computer.</p>
                 </div>
               </header>
               <div className="generator-template-fields">
@@ -505,14 +543,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   <div className={`settings-path settings-path--${state}`} key={field.id}>
                     <label htmlFor={`engine-${field.id}`}>
                       <b>{field.label}{!field.required && <em>Optional</em>}</b>
-                      <small>{field.hint}</small>
                     </label>
                     <div className="settings-path__row">
                       <input
                         id={`engine-${field.id}`}
                         value={value}
                         spellCheck={false}
-                        placeholder={field.directory ? "Folder on this computer" : "File on this computer"}
+                        placeholder={field.directory ? "Folder on this computer or download URL" : "Local path or download URL"}
+                        disabled={Boolean(downloading)}
                         onChange={(event) => update(field.id, event.target.value)}
                         onBlur={() => probe(settings)}
                       />
@@ -520,7 +558,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                         type="button"
                         className="secondary-button"
                         onClick={() => void browse(field)}
-                        disabled={!desktop}
+                        disabled={!desktop || Boolean(downloading)}
                         title={desktop ? `Browse for ${field.label}` : "Browsing for files is available in the desktop app"}
                       >
                         <FolderSearch size={16} /> Browse
@@ -530,6 +568,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                         {stateLabel[state]}
                       </span>
                     </div>
+                    <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />
                   </div>
                 );
               })}
@@ -537,14 +576,18 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
           </section>}
         </div>
 
-        {(tab === "diagnostics" || (tab === "engine" && editingTemplateId)) && <footer className="settings-view__foot">
+        {tab === "engine" && downloadState && <div className="weight-download-status" role="status">
+          <span>{templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : "Download complete")}</span>
+          {downloadState.active && <><progress aria-label="Weight download progress" value={downloadState.total ? downloadState.downloaded : undefined} max={downloadState.total ?? 1} /><button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button></>}
+        </div>}
+        {tab === "engine" && editingTemplateId && <footer className="settings-view__foot">
           {/* Clearing the paths is an engine action, so it is only offered
               beside them. */}
-          {tab === "engine" && editingTemplateId && <button className="secondary-button" onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>}
-          {tab === "diagnostics" && <span>Logs stay on this computer.</span>}
+          <button className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>
+          {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download size={16} /> Download weights</button>}
         </footer>}
 
-        {error && <div className="toast" role="alert"><strong>Couldn’t open the file picker</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
+        {error && <div className="toast" role="alert"><strong>Couldn’t update generator settings</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       </div>
     </div>
   );
