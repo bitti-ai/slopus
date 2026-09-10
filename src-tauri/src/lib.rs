@@ -16,6 +16,7 @@ mod export;
 mod reference_icons;
 mod rendered;
 mod slopfab;
+mod weights;
 
 pub use slopfab::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
@@ -2773,6 +2774,7 @@ pub fn run() {
         })
         .manage(agent::AgentRuntime::default())
         .manage(slopfab::SlopfabRuntime::default())
+        .manage(weights::WeightDownloads::default())
         .manage(ExitGuard::default())
         .on_window_event(|window, event| {
             use tauri::{Emitter as _, Manager as _};
@@ -2800,6 +2802,11 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             app_updater_enabled,
+            weights::download_weight,
+            weights::cancel_weight_download,
+            weights::check_weight_files,
+            weights::remove_downloaded_weights,
+            weights::weight_download_hardware,
             cuda_support::open_cuda_download,
             write_diagnostic_log,
             diagnostic_log_info,
