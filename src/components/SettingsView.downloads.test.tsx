@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 import { loadGeneratorTemplateSettings } from "../lib/settings";
+import { getWeightDownloadState } from "../lib/weightDownloads";
+import { WorkQueuePanel } from "./WorkQueuePanel";
+import { WorkQueue } from "../lib/workQueue";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -25,6 +29,50 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; });
+
+it("keeps downloading with Settings closed and restores progress in the template row and Work Queue", async () => {
+  let progress: (event: { payload: { requestId: string; downloaded: number; total: number | null } }) => void = () => undefined;
+  vi.mocked(listen).mockImplementation((async (_name, callback) => { progress = callback as typeof progress; return () => undefined; }) as typeof listen);
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  const pending: { requestId: string; finish: () => void }[] = [];
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command !== "download_weight") return original(command, args);
+    const request = args as { requestId: string; url: string };
+    return new Promise<string>((resolve) => pending.push({ requestId: request.requestId, finish: () => {
+      const path = `C:/Slopus/weights/${request.url.split('/').at(-1)}`;
+      files.add(path); resolve(path);
+    } }));
+  });
+  const settings = render(<SettingsView onClose={() => settings.unmount()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Download generator Minimax H3 Original" }));
+  await waitFor(() => expect(pending).toHaveLength(1));
+  act(() => progress({ payload: { requestId: pending[0].requestId, downloaded: 50, total: 100 } }));
+  const fill = screen.getByRole("progressbar", { name: "Downloading Minimax H3 Original weights" });
+  expect(fill.closest(".generator-template-item")).not.toBeNull();
+  expect(fill).toHaveStyle({ width: "12.5%" });
+  fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+  await act(async () => pending[0].finish());
+  await waitFor(() => expect(pending).toHaveLength(2));
+  act(() => progress({ payload: { requestId: pending[1].requestId, downloaded: 50, total: 100 } }));
+  const queue = new WorkQueue(async (record) => record);
+  const panel = render(<WorkQueuePanel queue={queue} items={[]} onClose={() => panel.unmount()} />);
+  expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("Minimax H3 Original");
+  expect(screen.getByRole("progressbar", { name: "Minimax H3 Original download progress" })).toHaveAttribute("value", "37.5");
+  expect(screen.queryByText("No work yet")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Close work queue" }));
+  const reopened = render(<SettingsView onClose={() => reopened.unmount()} />);
+  expect(screen.getByRole("progressbar", { name: "Downloading Minimax H3 Original weights" })).toHaveStyle({ width: "37.5%" });
+  reopened.unmount();
+  for (let index = 1; index < 4; index++) {
+    await waitFor(() => expect(pending.length).toBe(index + 1));
+    await act(async () => pending[index].finish());
+  }
+  await waitFor(() => expect(getWeightDownloadState()?.active).toBe(false));
+  expect(getWeightDownloadState()).toMatchObject({ completed: 4, error: null });
+  expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "cancel_weight_download")).toBe(false);
+  render(<WorkQueuePanel queue={queue} items={[]} onClose={() => undefined} />);
+  expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("Download complete");
+});
 
 it("downloads the sample, enables its default choice, and removes only weights to restore the download action", async () => {
   render(<SettingsView onClose={() => undefined} />);

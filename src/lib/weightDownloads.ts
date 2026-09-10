@@ -18,10 +18,19 @@ export interface DownloadState {
 let state: DownloadState | null = null;
 let requestId: string | null = null;
 let cancelled = false;
+// The download and native event subscription belong to this module. Settings
+// only observes progress; unmounting its UI must not stop the transfer or queue.
 const subscribers = new Set<() => void>();
 export const getWeightDownloadState = () => state;
 export const subscribeWeightDownloads = (listener: () => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; };
 const publish = (next: DownloadState | null) => { state = next; subscribers.forEach((listener) => listener()); };
+
+export function weightDownloadProgress(download: DownloadState): number {
+  if (!download.files) return 0;
+  const current = download.field && download.total && download.total > 0
+    ? Math.min(1, Math.max(0, download.downloaded / download.total)) : 0;
+  return Math.min(download.active ? 99 : 100, 100 * (download.completed + current) / download.files);
+}
 
 export function chooseWeightSource(sources: WeightSource[], devices: WeightGpu[]): WeightSource | null {
   // Prefer an explicit GPU match, then the highest memory tier that fits.
@@ -120,7 +129,7 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
         };
       });
       saveGeneratorTemplateSettings({ ...current, templates });
-      publish({ ...state!, completed: state!.completed + 1 });
+      publish({ ...state!, completed: state!.completed + 1, field: null, downloaded: 0, total: null });
     }
     publish({ ...state!, active: false });
   } catch (reason) {

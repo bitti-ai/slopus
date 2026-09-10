@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
-import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath } from "../lib/weightDownloads";
+import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
@@ -259,6 +259,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const [tab, setTab] = useState<TabId>(initialTab);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
+  const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const probeRevision = useRef(0);
@@ -490,11 +491,21 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               <div className="generator-template-list" role="list" aria-label="Generators">
                 {templateSettings.templates.map((template) => (
                   <div className={`generator-template-item${template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
+                    {downloadState?.active && downloadState.templateId === template.id && <span
+                      className="generator-template-item__progress"
+                      role="progressbar"
+                      aria-label={`Downloading ${template.name} weights`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.floor(downloadPercent)}
+                      aria-valuetext={`${downloadState.completed} of ${downloadState.files} files complete${downloadState.total ? `; current file ${Math.floor(100 * downloadState.downloaded / downloadState.total)}%` : "; downloading"}`}
+                      style={{ width: `${downloadPercent}%` }}
+                    />}
                     <label className="generator-template-item__default" title="Use this generator for generation by default">
                       <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId && !templateNeedsDownload(template)} disabled={templateNeedsDownload(template)} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
                     </label>
                     <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
-                      <b>{template.name}</b><small>{template.defaultSteps} steps</small>
+                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? `Downloading · ${Math.floor(downloadPercent)}%` : `${template.defaultSteps} steps`}</small>
                     </button>
                     {templateNeedsDownload(template)
                       ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>
@@ -578,7 +589,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
         {tab === "engine" && downloadState && <div className="weight-download-status" role="status">
           <span>{templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : "Download complete")}</span>
-          {downloadState.active && <><progress aria-label="Weight download progress" value={downloadState.total ? downloadState.downloaded : undefined} max={downloadState.total ?? 1} /><button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button></>}
+          {downloadState.active && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button>}
         </div>}
         {tab === "engine" && editingTemplateId && <footer className="settings-view__foot">
           {/* Clearing the paths is an engine action, so it is only offered
