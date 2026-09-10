@@ -6,9 +6,10 @@ is explicit and restarts Slopus. Close the project and finish or cancel queued
 work first; unsaved project changes or videos also block installation. Failed
 checks and downloads can be retried from Settings.
 
-Browser previews, debug builds, and portable folders containing the
-`slopus-portable` marker do not check for updates. Keep that marker when moving a
-portable installation. Update portable copies by downloading a new portable ZIP.
+Browser previews, debug builds, and folders containing the `slopus-portable`
+marker do not check for updates. Both packaging scripts add this marker only to
+the uncompressed folder for local testing, after creating the ZIP. The distributed
+ZIP omits the marker, so extracted release builds can check for updates.
 
 ## Signing key
 
