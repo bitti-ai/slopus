@@ -3337,6 +3337,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tempfile",
+ "windows",
  "windows-sys 0.59.0",
 ]
 
