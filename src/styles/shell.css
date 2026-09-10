@@ -348,12 +348,6 @@
   font-size: var(--text-lg);
 }
 
-.generator-editor__head p {
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
 .generator-editor__back {
   padding-inline: var(--space-2);
 }
@@ -680,14 +674,12 @@
   line-height: var(--leading-normal);
 }
 
-/* Five of these, and stacked (name, hint, field, state) each one was four
-   rows tall — the reason this screen needed scrolling at all. Side by side the
-   same five fit in a window without losing a word of what they say. */
+/* Keep the path on a full-width row so long filenames and URLs remain readable. */
 .settings-path {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: var(--space-4);
+  gap: var(--space-2);
   padding: var(--space-3) 0;
   border-top: 1px solid var(--line);
 }
@@ -719,14 +711,6 @@
   text-transform: uppercase;
 }
 
-.settings-path label small {
-  display: block;
-  margin-top: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
 .settings-path__row {
   display: flex;
   flex-wrap: wrap;
@@ -745,6 +729,18 @@
   background: var(--field-bg);
   font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
 }
+
+.weight-sources { min-width: 0; font-size: var(--text-sm); color: var(--text-muted); }
+.weight-sources summary { cursor: pointer; }
+.weight-sources p { margin: var(--space-2) 0; }
+.weight-source { display: grid; grid-template-columns: minmax(0, 1fr) 135px 125px auto; gap: var(--space-2); align-items: end; margin: var(--space-3) 0; }
+.weight-source label { min-width: 0; font-size: var(--text-xs); }
+.weight-source input, .weight-source-add input { width: 100%; min-width: 0; height: var(--field-height); padding: 0 var(--space-2); color: var(--text-primary); background: var(--field-bg); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.weight-source-add { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.weight-source-add input { flex: 1; }
+.weight-download-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) 0; color: var(--text-secondary); font-size: var(--text-sm); }
+.weight-download-status span { flex: 1 1 100%; }
+.weight-download-status progress { flex: 1; accent-color: var(--accent-bright); }
 
 .settings-path__row .secondary-button {
   flex: 0 0 auto;

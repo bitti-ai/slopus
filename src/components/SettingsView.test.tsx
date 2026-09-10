@@ -129,7 +129,7 @@ describe("the settings screen", () => {
     expect(screen.getByRole("heading", { name: "Generators" })).toBeTruthy();
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
     editDefaultGenerator();
-    expect(screen.getByLabelText(/Transformer weights/)).toBeTruthy();
+    expect(screen.getByLabelText("Transformer weights")).toBeTruthy();
     // The other tab's contents are not merely hidden, they are not rendered:
     // a settings screen that draws both panels is the tall screen tabs replaced.
     expect(screen.queryByLabelText("Appearance")).toBeNull();
@@ -188,7 +188,8 @@ describe("the settings screen", () => {
     expect(screen.queryByText("This computer")).toBeNull();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     editDefaultGenerator();
-    expect(screen.getByText("Reads your prompt so the transformer can act on it.")).toBeTruthy();
+    expect(screen.queryByText("Reads your prompt so the transformer can act on it.")).toBeNull();
+    expect(screen.queryByText("Set its name, generation steps, attention, and model locations on this computer.")).toBeNull();
   });
 
   it("puts the optional tokenizer setting last", () => {
@@ -225,12 +226,12 @@ describe("the settings screen", () => {
     open();
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
-    expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe("Generator 2");
+    expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe("Generator 3");
     expect((screen.getByLabelText("Generator default steps") as HTMLInputElement).value).toBe("20");
 
     fireEvent.change(screen.getByLabelText("Generator name"), { target: { value: "Fast draft" } });
     fireEvent.change(screen.getByLabelText("Generator default steps"), { target: { value: "12" } });
-    fireEvent.change(screen.getByLabelText(/Transformer weights/), { target: { value: "D:\\Models\\draft.safetensors" } });
+    fireEvent.change(screen.getByLabelText("Transformer weights"), { target: { value: "D:\\Models\\draft.safetensors" } });
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
     fireEvent.click(screen.getByRole("radio", { name: "Use Fast draft as the default generator" }));

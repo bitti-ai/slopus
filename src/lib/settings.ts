@@ -72,6 +72,32 @@ export interface GeneratorTemplate {
   defaultSteps: number;
   attention: AttentionMode;
   paths: EngineSettings;
+  sources?: Partial<Record<EnginePathId, WeightSource[]>>;
+}
+
+export interface WeightSource {
+  url: string;
+  gpuModel: string;
+  minVramGb: number;
+  downloadedPath?: string;
+}
+
+export const isDownloadUrl = (value: string): boolean => /^https?:\/\//i.test(value.trim());
+
+export function templateNeedsDownload(template: GeneratorTemplate): boolean {
+  return ENGINE_PATH_FIELDS.some(({ id }) => isDownloadUrl(template.paths[id])
+    || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0));
+}
+
+const GENERATOR_TEMPLATES_EVENT = "slopus:generator-templates-changed";
+export function subscribeGeneratorTemplates(listener: () => void) {
+  const storage = (event: StorageEvent) => { if (event.key === GENERATOR_TEMPLATES_KEY || event.key === null) listener(); };
+  window.addEventListener(GENERATOR_TEMPLATES_EVENT, listener);
+  window.addEventListener("storage", storage);
+  return () => {
+    window.removeEventListener(GENERATOR_TEMPLATES_EVENT, listener);
+    window.removeEventListener("storage", storage);
+  };
 }
 
 export type AttentionMode = "exact" | "flash2" | "sage2";
@@ -97,6 +123,7 @@ export function saveInferenceBackend(backend: InferenceBackend): void {
 export interface GeneratorTemplateSettings {
   templates: GeneratorTemplate[];
   defaultTemplateId: string;
+  catalogVersion?: number;
 }
 
 const copyPaths = (paths: EngineSettings): EngineSettings => ({ ...paths });
@@ -122,14 +149,27 @@ export function createGeneratorTemplate(name = "New template"): GeneratorTemplat
   };
 }
 
+export function minimaxOriginalTemplate(): GeneratorTemplate {
+  const root = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/";
+  const paths = {
+    transformer: `${root}diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors`,
+    textEncoder: `${root}text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`,
+    videoVae: `${root}vae/minimax_h3_video_vae_fp16.safetensors`,
+    audioVae: `${root}vae/minimax_h3_audio_vae_fp32.safetensors`, tokenizer: "",
+  };
+  return { id: "minimax-h3-original", name: "Minimax H3 Original", defaultSteps: 20, attention: "sage2", paths,
+    sources: Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: 0 }]])) };
+}
+
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }],
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate()],
   defaultTemplateId: "default",
+  catalogVersion: 1,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
   if (!value || typeof value !== "object") return null;
-  const record = value as { templates?: unknown; defaultTemplateId?: unknown };
+  const record = value as { templates?: unknown; defaultTemplateId?: unknown; catalogVersion?: unknown };
   if (!Array.isArray(record.templates)) return null;
   const ids = new Set<string>();
   const templates = record.templates.flatMap((item): GeneratorTemplate[] => {
@@ -146,13 +186,30 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       ? candidate.defaultSteps
       : DEFAULT_GENERATION_STEPS;
     const attention = candidate.attention === "exact" || candidate.attention === "flash2" ? candidate.attention : "sage2";
-    return [{ id, name, defaultSteps, attention, paths: pathsFrom(candidate.paths) }];
+    const paths = pathsFrom(candidate.paths);
+    const sources: GeneratorTemplate["sources"] = {};
+    for (const field of ENGINE_PATH_FIELDS) {
+      const raw = (candidate.sources as Record<string, unknown> | undefined)?.[field.id];
+      const entries: WeightSource[] = Array.isArray(raw) ? raw.flatMap((source) => {
+        if (!source || typeof source.url !== "string" || !isDownloadUrl(source.url)) return [];
+        return [{ url: source.url.trim(), gpuModel: typeof source.gpuModel === "string" ? source.gpuModel : "",
+          minVramGb: typeof source.minVramGb === "number" && Number.isFinite(source.minVramGb) ? Math.max(0, source.minVramGb) : 0,
+          ...(typeof source.downloadedPath === "string" ? { downloadedPath: source.downloadedPath } : {}) }];
+      }) : [];
+      if (isDownloadUrl(paths[field.id]) && !entries.some((source) => source.url === paths[field.id].trim())) {
+        entries.unshift({ url: paths[field.id].trim(), gpuModel: "", minVramGb: 0 });
+      }
+      if (entries.length) sources[field.id] = entries;
+    }
+    return [{ id, name, defaultSteps, attention, paths, sources }];
   });
   if (templates.length === 0) return null;
   const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
   return {
     templates,
-    defaultTemplateId: templates.some((template) => template.id === requestedDefault) ? requestedDefault : templates[0].id,
+    defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
+      ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
+    catalogVersion: record.catalogVersion === 1 ? 1 : 0,
   };
 };
 
@@ -164,7 +221,14 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
     const stored = migratedStorageItem(GENERATOR_TEMPLATES_KEY, LEGACY_GENERATOR_TEMPLATES_KEY);
     if (stored) {
       const normalized = normalizeTemplateSettings(JSON.parse(stored));
-      if (normalized) return normalized;
+      if (normalized) {
+        if (!normalized.catalogVersion) {
+          if (!normalized.templates.some((template) => template.id === "minimax-h3-original")) normalized.templates.push(minimaxOriginalTemplate());
+          normalized.catalogVersion = 1;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        return normalized;
+      }
     }
     const legacy = migratedStorageItem(ENGINE_KEY, LEGACY_ENGINE_KEY);
     return initialTemplateSettings(legacy ? pathsFrom(JSON.parse(legacy)) : EMPTY_ENGINE_SETTINGS);
@@ -180,10 +244,13 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
   } catch {
     /* The current React state remains usable for this session. */
   }
+  queueMicrotask(() => window.dispatchEvent(new Event(GENERATOR_TEMPLATES_EVENT)));
 }
 
 export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
-  return settings.templates.find((template) => template.id === settings.defaultTemplateId) ?? settings.templates[0];
+  return settings.templates.find((template) => template.id === settings.defaultTemplateId && !templateNeedsDownload(template))
+    ?? settings.templates.find((template) => !templateNeedsDownload(template))
+    ?? { id: "", name: "No downloaded generators", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
 }
 
 export function loadDefaultGenerationSteps(): number {
@@ -213,7 +280,8 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   for (const field of ENGINE_PATH_FIELDS) {
     const value = settings[field.id].trim();
-    if (value) options[field.id] = value;
+    if (value && !isDownloadUrl(value)) options[field.id] = value;
+    else if (isDownloadUrl(value)) delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
 }
