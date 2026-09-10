@@ -80,6 +80,11 @@
   font-weight: var(--weight-semibold);
 }
 
+.cuda-setup-download {
+  color: var(--accent-bright);
+  text-underline-offset: 3px;
+}
+
 .exit-guard__jobs {
   max-height: 40vh;
   overflow-y: auto;

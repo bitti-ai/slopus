@@ -31,6 +31,7 @@ export interface SlopfabStatus {
   version: string | null;
   platform: string | null;
   cudaAvailable?: boolean;
+  cudaDeviceNames?: string[];
   detail: string;
   models: ModelStatus[];
 }
