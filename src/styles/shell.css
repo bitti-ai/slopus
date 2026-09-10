@@ -342,11 +342,6 @@
   margin: 0 0 var(--space-4);
 }
 
-.diagnostics-backend p {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
 .generator-editor__head h2 {
   margin: 0;
   color: var(--text-primary);
@@ -478,63 +473,6 @@
   margin-top: var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-sm);
-}
-
-.diagnostics-setting {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--wash-1);
-}
-
-.diagnostics-setting__icon {
-  width: var(--control-lg);
-  height: var(--control-lg);
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  color: var(--accent-bright);
-  background: var(--accent-soft);
-}
-
-.diagnostics-setting h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-}
-
-.diagnostics-setting p {
-  margin: var(--space-2) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-}
-
-.diagnostics-setting code {
-  display: block;
-  margin: var(--space-4) 0 var(--space-3);
-  padding: var(--space-3);
-  overflow: hidden;
-  border: 1px solid var(--line-solid);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--field-bg);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diagnostics-setting small {
-  display: block;
-  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
-  color: var(--text-faint);
-}
-
-.diagnostics-setting__error {
-  color: var(--danger) !important;
 }
 
 /* --- Appearance -------------------------------------------------------------

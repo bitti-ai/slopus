@@ -1,6 +1,6 @@
-import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
+import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
@@ -55,16 +55,12 @@ const themeOptions: { id: ThemeChoice; label: string; icon: typeof Sun; detail: 
 
 function ReferenceIconSetting() {
   const automation = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconAutomation);
-  return <>
+  return (
     <label className="reference-icon-option">
-      <input type="checkbox" checked={automation !== "disabled"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "disabled")} aria-labelledby="automatic-reference-icons-label" aria-describedby="automatic-reference-icons-description" />
-      <span><b id="automatic-reference-icons-label">Automatic reference icon generation</b><small id="automatic-reference-icons-description">Generate icons for references without artwork. Turning this off skips waiting automatic icons; an icon already rendering can finish. Manual generation stays available.</small></span>
+      <input type="checkbox" checked={automation !== "disabled"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "disabled")} aria-labelledby="automatic-reference-icons-label" />
+      <span><b id="automatic-reference-icons-label">Automatic reference icon generation</b></span>
     </label>
-    {automation !== "disabled" && <label className="reference-icon-option">
-      <input type="checkbox" checked={automation === "ask"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "enabled")} />
-      <span><b>Ask before automatic icon generation</b></span>
-    </label>}
-  </>;
+  );
 }
 
 function AppearanceSetting() {
@@ -197,21 +193,14 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
   const [backend, setBackend] = useState(loadInferenceBackend);
   const cudaAvailable = status?.cudaAvailable === true;
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
-  const [info, setInfo] = useState<DiagnosticLogInfo | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!desktop) return;
-    void getDiagnosticLogInfo().then(setInfo).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
-  }, [desktop]);
 
   const reveal = async () => {
     setOpening(true);
     setError(null);
     try {
-      const next = await revealDiagnosticLog();
-      if (next) setInfo(next);
+      await revealDiagnosticLog();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -233,26 +222,14 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
           <option value="vulkan">Vulkan</option>
         </select>
       </label>
-      <p>{!desktop ? "Available in the desktop app." : !status ? "Checking GPU backends…" : cudaAvailable ? "Choose CUDA or Vulkan for your NVIDIA GPU. Applies to new generations." : "AMD and Intel GPUs use Vulkan. CUDA requires a compatible NVIDIA GPU and CUDA runtime."}</p>
     </div>
     <label className="diagnostics-debug-option">
       <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
       <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and Debug Icon Prompt in reference details.</small></span>
     </label>
-    <div className="diagnostics-setting">
-      <div className="diagnostics-setting__icon"><FileText size={22} aria-hidden="true" /></div>
-      <div>
-        <h2>Application log</h2>
-        <p>Slopus records startup, runtime checks, generation stages, encoding, file writes, and unexpected errors in a readable text log. The file rotates at 5 MB and keeps one previous file.</p>
-        <p>Prompt text and credentials are not recorded. Sensitive fields are redacted again when each record is written.</p>
-        <code title={info?.path}>{desktop ? info?.path ?? "Locating the log…" : "Available in the desktop app"}</code>
-        {info?.previousPath && <small>A previous rotated log is stored beside this file.</small>}
-        <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()}>
-          {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
-        </button>
-        {error && <p className="diagnostics-setting__error" role="alert">{error}</p>}
-      </div>
-    </div>
+    <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()} title={error ?? undefined}>
+      {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
+    </button>
   </>;
 }
 
