@@ -8,7 +8,7 @@ import {
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
   loadDefaultGenerationSteps, loadEngineSettings, withAgentEndpointSettings,
-  type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
+  type AttentionMode, type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
 } from "./settings";
 
 export type ProviderId = "claude" | "codex" | EndpointProviderId;
@@ -30,6 +30,7 @@ export interface SlopfabStatus {
   dllPath: string;
   version: string | null;
   platform: string | null;
+  cudaAvailable?: boolean;
   detail: string;
   models: ModelStatus[];
 }
@@ -131,9 +132,9 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */
-export async function getEngineStatus(settings = loadEngineSettings()): Promise<SlopfabStatus> {
+export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode): Promise<SlopfabStatus> {
   if (!isTauri()) return DEMO_STATUS.slopfab;
-  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings) } });
+  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings, undefined, attention) } });
 }
 
 /** Opens the OS picker for one engine path. Returns null when the user cancels. */

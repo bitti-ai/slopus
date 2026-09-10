@@ -1,5 +1,5 @@
 import { AlertCircle, Check, ChevronLeft, FileText, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { getDiagnosticLogInfo, revealDiagnosticLog, type DiagnosticLogInfo } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -9,6 +9,7 @@ import {
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
   loadDebugOptionsEnabled, saveDebugOptionsEnabled, subscribeDebugOptions,
+  loadInferenceBackend, saveInferenceBackend, type AttentionMode, type InferenceBackend,
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
   type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplateSettings,
 } from "../lib/settings";
@@ -192,7 +193,9 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
   </div>;
 }
 
-function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
+function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boolean; status: SlopfabStatus | null; onBackendChange: () => void }) {
+  const [backend, setBackend] = useState(loadInferenceBackend);
+  const cudaAvailable = status?.cudaAvailable === true;
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [info, setInfo] = useState<DiagnosticLogInfo | null>(null);
   const [opening, setOpening] = useState(false);
@@ -217,6 +220,21 @@ function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
   };
 
   return <>
+    <div className="generator-template-fields diagnostics-backend">
+      <label>
+        <span>GPU backend</span>
+        <select aria-label="GPU backend" value={cudaAvailable ? backend : "vulkan"} disabled={!desktop || !cudaAvailable} onChange={(event) => {
+          const next = event.target.value as InferenceBackend;
+          saveInferenceBackend(next);
+          setBackend(next);
+          onBackendChange();
+        }}>
+          {cudaAvailable && <option value="cuda">CUDA</option>}
+          <option value="vulkan">Vulkan</option>
+        </select>
+      </label>
+      <p>{!desktop ? "Available in the desktop app." : !status ? "Checking GPU backends…" : cudaAvailable ? "Choose CUDA or Vulkan for your NVIDIA GPU. Applies to new generations." : "AMD and Intel GPUs use Vulkan. CUDA requires a compatible NVIDIA GPU and CUDA runtime."}</p>
+    </div>
     <label className="diagnostics-debug-option">
       <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
       <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and Debug Icon Prompt in reference details.</small></span>
@@ -244,7 +262,7 @@ function DiagnosticsSetting({ desktop }: { desktop: boolean }) {
    so whichever one the user came for was below the fold half the time. One tab
    each, and neither scrolls on an ordinary window. */
 const TABS = [
-  { id: "engine", label: "Video engine" },
+  { id: "engine", label: "Generator" },
   { id: "llms", label: "Agents" },
   { id: "appearance", label: "Appearance" },
   { id: "diagnostics", label: "Diagnostics" },
@@ -260,6 +278,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
+  const probeRevision = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
 
@@ -269,9 +288,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const settings = selectedTemplate.paths;
 
   const probe = useCallback((paths?: EngineSettings) => {
-    setStatus(null);
-    void getEngineStatus(paths).then(setStatus).catch(() => setStatus(null));
-  }, []);
+    const revision = ++probeRevision.current;
+    void getEngineStatus(paths, selectedTemplate.attention).then((next) => {
+      if (revision === probeRevision.current) setStatus(next);
+    }).catch(() => {
+      if (revision === probeRevision.current) setStatus(null);
+    });
+  }, [selectedTemplate.attention]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -324,7 +347,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -434,7 +457,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
             role="tabpanel"
             aria-labelledby="settings-tab-diagnostics"
           >
-            <DiagnosticsSetting desktop={desktop} />
+            <DiagnosticsSetting desktop={desktop} status={status} onBackendChange={() => probe(settings)} />
           </section>}
 
           {tab === "engine" && <section
@@ -469,7 +492,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               <header className="generator-editor__head">
                 <div>
                   <h2 id="generator-editor-heading">Edit generator</h2>
-                  <p>Set its name, generation steps, and model locations on this computer.</p>
+                  <p>Set its name, generation steps, attention, and model locations on this computer.</p>
                 </div>
               </header>
               <div className="generator-template-fields">
@@ -483,6 +506,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                     const value = Number(event.target.value);
                     if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
                   }} />
+                </label>
+                <label>
+                  <span>Attention</span>
+                  <select aria-label="Generator attention" value={selectedTemplate.attention} onChange={(event) => updateTemplate({ attention: event.target.value as AttentionMode })}>
+                    <option value="exact">Exact attention</option>
+                    <option value="flash2">Flash attention</option>
+                    <option value="sage2">Sage attention</option>
+                  </select>
                 </label>
               </div>
               <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">

@@ -46,7 +46,7 @@ it("keeps icon confirmation available after returning to the library", async () 
   expect(screen.queryByRole("alertdialog", { name: "Generate reference icons?" })).toBeNull();
 });
 
-it("cancels automatic generation and exposes the remembered choice in Video engine settings", async () => {
+it("cancels automatic generation and exposes the remembered choice in Generator settings", async () => {
   const config = createProjectConfig({ name: "Cancel icons", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
   config.references = [{ id: "hero", kind: "text", name: "Hero", description: "A friendly explorer", intendedUse: ["character"], createdAt: "2026-09-08T00:00:00.000Z" }];
   vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Cancel icons", config }], unreadable: [] });

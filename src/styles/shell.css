@@ -319,7 +319,8 @@
   font-size: var(--text-xs);
 }
 
-.generator-template-fields input {
+.generator-template-fields input,
+.generator-template-fields select {
   min-width: 0;
   width: 100%;
   height: var(--field-height);
@@ -333,6 +334,17 @@
 
 .generator-editor__head {
   margin-bottom: var(--space-4);
+}
+
+.diagnostics-backend {
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  margin: 0 0 var(--space-4);
+}
+
+.diagnostics-backend p {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .generator-editor__head h2 {
