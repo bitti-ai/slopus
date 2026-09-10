@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 
 mod agent;
 mod agent_commands;
+mod cuda_support;
 mod diagnostics;
 mod export;
 mod reference_icons;
@@ -2799,6 +2800,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             app_updater_enabled,
+            cuda_support::open_cuda_download,
             write_diagnostic_log,
             diagnostic_log_info,
             reveal_diagnostic_log,

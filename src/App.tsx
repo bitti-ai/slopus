@@ -1,6 +1,8 @@
 import { WorkQueue, isWorkActive, projectQueueKey } from "./lib/workQueue";
 import { WorkQueuePanel } from "./components/WorkQueuePanel";
 import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerationDialog";
+import { CudaSetupDialog } from "./components/CudaSetupDialog";
+import { missingCudaDownload } from "./lib/cudaSupport";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
@@ -80,6 +82,8 @@ function App() {
      which is seconds of work, and the answer is the same for every project.
      Null means the probe has not landed yet — never "nothing is installed". */
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+  const [cudaNoticeDismissed, setCudaNoticeDismissed] = useState(false);
+  const cudaDownload = !cudaNoticeDismissed && isTauri() ? missingCudaDownload(runtime?.slopfab) : null;
   const searchInput = useRef<HTMLInputElement>(null);
 
   /* ── Exit guard: the window's close button ───────────────────────────────
@@ -243,7 +247,9 @@ function App() {
     <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
   </button>;
   const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
-  const iconConfirmation = iconConfirmationCount > 0 && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
+  const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
+    ? <CudaSetupDialog download={cudaDownload} onContinue={() => setCudaNoticeDismissed(true)} /> : null;
+  const iconConfirmation = iconConfirmationCount > 0 && !cudaNotice && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
     ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
 
   if (activeProject) {
@@ -256,6 +262,7 @@ function App() {
       {updateNotice}
       <UpdateProgress updater={updater} />
       {iconConfirmation}
+      {cudaNotice}
       {exitGuard}
     </>;
   }
@@ -313,6 +320,7 @@ function App() {
       <UpdateProgress updater={updater} />
       {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}
       {iconConfirmation}
+      {cudaNotice}
       {exitGuard}
       {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
