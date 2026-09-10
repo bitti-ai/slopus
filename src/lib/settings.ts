@@ -70,7 +70,28 @@ export interface GeneratorTemplate {
   id: string;
   name: string;
   defaultSteps: number;
+  attention: AttentionMode;
   paths: EngineSettings;
+}
+
+export type AttentionMode = "exact" | "flash2" | "sage2";
+export type InferenceBackend = "cuda" | "vulkan";
+const INFERENCE_BACKEND_KEY = "slopus.inference-backend.v1";
+
+export function loadInferenceBackend(): InferenceBackend {
+  try {
+    return localStorage.getItem(INFERENCE_BACKEND_KEY) === "vulkan" ? "vulkan" : "cuda";
+  } catch {
+    return "cuda";
+  }
+}
+
+export function saveInferenceBackend(backend: InferenceBackend): void {
+  try {
+    localStorage.setItem(INFERENCE_BACKEND_KEY, backend);
+  } catch {
+    /* Keep the current settings screen usable if storage is unavailable. */
+  }
 }
 
 export interface GeneratorTemplateSettings {
@@ -96,12 +117,13 @@ export function createGeneratorTemplate(name = "New template"): GeneratorTemplat
     id: `generator-template-${crypto.randomUUID()}`,
     name,
     defaultSteps: DEFAULT_GENERATION_STEPS,
+    attention: "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, paths: copyPaths(paths) }],
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }],
   defaultTemplateId: "default",
 });
 
@@ -123,7 +145,8 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
       : DEFAULT_GENERATION_STEPS;
-    return [{ id, name, defaultSteps, paths: pathsFrom(candidate.paths) }];
+    const attention = candidate.attention === "exact" || candidate.attention === "flash2" ? candidate.attention : "sage2";
+    return [{ id, name, defaultSteps, attention, paths: pathsFrom(candidate.paths) }];
   });
   if (templates.length === 0) return null;
   const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
@@ -186,8 +209,8 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting): ProviderSetting {
-  const options: ProviderSetting["options"] = { ...(base?.options ?? {}) };
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention): ProviderSetting {
+  const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   for (const field of ENGINE_PATH_FIELDS) {
     const value = settings[field.id].trim();
     if (value) options[field.id] = value;

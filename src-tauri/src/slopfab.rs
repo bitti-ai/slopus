@@ -32,8 +32,6 @@ pub fn default_dll_path() -> PathBuf {
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;
 const CANCELLED: i32 = -8;
-const CUDA_ATTENTION: &str = "sage2";
-const VULKAN_ATTENTION: &str = "exact";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ComputePlatform {
@@ -57,13 +55,6 @@ impl ComputePlatform {
             Self::Vulkan => 1,
         }
     }
-
-    fn attention(self) -> &'static str {
-        match self {
-            Self::Cuda13 | Self::Cuda12 => CUDA_ATTENTION,
-            Self::Vulkan => VULKAN_ATTENTION,
-        }
-    }
 }
 
 fn platform_from_cuda_probe(result: Result<i32, String>) -> ComputePlatform {
@@ -75,6 +66,11 @@ fn platform_from_cuda_probe(result: Result<i32, String>) -> ComputePlatform {
 }
 
 fn detect_platform(api: &ffi::Api) -> ComputePlatform {
+    // A toolkit can be installed on an AMD/Intel machine. Check for a usable
+    // NVIDIA device before treating the cuBLAS installation as CUDA support.
+    if !ffi::has_cuda_device() {
+        return ComputePlatform::Vulkan;
+    }
     // Explicit "auto" makes Slopus's order deterministic even if the host
     // process carries SLOPFAB_CUDA_VERSION. If this DLL instance was already
     // initialized, the setter is expected to refuse the change and the loaded
@@ -90,6 +86,7 @@ pub struct SlopfabStatus {
     pub dll_path: String,
     pub version: Option<String>,
     pub platform: Option<&'static str>,
+    pub cuda_available: bool,
     pub detail: String,
     pub models: Vec<ModelStatus>,
 }
@@ -394,12 +391,20 @@ struct QueueItem {
 #[derive(Clone)]
 struct Configuration {
     dll_path: PathBuf,
+    vulkan: bool,
+    attention: &'static str,
     models: [(i32, &'static str, Option<PathBuf>); 5],
 }
 
 impl Configuration {
     fn from_settings(settings: &BTreeMap<String, ProviderSetting>) -> Self {
         let slopfab = settings.get("slopfab");
+        let string_option = |name: &str| {
+            slopfab.and_then(|setting| match setting.options.get(name) {
+                Some(ProviderOption::String(value)) => Some(value.as_str()),
+                _ => None,
+            })
+        };
         let option = |name: &str| {
             slopfab.and_then(|setting| match setting.options.get(name) {
                 Some(ProviderOption::String(value)) if !value.trim().is_empty() => {
@@ -413,6 +418,12 @@ impl Configuration {
             // It is still READ so a project or a test that carries one keeps
             // working; with none, use the DLL beside the executable.
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
+            vulkan: string_option("inferenceBackend") == Some("vulkan"),
+            attention: match string_option("attention") {
+                Some("exact") => "exact",
+                Some("flash2") => "flash2",
+                _ => "sage2",
+            },
             models: [
                 (0, "transformer", option("transformer")),
                 (1, "textEncoder", option("textEncoder")),
@@ -420,6 +431,14 @@ impl Configuration {
                 (3, "videoVae", option("videoVae")),
                 (4, "audioVae", option("audioVae")),
             ],
+        }
+    }
+
+    fn platform(&self, detected: ComputePlatform) -> ComputePlatform {
+        if self.vulkan {
+            ComputePlatform::Vulkan
+        } else {
+            detected
         }
     }
 
@@ -438,7 +457,7 @@ impl Configuration {
             })
             .collect::<Vec<_>>()
             .join(";");
-        format!("slopfab={version}|platform={}|{models}", platform.label())
+        format!("slopfab={version}|platform={}|attention={}|{models}", platform.label(), self.attention)
     }
 }
 
@@ -460,7 +479,8 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
     match ffi::Api::load(&configuration.dll_path) {
         Ok(api) => match api.version() {
             Ok(version) => {
-                let platform = detect_platform(&api);
+                let detected = detect_platform(&api);
+                let platform = configuration.platform(detected);
                 let missing = models
                     .iter()
                     .filter(|model| !model.available && model.id != "tokenizer")
@@ -474,6 +494,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
                     dll_path,
                     version: Some(version),
                     platform: Some(platform.label()),
+                    cuda_available: detected != ComputePlatform::Vulkan,
                     detail: if missing == 0 {
                         "Runtime and required model paths are available.".into()
                     } else {
@@ -487,6 +508,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
                 dll_path,
                 version: None,
                 platform: None,
+                cuda_available: false,
                 detail: error,
                 models,
             },
@@ -496,6 +518,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
             dll_path,
             version: None,
             platform: None,
+            cuda_available: false,
             detail: format!("slopfab is unavailable: {error}. Editing remains available."),
             models,
         },
@@ -510,7 +533,7 @@ pub fn resolve_plan(
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;
     api.version()?;
-    let platform = detect_platform(&api);
+    let platform = configuration.platform(detect_platform(&api));
     let handle = RequestHandle::new(&api)?;
     configure_request(&api, handle.0, request, &configuration, platform, false)?;
     let plan = api.resolve(handle.0)?;
@@ -571,7 +594,7 @@ fn configure_request(
     api.set_seed(handle, generation_seed(request.seed)?)?;
     api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
     api.set_inference_backend(handle, platform.backend())?;
-    api.set_attention(handle, platform.attention())?;
+    api.set_attention(handle, configuration.attention)?;
     api.set_verbose(handle, false)?;
     if include_models {
         api.set_reuse_models(handle, true)?;
@@ -619,7 +642,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
     }
     let api = ffi::Api::load(&item.configuration.dll_path)?;
     let version = api.version()?;
-    let platform = detect_platform(&api);
+    let platform = item.configuration.platform(detect_platform(&api));
     let timing_profile = item.configuration.timing_profile(&version, platform);
     diagnostics::debug(
         "slopfab",
@@ -866,6 +889,8 @@ pub fn generate_reference_icon_batch(
     };
     let configuration = Configuration {
         dll_path: batch.dll_path.clone(),
+        vulkan: backend == ComputePlatform::Vulkan,
+        attention: "sage2",
         models: [
             (0, "transformer", Some(batch.transformer.clone())),
             (1, "textEncoder", Some(batch.text_encoder.clone())),
@@ -974,6 +999,24 @@ mod ffi {
     };
 
     pub enum Request {}
+
+    pub fn has_cuda_device() -> bool {
+        // CUDA's driver API uses the system calling convention on Windows.
+        // Keep the library alive until both calls have returned.
+        unsafe {
+            #[cfg(windows)]
+            let driver = libloading::os::windows::Library::load_with_flags(
+                "nvcuda.dll", 0x00000800, // LOAD_LIBRARY_SEARCH_SYSTEM32
+            ).map(Library::from);
+            #[cfg(not(windows))]
+            let driver = Library::new("libcuda.so.1");
+            let Ok(library) = driver else { return false };
+            let Ok(init) = library.get::<unsafe extern "system" fn(u32) -> i32>(b"cuInit\0") else { return false };
+            let Ok(count) = library.get::<unsafe extern "system" fn(*mut i32) -> i32>(b"cuDeviceGetCount\0") else { return false };
+            let mut devices = 0;
+            init(0) == 0 && count(&mut devices) == 0 && devices > 0
+        }
+    }
     pub enum Generation {}
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -1451,7 +1494,36 @@ mod tests {
         );
         assert_eq!(ComputePlatform::Cuda13.backend(), 0);
         assert_eq!(ComputePlatform::Vulkan.backend(), 1);
-        assert_eq!(ComputePlatform::Vulkan.attention(), "exact");
+    }
+
+    #[test]
+    fn backend_preference_cannot_enable_cuda_without_cuda_hardware() {
+        let mut config = Configuration::from_settings(&BTreeMap::new());
+        assert_eq!(config.platform(ComputePlatform::Cuda13), ComputePlatform::Cuda13);
+        assert_eq!(config.platform(ComputePlatform::Cuda12), ComputePlatform::Cuda12);
+        assert_eq!(config.platform(ComputePlatform::Vulkan), ComputePlatform::Vulkan);
+        config.vulkan = true;
+        for detected in [ComputePlatform::Cuda13, ComputePlatform::Cuda12, ComputePlatform::Vulkan] {
+            assert_eq!(config.platform(detected), ComputePlatform::Vulkan);
+        }
+    }
+
+    #[test]
+    fn attention_defaults_to_sage_and_is_independent_of_backend() {
+        assert_eq!(Configuration::from_settings(&BTreeMap::new()).attention, "sage2");
+        for backend in ["cuda", "vulkan"] {
+            for attention in ["exact", "flash2", "sage2", "invalid"] {
+                let settings = serde_json::from_value(serde_json::json!({
+                    "slopfab": { "enabled": true, "model": null,
+                        "options": { "inferenceBackend": backend, "attention": attention } }
+                })).unwrap();
+                let config = Configuration::from_settings(&settings);
+                let expected = if attention == "invalid" { "sage2" } else { attention };
+                assert_eq!(config.attention, expected);
+                assert_eq!(config.vulkan, backend == "vulkan");
+                assert!(config.timing_profile("1.4.0", ComputePlatform::Vulkan).contains(&format!("attention={expected}|")));
+            }
+        }
     }
 
     #[test]
@@ -1487,6 +1559,25 @@ mod tests {
         assert_eq!(plan.aligned_frames, 1);
         assert_eq!(plan.latent_frames, 1);
         assert_eq!((plan.canvas_width, plan.canvas_height), (768, 768));
+    }
+
+    #[test]
+    fn bundled_dll_accepts_all_attention_modes_on_both_backends() {
+        if !default_dll_path().is_file() { return; }
+        let api = ffi::Api::load(&default_dll_path()).unwrap();
+        let request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId": "attention-plan", "prompt": "A red toy car", "frames": 1, "stillImage": true,
+            "steps": 20, "seed": 1, "canvasWidth": 768, "canvasHeight": 768
+        })).unwrap();
+        let mut config = Configuration::from_settings(&BTreeMap::new());
+        for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            for attention in ["exact", "flash2", "sage2"] {
+                config.attention = attention;
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, handle.0, &request, &config, platform, false).unwrap();
+                assert_eq!(api.resolve(handle.0).unwrap().aligned_frames, 1);
+            }
+        }
     }
     #[test]
     fn generation_seed_accepts_random_and_non_negative_values() {

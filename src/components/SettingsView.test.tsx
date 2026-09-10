@@ -36,6 +36,60 @@ describe("the frame the tabs sit in", () => {
 });
 
 describe("the settings screen", () => {
+  it("defaults to Sage and remembers each generator's attention", () => {
+    const view = open();
+    editDefaultGenerator();
+    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("sage2");
+    expect(within(screen.getByLabelText("Generator attention")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Exact attention", "Flash attention", "Sage attention"]);
+    fireEvent.change(screen.getByLabelText("Generator attention"), { target: { value: "flash2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "New generator" }));
+    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("sage2");
+    view.unmount();
+    open();
+    editDefaultGenerator();
+    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("flash2");
+  });
+
+  it("switches NVIDIA between CUDA and Vulkan and keeps both choices after switching", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+    vi.mocked(invoke).mockImplementation(async (command, args) => command === "slopfab_status" ? {
+      state: "ready", dllPath: "slopfab.dll", version: "1.4.0", cudaAvailable: true,
+      platform: (args as { settings: { slopfab: { options: { inferenceBackend: string } } } }).settings.slopfab.options.inferenceBackend === "vulkan" ? "Vulkan" : "CUDA 13",
+      detail: "Ready.", models: [],
+    } : null);
+    const view = open();
+    fireEvent.click(tab("Diagnostics"));
+    const backend = () => screen.getByLabelText("GPU backend") as HTMLSelectElement;
+    await waitFor(() => expect(backend().disabled).toBe(false));
+    expect(backend().value).toBe("cuda");
+    fireEvent.change(backend(), { target: { value: "vulkan" } });
+    await waitFor(() => expect(backend().disabled).toBe(false));
+    expect(backend().value).toBe("vulkan");
+    expect(within(backend()).getAllByRole("option")).toHaveLength(2);
+    view.unmount();
+    open();
+    fireEvent.click(tab("Diagnostics"));
+    await waitFor(() => expect(backend().disabled).toBe(false));
+    expect(backend().value).toBe("vulkan");
+    fireEvent.change(backend(), { target: { value: "cuda" } });
+    await waitFor(() => expect(backend().value).toBe("cuda"));
+    expect(localStorage.getItem("slopus.inference-backend.v1")).toBe("cuda");
+  });
+
+  it("locks machines without CUDA hardware to Vulkan despite a saved CUDA preference", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
+    localStorage.setItem("slopus.inference-backend.v1", "cuda");
+    vi.mocked(invoke).mockResolvedValue({ state: "ready", dllPath: "slopfab.dll", version: "1.4.0", platform: "Vulkan", cudaAvailable: false, detail: "Ready.", models: [] });
+    open();
+    fireEvent.click(tab("Diagnostics"));
+    await screen.findByText(/AMD and Intel GPUs use Vulkan/);
+    const backend = screen.getByLabelText("GPU backend") as HTMLSelectElement;
+    expect(backend.disabled).toBe(true);
+    expect(backend.value).toBe("vulkan");
+    expect(within(backend).getAllByRole("option")).toHaveLength(1);
+  });
+
   it("remembers automatic reference icon generation and confirmation preferences", () => {
     const view = open();
     const automatic = () => screen.getByRole("checkbox", { name: "Automatic reference icon generation" }) as HTMLInputElement;
@@ -71,7 +125,7 @@ describe("the settings screen", () => {
 
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
     open();
-    expect(tab("Video engine").getAttribute("aria-selected")).toBe("true");
+    expect(tab("Generator").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("heading", { name: "Generators" })).toBeTruthy();
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
     editDefaultGenerator();
@@ -101,7 +155,7 @@ describe("the settings screen", () => {
   it("swaps panels when a tab is chosen, and follows the arrow keys", () => {
     open();
     expect(screen.getAllByRole("tab").map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Video engine", "Agents", "Appearance", "Diagnostics", "Updates",
+      "Generator", "Agents", "Appearance", "Diagnostics", "Updates",
     ]);
     fireEvent.click(tab("Appearance"));
     expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
@@ -119,11 +173,11 @@ describe("the settings screen", () => {
   it("counts the paths still to set on the engine tab, from either tab", () => {
     open();
     // Four of the five fields are required and none is set yet.
-    expect(within(tab("Video engine")).getByText("4")).toBeTruthy();
+    expect(within(tab("Generator")).getByText("4")).toBeTruthy();
     fireEvent.click(tab("Appearance"));
     // Still legible from the other side: what is unfinished is the reason the
     // screen was opened, and hiding it behind a tab would bury it.
-    expect(within(tab("Video engine")).getByText("4")).toBeTruthy();
+    expect(within(tab("Generator")).getByText("4")).toBeTruthy();
   });
 
   it("keeps the settings header short", () => {

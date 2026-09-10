@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   agentEndpointProviderSettings,
   createGeneratorTemplate,
+  engineProviderSetting,
+  loadInferenceBackend,
+  saveInferenceBackend,
   loadDefaultGenerationSteps,
   loadAgentEndpointSettings,
   loadEngineSettings,
@@ -24,8 +27,32 @@ describe("generator templates", () => {
       id: "default",
       name: "Default",
       defaultSteps: 20,
+      attention: "sage2",
       paths: { transformer: "D:\\Models\\main.safetensors" },
     });
+  });
+
+  it("migrates missing or invalid attention to Sage", () => {
+    for (const attention of [undefined, "unsupported"]) {
+      localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({
+        templates: [{ id: "old", name: "Old", attention }], defaultTemplateId: "old",
+      }));
+      expect(loadGeneratorTemplateSettings().templates[0].attention).toBe("sage2");
+    }
+  });
+
+  it("passes the default generator's attention and machine backend to the engine", () => {
+    const template = createGeneratorTemplate();
+    expect(template.attention).toBe("sage2");
+    expect(loadInferenceBackend()).toBe("cuda");
+    for (const attention of ["exact", "flash2", "sage2"] as const) {
+      template.attention = attention;
+      saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+      for (const inferenceBackend of ["cuda", "vulkan"] as const) {
+        saveInferenceBackend(inferenceBackend);
+        expect(engineProviderSetting(loadEngineSettings()).options).toMatchObject({ attention, inferenceBackend });
+      }
+    }
   });
 
   it("uses the selected default template for engine paths and step defaults", () => {

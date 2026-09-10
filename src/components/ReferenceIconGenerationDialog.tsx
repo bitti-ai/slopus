@@ -47,7 +47,7 @@ export function ReferenceIconGenerationDialog({ count, onAnswer }: {
       </div>
       <div className="exit-guard__body" id="reference-icon-generation-description">
         <p>{count} {count === 1 ? "reference needs an icon" : "references need icons"}. Generate them now using the video engine? This uses your GPU; waiting videos take priority.</p>
-        <p>Cancel skips this batch. You can change automatic generation in Settings → Video engine.</p>
+        <p>Cancel skips this batch. You can change automatic generation in Settings → Generator.</p>
       </div>
       <label className="reference-icon-option">
         <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
