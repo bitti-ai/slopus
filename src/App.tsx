@@ -3,6 +3,7 @@ import { WorkQueuePanel } from "./components/WorkQueuePanel";
 import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerationDialog";
 import { CudaSetupDialog } from "./components/CudaSetupDialog";
 import { missingCudaDownload } from "./lib/cudaSupport";
+import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
@@ -41,6 +42,7 @@ function App() {
     return saved;
   }));
   const workItems = useSyncExternalStore(workQueue.subscribe, workQueue.getSnapshot);
+  const weightDownloadActive = useSyncExternalStore(subscribeWeightDownloads, () => getWeightDownloadState()?.active ?? false);
   const iconConfirmationCount = useSyncExternalStore(workQueue.subscribe, workQueue.getIconConfirmationCount);
   const [workQueueOpen, setWorkQueueOpen] = useState(false);
   useEffect(() => workQueue.start(), [workQueue]);
@@ -244,7 +246,7 @@ function App() {
   );
 
   const queueLauncher = <button className="settings-launcher work-queue-launcher" type="button" onClick={() => setWorkQueueOpen(true)} title="Work Queue" aria-label="Work Queue" aria-haspopup="dialog" aria-expanded={workQueueOpen}>
-    <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length > 0 && <b>{ongoingGenerations.length}</b>}
+    <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length + Number(weightDownloadActive) > 0 && <b>{ongoingGenerations.length + Number(weightDownloadActive)}</b>}
   </button>;
   const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
   const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen

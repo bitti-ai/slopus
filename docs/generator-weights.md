@@ -14,7 +14,12 @@ Memory tiers account for the small amount of VRAM reserved by the driver.
 Click the template's download icon or **Download weights** in its editor to
 download missing weights. Files go into `weights` beside `Slopus.exe`. If that
 location cannot be written, Slopus uses a `weights` subfolder beside its log file.
-Progress and cancellation remain available in Settings if the editor is closed.
+Downloads continue in the background when Settings is closed. Reopening Settings
+shows the current progress as a color fill across the generator's template row.
+The fill tracks completed files plus progress through the current file.
+Downloads also appear in Work Queue with progress and cancellation controls.
+They run separately from the generation queue and do not occupy a generation slot.
+Progress details and cancellation remain available in Settings if the editor is closed.
 Failed transfers can be retried; completed files are retained, while an interrupted
 file starts again. No full model file is buffered in memory.
 

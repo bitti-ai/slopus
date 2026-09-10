@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, expect, it, vi } from "vitest";
-import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath } from "./weightDownloads";
+import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
 import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -10,6 +10,17 @@ vi.mock("./persistence", () => ({ isTauri: () => true }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
+
+it("keeps overall progress continuous across files and below 100 until completion", () => {
+  const download: DownloadState = { templateId: "sample", field: "transformer", downloaded: 100, total: 100, completed: 0, files: 4, active: true, error: null };
+  expect(weightDownloadProgress(download)).toBe(25);
+  expect(weightDownloadProgress({ ...download, completed: 1, field: null, downloaded: 0, total: null })).toBe(25);
+  expect(weightDownloadProgress({ ...download, completed: 1, downloaded: 50 })).toBe(37.5);
+  expect(weightDownloadProgress({ ...download, completed: 1, total: null })).toBe(25);
+  expect(weightDownloadProgress({ ...download, files: 0 })).toBe(0);
+  expect(weightDownloadProgress({ ...download, completed: 3 })).toBe(99);
+  expect(weightDownloadProgress({ ...download, completed: 4, field: null, active: false })).toBe(100);
+});
 
 beforeEach(() => {
   localStorage.clear(); files.clear(); vi.clearAllMocks();

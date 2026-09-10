@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./project";
@@ -8,6 +9,7 @@ import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, EMPTY_ENGINE_SETTINGS } from "./settings";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
+import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -47,6 +49,30 @@ const finish = async (queue: WorkQueue, id: string) => {
 };
 
 describe("application work queue", () => {
+  it("starts and advances generations while a weight download remains in progress", async () => {
+    let finishDownload: () => void = () => undefined;
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "weight_download_hardware") return [];
+      if (command === "download_weight") return new Promise<string>((resolve) => { finishDownload = () => resolve("C:/weights/model"); });
+    });
+    const downloading = downloadTemplateWeights("minimax-h3-original");
+    try {
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith("download_weight", expect.anything()));
+      const { queue, first, second } = setup();
+      queue.enqueue(first, [submission(first)]);
+      queue.enqueue(second, [submission(second)]);
+      await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+      expect(getWeightDownloadState()?.active).toBe(true);
+      expect(queue.getSnapshot()).toHaveLength(2);
+      await finish(queue, queue.getSnapshot()[0].id);
+      await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+      expect(getWeightDownloadState()?.active).toBe(true);
+    } finally {
+      vi.mocked(invoke).mockResolvedValue("C:/weights/model");
+      finishDownload();
+      await downloading;
+    }
+  });
   it("blocks app updates for unsaved sessions and allows them after a successful save", async () => {
     const { queue, first } = setup();
     expect(queue.updateBlockReason()).toBeNull();

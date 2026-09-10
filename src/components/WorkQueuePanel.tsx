@@ -1,10 +1,16 @@
-import { Check, Clock3, ListTodo, LoaderCircle, TriangleAlert, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Check, Clock3, Download, ListTodo, LoaderCircle, TriangleAlert, X } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { GENERATION_FRAME_RATE } from "../lib/project";
 import { isWorkActive, type WorkItem, type WorkQueue } from "../lib/workQueue";
+import { loadGeneratorTemplateSettings } from "../lib/settings";
+import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
 
 export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; items: readonly WorkItem[]; onClose: () => void }) {
+  // Downloads are observed here, never enqueued in the GPU generation scheduler.
+  const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadName = download ? loadGeneratorTemplateSettings().templates.find((template) => template.id === download.templateId)?.name ?? "Generator weights" : "";
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -49,8 +55,27 @@ export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; it
       <header className="work-queue__header"><div><ListTodo size={20} /><h2 id="work-queue-title">Work Queue</h2></div><button ref={close} type="button" className="icon-button icon-button--strong" aria-label="Close work queue" onClick={onClose}><X size={18} /></button></header>
       <p className="work-queue__intro">Work continues across projects, using the settings from when it was added.</p>
       <div className="work-queue__list">
-        {items.length === 0 && <div className="work-queue__empty"><ListTodo size={28} /><strong>No work yet</strong><p>Generate a scene to add it to the queue.</p></div>}
+        {items.length === 0 && !download && <div className="work-queue__empty"><ListTodo size={28} /><strong>No work yet</strong><p>Generate a scene to add it to the queue.</p></div>}
         {current.length > 0 && <section aria-label="In progress"><h3>In progress</h3><ul>{current.map(row)}</ul></section>}
+        {download && <section aria-label="Weight downloads"><h3>Downloads</h3><ul><li className="work-queue__item">
+          <div className="work-queue__item-heading">
+            <span className={`work-queue__state work-queue__state--${download.active ? "preparing" : download.error ? "failed" : "completed"}`} aria-hidden="true">
+              {download.active ? <Download size={17} /> : download.error ? <TriangleAlert size={17} /> : <Check size={17} />}
+            </span>
+            <div><strong>{downloadName}</strong><span>Weight download</span></div>
+            {download.active && <button type="button" className="icon-button" aria-label={`Cancel ${downloadName} download`} onClick={() => {
+              setDownloadError(null);
+              void cancelWeightDownload().catch((reason) => setDownloadError(String(reason)));
+            }}><X size={16} /></button>}
+          </div>
+          <div className="work-queue__detail"><span>{download.active ? `${download.completed}/${download.files} files · ${(download.downloaded / 1024 ** 3).toFixed(2)} GB${download.total ? ` / ${(download.total / 1024 ** 3).toFixed(2)} GB` : ""}` : download.error ?? "Download complete"}</span>
+            {download.active && <b>{Math.floor(weightDownloadProgress(download))}%</b>}
+          </div>
+          {download.active && <progress max={100} value={weightDownloadProgress(download)} aria-label={`${downloadName} download progress`} />}
+          {download.active && <p className="work-queue__settings">Generations can continue during this download.</p>}
+          {download.error && <button type="button" className="secondary-button" onClick={() => { setDownloadError(null); void downloadTemplateWeights(download.templateId); }}>Retry download</button>}
+          {downloadError && <p className="work-queue__error" role="alert">{downloadError}</p>}
+        </li></ul></section>}
         {upcoming.length > 0 && <section aria-label="Upcoming work"><h3>Up next <span>{upcoming.length}</span></h3><ul>{upcoming.map(row)}</ul></section>}
         {finished.length > 0 && <section aria-label="Finished work"><h3>Finished <button type="button" onClick={() => queue.clearFinished()}>Clear</button></h3><ul>{finished.map(row)}</ul></section>}
       </div>
