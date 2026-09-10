@@ -96,7 +96,6 @@ if exist "%OUTPUT_DIR%" (
 )
 mkdir "%OUTPUT_DIR%" || goto :fail
 copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
-> "%OUTPUT_DIR%\slopus-portable" echo Portable distribution - update by downloading a new portable ZIP.
 
 rem Match the installer's resource layout: one DLL beside Slopus.exe.
 copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\slopfab.dll" >nul || goto :fail
@@ -107,8 +106,11 @@ echo        Folder:    %OUTPUT_STEM%-portable\
 
 echo.
 echo [5/5] Creating the portable archive...
-rem Zips the folder that stays behind next to it, under the same name.
+rem Archive without the marker so distributed copies can check for updates.
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
+rem Disable updates only in the unpacked folder used for local testing.
+> "%OUTPUT_DIR%\slopus-portable" echo Local test build - automatic updates disabled.
+if errorlevel 1 goto :fail
 
 echo.
 echo Package complete.
