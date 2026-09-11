@@ -1,5 +1,5 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
-import { ChevronDown, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
+import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
@@ -444,22 +444,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         onMoveScene={moveScene}
         onMoveShot={moveShot}
       />}
-
-      {/* No scenes at all — which, on a new project, is where everyone starts.
-          This is the whole of the "how do I start" advice now that the composer
-          is gone, so it has to name both doors: the button below, and Slop. */}
-      {jobs.length === 0 && <div className="job-empty">
-        <span className="job-empty__icon"><Sparkles size={26} /></span>
-        <h2>Start with one scene</h2>
-        <p>An empty scene is one blank shot waiting for a line. Add one, then write what should happen on screen — who or what is in frame, what they do.</p>
-        <ul className="job-empty__tips">
-          <li>A scene can be up to 15 seconds and split into as many shots as you like.</li>
-          <li>Each shot is a card. Choose one to write its line and set it up.</li>
-          <li>Drag a reference into a line and the prompt cites it as a subject.</li>
-          <li>You can read the finished prompt before anything is sent.</li>
-          <li>Or ask Slop in the bar along the bottom — Claude Code and Codex can write a whole scene from a prompt.</li>
-        </ul>
-      </div>}
 
       {jobs.length === 0 && <button
         type="button"
