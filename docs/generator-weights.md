@@ -4,9 +4,9 @@ In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
 The bundled **Minimax H3 Original** template contains the four supplied model URLs.
 
-Templates awaiting downloads appear under **Downloadable generators**. Once their
+Templates awaiting downloads appear under **Download**. Once their
 weights are downloaded, they move into **Generators**. Removing or losing their
-downloaded files moves them back to **Downloadable generators**.
+downloaded files moves them back to **Download**.
 
 Enable **Show advanced options** at the end of the template editor, then open
 **Download variants** under a weight to add alternative URLs. Each variant

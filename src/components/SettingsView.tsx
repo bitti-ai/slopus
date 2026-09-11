@@ -274,7 +274,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
   const generatorSections = [
     { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => !templateNeedsDownload(template)) },
-    { id: "downloadable-generators", title: "Downloadable generators", templates: templateSettings.templates.filter(templateNeedsDownload) },
+    { id: "downloadable-generators", title: "Download", templates: templateSettings.templates.filter(templateNeedsDownload) },
   ];
 
   useEffect(() => setShowAdvancedOptions(false), [editingTemplateId]);
