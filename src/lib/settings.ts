@@ -162,17 +162,13 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
     { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 },
   ];
-  sources.textEncoder = [
-    { url: paths.textEncoder, gpuModel: "", minVramGb: 13 },
-    { url: "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors", gpuModel: "", minVramGb: 0 },
-  ];
   return { id: "minimax-h3-original", name: "Minimax H3 Original", defaultSteps: 20, attention: "sage2", paths, sources };
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 2,
+  catalogVersion: 3,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -217,7 +213,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: record.catalogVersion === 2 ? 2 : record.catalogVersion === 1 ? 1 : 0,
+    catalogVersion: record.catalogVersion === 3 ? 3 : record.catalogVersion === 2 ? 2 : record.catalogVersion === 1 ? 1 : 0,
   };
 };
 
@@ -235,7 +231,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           const existing = normalized.templates.find((template) => template.id === bundled.id);
           if (!normalized.catalogVersion && !existing) normalized.templates.push(bundled);
           // Upgrade the original catalog entry without replacing custom variants or local paths.
-          for (const field of ["transformer", "textEncoder"] as const) {
+          for (const field of ["transformer"] as const) {
             const variants = existing?.sources?.[field];
             const defaults = bundled.sources![field]!;
             if (variants?.length === 1 && variants[0].url === bundled.paths[field]
@@ -245,6 +241,31 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           }
           normalized.catalogVersion = 2;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 3) {
+          const bundled = minimaxOriginalTemplate();
+          const existing = normalized.templates.find((template) => template.id === bundled.id);
+          const removedUrl = "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors";
+          const encoders = existing?.sources?.textEncoder;
+          if (existing && encoders) {
+            const removed = encoders.filter((source) => source.url === removedUrl);
+            const retained = encoders.filter((source) => source.url !== removedUrl).map((source) =>
+              source.url === bundled.paths.textEncoder && !source.gpuModel.trim() && source.minVramGb === 13
+                ? { ...source, minVramGb: 0 } : source);
+            if (removed.length && !retained.some((source) => source.url === bundled.paths.textEncoder)) {
+              retained.push({ ...bundled.sources!.textEncoder![0] });
+            }
+            if (existing.paths.textEncoder.trim() === removedUrl
+              || removed.some((source) => source.downloadedPath && source.downloadedPath === existing.paths.textEncoder)) {
+              const original = retained.find((source) => source.url === bundled.paths.textEncoder)!;
+              existing.paths.textEncoder = original.downloadedPath || original.url;
+            }
+            existing.sources!.textEncoder = retained;
+          }
+          // A replaced local encoder may now need downloading and cannot remain the default.
+          const migrated = normalizeTemplateSettings({ ...normalized, catalogVersion: 3 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(migrated));
+          return migrated;
         }
         return normalized;
       }

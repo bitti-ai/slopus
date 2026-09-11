@@ -54,7 +54,7 @@ it("preserves the sample links and prevents an unfinished template from being th
   expect(templateNeedsDownload(saved())).toBe(true);
   expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("");
   expect(defaultGeneratorTemplate().id).toBe("");
-  expect(Object.values(saved().sources ?? {}).flat()).toHaveLength(6);
+  expect(Object.values(saved().sources ?? {}).flat()).toHaveLength(5);
 });
 
 it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax weights for %s GiB of VRAM", async (vram) => {
@@ -62,13 +62,11 @@ it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax 
   vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
     ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : original(command, args));
   await downloadTemplateWeights("minimax-h3-original");
-  const filename = vram <= 12 ? "qwen3vl_4b_int4_convrot.safetensors" : "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors";
+  const filename = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors";
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
   expect(saved().paths.textEncoder).toBe(`C:/Slopus/weights/${filename}`);
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: vram <= 12
-      ? "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors"
-      : minimaxOriginalTemplate().paths.textEncoder,
+    url: minimaxOriginalTemplate().paths.textEncoder,
   }));
   const transformer = vram <= 20 ? "minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors" : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
   expect(saved().paths.transformer).toBe(`C:/Slopus/weights/${transformer}`);

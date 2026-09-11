@@ -12,6 +12,7 @@ import {
   loadEngineSettings,
   loadGeneratorTemplateSettings,
   minimaxOriginalTemplate,
+  templateNeedsDownload,
   saveAgentEndpointSettings,
   saveGeneratorTemplateSettings,
 } from "./settings";
@@ -50,12 +51,10 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(2);
+    expect(settings.catalogVersion).toBe(3);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
-    expect(settings.templates[0].sources![field]).toEqual([
-      { ...minimaxOriginalTemplate().sources![field]![0], downloadedPath },
-      minimaxOriginalTemplate().sources![field]![1],
-    ]);
+    expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
+      index === 0 ? { ...source, downloadedPath } : source));
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
   });
 
@@ -68,6 +67,46 @@ describe("generator templates", () => {
     const custom = createGeneratorTemplate();
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], catalogVersion: 1 }));
     expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id]);
+  });
+
+  it.each(["url", "downloaded", "original", "custom", "cached original"])("removes the incompatible encoder from saved templates using %s", (selection) => {
+    const template = minimaxOriginalTemplate();
+    const originalUrl = template.paths.textEncoder;
+    const removedUrl = "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors";
+    const downloadedPath = "D:/Models/qwen3vl_4b_int4_convrot.safetensors";
+    const cachedOriginal = "D:/Models/original.safetensors";
+    const custom = { url: "https://example.com/custom.safetensors", gpuModel: "RTX", minVramGb: 8 };
+    template.sources!.textEncoder = [
+      { url: originalUrl, gpuModel: "", minVramGb: 13, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
+      { url: removedUrl, gpuModel: "", minVramGb: 0, downloadedPath },
+      custom,
+    ];
+    template.paths = { transformer: "transformer", videoVae: "video", audioVae: "audio", tokenizer: "",
+      textEncoder: selection === "url" ? removedUrl : selection === "original" ? cachedOriginal : selection === "custom" ? "D:/Models/custom.safetensors" : downloadedPath };
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
+    const settings = loadGeneratorTemplateSettings();
+    const migrated = settings.templates[0];
+    expect(settings.catalogVersion).toBe(3);
+    expect(migrated.sources!.textEncoder).toEqual([
+      { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
+      custom,
+    ]);
+    expect(migrated.paths.textEncoder).toBe(selection === "url" || selection === "downloaded" ? originalUrl
+      : selection === "custom" ? "D:/Models/custom.safetensors" : cachedOriginal);
+    expect(templateNeedsDownload(migrated)).toBe(selection === "url" || selection === "downloaded");
+    expect(settings.defaultTemplateId).toBe(templateNeedsDownload(migrated) ? "" : template.id);
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+  });
+
+  it("restores the original encoder when only the removed URL was saved", () => {
+    const template = minimaxOriginalTemplate();
+    const originalUrl = template.paths.textEncoder;
+    template.paths.textEncoder = "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors";
+    delete template.sources!.textEncoder;
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 2 }));
+    const migrated = loadGeneratorTemplateSettings().templates[0];
+    expect(migrated.paths.textEncoder).toBe(originalUrl);
+    expect(migrated.sources!.textEncoder).toEqual(minimaxOriginalTemplate().sources!.textEncoder);
   });
 
   it("passes the default generator's attention and machine backend to the engine", () => {
