@@ -26,7 +26,7 @@ it("hides unfinished templates from the generator picker", () => {
   setup();
   fireEvent.click(screen.getByRole("combobox", { name: /Video generator template/ }));
   expect(screen.getByRole("option", { name: "Default" })).toBeInTheDocument();
-  expect(screen.queryByRole("option", { name: "Minimax H3 Original" })).toBeNull();
+  expect(screen.queryByRole("option", { name: "First/Last Frame" })).toBeNull();
 });
 
 it("has no selected generator when all templates still need downloads", () => {

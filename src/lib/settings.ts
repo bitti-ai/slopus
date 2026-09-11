@@ -162,13 +162,32 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
     { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 },
   ];
-  return { id: "minimax-h3-original", name: "Minimax H3 Original", defaultSteps: 20, attention: "sage2", paths, sources };
+  return { id: "minimax-h3-original", name: "First/Last Frame", defaultSteps: 20, attention: "sage2", paths, sources };
+}
+
+function minimaxVariantTemplate(id: string, name: string, transformer: string, defaultSteps = 20): GeneratorTemplate {
+  const template = minimaxOriginalTemplate();
+  return { ...template, id, name, defaultSteps,
+    paths: { ...template.paths, transformer },
+    sources: { ...template.sources, transformer: template.sources!.transformer!.map((source) =>
+      source.url === template.paths.transformer ? { ...source, url: transformer } : source) },
+  };
+}
+
+export function minimaxReferencesTemplate(): GeneratorTemplate {
+  return minimaxVariantTemplate("minimax-h3-references", "References",
+    "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors");
+}
+
+export function minimaxFastTemplate(): GeneratorTemplate {
+  return minimaxVariantTemplate("minimax-h3-fast", "First/Last Frame Fast",
+    "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors", 6);
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate()],
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 3,
+  catalogVersion: 4,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -213,7 +232,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: record.catalogVersion === 3 ? 3 : record.catalogVersion === 2 ? 2 : record.catalogVersion === 1 ? 1 : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -224,7 +243,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
   try {
     const stored = migratedStorageItem(GENERATOR_TEMPLATES_KEY, LEGACY_GENERATOR_TEMPLATES_KEY);
     if (stored) {
-      const normalized = normalizeTemplateSettings(JSON.parse(stored));
+      let normalized = normalizeTemplateSettings(JSON.parse(stored));
       if (normalized) {
         if ((normalized.catalogVersion ?? 0) < 2) {
           const bundled = minimaxOriginalTemplate();
@@ -240,7 +259,6 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             }
           }
           normalized.catalogVersion = 2;
-          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 3) {
           const bundled = minimaxOriginalTemplate();
@@ -263,9 +281,16 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             existing.sources!.textEncoder = retained;
           }
           // A replaced local encoder may now need downloading and cannot remain the default.
-          const migrated = normalizeTemplateSettings({ ...normalized, catalogVersion: 3 })!;
-          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(migrated));
-          return migrated;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 3 })!;
+        }
+        if ((normalized.catalogVersion ?? 0) < 4) {
+          const original = normalized.templates.find((template) => template.id === "minimax-h3-original");
+          if (original?.name === "Minimax H3 Original") original.name = "First/Last Frame";
+          for (const template of [minimaxReferencesTemplate(), minimaxFastTemplate()]) {
+            if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          }
+          normalized.catalogVersion = 4;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;
       }
