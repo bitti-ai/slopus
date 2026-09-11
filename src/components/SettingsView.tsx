@@ -261,6 +261,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const probeRevision = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -271,6 +272,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     ?? defaultTemplate;
   const settings = selectedTemplate.paths;
   const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
+  const generatorSections = [
+    { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => !templateNeedsDownload(template)) },
+    { id: "downloadable-generators", title: "Downloadable generators", templates: templateSettings.templates.filter(templateNeedsDownload) },
+  ];
+
+  useEffect(() => setShowAdvancedOptions(false), [editingTemplateId]);
 
   useEffect(() => subscribeGeneratorTemplates(() => setTemplateSettings(loadGeneratorTemplateSettings())), []);
   useEffect(() => {
@@ -480,16 +487,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
             aria-labelledby={editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
           >
             {!editingTemplateId && <ReferenceIconSetting />}
-            {!editingTemplateId ? <section className="generator-templates" aria-labelledby="generators-heading">
+            {!editingTemplateId ? <>{generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
               <header>
                 <div>
-                  <h2 id="generators-heading">Generators</h2>
-                  <p>Choose the generator used by default, or open one to edit its model setup.</p>
+                  <h2 id={`${section.id}-heading`}>{section.title}</h2>
+                  {section.id === "generators" && <p>Choose the generator used by default, or open one to edit its model setup.</p>}
                 </div>
-                <button type="button" className="secondary-button" onClick={addTemplate}><Plus size={16} /> New generator</button>
+                {section.id === "generators" && <button type="button" className="secondary-button" onClick={addTemplate}><Plus size={16} /> New generator</button>}
               </header>
-              <div className="generator-template-list" role="list" aria-label="Generators">
-                {templateSettings.templates.map((template) => (
+              <div className="generator-template-list" role="list" aria-label={section.title}>
+                {section.templates.map((template) => (
                   <div className={`generator-template-item${template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
                     {downloadState?.active && downloadState.templateId === template.id && <span
                       className="generator-template-item__progress"
@@ -515,7 +522,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 ))}
               </div>
-            </section> : <div className="generator-editor">
+            </section>)}</> : <div className="generator-editor">
               <header className="generator-editor__head">
                 <div>
                   <h2 id="generator-editor-heading">Edit generator</h2>
@@ -579,10 +586,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                         {stateLabel[state]}
                       </span>
                     </div>
-                    <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />
+                    {showAdvancedOptions && <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />}
                   </div>
                 );
               })}
+              <label className="generator-editor__advanced">
+                <input type="checkbox" checked={showAdvancedOptions} onChange={(event) => setShowAdvancedOptions(event.target.checked)} />
+                <span>Show advanced options</span>
+              </label>
             </div>}
           </section>}
         </div>
