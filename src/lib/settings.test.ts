@@ -11,6 +11,7 @@ import {
   loadAgentEndpointSettings,
   loadEngineSettings,
   loadGeneratorTemplateSettings,
+  minimaxOriginalTemplate,
   saveAgentEndpointSettings,
   saveGeneratorTemplateSettings,
 } from "./settings";
@@ -40,6 +41,33 @@ describe("generator templates", () => {
       }));
       expect(loadGeneratorTemplateSettings().templates[0].attention).toBe("sage2");
     }
+  });
+
+  it.each(["textEncoder", "transformer"] as const)("upgrades saved Minimax %s variants once and preserves downloaded weights", (field) => {
+    const template = minimaxOriginalTemplate();
+    const downloadedPath = "D:/Models/encoder.safetensors";
+    template.sources![field] = [{ url: template.paths[field], gpuModel: "", minVramGb: 0, downloadedPath }];
+    template.paths[field] = downloadedPath;
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
+    const settings = loadGeneratorTemplateSettings();
+    expect(settings.catalogVersion).toBe(2);
+    expect(settings.templates[0].paths[field]).toBe(downloadedPath);
+    expect(settings.templates[0].sources![field]).toEqual([
+      { ...minimaxOriginalTemplate().sources![field]![0], downloadedPath },
+      minimaxOriginalTemplate().sources![field]![1],
+    ]);
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+  });
+
+  it.each(["textEncoder", "transformer"] as const)("preserves custom Minimax %s variants and does not restore a removed catalog template", (field) => {
+    const template = minimaxOriginalTemplate();
+    template.paths[field] = "https://example.com/custom.safetensors";
+    template.sources![field] = [{ url: template.paths[field], gpuModel: "", minVramGb: 0 }];
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
+    expect(loadGeneratorTemplateSettings().templates[0].sources![field]).toEqual(template.sources![field]);
+    const custom = createGeneratorTemplate();
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], catalogVersion: 1 }));
+    expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id]);
   });
 
   it("passes the default generator's attention and machine backend to the engine", () => {

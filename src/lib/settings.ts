@@ -157,14 +157,22 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
     videoVae: `${root}vae/minimax_h3_video_vae_fp16.safetensors`,
     audioVae: `${root}vae/minimax_h3_audio_vae_fp32.safetensors`, tokenizer: "",
   };
-  return { id: "minimax-h3-original", name: "Minimax H3 Original", defaultSteps: 20, attention: "sage2", paths,
-    sources: Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: 0 }]])) };
+  const sources: GeneratorTemplate["sources"] = Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: 0 }]]));
+  sources.transformer = [
+    { url: paths.transformer, gpuModel: "", minVramGb: 21 },
+    { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 },
+  ];
+  sources.textEncoder = [
+    { url: paths.textEncoder, gpuModel: "", minVramGb: 13 },
+    { url: "https://huggingface.co/Merserk/qwen3vl-4b-int4-convrot/resolve/main/qwen3vl_4b_int4_convrot.safetensors", gpuModel: "", minVramGb: 0 },
+  ];
+  return { id: "minimax-h3-original", name: "Minimax H3 Original", defaultSteps: 20, attention: "sage2", paths, sources };
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 1,
+  catalogVersion: 2,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -209,7 +217,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: record.catalogVersion === 1 ? 1 : 0,
+    catalogVersion: record.catalogVersion === 2 ? 2 : record.catalogVersion === 1 ? 1 : 0,
   };
 };
 
@@ -222,9 +230,20 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
     if (stored) {
       const normalized = normalizeTemplateSettings(JSON.parse(stored));
       if (normalized) {
-        if (!normalized.catalogVersion) {
-          if (!normalized.templates.some((template) => template.id === "minimax-h3-original")) normalized.templates.push(minimaxOriginalTemplate());
-          normalized.catalogVersion = 1;
+        if ((normalized.catalogVersion ?? 0) < 2) {
+          const bundled = minimaxOriginalTemplate();
+          const existing = normalized.templates.find((template) => template.id === bundled.id);
+          if (!normalized.catalogVersion && !existing) normalized.templates.push(bundled);
+          // Upgrade the original catalog entry without replacing custom variants or local paths.
+          for (const field of ["transformer", "textEncoder"] as const) {
+            const variants = existing?.sources?.[field];
+            const defaults = bundled.sources![field]!;
+            if (variants?.length === 1 && variants[0].url === bundled.paths[field]
+              && !variants[0].gpuModel.trim() && variants[0].minVramGb === 0) {
+              existing!.sources![field] = [{ ...variants[0], minVramGb: defaults[0].minVramGb }, { ...defaults[1] }];
+            }
+          }
+          normalized.catalogVersion = 2;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;
