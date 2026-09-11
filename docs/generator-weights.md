@@ -2,7 +2,12 @@
 
 In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
-The bundled **Minimax H3 Original** template contains the four supplied model URLs.
+The bundled **Minimax H3 Original** template downloads four model files.
+Its text encoder download uses Qwen3-VL 4B INT4 ConvRot for GPUs with 12 GB of
+VRAM or less, and the original 32B encoder above 12 GB. Unknown hardware uses
+the 4B fallback. Its transformer uses the hybrid W4A8 model at 20 GB or less
+and the original INT8 model above 20 GB; unknown hardware uses the W4A8 fallback.
+Existing local weights and customized download variants are preserved.
 
 Templates awaiting downloads appear under **Download**. Once their
 weights are downloaded, they move into **Generators**. Removing or losing their
