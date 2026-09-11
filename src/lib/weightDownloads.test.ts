@@ -77,6 +77,29 @@ it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax 
   }));
 });
 
+it.each([12, 20, 24])("downloads the References transformer for %s GiB of VRAM", async (vram) => {
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
+    ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : original(command, args));
+  await downloadTemplateWeights("minimax-h3-references");
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: vram <= 20
+    ? "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors"
+    : "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" }));
+  expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-references")!)).toBe(false);
+});
+
+it("downloads the fast transformer and retains its six-step default", async () => {
+  await downloadTemplateWeights("minimax-h3-fast");
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
+    url: "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors",
+  }));
+  const template = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-fast")!;
+  expect(template.defaultSteps).toBe(6);
+  expect(templateNeedsDownload(template)).toBe(false);
+});
+
 it("replaces a URL being typed instead of accumulating partial download sources", () => {
   let template = createGeneratorTemplate();
   for (const value of ["https://", "https://e", "https://example.com/model"]) template = updateWeightPath(template, "transformer", value);

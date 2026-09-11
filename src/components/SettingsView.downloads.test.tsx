@@ -44,13 +44,13 @@ it("keeps downloading with Settings closed and restores progress in the template
     } }));
   });
   const settings = render(<SettingsView onClose={() => settings.unmount()} />);
-  fireEvent.click(screen.getByRole("button", { name: "Download generator Minimax H3 Original" }));
+  fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
   await waitFor(() => expect(pending).toHaveLength(1));
   act(() => progress({ payload: { requestId: pending[0].requestId, downloaded: 50, total: 100 } }));
-  const fill = screen.getByRole("progressbar", { name: "Downloading Minimax H3 Original weights" });
+  const fill = screen.getByRole("progressbar", { name: "Downloading First/Last Frame weights" });
   expect(fill.closest(".generator-template-item")).not.toBeNull();
   expect(within(screen.getByRole("list", { name: "Download" })).getByRole("progressbar")).toBe(fill);
-  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("Minimax H3 Original")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
   expect(fill).toHaveStyle({ width: "12.5%" });
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   await act(async () => pending[0].finish());
@@ -58,12 +58,12 @@ it("keeps downloading with Settings closed and restores progress in the template
   act(() => progress({ payload: { requestId: pending[1].requestId, downloaded: 50, total: 100 } }));
   const queue = new WorkQueue(async (record) => record);
   const panel = render(<WorkQueuePanel queue={queue} items={[]} onClose={() => panel.unmount()} />);
-  expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("Minimax H3 Original");
-  expect(screen.getByRole("progressbar", { name: "Minimax H3 Original download progress" })).toHaveAttribute("value", "37.5");
+  expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("First/Last Frame");
+  expect(screen.getByRole("progressbar", { name: "First/Last Frame download progress" })).toHaveAttribute("value", "37.5");
   expect(screen.queryByText("No work yet")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Close work queue" }));
   const reopened = render(<SettingsView onClose={() => reopened.unmount()} />);
-  expect(screen.getByRole("progressbar", { name: "Downloading Minimax H3 Original weights" })).toHaveStyle({ width: "37.5%" });
+  expect(screen.getByRole("progressbar", { name: "Downloading First/Last Frame weights" })).toHaveStyle({ width: "37.5%" });
   reopened.unmount();
   for (let index = 1; index < 4; index++) {
     await waitFor(() => expect(pending.length).toBe(index + 1));
@@ -78,22 +78,23 @@ it("keeps downloading with Settings closed and restores progress in the template
 
 it("downloads the sample, enables its default choice, and removes only weights to restore the download action", async () => {
   render(<SettingsView onClose={() => undefined} />);
-  const radio = () => screen.getByRole("radio", { name: "Use Minimax H3 Original as the default generator" });
+  const radio = () => screen.getByRole("radio", { name: "Use First/Last Frame as the default generator" });
   expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByText("Minimax H3 Original")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
   expect(radio()).toBeDisabled();
-  expect(screen.queryByRole("button", { name: "Remove generator Minimax H3 Original" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Download generator Minimax H3 Original" }));
-  const remove = await screen.findByRole("button", { name: "Remove downloaded weights for Minimax H3 Original" });
-  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Minimax H3 Original")).toBeInTheDocument();
-  expect(screen.queryByRole("list", { name: "Download" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Remove generator First/Last Frame" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
+  const remove = await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" });
+  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("First/Last Frame")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Download" })).queryByText("First/Last Frame")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "Download" })).getByText("References")).toBeInTheDocument();
   expect(radio()).toBeEnabled();
   fireEvent.click(radio());
   await waitFor(() => expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("minimax-h3-original"));
   fireEvent.click(remove);
-  expect(await screen.findByRole("button", { name: "Download generator Minimax H3 Original" })).toBeEnabled();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByText("Minimax H3 Original")).toBeInTheDocument();
-  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("Minimax H3 Original")).toBeNull();
+  expect(await screen.findByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
+  expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
   expect(radio()).toBeDisabled();
   expect(files.size).toBe(0);
   expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.paths.transformer).toMatch(/^https:/);
@@ -101,16 +102,16 @@ it("downloads the sample, enables its default choice, and removes only weights t
 
 it("restores a deleted downloaded file when Settings regains focus", async () => {
   render(<SettingsView onClose={() => undefined} />);
-  fireEvent.click(screen.getByRole("button", { name: "Download generator Minimax H3 Original" }));
-  await screen.findByRole("button", { name: "Remove downloaded weights for Minimax H3 Original" });
+  fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
+  await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" });
   files.clear();
   fireEvent.focus(window);
-  expect(await screen.findByRole("button", { name: "Download generator Minimax H3 Original" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
 });
 
 it("stores multiple variants and their GPU and VRAM criteria in the editor", async () => {
   render(<SettingsView onClose={() => undefined} />);
-  fireEvent.click(screen.getByRole("button", { name: "Edit Minimax H3 Original generator" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit First/Last Frame generator" }));
   const advanced = screen.getByRole("checkbox", { name: "Show advanced options" });
   expect(advanced).not.toBeChecked();
   expect(screen.queryByText(/Download variants/)).toBeNull();
