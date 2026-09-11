@@ -353,6 +353,16 @@
   margin-bottom: var(--space-4);
 }
 
+.generator-editor__advanced {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
 .diagnostics-backend {
   grid-template-columns: 180px minmax(0, 1fr);
   align-items: center;

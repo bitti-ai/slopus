@@ -49,6 +49,8 @@ it("keeps downloading with Settings closed and restores progress in the template
   act(() => progress({ payload: { requestId: pending[0].requestId, downloaded: 50, total: 100 } }));
   const fill = screen.getByRole("progressbar", { name: "Downloading Minimax H3 Original weights" });
   expect(fill.closest(".generator-template-item")).not.toBeNull();
+  expect(within(screen.getByRole("list", { name: "Downloadable generators" })).getByRole("progressbar")).toBe(fill);
+  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("Minimax H3 Original")).toBeNull();
   expect(fill).toHaveStyle({ width: "12.5%" });
   fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
   await act(async () => pending[0].finish());
@@ -77,15 +79,21 @@ it("keeps downloading with Settings closed and restores progress in the template
 it("downloads the sample, enables its default choice, and removes only weights to restore the download action", async () => {
   render(<SettingsView onClose={() => undefined} />);
   const radio = () => screen.getByRole("radio", { name: "Use Minimax H3 Original as the default generator" });
+  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Downloadable generators" })).getByText("Minimax H3 Original")).toBeInTheDocument();
   expect(radio()).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Remove generator Minimax H3 Original" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Download generator Minimax H3 Original" }));
   const remove = await screen.findByRole("button", { name: "Remove downloaded weights for Minimax H3 Original" });
+  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Minimax H3 Original")).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Downloadable generators" })).toBeNull();
   expect(radio()).toBeEnabled();
   fireEvent.click(radio());
   await waitFor(() => expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("minimax-h3-original"));
   fireEvent.click(remove);
   expect(await screen.findByRole("button", { name: "Download generator Minimax H3 Original" })).toBeEnabled();
+  expect(within(screen.getByRole("list", { name: "Downloadable generators" })).getByText("Minimax H3 Original")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("Minimax H3 Original")).toBeNull();
   expect(radio()).toBeDisabled();
   expect(files.size).toBe(0);
   expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.paths.transformer).toMatch(/^https:/);
@@ -103,6 +111,11 @@ it("restores a deleted downloaded file when Settings regains focus", async () =>
 it("stores multiple variants and their GPU and VRAM criteria in the editor", async () => {
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Edit Minimax H3 Original generator" }));
+  const advanced = screen.getByRole("checkbox", { name: "Show advanced options" });
+  expect(advanced).not.toBeChecked();
+  expect(screen.queryByText(/Download variants/)).toBeNull();
+  expect(advanced.closest(".generator-editor")?.lastElementChild).toBe(advanced.closest("label"));
+  fireEvent.click(advanced);
   const weight = screen.getByLabelText("Transformer weights").closest(".settings-path")!;
   const details = weight.querySelector("details")!;
   fireEvent.click(within(weight as HTMLElement).getByText("Download variants (1)"));
@@ -114,4 +127,12 @@ it("stores multiple variants and their GPU and VRAM criteria in the editor", asy
   fireEvent.blur(gpu);
   fireEvent.change(screen.getByLabelText("Transformer weights variant 2 minimum VRAM"), { target: { value: "32" } });
   await waitFor(() => expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.sources?.transformer?.[1]).toMatchObject({ url: "https://example.com/larger.safetensors", gpuModel: "RTX 5090", minVramGb: 32 }));
+  fireEvent.click(advanced);
+  expect(screen.queryByText(/Download variants/)).toBeNull();
+  fireEvent.click(advanced);
+  expect(screen.getByLabelText("Transformer weights variant 2 GPU model")).toHaveValue("RTX 5090");
+  fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  expect(screen.getByRole("checkbox", { name: "Show advanced options" })).not.toBeChecked();
+  expect(screen.queryByText(/Download variants/)).toBeNull();
 });
