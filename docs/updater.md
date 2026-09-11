@@ -35,6 +35,40 @@ Do not regenerate the key for each release.
 
 ## Publish a Windows update
 
+To build and publish automatically, install [GitHub CLI](https://cli.github.com/)
+and sign in once with `gh auth login`, using an account with write access to
+`bitti-ai/slopus`. After updating the version as described below, commit the
+release changes (including the Cargo lockfile and runtime DLL, if changed),
+then push the matching tag. For example, for version 0.2.0:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+.\release.cmd --publish
+```
+
+The command checks that the working tree is clean, the remote tag points to the
+current commit, the repository is public, and the stable version is newer than
+all published stable releases. It then builds using the existing updater signing
+key and validates the manifest's version, URLs and signature contents against
+the local artifacts. The private key remains on the build machine.
+
+Publishing creates a draft, uploads only this version's installers, their `.sig`
+files and portable ZIP, then uploads `latest.json`. After verifying that every
+expected asset is uploaded with the correct size, it publishes the draft as the
+latest stable release. This is when the existing updater endpoint begins serving
+the new manifest. Release notes from `UPDATE_NOTES_FILE` appear in both the app
+and the GitHub release. Installation still requires the user's action in the app.
+
+If an upload fails, the release stays a draft and the previous latest release
+remains available. Run `release.cmd --publish` again to rebuild and retry, or
+`node scripts/publish-release.mjs --publish` to retry with the same artifacts.
+Published versions are never overwritten. Automatic publishing supports the
+single Windows architecture produced by `release.cmd`; prereleases and releases
+combining architectures need a separate publishing workflow.
+
+For a local build followed by manual publishing, use the existing steps:
+
 1. Set the same new version in `package.json`, `package-lock.json`,
    `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Update the configured
    window title too. Cargo updates its lockfile during the build.
@@ -68,4 +102,6 @@ signed build, launch the older updater-enabled build, then check, install and
 verify the restarted version. A live upgrade cannot be tested until a newer
 release is hosted.
 
-Reference: [Tauri updater documentation](https://v2.tauri.app/plugin/updater/).
+References: [Tauri updater documentation](https://v2.tauri.app/plugin/updater/),
+[GitHub CLI release creation](https://cli.github.com/manual/gh_release_create),
+[publishing a draft](https://cli.github.com/manual/gh_release_edit).

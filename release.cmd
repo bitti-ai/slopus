@@ -3,6 +3,15 @@ setlocal EnableExtensions
 
 pushd "%~dp0" || exit /b 1
 
+set "PUBLISH_RELEASE="
+if /I "%~1"=="--publish" set "PUBLISH_RELEASE=1"
+if /I "%~1"=="--help" goto :help
+if not "%~1"=="" if not defined PUBLISH_RELEASE goto :usage_error
+if not "%~2"=="" goto :usage_error
+if defined PUBLISH_RELEASE (
+  node scripts\publish-release.mjs --check || goto :fail
+)
+
 set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
@@ -166,8 +175,24 @@ echo Install with the setup executable - it installs the WebView2 runtime if the
 echo machine does not already have it. The portable archive assumes WebView2 is
 echo already present.
 echo.
+if defined PUBLISH_RELEASE (
+  node scripts\publish-release.mjs --publish || goto :fail
+)
 popd
 exit /b 0
+
+:help
+echo Usage: release.cmd [--publish]
+echo   Build signed installers, updater manifest and portable ZIP.
+echo   --publish uploads a draft to GitHub, then publishes it as latest.
+echo   Requires gh auth login and a pushed version tag matching this commit.
+popd
+exit /b 0
+
+:usage_error
+echo Usage: release.cmd [--publish]
+popd
+exit /b 1
 
 :write_readme
 > "%~1" echo Slopus %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
