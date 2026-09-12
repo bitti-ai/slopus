@@ -416,6 +416,8 @@ export const generationJobSchema = z.object({
   /** An image reference used as the scene's opening frame. It is separate from
    *  subject citations because a frame is composition, not a named subject. */
   startFrameReferenceId: idSchema.nullish(),
+  endFrameReferenceId: idSchema.nullish(),
+  usePreviousSceneLastFrame: z.boolean().nullish(),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
   // existed has no key here at all, and must keep opening.
@@ -739,13 +741,34 @@ export function usableReferenceImages(references: ProjectReference[]): ProjectRe
   return usableImageReferences(references).flatMap(referenceImages);
 }
 
-/** References in the exact order both the prompt compiler and SlopFab consume.
- *  A start frame must be Picture 1; ordinary bound references retain project
- *  order after it and a frame that is also bound is still sent only once. */
+/** Opening and closing pictures come first, then bound references in project
+ * order. Frame anchors use their first image, even on a multi-image reference;
+ * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
   const start = references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
-  const bound = references.filter((reference) => job.referenceIds.includes(reference.id) && reference.id !== start?.id);
-  return start ? [start, ...bound] : bound;
+  const end = references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
+  const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
+    .map((reference) => ({ ...reference, kind: "text" as const, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
+  return [...anchors, ...references.filter((reference) => job.referenceIds.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
+}
+
+/** Resolve the adjacent scene when preparing a request; queued work captures
+ * its id so subsequent board edits cannot change the source of that run. */
+export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
+  if (!job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
+  const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
+  const id = `previous-frame-${job.id}`;
+  const resolved = { ...job, startFrameReferenceId: id };
+  const reference: ProjectReference = {
+    id, kind: "image", name: "Previous scene's last frame", description: "", intendedUse: [], createdAt: job.createdAt,
+    relativePath: previous?.outputRelativePath ? sceneLastFramePath(previous.outputRelativePath) : `cache/scene-last/pending-${job.id}.png`,
+  };
+  return { job: resolved, references: sceneGenerationReferences(resolved, [reference, ...config.references]), previousSceneId: previous?.id };
+}
+
+export function sceneLastFramePath(outputRelativePath: string): string {
+  const stem = outputRelativePath.replaceAll("\\", "/").split("/").pop()!.replace(/\.[^.]+$/, "");
+  return `cache/scene-last/${stem}.png`;
 }
 
 /* Who wrote each piece of the compiled prompt.
@@ -777,6 +800,7 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
 export interface ScenePrompt {
   shots: readonly SceneShot[];
   startFrameReferenceId?: string | null;
+  endFrameReferenceId?: string | null;
   /** Base guide §4.6 / §4.7. Blank or absent falls back to the two default
    *  lines below, which are marked as Slopus's own writing. */
   soundscape?: string | null;
@@ -830,6 +854,7 @@ export interface SceneGenerationInput {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: readonly string[];
+  previousSceneId?: string;
 }
 
 /** A stable record of everything sent to the renderer. Shot ids are retained
@@ -849,6 +874,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     canvasWidth: input.canvasWidth,
     canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
+    ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     shots,
   });
 }
@@ -883,7 +909,7 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = []): PromptSegment[] {
-  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, soundscape: job.soundscape, music: job.music }, references);
+  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references);
 }
 
 export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = []): string {
@@ -913,7 +939,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // audio-only-tagged reference is dropped here (ref guide §2.1), so a scene
   // whose only reference is audio-tagged correctly falls back to T2VA.
   const startFrame = references.find((reference) => reference.id === scene.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference)) ?? null;
-  const usable = references.filter(isReferenceUsable).filter(isVisualReference).filter((reference) => reference.id !== startFrame?.id);
+  const endFrame = references.find((reference) => reference.id === scene.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference)) ?? null;
+  const usable = references.filter(isReferenceUsable).filter(isVisualReference).filter((reference) => reference.id !== startFrame?.id && reference.id !== endFrame?.id);
   const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
 
   const compiled: CompiledShot[] = shots.map((shot, index) => {
@@ -990,7 +1017,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
   const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
 
-  if (usable.length === 0 && !startFrame) {
+  if (usable.length === 0 && !startFrame && !endFrame) {
     // T2VA — base guide §2.2 field list and order.
     return [
       frame("integrated_multimodal_description: "),
@@ -1048,9 +1075,12 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     ];
   });
   const startPicture = startFrame ? pictureNumbers.get(startFrame.id)?.[0] ?? null : null;
+  const endPicture = endFrame ? pictureNumbers.get(endFrame.id)?.[0] ?? null : null;
   const startDefinition = startPicture
-    ? [frame(`<Picture ${startPicture}> is the first frame of the video.${definitions.length > 0 ? "\n" : ""}`)]
+    ? [frame(`<Picture ${startPicture}> is the first frame of the video.${definitions.length > 0 || endPicture ? "\n" : ""}`)]
     : [];
+  const endDefinition = endPicture
+    ? [frame(`<Picture ${endPicture}> is the last frame of the video.${definitions.length > 0 ? "\n" : ""}`)] : [];
 
   const labels = usable.map((reference, index) => referenceLabel(reference, index));
   const labelList = listOf(labels);
@@ -1076,6 +1106,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...addedStop(shot.text),
     ]),
     ...(startPicture ? [frame(` The video begins with <Picture ${startPicture}>.`)] : []),
+    ...(endPicture ? [frame(` The video ends with <Picture ${endPicture}>.`)] : []),
     ...(labels.length > 0 ? [frame(` ${labelList} ${labels.length === 1 ? "provides" : "provide"} generation guidance for the ${compiled.length === 1 ? "single shot" : `${compiled.length} shots`} described below.`)] : []),
   ];
 
@@ -1096,6 +1127,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     return `${referenceLabel(reference, index)}${where}: fully_preserved - the referenced characteristics are retained.`;
   });
   if (startPicture) retention.unshift(`<Picture ${startPicture}>: first_frame - used as the opening frame.`);
+  if (endPicture) retention.push(`<Picture ${endPicture}>: last_frame - used as the closing frame.`);
 
   // §5.2: in full-reference mode the style opening comes BEFORE [Shot 1], not
   // after it. §5.3: cite each <Subject N> where it appears in the shot.
@@ -1116,12 +1148,14 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...tail(shot),
       ...dialogue(shot, shot.text.length > 0 || featured[shot.index].length > 0 || shot.tags.clauses.length > 0),
       ...(shot.index === 0 && startPicture ? [frame(` The opening frame matches <Picture ${startPicture}>.`)] : []),
+      ...(shot.index === compiled.length - 1 && endPicture ? [frame(` The closing frame matches <Picture ${endPicture}>.`)] : []),
     ]),
   ];
 
   return [
     frame("subject_definitions:\n"),
     ...startDefinition,
+    ...endDefinition,
     ...definitions,
     frame("\n\nsummary:\n"),
     ...summary,
@@ -1162,6 +1196,8 @@ export function createDraftGenerationJob(
     title?: string;
     referenceIds?: string[];
     startFrameReferenceId?: string | null;
+    endFrameReferenceId?: string | null;
+    usePreviousSceneLastFrame?: boolean;
     references?: ProjectReference[];
     shotTags?: ShotTagSelection | null;
     /** The shots to open the scene with. Omitted means one shot holding
@@ -1197,6 +1233,8 @@ export function createDraftGenerationJob(
     creativeBrief: text,
     referenceIds: options.referenceIds ?? [],
     startFrameReferenceId: options.startFrameReferenceId ?? undefined,
+    endFrameReferenceId: options.endFrameReferenceId ?? undefined,
+    usePreviousSceneLastFrame: options.usePreviousSceneLastFrame ?? undefined,
     shots,
     durationSeconds,
     steps: options.steps ?? DEFAULT_GENERATION_STEPS,

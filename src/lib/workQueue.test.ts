@@ -9,12 +9,14 @@ import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, EMPTY_ENGINE_SETTINGS } from "./settings";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
+import { saveSceneLastFrame } from "./sceneLastFrame";
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 vi.mock("./generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 vi.mock("./timelineThumbnails", () => ({ purgeTimelineThumbnails: vi.fn(async () => undefined) }));
+vi.mock("./sceneLastFrame", () => ({ saveSceneLastFrame: vi.fn(async () => "cache/scene-last/work-new.png") }));
 vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGeneration: vi.fn(), resolveSlopfabPlan: vi.fn() }));
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 const stops: (() => void)[] = [];
@@ -49,6 +51,37 @@ const finish = async (queue: WorkQueue, id: string) => {
 };
 
 describe("application work queue", () => {
+  it("resolves a linked first frame after the previous scene finishes encoding and saving", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true }] }));
+    const source = submission(first);
+    const linked = { ...submission(first), job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id, referencePaths: ["pending.png", "subject.png"] } };
+    queue.enqueue(first, [source, linked]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+    expect(saveSceneLastFrame).not.toHaveBeenCalled();
+    await finish(queue, queue.getSnapshot()[0].id);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    expect(saveSceneLastFrame).toHaveBeenCalledWith("C:/First", "media/generated/result.mp4");
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].referencePaths).toEqual(["C:/First/cache/scene-last/work-new.png", "subject.png"]);
+    await finish(queue, queue.getSnapshot()[1].id);
+    const snapshot = JSON.parse(first.getSnapshot().config.generationJobs[1].generationSnapshot!);
+    expect(snapshot.previousSceneId).toBe(source.job.id);
+    expect(snapshot.referencePaths[0]).toBe("C:/First/cache/scene-last/work-new.png");
+  });
+
+  it("fails a dependent scene if the previous generation fails, even when an older video exists", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, generationJobs: [{ ...config.generationJobs[0], outputRelativePath: "media/generated/old.mp4" }, { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true }] }));
+    const source = submission(first);
+    queue.enqueue(first, [source, { ...source, job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id } }]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+    emit("slopfab-job", { jobId: queue.getSnapshot()[0].id, state: "failed", detail: "Render failed" });
+    await waitFor(() => expect(queue.getSnapshot()[1].status).toBe("failed"));
+    expect(queue.getSnapshot()[1].error).toContain("previous scene");
+    expect(saveSceneLastFrame).not.toHaveBeenCalled();
+    expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
+  });
+
   it("starts and advances generations while a weight download remains in progress", async () => {
     let finishDownload: () => void = () => undefined;
     vi.mocked(invoke).mockImplementation(async (command) => {
