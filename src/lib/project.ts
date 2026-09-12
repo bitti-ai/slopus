@@ -265,6 +265,11 @@ export const projectReferenceSchema = z.object({
   // written definition can carry any number of images, and an image-only
   // reference is simply a definition whose description is still blank.
   images: z.array(projectReferenceImageSchema).optional(),
+  video: z.object({
+    startSeconds: z.number().finite().min(0),
+    durationSeconds: z.number().finite().min(2).max(15),
+    includeAudio: z.boolean(),
+  }).optional(),
   intendedUse: z.array(z.enum(["character", "animal", "product", "location", "style", "audio"])).default([]),
   subcategory: z.string().optional(),
   // Generated library artwork is not an image conditioning attachment.
@@ -272,6 +277,9 @@ export const projectReferenceSchema = z.object({
   createdAt: isoDateSchema,
 }).superRefine((reference, context) => {
   checkOneLocation(reference, context, `Reference '${reference.id}'`);
+  if (reference.video && reference.kind !== "video") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["video"], message: "Clip settings require a video reference." });
+  }
   const imageIds = new Set<string>();
   for (const image of reference.images ?? []) {
     if (imageIds.has(image.id)) {
@@ -631,7 +639,7 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  An image qualifies on its file alone: it can be sent to the engine and cited
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
-  return referenceImages(reference).length > 0 || isReferenceDescribed(reference);
+  return referenceImages(reference).length > 0 || (reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)) || isReferenceDescribed(reference);
 }
 
 /** Reference guide §2.1: `<Subject N>` is VISIBLE content. A reference tagged
@@ -646,7 +654,7 @@ export function isReferenceUsable(reference: ProjectReference): boolean {
  *  meets references saved before that. A reference carrying any other tag, or
  *  no tag at all, is visible content as before. */
 export function isVisualReference(reference: ProjectReference): boolean {
-  return reference.intendedUse.length === 0 || reference.intendedUse.some((use) => use !== "audio");
+  return reference.kind === "video" || reference.intendedUse.length === 0 || reference.intendedUse.some((use) => use !== "audio");
 }
 
 /* ---------------------------------------------------------------------------
@@ -719,8 +727,8 @@ const DEFAULT_MUSIC = "N/A";
 
 const referenceLabel = (reference: ProjectReference, index: number) => `<Subject ${index + 1}>`;
 
-/** Image references are the only ones that can be sent to the engine as assets,
- *  so they carry the <Picture N> numbering. That numbering MUST match the order
+/** Image references carry the <Picture N> numbering, independently of videos.
+ *  That numbering MUST match the order
  *  of `reference_paths` in the generation request: slopfab.rs iterates the array
  *  and calls add_reference sequentially, so index 0 is <Picture 1>.
  *
@@ -739,6 +747,11 @@ export function usableImageReferences(references: ProjectReference[]): ProjectRe
  * on one reference stay adjacent and share that reference's subject. */
 export function usableReferenceImages(references: ProjectReference[]): ProjectReferenceImage[] {
   return usableImageReferences(references).flatMap(referenceImages);
+}
+
+/** Video numbering is independent of pictures and follows native insertion order. */
+export function usableVideoReferences(references: ProjectReference[]): ProjectReference[] {
+  return references.filter((reference) => reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)).filter(isVisualReference);
 }
 
 /** Opening and closing pictures come first, then bound references in project
@@ -854,6 +867,7 @@ export interface SceneGenerationInput {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: readonly string[];
+  referenceVideos?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }[];
   previousSceneId?: string;
 }
 
@@ -874,6 +888,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     canvasWidth: input.canvasWidth,
     canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
+    ...(input.referenceVideos?.length ? { referenceVideos: input.referenceVideos } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     shots,
   });
@@ -1042,6 +1057,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const imageReferenceIds = usableImageReferences(references).flatMap((reference) =>
     referenceImages(reference).map(() => reference.id));
   const pictureNumbers = new Map<string, number[]>();
+  const videoNumbers = new Map(usableVideoReferences(references).map((reference, index) => [reference.id, index + 1]));
   imageReferenceIds.forEach((referenceId, index) => pictureNumbers.set(referenceId, [...(pictureNumbers.get(referenceId) ?? []), index + 1]));
   const listOf = (values: string[]): string => values.length === 1
     ? values[0]
@@ -1051,9 +1067,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // cited INSIDE its <Subject N> definition. A scene's explicit first frame is
   // the exception: it describes composition, so it is emitted as a standalone
   // <Picture N> entry instead of pretending to be a subject.
-  // No <Audio N> is emitted either: §2.4 defines it as an actual audio asset,
-  // and every reference in this app is text or image. An "audio" intendedUse
-  // is a note about desired sound, not a signal to copy.
+  // Video citations follow their own native insertion order. An "audio"
+  // intendedUse remains a legacy text tag, not a standalone audio attachment.
   // The identity slot carries ONLY what the user wrote. `name` is a library
   // label, not a description: for an imported image it is the source file's
   // stem, so using it here shipped "<Subject 1> is IMG_4821, shown in
@@ -1065,10 +1080,11 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const definitions = usable.flatMap((reference, index): PromptSegment[] => {
     const detail = referenceDefinition(reference).replace(/\s+/g, " ");
     const pictures = pictureNumbers.get(reference.id) ?? [];
+    const video = videoNumbers.get(reference.id);
     const label = referenceLabel(reference, index);
     const lead = index === 0 ? "" : "\n";
-    if (pictures.length === 0) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
-    const pictureList = listOf(pictures.map((picture) => `<Picture ${picture}>`));
+    if (pictures.length === 0 && !video) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
+    const pictureList = listOf([...pictures.map((picture) => `<Picture ${picture}>`), ...(video ? [`<Video ${video}>`] : [])]);
     return [
       frame(`${lead}${label} is the content shown in ${pictureList}.`),
       ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),

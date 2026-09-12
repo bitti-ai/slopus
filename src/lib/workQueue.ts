@@ -10,6 +10,7 @@ import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, 
 import { withEngineSettings } from "./settings";
 import { purgeTimelineThumbnails } from "./timelineThumbnails";
 import { ReferenceIconWork } from "./referenceIconWork";
+import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
@@ -215,6 +216,11 @@ export class WorkQueue {
           }
           await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
           if (work.cancelled) continue;
+          if (work.request.referenceVideos?.length) {
+            work.request.referenceVideoIds = await prepareReferenceVideos(next.folderPath, work.request, work.config,
+              () => work.cancelled, (detail) => this.patch(work.id, { detail }));
+          }
+          if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config);
           if (work.cancelled) continue;
           this.patch(work.id, { status: "generating", detail: `Generating ${plan.alignedFrames} frames at ${plan.canvasWidth} × ${plan.canvasHeight}` });
@@ -224,6 +230,11 @@ export class WorkQueue {
           if (work.cancelled) await this.requestNativeCancellation(work);
           await work.done;
         } catch (reason) { this.fail(work, reason); }
+        finally {
+          await releaseReferenceVideos(work.request.referenceVideoIds ?? []).catch((reason) =>
+            writeDiagnostic("error", "work-queue", "references.release_failed", describeDiagnosticError(reason), { workId: work.id }));
+          delete work.request.referenceVideoIds;
+        }
       }
     } finally { this.pumping = false; }
   }

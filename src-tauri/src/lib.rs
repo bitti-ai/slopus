@@ -210,6 +210,8 @@ struct ReusableReference {
     /// readable for projects made when an image was a separate reference kind.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     images: Vec<ReferenceImage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    video: Option<ReferenceVideoOptions>,
     #[serde(default)]
     intended_use: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -228,6 +230,14 @@ struct ReferenceImage {
     relative_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceVideoOptions {
+    start_seconds: f64,
+    duration_seconds: f64,
+    include_audio: bool,
 }
 
 /// One shot inside a scene. Mirrors `sceneShotSchema` in src/lib/project.ts.
@@ -810,6 +820,12 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             ));
         }
         let mut image_ids = BTreeSet::new();
+        if let Some(video) = &reference.video {
+            if reference.kind != "video" || !video.start_seconds.is_finite() || video.start_seconds < 0.0
+                || !video.duration_seconds.is_finite() || !(2.0..=15.0).contains(&video.duration_seconds) {
+                return Err(format!("Reference '{}' needs a nonnegative clip start and a duration of 2 to 15 seconds.", reference.id));
+            }
+        }
         for image in &mut reference.images {
             if image.id.trim().is_empty() || image.name.trim().is_empty() {
                 return Err(format!(
@@ -2134,6 +2150,7 @@ fn create_project_at_with_references(
                 relative_path: imported.relative_path,
                 source_path: imported.source_path,
                 images: Vec::new(),
+                video: None,
                 intended_use: vec!["style".into()],
                 subcategory: None,
                 icon_relative_path: None,
@@ -2312,6 +2329,52 @@ fn cancel_agent_turn(state: tauri::State<'_, agent::AgentRuntime>, request_id: S
 }
 
 #[tauri::command]
+fn choose_reference_video(app: AppHandle, folder_path: String) -> Result<Option<String>, String> {
+    let root = project_root(&folder_path)?;
+    let picked = app.dialog().file().set_title("Add a video reference")
+        .add_filter("MP4 video", &["mp4", "m4v", "mov"]).blocking_pick_file();
+    let Some(picked) = picked else { return Ok(None); };
+    let path = picked.into_path().map_err(|error| format!("Could not access selected video: {error}"))?;
+    if !path.is_file() { return Err("The selected video does not exist.".into()); }
+    picked_external_source_path(&path, &root).map(Some)
+}
+
+#[tauri::command]
+fn create_reference_video(duration_seconds: f64, config: ProjectConfig) -> Result<String, String> {
+    let config = validate_and_normalize_config(config)?;
+    slopfab::create_reference_video(duration_seconds, &config.provider_settings)
+}
+
+fn reference_video_header<'a>(request: &'a tauri::ipc::Request<'_>, name: &str) -> Result<&'a str, String> {
+    request.headers().get(name).and_then(|value| value.to_str().ok())
+        .ok_or_else(|| format!("Missing or invalid {name} header."))
+}
+
+#[tauri::command]
+fn append_reference_video(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Reference frames require a binary body.".into()); };
+    let id = reference_video_header(&request, "x-reference-id")?;
+    let width = reference_video_header(&request, "x-reference-width")?.parse().map_err(|_| "Invalid frame width.")?;
+    let height = reference_video_header(&request, "x-reference-height")?.parse().map_err(|_| "Invalid frame height.")?;
+    let timestamp = reference_video_header(&request, "x-reference-time")?.parse().map_err(|_| "Invalid frame timestamp.")?;
+    slopfab::append_reference_video(id, bytes, width, height, timestamp)
+}
+
+#[tauri::command]
+fn set_reference_video_audio(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Reference audio requires a binary body.".into()); };
+    let id = reference_video_header(&request, "x-reference-id")?;
+    let channels = reference_video_header(&request, "x-reference-channels")?.parse().map_err(|_| "Invalid audio channels.")?;
+    let rate = reference_video_header(&request, "x-reference-rate")?.parse().map_err(|_| "Invalid sample rate.")?;
+    slopfab::set_reference_video_audio(id, bytes, channels, rate)
+}
+
+#[tauri::command]
+fn release_reference_videos(ids: Vec<String>) -> Result<(), String> {
+    slopfab::release_reference_videos(&ids)
+}
+
+#[tauri::command]
 fn resolve_slopfab_plan(
     request: slopfab::GenerationRequest,
     config: ProjectConfig,
@@ -2319,7 +2382,7 @@ fn resolve_slopfab_plan(
     let context = serde_json::json!({
         "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
         "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
-        "referenceCount": request.reference_paths.len(), "inputChars": request.prompt.chars().count(),
+        "referenceCount": request.reference_count(), "inputChars": request.prompt.chars().count(),
     });
     diagnostics::info(
         "slopfab",
@@ -2858,6 +2921,11 @@ pub fn run() {
             choose_initial_reference_images,
             choose_reference_image,
             choose_reference_images,
+            choose_reference_video,
+            create_reference_video,
+            append_reference_video,
+            set_reference_video_audio,
+            release_reference_videos,
             import_media_files,
             read_project_file,
             read_external_media_file,
@@ -4275,6 +4343,7 @@ mod tests {
             relative_path: None,
             source_path: None,
             images: Vec::new(),
+            video: None,
             intended_use: Vec::new(),
             subcategory: None,
             icon_relative_path: None,
@@ -4284,6 +4353,24 @@ mod tests {
             validate_and_normalize_config(config).is_ok(),
             "a blank text reference must never block saving the project"
         );
+    }
+
+    #[test]
+    fn video_reference_clip_settings_survive_save_and_reopen() {
+        let mut config = fixture();
+        let reference = &mut config.references[0];
+        reference.kind = "video".into();
+        reference.relative_path = Some("media/reference.mp4".into());
+        reference.source_path = None;
+        reference.video = Some(ReferenceVideoOptions { start_seconds: 3.5, duration_seconds: 4.0, include_audio: false });
+        let config = validate_and_normalize_config(config).unwrap();
+        let value = serde_json::to_value(&config).unwrap();
+        assert_eq!(value["references"][0]["video"]["startSeconds"], 3.5);
+        let reopened: ProjectConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(reopened.references[0].video, config.references[0].video);
+        let mut invalid = reopened;
+        invalid.references[0].video.as_mut().unwrap().duration_seconds = 16.0;
+        assert!(validate_and_normalize_config(invalid).is_err());
     }
 
     #[test]

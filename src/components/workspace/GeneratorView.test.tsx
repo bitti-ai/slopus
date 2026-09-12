@@ -160,6 +160,21 @@ describe("Generator scene controls", () => {
     expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
   });
 
+  it("sends a cited video with its trim and soundtrack choice in the generation snapshot", async () => {
+    const initial = project();
+    initial.references = [{ id: "motion", kind: "video", name: "Motion", description: "", sourcePath: "C:/motion.mp4", intendedUse: [], createdAt: initial.createdAt,
+      video: { startSeconds: 2, durationSeconds: 3, includeAudio: false } }];
+    initial.generationJobs[0].referenceIds = ["motion"];
+    initial.generationJobs[0].shots![0].action = "Follow @[ref:motion].";
+    const state = setup(parseProjectConfig(initial));
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
+    expect(snapshot.referenceVideos).toEqual([{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 2, durationSeconds: 3, includeAudio: false }]);
+    expect(snapshot.referencePaths).toEqual([]);
+    expect(snapshot.prompt).toContain("<Video 1>");
+  });
+
   it("offers no inferred Look and sends a selected image as the scene's first frame", async () => {
     const initial = project();
     initial.references = [{

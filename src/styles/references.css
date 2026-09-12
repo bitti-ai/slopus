@@ -578,6 +578,37 @@
   font: inherit;
 }
 
+.reference-video {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.reference-video-preview {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  background: var(--field-bg);
+  border-radius: var(--radius-sm);
+}
+
+.reference-video p {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.reference-video label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reference-video input[type="number"] {
+  min-width: 0;
+  width: 80px;
+  margin-left: auto;
+}
+
 .reference-fields__actions {
   display: flex;
   flex-wrap: wrap;

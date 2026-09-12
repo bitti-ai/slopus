@@ -125,6 +125,55 @@ pub struct GenerationRequest {
     pub canvas_height: i32,
     #[serde(default)]
     pub reference_paths: Vec<String>,
+    #[serde(default)]
+    pub reference_video_ids: Vec<String>,
+}
+
+impl GenerationRequest {
+    pub fn reference_count(&self) -> usize {
+        self.reference_paths.len() + self.reference_video_ids.len()
+    }
+}
+
+// A video owns its DLL and input buffers. Commands serialize mutations; the
+// C API retains immutable snapshots when a plan/generation attaches a video.
+static REFERENCE_VIDEOS: std::sync::LazyLock<Mutex<HashMap<String, ffi::ReferenceVideoHandle>>> =
+    std::sync::LazyLock::new(Default::default);
+static NEXT_REFERENCE_VIDEO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub fn create_reference_video(duration: f64, settings: &BTreeMap<String, ProviderSetting>) -> Result<String, String> {
+    let configuration = Configuration::from_settings(settings);
+    let api = ffi::Api::load(&configuration.dll_path)?;
+    api.version()?;
+    if configuration.platform(detect_platform(&api)) == ComputePlatform::Vulkan {
+        return Err("Video references require CUDA. Select CUDA in Generator settings and use a Ref2VA transformer.".into());
+    }
+    let video = ffi::ReferenceVideoHandle::new(api, duration, configuration.dll_path)?;
+    let mut videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
+    if videos.len() >= 3 { return Err("At most three video references can be prepared at once.".into()); }
+    let id = NEXT_REFERENCE_VIDEO.fetch_add(1, Ordering::Relaxed).to_string();
+    videos.insert(id.clone(), video);
+    Ok(id)
+}
+
+pub fn append_reference_video(id: &str, bytes: &[u8], width: i32, height: i32, timestamp: f64) -> Result<(), String> {
+    REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?
+        .get_mut(id).ok_or("The prepared reference video no longer exists.")?
+        .append(bytes, width, height, timestamp)
+}
+
+pub fn set_reference_video_audio(id: &str, bytes: &[u8], channels: i32, sample_rate: i32) -> Result<(), String> {
+    if bytes.len() % 4 != 0 { return Err("Reference audio must contain complete float32 samples.".into()); }
+    let samples: Vec<f32> = bytes.chunks_exact(4).map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap())).collect();
+    REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?
+        .get_mut(id).ok_or("The prepared reference video no longer exists.")?
+        .set_audio(&samples, channels, sample_rate)
+}
+
+pub fn release_reference_videos(ids: &[String]) -> Result<(), String> {
+    let mut videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
+    for id in ids { videos.remove(id); }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -216,7 +265,7 @@ impl Default for SlopfabRuntime {
                     "steps": item.request.steps,
                     "canvasWidth": item.request.canvas_width,
                     "canvasHeight": item.request.canvas_height,
-                    "referenceCount": item.request.reference_paths.len(),
+                    "referenceCount": item.request.reference_count(),
                     "randomSeed": item.request.seed == -1,
                 }));
                 let result = run_generation(&item);
@@ -311,7 +360,7 @@ impl SlopfabRuntime {
                 "steps": request.steps,
                 "canvasWidth": request.canvas_width,
                 "canvasHeight": request.canvas_height,
-                "referenceCount": request.reference_paths.len(),
+                "referenceCount": request.reference_count(),
                 "inputChars": request.prompt.chars().count(),
             }),
         );
@@ -567,6 +616,12 @@ pub fn resolve_plan(
 }
 
 fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if request.reference_paths.len() > 9 || request.reference_video_ids.len() > 3 || request.reference_count() > 12 {
+        return Err("Use at most nine images and three videos per generation.".into());
+    }
+    if request.still_image && !request.reference_video_ids.is_empty() {
+        return Err("Video references cannot be used for still-image generation.".into());
+    }
     if request.steps < 2 {
         return Err("Generation step count must be at least 2.".into());
     }
@@ -619,8 +674,18 @@ fn configure_request(
                 api.set_model(handle, *id, path)?;
             }
         }
-        for path in &request.reference_paths {
-            api.add_reference(handle, Path::new(path))?;
+    }
+    for path in &request.reference_paths {
+        api.add_reference(handle, Path::new(path))?;
+    }
+    if !request.reference_video_ids.is_empty() {
+        if platform == ComputePlatform::Vulkan {
+            return Err("Video references require CUDA and a Ref2VA transformer.".into());
+        }
+        let videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
+        for id in &request.reference_video_ids {
+            videos.get(id).ok_or("The prepared reference video no longer exists. Please retry generation.")?
+                .attach(handle, &configuration.dll_path)?;
         }
     }
     Ok(())
@@ -687,7 +752,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         frames: item.request.frames,
         canvas_width: item.request.canvas_width,
         canvas_height: item.request.canvas_height,
-        reference_count: item.request.reference_paths.len(),
+        reference_count: item.request.reference_count(),
         timing_profile: timing_profile.clone(),
         planned_steps: (item.request.steps - 1).max(0),
     });
@@ -760,7 +825,7 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         frames: output.frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
         audio_samples: output.audio_float_count,
-        reference_count: item.request.reference_paths.len(),
+        reference_count: item.request.reference_count(),
         timing_profile,
         seconds_conditioning: output.seconds_conditioning,
         seconds_denoise: output.seconds_denoise,
@@ -851,6 +916,7 @@ fn write_reference_icon(
         canvas_width: crate::reference_icons::RENDER_SIZE as i32,
         canvas_height: crate::reference_icons::RENDER_SIZE as i32,
         reference_paths: Vec::new(),
+        reference_video_ids: Vec::new(),
     };
     let handle = RequestHandle::new(api)?;
     configure_request(api, handle.0, &request, configuration, platform, true)?;
@@ -1012,6 +1078,62 @@ mod ffi {
     };
 
     pub enum Request {}
+    enum ReferenceVideo {}
+    type VideoCreate = unsafe extern "C" fn(f64, *mut *mut ReferenceVideo) -> i32;
+    type VideoDestroy = unsafe extern "C" fn(*mut ReferenceVideo);
+    type VideoAppend = unsafe extern "C" fn(*mut ReferenceVideo, *const u8, usize, i32, i32, usize, f64) -> i32;
+    type VideoAudio = unsafe extern "C" fn(*mut ReferenceVideo, *const f32, usize, i32, i32, f64) -> i32;
+    type VideoAttach = unsafe extern "C" fn(*mut Request, *const ReferenceVideo) -> i32;
+
+    pub struct ReferenceVideoHandle {
+        api: Api,
+        handle: *mut ReferenceVideo,
+        destroy: VideoDestroy,
+        append_rgba: VideoAppend,
+        audio: VideoAudio,
+        attach_video: VideoAttach,
+        dll_path: std::path::PathBuf,
+        frames: usize,
+    }
+
+    // The registry mutex serializes access. The DLL handle and all copied input
+    // buffers outlive every call, and attached snapshots own their references.
+    unsafe impl Send for ReferenceVideoHandle {}
+
+    impl ReferenceVideoHandle {
+        pub fn new(api: Api, duration: f64, dll_path: std::path::PathBuf) -> Result<Self, String> {
+            unsafe {
+                let missing = |error| format!("This slopfab.dll does not support video references. Update the runtime: {error}");
+                let create = *api._library.get::<VideoCreate>(b"slopfab_reference_video_create\0").map_err(missing)?;
+                let destroy = *api._library.get::<VideoDestroy>(b"slopfab_reference_video_destroy\0").map_err(missing)?;
+                let append_rgba = *api._library.get::<VideoAppend>(b"slopfab_reference_video_append_rgba8\0").map_err(missing)?;
+                let audio = *api._library.get::<VideoAudio>(b"slopfab_reference_video_set_audio_f32\0").map_err(missing)?;
+                let attach_video = *api._library.get::<VideoAttach>(b"slopfab_request_add_reference_video\0").map_err(missing)?;
+                let mut handle = std::ptr::null_mut();
+                api.error(create(duration, &mut handle))?;
+                if handle.is_null() { return Err("slopfab returned an empty reference video handle.".into()); }
+                Ok(Self { api, handle, destroy, append_rgba, audio, attach_video, dll_path, frames: 0 })
+            }
+        }
+        pub fn append(&mut self, bytes: &[u8], width: i32, height: i32, timestamp: f64) -> Result<(), String> {
+            if width <= 0 || height <= 0 || width > 1024 || height > 1024 || self.frames >= 361 {
+                return Err("Reference video preparation exceeds the frame or dimension limit.".into());
+            }
+            self.api.error(unsafe { (self.append_rgba)(self.handle, bytes.as_ptr(), bytes.len(), width, height, width as usize * 4, timestamp) })?;
+            self.frames += 1;
+            Ok(())
+        }
+        pub fn set_audio(&mut self, samples: &[f32], channels: i32, sample_rate: i32) -> Result<(), String> {
+            self.api.error(unsafe { (self.audio)(self.handle, samples.as_ptr(), samples.len(), channels, sample_rate, 0.0) })
+        }
+        pub fn attach(&self, request: *mut Request, dll_path: &Path) -> Result<(), String> {
+            if dll_path != self.dll_path { return Err("Reference video and generation must use the same slopfab runtime.".into()); }
+            self.api.error(unsafe { (self.attach_video)(request, self.handle) })
+        }
+    }
+    impl Drop for ReferenceVideoHandle {
+        fn drop(&mut self) { unsafe { (self.destroy)(self.handle) }; }
+    }
 
     pub fn has_cuda_device() -> bool {
         // CUDA's driver API uses the system calling convention on Windows.
@@ -1510,6 +1632,30 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn video_reference_c_api_copies_inputs_and_retains_attached_snapshot() {
+        let path = default_dll_path();
+        let api = ffi::Api::load(&path).unwrap();
+        let request = RequestHandle::new(&api).unwrap();
+        api.set_prompt(request.0, "A scene using <Video 1>.").unwrap();
+        api.set_frames(request.0, 120).unwrap();
+        api.set_resolution(request.0, 736, 416).unwrap();
+        let mut video = ffi::ReferenceVideoHandle::new(ffi::Api::load(&path).unwrap(), 2.0, path.clone()).unwrap();
+        let pixels = vec![127_u8; 64 * 64 * 4];
+        video.append(&pixels, 64, 64, 0.0).unwrap();
+        assert!(video.append(&pixels, 64, 64, 0.0).is_err());
+        assert!(video.append(&pixels[..10], 64, 64, 0.5).is_err());
+        video.append(&pixels, 64, 64, 1.0).unwrap();
+        video.set_audio(&vec![0.0; 32_000 * 2], 1, 32_000).unwrap();
+        video.attach(request.0, &path).unwrap();
+        drop(video);
+        drop(pixels);
+        // Plan resolution reads the retained video/audio snapshot without a
+        // neural model or a CUDA allocation, even after the host releases it.
+        let plan = api.resolve(request.0).unwrap();
+        assert!(plan.aligned_frames > 0);
+    }
+
     #[test]
     fn absent_dll_is_an_explicit_disabled_state() {
         let mut settings = BTreeMap::new();

@@ -432,6 +432,8 @@ export async function probeCompositor(): Promise<CompositorProbe> {
 
 export interface DemuxedSource {
   config: VideoDecoderConfig;
+  durationSeconds?: number;
+  hasAudio?: boolean;
   samples: Array<{ data: Uint8Array; timestampUs: number; durationUs: number; key: boolean }>;
 }
 
@@ -523,6 +525,8 @@ export async function demux(bytes: ArrayBuffer, name: string): Promise<DemuxedSo
   });
 
   return {
+    durationSeconds: track.duration / track.timescale,
+    hasAudio: state.movie.audioTracks.length > 0,
     config: {
       codec: track.codec,
       codedWidth: track.video?.width ?? track.track_width,

@@ -10,6 +10,7 @@ import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan }
 import { saveEngineSettings, EMPTY_ENGINE_SETTINGS } from "./settings";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
+import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -17,6 +18,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 vi.mock("./generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 vi.mock("./timelineThumbnails", () => ({ purgeTimelineThumbnails: vi.fn(async () => undefined) }));
 vi.mock("./sceneLastFrame", () => ({ saveSceneLastFrame: vi.fn(async () => "cache/scene-last/work-new.png") }));
+vi.mock("./referenceVideo", () => ({ prepareReferenceVideos: vi.fn(async () => ["video-1"]), releaseReferenceVideos: vi.fn(async () => undefined) }));
 vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGeneration: vi.fn(), resolveSlopfabPlan: vi.fn() }));
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 const stops: (() => void)[] = [];
@@ -51,6 +53,30 @@ const finish = async (queue: WorkQueue, id: string) => {
 };
 
 describe("application work queue", () => {
+  it("prepares video inputs for both planning and generation and releases them after completion", async () => {
+    const { queue, first } = setup();
+    const next = submission(first);
+    next.request.referenceVideos = [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 2, includeAudio: true }];
+    queue.enqueue(first, [next]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    expect(prepareReferenceVideos).toHaveBeenCalledOnce();
+    expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].referenceVideoIds).toEqual(["video-1"]);
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].referenceVideoIds).toEqual(["video-1"]);
+    await finish(queue, queue.getSnapshot()[0].id);
+    await waitFor(() => expect(releaseReferenceVideos).toHaveBeenCalledWith(["video-1"]));
+  });
+
+  it("releases prepared video inputs when planning fails", async () => {
+    const { queue, first } = setup();
+    const next = submission(first);
+    next.request.referenceVideos = [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 0, durationSeconds: 2, includeAudio: false }];
+    vi.mocked(resolveSlopfabPlan).mockRejectedValueOnce(new Error("Reference limit exceeded"));
+    queue.enqueue(first, [next]);
+    await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("failed"));
+    expect(releaseReferenceVideos).toHaveBeenCalledWith(["video-1"]);
+    expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+  });
+
   it("resolves a linked first frame after the previous scene finishes encoding and saving", async () => {
     const { queue, first } = setup();
     first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true }] }));
