@@ -184,6 +184,63 @@ describe("Generator scene controls", () => {
     expect(snapshot.prompt).toContain("<Picture 1> is the first frame of the video.");
   });
 
+  it("sends a last-frame image and clears it independently of the start frame", () => {
+    const initial = project();
+    initial.references = [{ id: "closing", kind: "image", name: "Closing still", description: "", relativePath: "references/closing.png", intendedUse: [], createdAt: initial.createdAt }];
+    const state = setup(initial);
+    fireEvent.change(screen.getByRole("combobox", { name: "Last frame for this scene" }), { target: { value: "closing" } });
+    expect(state.latest().generationJobs[0].endFrameReferenceId).toBe("closing");
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
+    expect(snapshot.prompt).toContain("<Picture 1> is the last frame of the video.");
+    expect(snapshot.referencePaths[0]).toContain("closing.png");
+    fireEvent.change(screen.getByRole("combobox", { name: "Last frame for this scene" }), { target: { value: "" } });
+    expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();
+  });
+
+  it("marks a linked scene yellow when its previous scene regenerates and clears it after regeneration", () => {
+    const initial = project();
+    initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4" };
+    const state = setup(initial);
+    expect(screen.getByRole("option", { name: "Previous scene's last frame" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Start frame for this scene" }), { target: { value: "previous-scene" } });
+    expect(state.latest().generationJobs[1].usePreviousSceneLastFrame).toBe(true);
+    const generateSecond = () => fireEvent.click(within(screen.getByRole("region", { name: "Second scene" })).getByRole("button", { name: "Generate" }));
+    const finishSecond = () => state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 1 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-second.mp4" } : job) });
+    generateSecond();
+    const snapshot = JSON.parse(state.latest().generationJobs[1].generationSnapshot!);
+    expect(snapshot.previousSceneId).toBe("scene-first");
+    expect(snapshot.referencePaths[0]).toContain("work-original.png");
+    finishSecond();
+    const second = () => screen.getByRole("region", { name: "Second scene" });
+    expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "generating" } : job) });
+    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    expect(second().querySelector(".scene-rule__status--changed")).not.toBeNull();
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-new.mp4" } : job) });
+    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    // Opening a saved project retains the dependency's recorded renderer inputs.
+    state.replace(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))));
+    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    generateSecond();
+    expect(JSON.parse(state.latest().generationJobs[1].generationSnapshot!).referencePaths[0]).toContain("work-new.png");
+    finishSecond();
+    expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
+  });
+
+  it("includes fixed-seed linked scenes when Generate All regenerates their source", () => {
+    const initial = project();
+    initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42, outputRelativePath: `media/generated/work-${index}.mp4`, usePreviousSceneLastFrame: index === 1 }));
+    const state = setup(initial);
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
+    expect(screen.getByRole("button", { name: "Generate All" })).toHaveAttribute("title", "Every fixed-seed scene is already up to date.");
+    fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Rain" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
+  });
+
   it("shows scene generation controls and sends their values in the render snapshot", async () => {
     const initial = project();
     initial.settings = { ...initial.settings, resolution: "416p", frameRate: 60 };

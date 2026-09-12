@@ -40,8 +40,8 @@ For edits, return JSONL only: one compact JSON object per line, followed by one 
 - {"op":"ref.add","id":string,"name":string,"text":string,"use":["character"|"animal"|"product"|"location"|"style"|"audio",...]}
 - {"op":"ref.set","id":string,"name"?:string,"text"?:string,"use"?:string[]}
 - {"op":"ref.remove","id":string}; update every scene that uses it first
-- {"op":"scene.add","id":string,"title":string,"seconds":number,"steps"?:integer,"seed"?:integer,"sound"?:string,"music"?:string,"startFrame"?:reference-id}
-- {"op":"scene.set","id":string,"title"?:string,"seconds"?:number,"steps"?:integer,"seed"?:integer,"sound"?:string|null,"music"?:string|null,"startFrame"?:reference-id|null}
+- {"op":"scene.add","id":string,"title":string,"seconds":number,"steps"?:integer,"seed"?:integer,"sound"?:string,"music"?:string,"startFrame"?:reference-id,"endFrame"?:reference-id,"usePreviousSceneLastFrame"?:boolean}
+- {"op":"scene.set","id":string,"title"?:string,"seconds"?:number,"steps"?:integer,"seed"?:integer,"sound"?:string|null,"music"?:string|null,"startFrame"?:reference-id|null,"endFrame"?:reference-id|null,"usePreviousSceneLastFrame"?:boolean}
 - {"op":"scene.remove","id":string}
 - {"op":"scene.move","id":string,"before":scene-id|null}; null moves it to the end
 - {"op":"shot.add","scene":scene-id,"id":string,"at":number,"action":string,"name"?:string,"speech"?:string,"language"?:string,"settings"?:object}

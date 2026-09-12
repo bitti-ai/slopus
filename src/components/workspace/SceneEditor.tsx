@@ -266,15 +266,17 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, references, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onChange, onShots }: {
+export function SceneInspector({ job, shots, references, previousScene, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots }: {
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
+  previousScene?: GenerationJob;
   defaultSteps: number;
   disabled: boolean;
   importAvailable: boolean;
   importError: string | null;
   onAddStartFrame: () => void;
+  onAddEndFrame: () => void;
   onChange: (updates: Partial<GenerationJob>) => void;
   onShots: (next: SceneShot[]) => void;
 }) {
@@ -314,12 +316,16 @@ export function SceneInspector({ job, shots, references, defaultSteps, disabled,
         <span>Start frame</span>
         <div className="scene-settings__start-frame">
           <select
-            value={job.startFrameReferenceId ?? ""}
+            value={job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
             disabled={disabled}
             aria-label="Start frame for this scene"
-            onChange={(event) => onChange({ startFrameReferenceId: event.target.value || undefined })}
+            onChange={(event) => onChange({
+              usePreviousSceneLastFrame: event.target.value === "previous-scene" || undefined,
+              startFrameReferenceId: event.target.value === "previous-scene" ? undefined : event.target.value || undefined,
+            })}
           >
             <option value="">None</option>
+            <option value="previous-scene" disabled={!previousScene}>Previous scene's last frame</option>
             {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
           </select>
           <button
@@ -330,9 +336,25 @@ export function SceneInspector({ job, shots, references, defaultSteps, disabled,
             onClick={onAddStartFrame}
           ><ImagePlus size={15} /> Add image</button>
         </div>
-        <small>The selected image is sent to SlopFab as Picture 1 and anchors the opening frame.</small>
-        {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
+        <small>{job.usePreviousSceneLastFrame
+          ? previousScene ? `Starts from the last rendered frame of “${previousScene.title}”. Generate that scene first, or use Generate All.` : "Move this scene after another scene to use its last frame."
+          : "The selected image anchors the opening frame."}</small>
       </div>
+      <div className="scene-settings__field">
+        <span>Last frame</span>
+        <div className="scene-settings__start-frame">
+          <select value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
+            onChange={(event) => onChange({ endFrameReferenceId: event.target.value || undefined })}>
+            <option value="">None</option>
+            {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+          </select>
+          <button type="button" className="secondary-button" disabled={disabled || !importAvailable}
+            title={importAvailable ? "Import an image and use it as this scene's last frame" : "Image import is available in the desktop app"}
+            onClick={onAddEndFrame}><ImagePlus size={15} /> Add image</button>
+        </div>
+        <small>The selected image anchors the closing frame.</small>
+      </div>
+      {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
       <label className="scene-settings__field">
         <span>Sound</span>
         <textarea

@@ -42,6 +42,7 @@ import {
   sceneBriefText,
   sceneDurationSeconds,
   sceneGenerationReferences,
+  sceneFrameInputs,
   sceneShots,
   splitActionText,
   type ProjectConfig,
@@ -490,6 +491,45 @@ describe("project schema", () => {
     expect(compiled).toContain("The opening frame matches <Picture 1>.");
     expect(compiled).toContain("<Subject 1> is the content shown in <Picture 2>.");
     expect(compiled).not.toContain("<Subject 2>");
+  });
+
+  it("numbers opening, closing and subject pictures together, sending one image per frame anchor", () => {
+    const image = (id: string): ProjectReference => projectReferenceSchema.parse({
+      id, kind: "text", name: id, description: "", intendedUse: [], createdAt: createdFixture.createdAt,
+      images: [1, 2].map((n) => ({ id: `${id}-${n}`, name: id, relativePath: `references/${id}-${n}.png` })),
+    });
+    const references = [image("subject"), image("end"), image("start")];
+    const job = createDraftGenerationJob("The subject turns.", { startFrameReferenceId: "start", endFrameReferenceId: "end", referenceIds: ["subject", "start", "end"] });
+    const ordered = sceneGenerationReferences(job, references);
+    expect(usableReferenceImages(ordered).map((image) => image.relativePath)).toEqual([
+      "references/start-1.png", "references/end-1.png", "references/subject-1.png", "references/subject-2.png",
+    ]);
+    const prompt = compileGenerationJobPrompt(job, ordered);
+    expect(prompt).toContain("<Picture 1> is the first frame of the video.");
+    expect(prompt).toContain("<Picture 2> is the last frame of the video.");
+    expect(prompt).toContain("<Subject 1> is the content shown in <Picture 3> and <Picture 4>.");
+    expect(prompt).toContain("<Picture 2>: last_frame - used as the closing frame.");
+    expect(prompt).toContain("The closing frame matches <Picture 2>.");
+    const endOnly = { ...job, startFrameReferenceId: undefined, referenceIds: [] };
+    expect(compileGenerationJobPrompt(endOnly, sceneGenerationReferences(endOnly, references))).toContain("<Picture 1> is the last frame of the video.");
+    const same = { ...job, endFrameReferenceId: "start", referenceIds: [] };
+    expect(usableReferenceImages(sceneGenerationReferences(same, references))).toHaveLength(1);
+    expect(compileGenerationJobPrompt(same, sceneGenerationReferences(same, references))).toContain("<Picture 1> is the last frame of the video.");
+  });
+
+  it("resolves scene continuity from board order and the current rendered file", () => {
+    const config = parseProjectConfig(createdFixture);
+    const first = { ...config.generationJobs[0], outputRelativePath: "media/generated/work-first.mp4" };
+    const second = createDraftGenerationJob("Continue", { usePreviousSceneLastFrame: true });
+    config.generationJobs = [first, second];
+    const inputs = sceneFrameInputs(second, config);
+    expect(inputs.previousSceneId).toBe(first.id);
+    expect(usableReferenceImages(inputs.references)[0].relativePath).toBe("cache/scene-last/work-first.png");
+    expect(compileGenerationJobPrompt(inputs.job, inputs.references)).toContain("<Picture 1> is the first frame of the video.");
+    first.outputRelativePath = "media/generated/work-rerendered.mp4";
+    expect(usableReferenceImages(sceneFrameInputs(second, config).references)[0].relativePath).toBe("cache/scene-last/work-rerendered.png");
+    config.generationJobs.reverse();
+    expect(sceneFrameInputs(second, config).previousSceneId).toBeUndefined();
   });
 
   it("allows a generated scene asset to wait for its render without relaxing imported media", () => {

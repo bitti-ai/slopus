@@ -102,6 +102,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       ...job,
       referenceIds: job.referenceIds.filter((id) => id !== selected.id),
       startFrameReferenceId: job.startFrameReferenceId === selected.id ? undefined : job.startFrameReferenceId,
+      endFrameReferenceId: job.endFrameReferenceId === selected.id ? undefined : job.endFrameReferenceId,
     })) });
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };

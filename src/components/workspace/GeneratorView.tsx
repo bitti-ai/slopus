@@ -2,7 +2,7 @@ import type { GenerationSubmission } from "../../lib/workQueue";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
@@ -122,7 +122,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
   const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
-  const boundRefs = useMemo(() => selected ? sceneGenerationReferences(selected, config.references) : [], [config.references, selected]);
+  const frameInputs = useMemo(() => selected ? sceneFrameInputs(selected, config) : null, [config, selected]);
+  const boundRefs = frameInputs?.references ?? [];
   const runtimeReady = Boolean(selectedTemplate.id) && generatorRuntime?.state === "ready";
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
@@ -153,7 +154,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) =>
     updateJob(job.id, mergeSceneUpdates(job, updates));
 
-  const addStartFrame = async (job: GenerationJob) => {
+  const addFrame = async (job: GenerationJob, edge: "start" | "end") => {
     if (!isTauri()) return;
     setStartFrameError(null);
     try {
@@ -174,7 +175,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         ...current,
         references: [reference, ...current.references],
         generationJobs: current.generationJobs.map((candidate) => candidate.id === job.id
-          ? { ...candidate, startFrameReferenceId: id, updatedAt: new Date().toISOString() }
+          ? { ...candidate, ...(edge === "start" ? { startFrameReferenceId: id, usePreviousSceneLastFrame: undefined } : { endFrameReferenceId: id }), updatedAt: new Date().toISOString() }
           : candidate),
       });
     } catch (reason) {
@@ -285,7 +286,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     // ordered list drives the <Subject N> / <Picture N> numbering inside the
     // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
     // array index 0 must be the asset the prompt calls <Picture 1>.
-    const bound = sceneGenerationReferences(job, configRef.current.references);
+    const inputs = sceneFrameInputs(job, configRef.current);
+    const bound = inputs.references;
     const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
     return {
       jobId: job.id,
@@ -293,7 +295,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // retimed shot reach the engine, rather than sending a prompt frozen at
       // draft-creation time. This is the ONE string slopfab is given, and it is
       // the same string the compiled-prompt panel shows.
-      prompt: compileGenerationJobPrompt(job, bound),
+      prompt: compileGenerationJobPrompt(inputs.job, bound),
+      ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
       // The scene's own length, not a fixed six seconds.
       frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
       steps: sceneGenerationSteps(job, defaultGenerationSteps),
@@ -363,28 +366,34 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   /** Generate All is an idempotent update for fixed seeds, but a deliberate
    * reroll for random ones. A completed fixed-seed scene is current only when
    * both its output and the exact renderer-input snapshot still exist. */
-  const batchScenesReady = jobs.filter((job) => {
-    if (job.status === "queued" || job.status === "generating" || job.status === "ready") return false;
-    if (sendBlocker(job, config.references)) return false;
-    if (sceneGenerationSeed(job) === RANDOM_GENERATION_SEED) return true;
-    return job.status !== "completed"
+  const batchScenesReady: GenerationJob[] = [];
+  for (const [index, job] of jobs.entries()) {
+    if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
+    if (job.usePreviousSceneLastFrame && index === 0) continue;
+    if (sendBlocker(job, config.references)) continue;
+    const previous = jobs[index - 1];
+    const previousWillRender = job.usePreviousSceneLastFrame && previous &&
+      (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
+    if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
       || !job.generationSnapshot
-      || job.generationSnapshot !== snapshotFor(job);
-  });
+      || job.generationSnapshot !== snapshotFor(job)) batchScenesReady.push(job);
+  }
 
   const generateAll = () => submit(batchScenesReady);
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
+    if (job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to supply its first frame.";
     return sendBlocker(job, config.references);
   };
 
   const changedJobIds = new Set(jobs
-    .filter((job) => job.status === "completed"
+    .filter((job, index) => job.status === "completed"
       && Boolean(job.generationSnapshot)
-      && job.generationSnapshot !== snapshotFor(job))
+      && (job.generationSnapshot !== snapshotFor(job)
+        || (job.usePreviousSceneLastFrame && ["queued", "generating", "ready"].includes(jobs[index - 1]?.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
 
@@ -540,7 +549,9 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               references={config.references}
               importAvailable={isTauri()}
               importError={startFrameError}
-              onAddStartFrame={() => void addStartFrame(selected)}
+              previousScene={jobs[jobs.findIndex((job) => job.id === selected.id) - 1]}
+              onAddStartFrame={() => void addFrame(selected, "start")}
+              onAddEndFrame={() => void addFrame(selected, "end")}
               onChange={(updates) => updateScene(selected, updates)}
               onShots={(next) => setShots(selected, next)}
             />
@@ -560,7 +571,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
     {debugEnabled && showDebugPrompt && selected && !openShot && <DebugPromptDialog
       sceneTitle={selected.title}
-      segments={compileGenerationJobSegments(selected, boundRefs)}
+      segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs)}
       onClose={() => setShowDebugPrompt(false)}
     />}
 

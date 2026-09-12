@@ -43,8 +43,8 @@ export type ProjectCommand =
   | { op: "ref.add"; id: string; name: string; text: string; use: string[] }
   | { op: "ref.set"; id: string; name?: string; text?: string; use?: string[] }
   | { op: "ref.remove"; id: string }
-  | { op: "scene.add"; id: string; title: string; seconds: number; steps?: number; seed?: number; sound?: string; music?: string; startFrame?: string }
-  | { op: "scene.set"; id: string; title?: string; seconds?: number; steps?: number; seed?: number; sound?: string | null; music?: string | null; startFrame?: string | null }
+  | { op: "scene.add"; id: string; title: string; seconds: number; steps?: number; seed?: number; sound?: string; music?: string; startFrame?: string; endFrame?: string; usePreviousSceneLastFrame?: boolean }
+  | { op: "scene.set"; id: string; title?: string; seconds?: number; steps?: number; seed?: number; sound?: string | null; music?: string | null; startFrame?: string | null; endFrame?: string | null; usePreviousSceneLastFrame?: boolean }
   | { op: "scene.remove"; id: string }
   | { op: "scene.move"; id: string; before?: string | null }
   | { op: "shot.add"; scene: string; id: string; at: number; action: string; name?: string; speech?: string; language?: string; settings?: Record<string, string[]> }
@@ -88,6 +88,8 @@ export interface SlopfabGenerationRequest {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: string[];
+  /** Resolved by the app queue before native submission. */
+  previousSceneId?: string;
 }
 
 export interface ResolvedPlan {
@@ -313,7 +315,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
       }
       case "ref.remove": {
         const token = `@[ref:${command.id}]`;
-        if (next.generationJobs.some((job) => job.startFrameReferenceId === command.id || job.shots?.some((shot) => shot.action.includes(token)))) {
+        if (next.generationJobs.some((job) => job.startFrameReferenceId === command.id || job.endFrameReferenceId === command.id || job.shots?.some((shot) => shot.action.includes(token)))) {
           throw new Error(`Reference '${command.id}' is still used by a scene.`);
         }
         const at = next.references.findIndex((reference) => reference.id === command.id);
@@ -331,6 +333,8 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         job.soundscape = command.sound;
         job.music = command.music;
         job.startFrameReferenceId = command.startFrame;
+        job.endFrameReferenceId = command.endFrame;
+        job.usePreviousSceneLastFrame = command.usePreviousSceneLastFrame;
         next.generationJobs.push(job);
         break;
       }
@@ -342,7 +346,15 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         if (command.seed !== undefined) job.seed = command.seed;
         if ("sound" in command) job.soundscape = command.sound;
         if ("music" in command) job.music = command.music;
-        if ("startFrame" in command) job.startFrameReferenceId = command.startFrame;
+        if ("startFrame" in command) {
+          job.startFrameReferenceId = command.startFrame;
+          job.usePreviousSceneLastFrame = false;
+        }
+        if ("endFrame" in command) job.endFrameReferenceId = command.endFrame;
+        if ("usePreviousSceneLastFrame" in command) {
+          job.usePreviousSceneLastFrame = command.usePreviousSceneLastFrame;
+          if (command.usePreviousSceneLastFrame) job.startFrameReferenceId = undefined;
+        }
         job.updatedAt = now;
         break;
       }

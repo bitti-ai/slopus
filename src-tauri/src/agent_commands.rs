@@ -86,6 +86,14 @@ pub enum ProjectCommand {
             skip_serializing_if = "Option::is_none"
         )]
         start_frame_reference_id: Option<String>,
+        #[serde(default, rename = "endFrame", skip_serializing_if = "Option::is_none")]
+        end_frame_reference_id: Option<String>,
+        #[serde(
+            default,
+            rename = "usePreviousSceneLastFrame",
+            skip_serializing_if = "Option::is_none"
+        )]
+        use_previous_scene_last_frame: Option<bool>,
     },
     #[serde(rename = "scene.set")]
     SceneSet {
@@ -117,6 +125,19 @@ pub enum ProjectCommand {
             deserialize_with = "deserialize_nullable_patch"
         )]
         start_frame_reference_id: Option<Option<String>>,
+        #[serde(
+            default,
+            rename = "endFrame",
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "deserialize_nullable_patch"
+        )]
+        end_frame_reference_id: Option<Option<String>>,
+        #[serde(
+            default,
+            rename = "usePreviousSceneLastFrame",
+            skip_serializing_if = "Option::is_none"
+        )]
+        use_previous_scene_last_frame: Option<bool>,
     },
     #[serde(rename = "scene.remove")]
     SceneRemove { id: String },
@@ -480,6 +501,7 @@ fn apply_command(
             let token = format!("@[ref:{id}]");
             if project.generation_jobs.iter().any(|job| {
                 job.start_frame_reference_id.as_deref() == Some(id)
+                    || job.end_frame_reference_id.as_deref() == Some(id)
                     || job
                         .shots
                         .as_ref()
@@ -503,6 +525,8 @@ fn apply_command(
             sound,
             music,
             start_frame_reference_id,
+            end_frame_reference_id,
+            use_previous_scene_last_frame,
         } => {
             if project.generation_jobs.iter().any(|job| job.id == *id) {
                 return Err(format!("scene '{id}' already exists"));
@@ -521,6 +545,8 @@ fn apply_command(
                 generation_snapshot: None,
                 reference_ids: Vec::new(),
                 start_frame_reference_id: start_frame_reference_id.clone(),
+                end_frame_reference_id: end_frame_reference_id.clone(),
+                use_previous_scene_last_frame: *use_previous_scene_last_frame,
                 shot_tags: None,
                 shots: Some(Vec::new()),
                 duration_seconds: Some(*duration_seconds),
@@ -544,6 +570,8 @@ fn apply_command(
             sound,
             music,
             start_frame_reference_id,
+            end_frame_reference_id,
+            use_previous_scene_last_frame,
         } => {
             ensure_any(
                 [
@@ -554,6 +582,8 @@ fn apply_command(
                     sound.is_some(),
                     music.is_some(),
                     start_frame_reference_id.is_some(),
+                    end_frame_reference_id.is_some(),
+                    use_previous_scene_last_frame.is_some(),
                 ],
                 "has no fields to change",
             )?;
@@ -579,6 +609,16 @@ fn apply_command(
             }
             if let Some(value) = start_frame_reference_id {
                 job.start_frame_reference_id = value.clone();
+                job.use_previous_scene_last_frame = None;
+            }
+            if let Some(value) = end_frame_reference_id {
+                job.end_frame_reference_id = value.clone();
+            }
+            if let Some(value) = use_previous_scene_last_frame {
+                job.use_previous_scene_last_frame = Some(*value);
+                if *value {
+                    job.start_frame_reference_id = None;
+                }
             }
             job.updated_at = updated_at;
         }
@@ -1107,6 +1147,47 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn scene_frame_commands_accept_continuity_and_clear_the_last_frame() {
+        let config = fixture();
+        let id = &config.generation_jobs[0].id;
+        let image = &config
+            .references
+            .iter()
+            .find(|reference| reference.kind == "image")
+            .unwrap()
+            .id;
+        let command: ProjectCommand = serde_json::from_value(serde_json::json!({
+            "op": "scene.set", "id": id, "endFrame": image, "usePreviousSceneLastFrame": true
+        }))
+        .unwrap();
+        let updated = execute_commands_at(&config, &[command], "2026-09-12T00:00:00.000Z").unwrap();
+        assert_eq!(
+            updated.generation_jobs[0].end_frame_reference_id.as_deref(),
+            Some(image.as_str())
+        );
+        assert_eq!(
+            updated.generation_jobs[0].use_previous_scene_last_frame,
+            Some(true)
+        );
+        let clear: ProjectCommand = serde_json::from_value(serde_json::json!({
+            "op": "scene.set", "id": id, "endFrame": null, "startFrame": image
+        }))
+        .unwrap();
+        let updated = execute_commands_at(&updated, &[clear], "2026-09-12T00:00:00.000Z").unwrap();
+        assert!(updated.generation_jobs[0].end_frame_reference_id.is_none());
+        assert_ne!(
+            updated.generation_jobs[0].use_previous_scene_last_frame,
+            Some(true)
+        );
+        assert_eq!(
+            updated.generation_jobs[0]
+                .start_frame_reference_id
+                .as_deref(),
+            Some(image.as_str())
+        );
     }
 
     #[test]

@@ -294,6 +294,10 @@ struct GenerationJob {
     /// Optional image reference that initializes the scene's first frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     start_frame_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    end_frame_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    use_previous_scene_last_frame: Option<bool>,
     /// The H3 vocabulary tags this shot was built from: group id -> option ids.
     /// zod spells it `.nullish()` (src/lib/project.ts `shotTagSelectionSchema`),
     /// so `null` IS readable on the frontend — but the key is still skipped
@@ -1222,22 +1226,27 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
                 job.id, reference_id
             ));
         }
-        if let Some(start_frame_id) = &job.start_frame_reference_id {
-            let Some(reference) = config
-                .references
-                .iter()
-                .find(|reference| reference.id == *start_frame_id)
-            else {
-                return Err(format!(
-                    "Generation job '{}' uses unknown start-frame reference '{}'.",
-                    job.id, start_frame_id
-                ));
-            };
-            if reference.kind != "image" && reference.images.is_empty() {
-                return Err(format!(
-                    "Generation job '{}' start-frame reference '{}' is not an image.",
-                    job.id, start_frame_id
-                ));
+        for (edge, frame_id) in [
+            ("start", &job.start_frame_reference_id),
+            ("end", &job.end_frame_reference_id),
+        ] {
+            if let Some(start_frame_id) = frame_id {
+                let Some(reference) = config
+                    .references
+                    .iter()
+                    .find(|reference| reference.id == *start_frame_id)
+                else {
+                    return Err(format!(
+                        "Generation job '{}' uses unknown {edge}-frame reference '{}'.",
+                        job.id, start_frame_id
+                    ));
+                };
+                if reference.kind != "image" && reference.images.is_empty() {
+                    return Err(format!(
+                        "Generation job '{}' {edge}-frame reference '{}' is not an image.",
+                        job.id, start_frame_id
+                    ));
+                }
             }
         }
     }
@@ -2501,6 +2510,38 @@ fn write_generated_video(request: Request<'_>) -> Result<GeneratedVideoFile, Str
     result
 }
 
+#[tauri::command]
+fn write_scene_last_frame(request: Request<'_>) -> Result<(), String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("The last frame must be sent as raw PNG bytes.".into());
+    };
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("The last frame is not a PNG image.".into());
+    }
+    let header = |name: &str| -> Result<String, String> {
+        let value = request
+            .headers()
+            .get(name)
+            .ok_or_else(|| format!("Missing {name} header."))?;
+        export::percent_decode(
+            value
+                .to_str()
+                .map_err(|_| format!("Invalid {name} header."))?,
+        )
+    };
+    let root = project_root(&header(GENERATED_FOLDER_HEADER)?)?;
+    let stem = generated_file_stem(&header(GENERATED_JOB_HEADER)?)?;
+    let directory = root.join("cache/scene-last");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let directory = directory
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    if !directory.starts_with(&root) {
+        return Err("Scene frame images must stay inside the project folder.".into());
+    }
+    export::write_atomically(&directory.join(format!("{stem}.png")), bytes)
+}
+
 /** Execute an already provider-validated command batch against the latest
  * config held by the editor. The provider can take minutes to answer; applying
  * here, after it returns, keeps edits made while it was thinking instead of
@@ -2835,6 +2876,7 @@ pub fn run() {
             set_generation_active,
             answer_app_close,
             write_generated_video,
+            write_scene_last_frame,
             write_timeline_thumbnail,
             purge_timeline_thumbnails,
             generated_summary,
@@ -4242,6 +4284,49 @@ mod tests {
             validate_and_normalize_config(config).is_ok(),
             "a blank text reference must never block saving the project"
         );
+    }
+
+    #[test]
+    fn scene_frame_settings_survive_save_and_reopen_and_validate_images() {
+        let mut config = fixture();
+        let image_id = config
+            .references
+            .iter()
+            .find(|reference| reference.kind == "image")
+            .unwrap()
+            .id
+            .clone();
+        config.generation_jobs[0].end_frame_reference_id = Some(image_id.clone());
+        config.generation_jobs[0].use_previous_scene_last_frame = Some(true);
+        let folder = tempfile::tempdir().unwrap();
+        write_project(folder.path(), &config).unwrap();
+        let restored = read_project(folder.path()).unwrap().config;
+        assert_eq!(
+            restored.generation_jobs[0]
+                .end_frame_reference_id
+                .as_deref(),
+            Some(image_id.as_str())
+        );
+        assert_eq!(
+            restored.generation_jobs[0].use_previous_scene_last_frame,
+            Some(true)
+        );
+        config.generation_jobs[0].end_frame_reference_id = Some("missing".into());
+        assert!(validate_and_normalize_config(config.clone())
+            .unwrap_err()
+            .contains("unknown end-frame"));
+        config.generation_jobs[0].end_frame_reference_id = Some(
+            config
+                .references
+                .iter()
+                .find(|reference| reference.kind == "text")
+                .unwrap()
+                .id
+                .clone(),
+        );
+        assert!(validate_and_normalize_config(config)
+            .unwrap_err()
+            .contains("is not an image"));
     }
 
     #[test]

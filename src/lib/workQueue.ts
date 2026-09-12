@@ -3,7 +3,8 @@ import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
-import { generationAssetId, GENERATION_FRAME_RATE, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { generationAssetId, GENERATION_FRAME_RATE, projectItemPath, sceneGenerationSnapshot, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { saveSceneLastFrame } from "./sceneLastFrame";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { withEngineSettings } from "./settings";
@@ -200,6 +201,18 @@ export class WorkQueue {
           // background result can be attached to this project.
           await work.session.save();
           if (work.cancelled) continue;
+          if (work.request.previousSceneId) {
+            const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
+            if (!previous?.outputRelativePath || previous.status !== "completed") {
+              throw new Error("Generate the previous scene successfully before using its last frame.");
+            }
+            const relativePath = await saveSceneLastFrame(next.folderPath, previous.outputRelativePath);
+            if (work.cancelled) continue;
+            work.request.referencePaths[0] = projectItemPath(next.folderPath, { relativePath })!;
+            const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+            work.snapshot = sceneGenerationSnapshot(captured, work.request);
+            this.updateScene(work, { generationSnapshot: work.snapshot });
+          }
           await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config);
