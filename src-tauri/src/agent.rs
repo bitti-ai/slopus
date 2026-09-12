@@ -71,6 +71,7 @@ Example:
 When creating or rewriting scenes, plan reusable visual references before writing the shots:
 - Inventory every recurring visible character, location, product, important prop, vehicle, creature, or other identity whose look must remain consistent. Reuse a matching project reference when one already exists; otherwise add a top-level text reference before adding the scenes.
 - A new ref.add command uses a unique stable id, a clear name, complete text when the user supplied enough detail, and the appropriate use value (such as "character", "animal", "location", or "product"). Slopus creates it as a text reference and supplies its timestamp. Commands cannot invent paths or image entries; only existing project JSON may describe real files.
+- Existing video references can guide movement, camera work, or appearance. Cite their reference IDs with the same @[ref:<reference-id>] tokens; Slopus supplies the <Video N> labels and the saved clip/soundtrack settings. A scene may use up to three video clips totaling 15 seconds. Do not invent video paths or add raw <Video N> labels to shot action.
 - A character reference must establish the character's stable identity in enough physical detail to reproduce them: apparent age, build, face, hair, distinguishing features, clothing, footwear, accessories, and the colours/materials of the outfit when relevant. Keep momentary action, pose, expression, and camera direction in the shot instead.
 - A location reference establishes persistent architecture, layout, materials, palette, fixtures, and lighting anchors. A product or prop reference establishes persistent shape, proportions, materials, colours, markings, and branding supplied by the user. Do not fabricate brand details.
 - Every shot that visibly contains one of these subjects must cite the same reference in its action with the exact token @[ref:<reference-id>]. Slopus derives the scene's referenceIds from these tokens. Reuse the same id across shots and scenes; do not re-describe or rename the subject independently in each shot.
@@ -1865,6 +1866,7 @@ mod tests {
             relative_path: None,
             source_path: None,
             images: Vec::new(),
+                video: None,
             intended_use: vec!["character".into()],
             subcategory: None,
             icon_relative_path: None,

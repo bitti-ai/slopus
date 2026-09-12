@@ -1,4 +1,5 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
+import { usableVideoReferences } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -306,6 +307,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       referencePaths: usableReferenceImages(bound)
         .map((image) => projectItemPath(folderPath, image) ?? "")
         .filter((path) => path.length > 0),
+      referenceVideos: usableVideoReferences(bound).map((reference) => ({
+        name: reference.name, relativePath: reference.relativePath, sourcePath: reference.sourcePath,
+        startSeconds: reference.video?.startSeconds ?? 0,
+        durationSeconds: reference.video?.durationSeconds ?? 2,
+        includeAudio: reference.video?.includeAudio ?? true,
+      })),
     };
   };
 

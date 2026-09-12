@@ -88,6 +88,9 @@ export interface SlopfabGenerationRequest {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: string[];
+  referenceVideos?: Array<{ name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }>;
+  /** Temporary native handles, populated by the work queue and never saved. */
+  referenceVideoIds?: string[];
   /** Resolved by the app queue before native submission. */
   previousSceneId?: string;
 }

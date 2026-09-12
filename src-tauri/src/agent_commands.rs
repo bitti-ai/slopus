@@ -453,6 +453,7 @@ fn apply_command(
                 relative_path: None,
                 source_path: None,
                 images: Vec::new(),
+                video: None,
                 intended_use: intended_use.clone(),
                 subcategory: None,
                 icon_relative_path: None,
