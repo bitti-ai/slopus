@@ -8,8 +8,10 @@ locations. The project stores their paths and clip settings.
 Set the clip's start and duration, and choose whether to include its sound.
 Each clip must last 2–15 seconds. A generation can use up to three video clips
 totaling 15 seconds, alongside up to nine images. Cite the reference in a shot
-just like an image reference. Use CUDA and a Ref2VA transformer, such as the
-**References** generator. Soundtracks also require audio VAE encoder weights.
+just like an image reference. Use CUDA or Vulkan with a Ref2VA transformer,
+such as the **References** generator. Vulkan video references require
+floating-point video VAE encoder weights. Soundtracks on either backend also
+require floating-point audio VAE encoder weights.
 
 The prompt compiler numbers pictures and videos independently, in the order
 the native request receives each kind. Video trim settings and soundtrack

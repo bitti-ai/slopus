@@ -223,7 +223,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         {selected ? <>
           {selected.kind === "video" && <section className="reference-video" aria-label="Video reference">
             <ReferenceVideo folderPath={folderPath} reference={selected} />
-            <p>Use 2–15 seconds per clip, up to 3 clips totaling 15 seconds. Requires CUDA and a Ref2VA generator.</p>
+            <p>Use 2–15 seconds per clip, up to 3 clips totaling 15 seconds. Requires a Ref2VA generator. Supports CUDA and Vulkan.</p>
             <ClipSecondsInput key={`${selected.id}-start`} label="Clip start (seconds)" min={0} value={selected.video?.startSeconds ?? 0}
               onChange={(startSeconds) => update(selected.id, { video: { durationSeconds: 2, includeAudio: true, ...selected.video, startSeconds } })} />
             <ClipSecondsInput key={`${selected.id}-duration`} label="Clip duration (seconds)" min={2} max={15} value={selected.video?.durationSeconds ?? 2}
