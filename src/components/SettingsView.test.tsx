@@ -225,8 +225,9 @@ describe("the settings screen", () => {
   it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {
     open();
     expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    const nextGeneratorName = `Generator ${screen.getAllByRole("listitem").length + 1}`;
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
-    expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe("Generator 3");
+    expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe(nextGeneratorName);
     expect((screen.getByLabelText("Generator default steps") as HTMLInputElement).value).toBe("20");
 
     fireEvent.change(screen.getByLabelText("Generator name"), { target: { value: "Fast draft" } });
