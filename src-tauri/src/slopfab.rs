@@ -145,9 +145,6 @@ pub fn create_reference_video(duration: f64, settings: &BTreeMap<String, Provide
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;
     api.version()?;
-    if configuration.platform(detect_platform(&api)) == ComputePlatform::Vulkan {
-        return Err("Video references require CUDA. Select CUDA in Generator settings and use a Ref2VA transformer.".into());
-    }
     let video = ffi::ReferenceVideoHandle::new(api, duration, configuration.dll_path)?;
     let mut videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
     if videos.len() >= 3 { return Err("At most three video references can be prepared at once.".into()); }
@@ -679,9 +676,6 @@ fn configure_request(
         api.add_reference(handle, Path::new(path))?;
     }
     if !request.reference_video_ids.is_empty() {
-        if platform == ComputePlatform::Vulkan {
-            return Err("Video references require CUDA and a Ref2VA transformer.".into());
-        }
         let videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
         for id in &request.reference_video_ids {
             videos.get(id).ok_or("The prepared reference video no longer exists. Please retry generation.")?
@@ -1632,6 +1626,36 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vulkan_video_references_prepare_and_attach_for_planning_and_generation() {
+        let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([("inferenceBackend".into(), ProviderOption::String("vulkan".into()))]),
+        })]);
+        let id = create_reference_video(2.0, &settings).unwrap();
+        let result = (|| -> Result<(), String> {
+            append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
+            set_reference_video_audio(&id, &vec![0; 32_000 * 2 * 4], 1, 32_000)?;
+            let request = GenerationRequest {
+                job_id: "vulkan-reference-test".into(), prompt: "A scene using <Video 1>.".into(),
+                frames: 120, still_image: false, steps: 12, seed: 1,
+                canvas_width: 736, canvas_height: 416,
+                reference_paths: Vec::new(), reference_video_ids: vec![id.clone()],
+            };
+            let configuration = Configuration::from_settings(&settings);
+            let api = ffi::Api::load(&configuration.dll_path)?;
+            for include_models in [false, true] {
+                let handle = RequestHandle::new(&api)?;
+                configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Vulkan, include_models)?;
+                assert!(api.resolve(handle.0)?.aligned_frames > 0);
+            }
+            Ok(())
+        })();
+        release_reference_videos(&[id]).unwrap();
+        result.unwrap();
+    }
+
     #[test]
     fn video_reference_c_api_copies_inputs_and_retains_attached_snapshot() {
         let path = default_dll_path();
