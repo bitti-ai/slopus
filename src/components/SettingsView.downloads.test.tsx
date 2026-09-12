@@ -81,7 +81,7 @@ it("downloads the sample, enables its default choice, and removes only weights t
   const radio = () => screen.getByRole("radio", { name: "Use First/Last Frame as the default generator" });
   expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
-  expect(radio()).toBeDisabled();
+  expect(within(screen.getByRole("list", { name: "Download" })).queryByRole("radio")).toBeNull();
   expect(screen.queryByRole("button", { name: "Remove generator First/Last Frame" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
   const remove = await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" });
@@ -95,7 +95,7 @@ it("downloads the sample, enables its default choice, and removes only weights t
   expect(await screen.findByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
   expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
-  expect(radio()).toBeDisabled();
+  expect(within(screen.getByRole("list", { name: "Download" })).queryByRole("radio")).toBeNull();
   expect(files.size).toBe(0);
   expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.paths.transformer).toMatch(/^https:/);
 });

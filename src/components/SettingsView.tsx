@@ -1,4 +1,4 @@
-import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -497,7 +497,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               </header>
               <div className="generator-template-list" role="list" aria-label={section.title}>
                 {section.templates.map((template) => (
-                  <div className={`generator-template-item${template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
+                  <div className={`generator-template-item${templateNeedsDownload(template) ? " generator-template-item--download" : template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
                     {downloadState?.active && downloadState.templateId === template.id && <span
                       className="generator-template-item__progress"
                       role="progressbar"
@@ -508,10 +508,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                       aria-valuetext={`${downloadState.completed} of ${downloadState.files} files complete${downloadState.total ? `; current file ${Math.floor(100 * downloadState.downloaded / downloadState.total)}%` : "; downloading"}`}
                       style={{ width: `${downloadPercent}%` }}
                     />}
-                    <label className="generator-template-item__default" title="Use this generator for generation by default">
-                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId && !templateNeedsDownload(template)} disabled={templateNeedsDownload(template)} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
-                    </label>
+                    {!templateNeedsDownload(template) && <label className="generator-template-item__default" title="Use this generator for generation by default">
+                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
+                    </label>}
                     <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
+                      <Video size={16} aria-hidden="true" />
                       <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? `Downloading · ${Math.floor(downloadPercent)}%` : `${template.defaultSteps} steps`}</small>
                     </button>
                     {templateNeedsDownload(template)

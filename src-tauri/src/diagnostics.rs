@@ -1,8 +1,8 @@
 //! Persistent diagnostics shared by the native runtime and the webview.
 //!
 //! One human-readable record is written per line so a damaged final write
-//! never makes earlier records unreadable. The active file rotates at 5 MiB
-//! and only one previous file is retained. Prompt bodies and credentials are
+//! never makes earlier records unreadable. The active file rotates at startup
+//! and at 5 MiB, and only one previous file is retained. Prompt bodies and credentials are
 //! deliberately excluded by callers and redacted again here at the final
 //! write boundary.
 
@@ -19,7 +19,7 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 const ACTIVE_FILE: &str = "slopus.log";
-const PREVIOUS_FILE: &str = "slopus.previous.log";
+const PREVIOUS_FILE: &str = "slopus-prev.log";
 const MAX_BYTES: u64 = 5 * 1024 * 1024;
 const MAX_TEXT_CHARS: usize = 8 * 1024;
 
@@ -65,18 +65,16 @@ impl LogWriter {
         })?;
         let active_path = directory.join(ACTIVE_FILE);
         let previous_path = directory.join(PREVIOUS_FILE);
-        let bytes = fs::metadata(&active_path)
-            .map(|value| value.len())
-            .unwrap_or(0);
-        let file = open_append(&active_path)?;
-        Ok(Self {
+        let mut writer = Self {
             active_path,
             previous_path,
             session_id: format!("{}-{}", std::process::id(), timestamp_ms()),
             max_bytes,
-            bytes,
-            file: Some(file),
-        })
+            bytes: 0,
+            file: None,
+        };
+        writer.rotate()?;
+        Ok(writer)
     }
 
     fn write(
@@ -125,11 +123,12 @@ impl LogWriter {
         if let Some(mut file) = self.file.take() {
             let _ = file.flush();
         }
-        if self.previous_path.exists() {
-            fs::remove_file(&self.previous_path)
-                .map_err(|error| format!("Could not replace previous diagnostic log: {error}"))?;
-        }
         if self.active_path.exists() {
+            if self.previous_path.exists() {
+                fs::remove_file(&self.previous_path).map_err(|error| {
+                    format!("Could not replace previous diagnostic log: {error}")
+                })?;
+            }
             fs::rename(&self.active_path, &self.previous_path)
                 .map_err(|error| format!("Could not rotate diagnostic log: {error}"))?;
         }
@@ -437,6 +436,36 @@ mod tests {
     }
 
     #[test]
+    fn startup_rotates_the_old_log_and_replaces_the_previous_session() {
+        let folder = tempfile::tempdir().unwrap();
+        let active = folder.path().join(ACTIVE_FILE);
+        let previous = folder.path().join("slopus-prev.log");
+        fs::write(&active, "last session").unwrap();
+        fs::write(&previous, "older session").unwrap();
+
+        let mut writer = LogWriter::new(folder.path(), MAX_BYTES).unwrap();
+        assert_eq!(fs::read_to_string(&previous).unwrap(), "last session");
+        assert_eq!(fs::read_to_string(&active).unwrap(), "");
+        assert_eq!(writer.bytes, 0);
+        assert_eq!(
+            writer.info().previous_path,
+            Some(previous.to_string_lossy().into_owned())
+        );
+        writer
+            .write("info", "test", "startup", "new session", Value::Null)
+            .unwrap();
+        drop(writer);
+
+        let current = fs::read_to_string(&active).unwrap();
+        assert!(current.contains("new session"));
+        assert!(!current.contains("last session"));
+        let writer = LogWriter::new(folder.path(), MAX_BYTES).unwrap();
+        assert_eq!(fs::read_to_string(&previous).unwrap(), current);
+        assert_eq!(fs::read_to_string(&active).unwrap(), "");
+        drop(writer);
+    }
+
+    #[test]
     fn rotation_keeps_one_previous_file() {
         let folder = tempfile::tempdir().unwrap();
         let mut writer = LogWriter::new(folder.path(), 300).unwrap();
@@ -454,6 +483,6 @@ mod tests {
         drop(writer);
         assert!(folder.path().join(ACTIVE_FILE).is_file());
         assert!(folder.path().join(PREVIOUS_FILE).is_file());
-        assert!(!folder.path().join("slopus.previous.previous.log").exists());
+        assert_eq!(fs::read_dir(folder.path()).unwrap().count(), 2);
     }
 }

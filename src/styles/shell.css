@@ -269,6 +269,10 @@
   background: var(--field-bg);
 }
 
+.generator-template-item--download {
+  grid-template-columns: minmax(0, 1fr) var(--control-sm);
+}
+
 .generator-template-item__progress {
   position: absolute;
   inset: 0 auto 0 0;
@@ -305,6 +309,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.generator-template-item__open > svg {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-muted);
 }
 
 .generator-template-item__open small,
