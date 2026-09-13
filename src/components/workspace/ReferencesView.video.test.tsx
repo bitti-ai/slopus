@@ -33,7 +33,16 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   expect(screen.queryByRole("button", { name: "Add images" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Add video" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
-  const icon = await screen.findByRole("button", { name: "Render icon with refmod" });
+  await screen.findByRole("heading", { name: "Refmods" });
+  const icon = screen.getByRole("button", { name: "Regenerate reference icon" });
+  expect(icon.closest(".reference-detail-art")).not.toBeNull();
+  expect(icon).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Render icon with refmod" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Prompt")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add file" })).toBeDisabled();
+  vi.mocked(invoke).mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+  expect(invoke).not.toHaveBeenCalled();
   expect(parseProjectConfig(latest).references[0]).toMatchObject({ kind: "video", sourcePath: "D:/motion.mp4", images: [{ relativePath: "references/photo.png" }], refmods: [{ sourcePath: "D:/person.safetensors", strength: 1, copies: 1 }] });
   fireEvent.change(screen.getByLabelText("person.safetensors strength"), { target: { value: "0.7" } });
   fireEvent.change(screen.getByLabelText("person.safetensors copies"), { target: { value: "2" } });
@@ -42,10 +51,32 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   expect(latest.references[0].refmods![0]).toMatchObject({ strength: 0.7, copies: 2 });
   fireEvent.change(screen.getByLabelText("person.safetensors strength"), { target: { value: "0" } });
   expect(icon).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Remove person.safetensors" }));
+  expect(screen.getByLabelText("Prompt")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add file" })).toBeDisabled();
+  const removeRefmods = screen.getByRole("button", { name: "Remove refmods" });
+  expect(removeRefmods.closest("header")).toContainElement(screen.getByRole("heading", { name: "Refmods" }));
+  expect(removeRefmods).toHaveTextContent("");
+  fireEvent.click(removeRefmods);
   expect(latest.references[0].refmods).toEqual([]);
   expect(latest.references[0].images).toHaveLength(1);
   expect(latest.references[0].kind).toBe("video");
+  expect(screen.getByLabelText("Prompt")).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Add file" })).toBeEnabled();
+});
+
+it("shows an existing refmod icon only in the normal inspector slot and clears it on removal", () => {
+  const config = createProjectConfig({ name: "Refmod", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
+  const filename = `${"long-refmod-filename-".repeat(12)}.safetensors`;
+  config.references = [{ id: "ref", name: "Person", kind: "text", description: "Existing description", intendedUse: [], createdAt: config.createdAt,
+    iconRelativePath: "references/icons/person.png", refmods: [{ id: "mod", name: filename, sourcePath: `D:/${filename}`, strength: 1, copies: 1 }] }];
+  const onChange = vi.fn();
+  const { container } = render(<ReferencesView folderPath="C:/project" config={config} onChange={onChange} onRegenerateIcon={vi.fn()} pendingIconIds={new Set(["ref"])} />);
+  expect(container.querySelector(".reference-detail-art .reference-detail-preset-icon")).toBeInTheDocument();
+  expect(within(screen.getByRole("region", { name: "Refmod attachments" })).queryByRole("img")).not.toBeInTheDocument();
+  expect(screen.getByTitle(filename)).toHaveTextContent(filename);
+  expect(screen.getByRole("button", { name: "Regenerate reference icon" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Remove refmods" }));
+  expect(onChange.mock.calls[0][0].references[0]).toMatchObject({ description: "Existing description", refmods: [], iconRelativePath: undefined });
 });
 
 it("imports a video, edits its saved trim and soundtrack, then removes its attachment", async () => {

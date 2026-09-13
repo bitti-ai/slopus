@@ -91,6 +91,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [presetSearch, setPresetSearch] = useState("");
   const selected = config.references.find((ref) => ref.id === selectedId);
   const selectedImages = selected ? referenceImages(selected) : [];
+  const hasRefmods = Boolean(selected?.refmods?.length);
+  const showImages = selectedImages.length > 0 && !hasRefmods;
+  const canGenerateIcon = Boolean(selected && (hasRefmods ? activeReferenceRefmods(selected).length : selected.description.trim()));
   const selectedPreset = selected ? selectedReferencePreset(selected) : undefined;
   const selectedType = selected ? referenceType(selected) : "custom";
   const selectedSubcategory = selected?.subcategory ?? selectedPreset?.subcategory ?? "";
@@ -139,7 +142,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };
   const addFiles = async () => {
-    if (!selected) return;
+    if (!selected || hasRefmods || importingFiles) return;
     setImportError(null);
     if (!isTauri()) { setImportError("File import is available in the desktop app."); return; }
     setImportingFiles(true);
@@ -151,6 +154,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       const current = configRef.current;
       const target = current.references.find((reference) => reference.id === selected.id);
       if (!target) throw new Error("The reference was removed while the files were importing.");
+      if (target.refmods?.length) throw new Error("Remove the refmods before adding more files.");
       const images: ProjectReferenceImage[] = files.filter((file) => file.kind === "image").map((file) => ({
         id: `ref-image-${crypto.randomUUID()}`, name: file.name, relativePath: file.relativePath, sourcePath: file.sourcePath,
       }));
@@ -220,7 +224,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               : <span className="reference-copy-art"><FileText size={26} /></span>}
             <span className="reference-card__body"><span><b>{ref.name}</b>{(images.length > 0 || ref.refmods?.length || ref.kind === "video" || ref.kind === "audio") && <small>{referenceKindLabel(ref)}</small>}</span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
-              : <p className="reference-card__incomplete">{ref.refmods?.length ? "Pre-encoded reference. Add a prompt to describe what to keep." : ref.kind === "video" ? "The clip is sent as a reference. Add a prompt to describe what to keep." : images.length > 0
+              : <p className="reference-card__incomplete">{ref.refmods?.length ? "Pre-encoded reference." : ref.kind === "video" ? "The clip is sent as a reference. Add a prompt to describe what to keep." : images.length > 0
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
                 : "Not described yet — it won’t be used until you add a definition."}</p>}<span className="use-tags"><i>{referenceTypeLabel(referenceType(ref))}</i></span></span>
           </button>;
@@ -254,24 +258,24 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               onChange={(event) => update(selected.id, { video: { startSeconds: 0, durationSeconds: 2, ...selected.video, includeAudio: event.target.checked } })} /> Include sound</label>
             <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} /> Remove video</button>
           </section>}
-          {(selected.kind !== "video" || selectedImages.length > 0) && <div className={`reference-detail-art${selectedImages.length > 0 || selected.iconRelativePath || selectedPresetIcon ? " reference-detail-art--photo" : " reference-detail-art--text"}${selectedPresetIcon || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
-            {selectedImages.length > 0
+          {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${(!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
+            {showImages
               ? <div className="reference-detail-images">{selectedImages.map((image) => <ReferenceImage key={image.id} folderPath={folderPath} relativePath={image.relativePath} sourcePath={image.sourcePath} alt={image.name} />)}</div>
               : selected.iconRelativePath
                 ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
-              : selectedPresetIcon
+              : !hasRefmods && selectedPresetIcon
                 ? <PresetIcon className="reference-detail-preset-icon" preset={selectedPresetIcon} alt={`${selected.name} reference icon`} />
               : <span><Users size={30} /></span>}
             {/* A caption only where there is no picture to look at. It used
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
-            {selectedImages.length === 0 && !selected.iconRelativePath && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
-            {selectedImages.length === 0 && !selected.refmods?.length && onRegenerateIcon && <button
+            {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
+            {!showImages && onRegenerateIcon && <button
               type="button"
               className="reference-icon-refresh"
               aria-label="Regenerate reference icon"
-              title={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : selected.description.trim() ? "Regenerate reference icon" : "Add a prompt to generate an icon"}
-              disabled={!selected.description.trim() || pendingIconIds.has(selected.id)}
+              title={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : canGenerateIcon ? "Regenerate reference icon" : hasRefmods ? "Enable a refmod to generate an icon" : "Add a prompt to generate an icon"}
+              disabled={!canGenerateIcon || pendingIconIds.has(selected.id)}
               onClick={() => {
                 setIconError(null);
                 try { onRegenerateIcon(selected.id); }
@@ -280,16 +284,20 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             ><RefreshCw size={14} aria-hidden="true" /></button>}
           </div>}
           <div className="reference-fields">
-            <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
+            <label><span>Prompt</span><textarea disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
             <div className="reference-fields__actions">
-              <button className="secondary-button" disabled={importingFiles} onClick={() => void addFiles()}><ImagePlus size={16} /> {importingFiles ? "Adding files…" : "Add file"}</button>
+              <button className="secondary-button" disabled={importingFiles || hasRefmods} onClick={() => void addFiles()}><ImagePlus size={16} /> {importingFiles ? "Adding files…" : "Add file"}</button>
             </div>
+            {hasRefmods && <p>Remove the refmods to edit the prompt or add files.</p>}
           </div>
-          {Boolean(selected.refmods?.length) && <section className="reference-refmods" aria-label="Refmod attachments">
-            <h3>Refmods</h3>
+          {hasRefmods && <section className="reference-refmods" aria-label="Refmod attachments">
+            <header>
+              <h3>Refmods</h3>
+              <button type="button" className="inspector-remove-button" aria-label="Remove refmods" title="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Trash2 size={16} aria-hidden="true" /></button>
+            </header>
             <p>Requires a Ref2VA generator. Strength 0 disables a refmod. More copies use more GPU memory.</p>
             {selected.refmods!.map((refmod) => <div key={refmod.id}>
-              <b>{refmod.name}</b>
+              <b title={refmod.name}>{refmod.name}</b>
               <label>Strength<input aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
                 const strength = Number(event.target.value);
                 if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
@@ -298,18 +306,12 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                 const copies = Number(event.target.value);
                 if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
               }} /></label>
-              <button className="secondary-button" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.filter((entry) => entry.id !== refmod.id) })}><Trash2 size={16} /> Remove {refmod.name}</button>
             </div>)}
-            {selected.iconRelativePath && <ReferenceImage folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} refmod icon`} />}
-            {onRegenerateIcon && <button className="secondary-button" disabled={!activeReferenceRefmods(selected).length || pendingIconIds.has(selected.id)} onClick={() => {
-              setIconError(null);
-              try { onRegenerateIcon(selected.id); } catch (reason) { setIconError(String(reason)); }
-            }}><RefreshCw size={16} /> {pendingIconIds.has(selected.id) ? "Rendering icon…" : "Render icon with refmod"}</button>}
           </section>}
           {selectedLocation && <section className="reference-location-settings" aria-label="Location settings">
             {LOCATION_SETTING_GROUPS.map((group) => <label key={group.id} className="reference-location-settings__group">
               <span>{group.label}</span>
-              <select value={selectedLocation.settings[group.id] ?? ""} onChange={(event) => {
+              <select disabled={hasRefmods} value={selectedLocation.settings[group.id] ?? ""} onChange={(event) => {
                 const prompt = composeLocationPrompt(selectedLocation.preset, { ...selectedLocation.settings, [group.id]: event.target.value || undefined });
                 update(selected.id, { description: prompt, content: prompt });
               }}>
