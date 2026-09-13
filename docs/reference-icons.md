@@ -24,7 +24,12 @@ can also cancel the batch. An engine or storage failure stops the remaining
 catalog so the same failure is not repeated for every reference.
 
 Built-in icons are shared across projects. They are saved as 256×256 JPEGs in
-`reference-icons/` inside the same directory as `slopus.log`, using stable preset
+`%LOCALAPPDATA%/Slopus/reference-icons/`, beside the `logs/` directory, using stable preset
 IDs as filenames. They load as their cards come into view and are never sent to
 the video engine as reference-image attachments. Existing project-specific
 icons remain in their project folders.
+
+At startup, Slopus migrates the old `com.slopus.desktop` data folder, including
+its WebView settings, to `Slopus`. Icons previously inside `logs/reference-icons`
+move to the root `reference-icons` folder. Existing destination files are kept;
+conflicting legacy files remain available in the old location.

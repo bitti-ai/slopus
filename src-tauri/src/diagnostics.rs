@@ -16,7 +16,7 @@ use std::{
     sync::{Mutex, Once, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 const ACTIVE_FILE: &str = "slopus.log";
 const PREVIOUS_FILE: &str = "slopus-prev.log";
@@ -286,10 +286,7 @@ fn redact(value: Value, depth: usize) -> Value {
 }
 
 pub fn directory(app: &AppHandle) -> PathBuf {
-    app
-        .path()
-        .app_log_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("slopus").join("logs"))
+    crate::app_paths::data_directory(app).join("logs")
 }
 
 pub fn initialize(app: &AppHandle) -> Result<DiagnosticLogInfo, String> {

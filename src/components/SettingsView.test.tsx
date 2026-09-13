@@ -254,7 +254,7 @@ describe("the settings screen", () => {
   it("offers only a button to reveal the log without fetching log details", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     const info = {
-      path: "C:\\Users\\Editor\\AppData\\Local\\com.slopus.desktop\\logs\\slopus.log",
+      path: "C:\\Users\\Editor\\AppData\\Local\\Slopus\\logs\\slopus.log",
       previousPath: null,
       sessionId: "42-1",
       maxFileBytes: 5_242_880,

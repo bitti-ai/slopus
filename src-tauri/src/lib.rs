@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 
 mod agent;
 mod agent_commands;
+mod app_paths;
 mod cuda_support;
 mod diagnostics;
 mod export;
@@ -2777,17 +2778,17 @@ fn reference_icon_pixels(job_id: &str) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 fn list_builtin_reference_icons(app: AppHandle) -> Result<Vec<String>, String> {
-    reference_icons::list_builtin(&diagnostics::directory(&app))
+    reference_icons::list_builtin(&app_paths::data_directory(&app))
 }
 
 #[tauri::command]
 fn read_builtin_reference_icon(app: AppHandle, preset_id: String) -> Result<tauri::ipc::Response, String> {
-    reference_icons::read_builtin(&diagnostics::directory(&app), &preset_id).map(tauri::ipc::Response::new)
+    reference_icons::read_builtin(&app_paths::data_directory(&app), &preset_id).map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]
 fn save_builtin_reference_icon(app: AppHandle, preset_id: String, job_id: String) -> Result<(), String> {
-    reference_icons::save_builtin(&diagnostics::directory(&app), &preset_id, &reference_icon_pixels(&job_id)?)
+    reference_icons::save_builtin(&app_paths::data_directory(&app), &preset_id, &reference_icon_pixels(&job_id)?)
 }
 
 fn write_reference_icon_frame(folder_path: &str, job_id: &str, rgba: &[u8]) -> Result<String, String> {
@@ -2950,6 +2951,11 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             use tauri::Manager as _;
+            let data_directory = app_paths::prepare(app.handle())?;
+            let window_config = app.config().app.windows.first().ok_or_else(|| io::Error::other("Missing main window configuration"))?;
+            tauri::WebviewWindowBuilder::from_config(app, window_config)?
+                .data_directory(data_directory)
+                .build()?;
             match diagnostics::initialize(app.handle()) {
                 Ok(info) => diagnostics::info(
                     "app",

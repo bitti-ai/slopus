@@ -14,6 +14,8 @@ and editing media locally. This release focuses on video workflows.
 - Timeline editing, preview, and MP4 export using WebCodecs and WebGPU.
 - Editable project resolution, aspect ratio, and target length.
 - Signed application updates and a Work Queue that continues across projects.
+- A `Slopus` user data folder with separate `logs` and `reference-icons` folders;
+  existing settings and icons migrate at startup.
 
 ## Getting started
 
