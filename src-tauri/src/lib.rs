@@ -226,6 +226,8 @@ struct ReusableReference {
     /// readable for projects made when an image was a separate reference kind.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     images: Vec<ReferenceImage>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    refmods: Vec<ReferenceRefmod>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     video: Option<ReferenceVideoOptions>,
     #[serde(default)]
@@ -255,6 +257,19 @@ struct ReferenceVideoOptions {
     duration_seconds: f64,
     include_audio: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReferenceRefmod {
+    #[serde(flatten)]
+    file: ReferenceImage,
+    #[serde(default = "default_refmod_strength")]
+    strength: f64,
+    #[serde(default = "default_refmod_copies")]
+    copies: u32,
+}
+fn default_refmod_strength() -> f64 { 1.0 }
+fn default_refmod_copies() -> u32 { 1 }
 
 /// One shot inside a scene. Mirrors `sceneShotSchema` in src/lib/project.ts.
 ///
@@ -836,6 +851,18 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             ));
         }
         let mut image_ids = BTreeSet::new();
+        let mut refmod_ids = BTreeSet::new();
+        for refmod in &mut reference.refmods {
+            let file = &mut refmod.file;
+            if file.id.trim().is_empty() || file.name.trim().is_empty() || !refmod_ids.insert(file.id.clone())
+                || !refmod.strength.is_finite() || !(0.0..=1.0).contains(&refmod.strength)
+                || !(1..=10).contains(&refmod.copies) {
+                return Err("Refmods need unique ids, names, strength 0 to 1 and copies 1 to 10.".into());
+            }
+            file.relative_path = file.relative_path.as_deref().map(normalize_project_path).transpose()?;
+            file.source_path = file.source_path.as_deref().map(normalize_external_path).transpose()?;
+            check_one_location("Refmod", file.relative_path.as_ref(), file.source_path.as_ref())?;
+        }
         if let Some(video) = &reference.video {
             if reference.kind != "video" || !video.start_seconds.is_finite() || video.start_seconds < 0.0
                 || !video.duration_seconds.is_finite() || !(2.0..=15.0).contains(&video.duration_seconds) {
@@ -1678,7 +1705,8 @@ fn choose_reference_images(
 
 /// One reference the user added: an image copied into `references/`, or a
 /// video/audio file left where it is and pointed at.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ImportedReference {
     kind: &'static str,
     name: String,
@@ -2166,6 +2194,7 @@ fn create_project_at_with_references(
                 relative_path: imported.relative_path,
                 source_path: imported.source_path,
                 images: Vec::new(),
+                refmods: Vec::new(),
                 video: None,
                 intended_use: vec!["style".into()],
                 subcategory: None,
@@ -2353,6 +2382,45 @@ fn choose_reference_video(app: AppHandle, folder_path: String) -> Result<Option<
     let path = picked.into_path().map_err(|error| format!("Could not access selected video: {error}"))?;
     if !path.is_file() { return Err("The selected video does not exist.".into()); }
     picked_external_source_path(&path, &root).map(Some)
+}
+
+fn reference_attachment_kind(path: &Path) -> Result<&'static str, String> {
+    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        "png" | "jpg" | "jpeg" | "webp" => Ok("image"),
+        "mp4" | "m4v" | "mov" => Ok("video"),
+        "safetensors" => Ok("refmod"),
+        _ => Err("Choose an image, MP4/MOV video, or refmod safetensors file.".into()),
+    }
+}
+
+fn import_reference_attachments(root: &Path, paths: &[PathBuf]) -> Result<Vec<ImportedReference>, String> {
+    let kinds = paths.iter().map(|path| {
+        if !path.is_file() { return Err("The selected reference file does not exist.".into()); }
+        reference_attachment_kind(path)
+    }).collect::<Result<Vec<_>, String>>()?;
+    if kinds.iter().filter(|kind| **kind == "video").count() > 1 {
+        return Err("Add one video per reference. Use another reference for additional videos.".into());
+    }
+    paths.iter().zip(kinds).map(|(path, kind)| {
+        if kind == "image" { return import_reference_file(path, root); }
+        Ok(ImportedReference {
+            kind,
+            name: path.file_name().and_then(|name| name.to_str()).unwrap_or("Reference").into(),
+            relative_path: None,
+            source_path: Some(picked_external_source_path(path, root)?),
+        })
+    }).collect()
+}
+
+#[tauri::command]
+fn choose_reference_files(app: AppHandle, folder_path: String) -> Result<Vec<ImportedReference>, String> {
+    let root = project_root(&folder_path)?;
+    let selected = app.dialog().file().set_title("Add reference files")
+        .add_filter("Images, videos and refmods", &["png", "jpg", "jpeg", "webp", "mp4", "m4v", "mov", "safetensors"])
+        .blocking_pick_files().unwrap_or_default();
+    let paths = selected.into_iter().map(|path| path.into_path().map_err(|error| format!("Could not access selected file: {error}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    import_reference_attachments(&root, &paths)
 }
 
 #[tauri::command]
@@ -2956,6 +3024,7 @@ pub fn run() {
             choose_reference_image,
             choose_reference_images,
             choose_reference_video,
+            choose_reference_files,
             create_reference_video,
             append_reference_video,
             set_reference_video_audio,
@@ -4425,6 +4494,7 @@ mod tests {
             relative_path: None,
             source_path: None,
             images: Vec::new(),
+            refmods: Vec::new(),
             video: None,
             intended_use: Vec::new(),
             subcategory: None,
@@ -4435,6 +4505,47 @@ mod tests {
             validate_and_normalize_config(config).is_ok(),
             "a blank text reference must never block saving the project"
         );
+    }
+
+    #[test]
+    fn refmod_attachments_round_trip_and_validate_ranges_and_paths() {
+        let mut value = serde_json::to_value(fixture()).unwrap();
+        value["references"][0]["refmods"] = serde_json::json!([
+            { "id": "latent", "name": "Person", "sourcePath": "D:/person.safetensors", "strength": 0.7, "copies": 2 }
+        ]);
+        let config = validate_and_normalize_config(serde_json::from_value(value.clone()).unwrap()).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let created = create_project_in(root.path(), &config).unwrap();
+        let folder = Path::new(&created.folder_path);
+        write_project(folder, &created.config).unwrap();
+        assert_eq!(read_project(folder).unwrap().config.references[0].refmods, config.references[0].refmods);
+        for (key, invalid) in [
+            ("strength", serde_json::json!(-0.1)), ("strength", serde_json::json!(1.1)),
+            ("copies", serde_json::json!(0)), ("copies", serde_json::json!(11)),
+            ("sourcePath", serde_json::json!("../outside.safetensors")),
+            ("sourcePath", serde_json::Value::Null),
+        ] {
+            let mut broken = value.clone();
+            broken["references"][0]["refmods"][0][key] = invalid;
+            assert!(serde_json::from_value(broken).map_err(|error| error.to_string()).and_then(validate_and_normalize_config).is_err());
+        }
+    }
+
+    #[test]
+    fn unified_reference_import_copies_images_and_keeps_video_and_refmod_sources() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        let paths = [root.path().join("photo.png"), root.path().join("motion.mp4"), root.path().join("person.safetensors")];
+        for path in &paths { fs::write(path, b"source").unwrap(); }
+        let imported = import_reference_attachments(&project, &paths).unwrap();
+        assert_eq!(imported.iter().map(|file| file.kind).collect::<Vec<_>>(), ["image", "video", "refmod"]);
+        assert!(project.join(imported[0].relative_path.as_ref().unwrap()).is_file());
+        assert!(imported[2].relative_path.is_none());
+        assert_eq!(imported[2].source_path.as_deref(), Some(external_source_path(&paths[2]).unwrap().as_str()));
+        assert!(paths.iter().all(|path| path.is_file()));
+        assert!(import_reference_attachments(&project, &[paths[1].clone(), paths[1].clone()]).unwrap_err().contains("one video"));
+        assert!(reference_attachment_kind(Path::new("script.exe")).is_err());
     }
 
     #[test]

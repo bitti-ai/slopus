@@ -56,6 +56,22 @@ beforeEach(() => {
 afterEach(() => {
   REFERENCE_PRESETS.forEach((preset) => { preset.icon = originalPresetIcons.get(preset.id); }); stop?.(); vi.restoreAllMocks(); vi.useRealTimers(); delete (window as any).__TAURI_INTERNALS__; });
 
+it("renders a refmod icon without a description and rejects a result after its settings change", async () => {
+  const ref = { ...reference("latent"), description: "", refmods: [{ id: "r", name: "Person", sourcePath: "D:/person.safetensors", strength: 0.7, copies: 2 }] };
+  const { queue, session } = setup([ref]);
+  queue.regenerateReferenceIcon(session, "latent");
+  await flush();
+  expect(requests()[0]).toMatchObject({ stillImage: true, referencePaths: [], refmods: [{ path: "D:/person.safetensors", strength: 0.7, copies: 2 }] });
+  session.update((config) => ({ ...config, references: config.references.map((entry) => ({ ...entry, refmods: entry.refmods!.map((latent) => ({ ...latent, copies: 3 })) })) }));
+  await finish(requests()[0].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toBeUndefined();
+  queue.regenerateReferenceIcon(session, "latent");
+  await flush();
+  expect(requests()[1].refmods![0].copies).toBe(3);
+  await finish(requests()[1].jobId);
+  expect(session.getSnapshot().config.references[0].iconRelativePath).toContain("references/icons/");
+});
+
 it("waits for batch confirmation without blocking video generation", async () => {
   saveReferenceIconAutomation("ask");
   const { queue, session } = setup([reference("hero"), reference("place", "location")]);

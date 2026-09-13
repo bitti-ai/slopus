@@ -6,6 +6,7 @@ import { referenceImages, type ProjectReference } from "./project";
 import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_RENDER_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } from "./runtime";
 import { withEngineSettings } from "./settings";
+import { activeReferenceRefmods, referenceRefmodInputs } from "./project";
 import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import type { WorkItem } from "./workQueue";
 import { hasPresetIcon, REFERENCE_PRESETS, type ReferencePreset } from "./reference-presets";
@@ -23,6 +24,7 @@ interface IconTask {
   status: TaskStatus;
   nativeId?: string;
   submitted: boolean;
+  refmodsSnapshot?: string;
   cancelled: boolean;
   force?: boolean;
   approved?: boolean;
@@ -142,7 +144,8 @@ export class ReferenceIconWork {
   }
 
   private shouldGenerate(reference: ProjectReference, task: { force?: boolean }) {
-    return task.force ? Boolean(reference.description.trim()) && referenceImages(reference).length === 0 : needsReferenceIcon(reference);
+    if (reference.refmods?.length && !activeReferenceRefmods(reference).length) return false;
+    return task.force ? Boolean(reference.description.trim() || activeReferenceRefmods(reference).length) && (referenceImages(reference).length === 0 || activeReferenceRefmods(reference).length > 0) : needsReferenceIcon(reference);
   }
 
   isPending(session: ProjectSession, referenceId: string) {
@@ -237,12 +240,14 @@ export class ReferenceIconWork {
       const reference = this.referenceFor(task);
       if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
       task.prompt = referenceIconPrompt(reference);
+      task.refmodsSnapshot = JSON.stringify(activeReferenceRefmods(reference));
       task.name = reference.name;
       task.nativeId = `icon-${crypto.randomUUID()}`;
       const done = new Promise<void>((resolve) => { task.finish = resolve; });
       await enqueueSlopfabGeneration({
         jobId: task.nativeId, prompt: task.prompt, stillImage: true, frames: 1,
         steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE, referencePaths: [],
+        ...(activeReferenceRefmods(reference).length ? { refmods: referenceRefmodInputs(task.session.record.folderPath, [reference]) } : {}),
       }, withEngineSettings(task.session.getSnapshot().config));
       task.submitted = true;
       if (task.cancelled) await this.cancelNative(task);
@@ -293,7 +298,7 @@ export class ReferenceIconWork {
     try {
       const reference = this.referenceFor(task);
       if (task.cancelled) { task.status = "cancelled"; return; }
-      if (!reference || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt) { task.status = "skipped"; return; }
+      if (!reference || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt || JSON.stringify(activeReferenceRefmods(reference)) !== task.refmodsSnapshot) { task.status = "skipped"; return; }
       if (task.preset) {
         await saveBuiltinIcon(task.preset.id, task.nativeId!);
         task.status = "completed";
@@ -302,7 +307,7 @@ export class ReferenceIconWork {
       const iconRelativePath = await saveReferenceIcon(task.session.record.folderPath, task.nativeId!);
       let attached = false;
       task.session.update((current) => ({ ...current, references: current.references.map((reference) => {
-        if (reference.id !== task.referenceId || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt) return reference;
+        if (reference.id !== task.referenceId || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt || JSON.stringify(activeReferenceRefmods(reference)) !== task.refmodsSnapshot) return reference;
         attached = true;
         return { ...reference, iconRelativePath };
       }) }));

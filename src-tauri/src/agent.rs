@@ -1866,6 +1866,7 @@ mod tests {
             relative_path: None,
             source_path: None,
             images: Vec::new(),
+            refmods: Vec::new(),
                 video: None,
             intended_use: vec!["character".into()],
             subcategory: None,
