@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { KNOWN_CHARACTERS } from "./known-characters";
 import { LOCATION_GROUPS } from "./expanded-reference-options";
-import { composeLocationPrompt, locationSelectionFromPrompt, REFERENCE_PRESETS, type PresetReferenceType } from "./reference-presets";
+import { composeLocationPrompt, hasPresetIcon, locationSelectionFromPrompt, REFERENCE_PRESETS, type PresetReferenceType } from "./reference-presets";
 
 const TYPES: PresetReferenceType[] = ["animal", "character", "product", "location", "style"];
 
@@ -39,10 +39,13 @@ describe("reference preset catalog", () => {
     expect(Math.max(...REFERENCE_PRESETS.map((preset) => preset.prompt.length))).toBeLessThanOrEqual(100);
   });
 
-  it("bundles icons for the existing character, product, location and style presets without treating it as a generation reference", () => {
+  it("keeps the catalog usable before icons are generated and accepts optional bundled artwork", () => {
     const visual = REFERENCE_PRESETS.filter((preset) => preset.type === "character" || preset.type === "product" || preset.type === "location" || preset.type === "style");
     expect(visual).toHaveLength(810);
-    expect(visual.every((preset) => typeof preset.icon === "string" && preset.icon.length > 0)).toBe(true);
+    const preset = { ...visual[0], icon: undefined };
+    expect(hasPresetIcon(preset)).toBe(false);
+    expect(hasPresetIcon({ ...preset, icon: "/bundled-icon.jpg" })).toBe(true);
+    expect(REFERENCE_PRESETS.every((item) => /^[a-zA-Z0-9_-]{1,160}$/.test(item.id))).toBe(true);
   });
 
   it("does not multiply products or styles by adjectives", () => {

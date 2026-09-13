@@ -10,6 +10,7 @@ import {
   referenceType,
   referenceTypeLabel,
   referenceSubcategories,
+  hasPresetIcon,
   selectedReferencePreset,
   type ReferencePreset,
   type PresetReferenceType,
@@ -17,6 +18,10 @@ import {
 import { LOCATION_SETTING_GROUPS } from "../../lib/expanded-reference-options";
 import { isTauri } from "../../lib/persistence";
 import { ReferenceImage } from "./ReferenceImage";
+import { PresetIcon } from "./PresetIcon";
+import { ReferenceIconGenerationDialog } from "../ReferenceIconGenerationDialog";
+import { builtinIconRevision, refreshBuiltinIcons, subscribeBuiltinIcons } from "../../lib/builtinReferenceIcons";
+import { builtinIconVisitAction, saveBuiltinIconChoice } from "../../lib/referenceIconSettings";
 import { ReferenceVideo } from "./ReferenceVideo";
 import { inspectReferenceVideo } from "../../lib/referenceVideo";
 import { DebugPromptDialog } from "./DebugPromptDialog";
@@ -47,11 +52,12 @@ function ClipSecondsInput({ label, value, min, max = Number.MAX_SAFE_INTEGER, on
     }} /></label>;
 }
 
-export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, pendingIconIds = new Set<string>(), onOpenGenerator }: {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
   onChange: (next: ProjectConfig) => void;
   onRegenerateIcon?: (referenceId: string) => void;
+  onGenerateBuiltinIcons?: () => void;
   pendingIconIds?: ReadonlySet<string>;
   onOpenGenerator?: (jobId: string) => void;
 }) {
@@ -65,6 +71,13 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [importingVideo, setImportingVideo] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
+  const catalogVisit = useRef(0);
+  useEffect(() => () => { catalogVisit.current += 1; }, []);
+  const [builtinConfirmationCount, setBuiltinConfirmationCount] = useState(0);
+  useSyncExternalStore(subscribeBuiltinIcons, builtinIconRevision);
+  useEffect(() => {
+    if (onGenerateBuiltinIcons && isTauri()) void refreshBuiltinIcons().catch((reason) => setIconError(String(reason)));
+  }, [folderPath, Boolean(onGenerateBuiltinIcons)]);
   const [pickerType, setPickerType] = useState<PresetReferenceType>("character");
   const [pickerSubcategory, setPickerSubcategory] = useState("all");
   const [presetSearch, setPresetSearch] = useState("");
@@ -76,7 +89,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const selectedLocation = useMemo(() => selected && referenceType(selected) === "location"
     ? locationSelectionFromPrompt(selected.description)
     : undefined, [selected]);
-  const selectedPresetIcon = selectedImages.length === 0 ? selectedPreset?.icon : undefined;
+  const selectedPresetIcon = selectedImages.length === 0 && hasPresetIcon(selectedPreset) ? selectedPreset : undefined;
   const jobs = useMemo(() => config.generationJobs.filter((job) => job.referenceIds.includes(selectedId ?? "")), [config.generationJobs, selectedId]);
   const update = (id: string, patch: Partial<ProjectReference>) => {
     const current = configRef.current;
@@ -93,10 +106,19 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     return id;
   };
   const openNewReference = () => {
+    const visit = ++catalogVisit.current;
     setPickerType("character");
     setPickerSubcategory("all");
     setPresetSearch("");
     setPresetDialog(true);
+    if (onGenerateBuiltinIcons && isTauri()) void refreshBuiltinIcons().then(() => {
+      if (visit !== catalogVisit.current) return;
+      const missing = REFERENCE_PRESETS.filter((preset) => !hasPresetIcon(preset)).length;
+      if (!missing) return;
+      const action = builtinIconVisitAction();
+      if (action === "ask") setBuiltinConfirmationCount(missing);
+      else if (action === "generate") onGenerateBuiltinIcons();
+    }).catch((reason) => setIconError(String(reason)));
   };
   const addImages = async () => {
     if (!selected) return;
@@ -187,14 +209,15 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           {config.references.map((ref) => {
             const images = referenceImages(ref);
             const cover = images[0];
-            const presetIcon = selectedReferencePreset(ref)?.icon;
+            const matchedPreset = selectedReferencePreset(ref);
+            const presetIcon = hasPresetIcon(matchedPreset) ? matchedPreset : undefined;
             return <button key={ref.id} className={selectedId === ref.id ? "selected" : ""} onClick={() => setSelectedId(ref.id)}>
             {cover
               ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={cover.relativePath} sourcePath={cover.sourcePath} alt={cover.name} /></span>
               : ref.iconRelativePath
                 ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
               : presetIcon
-                ? <span className="reference-art reference-art--photo"><img src={presetIcon} alt="" /></span>
+                ? <span className="reference-art reference-art--photo"><PresetIcon preset={presetIcon} /></span>
               : <span className="reference-copy-art">{ref.kind === "video" ? <Video size={26} /> : <FileText size={26} />}</span>}
             <span className="reference-card__body"><span><b>{ref.name}</b>{(images.length > 0 || ref.kind === "video" || ref.kind === "audio") && <small>{referenceKindLabel(ref)}</small>}</span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
@@ -238,7 +261,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               : selected.iconRelativePath
                 ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
               : selectedPresetIcon
-                ? <img className="reference-detail-preset-icon" src={selectedPresetIcon} alt={`${selected.name} reference icon`} />
+                ? <PresetIcon className="reference-detail-preset-icon" preset={selectedPresetIcon} alt={`${selected.name} reference icon`} />
               : <span><Users size={30} /></span>}
             {/* A caption only where there is no picture to look at. It used
                 to print the file's path over the thumbnail, which is neither
@@ -303,10 +326,18 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       segments={[{ kind: "brief", value: referenceIconPrompt(selected) }]}
       onClose={() => setShowDebugIconPrompt(false)}
     />}
-    {presetDialog && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
+    {builtinConfirmationCount > 0 && <ReferenceIconGenerationDialog builtins count={builtinConfirmationCount} onAnswer={(confirmed, remember) => {
+      setBuiltinConfirmationCount(0);
+      if (remember) saveBuiltinIconChoice(confirmed);
+      if (confirmed) {
+        try { onGenerateBuiltinIcons?.(); }
+        catch (reason) { setIconError(String(reason)); }
+      }
+    }} />}
+    {presetDialog && builtinConfirmationCount === 0 && <div className="reference-dialog-backdrop"><div className="reference-preset-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-preset-title">
       <header>
         <div><h2 id="reference-preset-title">Add a reference</h2><p>Choose a preset or create a new reference, then add a prompt and images.</p></div>
-        <button onClick={() => setPresetDialog(false)} aria-label="Close type picker"><X size={18} /></button>
+        <button onClick={() => { catalogVisit.current += 1; setPresetDialog(false); }} aria-label="Close type picker"><X size={18} /></button>
       </header>
       <div className="reference-preset-dialog__body">
         <nav aria-label="Reference types">
@@ -322,8 +353,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               {subcategories.map((subcategory) => <button key={subcategory} className={pickerSubcategory === subcategory ? "active" : ""} aria-pressed={pickerSubcategory === subcategory} onClick={() => setPickerSubcategory(subcategory)}>{subcategory}</button>)}
             </div>
             <div className="reference-preset-grid">
-              {visiblePresets.map((preset) => <button key={preset.id} className={preset.icon ? "reference-preset-card--with-icon" : undefined} onClick={() => choosePreset(preset)}>
-                {preset.icon && <img className="reference-preset-icon" src={preset.icon} alt="" loading="lazy" />}
+              {visiblePresets.map((preset) => <button key={preset.id} className={hasPresetIcon(preset) ? "reference-preset-card--with-icon" : undefined} onClick={() => choosePreset(preset)}>
+                {hasPresetIcon(preset) && <PresetIcon className="reference-preset-icon" preset={preset} />}
                 <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
               </button>)}
               {visiblePresets.length === 0 && <p>No options match that search.</p>}

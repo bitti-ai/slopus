@@ -1,8 +1,9 @@
 import { ImagePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-export function ReferenceIconGenerationDialog({ count, onAnswer }: {
+export function ReferenceIconGenerationDialog({ count, onAnswer, builtins = false }: {
   count: number;
+  builtins?: boolean;
   onAnswer: (confirmed: boolean, remember: boolean) => void;
 }) {
   const [remember, setRemember] = useState(false);
@@ -43,15 +44,21 @@ export function ReferenceIconGenerationDialog({ count, onAnswer }: {
     <div className="exit-guard" ref={dialog} role="alertdialog" aria-modal="true" aria-labelledby="reference-icon-generation-title" aria-describedby="reference-icon-generation-description">
       <div className="exit-guard__head">
         <span className="exit-guard__mark" aria-hidden="true"><ImagePlus size={20} /></span>
-        <h2 id="reference-icon-generation-title">Generate reference icons?</h2>
+        <h2 id="reference-icon-generation-title">{builtins ? "Generate built-in reference icons?" : "Generate reference icons?"}</h2>
       </div>
       <div className="exit-guard__body" id="reference-icon-generation-description">
-        <p>{count} {count === 1 ? "reference needs an icon" : "references need icons"}. Generate them now using the video engine? This uses your GPU; waiting videos take priority.</p>
-        <p>Cancel skips this batch. You can change automatic generation in Settings → Generator.</p>
+        {builtins ? <>
+          <p>Generate icons for {count} built-in references to make them easier to browse?</p>
+          <p>This can take a long time. Icon generation runs in the background and pauses for normal video generation, so you can keep creating videos.</p>
+          <p>The icons are shared across projects and saved in a reference-icons subfolder beside the log files.</p>
+        </> : <>
+          <p>{count} {count === 1 ? "reference needs an icon" : "references need icons"}. Generate them now using the video engine? This uses your GPU; waiting videos take priority.</p>
+          <p>Cancel skips this batch.</p>
+        </>}
       </div>
       <label className="reference-icon-option">
         <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-        <span><b>Don't ask again</b><small>Remember Start as automatic generation, or Cancel as turning it off.</small></span>
+        <span><b>Don't ask again</b><small>{builtins ? "Remember whether to generate missing built-in icons when you open Add a reference." : "Remember Start as automatic generation, or Cancel as turning it off."}</small></span>
       </label>
       <div className="exit-guard__actions">
         <button className="secondary-button" type="button" ref={cancel} onClick={() => onAnswer(false, remember)}>Cancel</button>
