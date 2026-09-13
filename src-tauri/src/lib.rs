@@ -758,11 +758,9 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             config.brief.status
         ));
     }
-    // The bounds are spelled u32 so the range's element type cannot fall back
-    // to i32 — `u32: PartialOrd<i32>` does not exist.
-    if !(5u32..=600u32).contains(&config.brief.target_duration_seconds) {
+    if config.brief.target_duration_seconds > 600 {
         return Err(format!(
-            "Target duration must be between 5 and 600 seconds, received {}.",
+            "Target duration must be between 0 and 600 seconds, received {}.",
             config.brief.target_duration_seconds
         ));
     }
@@ -4685,9 +4683,6 @@ mod tests {
         rejects("target duration above 600 seconds", |config| {
             config.brief.target_duration_seconds = 900;
         });
-        rejects("target duration below 5 seconds", |config| {
-            config.brief.target_duration_seconds = 4;
-        });
         rejects("unsupported brief aspect ratio", |config| {
             config.brief.aspect_ratio = "21:9".into();
         });
@@ -5086,7 +5081,7 @@ mod tests {
                 "rejected valid background color {background_color}"
             );
         }
-        for seconds in [5u32, 60, 600] {
+        for seconds in [0u32, 1, 5, 60, 600] {
             let mut config = fixture();
             config.brief.target_duration_seconds = seconds;
             assert!(

@@ -1,13 +1,15 @@
-import { Clapperboard, Clock3, Monitor, WandSparkles, X } from "lucide-react";
+import { Clapperboard, Clock3, Monitor, Save, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { outputDimensions, resolutionLabel } from "../lib/export";
-import type { AspectRatio, CreateProjectInput, Resolution } from "../lib/project";
+import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
 import { PROJECT_RESOLUTIONS } from "../lib/project";
 
 interface PromptComposerProps {
   busy: boolean;
   onCreate: (input: CreateProjectInput) => Promise<void>;
   onClose: () => void;
+  project?: ProjectConfig;
+  error?: string | null;
 }
 
 const aspectRatioLabels: Record<AspectRatio, string> = {
@@ -29,31 +31,46 @@ const durationLabel = (seconds: number) => {
   return `${minutes} ${minutes === 1 ? "minute" : "minutes"}${remainder ? ` ${remainder} seconds` : ""}`;
 };
 
-export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps) {
-  const [name, setName] = useState("Untitled video");
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
-  const [resolution, setResolution] = useState<Resolution>(DEFAULT_RESOLUTION);
-  const [duration, setDuration] = useState(30);
+export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error }: PromptComposerProps) {
+  const [name, setName] = useState(project?.name ?? "Untitled video");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(project?.settings.aspectRatio ?? "16:9");
+  const [resolution, setResolution] = useState<Resolution>(project?.settings.resolution ?? DEFAULT_RESOLUTION);
+  const [durationInput, setDurationInput] = useState(String(project?.brief.targetDurationSeconds ?? 30));
+  const duration = Number(durationInput);
+  const dialog = useRef<HTMLDivElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
-  const validDuration = Number.isInteger(duration) && duration >= 10 && duration <= 600;
+  const validDuration = durationInput.trim() !== "" && Number.isInteger(duration) && duration >= 0 && duration <= 600;
+  const sliderPosition = Math.max(0, Math.min(114, duration <= 60 ? duration : 60 + (duration - 60) / 10));
+  const resolutions: readonly Resolution[] = project && !PROJECT_RESOLUTIONS.some((value) => value === project.settings.resolution)
+    ? [...PROJECT_RESOLUTIONS, project.settings.resolution] : PROJECT_RESOLUTIONS;
 
   /* Naming is the only authored content required before the Agent takes over. */
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
     nameInput.current?.focus({ preventScroll: true });
     nameInput.current?.select();
+    return () => { if (opener?.isConnected) opener.focus(); };
   }, []);
 
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)") ?? []);
+      if (!controls.length) { event.preventDefault(); return; }
+      if (!dialog.current?.contains(document.activeElement) || (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls.at(-1))) {
+        event.preventDefault(); (event.shiftKey ? controls.at(-1)! : controls[0]).focus();
+      }
+    };
+    window.addEventListener("keydown", close, true);
+    return () => window.removeEventListener("keydown", close, true);
   }, [busy, onClose]);
 
   const submit = async () => {
     if (busy || !name.trim() || !validDuration) return;
-    await onCreate({
+    await onSubmit({
       name: name.trim(),
-      prompt: "",
+      prompt: project?.brief.prompt ?? "",
       aspectRatio,
       resolution,
       targetDurationSeconds: duration,
@@ -61,16 +78,16 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
   };
 
   return (
-    <div className="composer-overlay" role="dialog" aria-modal="true" aria-labelledby="create-heading">
+    <div ref={dialog} className="composer-overlay" role="dialog" aria-modal="true" aria-labelledby="create-heading">
       <section className="composer-shell">
       <header className="composer-heading">
-        <h2 id="create-heading">New project</h2>
-        <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label="Close new project"><X size={18} /></button>
+        <h2 id="create-heading">{project ? "Project settings" : "New project"}</h2>
+        <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label={project ? "Close project settings" : "Close new project"}><X size={18} /></button>
       </header>
       <div className="composer">
         <label className="composer__name-row">
           <span>Project name</span>
-          <input ref={nameInput} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
+          <input ref={nameInput} disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
         </label>
 
         <section className="composer__options">
@@ -82,7 +99,7 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
             <div className="composer__options-grid">
               <label>
                 <span><Monitor size={15} /> Aspect Ratio</span>
-                <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
+                <select disabled={busy} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
                   <option value="16:9">Widescreen 16:9</option>
                   <option value="9:16">Vertical 9:16</option>
                   <option value="1:1">Square 1:1</option>
@@ -95,39 +112,47 @@ export function PromptComposer({ busy, onCreate, onClose }: PromptComposerProps)
                   1376×768 widescreen and 768×1376 vertical. */}
               <label>
                 <span><Clapperboard size={15} /> Resolution</span>
-                <select value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
-                  {PROJECT_RESOLUTIONS.map((option) => {
+                <select disabled={busy} value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
+                  {resolutions.map((option) => {
                     const { width, height } = outputDimensions(option, aspectRatio);
                     return <option key={option} value={option}>{width} × {height}{option === DEFAULT_RESOLUTION ? " (default)" : ""}</option>;
                   })}
                 </select>
               </label>
-              <label className="composer__duration">
+              <div className="composer__duration">
                 <span>
                   <Clock3 size={15} /> Length
-                  <output htmlFor="project-duration">{durationLabel(duration)}</output>
+                  <output htmlFor="project-duration">{validDuration ? durationLabel(duration) : "Enter 0–600 seconds"}</output>
                 </span>
+                <input id="project-duration" aria-label="Length in seconds" type="number" min={0} max={600} step={1} disabled={busy} value={durationInput} onChange={(event) => setDurationInput(event.target.value)} />
                 <input
-                  id="project-duration"
-                  aria-label="Length in seconds"
+                  aria-label="Length slider"
                   aria-valuetext={durationLabel(duration)}
+                  aria-valuemin={0}
+                  aria-valuemax={600}
+                  aria-valuenow={validDuration ? duration : 0}
                   type="range"
-                  min={10}
-                  max={600}
+                  min={0}
+                  disabled={busy}
+                  max={114}
                   step={1}
-                  value={duration}
-                  onChange={(event) => setDuration(Number(event.target.value))}
+                  value={Number.isFinite(sliderPosition) ? sliderPosition : 0}
+                  onChange={(event) => {
+                    const position = Number(event.target.value);
+                    setDurationInput(String(position <= 60 ? position : 60 + (position - 60) * 10));
+                  }}
                 />
-                <small className="composer__duration-scale"><span>10 seconds</span><span>10 minutes</span></small>
-              </label>
+                <small className="composer__duration-scale"><span>0 seconds</span><span>10 minutes</span></small>
+              </div>
             </div>
           </div>
         </section>
 
+        {error && <p role="alert">{error}</p>}
         <div className="composer__actions">
           <button className="primary-button composer__submit" disabled={busy || !name.trim() || !validDuration} aria-busy={busy} onClick={() => void submit()}>
-            {busy ? <span className="spinner" /> : <WandSparkles size={18} />}
-            Create project
+            {busy ? <span className="spinner" /> : project ? <Save size={18} /> : <WandSparkles size={18} />}
+            {project ? "Save changes" : "Create project"}
           </button>
         </div>
       </div>

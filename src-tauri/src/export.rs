@@ -155,14 +155,22 @@ fn authorized_destination(value: &str) -> Result<PathBuf, String> {
 
 /// Writes beside the destination and renames on top of it, so an export that
 /// fails half way through cannot leave a truncated file where a playable one
-/// used to be. `fs::rename` replaces the destination on both platforms here.
+/// used to be. Flush the complete file before atomically publishing it.
 pub(crate) fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut temporary = destination.as_os_str().to_os_string();
     temporary.push(".part");
     let temporary = PathBuf::from(temporary);
-    fs::write(&temporary, bytes)
-        .map_err(|error| format!("Could not write {}: {error}", temporary.to_string_lossy()))?;
-    if let Err(error) = fs::rename(&temporary, destination) {
+    use std::io::Write;
+    let written = (|| {
+        let mut file = fs::File::create(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    })();
+    if let Err(error) = written {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Could not write {}: {error}", temporary.to_string_lossy()));
+    }
+    if let Err(error) = crate::atomic_replace(&temporary, destination) {
         let _ = fs::remove_file(&temporary);
         return Err(format!(
             "Could not save {}: {error}",

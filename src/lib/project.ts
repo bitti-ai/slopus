@@ -232,7 +232,7 @@ export const generationBriefSchema = z.object({
   /* Blank is a real empty project: no brief and no seeded scene. */
   prompt: z.string(),
   status: z.enum(["draft", "queued", "generating", "ready", "failed"]),
-  targetDurationSeconds: z.number().int().min(5).max(600),
+  targetDurationSeconds: z.number().int().min(0).max(600),
   aspectRatio: aspectRatioSchema,
   resolution: resolutionSchema,
 });

@@ -62,6 +62,24 @@
   text-overflow: ellipsis;
 }
 
+.project-title > button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-sm);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+
+.project-title > button:hover,
+.project-title > button:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+}
+
 /* Never let the action buttons shrink — a squashed Save is worse than a
    shortened project name. `margin-left: auto` still eats any spare width. */
 .project-topbar__actions {

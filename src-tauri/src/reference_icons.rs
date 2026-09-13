@@ -127,6 +127,26 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_writes_are_invisible_and_do_not_replace_a_finished_icon() {
+        let root = tempfile::tempdir().unwrap();
+        let rgba = vec![127; RENDER_SIZE as usize * RENDER_SIZE as usize * 4];
+        save_builtin(root.path(), "saved", &rgba).unwrap();
+        let original = read_builtin(root.path(), "saved").unwrap();
+        let directory = root.path().join("reference-icons");
+        fs::write(directory.join("saved.jpg.part"), [0xff, 0xd8]).unwrap();
+        fs::write(directory.join("interrupted.jpg.part"), [0xff, 0xd8]).unwrap();
+        assert_eq!(list_builtin(root.path()).unwrap(), ["saved"]);
+        assert_eq!(read_builtin(root.path(), "saved").unwrap(), original);
+        assert!(read_builtin(root.path(), "interrupted").is_err());
+        assert!(save_builtin(root.path(), "saved", &[0; 4]).is_err());
+        assert_eq!(read_builtin(root.path(), "saved").unwrap(), original);
+        save_builtin(root.path(), "saved", &vec![255; rgba.len()]).unwrap();
+        let replaced = read_builtin(root.path(), "saved").unwrap();
+        assert_ne!(replaced, original);
+        assert!(replaced.ends_with(&[0xff, 0xd9]));
+    }
+
+    #[test]
     fn rejects_buffers_that_are_not_768_square_rgba() {
         assert!(encode_jpeg(&[]).is_err());
         assert!(encode_jpeg(&vec![0; 256 * 256 * 4]).is_err());

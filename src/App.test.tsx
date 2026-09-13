@@ -53,7 +53,7 @@ describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
-  it("uses a named, settings-only New Project form with any length from 10 seconds to 10 minutes", async () => {
+  it("uses a named New Project form with numeric length and a slider up to 10 minutes", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
@@ -64,16 +64,16 @@ describe("project library controls", () => {
     expect(screen.queryByText(/Add reference images/)).toBeNull();
     expect(screen.queryByText(/Not sure where to start/)).toBeNull();
 
-    const length = screen.getByRole("slider", { name: "Length in seconds" });
-    expect(length).toHaveAttribute("min", "10");
-    expect(length).toHaveAttribute("max", "600");
+    const length = screen.getByRole("slider", { name: "Length slider" });
+    expect(length).toHaveAttribute("aria-valuemin", "0");
+    expect(length).toHaveAttribute("aria-valuemax", "600");
     expect(length).toHaveAttribute("step", "1");
     expect(length).toHaveAttribute("aria-valuetext", "30 seconds");
-    expect(screen.queryByRole("spinbutton", { name: "Length in seconds" })).toBeNull();
-    fireEvent.change(length, { target: { value: "137" } });
+    const number = screen.getByRole("spinbutton", { name: "Length in seconds" });
+    fireEvent.change(number, { target: { value: "137" } });
     expect(container.querySelector(".composer__options-value")!.textContent).toContain("2 minutes 17 seconds");
     expect(length).toHaveAttribute("aria-valuetext", "2 minutes 17 seconds");
-    fireEvent.change(length, { target: { value: "600" } });
+    fireEvent.change(length, { target: { value: "114" } });
     expect(length).toHaveAttribute("aria-valuetext", "10 minutes");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
   });

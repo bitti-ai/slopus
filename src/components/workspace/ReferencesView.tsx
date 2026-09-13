@@ -60,12 +60,14 @@ function ClipSecondsInput({ label, value, min, max = Number.MAX_SAFE_INTEGER, on
     }} /></label>;
 }
 
-export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, pendingIconIds = new Set<string>(), onOpenGenerator }: {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
   onChange: (next: ProjectConfig) => void;
   onRegenerateIcon?: (referenceId: string) => void;
   onGenerateBuiltinIcons?: () => void;
+  onRegenerateBuiltinIcon?: (presetId: string) => void;
+  pendingBuiltinIconIds?: ReadonlySet<string>;
   pendingIconIds?: ReadonlySet<string>;
   onOpenGenerator?: (jobId: string) => void;
 }) {
@@ -374,10 +376,17 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               {subcategories.map((subcategory) => <button key={subcategory} className={pickerSubcategory === subcategory ? "active" : ""} aria-pressed={pickerSubcategory === subcategory} onClick={() => setPickerSubcategory(subcategory)}>{subcategory}</button>)}
             </div>
             <div className="reference-preset-grid">
-              {visiblePresets.map((preset) => <button key={preset.id} className={hasPresetIcon(preset) ? "reference-preset-card--with-icon" : undefined} onClick={() => choosePreset(preset)}>
-                {hasPresetIcon(preset) && <PresetIcon className="reference-preset-icon" preset={preset} />}
-                <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
-              </button>)}
+              {visiblePresets.map((preset) => <div className="reference-preset-card" key={preset.id}>
+                <button type="button" className={`reference-preset-select${hasPresetIcon(preset) || onRegenerateBuiltinIcon ? " reference-preset-card--with-icon" : ""}`} onClick={() => choosePreset(preset)}>
+                  {(hasPresetIcon(preset) || onRegenerateBuiltinIcon) && <PresetIcon className="reference-preset-icon" preset={preset} />}
+                  <small>{preset.subcategory}</small><b>{preset.name}</b><span>{preset.prompt}</span>
+                </button>
+                {onRegenerateBuiltinIcon && <button type="button" className="reference-preset-generate" aria-label={`${hasPresetIcon(preset) ? "Regenerate" : "Generate"} icon for ${preset.name}`} title={pendingBuiltinIconIds.has(preset.id) ? "Icon generation queued or running" : `${hasPresetIcon(preset) ? "Regenerate" : "Generate"} icon`} disabled={pendingBuiltinIconIds.has(preset.id)} onClick={() => {
+                  setIconError(null);
+                  try { onRegenerateBuiltinIcon(preset.id); }
+                  catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
+                }}><RefreshCw size={20} aria-hidden="true" /></button>}
+              </div>)}
               {visiblePresets.length === 0 && <p>No options match that search.</p>}
             </div></>}
         </section>

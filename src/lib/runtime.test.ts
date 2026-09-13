@@ -18,6 +18,18 @@ const project = () => ({
 describe("deterministic browser runtime", () => {
   beforeEach(() => localStorage.clear());
 
+  it("changes project video settings through the same agent command and keeps the brief synchronized", async () => {
+    const record = project();
+    const next = await executeAgentCommands(record.config, [{ op: "project.set", resolution: "544p", aspectRatio: "9:16", targetSeconds: 90 }]);
+    expect(next.settings).toMatchObject({ resolution: "544p", aspectRatio: "9:16" });
+    expect(next.brief).toMatchObject({ resolution: "544p", aspectRatio: "9:16", targetDurationSeconds: 90 });
+    expect(next.timeline).toEqual(record.config.timeline);
+    expect(record.config.brief.targetDurationSeconds).toBe(30);
+    await expect(executeAgentCommands(record.config, [{ op: "project.set", targetSeconds: 601 }])).rejects.toThrow();
+    await expect(executeAgentCommands(record.config, [{ op: "project.set", resolution: "8k" }])).rejects.toThrow();
+    await expect(executeAgentCommands(record.config, [{ op: "project.set", aspectRatio: "21:9" }])).rejects.toThrow();
+  });
+
   it("reports explicit demo status and a plan-only generation boundary", async () => {
     const record = project();
     const status = await getRuntimeStatus();

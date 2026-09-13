@@ -72,3 +72,38 @@ it("stops the remaining catalog after an engine failure instead of repeating it 
   await work.runNext(Promise.resolve(), () => false);
   expect(work.hasRunnable()).toBe(false);
 });
+
+it("regenerates existing icons on request and publishes only after the final frame is ready", async () => {
+  vi.mocked(hasBuiltinIcon).mockReturnValue(true);
+  const { work, session } = setup();
+  work.enqueueBuiltins(session, [presets[0]], true);
+  work.enqueueBuiltins(session, [presets[0]], true);
+  expect(work.pendingBuiltinIds()).toEqual(new Set([presets[0].id]));
+  const running = work.runNext(Promise.resolve(), () => false);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const id = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].jobId;
+  work.progressEvent({ jobId: id, step: 10, totalSteps: 20 });
+  expect(saveBuiltinIcon).not.toHaveBeenCalled();
+  work.event({ jobId: id, state: "framesReady", detail: "Ready" });
+  await running;
+  expect(saveBuiltinIcon).toHaveBeenCalledWith(presets[0].id, id);
+  expect(work.pendingBuiltinIds().size).toBe(0);
+  vi.mocked(hasBuiltinIcon).mockReturnValue(false);
+});
+
+it("generates all built-ins in category order even when enqueued in reverse order", async () => {
+  const { work, session } = setup();
+  await work.cancel();
+  const categories = ["character", "animal", "product", "location", "style"] as const;
+  const reversed = [...categories].reverse().map((type) => ({ id: `ordered-${type}`, name: type, prompt: `A ${type}.`, type, subcategory: "Test" }));
+  work.enqueueBuiltins(session, reversed);
+  for (const type of categories) {
+    const running = work.runNext(Promise.resolve(), () => false);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(categories.indexOf(type) + 1));
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls.at(-1)![0];
+    expect(request.prompt).toContain(`A ${type}.`);
+    work.event({ jobId: request.jobId, state: "framesReady", detail: "Ready" });
+    await running;
+  }
+  expect(work.hasRunnable()).toBe(false);
+});

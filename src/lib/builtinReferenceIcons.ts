@@ -4,6 +4,7 @@ import { isTauri } from "./persistence";
 let ids = new Set<string>();
 const urls = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
+const generations = new Map<string, number>();
 const listeners = new Set<() => void>();
 let revision = 0;
 let refreshing: Promise<void> | undefined;
@@ -27,17 +28,21 @@ export function loadBuiltinIcon(id: string): Promise<string> {
   if (cached) return Promise.resolve(cached);
   const existing = pending.get(id);
   if (existing) return existing;
-  const request = invoke<ArrayBuffer>("read_builtin_reference_icon", { presetId: id }).then((bytes) => {
+  const generation = generations.get(id) ?? 0;
+  const request: Promise<string> = invoke<ArrayBuffer>("read_builtin_reference_icon", { presetId: id }).then((bytes) => {
+    if ((generations.get(id) ?? 0) !== generation) return loadBuiltinIcon(id);
     const url = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
     urls.set(id, url);
     return url;
-  }).finally(() => pending.delete(id));
+  }).finally(() => { if (pending.get(id) === request) pending.delete(id); });
   pending.set(id, request);
   return request;
 }
 
 export async function saveBuiltinIcon(presetId: string, jobId: string) {
   await invoke("save_builtin_reference_icon", { presetId, jobId });
+  generations.set(presetId, (generations.get(presetId) ?? 0) + 1);
+  pending.delete(presetId);
   const previous = urls.get(presetId);
   if (previous) { URL.revokeObjectURL(previous); urls.delete(presetId); }
   ids.add(presetId);

@@ -9,7 +9,7 @@ import { withEngineSettings } from "./settings";
 import { activeReferenceRefmods, referenceRefmodInputs } from "./project";
 import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import type { WorkItem } from "./workQueue";
-import { hasPresetIcon, REFERENCE_PRESETS, type ReferencePreset } from "./reference-presets";
+import { hasPresetIcon, REFERENCE_PRESETS, REFERENCE_TYPES, type ReferencePreset } from "./reference-presets";
 import { saveBuiltinIcon } from "./builtinReferenceIcons";
 
 type TaskStatus = "queued" | "generating" | "saving" | "completed" | "failed" | "cancelled" | "skipped";
@@ -17,6 +17,7 @@ interface IconTask {
   key: string;
   session: ProjectSession;
   preset?: ReferencePreset;
+  replaceIcon?: boolean;
   yielded?: boolean;
   referenceId: string;
   name: string;
@@ -110,15 +111,24 @@ export class ReferenceIconWork {
     if (added) this.wake();
   }
 
-  enqueueBuiltins(session: ProjectSession, presets: readonly ReferencePreset[] = REFERENCE_PRESETS) {
+  enqueueBuiltins(session: ProjectSession, presets: readonly ReferencePreset[] = REFERENCE_PRESETS, replaceIcon = false) {
     for (const preset of presets) {
       const key = `builtin::${preset.id}`;
       const previous = this.tasks.get(key);
-      if (hasPresetIcon(preset) || (previous && ["queued", "generating", "saving"].includes(previous.status))) continue;
-      this.tasks.set(key, { key, session, preset, referenceId: preset.id, name: preset.name, prompt: "", status: "queued", submitted: false, cancelled: false, force: true });
+      if ((!replaceIcon && hasPresetIcon(preset)) || (previous && ["queued", "generating", "saving"].includes(previous.status))) continue;
+      this.tasks.set(key, { key, session, preset, replaceIcon, referenceId: preset.id, name: preset.name, prompt: "", status: "queued", submitted: false, cancelled: false, force: true });
     }
     this.publish();
     this.wake();
+  }
+
+  regenerateBuiltin(session: ProjectSession, presetId: string) {
+    const preset = REFERENCE_PRESETS.find(({ id }) => id === presetId);
+    if (preset) this.enqueueBuiltins(session, [preset], true);
+  }
+
+  pendingBuiltinIds(): ReadonlySet<string> {
+    return new Set([...this.tasks.values()].filter((task) => task.preset && ["queued", "generating", "saving"].includes(task.status)).map((task) => task.referenceId));
   }
 
   private referenceFor(task: IconTask): ProjectReference | undefined {
@@ -220,7 +230,9 @@ export class ReferenceIconWork {
   }
 
   async runNext(ready: Promise<void>, videoWaiting: () => boolean) {
-    const task = [...this.tasks.values()].find((task) => this.canRun(task));
+    const runnable = [...this.tasks.values()].filter((task) => this.canRun(task));
+    const categoryOrder = (task: IconTask) => REFERENCE_TYPES.findIndex(({ id }) => id === task.preset?.type);
+    const task = runnable.find((task) => !task.preset) ?? runnable.sort((a, b) => categoryOrder(a) - categoryOrder(b))[0];
     if (!task) return;
     this.active = task;
     task.submitted = false;
@@ -236,7 +248,7 @@ export class ReferenceIconWork {
       if (videoWaiting()) { task.status = "queued"; return; }
       if (!task.force && loadReferenceIconAutomation() === "disabled") { task.status = "skipped"; return; }
       if (!task.force && !task.approved && loadReferenceIconAutomation() === "ask") { task.status = "queued"; return; }
-      if (task.preset && hasPresetIcon(task.preset)) { task.status = "skipped"; return; }
+      if (task.preset && !task.replaceIcon && hasPresetIcon(task.preset)) { task.status = "skipped"; return; }
       const reference = this.referenceFor(task);
       if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
       task.prompt = referenceIconPrompt(reference);

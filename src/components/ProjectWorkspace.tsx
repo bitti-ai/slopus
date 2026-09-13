@@ -10,6 +10,7 @@ import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
+import { PromptComposer } from "./PromptComposer";
 
 export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export";
 
@@ -48,6 +49,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const [view, setView] = useState<ProjectView>(initialView);
   const [leaving, setLeaving] = useState(false);
   const [savingToLeave, setSavingToLeave] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const knownSceneIds = useRef(new Set(project.config.generationJobs.map((job) => job.id)));
   const projectItems = items.filter((item) => item.projectKey === projectQueueKey(project));
@@ -79,6 +82,19 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   }, [config.generationJobs, project.folderPath]);
 
   return <div className="project-shell">
+    {editingProject && <PromptComposer project={config} busy={savingProjectSettings} error={saveError} onClose={() => setEditingProject(false)} onCreate={async (input) => {
+      setSavingProjectSettings(true);
+      try {
+        session.update((current) => ({
+          ...current, name: input.name,
+          brief: { ...current.brief, aspectRatio: input.aspectRatio, resolution: input.resolution, targetDurationSeconds: input.targetDurationSeconds },
+          settings: { ...current.settings, aspectRatio: input.aspectRatio, resolution: input.resolution },
+        }));
+        await session.save();
+        setEditingProject(false);
+      } catch { /* Keep the dialog open; the session supplies the save error. */ }
+      finally { setSavingProjectSettings(false); }
+    }} />}
     {leaving && <UnsavedProjectDialog name={config.name} busy={savingToLeave} error={saveError} onSave={() => void leave(true)} onDiscard={() => void leave(false)} onBack={() => setLeaving(false)} />}
     <header className="project-topbar">
       <div className="project-topbar__lead">
@@ -90,7 +106,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         ><ArrowLeft size={18} /></button>
         {/* The name column is the topbar's elastic column and truncates on narrow
             windows, so the full name stays available on hover. */}
-        <div className="project-title"><strong title={config.name}>{config.name}</strong></div>
+        <div className="project-title"><button type="button" title={config.name} aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} onClick={() => { session.dismissError(); setEditingProject(true); }}><strong>{config.name}</strong></button></div>
       </div>
 
       <nav className="project-nav" aria-label="Project views">
@@ -127,7 +143,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     <div className={`project-content project-content--${view}`}>
       {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
-      {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>
     <footer className={`project-agent-row${view === "agent" ? " project-agent-row--page" : ""}`}><AgentDock

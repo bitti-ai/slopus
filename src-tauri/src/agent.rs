@@ -54,6 +54,13 @@ For edits, return JSONL only: one compact JSON object per line, followed by one 
 
 Use existing stable IDs for updates and concise descriptive IDs for additions. Order dependent commands so their targets exist before use. Omit unchanged fields. The executor derives prompt mirrors, reference bindings, timestamps, and draft state. There are deliberately no commands for file paths, assets, provider settings, generated output, progress, project identity, or schema version. Never claim media was generated or an MP4 exists.
 
+Use project.set to change the open project's video settings, just like the Project settings popup opened by clicking its name:
+- aspectRatio: "16:9", "9:16", "1:1", or "4:5".
+- resolution: "416p", "544p", "640p", "768p", "1088p", or "1344p". These are stored resolution keys; the pixel dimensions depend on aspectRatio.
+- targetSeconds: the desired total project length in whole seconds, from 0 to 600.
+For example: {"op":"project.set","aspectRatio":"9:16","resolution":"768p","targetSeconds":60}, followed by the required commit line.
+Resolution and aspect ratio update both project settings and the brief. Target length updates the brief; it does not retime scenes or trim timeline clips. Only change scene or clip durations too when the user requests that. Existing generated media keeps its original dimensions; the new settings guide future generation and export.
+
 Place scenes and existing media on the timeline when the user is creating or arranging a video:
 - Use clip.add with scene for a Generator scene, including a scene created earlier in the same command batch. Slopus derives its generated asset; never invent an asset for it.
 - Use clip.add with asset only for an asset id that already exists in the supplied project JSON.
