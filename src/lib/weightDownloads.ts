@@ -1,12 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
+import { loadLoras, saveLoras } from "./loras";
 import { ENGINE_PATH_FIELDS, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
   type EnginePathId, type GeneratorTemplate, type WeightSource } from "./settings";
 
 export interface WeightGpu { name: string; memoryBytes: number }
 export interface DownloadState {
   templateId: string;
+  loraId?: string;
+  name?: string;
   field: EnginePathId | null;
   downloaded: number;
   total: number | null;
@@ -27,7 +30,7 @@ const publish = (next: DownloadState | null) => { state = next; subscribers.forE
 
 export function weightDownloadProgress(download: DownloadState): number {
   if (!download.files) return 0;
-  const current = download.field && download.total && download.total > 0
+  const current = (download.field || download.loraId) && download.total && download.total > 0
     ? Math.min(1, Math.max(0, download.downloaded / download.total)) : 0;
   return Math.min(download.active ? 99 : 100, 100 * (download.completed + current) / download.files);
 }
@@ -143,6 +146,62 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
 export async function cancelWeightDownload() {
   cancelled = true;
   if (requestId) await invoke("cancel_weight_download", { requestId });
+}
+
+/** Uses the same native transfer, storage, cancellation and app-wide lock as weights. */
+export async function downloadLora(loraId: string): Promise<void> {
+  if (!isTauri() || state?.active) return;
+  const lora = loadLoras().find(({ id }) => id === loraId);
+  if (!lora?.url) return;
+  cancelled = false;
+  publish({ templateId: `lora:${loraId}`, loraId, name: lora.name, field: null,
+    downloaded: 0, total: null, completed: 0, files: 1, error: null, active: true });
+  let unlisten: (() => void) | undefined;
+  try {
+    unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
+      if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
+    });
+    if (cancelled) throw new Error("Download cancelled.");
+    requestId = crypto.randomUUID();
+    const path = await invoke<string>("download_weight", { requestId, url: lora.url });
+    if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+    saveLoras(loadLoras().map((entry) => entry.id === loraId && entry.url === lora.url && entry.path === lora.path ? { ...entry, path } : entry));
+    publish({ ...state!, completed: 1, active: false });
+  } catch (reason) {
+    publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });
+  } finally { requestId = null; unlisten?.(); }
+}
+
+export function retryWeightDownload(): Promise<void> {
+  return state?.loraId ? downloadLora(state.loraId) : state ? downloadTemplateWeights(state.templateId) : Promise.resolve();
+}
+
+export async function refreshDownloadedLoras(): Promise<void> {
+  if (!isTauri()) return;
+  const paths = loadLoras().filter((entry) => entry.url && entry.path).map(({ path }) => path);
+  if (!paths.length) return;
+  const exists = await invoke<Record<string, boolean>>("check_weight_files", { paths });
+  let changed = false;
+  const loras = loadLoras().map((entry) => {
+    if (!entry.url || !paths.includes(entry.path) || exists?.[entry.path] !== false) return entry;
+    changed = true;
+    return { ...entry, path: "" };
+  });
+  if (changed) saveLoras(loras);
+}
+
+export async function removeLora(loraId: string): Promise<void> {
+  if (state?.active) return;
+  const lora = loadLoras().find(({ id }) => id === loraId);
+  if (!lora) return;
+  // Manual imports are links to the user's file; removing them never deletes it.
+  if (lora.url && lora.path) {
+    if (!isTauri()) return;
+    await invoke("remove_downloaded_weights", { paths: [lora.path] });
+  }
+  saveLoras(loadLoras().flatMap((entry) => entry.id !== loraId ? [entry] : entry.url ? [{ ...entry, path: "" }] : []));
+  if (state?.loraId === loraId) publish(null);
+  await refreshDownloadedLoras();
 }
 
 export async function removeTemplateWeights(templateId: string): Promise<void> {

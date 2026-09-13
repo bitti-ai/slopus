@@ -9,6 +9,7 @@ import { loadGeneratorTemplateSettings } from "../lib/settings";
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
+import { loadLoras, TAOMATE_LORA } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -29,6 +30,60 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; });
+
+it("downloads TaoMate and persists manual adapters, activation, strength and order per template", async () => {
+  const settings = render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Download LoRA TaoMate 3-Step" }));
+  await waitFor(() => expect(loadLoras()[0].path).not.toBe(""));
+  fireEvent.click(screen.getByRole("button", { name: "Add LoRA manually" }));
+  fireEvent.change(screen.getByLabelText("LoRA name"), { target: { value: "My style" } });
+  fireEvent.change(screen.getByLabelText("LoRA path"), { target: { value: "D:/models/style.safetensors" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add local LoRA" }));
+  const manual = loadLoras().find(({ name }) => name === "My style")!;
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: TAOMATE_LORA.id } });
+  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: manual.id } });
+  fireEvent.change(screen.getByLabelText("My style strength"), { target: { value: "-0.5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Move My style up" }));
+  fireEvent.click(screen.getByLabelText("Enable TaoMate 3-Step"));
+  expect(screen.getByText("1 active")).toBeInTheDocument();
+  const expected = [{ loraId: manual.id, enabled: true, strength: -0.5 }, { loraId: TAOMATE_LORA.id, enabled: false, strength: 1 }];
+  expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")!.loras).toEqual(expected);
+  settings.unmount();
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  expect(screen.getByLabelText("My style strength")).toHaveValue(-0.5);
+  expect(screen.getByLabelText("Enable TaoMate 3-Step")).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Move My style up" })).toBeDisabled();
+});
+
+it("keeps a LoRA download alive outside Settings, shows progress and cancels through Work Queue", async () => {
+  let progress: (event: { payload: { requestId: string; downloaded: number; total: number | null } }) => void = () => undefined;
+  vi.mocked(listen).mockImplementation((async (_name, callback) => { progress = callback as typeof progress; return () => undefined; }) as typeof listen);
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  let requestId = "";
+  let rejectDownload: (reason: Error) => void = () => undefined;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "download_weight") {
+      requestId = (args as { requestId: string }).requestId;
+      return new Promise((_resolve, reject) => { rejectDownload = reject; });
+    }
+    if (command === "cancel_weight_download") { rejectDownload(new Error("Download cancelled.")); return; }
+    return normal(command, args);
+  });
+  const settings = render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Download LoRA TaoMate 3-Step" }));
+  await waitFor(() => expect(requestId).not.toBe(""));
+  expect(screen.getByRole("button", { name: "Download generator First/Last Frame" })).toBeDisabled();
+  settings.unmount();
+  render(<WorkQueuePanel queue={new WorkQueue()} items={[]} onClose={() => undefined} />);
+  act(() => progress({ payload: { requestId, downloaded: 50, total: 100 } }));
+  expect(screen.getByRole("progressbar", { name: "TaoMate 3-Step download progress" })).toHaveAttribute("value", "50");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel TaoMate 3-Step download" }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, error: "Download cancelled." }));
+  expect(loadLoras()[0].path).toBe("");
+  expect(screen.getByRole("button", { name: "Retry download" })).toBeInTheDocument();
+});
 
 it("keeps downloading with Settings closed and restores progress in the template row and Work Queue", async () => {
   let progress: (event: { payload: { requestId: string; downloaded: number; total: number | null } }) => void = () => undefined;

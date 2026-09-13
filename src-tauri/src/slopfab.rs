@@ -444,12 +444,20 @@ struct QueueItem {
     cancel: Arc<AtomicBool>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct LoraAdapter {
+    path: String,
+    strength: f32,
+}
+
 #[derive(Clone)]
 struct Configuration {
     dll_path: PathBuf,
     vulkan: bool,
     attention: &'static str,
     models: [(i32, &'static str, Option<PathBuf>); 5],
+    loras: Result<Vec<LoraAdapter>, String>,
+    taomate_schedule: bool,
 }
 
 impl Configuration {
@@ -487,6 +495,13 @@ impl Configuration {
                 (3, "videoVae", option("videoVae")),
                 (4, "audioVae", option("audioVae")),
             ],
+            loras: match slopfab.and_then(|setting| setting.options.get("loras")) {
+                None => Ok(Vec::new()),
+                Some(ProviderOption::String(value)) => serde_json::from_str::<Vec<LoraAdapter>>(value)
+                    .map_err(|error| format!("Invalid LoRA settings: {error}")),
+                _ => Err("LoRA settings must be a JSON array of paths and strengths.".into()),
+            },
+            taomate_schedule: string_option("schedule") == Some("taomate-3step"),
         }
     }
 
@@ -513,7 +528,9 @@ impl Configuration {
             })
             .collect::<Vec<_>>()
             .join(";");
-        format!("slopfab={version}|platform={}|attention={}|{models}", platform.label(), self.attention)
+        let adapters = self.loras.as_ref().map(|loras| loras.iter()
+            .map(|lora| format!("{}@{}", lora.path, lora.strength)).collect::<Vec<_>>().join(";")).unwrap_or_default();
+        format!("slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|taomate={}", platform.label(), self.attention, self.taomate_schedule)
     }
 }
 
@@ -661,6 +678,17 @@ fn configure_request(
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
     api.set_verbose(handle, false)?;
+    for lora in configuration.loras.as_ref().map_err(Clone::clone)? {
+        if lora.path.trim().is_empty() || !lora.strength.is_finite() {
+            return Err("LoRA paths must be nonempty and strengths finite.".into());
+        }
+        if lora.strength == 0.0 { continue; }
+        if include_models && !Path::new(&lora.path).is_file() {
+            return Err(format!("LoRA file is missing: {}", lora.path));
+        }
+        api.add_lora(handle, Path::new(&lora.path), lora.strength)?;
+    }
+    if configuration.taomate_schedule { api.set_taomate_schedule(handle)?; }
     if include_models {
         api.set_reuse_models(handle, true)?;
         for (id, _, path) in &configuration.models {
@@ -962,6 +990,8 @@ pub fn generate_reference_icon_batch(
     };
     let configuration = Configuration {
         dll_path: batch.dll_path.clone(),
+        loras: Ok(Vec::new()),
+        taomate_schedule: false,
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
         models: [
@@ -1248,6 +1278,8 @@ mod ffi {
         set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
+        add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
+        set_schedule: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
         add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_inference_backend: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -1342,6 +1374,12 @@ mod ffi {
                         "slopfab_request_add_reference_image",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
+                    add_lora: library
+                        .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>(b"slopfab_request_add_lora\0")
+                        .ok().map(|symbol| *symbol),
+                    set_schedule: library
+                        .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_schedule\0")
+                        .ok().map(|symbol| *symbol),
                     set_attention: symbol!(
                         "slopfab_request_set_attention",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
@@ -1498,6 +1536,15 @@ mod ffi {
             let v = path_cstring(path)?;
             self.error(unsafe { (self.add_reference)(r, v.as_ptr()) })
         }
+        pub fn add_lora(&self, r: *mut Request, path: &Path, strength: f32) -> Result<(), String> {
+            let add = self.add_lora.ok_or("This slopfab.dll does not support LoRAs. Update the DLL or disable the selected LoRAs.")?;
+            let path = path_cstring(path)?;
+            self.error(unsafe { add(r, path.as_ptr(), strength) })
+        }
+        pub fn set_taomate_schedule(&self, r: *mut Request) -> Result<(), String> {
+            let set = self.set_schedule.ok_or("This slopfab.dll does not support the TaoMate three-step schedule.")?;
+            self.error(unsafe { set(r, 1) })
+        }
         pub fn resolve(&self, request: *mut Request) -> Result<Plan, String> {
             let mut value = Plan {
                 canvas_width: 0,
@@ -1626,6 +1673,50 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ordered_loras_and_taomate_schedule_reach_cuda_and_vulkan_requests() {
+        let root = tempfile::tempdir().unwrap();
+        let paths = [root.path().join("style.safetensors"), root.path().join("TaoMate.safetensors")];
+        for path in &paths { std::fs::write(path, b"planning does not load weights").unwrap(); }
+        let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
+            enabled: true, model: None,
+            options: BTreeMap::from([
+                ("loras".into(), ProviderOption::String(serde_json::json!([
+                    { "path": paths[0], "strength": -0.5 },
+                    { "path": paths[1], "strength": 1.0 },
+                ]).to_string())),
+                ("schedule".into(), ProviderOption::String("taomate-3step".into())),
+            ]),
+        })]);
+        let configuration = Configuration::from_settings(&settings);
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        let request = GenerationRequest {
+            job_id: "lora-test".into(), prompt: "A quiet harbour.".into(),
+            frames: 120, still_image: false, steps: 20, seed: 1,
+            canvas_width: 736, canvas_height: 416,
+            reference_paths: Vec::new(), reference_video_ids: Vec::new(),
+        };
+        for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            for include_models in [false, true] {
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, handle.0, &request, &configuration, platform, include_models).unwrap();
+                assert_eq!(api.resolve(handle.0).unwrap().num_model_evaluations, 3);
+                let description = api.describe(handle.0).unwrap();
+                assert!(description.contains("taomate-3step"));
+                assert!(description.find("style.safetensors").unwrap() < description.find("TaoMate.safetensors").unwrap());
+                assert!(description.contains("strength -0.5"));
+            }
+        }
+        let invalid = BTreeMap::from([("slopfab".into(), ProviderSetting {
+            enabled: true, model: None,
+            options: BTreeMap::from([("loras".into(), ProviderOption::String("invalid JSON".into()))]),
+        })]);
+        assert!(Configuration::from_settings(&invalid).loras.is_err());
+        std::fs::remove_file(&paths[0]).unwrap();
+        let handle = RequestHandle::new(&api).unwrap();
+        assert!(configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Vulkan, true).unwrap_err().contains("LoRA file is missing"));
+    }
+
     #[test]
     fn vulkan_video_references_prepare_and_attach_for_planning_and_generation() {
         let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {

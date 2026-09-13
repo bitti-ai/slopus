@@ -1,4 +1,6 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
+import { loadLoras, subscribeLoras } from "../../lib/loras";
+import { refreshDownloadedLoras } from "../../lib/weightDownloads";
 import { usableVideoReferences } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -53,7 +55,9 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const runtimeProbe = useRef(0);
-  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.paths, selectedTemplate.attention]);
+  const [loraLibrary, setLoraLibrary] = useState(loadLoras);
+  useEffect(() => subscribeLoras(() => setLoraLibrary(loadLoras())), []);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, loraLibrary]);
   const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
@@ -79,7 +83,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   useEffect(() => () => { runtimeProbe.current += 1; }, []);
   useEffect(() => subscribeGeneratorTemplates(() => setTemplateSettings(loadGeneratorTemplateSettings())), []);
   useEffect(() => {
-    const refresh = () => { void refreshDownloadedWeights().catch((reason) => setRuntimeError(String(reason))); };
+    const refresh = () => { void Promise.all([refreshDownloadedWeights(), refreshDownloadedLoras()]).catch((reason) => setRuntimeError(String(reason))); };
     refresh();
     window.addEventListener("focus", refresh);
     const timer = window.setInterval(refresh, 5000);
@@ -101,7 +105,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
     if (!selectedTemplate.id) return;
-    void getEngineStatus(selectedTemplate.paths).then((status) => {
+    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? []).then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);
@@ -330,7 +334,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       const request = requestFor(job);
       return { job, request, snapshot: snapshotFor(job, request) };
     });
-    onGenerate?.(submissions);
+    try { onGenerate?.(submissions); }
+    catch (reason) { setRuntimeError(reason instanceof Error ? reason.message : String(reason)); }
   };
 
   /* A scene now starts EMPTY. There is no box that turns a sentence into a

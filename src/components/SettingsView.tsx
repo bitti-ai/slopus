@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
+import { LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
+import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
@@ -290,12 +292,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention).then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? []).then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
     });
-  }, [selectedTemplate.attention]);
+  }, [selectedTemplate.attention, selectedTemplate.loras]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -360,7 +362,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -523,7 +525,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 ))}
               </div>
-            </section>)}</> : <div className="generator-editor">
+            </section>)}<LoraLibrary /></> : <div className="generator-editor">
               <header className="generator-editor__head">
                 <div>
                   <h2 id="generator-editor-heading">Edit generator</h2>
@@ -591,6 +593,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 );
               })}
+              <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
               <label className="generator-editor__advanced">
                 <input type="checkbox" checked={showAdvancedOptions} onChange={(event) => setShowAdvancedOptions(event.target.checked)} />
                 <span>Show advanced options</span>
@@ -600,8 +603,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
         </div>
 
         {tab === "engine" && downloadState && <div className="weight-download-status" role="status">
-          <span>{templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : "Download complete")}</span>
+          <span>{downloadState.name ?? templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : "Download complete")}</span>
           {downloadState.active && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button>}
+          {downloadState.error && <button type="button" className="secondary-button" onClick={() => void retryWeightDownload()}>Retry download</button>}
         </div>}
         {tab === "engine" && editingTemplateId && <footer className="settings-view__foot">
           {/* Clearing the paths is an engine action, so it is only offered
