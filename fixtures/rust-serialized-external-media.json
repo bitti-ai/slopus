@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "generationType": "video",
   "id": "project-external-media",
   "name": "Project with media left where it lives",
   "createdAt": "2026-01-01T00:00:00.000Z",
