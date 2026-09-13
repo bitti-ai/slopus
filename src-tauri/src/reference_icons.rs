@@ -5,37 +5,37 @@ pub const ICON_SIZE: u16 = 256;
 pub const STEPS: i32 = 20;
 const JPEG_QUALITY: u8 = 95;
 
-fn builtin_directory(log_directory: &Path) -> Result<PathBuf, String> {
-    fs::create_dir_all(log_directory).map_err(|error| error.to_string())?;
-    let root = log_directory.canonicalize().map_err(|error| error.to_string())?;
+fn builtin_directory(data_directory: &Path) -> Result<PathBuf, String> {
+    fs::create_dir_all(data_directory).map_err(|error| error.to_string())?;
+    let root = data_directory.canonicalize().map_err(|error| error.to_string())?;
     let directory = root.join("reference-icons");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let directory = directory.canonicalize().map_err(|error| error.to_string())?;
-    if !directory.starts_with(&root) { return Err("Built-in icons must stay inside the log directory.".into()); }
+    if !directory.starts_with(&root) { return Err("Built-in icons must stay inside the Slopus data directory.".into()); }
     Ok(directory)
 }
 
-fn builtin_path(log_directory: &Path, id: &str) -> Result<PathBuf, String> {
+fn builtin_path(data_directory: &Path, id: &str) -> Result<PathBuf, String> {
     if id.is_empty() || id.len() > 160 || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_') {
         return Err("Invalid built-in reference icon ID.".into());
     }
-    Ok(builtin_directory(log_directory)?.join(format!("{id}.jpg")))
+    Ok(builtin_directory(data_directory)?.join(format!("{id}.jpg")))
 }
 
-pub fn save_builtin(log_directory: &Path, id: &str, rgba: &[u8]) -> Result<(), String> {
-    let path = builtin_path(log_directory, id)?;
+pub fn save_builtin(data_directory: &Path, id: &str, rgba: &[u8]) -> Result<(), String> {
+    let path = builtin_path(data_directory, id)?;
     crate::export::write_atomically(&path, &encode_jpeg(rgba)?)
 }
 
-pub fn read_builtin(log_directory: &Path, id: &str) -> Result<Vec<u8>, String> {
-    let path = builtin_path(log_directory, id)?;
+pub fn read_builtin(data_directory: &Path, id: &str) -> Result<Vec<u8>, String> {
+    let path = builtin_path(data_directory, id)?;
     let resolved = path.canonicalize().map_err(|error| error.to_string())?;
     if !resolved.starts_with(path.parent().unwrap()) { return Err("Built-in icon points outside its directory.".into()); }
     fs::read(resolved).map_err(|error| error.to_string())
 }
 
-pub fn list_builtin(log_directory: &Path) -> Result<Vec<String>, String> {
-    let directory = builtin_directory(log_directory)?;
+pub fn list_builtin(data_directory: &Path) -> Result<Vec<String>, String> {
+    let directory = builtin_directory(data_directory)?;
     let mut ids = Vec::new();
     for entry in fs::read_dir(&directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -43,7 +43,7 @@ pub fn list_builtin(log_directory: &Path) -> Result<Vec<String>, String> {
         let path = entry.path();
         if path.extension().and_then(|value| value.to_str()) != Some("jpg") { continue; }
         if let Some(id) = path.file_stem().and_then(|value| value.to_str()) {
-            if builtin_path(log_directory, id).is_ok() { ids.push(id.to_string()); }
+            if builtin_path(data_directory, id).is_ok() { ids.push(id.to_string()); }
         }
     }
     ids.sort();
@@ -92,17 +92,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtins_are_shared_in_a_subfolder_of_the_log_directory() {
+    fn builtins_are_shared_in_a_subfolder_of_the_data_directory() {
         let root = tempfile::tempdir().unwrap();
-        let logs = root.path().join("logs");
+        let data = root.path().join("Slopus");
         let rgba = vec![127; RENDER_SIZE as usize * RENDER_SIZE as usize * 4];
-        save_builtin(&logs, "character-alice", &rgba).unwrap();
-        assert!(logs.join("reference-icons/character-alice.jpg").is_file());
-        assert_eq!(list_builtin(&logs).unwrap(), ["character-alice"]);
-        assert!(read_builtin(&logs, "character-alice").unwrap().starts_with(&[0xff, 0xd8]));
-        assert!(save_builtin(&logs, "../escape", &rgba).is_err());
-        assert!(read_builtin(&logs, "../escape").is_err());
-        assert!(save_builtin(&logs, "invalid", &[0; 4]).is_err());
+        save_builtin(&data, "character-alice", &rgba).unwrap();
+        assert!(data.join("reference-icons/character-alice.jpg").is_file());
+        assert_eq!(list_builtin(&data).unwrap(), ["character-alice"]);
+        assert!(read_builtin(&data, "character-alice").unwrap().starts_with(&[0xff, 0xd8]));
+        assert!(save_builtin(&data, "../escape", &rgba).is_err());
+        assert!(read_builtin(&data, "../escape").is_err());
+        assert!(save_builtin(&data, "invalid", &[0; 4]).is_err());
     }
 
     #[test]

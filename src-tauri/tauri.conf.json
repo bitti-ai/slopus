@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "Slopus - 0.1.0",
         "width": 1440,
         "height": 920,
