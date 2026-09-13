@@ -21,6 +21,8 @@
 
 Slopus brings an AI assistant, a scene generator, reusable visual references, and a timeline editor together. Describe what you want to make, generate clips locally with SlopFab, and shape the result into a video you can export and share.
 
+> **GPU recommendation:** A GPU with **24 GB of VRAM or more** is currently recommended for local video generation. We plan to reduce VRAM usage in future updates.
+
 ## Features
 
 ### Create through conversation
