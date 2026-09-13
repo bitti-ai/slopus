@@ -79,7 +79,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   }, [config.generationJobs, project.folderPath]);
 
   return <div className="project-shell">
-    {leaving && <UnsavedProjectDialog name={config.name} busy={savingToLeave} error={saveError} onSave={() => void leave(true)} onDiscard={() => void leave(false)} />}
+    {leaving && <UnsavedProjectDialog name={config.name} busy={savingToLeave} error={saveError} onSave={() => void leave(true)} onDiscard={() => void leave(false)} onBack={() => setLeaving(false)} />}
     <header className="project-topbar">
       <div className="project-topbar__lead">
         <button
