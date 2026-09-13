@@ -23,6 +23,8 @@ Slopus brings an AI assistant, a scene generator, reusable visual references, an
 
 > **GPU recommendation:** A GPU with **24 GB of VRAM or more** is currently recommended for local video generation. We plan to reduce VRAM usage in future updates.
 
+![Slopus application screenshot](marketing/screenshot1.png)
+
 ## Features
 
 ### Create through conversation
