@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
+import { downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
+import { loadLoras, saveLoras, TAOMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
 import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
@@ -10,6 +12,38 @@ vi.mock("./persistence", () => ({ isTauri: () => true }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
+
+it("downloads LoRAs through the weight transfer and restores missing downloads", async () => {
+  await downloadLora(TAOMATE_LORA.id);
+  expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: TAOMATE_LORA.url });
+  expect(loadLoras()[0].path).toContain("TaoMate-H3-3step-ComfyUI.safetensors");
+  expect(getWeightDownloadState()).toMatchObject({ loraId: TAOMATE_LORA.id, active: false, completed: 1, error: null });
+  files.clear();
+  await refreshDownloadedLoras();
+  expect(loadLoras()[0].path).toBe("");
+  await downloadLora(TAOMATE_LORA.id);
+  await removeLora(TAOMATE_LORA.id);
+  expect(invoke).toHaveBeenCalledWith("remove_downloaded_weights", { paths: [expect.stringContaining("TaoMate")] });
+  expect(loadLoras()[0].path).toBe("");
+});
+
+it("removes manually added adapters without deleting the user's file", async () => {
+  saveLoras([{ id: "manual", name: "Manual", path: "D:/personal.safetensors" }]);
+  await removeLora("manual");
+  expect(loadLoras().some(({ id }) => id === "manual")).toBe(false);
+  expect(invoke).not.toHaveBeenCalledWith("remove_downloaded_weights", expect.anything());
+});
+
+it("retries a failed LoRA download without leaving the shared transfer locked", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("Network lost"));
+  await downloadLora(TAOMATE_LORA.id);
+  expect(getWeightDownloadState()).toMatchObject({ active: false, error: "Network lost" });
+  expect(loadLoras()[0].path).toBe("");
+  vi.mocked(invoke).mockImplementation(normal);
+  await retryWeightDownload();
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null });
+});
 
 it("keeps overall progress continuous across files and below 100 until completion", () => {
   const download: DownloadState = { templateId: "sample", field: "transformer", downloaded: 100, total: 100, completed: 0, files: 4, active: true, error: null };

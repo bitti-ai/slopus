@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./persistence";
-import { refreshDownloadedWeights } from "./weightDownloads";
+import type { TemplateLora } from "./loras";
+import { refreshDownloadedLoras, refreshDownloadedWeights } from "./weightDownloads";
 import {
   actionReferenceIds, createDraftGenerationJob, GENERATION_FRAME_RATE, parseProjectConfig,
   sceneBriefText, type AgentMessage, type GenerationJob, type ProjectAsset, type ProjectConfig,
@@ -127,6 +128,7 @@ const DEMO_STATUS: RuntimeStatus = {
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   if (!isTauri()) return DEMO_STATUS;
   await refreshDownloadedWeights();
+  await refreshDownloadedLoras();
   return invoke<RuntimeStatus>("runtime_status", {
     settings: { slopfab: engineProviderSetting(loadEngineSettings()), ...agentEndpointProviderSettings() },
   });
@@ -140,9 +142,9 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */
-export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode): Promise<SlopfabStatus> {
+export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode, loras?: TemplateLora[]): Promise<SlopfabStatus> {
   if (!isTauri()) return DEMO_STATUS.slopfab;
-  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings, undefined, attention) } });
+  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings, undefined, attention, loras) } });
 }
 
 /** Opens the OS picker for one engine path. Returns null when the user cancels. */

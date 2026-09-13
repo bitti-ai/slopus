@@ -1,5 +1,31 @@
 # Generator weights
 
+## LoRAs
+
+Settings → Generators includes a separate **LoRAs** library. **TaoMate 3-Step**
+downloads [TaoMate-H3-3step-ComfyUI.safetensors](https://huggingface.co/CZMartin22/TaoMate-H3-3step-ComfyUI/resolve/main/TaoMate-H3-3step-ComfyUI.safetensors).
+It uses the same managed `weights` location, background transfer, progress,
+cancellation, retry, and Work Queue controls as model weights. Downloads are
+serialized with weight downloads, and video generation can continue while downloading.
+Missing managed files become downloadable again. Removing a downloaded LoRA
+deletes its managed file; **Add LoRA manually** links a named local file, and
+removing that library entry leaves the original file untouched.
+
+Open a generator template and use its **LoRAs** section to add available adapters.
+Enable any number, adjust their strengths, and move them up or down. Disabled
+adapters and strength-zero entries are omitted; the remaining paths and strengths
+are passed to SlopFab in displayed order on both CUDA and Vulkan. SlopFab combines
+adapter updates by summing them. Negative strengths are supported. An active
+missing adapter causes an error rather than silently changing the generation.
+
+TaoMate 3-Step automatically selects the DLL's dedicated three-evaluation schedule,
+overriding the ordinary scene step count. Manually added TaoMate files can select
+the same schedule. Other LoRAs use the template's ordinary generation settings.
+The library and per-template selections persist on this computer; adapter paths
+are injected into runtime requests and are not saved into portable project files.
+
+## Model weights
+
 In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
 The bundled **First/Last Frame** (formerly **Minimax H3 Original**),

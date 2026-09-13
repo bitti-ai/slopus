@@ -15,6 +15,7 @@
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
+import { normalizeTemplateLoras, resolveTemplateLoras, type TemplateLora } from "./loras";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
  * ./theme.ts, which is separate only because index.html has to read the same
@@ -73,6 +74,7 @@ export interface GeneratorTemplate {
   attention: AttentionMode;
   paths: EngineSettings;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
+  loras?: TemplateLora[];
 }
 
 export interface WeightSource {
@@ -224,7 +226,8 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       }
       if (entries.length) sources[field.id] = entries;
     }
-    return [{ id, name, defaultSteps, attention, paths, sources }];
+    return [{ id, name, defaultSteps, attention, paths, sources,
+      ...(candidate.loras !== undefined ? { loras: normalizeTemplateLoras(candidate.loras) } : {}) }];
   });
   if (templates.length === 0) return null;
   const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
@@ -341,8 +344,14 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras): ProviderSetting {
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
+  // Always replace project-carried adapter paths with this machine's selection.
+  delete options.loras;
+  delete options.schedule;
+  const loras = resolveTemplateLoras(selection);
+  if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
+  if (loras.some(({ schedule }) => schedule === "taomate-3step")) options.schedule = "taomate-3step";
   for (const field of ENGINE_PATH_FIELDS) {
     const value = settings[field.id].trim();
     if (value && !isDownloadUrl(value)) options[field.id] = value;

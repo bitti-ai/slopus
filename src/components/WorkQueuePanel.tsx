@@ -4,13 +4,13 @@ import { createPortal } from "react-dom";
 import { GENERATION_FRAME_RATE } from "../lib/project";
 import { isWorkActive, type WorkItem, type WorkQueue } from "../lib/workQueue";
 import { loadGeneratorTemplateSettings } from "../lib/settings";
-import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
+import { cancelWeightDownload, retryWeightDownload, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
 
 export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; items: readonly WorkItem[]; onClose: () => void }) {
   // Downloads are observed here, never enqueued in the GPU generation scheduler.
   const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const downloadName = download ? loadGeneratorTemplateSettings().templates.find((template) => template.id === download.templateId)?.name ?? "Generator weights" : "";
+  const downloadName = download ? download.name ?? loadGeneratorTemplateSettings().templates.find((template) => template.id === download.templateId)?.name ?? "Generator weights" : "";
   const panel = useRef<HTMLElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -62,7 +62,7 @@ export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; it
             <span className={`work-queue__state work-queue__state--${download.active ? "preparing" : download.error ? "failed" : "completed"}`} aria-hidden="true">
               {download.active ? <Download size={17} /> : download.error ? <TriangleAlert size={17} /> : <Check size={17} />}
             </span>
-            <div><strong>{downloadName}</strong><span>Weight download</span></div>
+            <div><strong>{downloadName}</strong><span>{download.loraId ? "LoRA download" : "Weight download"}</span></div>
             {download.active && <button type="button" className="icon-button" aria-label={`Cancel ${downloadName} download`} onClick={() => {
               setDownloadError(null);
               void cancelWeightDownload().catch((reason) => setDownloadError(String(reason)));
@@ -73,7 +73,7 @@ export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; it
           </div>
           {download.active && <progress max={100} value={weightDownloadProgress(download)} aria-label={`${downloadName} download progress`} />}
           {download.active && <p className="work-queue__settings">Generations can continue during this download.</p>}
-          {download.error && <button type="button" className="secondary-button" onClick={() => { setDownloadError(null); void downloadTemplateWeights(download.templateId); }}>Retry download</button>}
+          {download.error && <button type="button" className="secondary-button" onClick={() => { setDownloadError(null); void retryWeightDownload(); }}>Retry download</button>}
           {downloadError && <p className="work-queue__error" role="alert">{downloadError}</p>}
         </li></ul></section>}
         {upcoming.length > 0 && <section aria-label="Upcoming work"><h3>Up next <span>{upcoming.length}</span></h3><ul>{upcoming.map(row)}</ul></section>}
