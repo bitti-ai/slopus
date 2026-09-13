@@ -1,7 +1,7 @@
 [package]
 name = "slopus"
 version = "0.1.0"
-description = "Agentic video creation workspace"
+description = "An AI media harness for planning, generating, and editing media locally."
 authors = ["Slopus"]
 edition = "2021"
 default-run = "slopus"

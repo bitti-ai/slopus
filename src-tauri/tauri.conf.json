@@ -42,8 +42,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "Agentic video creation workspace",
-    "longDescription": "Slopus keeps professional AI-assisted video projects in folders you control.",
+    "shortDescription": "Local AI media harness",
+    "longDescription": "An AI media harness for planning, generating, and editing media locally—bringing AI agents, generative models, and creative tools into one desktop app. This release supports video workflows.",
     "createUpdaterArtifacts": true
   },
   "plugins": {

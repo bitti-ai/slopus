@@ -72,7 +72,8 @@ For a local build followed by manual publishing, use the existing steps:
 1. Set the same new version in `package.json`, `package-lock.json`,
    `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Update the configured
    window title too. Cargo updates its lockfile during the build.
-2. Optionally set `UPDATE_NOTES_FILE` to a UTF-8 text file containing release notes.
+2. Update `RELEASE_NOTES.md`, which supplies the release notes by default.
+   Set `UPDATE_NOTES_FILE` to use another UTF-8 text file instead.
 3. Run `release.cmd`. It builds signed installers, copies their `.sig` files,
    and writes `artifacts/latest.json` with the version, signatures and download URLs.
 4. Create a GitHub Release in `bitti-ai/slopus` with tag **`v<version>`**, matching

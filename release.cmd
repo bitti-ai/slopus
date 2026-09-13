@@ -13,6 +13,7 @@ if defined PUBLISH_RELEASE (
 )
 
 set "ROOT_DIR=%CD%"
+if not defined UPDATE_NOTES_FILE set "UPDATE_NOTES_FILE=%ROOT_DIR%\RELEASE_NOTES.md"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "BUNDLE_DIR=%ROOT_DIR%\src-tauri\target\release\bundle"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"

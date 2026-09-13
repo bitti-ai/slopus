@@ -2,6 +2,7 @@
   "name": "slopus",
   "private": true,
   "version": "0.1.0",
+  "description": "An AI media harness for planning, generating, and editing media locally.",
   "type": "module",
   "scripts": {
     "dev": "vite",
