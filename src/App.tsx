@@ -92,9 +92,9 @@ function App() {
      The video engine runs inside this process, so closing the window ends a
      generation outright, and nothing partial is written on the way. The app
      queue reports work across all projects; Rust holds the close request back
-     only while that list is non-empty, and this is where the question is put
+     only for video work. Icons can be interrupted safely. This is where the question is put
      and answered. See the fenced block in src-tauri/src/lib.rs. */
-  const ongoingGenerations: OngoingGeneration[] = workItems.filter(isWorkActive).map((item) => ({ id: item.id, title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
+  const ongoingGenerations: OngoingGeneration[] = workItems.filter((item) => item.kind !== "reference-icons" && isWorkActive(item)).map((item) => ({ id: item.id, title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
   const [closeRequested, setCloseRequested] = useState(false);
 
   const answerClose = useCallback((confirmed: boolean) => {

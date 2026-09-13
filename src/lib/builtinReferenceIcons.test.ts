@@ -37,3 +37,33 @@ it("discovers saved icons and lazily reads each shared JPEG only once", async ()
   expect(revoke).toHaveBeenCalledWith("blob:builtin");
   expect(hasBuiltinIcon("test-preset")).toBe(true);
 });
+
+it("keeps previous artwork when saving fails and publishes new icons only after saving completes", async () => {
+  vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:previous"), revokeObjectURL: vi.fn() });
+  vi.mocked(invoke).mockResolvedValue(new ArrayBuffer(2));
+  await loadBuiltinIcon("keep-previous");
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("Write interrupted"));
+  await expect(saveBuiltinIcon("keep-previous", "failed-job")).rejects.toThrow("Write interrupted");
+  expect(builtinIconUrl("keep-previous")).toBe("blob:previous");
+  let finish!: () => void;
+  vi.mocked(invoke).mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+  const saving = saveBuiltinIcon("new-complete", "job");
+  expect(hasBuiltinIcon("new-complete")).toBe(false);
+  finish(); await saving;
+  expect(hasBuiltinIcon("new-complete")).toBe(true);
+});
+
+it("does not cache an old read that finishes after regeneration", async () => {
+  const create = vi.fn(() => "blob:newest");
+  vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: vi.fn() });
+  let finishOld!: (bytes: ArrayBuffer) => void;
+  vi.mocked(invoke).mockImplementationOnce(() => new Promise<ArrayBuffer>((resolve) => { finishOld = resolve; }));
+  const old = loadBuiltinIcon("race");
+  vi.mocked(invoke).mockResolvedValueOnce(undefined);
+  await saveBuiltinIcon("race", "regenerated");
+  vi.mocked(invoke).mockResolvedValueOnce(new ArrayBuffer(20));
+  finishOld(new ArrayBuffer(10));
+  expect(await old).toBe("blob:newest");
+  expect(create).toHaveBeenCalledOnce();
+  expect((create.mock.calls[0] as unknown as [Blob])[0].size).toBe(20);
+});

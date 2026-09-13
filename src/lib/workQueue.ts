@@ -121,6 +121,11 @@ export class WorkQueue {
     if (!isTauri()) throw new Error("Icon generation is available in the desktop app.");
     this.icons.enqueueBuiltins(session);
   }
+  regenerateBuiltinReferenceIcon(session: ProjectSession, presetId: string) {
+    if (!isTauri()) throw new Error("Icon generation is available in the desktop app.");
+    this.icons.regenerateBuiltin(session, presetId);
+  }
+  pendingBuiltinIconIds() { return this.icons.pendingBuiltinIds(); }
   forgetProject(record: ProjectRecord) {
     if (this.hasActiveProject(record)) throw new Error("Cancel or finish this project's work before deleting it.");
     const session = this.projects.get(projectQueueKey(record));

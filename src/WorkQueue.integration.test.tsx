@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 import { saveGeneratedScene } from "./lib/generatedVideo";
@@ -44,6 +45,9 @@ it("keeps icon confirmation available after returning to the library", async () 
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
   expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ stillImage: true, canvasWidth: 768, steps: 20 });
   expect(screen.queryByRole("alertdialog", { name: "Generate reference icons?" })).toBeNull();
+  expect(invoke).not.toHaveBeenCalledWith("set_generation_active", { active: true });
+  act(() => handlers.get("app-close-requested")!({ payload: {} }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("answer_app_close", { confirmed: true }));
 });
 
 it("cancels automatic generation and exposes the remembered choice in Generator settings", async () => {
@@ -86,6 +90,7 @@ it("keeps the application queue alive while switching projects and saves results
   await waitFor(() => expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({ folderPath: first.folderPath, config: expect.objectContaining({ generationJobs: expect.arrayContaining([expect.objectContaining({ status: "completed", outputRelativePath: "media/generated/queued-result.mp4" })]) }) })));
   expect(document.querySelector(".project-title")?.textContent).toBe("Second project");
   expect(saveGeneratedScene).toHaveBeenCalledWith(expect.objectContaining({ jobId: workId, folderPath: first.folderPath }));
+  expect(invoke).toHaveBeenCalledWith("set_generation_active", { active: true });
   expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
   fireEvent.click(screen.getByRole("button", { name: "Open First project" }));
