@@ -53,8 +53,10 @@ all published stable releases. It then builds using the existing updater signing
 key and validates the manifest's version, URLs and signature contents against
 the local artifacts. The private key remains on the build machine.
 
-Publishing creates a draft, uploads only this version's installers, their `.sig`
-files and portable ZIP, then uploads `latest.json`. After verifying that every
+Publishing creates a draft, uploads only this version's installers and portable
+ZIP, then uploads `latest.json`. Signature files (`.sig`) stay local for manifest
+validation; the updater reads the signatures embedded in `latest.json`.
+After verifying that every
 expected asset is uploaded with the correct size, it publishes the draft as the
 latest stable release. This is when the existing updater endpoint begins serving
 the new manifest. Release notes from `UPDATE_NOTES_FILE` appear in both the app
@@ -77,8 +79,9 @@ For a local build followed by manual publishing, use the existing steps:
 3. Run `release.cmd`. It builds signed installers, copies their `.sig` files,
    and writes `artifacts/latest.json` with the version, signatures and download URLs.
 4. Create a GitHub Release in `bitti-ai/slopus` with tag **`v<version>`**, matching
-   the manifest URLs. Upload `latest.json`, the setup EXE and its `.sig`, and the
-   MSI and its `.sig` if produced. Upload the portable ZIP as a separate download.
+   the manifest URLs. Upload `latest.json`, the setup EXE, and the MSI if produced.
+   Upload the portable ZIP as a separate download. Keep the `.sig` files local;
+   their contents are already embedded in `latest.json`.
    Publish the release as the latest stable release after all assets are present.
 
 The app requests
