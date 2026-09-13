@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
-import { LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
+import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -263,6 +263,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const probeRevision = useRef(0);
@@ -422,8 +423,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
             tablist rather than two buttons that happen to swap the content:
             the arrow keys move between them, and the panel below is named by
             the tab that opened it. */}
-        {editingTemplateId ? <div className="settings-tabs settings-tabs--editor">
-          <button type="button" className="generator-editor__back" onClick={() => setEditingTemplateId(null)}><ChevronLeft size={16} /> Generators</button>
+        {editingTemplateId || editingLoraId ? <div className="settings-tabs settings-tabs--editor">
+          <button type="button" className="generator-editor__back" onClick={() => { setEditingTemplateId(null); setEditingLoraId(null); }}><ChevronLeft size={16} /> Generators</button>
         </div> : <div className="settings-tabs" role="tablist" aria-label="Settings sections">
           {TABS.map((item, index) => (
             <button
@@ -485,11 +486,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
           {tab === "engine" && <section
             className="settings-section"
             id="settings-panel-engine"
-            role={editingTemplateId ? "region" : "tabpanel"}
-            aria-labelledby={editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
+            role={editingTemplateId || editingLoraId ? "region" : "tabpanel"}
+            aria-labelledby={editingLoraId ? "lora-editor-heading" : editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
           >
-            {!editingTemplateId && <ReferenceIconSetting />}
-            {!editingTemplateId ? <>{generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
+            {!editingTemplateId && !editingLoraId && <ReferenceIconSetting />}
+            {editingLoraId ? <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} /> : !editingTemplateId ? <>{generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
               <header>
                 <div>
                   <h2 id={`${section.id}-heading`}>{section.title}</h2>
@@ -525,7 +526,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 ))}
               </div>
-            </section>)}<LoraLibrary /></> : <div className="generator-editor">
+            </section>)}<LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} /></> : <div className="generator-editor">
               <header className="generator-editor__head">
                 <div>
                   <h2 id="generator-editor-heading">Edit generator</h2>

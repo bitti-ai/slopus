@@ -15,7 +15,7 @@
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { normalizeTemplateLoras, resolveTemplateLoras, type TemplateLora } from "./loras";
+import { highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, type TemplateLora } from "./loras";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
  * ./theme.ts, which is separate only because index.html has to read the same
@@ -349,9 +349,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
   delete options.schedule;
+  delete options.stepOverride;
   const loras = resolveTemplateLoras(selection);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
-  if (loras.some(({ schedule }) => schedule === "taomate-3step")) options.schedule = "taomate-3step";
+  const stepOverride = highestLoraStepOverride(loras);
+  if (stepOverride !== undefined) options.stepOverride = stepOverride;
   for (const field of ENGINE_PATH_FIELDS) {
     const value = settings[field.id].trim();
     if (value && !isDownloadUrl(value)) options[field.id] = value;
@@ -362,6 +364,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
 
 /** A copy of `config` carrying this machine's engine paths. For passing to a
  *  Tauri command only — never store or save the result. */
+export function generationStepsWithLoras(steps: number, config: ProjectConfig): number {
+  const override = config.providerSettings.slopfab?.options.stepOverride;
+  return isLoraStepOverride(override) ? override : steps;
+}
+
 export function withEngineSettings(config: ProjectConfig): ProjectConfig {
   return {
     ...config,
