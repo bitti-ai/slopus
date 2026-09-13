@@ -7,7 +7,7 @@ import { generationAssetId, GENERATION_FRAME_RATE, projectItemPath, sceneGenerat
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
-import { withEngineSettings } from "./settings";
+import { generationStepsWithLoras, withEngineSettings } from "./settings";
 import { purgeTimelineThumbnails } from "./timelineThumbnails";
 import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -167,7 +167,7 @@ export class WorkQueue {
       const id = `work-${crypto.randomUUID()}`;
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id });
+      const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config) });
       this.work.set(id, { id, session, sceneId: submission.job.id, request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, projectKey, folderPath: session.record.folderPath, projectName: config.name,

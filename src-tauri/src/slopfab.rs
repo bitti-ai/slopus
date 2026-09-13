@@ -353,9 +353,11 @@ impl SlopfabRuntime {
     pub fn enqueue(
         &self,
         app: AppHandle,
-        request: GenerationRequest,
+        mut request: GenerationRequest,
         settings: &BTreeMap<String, ProviderSetting>,
     ) -> Result<(), String> {
+        let configuration = Configuration::from_settings(settings);
+        request.steps = configuration.generation_steps(request.steps)?;
         diagnostics::info(
             "slopfab",
             "generation.enqueue_requested",
@@ -384,7 +386,6 @@ impl SlopfabRuntime {
         }
         flags.insert(request.job_id.clone(), cancel.clone());
         drop(flags);
-        let configuration = Configuration::from_settings(settings);
         let queued_id = request.job_id.clone();
         if self
             .sender
@@ -466,7 +467,7 @@ struct Configuration {
     attention: &'static str,
     models: [(i32, &'static str, Option<PathBuf>); 5],
     loras: Result<Vec<LoraAdapter>, String>,
-    taomate_schedule: bool,
+    step_override: Result<Option<i32>, String>,
 }
 
 impl Configuration {
@@ -510,8 +511,16 @@ impl Configuration {
                     .map_err(|error| format!("Invalid LoRA settings: {error}")),
                 _ => Err("LoRA settings must be a JSON array of paths and strengths.".into()),
             },
-            taomate_schedule: string_option("schedule") == Some("taomate-3step"),
+            step_override: match slopfab.and_then(|setting| setting.options.get("stepOverride")) {
+                None => Ok(None),
+                Some(ProviderOption::Number(value)) if value.is_finite() && value.fract() == 0.0 && *value >= 2.0 && *value <= i32::MAX as f64 => Ok(Some(*value as i32)),
+                _ => Err("LoRA step override must be a whole number from 2 to 2147483647.".into()),
+            },
         }
+    }
+
+    fn generation_steps(&self, fallback: i32) -> Result<i32, String> {
+        self.step_override.clone().map(|steps| steps.unwrap_or(fallback))
     }
 
     fn platform(&self, detected: ComputePlatform) -> ComputePlatform {
@@ -539,7 +548,7 @@ impl Configuration {
             .join(";");
         let adapters = self.loras.as_ref().map(|loras| loras.iter()
             .map(|lora| format!("{}@{}", lora.path, lora.strength)).collect::<Vec<_>>().join(";")).unwrap_or_default();
-        format!("slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|taomate={}", platform.label(), self.attention, self.taomate_schedule)
+        format!("slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|steps={:?}", platform.label(), self.attention, self.step_override)
     }
 }
 
@@ -681,7 +690,7 @@ fn configure_request(
     if request.still_image {
         api.set_still_image(handle)?;
     }
-    api.set_steps(handle, request.steps)?;
+    api.set_steps(handle, configuration.generation_steps(request.steps)?)?;
     api.set_seed(handle, generation_seed(request.seed)?)?;
     api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
     api.set_inference_backend(handle, platform.backend())?;
@@ -697,7 +706,6 @@ fn configure_request(
         }
         api.add_lora(handle, Path::new(&lora.path), lora.strength)?;
     }
-    if configuration.taomate_schedule { api.set_taomate_schedule(handle)?; }
     if include_models {
         api.set_reuse_models(handle, true)?;
         for (id, _, path) in &configuration.models {
@@ -1009,7 +1017,7 @@ pub fn generate_reference_icon_batch(
     let configuration = Configuration {
         dll_path: batch.dll_path.clone(),
         loras: Ok(Vec::new()),
-        taomate_schedule: false,
+        step_override: Ok(None),
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
         models: [
@@ -1298,7 +1306,6 @@ mod ffi {
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
         add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
         add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
-        set_schedule: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
         add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_inference_backend: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -1398,9 +1405,6 @@ mod ffi {
                         .ok().map(|symbol| *symbol),
                     add_refmod: library
                         .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(b"slopfab_request_add_refmod\0")
-                        .ok().map(|symbol| *symbol),
-                    set_schedule: library
-                        .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_schedule\0")
                         .ok().map(|symbol| *symbol),
                     set_attention: symbol!(
                         "slopfab_request_set_attention",
@@ -1567,10 +1571,6 @@ mod ffi {
             let add = self.add_refmod.ok_or("This slopfab.dll does not support refmods. Install a build with the refmod API (1.8 or later).")?;
             let path = path_cstring(path)?;
             self.error(unsafe { add(r, path.as_ptr(), strength, copies) })
-        }
-        pub fn set_taomate_schedule(&self, r: *mut Request) -> Result<(), String> {
-            let set = self.set_schedule.ok_or("This slopfab.dll does not support the TaoMate three-step schedule.")?;
-            self.error(unsafe { set(r, 1) })
         }
         pub fn resolve(&self, request: *mut Request) -> Result<Plan, String> {
             let mut value = Plan {
@@ -1749,7 +1749,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_loras_and_taomate_schedule_reach_cuda_and_vulkan_requests() {
+    fn ordered_loras_and_step_override_reach_cuda_and_vulkan_requests() {
         let root = tempfile::tempdir().unwrap();
         let paths = [root.path().join("style.safetensors"), root.path().join("TaoMate.safetensors")];
         for path in &paths { std::fs::write(path, b"planning does not load weights").unwrap(); }
@@ -1760,7 +1760,7 @@ mod tests {
                     { "path": paths[0], "strength": -0.5 },
                     { "path": paths[1], "strength": 1.0 },
                 ]).to_string())),
-                ("schedule".into(), ProviderOption::String("taomate-3step".into())),
+                ("stepOverride".into(), ProviderOption::Number(8.0)),
             ]),
         })]);
         let configuration = Configuration::from_settings(&settings);
@@ -1776,9 +1776,9 @@ mod tests {
             for include_models in [false, true] {
                 let handle = RequestHandle::new(&api).unwrap();
                 configure_request(&api, handle.0, &request, &configuration, platform, include_models).unwrap();
-                assert_eq!(api.resolve(handle.0).unwrap().num_model_evaluations, 3);
+                assert_eq!(api.resolve(handle.0).unwrap().num_model_evaluations, 7);
                 let description = api.describe(handle.0).unwrap();
-                assert!(description.contains("taomate-3step"));
+                assert!(!description.contains("taomate-3step"));
                 assert!(description.find("style.safetensors").unwrap() < description.find("TaoMate.safetensors").unwrap());
                 assert!(description.contains("strength -0.5"));
             }

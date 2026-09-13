@@ -8,7 +8,7 @@ It uses the same managed `weights` location, background transfer, progress,
 cancellation, retry, and Work Queue controls as model weights. Downloads are
 serialized with weight downloads, and video generation can continue while downloading.
 Missing managed files become downloadable again. Removing a downloaded LoRA
-deletes its managed file; **Add LoRA manually** links a named local file, and
+deletes its managed file; **Add Lora** opens an editor to link a named local file, and
 removing that library entry leaves the original file untouched.
 
 Open a generator template and use its **LoRAs** section to add available adapters.
@@ -18,9 +18,14 @@ are passed to SlopFab in displayed order on both CUDA and Vulkan. SlopFab combin
 adapter updates by summing them. Negative strengths are supported. An active
 missing adapter causes an error rather than silently changing the generation.
 
-TaoMate 3-Step automatically selects the DLL's dedicated three-evaluation schedule,
-overriding the ordinary scene step count. Manually added TaoMate files can select
-the same schedule. Other LoRAs use the template's ordinary generation settings.
+Open any LoRA from the library to edit its optional **Override step count**.
+Any supported scene step count (a whole number from 2 to 2147483647) is accepted.
+The highest override among enabled, nonzero-strength LoRAs replaces the scene's
+step count, even when the scene requests more steps. Without an active override,
+the scene's steps are used. TaoMate defaults to an editable override of 3;
+older TaoMate schedule settings migrate to this value. All adapters now use the
+ordinary schedule, whose step count includes the terminal sigma (N steps means
+N−1 model evaluations).
 The library and per-template selections persist on this computer; adapter paths
 are injected into runtime requests and are not saved into portable project files.
 
