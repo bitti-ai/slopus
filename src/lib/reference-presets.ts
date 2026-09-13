@@ -1,6 +1,7 @@
 import { KNOWN_CHARACTERS } from "./known-characters";
 import { ANIMAL_GROUPS, LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
 import type { ProjectReference } from "./project";
+import { hasBuiltinIcon } from "./builtinReferenceIcons";
 
 export type ReferenceType = "custom" | "character" | "animal" | "product" | "location" | "style";
 export type PresetReferenceType = Exclude<ReferenceType, "custom">;
@@ -12,8 +13,8 @@ export interface ReferencePreset {
   name: string;
   prompt: string;
   searchTerms?: string;
-  /** A build-time MiniMax render bundled by Vite. It is presentation only and
-   *  is never silently attached to a generation as a reference image. */
+  /** Optional bundled artwork, used when no shared generated icon is available.
+   *  Presentation only; never attached to generation as a reference image. */
   icon?: string;
 }
 
@@ -27,6 +28,8 @@ const iconForPreset = (id: string): string | undefined =>
   referenceIconModules[`../assets/reference-icons/${id}.jpg`];
 
 const withIcon = (preset: ReferencePreset): ReferencePreset => ({ ...preset, icon: iconForPreset(preset.id) });
+
+export const hasPresetIcon = (preset: ReferencePreset | undefined): boolean => Boolean(preset && (preset.icon || hasBuiltinIcon(preset.id)));
 
 export const REFERENCE_TYPES: ReadonlyArray<{ id: PresetReferenceType; label: string }> = [
   { id: "character", label: "Character" },

@@ -117,6 +117,10 @@ export class WorkQueue {
     if (!isTauri()) throw new Error("Icon generation is available in the desktop app.");
     this.icons.regenerate(session, referenceId);
   }
+  generateBuiltinReferenceIcons(session: ProjectSession) {
+    if (!isTauri()) throw new Error("Icon generation is available in the desktop app.");
+    this.icons.enqueueBuiltins(session);
+  }
   forgetProject(record: ProjectRecord) {
     if (this.hasActiveProject(record)) throw new Error("Cancel or finish this project's work before deleting it.");
     const session = this.projects.get(projectQueueKey(record));
@@ -175,6 +179,7 @@ export class WorkQueue {
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot });
     }
     this.publish();
+    if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
     void this.pump();
   }
   private updateScene(work: PendingWork, patch: Partial<GenerationJob>, dirty = true) {

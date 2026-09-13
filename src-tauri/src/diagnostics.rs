@@ -285,11 +285,15 @@ fn redact(value: Value, depth: usize) -> Value {
     }
 }
 
-pub fn initialize(app: &AppHandle) -> Result<DiagnosticLogInfo, String> {
-    let directory = app
+pub fn directory(app: &AppHandle) -> PathBuf {
+    app
         .path()
         .app_log_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("slopus").join("logs"));
+        .unwrap_or_else(|_| std::env::temp_dir().join("slopus").join("logs"))
+}
+
+pub fn initialize(app: &AppHandle) -> Result<DiagnosticLogInfo, String> {
+    let directory = directory(app);
     let writer = LogWriter::new(&directory, MAX_BYTES)?;
     let info = writer.info();
     LOGGER

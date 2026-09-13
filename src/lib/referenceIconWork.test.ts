@@ -40,6 +40,8 @@ const video = (queue: WorkQueue, session: ReturnType<WorkQueue["project"]>) => q
   },
 }]);
 
+const originalPresetIcons = new Map(REFERENCE_PRESETS.map((preset) => [preset.id, preset.icon]));
+
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks(); localStorage.clear(); handlers.clear();
   saveReferenceIconAutomation("enabled");
@@ -51,7 +53,8 @@ beforeEach(() => {
   vi.mocked(saveReferenceIcon).mockImplementation(async (_folder, id) => `references/icons/${id}.jpg`);
   vi.mocked(cancelSlopfabGeneration).mockResolvedValue(true);
 });
-afterEach(() => { stop?.(); vi.useRealTimers(); delete (window as any).__TAURI_INTERNALS__; });
+afterEach(() => {
+  REFERENCE_PRESETS.forEach((preset) => { preset.icon = originalPresetIcons.get(preset.id); }); stop?.(); vi.restoreAllMocks(); vi.useRealTimers(); delete (window as any).__TAURI_INTERNALS__; });
 
 it("waits for batch confirmation without blocking video generation", async () => {
   saveReferenceIconAutomation("ask");
@@ -184,7 +187,8 @@ it("groups icons across projects and gives waiting videos priority between icons
 });
 
 it("waits for text and skips references that already have artwork", async () => {
-  const preset = REFERENCE_PRESETS.find((preset) => preset.icon)!;
+  const preset = REFERENCE_PRESETS[0];
+  preset.icon = "/test-preset.jpg";
   const { session } = setup([
     { ...reference("blank"), description: "" },
     { ...reference("existing"), iconRelativePath: "references/icons/existing.jpg" },
@@ -285,7 +289,8 @@ it("uses a distinct composition for every reference type and preserves the user'
 });
 
 it("forces replacement of bundled and generated icons in one batch behind videos", async () => {
-  const preset = REFERENCE_PRESETS.find((preset) => preset.icon)!;
+  const preset = REFERENCE_PRESETS[0];
+  preset.icon = "/test-preset.jpg";
   const existing = { ...reference("existing", "animal"), iconRelativePath: "references/icons/old.jpg" };
   const { queue, session } = setup([existing, { ...reference("preset", preset.type), description: preset.prompt }]);
   await vi.advanceTimersByTimeAsync(1001);

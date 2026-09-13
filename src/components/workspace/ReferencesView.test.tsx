@@ -9,15 +9,20 @@ import { createProjectConfig, parseProjectConfig, type ProjectConfig } from "../
 import { ReferencesView } from "./ReferencesView";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { saveDebugOptionsEnabled } from "../../lib/settings";
+import { REFERENCE_PRESETS } from "../../lib/reference-presets";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+const originalPresetIcons = new Map(REFERENCE_PRESETS.map((preset) => [preset.id, preset.icon]));
 
 beforeEach(() => localStorage.clear());
 
 afterEach(() => {
+  REFERENCE_PRESETS.forEach((preset) => { preset.icon = originalPresetIcons.get(preset.id); });
   cleanup();
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   vi.mocked(invoke).mockReset();
+  vi.restoreAllMocks();
 });
 
 const project = (): ProjectConfig => {
@@ -225,6 +230,7 @@ describe("Reference type presets", () => {
   });
 
   it("shows a bundled MiniMax icon for an illustrated character preset", () => {
+    REFERENCE_PRESETS.find((preset) => preset.name === "Abby Sciuto")!.icon = "/test-preset.jpg";
     setup();
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });

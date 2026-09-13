@@ -2682,12 +2682,30 @@ fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
 /// buffer. Icon artwork is stored separately from conditioning attachments.
 #[tauri::command]
 fn save_reference_icon(folder_path: String, job_id: String) -> Result<String, String> {
+    write_reference_icon_frame(&folder_path, &job_id, &reference_icon_pixels(&job_id)?)
+}
+
+fn reference_icon_pixels(job_id: &str) -> Result<Vec<u8>, String> {
     let summary = rendered::summary(&job_id).ok_or("The reference icon is no longer available.")?;
     if summary.width != reference_icons::RENDER_SIZE || summary.height != reference_icons::RENDER_SIZE || summary.frame_count != 1 {
         return Err("A reference icon must be a single 768x768 frame.".into());
     }
-    let rgba = rendered::frame(&job_id, 0)?.ok_or("The reference icon has no image.")?;
-    write_reference_icon_frame(&folder_path, &job_id, &rgba)
+    rendered::frame(job_id, 0)?.ok_or_else(|| "The reference icon has no image.".into())
+}
+
+#[tauri::command]
+fn list_builtin_reference_icons(app: AppHandle) -> Result<Vec<String>, String> {
+    reference_icons::list_builtin(&diagnostics::directory(&app))
+}
+
+#[tauri::command]
+fn read_builtin_reference_icon(app: AppHandle, preset_id: String) -> Result<tauri::ipc::Response, String> {
+    reference_icons::read_builtin(&diagnostics::directory(&app), &preset_id).map(tauri::ipc::Response::new)
+}
+
+#[tauri::command]
+fn save_builtin_reference_icon(app: AppHandle, preset_id: String, job_id: String) -> Result<(), String> {
+    reference_icons::save_builtin(&diagnostics::directory(&app), &preset_id, &reference_icon_pixels(&job_id)?)
 }
 
 fn write_reference_icon_frame(folder_path: &str, job_id: &str, rgba: &[u8]) -> Result<String, String> {
@@ -2949,6 +2967,9 @@ pub fn run() {
             purge_timeline_thumbnails,
             generated_summary,
             save_reference_icon,
+            list_builtin_reference_icons,
+            read_builtin_reference_icon,
+            save_builtin_reference_icon,
             generated_frame,
             generated_audio,
             release_generated_frames,

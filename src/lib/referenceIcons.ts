@@ -1,5 +1,5 @@
 import { deriveH3Style, referenceImages, type ProjectReference } from "./project";
-import { referenceType, selectedReferencePreset } from "./reference-presets";
+import { hasPresetIcon, referenceType, selectedReferencePreset } from "./reference-presets";
 
 export const REFERENCE_ICON_SIZE = 256;
 export const REFERENCE_ICON_RENDER_SIZE = 768;
@@ -36,5 +36,5 @@ export function referenceIconPrompt(reference: ProjectReference): string {
 
 export function needsReferenceIcon(reference: ProjectReference): boolean {
   return Boolean(reference.description.trim()) && !reference.iconRelativePath
-    && referenceImages(reference).length === 0 && !selectedReferencePreset(reference)?.icon;
+    && referenceImages(reference).length === 0 && !hasPresetIcon(selectedReferencePreset(reference));
 }

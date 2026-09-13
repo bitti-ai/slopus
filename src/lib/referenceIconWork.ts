@@ -8,11 +8,15 @@ import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } 
 import { withEngineSettings } from "./settings";
 import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import type { WorkItem } from "./workQueue";
+import { hasPresetIcon, REFERENCE_PRESETS, type ReferencePreset } from "./reference-presets";
+import { saveBuiltinIcon } from "./builtinReferenceIcons";
 
 type TaskStatus = "queued" | "generating" | "saving" | "completed" | "failed" | "cancelled" | "skipped";
 interface IconTask {
   key: string;
   session: ProjectSession;
+  preset?: ReferencePreset;
+  yielded?: boolean;
   referenceId: string;
   name: string;
   prompt: string;
@@ -68,7 +72,7 @@ export class ReferenceIconWork {
     this.timers.delete(session);
     this.watches.get(session)?.();
     this.watches.delete(session);
-    for (const [key, task] of this.tasks) if (task.session === session) this.tasks.delete(key);
+    for (const [key, task] of this.tasks) if (task.session === session && !task.preset) this.tasks.delete(key);
     this.publish();
   }
 
@@ -84,7 +88,7 @@ export class ReferenceIconWork {
   scan(session: ProjectSession) {
     const references = session.getSnapshot().config.references;
     for (const task of this.tasks.values()) {
-      if (task.session !== session || task.status !== "queued") continue;
+      if (task.preset || task.session !== session || task.status !== "queued") continue;
       const reference = references.find((reference) => reference.id === task.referenceId);
       if (!reference || !this.shouldGenerate(reference, task) || (!task.force && loadReferenceIconAutomation() === "disabled")) task.status = "skipped";
     }
@@ -102,6 +106,39 @@ export class ReferenceIconWork {
     }
     this.publish();
     if (added) this.wake();
+  }
+
+  enqueueBuiltins(session: ProjectSession, presets: readonly ReferencePreset[] = REFERENCE_PRESETS) {
+    for (const preset of presets) {
+      const key = `builtin::${preset.id}`;
+      const previous = this.tasks.get(key);
+      if (hasPresetIcon(preset) || (previous && ["queued", "generating", "saving"].includes(previous.status))) continue;
+      this.tasks.set(key, { key, session, preset, referenceId: preset.id, name: preset.name, prompt: "", status: "queued", submitted: false, cancelled: false, force: true });
+    }
+    this.publish();
+    this.wake();
+  }
+
+  private referenceFor(task: IconTask): ProjectReference | undefined {
+    if (!task.preset) return task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
+    const preset = task.preset;
+    return { id: preset.id, kind: "text", name: preset.name, description: preset.prompt,
+      intendedUse: [preset.type], subcategory: preset.subcategory, createdAt: task.session.record.config.createdAt };
+  }
+
+  /** Interrupt a built-in icon so normal video work gets the GPU immediately
+   * after native cancellation. The interrupted icon remains queued to retry. */
+  yieldToVideo() {
+    const task = this.active;
+    if (!task?.preset || task.status !== "generating" || task.cancelled || task.yielded) return;
+    task.yielded = true;
+    if (task.submitted) void this.cancelForVideo(task);
+    this.publish();
+  }
+
+  private async cancelForVideo(task: IconTask) {
+    try { await cancelSlopfabGeneration(task.nativeId!); }
+    catch (reason) { task.yielded = false; task.error = describeDiagnosticError(reason); this.publish(); }
   }
 
   private shouldGenerate(reference: ProjectReference, task: { force?: boolean }) {
@@ -143,7 +180,7 @@ export class ReferenceIconWork {
     this.wake();
   }
   hasActiveProject(session: ProjectSession) {
-    return [...this.tasks.values()].some((task) => task.session === session && ["queued", "generating", "saving"].includes(task.status));
+    return [...this.tasks.values()].some((task) => !task.preset && task.session === session && ["queued", "generating", "saving"].includes(task.status));
   }
   owns(id: string) { return this.item?.id === id; }
   clearFinished(id: string) { if (this.owns(id)) this.item = undefined; }
@@ -166,10 +203,10 @@ export class ReferenceIconWork {
     const projects = new Set(tasks.map((task) => task.session));
     this.item = {
       ...this.item,
-      projectName: projects.size === 1 ? [...projects][0].getSnapshot().config.name : `${projects.size} projects`,
+      projectName: tasks.every((task) => task.preset) ? "Built-in references" : projects.size === 1 ? [...projects][0].getSnapshot().config.name : `${projects.size} projects`,
       status: this.active ? (this.active.status === "saving" ? "encoding" : "generating") : queued ? "queued" : failed.length ? "failed" : tasks.some((task) => task.status === "cancelled") ? "cancelled" : "completed",
       progress: tasks.length ? Math.min(1, (settled + (this.active ? this.progress : 0)) / tasks.length) : 1,
-      detail: this.active ? `${this.active.cancelled ? "Cancelling" : this.active.status === "saving" ? "Saving" : "Generating"} ${this.active.name} · ${completed}/${tasks.length} icons saved`
+      detail: this.active ? `${this.active.yielded ? "Pausing for video" : this.active.cancelled ? "Cancelling" : this.active.status === "saving" ? "Saving" : "Generating"} ${this.active.name} · ${completed}/${tasks.length} icons saved`
         : this.confirmationCount() > 0 ? `${this.confirmationCount()} icons awaiting confirmation`
         : queued ? `${completed}/${tasks.length} icons saved · waiting behind videos` : `${completed}/${tasks.length} icons saved`,
       error: failed.length ? failed.map((task) => `${task.name}: ${task.error}`).join("\n") : null,
@@ -183,18 +220,21 @@ export class ReferenceIconWork {
     const task = [...this.tasks.values()].find((task) => this.canRun(task));
     if (!task) return;
     this.active = task;
+    task.submitted = false;
+    task.yielded = false;
     task.status = "generating";
     this.progress = 0;
     this.publish();
     try {
       await ready;
       if (task.cancelled) return;
-      await task.session.save();
+      if (!task.preset) await task.session.save();
       if (task.cancelled) return;
       if (videoWaiting()) { task.status = "queued"; return; }
       if (!task.force && loadReferenceIconAutomation() === "disabled") { task.status = "skipped"; return; }
       if (!task.force && !task.approved && loadReferenceIconAutomation() === "ask") { task.status = "queued"; return; }
-      const reference = task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
+      if (task.preset && hasPresetIcon(task.preset)) { task.status = "skipped"; return; }
+      const reference = this.referenceFor(task);
       if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
       task.prompt = referenceIconPrompt(reference);
       task.name = reference.name;
@@ -206,15 +246,23 @@ export class ReferenceIconWork {
       }, withEngineSettings(task.session.getSnapshot().config));
       task.submitted = true;
       if (task.cancelled) await this.cancelNative(task);
+      else if (task.yielded) await this.cancelForVideo(task);
       await done;
     } catch (reason) {
       task.status = task.cancelled ? "cancelled" : "failed";
       task.error = describeDiagnosticError(reason);
     } finally {
       if (task.cancelled) task.status = "cancelled";
+      else if (task.yielded && task.status === "cancelled") { task.status = "queued"; task.error = undefined; }
+      task.yielded = false;
+      // Stop a built-in batch on an engine/storage failure instead of sending
+      // the same failing setup through the entire catalog.
+      if (task.preset && task.status === "failed") {
+        for (const waiting of this.tasks.values()) if (waiting.preset && waiting.status === "queued") waiting.status = "cancelled";
+      }
       this.active = undefined;
       this.publish();
-      this.scan(task.session);
+      if (!task.preset) this.scan(task.session);
     }
   }
 
@@ -243,9 +291,14 @@ export class ReferenceIconWork {
 
   private async save(task: IconTask) {
     try {
-      const reference = task.session.getSnapshot().config.references.find((reference) => reference.id === task.referenceId);
+      const reference = this.referenceFor(task);
       if (task.cancelled) { task.status = "cancelled"; return; }
       if (!reference || !this.shouldGenerate(reference, task) || referenceIconPrompt(reference) !== task.prompt) { task.status = "skipped"; return; }
+      if (task.preset) {
+        await saveBuiltinIcon(task.preset.id, task.nativeId!);
+        task.status = "completed";
+        return;
+      }
       const iconRelativePath = await saveReferenceIcon(task.session.record.folderPath, task.nativeId!);
       let attached = false;
       task.session.update((current) => ({ ...current, references: current.references.map((reference) => {
@@ -262,8 +315,9 @@ export class ReferenceIconWork {
       task.status = "failed";
       task.error = describeDiagnosticError(reason);
     } finally {
-      await releaseRendered(task.nativeId!);
-      task.finish?.();
+      try { await releaseRendered(task.nativeId!); }
+      catch (reason) { task.status = "failed"; task.error = describeDiagnosticError(reason); }
+      finally { task.finish?.(); }
     }
   }
 
