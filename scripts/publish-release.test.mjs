@@ -75,7 +75,7 @@ it('uploads only current artifacts, puts the manifest last, and publishes after 
   expect(uploads).toHaveLength(2);
   expect(uploads[0][1]).not.toContain(join(root, 'artifacts/latest.json'));
   expect(uploads[1][1][3]).toBe(join(root, 'artifacts/latest.json'));
-  expect(JSON.stringify(uploads)).not.toMatch(/private\.key|0\.1\.0/);
+  expect(JSON.stringify(uploads)).not.toMatch(/private\.key|0\.1\.0|\.sig/);
   expect(calls.at(-1)[1]).toEqual(expect.arrayContaining(['--draft=false', '--latest', '--verify-tag']));
 });
 

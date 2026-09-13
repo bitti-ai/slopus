@@ -52,7 +52,8 @@ export function releaseFiles(root, version) {
     if (entry.url !== expected) throw new Error(`Updater URL does not match this release: ${key}`);
     const signature = readFileSync(resolve(directory, `${name}.sig`), 'utf8').trim();
     if (!signature || entry.signature !== signature) throw new Error(`Updater signature mismatch: ${name}`);
-    names.add(name); names.add(`${name}.sig`);
+    // Keep signature files local; the updater reads signatures from latest.json.
+    names.add(name);
   }
   if (!manifest.platforms[`${target}-nsis`]) throw new Error('Missing NSIS updater target.');
   names.add(`${stem}-portable.zip`);
