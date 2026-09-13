@@ -200,13 +200,15 @@
   height: 100%;
 }
 
-.reference-refmods, .reference-refmods > div { display: grid; gap: var(--space-2); }
+.reference-refmods, .reference-refmods > div { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: var(--space-2); }
 .reference-refmods { padding: var(--space-4); border-top: 1px solid var(--line); }
+.reference-refmods > header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.reference-refmods > div > b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reference-refmods h3, .reference-refmods p { margin: 0; }
 .reference-refmods p { color: var(--text-muted); font-size: var(--text-sm); }
 .reference-refmods label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .reference-refmods input { width: 88px; min-height: var(--field-height); padding: var(--space-2); color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); }
-.reference-refmods > img { width: 100%; max-height: 256px; object-fit: contain; }
+.reference-fields > p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
 
 .reference-detail-art--photo img {
   width: 100%;
