@@ -51,7 +51,7 @@ export function LoraLibrary() {
     <header><div><h2 id="loras-heading">LoRAs</h2><p>Download adapters or add local files, then activate them in a generator template.</p></div>
       <button className="secondary-button" type="button" onClick={() => setAdding(!adding)}><Plus size={16} /> Add LoRA manually</button></header>
     <div className="generator-template-list" role="list" aria-label="LoRAs">
-      {loras.map((lora) => <div className="generator-template-item" role="listitem" key={lora.id}>
+      {loras.map((lora) => <div className="generator-template-item lora-library-item" role="listitem" key={lora.id}>
         {download?.active && download.loraId === lora.id && <span className="generator-template-item__progress" role="progressbar" aria-label={`Downloading ${lora.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(weightDownloadProgress(download))} style={{ width: `${weightDownloadProgress(download)}%` }} />}
         <div className="generator-template-item__open"><Layers size={16} /><b>{lora.name}</b><small title={lora.path}>{download?.active && download.loraId === lora.id ? `Downloading · ${Math.floor(weightDownloadProgress(download))}%` : lora.path ? "Available" : "Not downloaded"}</small></div>
         {lora.url && !lora.path ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} onClick={() => void downloadLora(lora.id)}><Download size={15} /></button>

@@ -1,3 +1,4 @@
+.generator-template-item.lora-library-item { grid-template-columns: minmax(0, 1fr) var(--control-sm); }
 .lora-manual, .template-loras { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
 .lora-manual > label { display: grid; gap: var(--space-2); }
 .lora-manual input:not([type="checkbox"]), .template-loras select, .template-loras input[type="number"] {
