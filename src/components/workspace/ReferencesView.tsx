@@ -1,7 +1,8 @@
-import { BookOpen, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, Video, X } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isReferenceDescribed, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
+import { activeReferenceRefmods } from "../../lib/project";
 import {
   composeLocationPrompt,
   locationSelectionFromPrompt,
@@ -39,6 +40,7 @@ const PICKER_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
  *  reference, and neither the card nor the inspector does anything with it. */
 const referenceKindLabel = (reference: ProjectReference) => {
   const count = referenceImages(reference).length;
+  if (reference.refmods?.length) return `${reference.refmods.length} refmod${reference.refmods.length === 1 ? "" : "s"}`;
   if (reference.kind === "video") return `Video clip${count ? ` + ${count} image${count === 1 ? "" : "s"}` : ""}`;
   if (count === 0) return reference.kind === "audio" ? "Sound" : "Text definition";
   return `${count} image${count === 1 ? "" : "s"}${isReferenceDescribed(reference) ? " + text" : ""}`;
@@ -74,7 +76,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [showDebugIconPrompt, setShowDebugIconPrompt] = useState(false);
   useEffect(() => setShowDebugIconPrompt(false), [selectedId, debugEnabled]);
   const [importError, setImportError] = useState<string | null>(null);
-  const [importingVideo, setImportingVideo] = useState(false);
+  const [importingFiles, setImportingFiles] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
   const catalogVisit = useRef(0);
@@ -126,27 +128,6 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       else if (action === "generate") onGenerateBuiltinIcons();
     }).catch((reason) => setIconError(String(reason)));
   };
-  const addImages = async () => {
-    if (!selected) return;
-    setImportError(null);
-    if (!isTauri()) {
-      setImportError("Image import is available in the desktop app.");
-      return;
-    }
-    try {
-      const imported = await invoke<Array<{ name: string; relativePath: string }>>("choose_reference_images", { folderPath });
-      if (imported.length === 0) return;
-      const stamp = Date.now();
-      const images: ProjectReferenceImage[] = imported.map((image, index) => ({
-        id: `ref-image-${stamp}-${index + 1}`,
-        name: image.name,
-        relativePath: image.relativePath,
-      }));
-      update(selected.id, { images: [...(selected.images ?? []), ...images] });
-    } catch (reason) {
-      setImportError(reason instanceof Error ? reason.message : String(reason));
-    }
-  };
   const remove = () => {
     if (!selected) return;
     onChange({ ...config, references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({
@@ -157,22 +138,32 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     })) });
     setSelectedId(config.references.find((ref) => ref.id !== selected.id)?.id);
   };
-  const addVideo = async () => {
+  const addFiles = async () => {
     if (!selected) return;
     setImportError(null);
-    if (!isTauri()) { setImportError("Video import is available in the desktop app."); return; }
-    setImportingVideo(true);
+    if (!isTauri()) { setImportError("File import is available in the desktop app."); return; }
+    setImportingFiles(true);
     try {
-      const sourcePath = await invoke<string | null>("choose_reference_video", { folderPath });
-      if (!sourcePath) return;
-      const options = await inspectReferenceVideo(folderPath, sourcePath);
-      const video = { startSeconds: 0, ...options };
+      const files = await invoke<Array<{ kind: "image" | "video" | "refmod"; name: string; relativePath?: string | null; sourcePath?: string | null }>>("choose_reference_files", { folderPath });
+      if (!files.length) return;
+      const clip = files.find((file) => file.kind === "video");
+      const video = clip ? { startSeconds: 0, ...await inspectReferenceVideo(folderPath, clip.sourcePath!) } : undefined;
       const current = configRef.current;
       const target = current.references.find((reference) => reference.id === selected.id);
-      if (!target) throw new Error("The reference was removed while the video was importing.");
-      update(target.id, { kind: "video", relativePath: null, sourcePath, video, images: referenceImages(target) });
+      if (!target) throw new Error("The reference was removed while the files were importing.");
+      const images: ProjectReferenceImage[] = files.filter((file) => file.kind === "image").map((file) => ({
+        id: `ref-image-${crypto.randomUUID()}`, name: file.name, relativePath: file.relativePath, sourcePath: file.sourcePath,
+      }));
+      const refmods = files.filter((file) => file.kind === "refmod").map((file) => ({
+        id: `refmod-${crypto.randomUUID()}`, name: file.name, relativePath: file.relativePath, sourcePath: file.sourcePath, strength: 1, copies: 1,
+      }));
+      update(target.id, {
+        ...(clip ? { kind: "video", relativePath: null, sourcePath: clip.sourcePath, video } : {}),
+        images: [...(clip ? referenceImages(target) : target.images ?? []), ...images],
+        ...(refmods.length ? { refmods: [...(target.refmods ?? []), ...refmods], iconRelativePath: undefined } : {}),
+      });
     } catch (reason) { setImportError(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setImportingVideo(false); }
+    finally { setImportingFiles(false); }
   };
   const createEmptyReference = () => {
     addTextReference(pickerType === "custom" ? "Uncategorized" : `New ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`, "", pickerType, pickerSubcategory === "all" ? "" : pickerSubcategory);
@@ -218,6 +209,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   asset={{ id: ref.id, kind: "video", name: ref.name, sourcePath: ref.sourcePath, relativePath: ref.relativePath, mimeType: "video/mp4", createdAt: ref.createdAt }}
                   posterTimeSeconds={0}
                 /></span>
+              : ref.refmods?.length && ref.iconRelativePath
+                ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
               : cover
               ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={cover.relativePath} sourcePath={cover.sourcePath} alt={cover.name} /></span>
               : ref.iconRelativePath
@@ -225,9 +218,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               : presetIcon
                 ? <span className="reference-art reference-art--photo"><PresetIcon preset={presetIcon} /></span>
               : <span className="reference-copy-art"><FileText size={26} /></span>}
-            <span className="reference-card__body"><span><b>{ref.name}</b>{(images.length > 0 || ref.kind === "video" || ref.kind === "audio") && <small>{referenceKindLabel(ref)}</small>}</span>{isReferenceDescribed(ref)
+            <span className="reference-card__body"><span><b>{ref.name}</b>{(images.length > 0 || ref.refmods?.length || ref.kind === "video" || ref.kind === "audio") && <small>{referenceKindLabel(ref)}</small>}</span>{isReferenceDescribed(ref)
               ? <p>{ref.description}</p>
-              : <p className="reference-card__incomplete">{ref.kind === "video" ? "The clip is sent as a reference. Add a prompt to describe what to keep." : images.length > 0
+              : <p className="reference-card__incomplete">{ref.refmods?.length ? "Pre-encoded reference. Add a prompt to describe what to keep." : ref.kind === "video" ? "The clip is sent as a reference. Add a prompt to describe what to keep." : images.length > 0
                 ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
                 : "Not described yet — it won’t be used until you add a definition."}</p>}<span className="use-tags"><i>{referenceTypeLabel(referenceType(ref))}</i></span></span>
           </button>;
@@ -273,7 +266,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
             {selectedImages.length === 0 && !selected.iconRelativePath && !selectedPresetIcon && <em>{referenceKindLabel(selected)}</em>}
-            {selectedImages.length === 0 && onRegenerateIcon && <button
+            {selectedImages.length === 0 && !selected.refmods?.length && onRegenerateIcon && <button
               type="button"
               className="reference-icon-refresh"
               aria-label="Regenerate reference icon"
@@ -289,10 +282,30 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           <div className="reference-fields">
             <label><span>Prompt</span><textarea value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
             <div className="reference-fields__actions">
-              <button className="secondary-button" onClick={() => void addImages()}><ImagePlus size={16} /> Add images</button>
-              <button className="secondary-button" disabled={importingVideo} onClick={() => void addVideo()}><Video size={16} /> {importingVideo ? "Importing video…" : selected.kind === "video" ? "Replace video" : "Add video"}</button>
+              <button className="secondary-button" disabled={importingFiles} onClick={() => void addFiles()}><ImagePlus size={16} /> {importingFiles ? "Adding files…" : "Add file"}</button>
             </div>
           </div>
+          {Boolean(selected.refmods?.length) && <section className="reference-refmods" aria-label="Refmod attachments">
+            <h3>Refmods</h3>
+            <p>Requires a Ref2VA generator. Strength 0 disables a refmod. More copies use more GPU memory.</p>
+            {selected.refmods!.map((refmod) => <div key={refmod.id}>
+              <b>{refmod.name}</b>
+              <label>Strength<input aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
+                const strength = Number(event.target.value);
+                if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
+              }} /></label>
+              <label>Copies<input aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
+                const copies = Number(event.target.value);
+                if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
+              }} /></label>
+              <button className="secondary-button" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.filter((entry) => entry.id !== refmod.id) })}><Trash2 size={16} /> Remove {refmod.name}</button>
+            </div>)}
+            {selected.iconRelativePath && <ReferenceImage folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} refmod icon`} />}
+            {onRegenerateIcon && <button className="secondary-button" disabled={!activeReferenceRefmods(selected).length || pendingIconIds.has(selected.id)} onClick={() => {
+              setIconError(null);
+              try { onRegenerateIcon(selected.id); } catch (reason) { setIconError(String(reason)); }
+            }}><RefreshCw size={16} /> {pendingIconIds.has(selected.id) ? "Rendering icon…" : "Render icon with refmod"}</button>}
+          </section>}
           {selectedLocation && <section className="reference-location-settings" aria-label="Location settings">
             {LOCATION_SETTING_GROUPS.map((group) => <label key={group.id} className="reference-location-settings__group">
               <span>{group.label}</span>

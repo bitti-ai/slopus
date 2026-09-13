@@ -252,6 +252,18 @@ export const projectReferenceImageSchema = z.object({
   }
 });
 
+export const projectReferenceRefmodSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1),
+  relativePath: projectRelativePathSchema.nullish(),
+  sourcePath: externalPathSchema.nullish(),
+  strength: z.number().finite().min(0).max(1).default(1),
+  copies: z.number().int().min(1).max(10).default(1),
+}).superRefine((refmod, context) => {
+  checkOneLocation(refmod, context, `Refmod '${refmod.id}'`);
+  if (!refmod.relativePath && !refmod.sourcePath) context.addIssue({ code: z.ZodIssueCode.custom, path: ["sourcePath"], message: "A refmod needs a file." });
+});
+
 export const projectReferenceSchema = z.object({
   id: idSchema,
   // `image` remains readable for legacy projects. New pictures live in
@@ -269,6 +281,7 @@ export const projectReferenceSchema = z.object({
   // written definition can carry any number of images, and an image-only
   // reference is simply a definition whose description is still blank.
   images: z.array(projectReferenceImageSchema).optional(),
+  refmods: z.array(projectReferenceRefmodSchema).optional(),
   video: z.object({
     startSeconds: z.number().finite().min(0),
     durationSeconds: z.number().finite().min(2).max(15),
@@ -285,6 +298,11 @@ export const projectReferenceSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["video"], message: "Clip settings require a video reference." });
   }
   const imageIds = new Set<string>();
+  const refmodIds = new Set<string>();
+  for (const refmod of reference.refmods ?? []) {
+    if (refmodIds.has(refmod.id)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["refmods"], message: `Duplicate refmod id '${refmod.id}'.` });
+    refmodIds.add(refmod.id);
+  }
   for (const image of reference.images ?? []) {
     if (imageIds.has(image.id)) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["images"], message: `Reference '${reference.id}' has two images with the id '${image.id}'.` });
@@ -556,6 +574,7 @@ export const clipLook = (clip: TimelineClip): ClipLook => clip.look ?? DEFAULT_C
 export const clipTransition = (clip: TimelineClip): ClipTransition => clip.transition ?? DEFAULT_CLIP_TRANSITION;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
 export type ProjectReferenceImage = z.infer<typeof projectReferenceImageSchema>;
+export type ProjectReferenceRefmod = z.infer<typeof projectReferenceRefmodSchema>;
 export type ProjectReference = z.infer<typeof projectReferenceSchema>;
 export type GenerationJob = z.infer<typeof generationJobSchema>;
 
@@ -644,8 +663,18 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  An image qualifies on its file alone: it can be sent to the engine and cited
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
-  return referenceImages(reference).length > 0 || (reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)) || isReferenceDescribed(reference);
+  return referenceImages(reference).length > 0 || (reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)) || activeReferenceRefmods(reference).length > 0 || isReferenceDescribed(reference);
 }
+
+export const activeReferenceRefmods = (reference: ProjectReference): ProjectReferenceRefmod[] =>
+  (reference.refmods ?? []).filter((refmod) => refmod.strength > 0);
+
+/** Refmods follow ordinary references, in attachment order. They never consume
+ * Picture/Video labels or run a reference encoder. */
+export const referenceRefmodInputs = (folderPath: string, references: ProjectReference[]) =>
+  references.flatMap(activeReferenceRefmods).map((refmod) => ({
+    path: projectItemPath(folderPath, refmod)!, strength: refmod.strength, copies: refmod.copies,
+  }));
 
 /** Reference guide §2.1: `<Subject N>` is VISIBLE content. A reference tagged
  *  only "audio" is a note about sound, so compiling it into subject_definitions
@@ -873,6 +902,7 @@ export interface SceneGenerationInput {
   canvasHeight: number;
   referencePaths: readonly string[];
   referenceVideos?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }[];
+  refmods?: readonly { path: string; strength: number; copies: number }[];
   previousSceneId?: string;
 }
 
@@ -894,6 +924,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
     ...(input.referenceVideos?.length ? { referenceVideos: input.referenceVideos } : {}),
+    ...(input.refmods?.length ? { refmods: input.refmods } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     shots,
   });
@@ -1088,6 +1119,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const video = videoNumbers.get(reference.id);
     const label = referenceLabel(reference, index);
     const lead = index === 0 ? "" : "\n";
+    if (!detail && pictures.length === 0 && !video && activeReferenceRefmods(reference).length) {
+      return [frame(`${lead}${label} uses the attached pre-encoded reference.`)];
+    }
     if (pictures.length === 0 && !video) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
     const pictureList = listOf([...pictures.map((picture) => `<Picture ${picture}>`), ...(video ? [`<Video ${video}>`] : [])]);
     return [

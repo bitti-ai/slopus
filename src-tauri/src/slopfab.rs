@@ -127,6 +127,15 @@ pub struct GenerationRequest {
     pub reference_paths: Vec<String>,
     #[serde(default)]
     pub reference_video_ids: Vec<String>,
+    #[serde(default)]
+    pub refmods: Vec<RefmodInput>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RefmodInput {
+    pub path: String,
+    pub strength: f32,
+    pub copies: u32,
 }
 
 impl GenerationRequest {
@@ -710,6 +719,14 @@ fn configure_request(
                 .attach(handle, &configuration.dll_path)?;
         }
     }
+    for refmod in &request.refmods {
+        if refmod.path.trim().is_empty() || !refmod.strength.is_finite() || !(0.0..=1.0).contains(&refmod.strength)
+            || !(1..=10).contains(&refmod.copies) {
+            return Err("Refmods need a path, strength 0 to 1 and copies 1 to 10.".into());
+        }
+        if refmod.strength == 0.0 { continue; }
+        api.add_refmod(handle, Path::new(&refmod.path), refmod.strength, refmod.copies as i32)?;
+    }
     Ok(())
 }
 
@@ -938,6 +955,7 @@ fn write_reference_icon(
         canvas_width: crate::reference_icons::RENDER_SIZE as i32,
         canvas_height: crate::reference_icons::RENDER_SIZE as i32,
         reference_paths: Vec::new(),
+        refmods: Vec::new(),
         reference_video_ids: Vec::new(),
     };
     let handle = RequestHandle::new(api)?;
@@ -1279,6 +1297,7 @@ mod ffi {
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
         add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
+        add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
         set_schedule: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
         add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
         set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
@@ -1376,6 +1395,9 @@ mod ffi {
                     ),
                     add_lora: library
                         .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>(b"slopfab_request_add_lora\0")
+                        .ok().map(|symbol| *symbol),
+                    add_refmod: library
+                        .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(b"slopfab_request_add_refmod\0")
                         .ok().map(|symbol| *symbol),
                     set_schedule: library
                         .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_schedule\0")
@@ -1541,6 +1563,11 @@ mod ffi {
             let path = path_cstring(path)?;
             self.error(unsafe { add(r, path.as_ptr(), strength) })
         }
+        pub fn add_refmod(&self, r: *mut Request, path: &Path, strength: f32, copies: i32) -> Result<(), String> {
+            let add = self.add_refmod.ok_or("This slopfab.dll does not support refmods. Install a build with the refmod API (1.8 or later).")?;
+            let path = path_cstring(path)?;
+            self.error(unsafe { add(r, path.as_ptr(), strength, copies) })
+        }
         pub fn set_taomate_schedule(&self, r: *mut Request) -> Result<(), String> {
             let set = self.set_schedule.ok_or("This slopfab.dll does not support the TaoMate three-step schedule.")?;
             self.error(unsafe { set(r, 1) })
@@ -1674,6 +1701,54 @@ mod ffi {
 mod tests {
     use super::*;
     #[test]
+    fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
+        let configuration = Configuration::from_settings(&BTreeMap::new());
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("person.safetensors");
+        let header = serde_json::json!({
+            "__metadata__": { "refmod_meta": serde_json::json!({ "kind": "image", "name": "Person", "_format_version": 4 }).to_string() },
+            "latent": { "dtype": "F32", "shape": [1, 24, 1, 2, 2], "data_offsets": [0, 384] }
+        }).to_string();
+        let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+        bytes.extend_from_slice(header.as_bytes());
+        for _ in 0..96 { bytes.extend_from_slice(&0.25_f32.to_le_bytes()); }
+        std::fs::write(&file, bytes).unwrap();
+        let mut request = GenerationRequest {
+            job_id: "refmod-test".into(), prompt: "A portrait.".into(), still_image: true, frames: 1,
+            steps: 20, seed: 1, canvas_width: 768, canvas_height: 768,
+            reference_paths: Vec::new(), reference_video_ids: Vec::new(),
+            refmods: vec![RefmodInput { path: file.to_string_lossy().into_owned(), strength: 0.7, copies: 2 }],
+        };
+        let probe = RequestHandle::new(&api).unwrap();
+        let added = api.add_refmod(probe.0, &file, 0.7, 2);
+        if let Err(error) = &added {
+            assert!(error.contains("does not support refmods"), "{error}");
+            eprintln!("Refmod export not yet available in the installed DLL; checked compatibility error.");
+            assert!(configure_request(&api, probe.0, &request, &configuration, ComputePlatform::Vulkan, false).unwrap_err().contains("does not support refmods"));
+        } else {
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                for still_image in [false, true] {
+                    request.still_image = still_image;
+                    request.frames = if still_image { 1 } else { 120 };
+                    for include_models in [false, true] {
+                        let handle = RequestHandle::new(&api).unwrap();
+                        configure_request(&api, handle.0, &request, &configuration, platform, include_models).unwrap();
+                        let plan = api.resolve(handle.0).unwrap();
+                        assert!(plan.aligned_frames >= request.frames);
+                    }
+                }
+            }
+        }
+        request.refmods[0].strength = 0.0;
+        std::fs::remove_file(&file).unwrap();
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Vulkan, true).unwrap();
+        request.refmods[0].copies = 11;
+        assert!(configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Vulkan, false).is_err());
+    }
+
+    #[test]
     fn ordered_loras_and_taomate_schedule_reach_cuda_and_vulkan_requests() {
         let root = tempfile::tempdir().unwrap();
         let paths = [root.path().join("style.safetensors"), root.path().join("TaoMate.safetensors")];
@@ -1695,6 +1770,7 @@ mod tests {
             frames: 120, still_image: false, steps: 20, seed: 1,
             canvas_width: 736, canvas_height: 416,
             reference_paths: Vec::new(), reference_video_ids: Vec::new(),
+            refmods: Vec::new(),
         };
         for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
             for include_models in [false, true] {
@@ -1733,6 +1809,7 @@ mod tests {
                 frames: 120, still_image: false, steps: 12, seed: 1,
                 canvas_width: 736, canvas_height: 416,
                 reference_paths: Vec::new(), reference_video_ids: vec![id.clone()],
+                refmods: Vec::new(),
             };
             let configuration = Configuration::from_settings(&settings);
             let api = ffi::Api::load(&configuration.dll_path)?;

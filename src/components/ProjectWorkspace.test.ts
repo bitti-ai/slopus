@@ -27,7 +27,7 @@ afterEach(() => {
 
 /** Runs `body` with the app believing it is inside the desktop shell, so the
  *  REAL Tauri import path executes instead of the browser fallback. */
-async function asDesktopApp(importedImage: { name: string; relativePath: string } | Array<{ name: string; relativePath: string }>, body: () => void | Promise<void>) {
+async function asDesktopApp(importedImage: { name: string; relativePath: string } | Array<{ kind?: "image"; name: string; relativePath: string }>, body: () => void | Promise<void>) {
   const { invoke } = await import("@tauri-apps/api/core");
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.mocked(invoke).mockResolvedValue(importedImage);
@@ -1176,7 +1176,7 @@ describe("project workspace timecode", () => {
     // which is exactly why this shipped.
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const onChange = vi.fn();
-    await asDesktopApp([{ name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }], async () => {
+    await asDesktopApp([{ kind: "image", name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }], async () => {
       const view = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
       fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
       const dialog = screen.getByRole("dialog", { name: "Add a reference" });
@@ -1185,7 +1185,7 @@ describe("project workspace timecode", () => {
       const withReference = onChange.mock.calls[0][0];
       view.rerender(createElement(ReferencesView, { config: withReference, folderPath: "C:\\Ceramic Lamp", onChange }));
       onChange.mockClear();
-      fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add file" }));
       await waitFor(() => expect(onChange).toHaveBeenCalled());
     });
 

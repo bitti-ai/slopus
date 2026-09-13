@@ -1,7 +1,7 @@
 # Video references
 
 In **References**, choose **Add a reference → Other → New** to create an
-**Uncategorized** reference, then choose **Add video** in its details. Video
+**Uncategorized** reference, then choose **Add file** in its details. Video
 can also be attached to an existing reference. The reference card shows the
 video's first source frame, including after reopening the project; replacing
 the video updates the icon. MP4, M4V, and MOV containers are accepted; the computer's WebCodecs

@@ -321,8 +321,8 @@ describe("Reference type presets", () => {
   it("attaches multiple images to a new product without changing its category or prompt", async () => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     vi.mocked(invoke).mockResolvedValue([
-      { name: "front", relativePath: "references/front.png" },
-      { name: "side", relativePath: "references/side.png" },
+      { kind: "image", name: "front", relativePath: "references/front.png" },
+      { kind: "image", name: "side", relativePath: "references/side.png" },
     ]);
     const state = setup();
 
@@ -330,10 +330,10 @@ describe("Reference type presets", () => {
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Product" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "New" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add images" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add file" }));
 
     await waitFor(() => expect(state.latest().references[0].images).toHaveLength(2));
-    expect(invoke).toHaveBeenCalledWith("choose_reference_images", { folderPath: "C:\\\\project" });
+    expect(invoke).toHaveBeenCalledWith("choose_reference_files", { folderPath: "C:\\\\project" });
     expect(state.latest().references[0]).toMatchObject({
       kind: "text",
       name: "New product",
