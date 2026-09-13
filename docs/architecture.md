@@ -21,6 +21,8 @@ project-folder/
 
 The JSON document is versioned and includes project metadata, canvas settings, ordered timeline tracks and clips, reusable references, generation jobs, agent conversation, and provider settings. Runtime-only state never belongs in the file.
 
+The top-level `generationType` identifies the project's purpose independently of its media assets. Its values are `video`, `image`, `3d`, `music`, and `speech`. New projects currently write `"generationType": "video"`; the other values are reserved for future generation workflows and do not enable those workflows yet. Both the frontend and native storage preserve this field when reading and saving. Schema version 1 files without it default to `video` and gain the explicit field on their next save. Explicit null or unrecognized values are rejected.
+
 ## Agent boundary
 
 Providers are subprocess adapters with a shared request/event/result contract. Claude Code runs non-interactively with `--print --output-format stream-json` (never `--bare`, which reads neither OAuth nor the keychain and so rejects every subscription login); Codex runs non-interactively with `codex exec --ephemeral --ignore-user-config --json`. Slopus owns process lifecycle, normalized streaming events, cancellation, session history, and schema validation. Each provider receives the complete validated project document as read-only context, including fields the agent cannot modify. Machine-injected endpoint credentials are removed because they are not project data. Provider output is treated as an untrusted proposal until it validates against the project schema.

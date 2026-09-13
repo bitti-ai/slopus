@@ -97,6 +97,7 @@ describe("project schema", () => {
     });
     expect(parseProjectConfig(project)).toEqual(project);
     expect(project.schemaVersion).toBe(1);
+    expect(project.generationType).toBe("video");
     // Three audiovisual layers, numbered rather than named after a job:
     // the seed says where a track sits, not what the user must put on it.
     expect(project.timeline.tracks.map((track) => track.name)).toEqual(["Track 1", "Track 2", "Track 3"]);
@@ -111,6 +112,23 @@ describe("project schema", () => {
     expect(project.generationJobs[0].status).toBe("draft");
     expect(project).not.toHaveProperty("agentConversation");
     expect(project.providerSettings).toEqual({});
+  });
+
+  it("defaults legacy projects to video and writes their type on the next save", () => {
+    expect(createdFixture).not.toHaveProperty("generationType");
+    const migrated = parseProjectConfig(createdFixture);
+    expect(migrated.generationType).toBe("video");
+    expect(JSON.parse(JSON.stringify(migrated)).generationType).toBe("video");
+  });
+
+  it.each(["video", "image", "3d", "music", "speech"])("preserves the %s project type through JSON", (generationType) => {
+    const project = parseProjectConfig({ ...createdFixture, generationType });
+    expect(project.generationType).toBe(generationType);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(project)))).toEqual(project);
+  });
+
+  it.each([null, "", "unknown", "Video", 3])("rejects an invalid explicit project type: %s", (generationType) => {
+    expect(() => parseProjectConfig({ ...createdFixture, generationType })).toThrow();
   });
 
   it("migrates legacy audio lanes onto canonical numbered tracks", () => {
@@ -630,6 +648,7 @@ describe("project schema", () => {
 
   it("parses the complete cross-layer fixture while dropping derived project state", () => {
     const expected = structuredClone(completeFixture) as Record<string, unknown>;
+    expected.generationType = "video";
     delete expected.agentConversation;
     for (const job of expected.generationJobs as Array<Record<string, unknown>>) delete job.compiledPrompt;
     const expectedTimeline = expected.timeline as { tracks: ProjectConfig["timeline"]["tracks"] };

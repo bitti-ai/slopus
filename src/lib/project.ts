@@ -7,6 +7,10 @@ export const PROJECT_FILE_NAME = "slopus.json";
  *  ever written. */
 export const LEGACY_PROJECT_FILE_NAMES = ["polstudio.json", "pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
+/** Project purpose, independent of the kinds of media it contains.
+ * Non-video values reserve format support for future generation workflows. */
+export const generationTypeSchema = z.enum(["video", "image", "3d", "music", "speech"]);
+export type GenerationType = z.infer<typeof generationTypeSchema>;
 export const DEFAULT_GENERATION_STEPS = 20;
 /** Slopfab's native generation clock. Project frame rate is an editing/export
  * target; higher rates are produced later by interpolation and retiming. */
@@ -502,6 +506,7 @@ export const providerSettingsSchema = z.record(idSchema, providerSettingSchema);
 
 export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
+  generationType: generationTypeSchema.default("video"),
   id: idSchema,
   name: z.string().min(1).max(120),
   createdAt: isoDateSchema,
@@ -1308,6 +1313,7 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
   const brief = input.prompt.trim();
   return projectConfigSchema.parse({
     schemaVersion: CURRENT_SCHEMA_VERSION,
+    generationType: "video",
     id: crypto.randomUUID(),
     name: input.name.trim(),
     createdAt: now,

@@ -38,10 +38,26 @@ const PROJECT_ROOT_DIRECTORIES: [&str; 5] =
     ["media", "references", "thumbnails", "cache", "exports"];
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Project purpose, not the types of media it contains. Only video projects
+/// can currently be created; the other values reserve future format support.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum GenerationType {
+    #[default]
+    Video,
+    Image,
+    #[serde(rename = "3d")]
+    ThreeD,
+    Music,
+    Speech,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectConfig {
     schema_version: u32,
+    #[serde(default)]
+    generation_type: GenerationType,
     id: String,
     name: String,
     created_at: String,
@@ -3456,6 +3472,51 @@ mod tests {
         rejects("agent message createdAt", |config| {
             config.agent_conversation.messages[0].created_at = "2026-01-01T00:11:00".into();
         });
+    }
+
+    #[test]
+    fn legacy_project_defaults_to_video_and_persists_its_type() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = include_str!("../../fixtures/project-v1-created.json");
+        assert!(serde_json::from_str::<serde_json::Value>(legacy)
+            .unwrap().get("generationType").is_none());
+        fs::write(root.path().join(PROJECT_FILE_NAME), legacy).unwrap();
+        let opened = read_project(root.path()).unwrap();
+        assert_eq!(opened.config.generation_type, GenerationType::Video);
+        write_project(root.path(), &opened.config).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(
+            &fs::read(root.path().join(PROJECT_FILE_NAME)).unwrap(),
+        ).unwrap();
+        assert_eq!(saved["generationType"], "video");
+    }
+
+    #[test]
+    fn generation_types_survive_create_save_and_reopen() {
+        for generation_type in ["video", "image", "3d", "music", "speech"] {
+            let root = tempfile::tempdir().unwrap();
+            let mut value = serde_json::to_value(created_fixture()).unwrap();
+            value["generationType"] = serde_json::json!(generation_type);
+            let config: ProjectConfig = serde_json::from_value(value).unwrap();
+            let created = create_project_in(root.path(), &config).unwrap();
+            let folder = Path::new(&created.folder_path);
+            let opened = read_project(folder).unwrap();
+            write_project(folder, &opened.config).unwrap();
+            let reopened = read_project(folder).unwrap();
+            assert_eq!(reopened.config.generation_type, config.generation_type);
+            assert_eq!(serde_json::to_value(reopened.config).unwrap()["generationType"], generation_type);
+        }
+    }
+
+    #[test]
+    fn invalid_explicit_generation_types_are_rejected() {
+        for generation_type in [
+            serde_json::Value::Null, serde_json::json!(""), serde_json::json!("unknown"),
+            serde_json::json!("Video"), serde_json::json!(3),
+        ] {
+            let mut value = serde_json::to_value(created_fixture()).unwrap();
+            value["generationType"] = generation_type;
+            assert!(serde_json::from_value::<ProjectConfig>(value).is_err());
+        }
     }
 
     #[test]

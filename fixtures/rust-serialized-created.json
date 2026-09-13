@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "generationType": "video",
   "id": "project-created-1",
   "name": "Freshly created project",
   "createdAt": "2026-01-01T00:00:00.000Z",
