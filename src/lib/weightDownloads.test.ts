@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
-import { downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
+import { cancelWeightDownload, downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
 import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
@@ -141,7 +141,9 @@ it.each([0, 12, 20, 32])("downloads Singularity with four steps and the shared w
   vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
     ? (vram ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : []) : original(command, args));
   await downloadTemplateWeights("minimax-h3-singularity");
-  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 5, files: 5, error: null });
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: TURBO_LORA.url }));
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
   }));
@@ -154,6 +156,63 @@ it.each([0, 12, 20, 32])("downloads Singularity with four steps and the shared w
   expect(templateNeedsDownload(template)).toBe(false);
   saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
   expect(defaultGeneratorTemplate().defaultSteps).toBe(4);
+});
+
+it("reuses downloaded template LoRAs and restores readiness when a shared adapter goes missing", async () => {
+  await downloadLora(TURBO_LORA.id);
+  vi.mocked(invoke).mockClear();
+  await downloadTemplateWeights("minimax-h3-singularity");
+  expect(getWeightDownloadState()).toMatchObject({ completed: 4, error: null });
+  expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: TURBO_LORA.url }));
+  const settings = loadGeneratorTemplateSettings();
+  const template = settings.templates.find(({ id }) => id === "minimax-h3-singularity")!;
+  saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
+  files.delete(loadLoras().find(({ id }) => id === TURBO_LORA.id)!.path);
+  await refreshDownloadedWeights();
+  expect(templateNeedsDownload(template)).toBe(true);
+  expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("default");
+  vi.mocked(invoke).mockClear();
+  await downloadTemplateWeights(template.id);
+  expect(getWeightDownloadState()).toMatchObject({ completed: 1, files: 1, error: null });
+  expect(templateNeedsDownload(template)).toBe(false);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")).toHaveLength(1);
+});
+
+it.each([{ enabled: false, strength: 1 }, { enabled: true, strength: 0 }])("skips inactive template LoRAs: %j", async (selection) => {
+  const template = createGeneratorTemplate();
+  template.loras = [{ loraId: TURBO_LORA.id, ...selection }];
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 6 });
+  expect(templateNeedsDownload(template)).toBe(false);
+  await downloadTemplateWeights(template.id);
+  expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
+  expect(getWeightDownloadState()).toMatchObject({ files: 0, error: null });
+});
+
+it("keeps generator progress and cancellation during its LoRA transfer, then retries only the missing adapter", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  let started!: () => void;
+  const downloadingLora = new Promise<void>((resolve) => { started = resolve; });
+  let rejectDownload!: (reason: Error) => void;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "download_weight" && (args as { url: string }).url === TURBO_LORA.url) {
+      return new Promise((_resolve, reject) => { rejectDownload = reject; started(); });
+    }
+    if (command === "cancel_weight_download") { rejectDownload(new Error("Download cancelled.")); return; }
+    return normal(command, args);
+  });
+  const pending = downloadTemplateWeights("minimax-h3-singularity");
+  await downloadingLora;
+  const state = getWeightDownloadState()!;
+  expect(state).toMatchObject({ templateId: "minimax-h3-singularity", currentLoraId: TURBO_LORA.id, completed: 4, files: 5, active: true });
+  expect(weightDownloadProgress({ ...state, downloaded: 50, total: 100 })).toBe(90);
+  expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates.find(({ id }) => id === state.templateId)!)).toBe(true);
+  await cancelWeightDownload();
+  await pending;
+  expect(getWeightDownloadState()).toMatchObject({ active: false, error: "Download cancelled." });
+  vi.mocked(invoke).mockImplementation(normal).mockClear();
+  await retryWeightDownload();
+  expect(getWeightDownloadState()).toMatchObject({ templateId: state.templateId, completed: 1, files: 1, error: null });
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")).toHaveLength(1);
 });
 
 it("replaces a URL being typed instead of accumulating partial download sources", () => {

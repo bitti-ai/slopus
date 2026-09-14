@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
-import { loadLoras, saveLoras } from "./loras";
+import { downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
 import { ENGINE_PATH_FIELDS, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
   type EnginePathId, type GeneratorTemplate, type WeightSource } from "./settings";
 
@@ -9,6 +9,7 @@ export interface WeightGpu { name: string; memoryBytes: number }
 export interface DownloadState {
   templateId: string;
   loraId?: string;
+  currentLoraId?: string;
   name?: string;
   field: EnginePathId | null;
   downloaded: number;
@@ -30,7 +31,7 @@ const publish = (next: DownloadState | null) => { state = next; subscribers.forE
 
 export function weightDownloadProgress(download: DownloadState): number {
   if (!download.files) return 0;
-  const current = (download.field || download.loraId) && download.total && download.total > 0
+  const current = (download.field || download.loraId || download.currentLoraId) && download.total && download.total > 0
     ? Math.min(1, Math.max(0, download.downloaded / download.total)) : 0;
   return Math.min(download.active ? 99 : 100, 100 * (download.completed + current) / download.files);
 }
@@ -63,6 +64,7 @@ export function refreshDownloadedWeights(): Promise<void> {
   if (!isTauri()) return Promise.resolve();
   if (refreshPending) return refreshPending;
   refreshPending = (async () => {
+    await refreshDownloadedLoras();
     const before = loadGeneratorTemplateSettings();
     const paths = [...new Set(before.templates.flatMap((template) => Object.values(template.sources ?? {}).flatMap((sources) => sources.flatMap((source) => source.downloadedPath ? [source.downloadedPath] : []))))];
     if (!paths.length) return;
@@ -110,7 +112,8 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
       if (!source) throw new Error(`No ${ENGINE_PATH_FIELDS.find((field) => field.id === id)?.label} download matches this GPU and its memory.`);
       return [{ field: id, source, originalPath: template.paths[id] }];
     });
-    publish({ ...state!, files: downloads.length });
+    const loraDownloads = downloadableTemplateLoras(template.loras);
+    publish({ ...state!, files: downloads.length + loraDownloads.length });
     unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
       if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
     });
@@ -134,6 +137,12 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
       saveGeneratorTemplateSettings({ ...current, templates });
       publish({ ...state!, completed: state!.completed + 1, field: null, downloaded: 0, total: null });
     }
+    for (const lora of loraDownloads) {
+      if (cancelled) throw new Error("Download cancelled.");
+      publish({ ...state!, currentLoraId: lora.id, downloaded: 0, total: null });
+      await transferLora(lora);
+      publish({ ...state!, completed: state!.completed + 1, currentLoraId: undefined, downloaded: 0, total: null });
+    }
     publish({ ...state!, active: false });
   } catch (reason) {
     publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });
@@ -146,6 +155,13 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
 export async function cancelWeightDownload() {
   cancelled = true;
   if (requestId) await invoke("cancel_weight_download", { requestId });
+}
+
+async function transferLora(lora: Lora): Promise<void> {
+  requestId = crypto.randomUUID();
+  const path = await invoke<string>("download_weight", { requestId, url: lora.url });
+  if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+  saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.url === lora.url && entry.path === lora.path ? { ...entry, path } : entry));
 }
 
 /** Uses the same native transfer, storage, cancellation and app-wide lock as weights. */
@@ -162,10 +178,7 @@ export async function downloadLora(loraId: string): Promise<void> {
       if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
     });
     if (cancelled) throw new Error("Download cancelled.");
-    requestId = crypto.randomUUID();
-    const path = await invoke<string>("download_weight", { requestId, url: lora.url });
-    if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
-    saveLoras(loadLoras().map((entry) => entry.id === loraId && entry.url === lora.url && entry.path === lora.path ? { ...entry, path } : entry));
+    await transferLora(lora);
     publish({ ...state!, completed: 1, active: false });
   } catch (reason) {
     publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });

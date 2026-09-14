@@ -87,7 +87,7 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
   const library = useLoras();
   const stepOverride = highestLoraStepOverride(value.filter((entry) => entry.enabled && entry.strength !== 0)
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
-  const available = library.filter((entry) => entry.path && !value.some(({ loraId }) => loraId === entry.id));
+  const available = library.filter((entry) => (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
   const update = (index: number, patch: Partial<TemplateLora>) => onChange(value.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
   const move = (index: number, delta: number) => {
     const next = [...value];
@@ -97,12 +97,13 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
   return <section className="template-loras" aria-labelledby="template-loras-heading">
     <h3 id="template-loras-heading">LoRAs <small>{value.filter((entry) => entry.enabled && entry.strength !== 0).length} active</small></h3>
     <p>Enable any number of adapters and arrange their order. Strength 0 disables an adapter.</p>
+    <p>Missing active LoRAs with download links are downloaded with the generator.</p>
     {value.map((entry, index) => {
       const lora = library.find(({ id }) => id === entry.loraId);
       const name = lora?.name ?? "Missing LoRA";
       return <div className="template-lora-row" key={entry.loraId}>
         <span>{index + 1}.</span>
-        <label className="lora-toggle"><input type="checkbox" checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(event) => update(index, { enabled: event.target.checked })} /> {name}{!lora?.path && " (file unavailable)"}</label>
+        <label className="lora-toggle"><input type="checkbox" checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(event) => update(index, { enabled: event.target.checked })} /> {name}{!lora?.path && (lora?.url ? " (download required)" : " (file unavailable)")}</label>
         <label>Strength<input type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength} onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
         <button className="icon-button" type="button" aria-label={`Move ${name} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={15} /></button>
         <button className="icon-button" type="button" aria-label={`Move ${name} down`} disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={15} /></button>

@@ -62,6 +62,12 @@ export function normalizeTemplateLoras(value: unknown): TemplateLora[] {
   }) : [];
 }
 
+export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[] {
+  const active = new Set(selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+  return loadLoras().filter((lora) => active.has(lora.id) && lora.url
+    && (!lora.path.trim() || /^https?:\/\//i.test(lora.path)));
+}
+
 export function resolveTemplateLoras(selection: TemplateLora[] = []) {
   const library = loadLoras();
   return selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => {
