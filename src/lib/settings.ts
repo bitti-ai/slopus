@@ -15,7 +15,7 @@
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, type TemplateLora } from "./loras";
+import { downloadableTemplateLoras, highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, type TemplateLora } from "./loras";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
  * ./theme.ts, which is separate only because index.html has to read the same
@@ -88,15 +88,18 @@ export const isDownloadUrl = (value: string): boolean => /^https?:\/\//i.test(va
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
   return ENGINE_PATH_FIELDS.some(({ id }) => isDownloadUrl(template.paths[id])
-    || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0));
+    || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
+    || downloadableTemplateLoras(template.loras).length > 0;
 }
 
 const GENERATOR_TEMPLATES_EVENT = "slopus:generator-templates-changed";
 export function subscribeGeneratorTemplates(listener: () => void) {
+  const unsubscribeLoras = subscribeLoras(listener);
   const storage = (event: StorageEvent) => { if (event.key === GENERATOR_TEMPLATES_KEY || event.key === null) listener(); };
   window.addEventListener(GENERATOR_TEMPLATES_EVENT, listener);
   window.addEventListener("storage", storage);
   return () => {
+    unsubscribeLoras();
     window.removeEventListener(GENERATOR_TEMPLATES_EVENT, listener);
     window.removeEventListener("storage", storage);
   };
@@ -190,6 +193,7 @@ export function minimaxSingularityTemplate(): GeneratorTemplate {
   const template = minimaxOriginalTemplate();
   const transformer = "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors";
   return { ...template, id: "minimax-h3-singularity", name: "Singularity", defaultSteps: 4,
+    loras: [{ loraId: TURBO_LORA.id, enabled: true, strength: 1 }],
     paths: { ...template.paths, transformer },
     sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
   };
@@ -198,7 +202,7 @@ export function minimaxSingularityTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 5,
+  catalogVersion: 6,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -244,7 +248,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -307,6 +311,13 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           const template = minimaxSingularityTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
           normalized.catalogVersion = 5;
+        }
+        if ((normalized.catalogVersion ?? 0) < 6) {
+          const singularity = normalized.templates.find(({ id }) => id === "minimax-h3-singularity");
+          if (singularity && !singularity.loras?.some(({ loraId }) => loraId === TURBO_LORA.id)) {
+            singularity.loras = [...(singularity.loras ?? []), { loraId: TURBO_LORA.id, enabled: true, strength: 1 }];
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 6 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;

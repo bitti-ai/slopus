@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { TURBO_LORA } from "./loras";
 import {
   agentEndpointProviderSettings,
   createGeneratorTemplate,
@@ -73,7 +74,7 @@ describe("generator templates", () => {
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
     expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(5);
+    expect(settings.catalogVersion).toBe(6);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -94,7 +95,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate()]);
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(5);
+    expect(settings.catalogVersion).toBe(6);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
@@ -105,6 +106,27 @@ describe("generator templates", () => {
     template.defaultSteps = 8;
     template.paths.transformer = "D:/Models/singularity.safetensors";
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 4 }));
+    expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
+  });
+
+  it("adds Turbo to saved Singularity once and preserves other adapters and settings", () => {
+    const template = minimaxSingularityTemplate();
+    template.defaultSteps = 8;
+    template.paths = { transformer: "main", textEncoder: "encoder", videoVae: "video", audioVae: "audio", tokenizer: "" };
+    template.loras = [{ loraId: "custom", enabled: false, strength: 0.5 }];
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 5 }));
+    const settings = loadGeneratorTemplateSettings();
+    expect(settings.templates).toEqual([{ ...template, loras: [...template.loras, { loraId: TURBO_LORA.id, enabled: true, strength: 1 }] }]);
+    expect(settings.defaultTemplateId).toBe("");
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+    saveGeneratorTemplateSettings({ ...settings, templates: [template] });
+    expect(loadGeneratorTemplateSettings().templates[0].loras).toEqual(template.loras);
+  });
+
+  it("preserves an existing disabled Turbo selection during migration", () => {
+    const template = minimaxSingularityTemplate();
+    template.loras = [{ loraId: TURBO_LORA.id, enabled: false, strength: 0.3 }];
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 5 }));
     expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
   });
 
@@ -127,7 +149,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(5);
+    expect(settings.catalogVersion).toBe(6);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -162,7 +184,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(5);
+    expect(settings.catalogVersion).toBe(6);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,

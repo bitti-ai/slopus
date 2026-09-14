@@ -9,7 +9,7 @@ import { loadGeneratorTemplateSettings } from "../lib/settings";
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
-import { loadLoras, TAOMATE_LORA } from "../lib/loras";
+import { loadLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -30,6 +30,24 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; });
+
+it("selects an undownloaded LoRA in a generator and downloads it from that generator", async () => {
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  expect(screen.getByRole("option", { name: "Turbo" })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: TURBO_LORA.id } });
+  expect(screen.getByLabelText("Enable Turbo")).toBeChecked();
+  expect(screen.getByText(/step count to 4/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 1, error: null }));
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
+  expect(screen.queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+  expect(screen.getByRole("radio", { name: "Use Default as the default generator" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Remove LoRA Turbo" }));
+  expect(await screen.findByRole("button", { name: "Download generator Default" })).toBeEnabled();
+  expect(screen.queryByRole("radio", { name: "Use Default as the default generator" })).not.toBeInTheDocument();
+});
 
 it("downloads TaoMate and persists manual adapters, activation, strength and order per template", async () => {
   const settings = render(<SettingsView onClose={() => undefined} />);

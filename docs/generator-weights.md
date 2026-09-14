@@ -13,7 +13,11 @@ Missing managed files become downloadable again. Removing a downloaded LoRA
 deletes its managed file; **Add Lora** opens an editor to link a named local file, and
 removing that library entry leaves the original file untouched.
 
-Open a generator template and use its **LoRAs** section to add available adapters.
+Open a generator template and use its **LoRAs** section to add local or downloadable adapters.
+Downloading the generator also downloads any missing active LoRAs with download links.
+Already downloaded adapters are reused; disabled and strength-zero adapters are skipped.
+The generator stays under **Download** until its model weights and active downloadable
+LoRAs are available. Progress, cancellation, and retry cover the entire download.
 Enable any number, adjust their strengths, and move them up or down. Disabled
 adapters and strength-zero entries are omitted; the remaining paths and strengths
 are passed to SlopFab in displayed order on both CUDA and Vulkan. SlopFab combines
@@ -45,6 +49,8 @@ References default to 20 steps.
 Singularity defaults to **4 steps** and uses
 [Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors](https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors)
 on all GPUs, with the same text encoder and VAEs as First/Last Frame.
+It also includes **Turbo**, enabled at strength **1** with its **4-step override**.
+Existing Singularity templates receive Turbo once, preserving any existing Turbo selection.
 All four text encoder downloads use the original Qwen3-VL 32B encoder on all GPUs.
 The incompatible 4B INT4 ConvRot option is removed from saved Minimax templates;
 templates using its downloaded file switch back to the original encoder, which
