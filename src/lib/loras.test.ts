@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
-import { loadLoras, saveLoras, TAOMATE_LORA } from "./loras";
+import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
@@ -40,10 +40,10 @@ it.each([0, 1, -3, 2.5, NaN, Infinity, 2147483648])("rejects invalid step overri
   expect(() => saveLoras([{ id: "bad", name: "Bad", path: "D:/bad.safetensors", stepOverride }])).toThrow("Step override must be a whole number");
 });
 
-it("starts with only TaoMate and preserves the local library", () => {
-  expect(loadLoras()).toEqual([TAOMATE_LORA]);
+it("starts with TaoMate and Turbo and preserves the local library", () => {
+  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA]);
   saveLoras([{ ...TAOMATE_LORA, path: "C:/weights/TaoMate.safetensors" }, { id: "style", name: "Style", path: "D:/style.safetensors" }]);
-  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style"]);
+  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo"]);
 });
 
 it("round-trips template order, enabled flags and strengths, and sends only active adapters", () => {

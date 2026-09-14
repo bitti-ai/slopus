@@ -14,6 +14,11 @@ export const TAOMATE_LORA: Lora = {
   url: "https://huggingface.co/CZMartin22/TaoMate-H3-3step-ComfyUI/resolve/main/TaoMate-H3-3step-ComfyUI.safetensors",
   stepOverride: 3,
 };
+export const TURBO_LORA: Lora = {
+  id: "turbo-4step", name: "Turbo", path: "",
+  url: "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+  stepOverride: 4,
+};
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -30,8 +35,9 @@ export function loadLoras(): Lora[] {
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
     }) : [];
     if (!ids.has(TAOMATE_LORA.id)) entries.unshift({ ...TAOMATE_LORA });
+    if (!ids.has(TURBO_LORA.id)) entries.push({ ...TURBO_LORA });
     return entries;
-  } catch { return [{ ...TAOMATE_LORA }]; }
+  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
