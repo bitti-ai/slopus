@@ -11,6 +11,7 @@ use tauri_plugin_dialog::DialogExt;
 mod agent;
 mod agent_commands;
 mod app_paths;
+mod app_settings;
 mod cuda_support;
 mod diagnostics;
 mod export;
@@ -2952,6 +2953,7 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager as _;
             let data_directory = app_paths::prepare(app.handle())?;
+            app_settings::ensure_file(&data_directory)?;
             let window_config = app.config().app.windows.first().ok_or_else(|| io::Error::other("Missing main window configuration"))?;
             tauri::WebviewWindowBuilder::from_config(app, window_config)?
                 .data_directory(data_directory)

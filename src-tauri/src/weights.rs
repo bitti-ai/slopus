@@ -43,21 +43,44 @@ fn destination_name(url: &Url) -> String {
     format!("{hash:016x}-{}", if filename.is_empty() { "weights.bin" } else { &filename })
 }
 
-fn writable_weights(parent: &Path) -> Result<PathBuf, String> {
-    let directory = parent.join("weights");
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+fn writable_weights(directory: &Path) -> Result<PathBuf, String> {
+    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
     let mut random = [0u8; 16];
     getrandom::fill(&mut random).map_err(|error| error.to_string())?;
     let probe = directory.join(format!(".write-check-{:x}", u128::from_le_bytes(random)));
     let file = OpenOptions::new().write(true).create_new(true).open(&probe).map_err(|error| error.to_string())?;
     drop(file);
     fs::remove_file(probe).map_err(|error| error.to_string())?;
-    Ok(directory)
+    Ok(directory.to_path_buf())
 }
 
-fn weights_directory(primary: &Path, fallback: &Path) -> Result<PathBuf, String> {
-    writable_weights(primary).or_else(|_| writable_weights(fallback))
-        .map_err(|error| format!("Could not create a writable weights folder: {error}"))
+fn weight_roots(custom: &[PathBuf], primary: PathBuf, fallback: PathBuf) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for root in custom.iter().cloned().chain([primary, fallback]) {
+        if !roots.contains(&root) { roots.push(root); }
+    }
+    roots
+}
+
+fn configured_weight_roots(app: &AppHandle) -> Result<Vec<PathBuf>, String> {
+    let data_directory = crate::app_paths::data_directory(app);
+    let settings = crate::app_settings::load(&data_directory)?;
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let primary = executable.parent().ok_or("Could not locate Slopus.exe.")?.join("weights");
+    let fallback = diagnostics::log_info().ok().and_then(|info| Path::new(&info.path).parent().map(|parent| parent.join("weights")))
+        .unwrap_or_else(|| data_directory.join("logs/weights"));
+    Ok(weight_roots(&settings.weight_folders, primary, fallback))
+}
+
+fn weights_directory(roots: &[PathBuf]) -> Result<PathBuf, String> {
+    let mut errors = Vec::new();
+    for root in roots {
+        match writable_weights(root) {
+            Ok(directory) => return Ok(directory),
+            Err(error) => errors.push(format!("{}: {error}", root.display())),
+        }
+    }
+    Err(format!("Could not create a writable weights folder: {}", errors.join("; ")))
 }
 
 fn cached_file(path: &Path, url: &Url) -> bool {
@@ -65,6 +88,16 @@ fn cached_file(path: &Path, url: &Url) -> bool {
         .and_then(|bytes| serde_json::from_slice::<CompletedFile>(&bytes).ok());
     metadata.is_some_and(|info| info.url == url.as_str() && info.bytes > 0
         && fs::metadata(path).is_ok_and(|file| file.is_file() && file.len() == info.bytes))
+}
+
+fn transfer_from_roots(url: &Url, roots: &[PathBuf], cancelled: &AtomicBool, progress: impl FnMut(u64, Option<u64>)) -> Result<String, String> {
+    if cancelled.load(Ordering::Relaxed) { return Err("Download cancelled.".into()); }
+    // Search every location before choosing a destination, including read-only caches.
+    for root in roots {
+        let path = root.join(destination_name(url));
+        if cached_file(&path, url) { return Ok(path.to_string_lossy().into_owned()); }
+    }
+    transfer(url, &weights_directory(roots)?, cancelled, progress)
 }
 
 fn transfer(url: &Url, directory: &Path, cancelled: &AtomicBool, mut progress: impl FnMut(u64, Option<u64>)) -> Result<String, String> {
@@ -133,15 +166,8 @@ pub async fn download_weight(app: AppHandle, downloads: State<'_, WeightDownload
     }
     let event_id = request_id.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let primary = executable.parent().ok_or("Could not locate Slopus.exe.")?;
-        // Try beside the executable first, even when diagnostics are unavailable.
-        let directory = writable_weights(primary).or_else(|_| {
-            let log = diagnostics::log_info()?;
-            let path = PathBuf::from(log.path);
-            weights_directory(primary, path.parent().ok_or("Could not locate the log directory.")?)
-        })?;
-        transfer(&url, &directory, &cancelled, |downloaded, total| {
+        let roots = configured_weight_roots(&app)?;
+        transfer_from_roots(&url, &roots, &cancelled, |downloaded, total| {
             let _ = app.emit("weight-download-progress", Progress { request_id: event_id.clone(), downloaded, total });
         })
     }).await.map_err(|error| error.to_string()).and_then(|result| result);
@@ -214,13 +240,9 @@ fn validate_removal(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn remove_downloaded_weights(paths: Vec<String>) -> Result<(), String> {
+pub async fn remove_downloaded_weights(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let mut roots = vec![executable.parent().ok_or("Could not locate Slopus.exe.")?.join("weights")];
-        if let Ok(info) = diagnostics::log_info() {
-            if let Some(parent) = Path::new(&info.path).parent() { roots.push(parent.join("weights")); }
-        }
+        let roots = configured_weight_roots(&app)?;
         let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         for path in &paths { validate_removal(path, &roots)?; }
         for path in paths {
@@ -270,7 +292,49 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let blocked = folder.path().join("blocked");
         fs::write(&blocked, b"file, not a directory").unwrap();
-        assert_eq!(weights_directory(&blocked, folder.path()).unwrap(), folder.path().join("weights"));
+        assert_eq!(weights_directory(&[blocked.join("weights"), folder.path().join("weights")]).unwrap(), folder.path().join("weights"));
+    }
+
+    #[test]
+    fn custom_folders_are_used_directly_in_order_with_default_fallbacks() {
+        let folder = tempfile::tempdir().unwrap();
+        let blocked = folder.path().join("blocked");
+        fs::write(&blocked, b"not a directory").unwrap();
+        let custom = folder.path().join("custom models");
+        let primary = folder.path().join("exe/weights");
+        let fallback = folder.path().join("logs/weights");
+        let roots = weight_roots(&[blocked.clone(), custom.clone(), custom.clone()], primary.clone(), fallback.clone());
+        assert_eq!(roots, vec![blocked, custom.clone(), primary.clone(), fallback.clone()]);
+        let url = server(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndata");
+        let downloaded = transfer_from_roots(&url, &roots, &AtomicBool::new(false), |_, _| {}).unwrap();
+        assert_eq!(Path::new(&downloaded).parent(), Some(custom.as_path()));
+        assert!(!custom.join("weights").exists());
+        assert!(!primary.exists());
+        assert!(validate_removal(Path::new(&downloaded), &roots).is_ok());
+        assert!(validate_removal(Path::new(&downloaded), &[primary.clone(), fallback.clone()]).is_err());
+        assert_eq!(weight_roots(&[], primary.clone(), fallback.clone()), vec![primary, fallback]);
+    }
+
+    #[test]
+    fn searches_all_folders_for_completed_files_before_creating_a_download_destination() {
+        let folder = tempfile::tempdir().unwrap();
+        let custom = folder.path().join("custom");
+        let primary = folder.path().join("exe/weights");
+        let fallback = folder.path().join("logs/weights");
+        fs::create_dir_all(&fallback).unwrap();
+        let roots = weight_roots(&[custom.clone()], primary.clone(), fallback.clone());
+        let url = server(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndata");
+        let downloaded = transfer(&url, &fallback, &AtomicBool::new(false), |_, _| {}).unwrap();
+        // The server accepts only one request; reuse must work without network access.
+        assert_eq!(transfer_from_roots(&url, &roots, &AtomicBool::new(false), |_, _| {}).unwrap(), downloaded);
+        assert!(!custom.exists());
+        assert!(!primary.exists());
+        fs::create_dir_all(&custom).unwrap();
+        let moved = custom.join(destination_name(&url));
+        fs::rename(&downloaded, &moved).unwrap();
+        fs::rename(Path::new(&downloaded).with_extension("complete.json"), moved.with_extension("complete.json")).unwrap();
+        assert_eq!(transfer_from_roots(&url, &roots, &AtomicBool::new(false), |_, _| {}).unwrap(), moved.to_string_lossy());
+        assert!(transfer_from_roots(&url, &roots, &AtomicBool::new(true), |_, _| {}).is_err());
     }
 
     #[test]

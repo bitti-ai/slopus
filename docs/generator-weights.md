@@ -74,6 +74,27 @@ Memory tiers account for the small amount of VRAM reserved by the driver.
 Click the template's download icon or **Download weights** in its editor to
 download missing weights. Files go into `weights` beside `Slopus.exe`. If that
 location cannot be written, Slopus uses a `weights` subfolder beside its log file.
+To use custom locations, edit `%LOCALAPPDATA%\Slopus\settings.json`, which is
+created automatically on startup:
+
+```json
+{
+  "weightFolders": ["D:\\Projects\\weights"]
+}
+```
+
+Each entry is an absolute path to the weight folder itself. Slopus checks custom
+folders in list order, then `weights` beside the executable, then the log folder's
+`weights` directory for an existing completed download. New downloads go to the
+first writable folder in that same order. These locations apply to both model
+weights and LoRAs. Changes take effect on the next download or removal without
+restarting. An empty list keeps the default locations.
+
+To move previously downloaded weights into a custom folder, move their matching
+`.complete.json` records with them so Slopus can recognize and reuse the files
+when you click Download. Only files with valid download records can be removed
+through the app. Other app preferences continue to use WebView2 localStorage.
+
 Downloads continue in the background when Settings is closed. Reopening Settings
 shows the current progress as a color fill across the generator's template row.
 The fill tracks completed files plus progress through the current file.
