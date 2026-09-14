@@ -54,6 +54,8 @@ For edits, return JSONL only: one compact JSON object per line, followed by one 
 
 Use existing stable IDs for updates and concise descriptive IDs for additions. Order dependent commands so their targets exist before use. Omit unchanged fields. The executor derives prompt mirrors, reference bindings, timestamps, and draft state. There are deliberately no commands for file paths, assets, provider settings, generated output, progress, project identity, or schema version. Never claim media was generated or an MP4 exists.
 
+Set usePreviousSceneLastFrame to true to continue the preceding Generator scene using its saved audio/video latents with 22 overlapping frames. Slopus saves those latents on each generation; the preceding scene must be generated first, or queued earlier with Generate All. The continued scene's seconds describe its new segment. This option replaces startFrame image conditioning and requires the same canvas dimensions as the source.
+
 Use project.set to change the open project's video settings, just like the Project settings popup opened by clicking its name:
 - aspectRatio: "16:9", "9:16", "1:1", or "4:5".
 - resolution: "416p", "544p", "640p", "768p", "1088p", or "1344p". These are stored resolution keys; the pixel dimensions depend on aspectRatio.

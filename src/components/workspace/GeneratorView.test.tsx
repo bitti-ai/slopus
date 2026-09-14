@@ -215,7 +215,7 @@ describe("Generator scene controls", () => {
 
   it("marks a linked scene yellow when its previous scene regenerates and clears it after regeneration", () => {
     const initial = project();
-    initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4" };
+    initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
     expect(screen.getByRole("option", { name: "Previous scene's last frame" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
@@ -226,32 +226,44 @@ describe("Generator scene controls", () => {
     generateSecond();
     const snapshot = JSON.parse(state.latest().generationJobs[1].generationSnapshot!);
     expect(snapshot.previousSceneId).toBe("scene-first");
-    expect(snapshot.referencePaths[0]).toContain("work-original.png");
+    expect(snapshot.continuationRelativePath).toBe("latents/work-original.safetensors");
     finishSecond();
     const second = () => screen.getByRole("region", { name: "Second scene" });
     expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "generating" } : job) });
     expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
     expect(second().querySelector(".scene-rule__status--changed")).not.toBeNull();
-    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-new.mp4" } : job) });
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-new.mp4", latentRelativePath: "latents/work-new.safetensors" } : job) });
     expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
     // Opening a saved project retains the dependency's recorded renderer inputs.
     state.replace(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))));
     expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
     generateSecond();
-    expect(JSON.parse(state.latest().generationJobs[1].generationSnapshot!).referencePaths[0]).toContain("work-new.png");
+    expect(JSON.parse(state.latest().generationJobs[1].generationSnapshot!).continuationRelativePath).toBe("latents/work-new.safetensors");
     finishSecond();
     expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
   });
 
   it("includes fixed-seed linked scenes when Generate All regenerates their source", () => {
     const initial = project();
-    initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42, outputRelativePath: `media/generated/work-${index}.mp4`, usePreviousSceneLastFrame: index === 1 }));
+    initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42, outputRelativePath: `media/generated/work-${index}.mp4`, latentRelativePath: `latents/work-${index}.safetensors`, usePreviousSceneLastFrame: index === 1 }));
     const state = setup(initial);
     fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
     expect(screen.getByRole("button", { name: "Generate All" })).toHaveAttribute("title", "Every fixed-seed scene is already up to date.");
     fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Rain" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
+  });
+
+  it("regenerates a completed source without latents when Generate All continues it", () => {
+    const initial = project();
+    initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42,
+      outputRelativePath: `media/generated/work-${index}.mp4`, usePreviousSceneLastFrame: index === 1 }));
+    const state = setup(initial);
+    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    // Simulate an older completed project: matching snapshots, but no archives.
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
     fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });

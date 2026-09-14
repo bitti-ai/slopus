@@ -95,6 +95,7 @@ export interface SlopfabGenerationRequest {
   referenceVideoIds?: string[];
   /** Resolved by the app queue before native submission. */
   previousSceneId?: string;
+  continuationRelativePath?: string;
 }
 
 export interface ResolvedPlan {
@@ -221,10 +222,11 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
   return isTauri() ? invoke<boolean>("cancel_agent_turn", { requestId }) : true;
 }
 
-export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<ResolvedPlan> {
+export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, config: ProjectConfig, folderPath?: string): Promise<ResolvedPlan> {
   request = { ...request, steps: generationStepsWithLoras(request.steps, config) };
-  if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config });
-  const alignedFrames = Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
+  if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config, folderPath });
+  const alignedFrames = request.continuationRelativePath ? Math.ceil(request.frames / 17) * 17
+    : Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
     canvasWidth: request.canvasWidth,
     canvasHeight: request.canvasHeight,
@@ -238,9 +240,9 @@ export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, conf
   };
 }
 
-export async function enqueueSlopfabGeneration(request: SlopfabGenerationRequest, config: ProjectConfig): Promise<void> {
+export async function enqueueSlopfabGeneration(request: SlopfabGenerationRequest, config: ProjectConfig, folderPath: string): Promise<void> {
   request = { ...request, steps: generationStepsWithLoras(request.steps, config) };
-  if (isTauri()) await invoke("enqueue_slopfab_generation", { request, config });
+  if (isTauri()) await invoke("enqueue_slopfab_generation", { request, config, folderPath });
 }
 
 export async function cancelSlopfabGeneration(jobId: string): Promise<boolean> {

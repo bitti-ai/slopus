@@ -448,6 +448,7 @@ export const generationJobSchema = z.object({
   startFrameReferenceId: idSchema.nullish(),
   endFrameReferenceId: idSchema.nullish(),
   usePreviousSceneLastFrame: z.boolean().nullish(),
+  latentRelativePath: projectRelativePathSchema.nullish(),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
   // existed has no key here at all, and must keep opening.
@@ -804,13 +805,13 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
 export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
   if (!job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
   const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
-  const id = `previous-frame-${job.id}`;
-  const resolved = { ...job, startFrameReferenceId: id };
-  const reference: ProjectReference = {
-    id, kind: "image", name: "Previous scene's last frame", description: "", intendedUse: [], createdAt: job.createdAt,
-    relativePath: previous?.outputRelativePath ? sceneLastFramePath(previous.outputRelativePath) : `cache/scene-last/pending-${job.id}.png`,
-  };
-  return { job: resolved, references: sceneGenerationReferences(resolved, [reference, ...config.references]), previousSceneId: previous?.id };
+  const resolved = { ...job, startFrameReferenceId: undefined };
+  return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
+    previousSceneId: previous?.id, continuationRelativePath: previous?.latentRelativePath ?? undefined };
+}
+
+export function generationLatentPath(jobId: string): string {
+  return `latents/${jobId}.safetensors`;
 }
 
 export function sceneLastFramePath(outputRelativePath: string): string {
@@ -904,6 +905,7 @@ export interface SceneGenerationInput {
   referenceVideos?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }[];
   refmods?: readonly { path: string; strength: number; copies: number }[];
   previousSceneId?: string;
+  continuationRelativePath?: string;
 }
 
 /** A stable record of everything sent to the renderer. Shot ids are retained
@@ -926,6 +928,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.referenceVideos?.length ? { referenceVideos: input.referenceVideos } : {}),
     ...(input.refmods?.length ? { refmods: input.refmods } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
+    ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
     shots,
   });
 }

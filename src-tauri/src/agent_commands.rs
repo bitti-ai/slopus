@@ -558,6 +558,7 @@ fn apply_command(
                 music: music.clone(),
                 clip_id: None,
                 output_relative_path: None,
+                latent_relative_path: None,
                 error: None,
                 created_at: now.clone(),
                 updated_at: now,

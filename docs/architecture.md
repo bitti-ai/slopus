@@ -57,6 +57,10 @@ The slopfab C API is loaded dynamically by the Rust backend. It resolves request
 
 The application must fail gracefully when the DLL, model files, WebCodecs, or WebGPU are unavailable. A missing runtime disables generation, never project editing.
 
+Every queued generation saves a unique `latents/<generation-id>.safetensors` archive inside its project using SlopFab C API 1.9's automatic save before VAE decoding. Completed scenes record `latentRelativePath` in `slopus.json`. Archives from earlier runs are retained. The “Previous scene's last frame” option continues the previous scene's saved audio/video latents with 22 overlapping frames; it no longer extracts an image. Generate All waits for the preceding scene and uses its newly saved archive. Older scenes without latents must be regenerated.
+
+Continuation archives contain the full cumulative sequence. Slopus streams only the newly added video frames and the corresponding audio suffix to WebCodecs, so separate scenes do not repeat their predecessors on the timeline. The requested scene length denotes new frames, rounded up to a multiple of 17 by SlopFab. Continuations must use the source canvas size and compatible H3 weights/VAEs; SlopFab validates the archive and canvas during planning.
+
 ## Independently judged slices
 
 1. Foundation: desktop shell, library, portable project persistence, schema, and always-visible agent prompt.
