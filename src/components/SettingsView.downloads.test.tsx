@@ -42,12 +42,35 @@ it("discovers Singularity's existing weights on opening Settings and downloads o
   render(<SettingsView onClose={() => undefined} />);
   await waitFor(() => expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-singularity")?.paths.transformer).toMatch(/^D:\/Projects\/weights\//));
   expect(screen.getByRole("button", { name: "Download generator Singularity" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Edit Singularity generator" })).toHaveTextContent("Needs Turbo LoRA");
   expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
   fireEvent.click(screen.getByRole("button", { name: "Download generator Singularity" }));
   expect(await screen.findByRole("radio", { name: "Use Singularity as the default generator" })).toBeEnabled();
   expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")).toEqual([
     ["download_weight", { requestId: expect.any(String), url: TURBO_LORA.url }],
   ]);
+});
+
+it("shows discovered model files as Found even when an active LoRA is missing", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  const cached = Object.fromEntries(Object.values(minimaxSingularityTemplate().paths).filter(Boolean)
+    .map((url) => [url, `D:/Projects/weights/${url.split('/').at(-1)}`]));
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "find_downloaded_weights") return Object.fromEntries((args as { urls: string[] }).urls.filter((url) => cached[url]).map((url) => [url, cached[url]]));
+    if (command === "slopfab_status") {
+      const options = (args as { settings: { slopfab: { options: Record<string, string> } } }).settings.slopfab.options;
+      const models = ["transformer", "textEncoder", "videoVae", "audioVae"].map((id) => ({ id, path: options[id], configured: Boolean(options[id]), available: Object.values(cached).includes(options[id]) }));
+      return { state: models.every(({ available }) => available) ? "ready" : "modelsMissing", dllPath: "slopfab.dll", version: "1.8.0", platform: "CUDA 13", detail: "Runtime loaded.", models };
+    }
+    return normal(command, args);
+  });
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Singularity generator" }));
+  await waitFor(() => expect(screen.getAllByText("Found")).toHaveLength(4));
+  expect(screen.queryByText("Checking this computer…")).not.toBeInTheDocument();
+  expect(screen.queryByText("Engine ready")).not.toBeInTheDocument();
+  expect(screen.getByText(/Download or locate LoRA Turbo/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Download weights" })).toBeEnabled();
 });
 
 it("selects an undownloaded LoRA in a generator and downloads it from that generator", async () => {

@@ -145,7 +145,18 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
  *  settings screen shows. */
 export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode, loras?: TemplateLora[]): Promise<SlopfabStatus> {
   if (!isTauri()) return DEMO_STATUS.slopfab;
-  return invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab: engineProviderSetting(settings, undefined, attention, loras) } });
+  let slopfab;
+  let adapterError: string | undefined;
+  try {
+    slopfab = engineProviderSetting(settings, undefined, attention, loras);
+  } catch (reason) {
+    // A missing adapter must not prevent checking the individual model files.
+    adapterError = reason instanceof Error ? reason.message : String(reason);
+    slopfab = engineProviderSetting(settings, undefined, attention, []);
+  }
+  const status = await invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab } });
+  return adapterError ? { ...status, state: status.state === "ready" ? "modelsMissing" : status.state,
+    detail: `${status.detail} ${adapterError}` } : status;
 }
 
 /** Opens the OS picker for one engine path. Returns null when the user cancels. */

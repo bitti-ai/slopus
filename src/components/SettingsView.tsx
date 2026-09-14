@@ -4,6 +4,7 @@ import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
 import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
+import { downloadableTemplateLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -16,7 +17,7 @@ import {
   loadDebugOptionsEnabled, saveDebugOptionsEnabled, subscribeDebugOptions,
   loadInferenceBackend, saveInferenceBackend, type AttentionMode, type InferenceBackend,
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
-  type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplateSettings,
+  type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplate, type GeneratorTemplateSettings,
 } from "../lib/settings";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
@@ -46,6 +47,13 @@ const stateLabel: Record<PathState, string> = {
   missing: "Not found on disk",
   download: "Download required",
 };
+
+function templateSummary(template: GeneratorTemplate): string {
+  const loras = downloadableTemplateLoras(template.loras);
+  const pendingModels = ENGINE_PATH_FIELDS.some(({ id }) => isDownloadUrl(template.paths[id])
+    || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0));
+  return `${template.defaultSteps} steps${loras.length && !pendingModels ? ` · Needs ${loras.map(({ name }) => name).join(", ")} LoRA${loras.length > 1 ? "s" : ""}` : ""}`;
+}
 
 /* The system option has to say what the computer is currently set to, or
    "Match this computer" is a promise the user cannot check. */
@@ -274,6 +282,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   const selectedTemplate = templateSettings.templates.find((template) => template.id === editingTemplateId)
     ?? defaultTemplate;
   const settings = selectedTemplate.paths;
+  const downloadedPathsKey = JSON.stringify(Object.values(selectedTemplate.sources ?? {}).flatMap((sources) => sources.map(({ downloadedPath }) => downloadedPath)));
   const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
   const generatorSections = [
     { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => !templateNeedsDownload(template)) },
@@ -317,7 +326,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     });
   };
 
-  useEffect(() => { probe(settings); }, [probe, editingTemplateId, templateSettings.defaultTemplateId, downloadState?.completed]);
+  useEffect(() => { probe(settings); }, [probe, editingTemplateId, templateSettings.defaultTemplateId, downloadState?.completed, downloadedPathsKey]);
 
   const updateSources = (id: EnginePathId, sources: WeightSource[]) => {
     const current = loadGeneratorTemplateSettings();
@@ -516,7 +525,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                     </label>}
                     <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
                       <Video size={16} aria-hidden="true" />
-                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? `Downloading · ${Math.floor(downloadPercent)}%` : `${template.defaultSteps} steps`}</small>
+                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? `Downloading · ${Math.floor(downloadPercent)}%` : templateSummary(template)}</small>
                     </button>
                     {templateNeedsDownload(template)
                       ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>
