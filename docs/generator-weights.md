@@ -18,6 +18,8 @@ Downloading the generator also downloads any missing active LoRAs with download 
 Already downloaded adapters are reused; disabled and strength-zero adapters are skipped.
 The generator stays under **Download** until its model weights and active downloadable
 LoRAs are available. Progress, cancellation, and retry cover the entire download.
+If only a LoRA remains, the generator row names it (for example, **Needs Turbo LoRA**).
+The editor checks and marks individual model files as **Found** even while an adapter is missing.
 Enable any number, adjust their strengths, and move them up or down. Disabled
 adapters and strength-zero entries are omitted; the remaining paths and strengths
 are passed to SlopFab in displayed order on both CUDA and Vulkan. SlopFab combines
