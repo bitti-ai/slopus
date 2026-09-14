@@ -34,17 +34,20 @@ are injected into runtime requests and are not saved into portable project files
 In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
 The bundled **First/Last Frame** (formerly **Minimax H3 Original**),
-**References**, and **First/Last Frame Fast** templates each download four model files. References has the same
+**References**, **First/Last Frame Fast**, and **Singularity** templates each download four model files. References has the same
 settings, with the `minimax_h3_ref2va_pruned_int8_convrot.safetensors` transformer
 in place of the First/Last Frame `minimax_h3_fl2va_pruned_int8_convrot.safetensors`.
 First/Last Frame Fast uses `minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors`
-and defaults to **6 steps**; its other settings are identical. The other two
-templates default to 20 steps.
-All three text encoder downloads use the original Qwen3-VL 32B encoder on all GPUs.
+and defaults to **6 steps**; its other settings are identical. First/Last Frame and
+References default to 20 steps.
+Singularity defaults to **4 steps** and uses
+[Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors](https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors)
+on all GPUs, with the same text encoder and VAEs as First/Last Frame.
+All four text encoder downloads use the original Qwen3-VL 32B encoder on all GPUs.
 The incompatible 4B INT4 ConvRot option is removed from saved Minimax templates;
 templates using its downloaded file switch back to the original encoder, which
 may need downloading. The old file is left on disk.
-All three templates use the hybrid W4A8 transformer at 20 GB or less
+First/Last Frame, References, and First/Last Frame Fast use the hybrid W4A8 transformer at 20 GB or less
 and their respective INT8 transformer above 20 GB; unknown hardware uses the W4A8 fallback.
 Other local weights and customized download variants are preserved.
 

@@ -134,6 +134,26 @@ it("downloads the fast transformer and retains its six-step default", async () =
   expect(templateNeedsDownload(template)).toBe(false);
 });
 
+it.each([0, 12, 20, 32])("downloads Singularity with four steps and the shared weights for %s GiB of VRAM", async (vram) => {
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
+    ? (vram ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : []) : original(command, args));
+  await downloadTemplateWeights("minimax-h3-singularity");
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
+    url: "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+  }));
+  for (const field of ["textEncoder", "videoVae", "audioVae"] as const) {
+    expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: minimaxOriginalTemplate().paths[field] }));
+  }
+  const settings = loadGeneratorTemplateSettings();
+  const template = settings.templates.find(({ id }) => id === "minimax-h3-singularity")!;
+  expect(template.paths.transformer).toBe("C:/Slopus/weights/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors");
+  expect(templateNeedsDownload(template)).toBe(false);
+  saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
+  expect(defaultGeneratorTemplate().defaultSteps).toBe(4);
+});
+
 it("replaces a URL being typed instead of accumulating partial download sources", () => {
   let template = createGeneratorTemplate();
   for (const value of ["https://", "https://e", "https://example.com/model"]) template = updateWeightPath(template, "transformer", value);
