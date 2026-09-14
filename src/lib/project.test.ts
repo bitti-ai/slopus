@@ -535,17 +535,18 @@ describe("project schema", () => {
     expect(compileGenerationJobPrompt(same, sceneGenerationReferences(same, references))).toContain("<Picture 1> is the last frame of the video.");
   });
 
-  it("resolves scene continuity from board order and the current rendered file", () => {
+  it("resolves scene continuity from board order and the current latent archive", () => {
     const config = parseProjectConfig(createdFixture);
-    const first = { ...config.generationJobs[0], outputRelativePath: "media/generated/work-first.mp4" };
+    const first = { ...config.generationJobs[0], latentRelativePath: "latents/work-first.safetensors" };
     const second = createDraftGenerationJob("Continue", { usePreviousSceneLastFrame: true });
     config.generationJobs = [first, second];
     const inputs = sceneFrameInputs(second, config);
     expect(inputs.previousSceneId).toBe(first.id);
-    expect(usableReferenceImages(inputs.references)[0].relativePath).toBe("cache/scene-last/work-first.png");
-    expect(compileGenerationJobPrompt(inputs.job, inputs.references)).toContain("<Picture 1> is the first frame of the video.");
-    first.outputRelativePath = "media/generated/work-rerendered.mp4";
-    expect(usableReferenceImages(sceneFrameInputs(second, config).references)[0].relativePath).toBe("cache/scene-last/work-rerendered.png");
+    expect(inputs.continuationRelativePath).toBe("latents/work-first.safetensors");
+    expect(usableReferenceImages(inputs.references)).toHaveLength(0);
+    expect(compileGenerationJobPrompt(inputs.job, inputs.references)).not.toContain("is the first frame of the video.");
+    first.latentRelativePath = "latents/work-rerendered.safetensors";
+    expect(sceneFrameInputs(second, config).continuationRelativePath).toBe("latents/work-rerendered.safetensors");
     config.generationJobs.reverse();
     expect(sceneFrameInputs(second, config).previousSceneId).toBeUndefined();
   });
@@ -571,8 +572,8 @@ describe("project schema", () => {
   });
 
   it("resolves project-relative reference paths to absolute for the engine", () => {
-    // enqueue_slopfab_generation never receives the project folder and slopfab.rs
-    // uses the string verbatim, so the frontend must send an absolute path.
+    // Image references reach slopfab.rs verbatim, so the frontend resolves
+    // these paths even though latents are resolved separately in the backend.
     expect(projectFilePath("C:\\Projects\\Lighthouse", "references/a.jpg")).toBe("C:\\Projects\\Lighthouse\\references\\a.jpg");
     expect(projectFilePath("/home/nn/lighthouse", "references/a.jpg")).toBe("/home/nn/lighthouse/references/a.jpg");
     expect(projectFilePath("/home/nn/lighthouse/", "references/a.jpg")).toBe("/home/nn/lighthouse/references/a.jpg");

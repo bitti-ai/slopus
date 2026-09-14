@@ -77,22 +77,39 @@ describe("application work queue", () => {
     expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
   });
 
-  it("resolves a linked first frame after the previous scene finishes encoding and saving", async () => {
+  it("continues from the newly saved latents after the previous scene finishes", async () => {
     const { queue, first } = setup();
     first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true }] }));
     const source = submission(first);
-    const linked = { ...submission(first), job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id, referencePaths: ["pending.png", "subject.png"] } };
+    const linked = { ...submission(first), job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id, referencePaths: ["subject.png"] } };
     queue.enqueue(first, [source, linked]);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
     expect(saveSceneLastFrame).not.toHaveBeenCalled();
     await finish(queue, queue.getSnapshot()[0].id);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
-    expect(saveSceneLastFrame).toHaveBeenCalledWith("C:/First", "media/generated/result.mp4");
-    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].referencePaths).toEqual(["C:/First/cache/scene-last/work-new.png", "subject.png"]);
+    expect(saveSceneLastFrame).not.toHaveBeenCalled();
+    const latentPath = `latents/${queue.getSnapshot()[0].id}.safetensors`;
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0]).toMatchObject({ referencePaths: ["subject.png"], continuationRelativePath: latentPath });
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][2]).toBe("C:/First");
     await finish(queue, queue.getSnapshot()[1].id);
     const snapshot = JSON.parse(first.getSnapshot().config.generationJobs[1].generationSnapshot!);
     expect(snapshot.previousSceneId).toBe(source.job.id);
-    expect(snapshot.referencePaths[0]).toBe("C:/First/cache/scene-last/work-new.png");
+    expect(snapshot.continuationRelativePath).toBe(latentPath);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config))).generationJobs[1].latentRelativePath)
+      .toBe(`latents/${queue.getSnapshot()[1].id}.safetensors`);
+  });
+
+  it("asks for regeneration when an older completed scene has no latent archive", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, generationJobs: [
+      { ...config.generationJobs[0], status: "completed", outputRelativePath: "media/generated/old.mp4" },
+      { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true },
+    ] }));
+    const source = submission(first);
+    queue.enqueue(first, [{ ...source, job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id } }]);
+    await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("failed"));
+    expect(queue.getSnapshot()[0].error).toContain("save its latents");
+    expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
   });
 
   it("fails a dependent scene if the previous generation fails, even when an older video exists", async () => {

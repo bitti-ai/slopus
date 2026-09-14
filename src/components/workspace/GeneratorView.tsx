@@ -303,6 +303,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // the same string the compiled-prompt panel shows.
       prompt: compileGenerationJobPrompt(inputs.job, bound),
       ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
+      ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
       // The scene's own length, not a fixed six seconds.
       frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
       steps: sceneGenerationSteps(job, defaultGenerationSteps),
@@ -390,6 +391,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
+      || (!job.latentRelativePath && jobs[index + 1]?.usePreviousSceneLastFrame)
       || !job.generationSnapshot
       || job.generationSnapshot !== snapshotFor(job)) batchScenesReady.push(job);
   }
@@ -399,7 +401,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
-    if (job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to supply its first frame.";
+    if (job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
     return sendBlocker(job, config.references);
   };
 

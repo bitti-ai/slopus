@@ -260,7 +260,7 @@ export class ReferenceIconWork {
         jobId: task.nativeId, prompt: task.prompt, stillImage: true, frames: 1,
         steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE, referencePaths: [],
         ...(activeReferenceRefmods(reference).length ? { refmods: referenceRefmodInputs(task.session.record.folderPath, [reference]) } : {}),
-      }, withEngineSettings(task.session.getSnapshot().config));
+      }, withEngineSettings(task.session.getSnapshot().config), task.session.record.folderPath);
       task.submitted = true;
       if (task.cancelled) await this.cancelNative(task);
       else if (task.yielded) await this.cancelForVideo(task);

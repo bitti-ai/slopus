@@ -110,7 +110,7 @@ pub struct GpuDevice {
 
 pub fn gpu_devices() -> Vec<GpuDevice> { ffi::gpu_devices() }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
     pub job_id: String,
@@ -129,6 +129,13 @@ pub struct GenerationRequest {
     pub reference_video_ids: Vec<String>,
     #[serde(default)]
     pub refmods: Vec<RefmodInput>,
+    #[serde(default)]
+    pub continuation_relative_path: Option<String>,
+    // Only the project commands resolve paths; IPC cannot supply save targets.
+    #[serde(skip)]
+    pub continuation_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub save_latents_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -632,11 +639,12 @@ pub fn resolve_plan(
     configure_request(&api, handle.0, request, &configuration, platform, false)?;
     let plan = api.resolve(handle.0)?;
     let description = api.describe(handle.0)?;
+    let (_, frames) = scene_frame_window(request, plan.aligned_frames)?;
     Ok(ResolvedPlan {
         canvas_width: plan.canvas_width,
         canvas_height: plan.canvas_height,
-        aligned_frames: plan.aligned_frames,
-        duration_seconds: plan.duration_seconds,
+        aligned_frames: frames,
+        duration_seconds: plan.duration_seconds * frames as f64 / plan.aligned_frames as f64,
         model_evaluations: plan.num_model_evaluations,
         sequence_rows_without_text: plan.sequence_rows_without_text,
         latent_frames: plan.latent_frames,
@@ -696,6 +704,14 @@ fn configure_request(
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
     api.set_verbose(handle, false)?;
+    if let Some(path) = &request.continuation_path {
+        api.set_continuation_file(handle, path, 22)?;
+    }
+    if include_models {
+        if let Some(path) = &request.save_latents_path {
+            api.set_save_latents(handle, path)?;
+        }
+    }
     for lora in configuration.loras.as_ref().map_err(Clone::clone)? {
         if lora.path.trim().is_empty() || !lora.strength.is_finite() {
             return Err("LoRA paths must be nonempty and strengths finite.".into());
@@ -738,11 +754,35 @@ fn configure_request(
     Ok(())
 }
 
+/// Continuation output is cumulative. Expose only the new scene to the editor,
+/// while the DLL saves the full archive for the next continuation.
+fn scene_frame_window(request: &GenerationRequest, total: i32) -> Result<(i32, i32), String> {
+    if total <= 0 { return Err("Slopfab returned no video frames.".into()); }
+    if request.continuation_path.is_none() { return Ok((0, total)); }
+    if request.frames <= 0 { return Err("Continuation needs a positive frame count.".into()); }
+    let frames = request.frames.checked_add(16).ok_or("Continuation frame count overflow.")? / 17 * 17;
+    let offset = total.checked_sub(frames).filter(|offset| *offset >= 22)
+        .ok_or("Slopfab continuation output is missing its source frames.".to_string())?;
+    Ok((offset, frames))
+}
+
+fn scene_audio_offset(frame_offset: i32, fps: f64, channels: i32, sample_rate: i32, total: usize) -> Result<usize, String> {
+    if total == 0 || frame_offset == 0 { return Ok(0); }
+    if !fps.is_finite() || fps <= 0.0 || channels <= 0 || sample_rate <= 0 {
+        return Err("Slopfab returned invalid continuation audio timing.".into());
+    }
+    let samples = (frame_offset as f64 * sample_rate as f64 / fps).round();
+    let offset = (samples as usize).checked_mul(channels as usize)
+        .filter(|offset| *offset <= total).ok_or("Slopfab continuation audio is shorter than its source scene.")?;
+    Ok(offset)
+}
+
 /// Runs one generation and retains its terminal handle for frame streaming.
 /// Audio is copied once; video stays owned by slopfab until encoding completes.
 struct FinishedGeneration {
     api: ffi::Api,
     generation: *mut ffi::Generation,
+    frame_offset: u32,
 }
 
 // Created by the serial worker and moved into a mutex-protected render store
@@ -751,6 +791,7 @@ unsafe impl Send for FinishedGeneration {}
 
 impl rendered::FrameSource for FinishedGeneration {
     fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let index = index.checked_add(self.frame_offset).ok_or("Continuation frame index overflow.")?;
         self.api.frame_rgba8(self.generation, index, width, height)
     }
 }
@@ -856,22 +897,26 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
             return Err(error);
         }
     };
+    unsafe { drop(Box::from_raw(context_ptr)) };
+    drop(request);
+    let mut source = Box::new(FinishedGeneration { api, generation, frame_offset: 0 });
+    let (frame_offset, frames) = scene_frame_window(&item.request, output.frames)?;
+    source.frame_offset = frame_offset as u32;
     if output.audio.is_null() && output.audio_float_count != 0 {
-        api.destroy_generation(generation);
-        unsafe { drop(Box::from_raw(context_ptr)) };
         return Err("Slopfab returned a null audio buffer with a non-zero size.".into());
     }
     // Audio is small enough to own directly. Video remains in the generation
     // and is converted through frame_rgba8 only as WebCodecs asks for it.
+    let audio_offset = scene_audio_offset(frame_offset, output.fps, output.audio_channels, output.audio_sample_rate, output.audio_float_count)?;
     let audio = if output.audio.is_null() {
-        Vec::new()
+        &[][..]
     } else {
-        unsafe { std::slice::from_raw_parts(output.audio, output.audio_float_count) }.to_vec()
+        &(unsafe { std::slice::from_raw_parts(output.audio, output.audio_float_count) })[audio_offset..]
     };
     let metadata = OutputMetadata {
-        frames: output.frames, width: output.width, height: output.height, fps: output.fps,
+        frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
-        audio_samples: output.audio_float_count,
+        audio_samples: audio.len(),
         reference_count: item.request.reference_count(),
         timing_profile,
         seconds_conditioning: output.seconds_conditioning,
@@ -882,22 +927,17 @@ fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::Rendere
         steps_computed: output.steps_computed,
         steps_skipped: output.steps_skipped,
         duration_seconds: if output.fps > 0.0 {
-            output.frames as f64 / output.fps
+            frames as f64 / output.fps
         } else {
             0.0
         },
-        boundary: "Decoded buffers remain owned by slopfab and frames are converted on demand. The webview encodes them; slopfab wrote no file.",
+        boundary: "Latents are saved in the project. Decoded buffers remain owned by slopfab; the webview encodes the new scene's frames on demand.",
     };
-    unsafe {
-        drop(Box::from_raw(context_ptr));
-    }
-    drop(request);
-    let source = Box::new(FinishedGeneration { api, generation });
     let pictures = rendered::from_source(
         &item.request.job_id,
         source,
-        &audio,
-        output.frames.max(0) as u32,
+        audio,
+        frames as u32,
         output.width.max(0) as u32,
         output.height.max(0) as u32,
         output.channels.max(0) as u32,
@@ -965,6 +1005,7 @@ fn write_reference_icon(
         reference_paths: Vec::new(),
         refmods: Vec::new(),
         reference_video_ids: Vec::new(),
+        ..Default::default()
     };
     let handle = RequestHandle::new(api)?;
     configure_request(api, handle.0, &request, configuration, platform, true)?;
@@ -1301,6 +1342,8 @@ mod ffi {
         set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
         set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+        set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
+        set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
         set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
         set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
@@ -1402,6 +1445,12 @@ mod ffi {
                     ),
                     add_lora: library
                         .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>(b"slopfab_request_add_lora\0")
+                        .ok().map(|symbol| *symbol),
+                    set_save_latents: library
+                        .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_save_latents\0")
+                        .ok().map(|symbol| *symbol),
+                    set_continuation_file: library
+                        .get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(b"slopfab_request_set_continuation_file\0")
                         .ok().map(|symbol| *symbol),
                     add_refmod: library
                         .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(b"slopfab_request_add_refmod\0")
@@ -1530,6 +1579,16 @@ mod ffi {
         pub fn set_still_image(&self, r: *mut Request) -> Result<(), String> {
             let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate reference icons.")?;
             self.error(unsafe { set(r, 1) })
+        }
+        pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {
+            let set = self.set_save_latents.ok_or("Saving generation latents requires slopfab.dll API 1.9 or later. Update the runtime.")?;
+            let path = path_cstring(path)?;
+            self.error(unsafe { set(r, path.as_ptr()) })
+        }
+        pub fn set_continuation_file(&self, r: *mut Request, path: &Path, overlap: i32) -> Result<(), String> {
+            let set = self.set_continuation_file.ok_or("Scene continuation requires slopfab.dll API 1.9 or later. Update the runtime.")?;
+            let path = path_cstring(path)?;
+            self.error(unsafe { set(r, path.as_ptr(), overlap) })
         }
         pub fn set_steps(&self, r: *mut Request, v: i32) -> Result<(), String> {
             self.error(unsafe { (self.set_steps)(r, v) })
@@ -1700,6 +1759,68 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
+        // An independent 39-frame, 64x32 archive exercises the real DLL without
+        // loading model weights. Its sampling window should be 22 + 34 frames.
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("previous.safetensors");
+        let video_bytes = 24 * 96 * 4;
+        let audio_bytes = 130 * 32 * 4;
+        let mut header = serde_json::json!({
+            "__metadata__": { "slopfab_latents": "h3-av-v1", "width": "64", "height": "32", "frames": "39", "fps": "24", "sampled": "1" },
+            "video_rows": { "dtype": "F32", "shape": [24, 96], "data_offsets": [0, video_bytes] },
+            "audio_rows": { "dtype": "F32", "shape": [130, 32], "data_offsets": [video_bytes, video_bytes + audio_bytes] },
+        }).to_string();
+        while header.len() % 8 != 0 { header.push(' '); }
+        let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+        bytes.extend_from_slice(header.as_bytes());
+        bytes.resize(bytes.len() + video_bytes + audio_bytes, 0);
+        std::fs::write(&path, bytes).unwrap();
+        let mut request = GenerationRequest {
+            job_id: "continued".into(), prompt: "The camera keeps moving.".into(),
+            frames: 18, steps: 4, seed: 1, canvas_width: 64, canvas_height: 32,
+            continuation_path: Some(path.clone()), save_latents_path: Some(root.path().join("next.safetensors")),
+            ..Default::default()
+        };
+        let settings = BTreeMap::new();
+        let configuration = Configuration::from_settings(&settings);
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, handle.0, &request, &configuration, platform, true).unwrap();
+            let raw = api.resolve(handle.0).unwrap();
+            assert_eq!(raw.aligned_frames, 73);
+            assert_eq!(raw.latent_frames, 17); // 56-frame window, including 22 overlap.
+            assert_eq!(scene_frame_window(&request, raw.aligned_frames).unwrap(), (39, 34));
+        }
+        let plan = resolve_plan(&request, &settings).unwrap();
+        assert_eq!(plan.aligned_frames, 34);
+        assert!((plan.duration_seconds - 34.0 / 24.0).abs() < 1e-6);
+        assert!(!request.save_latents_path.as_ref().unwrap().exists()); // Planning never writes.
+        request.canvas_width = 128;
+        assert!(resolve_plan(&request, &settings).is_err());
+        request.canvas_width = 64;
+        std::fs::write(&path, b"invalid archive").unwrap();
+        assert!(resolve_plan(&request, &settings).is_err());
+    }
+
+    #[test]
+    fn continuation_video_and_audio_skip_the_cumulative_source() {
+        let mut request = GenerationRequest { frames: 119, continuation_path: Some("source".into()), ..Default::default() };
+        assert_eq!(scene_frame_window(&request, 243).unwrap(), (124, 119));
+        // A further continuation skips the full joined source, not just its last scene.
+        assert_eq!(scene_frame_window(&request, 362).unwrap(), (243, 119));
+        assert_eq!(scene_audio_offset(124, 24.0, 2, 48_000, 972_000).unwrap(), 496_000);
+        assert_eq!(scene_audio_offset(243, 24.0, 2, 44_100, 2_000_000).unwrap(), 893_026);
+        assert_eq!(scene_audio_offset(124, 24.0, 0, 0, 0).unwrap(), 0);
+        assert!(scene_audio_offset(124, 24.0, 2, 48_000, 100).is_err());
+        assert!(scene_frame_window(&request, 120).is_err());
+        request.continuation_path = None;
+        assert_eq!(scene_frame_window(&request, 124).unwrap(), (0, 124));
+    }
+
     #[test]
     fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
         let configuration = Configuration::from_settings(&BTreeMap::new());
@@ -1719,6 +1840,7 @@ mod tests {
             steps: 20, seed: 1, canvas_width: 768, canvas_height: 768,
             reference_paths: Vec::new(), reference_video_ids: Vec::new(),
             refmods: vec![RefmodInput { path: file.to_string_lossy().into_owned(), strength: 0.7, copies: 2 }],
+            ..Default::default()
         };
         let probe = RequestHandle::new(&api).unwrap();
         let added = api.add_refmod(probe.0, &file, 0.7, 2);
@@ -1771,6 +1893,7 @@ mod tests {
             canvas_width: 736, canvas_height: 416,
             reference_paths: Vec::new(), reference_video_ids: Vec::new(),
             refmods: Vec::new(),
+            ..Default::default()
         };
         for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
             for include_models in [false, true] {
@@ -1810,6 +1933,7 @@ mod tests {
                 canvas_width: 736, canvas_height: 416,
                 reference_paths: Vec::new(), reference_video_ids: vec![id.clone()],
                 refmods: Vec::new(),
+                ..Default::default()
             };
             let configuration = Configuration::from_settings(&settings);
             let api = ffi::Api::load(&configuration.dll_path)?;

@@ -337,7 +337,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           ><ImagePlus size={15} /> Add image</button>
         </div>
         <small>{job.usePreviousSceneLastFrame
-          ? previousScene ? `Starts from the last rendered frame of “${previousScene.title}”. Generate that scene first, or use Generate All.` : "Move this scene after another scene to use its last frame."
+          ? previousScene ? `Continues “${previousScene.title}” using its saved latents with 22 overlapping frames. Generate that scene first, or use Generate All.` : "Move this scene after another scene to continue it."
           : "The selected image anchors the opening frame."}</small>
       </div>
       <div className="scene-settings__field">

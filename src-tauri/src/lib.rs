@@ -383,6 +383,8 @@ struct GenerationJob {
     clip_id: Option<String>,
     #[serde(default)]
     output_relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    latent_relative_path: Option<String>,
     #[serde(default)]
     error: Option<String>,
     created_at: String,
@@ -1205,6 +1207,8 @@ fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectCon
             .as_deref()
             .map(normalize_project_path)
             .transpose()?;
+        job.latent_relative_path = job.latent_relative_path.as_deref()
+            .map(normalize_project_path).transpose()?;
     }
     for message in &config.agent_conversation.messages {
         if message.id.trim().is_empty() || message.content.trim().is_empty() {
@@ -2460,9 +2464,11 @@ fn release_reference_videos(ids: Vec<String>) -> Result<(), String> {
 
 #[tauri::command]
 fn resolve_slopfab_plan(
-    request: slopfab::GenerationRequest,
+    mut request: slopfab::GenerationRequest,
     config: ProjectConfig,
+    folder_path: Option<String>,
 ) -> Result<slopfab::ResolvedPlan, String> {
+    prepare_continuation_path(&mut request, folder_path.as_deref())?;
     let context = serde_json::json!({
         "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
         "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
@@ -2496,9 +2502,12 @@ fn resolve_slopfab_plan(
 fn enqueue_slopfab_generation(
     app: AppHandle,
     state: tauri::State<'_, slopfab::SlopfabRuntime>,
-    request: slopfab::GenerationRequest,
+    mut request: slopfab::GenerationRequest,
     config: ProjectConfig,
+    folder_path: String,
 ) -> Result<(), String> {
+    prepare_continuation_path(&mut request, Some(&folder_path))?;
+    request.save_latents_path = Some(generated_latent_destination(&folder_path, &request.job_id)?);
     let job_id = request.job_id.clone();
     let result = validate_and_normalize_config(config)
         .and_then(|config| state.enqueue(app, request, &config.provider_settings));
@@ -2767,6 +2776,37 @@ fn generated_summary(job_id: String) -> Option<rendered::RenderedSummary> {
 #[tauri::command]
 fn save_reference_icon(folder_path: String, job_id: String) -> Result<String, String> {
     write_reference_icon_frame(&folder_path, &job_id, &reference_icon_pixels(&job_id)?)
+}
+
+fn generated_latent_destination(folder_path: &str, job_id: &str) -> Result<PathBuf, String> {
+    let root = project_root(folder_path)?;
+    let stem = generated_file_stem(job_id)?;
+    let directory = root.join("latents");
+    fs::create_dir_all(&directory).map_err(|error| format!("Could not create the project latents folder: {error}"))?;
+    let directory = directory.canonicalize().map_err(|error| error.to_string())?;
+    if !directory.starts_with(&root) {
+        return Err("The latents folder must be inside this project.".into());
+    }
+    let destination = directory.join(format!("{stem}.safetensors"));
+    if destination.exists() {
+        return Err("Latents already exist for this generation. Start a new generation to preserve them.".into());
+    }
+    Ok(destination)
+}
+
+fn prepare_continuation_path(request: &mut slopfab::GenerationRequest, folder_path: Option<&str>) -> Result<(), String> {
+    request.continuation_path = None;
+    if let Some(relative) = &request.continuation_relative_path {
+        let root = project_root(folder_path.ok_or("A project folder is required to continue a scene.")?)?;
+        let relative = normalize_project_path(relative)?;
+        let path = root.join(&relative).canonicalize()
+            .map_err(|error| format!("Could not open previous scene latents. Generate that scene again: {error}"))?;
+        if !path.starts_with(&root) || !path.is_file() {
+            return Err("Previous scene latents must be a file inside this project.".into());
+        }
+        request.continuation_path = Some(path);
+    }
+    Ok(())
 }
 
 fn reference_icon_pixels(job_id: &str) -> Result<Vec<u8>, String> {
@@ -5211,6 +5251,37 @@ mod tests {
         assert!(destination.parent().unwrap().is_dir());
         // And it really is inside the project, not merely named as though it were.
         assert!(destination.starts_with(folder.path().canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn latent_archives_are_unique_and_confined_to_the_project() {
+        let folder = project_folder();
+        let root = folder.path().to_string_lossy();
+        let destination = generated_latent_destination(&root, "work-one").unwrap();
+        assert!(destination.ends_with("latents/work-one.safetensors"));
+        fs::write(&destination, b"archive").unwrap();
+        assert!(generated_latent_destination(&root, "work-one").is_err());
+        assert!(generated_latent_destination(&root, "../escape").is_err());
+        let mut request: slopfab::GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId": "next", "prompt": "Continue", "frames": 119, "steps": 4, "seed": 1,
+            "canvasWidth": 736, "canvasHeight": 416,
+            "continuationRelativePath": "latents/work-one.safetensors",
+            "saveLatentsPath": "C:/outside.safetensors", "continuationPath": "C:/outside.safetensors",
+        })).unwrap();
+        assert!(request.save_latents_path.is_none());
+        assert!(request.continuation_path.is_none());
+        assert!(prepare_continuation_path(&mut request, None).is_err());
+        prepare_continuation_path(&mut request, Some(&root)).unwrap();
+        assert_eq!(request.continuation_path, Some(destination));
+        for invalid in ["../outside.safetensors", "C:/outside.safetensors", "latents/missing.safetensors"] {
+            request.continuation_relative_path = Some(invalid.into());
+            assert!(prepare_continuation_path(&mut request, Some(&root)).is_err());
+        }
+        let mut config = created_fixture();
+        config.generation_jobs[0].latent_relative_path = Some("latents/work-one.safetensors".into());
+        assert!(validate_and_normalize_config(config.clone()).is_ok());
+        config.generation_jobs[0].latent_relative_path = Some("../outside.safetensors".into());
+        assert!(validate_and_normalize_config(config).is_err());
     }
 
     #[test]
