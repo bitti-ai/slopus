@@ -93,11 +93,27 @@ fn cached_file(path: &Path, url: &Url) -> bool {
 fn transfer_from_roots(url: &Url, roots: &[PathBuf], cancelled: &AtomicBool, progress: impl FnMut(u64, Option<u64>)) -> Result<String, String> {
     if cancelled.load(Ordering::Relaxed) { return Err("Download cancelled.".into()); }
     // Search every location before choosing a destination, including read-only caches.
-    for root in roots {
-        let path = root.join(destination_name(url));
-        if cached_file(&path, url) { return Ok(path.to_string_lossy().into_owned()); }
-    }
+    if let Some(path) = find_cached_weight(url, roots) { return Ok(path); }
     transfer(url, &weights_directory(roots)?, cancelled, progress)
+}
+
+fn find_cached_weight(url: &Url, roots: &[PathBuf]) -> Option<String> {
+    roots.iter().map(|root| root.join(destination_name(url)))
+        .find(|path| cached_file(path, url)).map(|path| path.to_string_lossy().into_owned())
+}
+
+fn find_downloaded(urls: Vec<String>, roots: &[PathBuf]) -> HashMap<String, String> {
+    urls.into_iter().filter_map(|original| {
+        let url = download_url(&original).ok()?;
+        find_cached_weight(&url, roots).map(|path| (original, path))
+    }).collect()
+}
+
+#[tauri::command]
+pub async fn find_downloaded_weights(app: AppHandle, urls: Vec<String>) -> Result<HashMap<String, String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(find_downloaded(urls, &configured_weight_roots(&app)?))
+    }).await.map_err(|error| error.to_string())?
 }
 
 fn transfer(url: &Url, directory: &Path, cancelled: &AtomicBool, mut progress: impl FnMut(u64, Option<u64>)) -> Result<String, String> {
@@ -335,6 +351,33 @@ mod tests {
         fs::rename(Path::new(&downloaded).with_extension("complete.json"), moved.with_extension("complete.json")).unwrap();
         assert_eq!(transfer_from_roots(&url, &roots, &AtomicBool::new(false), |_, _| {}).unwrap(), moved.to_string_lossy());
         assert!(transfer_from_roots(&url, &roots, &AtomicBool::new(true), |_, _| {}).is_err());
+    }
+
+    #[test]
+    fn discovery_normalizes_urls_and_ignores_missing_incomplete_or_unrecorded_files() {
+        let folder = tempfile::tempdir().unwrap();
+        let custom = folder.path().join("custom");
+        let fallback = folder.path().join("fallback");
+        fs::create_dir_all(&custom).unwrap();
+        fs::create_dir_all(&fallback).unwrap();
+        let blob = "https://huggingface.co/org/repo/blob/main/model.safetensors";
+        let url = download_url(blob).unwrap();
+        let destination = fallback.join(destination_name(&url));
+        fs::write(&destination, b"data").unwrap();
+        let roots = [custom.clone(), fallback];
+        assert!(find_downloaded(vec![blob.into()], &roots).is_empty());
+        let record = CompletedFile { url: url.to_string(), bytes: 4 };
+        fs::write(destination.with_extension("complete.json"), serde_json::to_vec(&record).unwrap()).unwrap();
+        // A truncated copy in the preferred folder must not hide a complete fallback.
+        let incomplete = custom.join(destination_name(&url));
+        fs::write(&incomplete, b"bad").unwrap();
+        fs::write(incomplete.with_extension("complete.json"), serde_json::to_vec(&record).unwrap()).unwrap();
+        let found = find_downloaded(vec![blob.into(), url.to_string(), "https://".into()], &roots);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[blob], destination.to_string_lossy());
+        assert_eq!(found[url.as_str()], destination.to_string_lossy());
+        fs::remove_file(&destination).unwrap();
+        assert!(find_downloaded(vec![blob.into()], &roots).is_empty());
     }
 
     #[test]

@@ -4,7 +4,7 @@ import { cancelWeightDownload, downloadLora, removeLora, refreshDownloadedLoras,
 import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
-import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
+import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -62,6 +62,7 @@ beforeEach(() => {
   localStorage.clear(); files.clear(); vi.clearAllMocks();
   vi.mocked(invoke).mockImplementation(async (command, args) => {
     if (command === "weight_download_hardware") return [{ name: "NVIDIA GeForce RTX 5090", memoryBytes: 32 * 1024 ** 3 }];
+    if (command === "find_downloaded_weights") return {};
     if (command === "check_weight_files") return Object.fromEntries((args as { paths: string[] }).paths.map((path) => [path, files.has(path)]));
     if (command === "remove_downloaded_weights") { for (const path of (args as { paths: string[] }).paths) files.delete(path); return; }
     if (command === "download_weight") {
@@ -69,6 +70,45 @@ beforeEach(() => {
       files.add(path); return path;
     }
   });
+});
+
+it("discovers model weights and LoRAs without saved paths or starting downloads", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  const template = minimaxSingularityTemplate();
+  const cached = Object.fromEntries([...Object.values(template.paths).filter(Boolean), TURBO_LORA.url!]
+    .map((url) => [url, `D:/Projects/weights/${url.split('/').at(-1)}`]));
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "find_downloaded_weights"
+    ? Object.fromEntries((args as { urls: string[] }).urls.filter((url) => cached[url]).map((url) => [url, cached[url]])) : normal(command, args));
+  await refreshDownloadedWeights();
+  const discovered = loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)!;
+  expect(discovered.paths.transformer).toBe(cached[template.paths.transformer]);
+  expect(discovered.sources!.transformer![0].downloadedPath).toBe(cached[template.paths.transformer]);
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).toBe(cached[TURBO_LORA.url!]);
+  expect(templateNeedsDownload(discovered)).toBe(false);
+  expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
+});
+
+it("finds moved weights and preserves manual paths and GPU variant selection", async () => {
+  const template = minimaxOriginalTemplate();
+  const movedUrl = template.paths.videoVae;
+  template.paths.videoVae = "C:/old/video.safetensors";
+  template.sources!.videoVae![0].downloadedPath = template.paths.videoVae;
+  template.paths.audioVae = "D:/personal/audio.safetensors";
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: "", catalogVersion: 6 });
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "find_downloaded_weights") return {
+      [movedUrl]: "D:/Projects/weights/video.safetensors",
+      [template.sources!.audioVae![0].url]: "D:/Projects/weights/audio.safetensors",
+      [template.sources!.transformer![1].url]: "D:/Projects/weights/small.safetensors",
+    };
+    return normal(command, args);
+  });
+  await refreshDownloadedWeights();
+  expect(saved().paths.videoVae).toBe("D:/Projects/weights/video.safetensors");
+  expect(saved().paths.audioVae).toBe("D:/personal/audio.safetensors");
+  expect(saved().paths.transformer).toBe(template.paths.transformer);
+  expect(saved().sources!.transformer![1].downloadedPath).toBe("D:/Projects/weights/small.safetensors");
 });
 
 it("chooses a matching GPU variant and the largest VRAM tier that fits", () => {

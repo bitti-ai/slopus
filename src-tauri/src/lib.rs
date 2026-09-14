@@ -3017,6 +3017,7 @@ pub fn run() {
             weights::download_weight,
             weights::cancel_weight_download,
             weights::check_weight_files,
+            weights::find_downloaded_weights,
             weights::remove_downloaded_weights,
             weights::weight_download_hardware,
             cuda_support::open_cuda_download,
