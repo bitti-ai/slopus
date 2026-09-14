@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
 import { downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
-import { loadLoras, saveLoras, TAOMATE_LORA } from "./loras";
+import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
 import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
@@ -13,18 +13,20 @@ const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
 
-it("downloads LoRAs through the weight transfer and restores missing downloads", async () => {
-  await downloadLora(TAOMATE_LORA.id);
-  expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: TAOMATE_LORA.url });
-  expect(loadLoras()[0].path).toContain("TaoMate-H3-3step-ComfyUI.safetensors");
-  expect(getWeightDownloadState()).toMatchObject({ loraId: TAOMATE_LORA.id, active: false, completed: 1, error: null });
+it.each([TAOMATE_LORA, TURBO_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
+  const savedLora = () => loadLoras().find(({ id }) => id === lora.id)!;
+  await downloadLora(lora.id);
+  expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: lora.url });
+  const path = `C:/Slopus/weights/${lora.url!.split('/').at(-1)}`;
+  expect(savedLora()).toMatchObject({ path, stepOverride: lora.stepOverride });
+  expect(getWeightDownloadState()).toMatchObject({ loraId: lora.id, active: false, completed: 1, error: null });
   files.clear();
   await refreshDownloadedLoras();
-  expect(loadLoras()[0].path).toBe("");
-  await downloadLora(TAOMATE_LORA.id);
-  await removeLora(TAOMATE_LORA.id);
-  expect(invoke).toHaveBeenCalledWith("remove_downloaded_weights", { paths: [expect.stringContaining("TaoMate")] });
-  expect(loadLoras()[0].path).toBe("");
+  expect(savedLora().path).toBe("");
+  await downloadLora(lora.id);
+  await removeLora(lora.id);
+  expect(invoke).toHaveBeenCalledWith("remove_downloaded_weights", { paths: [path] });
+  expect(savedLora().path).toBe("");
 });
 
 it("removes manually added adapters without deleting the user's file", async () => {
