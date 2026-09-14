@@ -67,8 +67,13 @@ export function refreshDownloadedWeights(): Promise<void> {
     await refreshDownloadedLoras();
     const before = loadGeneratorTemplateSettings();
     const paths = [...new Set(before.templates.flatMap((template) => Object.values(template.sources ?? {}).flatMap((sources) => sources.flatMap((source) => source.downloadedPath ? [source.downloadedPath] : []))))];
-    if (!paths.length) return;
-    const exists = await invoke<Record<string, boolean>>("check_weight_files", { paths });
+    const urls = [...new Set(before.templates.flatMap((template) => Object.values(template.sources ?? {}).flatMap((sources) => sources.map((source) => source.url))))];
+    if (!paths.length && !urls.length) return;
+    const [exists, found, devices] = await Promise.all([
+      paths.length ? invoke<Record<string, boolean>>("check_weight_files", { paths }) : Promise.resolve({} as Record<string, boolean>),
+      invoke<Record<string, string>>("find_downloaded_weights", { urls }),
+      invoke<WeightGpu[]>("weight_download_hardware"),
+    ]);
     const current = loadGeneratorTemplateSettings();
     let changed = false;
     const templates = current.templates.map((template) => {
@@ -77,12 +82,19 @@ export function refreshDownloadedWeights(): Promise<void> {
         const sources = template.sources?.[id];
         if (!sources) continue;
         restored.sources[id] = sources.map((source) => {
-          if (!source.downloadedPath || exists?.[source.downloadedPath] !== false) return source;
+          const missing = source.downloadedPath && exists?.[source.downloadedPath] === false;
+          const discovered = found?.[source.url];
+          const downloadedPath = missing || !source.downloadedPath ? discovered : source.downloadedPath;
+          if (downloadedPath === source.downloadedPath) return source;
           changed = true;
-          if (restored.paths[id] === source.downloadedPath) restored.paths[id] = source.url;
+          if (restored.paths[id] === source.downloadedPath) restored.paths[id] = downloadedPath || source.url;
           const { downloadedPath: _removed, ...remaining } = source;
-          return remaining;
+          return downloadedPath ? { ...remaining, downloadedPath } : remaining;
         });
+        if (!restored.paths[id].trim() || isDownloadUrl(restored.paths[id])) {
+          const selected = chooseWeightSource(restored.sources[id]!, devices ?? []);
+          if (selected?.downloadedPath) { restored.paths[id] = selected.downloadedPath; changed = true; }
+        }
       }
       return restored;
     });
@@ -189,18 +201,31 @@ export function retryWeightDownload(): Promise<void> {
   return state?.loraId ? downloadLora(state.loraId) : state ? downloadTemplateWeights(state.templateId) : Promise.resolve();
 }
 
-export async function refreshDownloadedLoras(): Promise<void> {
-  if (!isTauri()) return;
-  const paths = loadLoras().filter((entry) => entry.url && entry.path).map(({ path }) => path);
-  if (!paths.length) return;
-  const exists = await invoke<Record<string, boolean>>("check_weight_files", { paths });
-  let changed = false;
-  const loras = loadLoras().map((entry) => {
-    if (!entry.url || !paths.includes(entry.path) || exists?.[entry.path] !== false) return entry;
-    changed = true;
-    return { ...entry, path: "" };
-  });
-  if (changed) saveLoras(loras);
+let loraRefreshPending: Promise<void> | null = null;
+export function refreshDownloadedLoras(): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  if (loraRefreshPending) return loraRefreshPending;
+  loraRefreshPending = (async () => {
+    const before = loadLoras().filter((entry) => entry.url);
+    const paths = before.filter((entry) => entry.path && !isDownloadUrl(entry.path)).map(({ path }) => path);
+    const urls = [...new Set(before.map((entry) => entry.url!))];
+    if (!urls.length) return;
+    const [exists, found] = await Promise.all([
+      paths.length ? invoke<Record<string, boolean>>("check_weight_files", { paths }) : Promise.resolve({} as Record<string, boolean>),
+      invoke<Record<string, string>>("find_downloaded_weights", { urls }),
+    ]);
+    let changed = false;
+    const loras = loadLoras().map((entry) => {
+      if (!entry.url || !before.some((old) => old.id === entry.id && old.url === entry.url && old.path === entry.path)) return entry;
+      if (entry.path.trim() && !isDownloadUrl(entry.path) && exists?.[entry.path] !== false) return entry;
+      const path = found?.[entry.url] || "";
+      if (entry.path === path) return entry;
+      changed = true;
+      return { ...entry, path };
+    });
+    if (changed) saveLoras(loras);
+  })().finally(() => { loraRefreshPending = null; });
+  return loraRefreshPending;
 }
 
 export async function removeLora(loraId: string): Promise<void> {

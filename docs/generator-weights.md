@@ -88,11 +88,13 @@ folders in list order, then `weights` beside the executable, then the log folder
 `weights` directory for an existing completed download. New downloads go to the
 first writable folder in that same order. These locations apply to both model
 weights and LoRAs. Changes take effect on the next download or removal without
-restarting. An empty list keeps the default locations.
+restarting. Startup and the regular availability checks also discover completed
+model and LoRA downloads in these folders, even when no local paths were saved.
+An empty list keeps the default locations.
 
 To move previously downloaded weights into a custom folder, move their matching
 `.complete.json` records with them so Slopus can recognize and reuse the files
-when you click Download. Only files with valid download records can be removed
+automatically. Only files with valid download records can be removed
 through the app. Other app preferences continue to use WebView2 localStorage.
 
 Downloads continue in the background when Settings is closed. Reopening Settings

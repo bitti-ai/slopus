@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
-import { loadGeneratorTemplateSettings } from "../lib/settings";
+import { loadGeneratorTemplateSettings, minimaxSingularityTemplate } from "../lib/settings";
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
@@ -20,6 +20,7 @@ beforeEach(() => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
   vi.mocked(invoke).mockImplementation(async (command, args) => {
     if (command === "weight_download_hardware") return [{ name: "RTX 5090", memoryBytes: 32 * 1024 ** 3 }];
+    if (command === "find_downloaded_weights") return {};
     if (command === "check_weight_files") return Object.fromEntries((args as { paths: string[] }).paths.map((path) => [path, files.has(path)]));
     if (command === "remove_downloaded_weights") { for (const path of (args as { paths: string[] }).paths) files.delete(path); return; }
     if (command === "download_weight") {
@@ -30,6 +31,24 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; });
+
+it("discovers Singularity's existing weights on opening Settings and downloads only missing Turbo", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  const cached = Object.fromEntries(Object.values(minimaxSingularityTemplate().paths).filter(Boolean)
+    .map((url) => [url, `D:/Projects/weights/${url.split('/').at(-1)}`]));
+  Object.values(cached).forEach((path) => files.add(path));
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "find_downloaded_weights"
+    ? Object.fromEntries((args as { urls: string[] }).urls.filter((url) => cached[url]).map((url) => [url, cached[url]])) : normal(command, args));
+  render(<SettingsView onClose={() => undefined} />);
+  await waitFor(() => expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-singularity")?.paths.transformer).toMatch(/^D:\/Projects\/weights\//));
+  expect(screen.getByRole("button", { name: "Download generator Singularity" })).toBeEnabled();
+  expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
+  fireEvent.click(screen.getByRole("button", { name: "Download generator Singularity" }));
+  expect(await screen.findByRole("radio", { name: "Use Singularity as the default generator" })).toBeEnabled();
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")).toEqual([
+    ["download_weight", { requestId: expect.any(String), url: TURBO_LORA.url }],
+  ]);
+});
 
 it("selects an undownloaded LoRA in a generator and downloads it from that generator", async () => {
   render(<SettingsView onClose={() => undefined} />);
