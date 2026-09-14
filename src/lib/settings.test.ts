@@ -14,6 +14,7 @@ import {
   minimaxOriginalTemplate,
   minimaxReferencesTemplate,
   minimaxFastTemplate,
+  minimaxSingularityTemplate,
   templateNeedsDownload,
   saveAgentEndpointSettings,
   saveGeneratorTemplateSettings,
@@ -26,7 +27,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
     const settings = loadGeneratorTemplateSettings();
     expect(settings.defaultTemplateId).toBe("default");
-    expect(settings.templates).toHaveLength(4);
+    expect(settings.templates).toHaveLength(5);
     expect(settings.templates[1].name).toBe("First/Last Frame");
     expect(settings.templates[0]).toMatchObject({
       id: "default",
@@ -55,7 +56,7 @@ describe("generator templates", () => {
       paths: { ...original.paths, transformer },
       sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, original.sources!.transformer![1]] },
     });
-    expect(loadGeneratorTemplateSettings().templates.map(({ name }) => name)).toEqual(["Default", "First/Last Frame", "References", "First/Last Frame Fast"]);
+    expect(loadGeneratorTemplateSettings().templates.map(({ name }) => name)).toEqual(["Default", "First/Last Frame", "References", "First/Last Frame Fast", "Singularity"]);
   });
 
   it.each(["Minimax H3 Original", "My custom generator"])("migrates the saved %s template without changing its configuration", (name) => {
@@ -70,8 +71,9 @@ describe("generator templates", () => {
     expect(settings.templates[0]).toEqual({ ...template, name: name === "Minimax H3 Original" ? "First/Last Frame" : name });
     expect(settings.templates[1]).toEqual(minimaxReferencesTemplate());
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
+    expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(4);
+    expect(settings.catalogVersion).toBe(5);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -81,7 +83,29 @@ describe("generator templates", () => {
     const references = minimaxReferencesTemplate();
     references.paths.transformer = "D:/Models/custom.safetensors";
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [references], catalogVersion: 3 }));
-    expect(loadGeneratorTemplateSettings().templates).toEqual([references, minimaxFastTemplate()]);
+    expect(loadGeneratorTemplateSettings().templates).toEqual([references, minimaxFastTemplate(), minimaxSingularityTemplate()]);
+  });
+
+  it("adds Singularity to the previous catalog once while preserving saved templates", () => {
+    const custom = createGeneratorTemplate("My generator");
+    custom.defaultSteps = 12;
+    custom.paths.transformer = "D:/Models/custom.safetensors";
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 4 }));
+    const settings = loadGeneratorTemplateSettings();
+    expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate()]);
+    expect(settings.defaultTemplateId).toBe(custom.id);
+    expect(settings.catalogVersion).toBe(5);
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+    saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
+    expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
+  });
+
+  it("preserves a customized Singularity during catalog migration", () => {
+    const template = minimaxSingularityTemplate();
+    template.defaultSteps = 8;
+    template.paths.transformer = "D:/Models/singularity.safetensors";
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 4 }));
+    expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
   });
 
   it("adds First/Last Frame Fast with six steps and its transformer URL", () => {
@@ -103,7 +127,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(4);
+    expect(settings.catalogVersion).toBe(5);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -118,7 +142,7 @@ describe("generator templates", () => {
     expect(loadGeneratorTemplateSettings().templates[0].sources![field]).toEqual(template.sources![field]);
     const custom = createGeneratorTemplate();
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], catalogVersion: 1 }));
-    expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id, "minimax-h3-references", "minimax-h3-fast"]);
+    expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id, "minimax-h3-references", "minimax-h3-fast", "minimax-h3-singularity"]);
   });
 
   it.each(["url", "downloaded", "original", "custom", "cached original"])("removes the incompatible encoder from saved templates using %s", (selection) => {
@@ -138,7 +162,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(4);
+    expect(settings.catalogVersion).toBe(5);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,

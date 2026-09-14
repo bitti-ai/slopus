@@ -186,10 +186,19 @@ export function minimaxFastTemplate(): GeneratorTemplate {
     "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors", 6);
 }
 
+export function minimaxSingularityTemplate(): GeneratorTemplate {
+  const template = minimaxOriginalTemplate();
+  const transformer = "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors";
+  return { ...template, id: "minimax-h3-singularity", name: "Singularity", defaultSteps: 4,
+    paths: { ...template.paths, transformer },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
+  };
+}
+
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate()],
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 4,
+  catalogVersion: 5,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -235,7 +244,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -293,6 +302,11 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
           }
           normalized.catalogVersion = 4;
+        }
+        if ((normalized.catalogVersion ?? 0) < 5) {
+          const template = minimaxSingularityTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized.catalogVersion = 5;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;
