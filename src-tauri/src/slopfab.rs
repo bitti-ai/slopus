@@ -17,6 +17,8 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 const DLL_FILE_NAME: &str = "slopfab.dll";
+// https://huggingface.co/Viggle/Viggle-Animate/raw/main/assets/fixed_prompt.txt
+const ANIMATE_PROMPT: &str = include_str!("../assets/viggle-animate-fixed-prompt.txt");
 /// Tauri stages the repository's runtime resources in development and release
 /// builds. Installers and portable folders use the same relative layout.
 pub fn default_dll_path() -> PathBuf {
@@ -711,7 +713,7 @@ fn configure_request(
     include_models: bool,
 ) -> Result<(), String> {
     configuration.validate_inputs(request)?;
-    api.set_prompt(handle, if configuration.animate { "" } else { &request.prompt })?;
+    api.set_prompt(handle, if configuration.animate { ANIMATE_PROMPT } else { &request.prompt })?;
     api.set_frames(handle, request.frames)?;
     if request.still_image {
         api.set_still_image(handle)?;
@@ -1795,7 +1797,7 @@ mod tests {
     }
 
     #[test]
-    fn animate_empty_prompt_and_four_steps_reach_bundled_dll() {
+    fn animate_fixed_prompt_and_four_steps_reach_bundled_dll() {
         let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
             enabled: true, model: None,
             options: BTreeMap::from([
@@ -1808,7 +1810,7 @@ mod tests {
         let id = create_reference_video(2.0, &settings).unwrap();
         let result = (|| -> Result<(), String> {
             append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
-            let request = GenerationRequest {
+            let mut request = GenerationRequest {
                 job_id: "animate-test".into(), frames: 48, steps: 20, seed: 1,
                 canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
                 ..Default::default()
@@ -1818,6 +1820,12 @@ mod tests {
                     let handle = RequestHandle::new(&api)?;
                     configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
                     assert_eq!(api.resolve(handle.0)?.num_model_evaluations, 3);
+                    assert!(api.describe(handle.0)?.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
+                    request.prompt = "This scene prompt must be ignored by Animate.".into();
+                    let handle = RequestHandle::new(&api)?;
+                    configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
+                    assert!(api.describe(handle.0)?.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
+                    request.prompt.clear();
                 }
             }
             Ok(())

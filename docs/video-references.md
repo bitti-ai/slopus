@@ -4,8 +4,10 @@
 
 Download **Animate** in Settings → Generators, then select it in the Generator.
 Choose a **Reference video** in the scene inspector. Animate requires a video
-and sends an empty text prompt; shot descriptions, look, sound and music prompts
-are not used. Video trim and soundtrack settings still come from References.
+and sends Viggle's bundled [fixed prompt](https://huggingface.co/Viggle/Viggle-Animate/raw/main/assets/fixed_prompt.txt);
+shot descriptions, look, sound and music prompts are not used. The prompt is
+embedded in the app, so generation does not need to fetch it. Video trim and
+soundtrack settings still come from References.
 
 The template uses `Viggle-Animate-pruned_rank8_int8_convrot.safetensors` and
 `viggle_animate_distillation_bf16.safetensors` from DeepBeepMeep/MiniMax-H3.
