@@ -302,12 +302,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? []).then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt").then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
     });
-  }, [selectedTemplate.attention, selectedTemplate.loras]);
+  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -372,7 +372,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras" | "mode">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -542,6 +542,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                 </div>
               </header>
               <div className="generator-template-fields">
+                <label>
+                  <span>Mode</span>
+                  <select aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"}
+                    onChange={(event) => updateTemplate({ mode: event.target.value === "animate" ? "animate" : "prompt" })}>
+                    <option value="prompt">Text prompt</option>
+                    <option value="animate">Animate (reference video)</option>
+                  </select>
+                </label>
                 <label>
                   <span>Name</span>
                   <input aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />

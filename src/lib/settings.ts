@@ -15,7 +15,7 @@
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { downloadableTemplateLoras, highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, type TemplateLora } from "./loras";
+import { downloadableTemplateLoras, highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
  * ./theme.ts, which is separate only because index.html has to read the same
@@ -72,6 +72,7 @@ export interface GeneratorTemplate {
   name: string;
   defaultSteps: number;
   attention: AttentionMode;
+  mode?: "prompt" | "animate";
   paths: EngineSettings;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
   loras?: TemplateLora[];
@@ -199,10 +200,20 @@ export function minimaxSingularityTemplate(): GeneratorTemplate {
   };
 }
 
+export function viggleAnimateTemplate(): GeneratorTemplate {
+  const template = minimaxOriginalTemplate();
+  const transformer = "https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/Viggle-Animate-pruned_rank8_int8_convrot.safetensors";
+  return { ...template, id: "viggle-animate", name: "Animate", mode: "animate", defaultSteps: 4,
+    loras: [{ loraId: VIGGLE_ANIMATE_LORA.id, enabled: true, strength: 1 }],
+    paths: { ...template.paths, transformer },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
+  };
+}
+
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate()],
+  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 6,
+  catalogVersion: 7,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -240,6 +251,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       if (entries.length) sources[field.id] = entries;
     }
     return [{ id, name, defaultSteps, attention, paths, sources,
+      ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
       ...(candidate.loras !== undefined ? { loras: normalizeTemplateLoras(candidate.loras) } : {}) }];
   });
   if (templates.length === 0) return null;
@@ -248,7 +260,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -320,6 +332,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 6 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 7) {
+          const template = viggleAnimateTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 7 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -369,12 +387,14 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode): ProviderSetting {
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
   delete options.schedule;
   delete options.stepOverride;
+  delete options.generationMode;
+  if (mode === "animate") options.generationMode = "animate";
   const loras = resolveTemplateLoras(selection);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
   const stepOverride = highestLoraStepOverride(loras);

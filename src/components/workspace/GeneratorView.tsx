@@ -52,13 +52,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
+  const animate = selectedTemplate.mode === "animate";
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const runtimeProbe = useRef(0);
   const [loraLibrary, setLoraLibrary] = useState(loadLoras);
   useEffect(() => subscribeLoras(() => setLoraLibrary(loadLoras())), []);
-  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, loraLibrary]);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, loraLibrary]);
   const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
@@ -106,7 +107,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
     if (!selectedTemplate.id) return;
-    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? []).then((status) => {
+    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt").then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);
@@ -123,7 +124,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const selected = jobs.find((job) => job.id === selection.jobId) ?? jobs[0];
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
-  const openShot = shotIndex >= 0 ? selectedShots[shotIndex] : null;
+  const openShot = !animate && shotIndex >= 0 ? selectedShots[shotIndex] : null;
 
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
@@ -301,7 +302,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // retimed shot reach the engine, rather than sending a prompt frozen at
       // draft-creation time. This is the ONE string slopfab is given, and it is
       // the same string the compiled-prompt panel shows.
-      prompt: compileGenerationJobPrompt(inputs.job, bound),
+      prompt: animate ? "" : compileGenerationJobPrompt(inputs.job, bound),
       ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
       ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
       // The scene's own length, not a fixed six seconds.
@@ -385,7 +386,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   for (const [index, job] of jobs.entries()) {
     if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
     if (job.usePreviousSceneLastFrame && index === 0) continue;
-    if (sendBlocker(job, config.references)) continue;
+    if (sendBlocker(job, config.references, animate)) continue;
     const previous = jobs[index - 1];
     const previousWillRender = job.usePreviousSceneLastFrame && previous &&
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
@@ -402,7 +403,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
     if (job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
-    return sendBlocker(job, config.references);
+    return sendBlocker(job, config.references, animate);
   };
 
   const changedJobIds = new Set(jobs
@@ -558,6 +559,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <div className="panel-scroll">
             <SceneInspector
               key={selected.id}
+              animate={animate}
               job={selected}
               shots={selectedShots}
               defaultSteps={defaultGenerationSteps}
@@ -573,7 +575,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             />
           </div>
 
-          {debugEnabled && <div className="debug-prompt">
+          {debugEnabled && !animate && <div className="debug-prompt">
             <button
               type="button"
               className="secondary-button debug-prompt__toggle"
@@ -610,20 +612,20 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   </div>;
 }
 
-/** Why this scene cannot be handed to the engine, in the user's words, or null.
- *  Each one is a real state of the scene, not a policy: a scene with no words
- *  has nothing to render, a scene of no length is no frames at all, and a name
- *  the prompt cannot cite would be silently dropped from the middle of a line. */
-function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
+/** Validate the inputs required by the selected generator before submission. */
+function sendBlocker(job: GenerationJob, references: ProjectReference[], animate = false): string | null {
   const shots = sceneShots(job);
-  if (shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
+  if (animate && !usableVideoReferences(references.filter((reference) => job.referenceIds.includes(reference.id))).length) {
+    return "Select a reference video for this scene before animating.";
+  }
+  if (!animate && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
     return "Describe what happens or add speech in at least one shot before this scene can be generated.";
   }
   if (sceneDurationSeconds(job) <= 0) {
     return "This scene is nought seconds long, so there are no frames to render. Give it a length first.";
   }
   const dangling = danglingReferenceTokens(shots, references);
-  if (dangling.length > 0) {
+  if (!animate && dangling.length > 0) {
     return "A reference named in one of the lines can no longer be used, and would be left out of the prompt. Swap it for another one or take it out of the line first.";
   }
   return null;

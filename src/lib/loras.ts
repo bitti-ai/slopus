@@ -19,6 +19,11 @@ export const TURBO_LORA: Lora = {
   url: "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
   stepOverride: 4,
 };
+export const VIGGLE_ANIMATE_LORA: Lora = {
+  id: "viggle-animate-4step", name: "Viggle Animate Distillation", path: "",
+  url: "https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/loras/viggle_animate_distillation_bf16.safetensors",
+  stepOverride: 4,
+};
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -36,8 +41,9 @@ export function loadLoras(): Lora[] {
     }) : [];
     if (!ids.has(TAOMATE_LORA.id)) entries.unshift({ ...TAOMATE_LORA });
     if (!ids.has(TURBO_LORA.id)) entries.push({ ...TURBO_LORA });
+    if (!ids.has(VIGGLE_ANIMATE_LORA.id)) entries.push({ ...VIGGLE_ANIMATE_LORA });
     return entries;
-  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }]; }
+  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {

@@ -6,6 +6,7 @@ import {
   isReferenceUsable,
   isVisualReference,
   referenceImages,
+  usableVideoReferences,
   normalizeSceneShots,
   referenceToken,
   sceneBriefText,
@@ -266,7 +267,8 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, references, previousScene, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots }: {
+export function SceneInspector({ job, shots, references, previousScene, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, animate = false }: {
+  animate?: boolean;
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
@@ -292,7 +294,20 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   return <section className="scene-inspector" aria-label="This scene">
     <section className="scene-settings" aria-labelledby={`${job.id}-scene-settings`}>
       <h3 id={`${job.id}-scene-settings`}>Scene</h3>
-      <label className="scene-settings__field">
+      {animate && <label className="scene-settings__field">
+        <span>Reference video</span>
+        <select aria-label="Reference video for this scene" disabled={disabled}
+          value={usableVideoReferences(references).find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
+          onChange={(event) => onChange({ referenceIds: [
+            ...job.referenceIds.filter((id) => !references.some((reference) => reference.id === id && reference.kind === "video")),
+            ...(event.target.value ? [event.target.value] : []),
+          ] })}>
+          <option value="">Select a video</option>
+          {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+        </select>
+        <small>Animate requires a reference video. Add videos under References. No text prompt is needed.</small>
+      </label>}
+      {!animate && <label className="scene-settings__field">
         <span>Look</span>
         <select
           value={chosen}
@@ -311,7 +326,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           <option value="">None</option>
           {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
-      </label>
+      </label>}
       <div className="scene-settings__field">
         <span>Start frame</span>
         <div className="scene-settings__start-frame">
@@ -355,7 +370,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
         <small>The selected image anchors the closing frame.</small>
       </div>
       {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
-      <label className="scene-settings__field">
+      {!animate && <><label className="scene-settings__field">
         <span>Sound</span>
         <textarea
           value={job.soundscape ?? ""}
@@ -374,7 +389,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           placeholder="Instrumentation, tempo and dynamics — not a mood."
           onChange={(event) => onChange({ music: event.target.value })}
         />
-      </label>
+      </label></>}
     </section>
     <section className="scene-settings" aria-labelledby={`${job.id}-generation-settings`}>
       <h3 id={`${job.id}-generation-settings`}>Generation</h3>
