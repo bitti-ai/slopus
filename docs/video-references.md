@@ -1,5 +1,26 @@
 # Video references
 
+## Animate
+
+Download **Animate** in Settings → Generators, then select it in the Generator.
+Choose a **Reference video** in the scene inspector. Animate requires a video
+and sends an empty text prompt; shot descriptions, look, sound and music prompts
+are not used. Video trim and soundtrack settings still come from References.
+
+The template uses `Viggle-Animate-pruned_rank8_int8_convrot.safetensors` and
+`viggle_animate_distillation_bf16.safetensors` from DeepBeepMeep/MiniMax-H3.
+The enabled distillation LoRA has a **4-step override**, which takes precedence
+over the scene's step count. Existing installations receive the template once
+without replacing their default generator or local model paths.
+
+This uses the DLL's generic H3 reference-generation API with the Viggle
+checkpoint. Its shared text encoder and video/audio VAEs are still required.
+It does not reproduce upstream Viggle's frozen-embedding character-replacement
+pipeline. Planning is tested on both CUDA and Vulkan; rendered animation quality
+requires a run with the downloaded weights and a compatible GPU.
+
+## Adding video references
+
 In **References**, choose **Add a reference → Other → New** to create an
 **Uncategorized** reference, then choose **Add file** in its details. Video
 can also be attached to an existing reference. The reference card shows the

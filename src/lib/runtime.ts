@@ -10,7 +10,7 @@ import {
 import {
   agentEndpointProviderSettings, endpointProviderSetting, engineProviderSetting,
   generationStepsWithLoras, loadDefaultGenerationSteps, loadEngineSettings, withAgentEndpointSettings,
-  type AttentionMode, type EndpointProviderId, type EndpointProviderSettings, type EnginePathField,
+  type AttentionMode, type EndpointProviderId, type EndpointProviderSettings, type EnginePathField, type GeneratorTemplate,
 } from "./settings";
 
 export type ProviderId = "claude" | "codex" | EndpointProviderId;
@@ -144,16 +144,16 @@ export const CHECKING_PROVIDERS: ProviderStatus[] = [
 
 /** Probes the engine paths on their own, with no project in hand — what the
  *  settings screen shows. */
-export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode, loras?: TemplateLora[]): Promise<SlopfabStatus> {
+export async function getEngineStatus(settings = loadEngineSettings(), attention?: AttentionMode, loras?: TemplateLora[], mode?: GeneratorTemplate["mode"]): Promise<SlopfabStatus> {
   if (!isTauri()) return DEMO_STATUS.slopfab;
   let slopfab;
   let adapterError: string | undefined;
   try {
-    slopfab = engineProviderSetting(settings, undefined, attention, loras);
+    slopfab = engineProviderSetting(settings, undefined, attention, loras, mode);
   } catch (reason) {
     // A missing adapter must not prevent checking the individual model files.
     adapterError = reason instanceof Error ? reason.message : String(reason);
-    slopfab = engineProviderSetting(settings, undefined, attention, []);
+    slopfab = engineProviderSetting(settings, undefined, attention, [], mode);
   }
   const status = await invoke<SlopfabStatus>("slopfab_status", { settings: { slopfab } });
   return adapterError ? { ...status, state: status.state === "ready" ? "modelsMissing" : status.state,

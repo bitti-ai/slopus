@@ -379,9 +379,10 @@ impl SlopfabRuntime {
                 "inputChars": request.prompt.chars().count(),
             }),
         );
-        if request.job_id.trim().is_empty() || request.prompt.trim().is_empty() {
-            return Err("Generation job id and prompt cannot be empty.".into());
+        if request.job_id.trim().is_empty() {
+            return Err("Generation job id cannot be empty.".into());
         }
+        configuration.validate_inputs(&request)?;
         validate_generation_controls(&request)?;
         let cancel = Arc::new(AtomicBool::new(false));
         let mut flags = self
@@ -472,6 +473,7 @@ struct Configuration {
     dll_path: PathBuf,
     vulkan: bool,
     attention: &'static str,
+    animate: bool,
     models: [(i32, &'static str, Option<PathBuf>); 5],
     loras: Result<Vec<LoraAdapter>, String>,
     step_override: Result<Option<i32>, String>,
@@ -500,6 +502,7 @@ impl Configuration {
             // working; with none, use the DLL beside the executable.
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             vulkan: string_option("inferenceBackend") == Some("vulkan"),
+            animate: string_option("generationMode") == Some("animate"),
             attention: match string_option("attention") {
                 Some("exact") => "exact",
                 Some("flash2") => "flash2",
@@ -524,6 +527,20 @@ impl Configuration {
                 _ => Err("LoRA step override must be a whole number from 2 to 2147483647.".into()),
             },
         }
+    }
+
+    fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if self.animate {
+            if request.still_image {
+                return Err("Animate requires video generation.".into());
+            }
+            if request.reference_video_ids.is_empty() {
+                return Err("Animate requires a reference video.".into());
+            }
+        } else if request.prompt.trim().is_empty() {
+            return Err("Generation prompt cannot be empty.".into());
+        }
+        Ok(())
     }
 
     fn generation_steps(&self, fallback: i32) -> Result<i32, String> {
@@ -693,7 +710,8 @@ fn configure_request(
     platform: ComputePlatform,
     include_models: bool,
 ) -> Result<(), String> {
-    api.set_prompt(handle, &request.prompt)?;
+    configuration.validate_inputs(request)?;
+    api.set_prompt(handle, if configuration.animate { "" } else { &request.prompt })?;
     api.set_frames(handle, request.frames)?;
     if request.still_image {
         api.set_still_image(handle)?;
@@ -1061,6 +1079,7 @@ pub fn generate_reference_icon_batch(
         step_override: Ok(None),
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
+        animate: false,
         models: [
             (0, "transformer", Some(batch.transformer.clone())),
             (1, "textEncoder", Some(batch.text_encoder.clone())),
@@ -1759,6 +1778,53 @@ mod ffi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animate_requires_video_and_prompt_mode_requires_text() {
+        let mut configuration = Configuration::from_settings(&BTreeMap::new());
+        let mut request = GenerationRequest::default();
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("prompt"));
+        configuration.animate = true;
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("reference video"));
+        request.reference_paths.push("image.png".into());
+        assert!(configuration.validate_inputs(&request).is_err());
+        request.reference_video_ids.push("video".into());
+        configuration.validate_inputs(&request).unwrap();
+        request.still_image = true;
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("video generation"));
+    }
+
+    #[test]
+    fn animate_empty_prompt_and_four_steps_reach_bundled_dll() {
+        let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
+            enabled: true, model: None,
+            options: BTreeMap::from([
+                ("generationMode".into(), ProviderOption::String("animate".into())),
+                ("stepOverride".into(), ProviderOption::Number(4.0)),
+            ]),
+        })]);
+        let configuration = Configuration::from_settings(&settings);
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        let id = create_reference_video(2.0, &settings).unwrap();
+        let result = (|| -> Result<(), String> {
+            append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
+            let request = GenerationRequest {
+                job_id: "animate-test".into(), frames: 48, steps: 20, seed: 1,
+                canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
+                ..Default::default()
+            };
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                for include_models in [false, true] {
+                    let handle = RequestHandle::new(&api)?;
+                    configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
+                    assert_eq!(api.resolve(handle.0)?.num_model_evaluations, 3);
+                }
+            }
+            Ok(())
+        })();
+        release_reference_videos(&[id]).unwrap();
+        result.unwrap();
+    }
 
     #[test]
     fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
