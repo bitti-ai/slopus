@@ -23,12 +23,13 @@ function decoderMocks() {
     frames.push(frame); return frame;
   };
   const close = vi.fn();
+  const configure = vi.fn();
   vi.stubGlobal("EncodedVideoChunk", class { constructor(public init: EncodedVideoChunkInit) {} });
   vi.stubGlobal("VideoDecoder", class {
     static async isConfigSupported(config: VideoDecoderConfig) { return { supported: true, config }; }
     state = "configured"; decodeQueueSize = 0;
     constructor(private init: VideoDecoderInit) {}
-    configure() {}
+    configure = configure;
     decode(chunk: { init: EncodedVideoChunkInit }) { this.init.output(make(chunk.init.timestamp) as unknown as VideoFrame); }
     async flush() {}
     close = close;
@@ -37,8 +38,46 @@ function decoderMocks() {
     constructor(public width: number, public height: number) {}
     getContext() { return { drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(this.width * this.height * 4) }) }; }
   });
-  return { frames, close };
+  return { frames, close, configure };
 }
+
+it.each(["unsupported", "rejected"])("falls back when AV1 hardware decoding is %s", async (failure) => {
+  const { configure, frames } = decoderMocks();
+  const av1 = { ...source, config: { codec: "av01.0.08M.08", codedWidth: 544, codedHeight: 960,
+    description: new Uint8Array([129, 8, 12, 0]) } };
+  const probe = vi.spyOn(VideoDecoder, "isConfigSupported").mockImplementation(async (config) => {
+    if (config.hardwareAcceleration === "prefer-hardware") {
+      if (failure === "rejected") throw new DOMException("No hardware decoder", "NotSupportedError");
+      return { supported: false, config };
+    }
+    return { supported: true, config };
+  });
+  await uploadReferenceVideoFrames(av1, "video-1", 1, 2, () => false);
+  expect(probe.mock.calls.map(([config]) => config.hardwareAcceleration)).toEqual(["prefer-hardware", "no-preference"]);
+  expect(configure).toHaveBeenCalledWith({ ...av1.config, hardwareAcceleration: "no-preference" });
+  expect(invoke).toHaveBeenCalledWith("append_reference_video", expect.any(Uint8Array), expect.anything());
+  expect(frames.every((frame) => frame.close.mock.calls.length === 1)).toBe(true);
+});
+
+it("keeps hardware decoding when supported", async () => {
+  const { configure } = decoderMocks();
+  const probe = vi.spyOn(VideoDecoder, "isConfigSupported");
+  await uploadReferenceVideoFrames(source, "video-1", 1, 2, () => false);
+  expect(probe).toHaveBeenCalledOnce();
+  expect(configure).toHaveBeenCalledWith({ ...source.config, hardwareAcceleration: "prefer-hardware" });
+});
+
+it("reports unavailable codecs only after both probes and releases the native reference", async () => {
+  const { configure } = decoderMocks();
+  const probe = vi.spyOn(VideoDecoder, "isConfigSupported").mockImplementation(async (config) => ({ supported: false, config }));
+  vi.mocked(demux).mockResolvedValue(source);
+  const config = createProjectConfig({ name: "Test", prompt: "", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 20 });
+  const request = { jobId: "job", prompt: "", frames: 120, steps: 4, seed: 1, canvasWidth: 736, canvasHeight: 416, referencePaths: [], referenceVideos: [input] };
+  await expect(prepareReferenceVideos("C:/project", request, config, () => false, () => undefined)).rejects.toThrow("hardware or automatic decoder selection");
+  expect(probe).toHaveBeenCalledTimes(2);
+  expect(configure).not.toHaveBeenCalled();
+  expect(invoke).toHaveBeenCalledWith("release_reference_videos", { ids: ["video-1"] });
+});
 
 it("validates trim bounds and uses at most 15 seconds for an unspecified clip", () => {
   expect(referenceVideoRange(input, 4)).toEqual({ start: 1, duration: 2 });

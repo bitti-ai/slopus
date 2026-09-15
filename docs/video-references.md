@@ -29,6 +29,11 @@ the video updates the icon. MP4, M4V, and MOV containers are accepted; the compu
 decoder must support the video codec. Video files remain at their original
 locations. The project stores their paths and clip settings.
 
+Reference preparation tries hardware decoding first, then automatic WebCodecs
+decoder selection if that configuration is unavailable. This allows the webview
+to use its software decoder for formats such as AV1 when hardware decoding is
+unavailable.
+
 Set the clip's start and duration, and choose whether to include its sound.
 Each clip must last 2–15 seconds. A generation can use up to three video clips
 totaling 15 seconds, alongside up to nine images. Cite the reference in a shot
