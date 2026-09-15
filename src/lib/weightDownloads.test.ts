@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
 import { cancelWeightDownload, downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
-import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "./loras";
+import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
 import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
@@ -13,7 +13,18 @@ const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
 
-it.each([TAOMATE_LORA, TURBO_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
+it("downloads Animate with its transformer and four-step distillation adapter", async () => {
+  await downloadTemplateWeights("viggle-animate");
+  const template = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "viggle-animate")!;
+  expect(templateNeedsDownload(template)).toBe(false);
+  expect(template.paths.transformer).toBe("C:/Slopus/weights/Viggle-Animate-pruned_rank8_int8_convrot.safetensors");
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: VIGGLE_ANIMATE_LORA.url }));
+  expect(loadLoras().find(({ id }) => id === VIGGLE_ANIMATE_LORA.id)).toMatchObject({
+    path: "C:/Slopus/weights/viggle_animate_distillation_bf16.safetensors", stepOverride: 4,
+  });
+});
+
+it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
   const savedLora = () => loadLoras().find(({ id }) => id === lora.id)!;
   await downloadLora(lora.id);
   expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: lora.url });

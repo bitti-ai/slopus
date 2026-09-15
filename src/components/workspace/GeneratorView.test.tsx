@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
 import { GeneratorView } from "./GeneratorView";
-import { minimaxOriginalTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
+import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
@@ -33,6 +33,38 @@ it("has no selected generator when all templates still need downloads", () => {
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [minimaxOriginalTemplate()], defaultTemplateId: "minimax-h3-original", catalogVersion: 1 }));
   setup();
   expect(screen.getByRole("combobox", { name: "Video generator template: No downloaded generators" })).toBeDisabled();
+});
+
+it("animates a blank scene only after selecting a video and submits an empty prompt", () => {
+  const template = viggleAnimateTemplate();
+  template.paths = { transformer: "viggle.safetensors", textEncoder: "encoder", videoVae: "video", audioVae: "audio", tokenizer: "" };
+  localStorage.setItem("slopus.loras.v1", JSON.stringify([{ id: template.loras![0].loraId, name: "Viggle", path: "distillation.safetensors", stepOverride: 4 }]));
+  localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 7 }));
+  const initial = project();
+  initial.generationJobs = [createDraftGenerationJob("", { id: "blank", title: "Blank scene" })];
+  initial.references = [{ id: "motion", kind: "video", name: "Motion", description: "", intendedUse: [],
+    sourcePath: "C:/motion.mp4", createdAt: "2026-09-15T00:00:00.000Z",
+    video: { startSeconds: 1, durationSeconds: 3, includeAudio: false } }];
+  const submitted = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial);
+    return <GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime}
+      onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
+  }
+  render(<Harness />);
+  const generate = within(screen.getByRole("region", { name: "Blank scene" })).getByRole("button", { name: "Generate" });
+  expect(generate).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  expect(submitted.mock.calls.flatMap(([items]) => items)).toHaveLength(0);
+  expect(screen.queryByLabelText("The sound of this scene")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "motion" } });
+  expect(generate).toBeEnabled();
+  fireEvent.click(generate);
+  expect(submitted).toHaveBeenLastCalledWith([expect.objectContaining({ request: expect.objectContaining({
+    prompt: "", referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
+  }) })]);
+  fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "" } });
+  expect(generate).toBeDisabled();
 });
 
 const readyRuntime: SlopfabStatus = {
@@ -436,7 +468,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("option", { name: "Fast draft" }));
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
-    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", []);
+    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt");
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
     expect(screen.queryByText("Video model files missing")).not.toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();
