@@ -32,13 +32,27 @@ export async function inspectReferenceVideo(folderPath: string, sourcePath: stri
   return { durationSeconds: Math.min(15, duration), includeAudio: Boolean(source.hasAudio) };
 }
 
+async function referenceDecoderConfig(config: VideoDecoderConfig): Promise<VideoDecoderConfig> {
+  // A rejected hardware preference does not mean the codec is unavailable.
+  // In particular, AV1 may still be decoded by the webview's software decoder.
+  for (const hardwareAcceleration of ["prefer-hardware", "no-preference"] as const) {
+    const candidate = { ...config, hardwareAcceleration };
+    try {
+      const support = await VideoDecoder.isConfigSupported(candidate);
+      if (support.supported) return support.config ?? candidate;
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== "NotSupportedError") throw error;
+    }
+  }
+  throw new Error(`This webview cannot decode reference codec ${config.codec} with hardware or automatic decoder selection.`);
+}
+
 /** Decode only the selected interval. At most a small decoder batch and one
  * retained frame are alive; binary IPC avoids JSON/base64 copies of pixels.
  * Slopfab consumes host RGB, so readback is confined to this ingestion step. */
 export async function uploadReferenceVideoFrames(source: DemuxedSource, id: string, start: number, duration: number, cancelled: () => boolean) {
   if (typeof VideoDecoder === "undefined") throw new Error("This webview does not support WebCodecs video decoding.");
-  const support = await VideoDecoder.isConfigSupported({ ...source.config, hardwareAcceleration: "prefer-hardware" });
-  if (!support.supported) throw new Error(`This computer cannot decode reference codec ${source.config.codec}.`);
+  const config = await referenceDecoderConfig(source.config);
   const origin = source.samples.reduce((value, sample) => Math.min(value, sample.timestampUs), Infinity);
   const beginUs = origin + Math.round(start * 1_000_000);
   const endUs = beginUs + Math.round(duration * 1_000_000);
@@ -99,7 +113,7 @@ export async function uploadReferenceVideoFrames(source: DemuxedSource, id: stri
     error: (error) => { state.error = error; },
   });
   try {
-    decoder.configure(support.config ?? source.config);
+    decoder.configure(config);
     for (let index = first; index < last; index++) {
       check();
       const sample = source.samples[index];
