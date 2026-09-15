@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { TURBO_LORA } from "./loras";
+import { TURBO_LORA, VIGGLE_ANIMATE_LORA, loadLoras, saveLoras } from "./loras";
 import {
   agentEndpointProviderSettings,
   createGeneratorTemplate,
@@ -16,6 +16,7 @@ import {
   minimaxReferencesTemplate,
   minimaxFastTemplate,
   minimaxSingularityTemplate,
+  viggleAnimateTemplate,
   templateNeedsDownload,
   saveAgentEndpointSettings,
   saveGeneratorTemplateSettings,
@@ -28,7 +29,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
     const settings = loadGeneratorTemplateSettings();
     expect(settings.defaultTemplateId).toBe("default");
-    expect(settings.templates).toHaveLength(5);
+    expect(settings.templates).toHaveLength(6);
     expect(settings.templates[1].name).toBe("First/Last Frame");
     expect(settings.templates[0]).toMatchObject({
       id: "default",
@@ -48,6 +49,27 @@ describe("generator templates", () => {
     }
   });
 
+  it("migrates Animate once and preserves its mode, local weights and four-step adapter", () => {
+    const custom = createGeneratorTemplate("Existing");
+    saveGeneratorTemplateSettings({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 6 });
+    const settings = loadGeneratorTemplateSettings();
+    const template = settings.templates.find(({ id }) => id === "viggle-animate")!;
+    expect(template).toEqual(viggleAnimateTemplate());
+    expect(settings.defaultTemplateId).toBe(custom.id);
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+    expect(template.paths.transformer).toBe("https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/Viggle-Animate-pruned_rank8_int8_convrot.safetensors");
+    expect(templateNeedsDownload(template)).toBe(true);
+    template.name = "My animation";
+    template.paths = { transformer: "local", textEncoder: "encoder", videoVae: "video", audioVae: "audio", tokenizer: "" };
+    saveLoras(loadLoras().map((lora) => lora.id === VIGGLE_ANIMATE_LORA.id ? { ...lora, path: "adapter" } : lora));
+    saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)).toEqual(template);
+    const options = engineProviderSetting(loadEngineSettings()).options;
+    expect(options).toMatchObject({ generationMode: "animate", stepOverride: 4 });
+    expect(JSON.parse(options.loras as string)).toEqual([{ path: "adapter", strength: 1 }]);
+    expect(engineProviderSetting(custom.paths, { enabled: true, model: null, options }, "sage2", [], "prompt").options).not.toHaveProperty("generationMode");
+  });
+
   it("adds References with the same settings and VRAM variants except for the main transformer URL", () => {
     const original = minimaxOriginalTemplate();
     const references = minimaxReferencesTemplate();
@@ -57,7 +79,7 @@ describe("generator templates", () => {
       paths: { ...original.paths, transformer },
       sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, original.sources!.transformer![1]] },
     });
-    expect(loadGeneratorTemplateSettings().templates.map(({ name }) => name)).toEqual(["Default", "First/Last Frame", "References", "First/Last Frame Fast", "Singularity"]);
+    expect(loadGeneratorTemplateSettings().templates.map(({ name }) => name)).toEqual(["Default", "First/Last Frame", "References", "First/Last Frame Fast", "Singularity", "Animate"]);
   });
 
   it.each(["Minimax H3 Original", "My custom generator"])("migrates the saved %s template without changing its configuration", (name) => {
@@ -74,7 +96,7 @@ describe("generator templates", () => {
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
     expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(6);
+    expect(settings.catalogVersion).toBe(7);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -84,7 +106,7 @@ describe("generator templates", () => {
     const references = minimaxReferencesTemplate();
     references.paths.transformer = "D:/Models/custom.safetensors";
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [references], catalogVersion: 3 }));
-    expect(loadGeneratorTemplateSettings().templates).toEqual([references, minimaxFastTemplate(), minimaxSingularityTemplate()]);
+    expect(loadGeneratorTemplateSettings().templates).toEqual([references, minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()]);
   });
 
   it("adds Singularity to the previous catalog once while preserving saved templates", () => {
@@ -93,9 +115,9 @@ describe("generator templates", () => {
     custom.paths.transformer = "D:/Models/custom.safetensors";
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 4 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate()]);
+    expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate(), viggleAnimateTemplate()]);
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(6);
+    expect(settings.catalogVersion).toBe(7);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
@@ -106,7 +128,7 @@ describe("generator templates", () => {
     template.defaultSteps = 8;
     template.paths.transformer = "D:/Models/singularity.safetensors";
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 4 }));
-    expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
+    expect(loadGeneratorTemplateSettings().templates).toEqual([template, viggleAnimateTemplate()]);
   });
 
   it("adds Turbo to saved Singularity once and preserves other adapters and settings", () => {
@@ -116,7 +138,7 @@ describe("generator templates", () => {
     template.loras = [{ loraId: "custom", enabled: false, strength: 0.5 }];
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 5 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.templates).toEqual([{ ...template, loras: [...template.loras, { loraId: TURBO_LORA.id, enabled: true, strength: 1 }] }]);
+    expect(settings.templates).toEqual([{ ...template, loras: [...template.loras, { loraId: TURBO_LORA.id, enabled: true, strength: 1 }] }, viggleAnimateTemplate()]);
     expect(settings.defaultTemplateId).toBe("");
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [template] });
@@ -127,7 +149,7 @@ describe("generator templates", () => {
     const template = minimaxSingularityTemplate();
     template.loras = [{ loraId: TURBO_LORA.id, enabled: false, strength: 0.3 }];
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 5 }));
-    expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
+    expect(loadGeneratorTemplateSettings().templates).toEqual([template, viggleAnimateTemplate()]);
   });
 
   it("adds First/Last Frame Fast with six steps and its transformer URL", () => {
@@ -149,7 +171,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(6);
+    expect(settings.catalogVersion).toBe(7);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -164,7 +186,7 @@ describe("generator templates", () => {
     expect(loadGeneratorTemplateSettings().templates[0].sources![field]).toEqual(template.sources![field]);
     const custom = createGeneratorTemplate();
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [custom], catalogVersion: 1 }));
-    expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id, "minimax-h3-references", "minimax-h3-fast", "minimax-h3-singularity"]);
+    expect(loadGeneratorTemplateSettings().templates.map(({ id }) => id)).toEqual([custom.id, "minimax-h3-references", "minimax-h3-fast", "minimax-h3-singularity", "viggle-animate"]);
   });
 
   it.each(["url", "downloaded", "original", "custom", "cached original"])("removes the incompatible encoder from saved templates using %s", (selection) => {
@@ -184,7 +206,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(6);
+    expect(settings.catalogVersion).toBe(7);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,
