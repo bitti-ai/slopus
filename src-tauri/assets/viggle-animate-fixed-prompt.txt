@@ -1,0 +1,16 @@
+<Video 1>: <0.2 seconds><1.2 seconds><2.2 seconds><3.2 seconds><4.2 seconds><5.0 seconds><Picture 1>: subject_definitions:
+<Video 1> is the source video for the editing task.
+<Picture 1> is one frame of the target video.
+
+summary:
+[video editing + character replacement] The target video is an edited version of <Video 1> in which every performer is replaced by a different person. <Picture 1> is one frame of the target video: it already shows the replacement, together with the background, camera framing and lighting it happens in. Every other frame of the target video shows those same people in that same place, following the motion, timing and camera of <Video 1>.
+
+retention_analysis:
+<Video 1> (source video editing): fully_preserved - the camera framing, the background, the lighting, and the motion and timing of every performance are copied frame for frame.
+<Picture 1> (appears in [Shot 1]): reference - one frame of the target video, pixel for pixel. The people in it, their faces, hair, skin tone, build and clothing, and the background, the framing and the lighting are all taken from <Picture 1> and held unchanged from the first frame to the last.
+
+detailed_description:
+[Shot 1] The people of <Picture 1> perform exactly the motion of the corresponding performers in <Video 1>, in the same framing, on the same background, under the same lighting. Nothing outside the people changes. The camera framing never changes through the end of the video.
+
+overall_soundscape:
+No music and no speech.
