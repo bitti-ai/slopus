@@ -265,6 +265,7 @@ pub async fn remove_downloaded_weights(app: AppHandle, paths: Vec<String>) -> Re
             if path.exists() {
                 fs::remove_file(&path).map_err(|error| format!("Could not remove {}: {error}", path.display()))?;
                 let _ = fs::remove_file(path.with_extension("complete.json"));
+                let _ = fs::remove_file(crate::conditioning::cached_path(&path));
             }
         }
         Ok(())

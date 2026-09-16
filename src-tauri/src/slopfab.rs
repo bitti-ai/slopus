@@ -476,6 +476,7 @@ struct Configuration {
     vulkan: bool,
     attention: &'static str,
     animate: bool,
+    prompt_embedding: Option<PathBuf>,
     models: [(i32, &'static str, Option<PathBuf>); 5],
     loras: Result<Vec<LoraAdapter>, String>,
     step_override: Result<Option<i32>, String>,
@@ -505,6 +506,7 @@ impl Configuration {
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             vulkan: string_option("inferenceBackend") == Some("vulkan"),
             animate: string_option("generationMode") == Some("animate"),
+            prompt_embedding: option("promptEmbedding"),
             attention: match string_option("attention") {
                 Some("exact") => "exact",
                 Some("flash2") => "flash2",
@@ -536,8 +538,14 @@ impl Configuration {
             if request.still_image {
                 return Err("Animate requires video generation.".into());
             }
-            if request.reference_video_ids.is_empty() {
-                return Err("Animate requires a reference video.".into());
+            if request.reference_video_ids.len() != 1 {
+                return Err("Animate requires exactly one reference video.".into());
+            }
+            if request.reference_paths.len() != 1 {
+                return Err("Animate requires exactly one repainted frame of the driving scene.".into());
+            }
+            if request.continuation_path.is_some() || !request.refmods.is_empty() {
+                return Err("Animate does not support scene continuation or refmods.".into());
             }
         } else if request.prompt.trim().is_empty() {
             return Err("Generation prompt cannot be empty.".into());
@@ -580,9 +588,10 @@ impl Configuration {
 
 pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
     let configuration = Configuration::from_settings(settings);
-    let models = configuration
+    let mut models = configuration
         .models
         .iter()
+        .filter(|(id, _, _)| !configuration.animate || (*id != 1 && *id != 2))
         .map(|(_, id, path)| ModelStatus {
             id,
             configured: path.is_some(),
@@ -592,6 +601,13 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
                 .map(|value| value.to_string_lossy().into_owned()),
         })
         .collect::<Vec<_>>();
+    if configuration.animate {
+        models.push(ModelStatus {
+            id: "promptEmbedding", configured: configuration.prompt_embedding.is_some(),
+            available: configuration.prompt_embedding.as_deref().is_some_and(Path::is_file),
+            path: configuration.prompt_embedding.as_ref().map(|path| path.to_string_lossy().into_owned()),
+        });
+    }
     let dll_path = configuration.dll_path.to_string_lossy().into_owned();
     match ffi::Api::load(&configuration.dll_path) {
         Ok(api) => match api.version() {
@@ -713,6 +729,17 @@ fn configure_request(
     include_models: bool,
 ) -> Result<(), String> {
     configuration.validate_inputs(request)?;
+    if configuration.animate {
+        let videos = REFERENCE_VIDEOS.lock().map_err(|_| "Reference video lock failed.")?;
+        let video = videos.get(&request.reference_video_ids[0])
+            .ok_or("The prepared reference video no longer exists. Please retry generation.")?;
+        // The setter selects Euler and four boundaries; explicit step settings follow.
+        api.set_animate(handle, video.has_audio())?;
+        let source = configuration.prompt_embedding.as_deref()
+            .ok_or("Animate conditioning is missing. Download Animate in Settings and select its conditioning additional safetensor.")?;
+        let embedding = crate::conditioning::prepare(source)?;
+        api.set_prompt_embedding(handle, &embedding)?;
+    }
     api.set_prompt(handle, if configuration.animate { ANIMATE_PROMPT } else { &request.prompt })?;
     api.set_frames(handle, request.frames)?;
     if request.still_image {
@@ -745,6 +772,7 @@ fn configure_request(
     if include_models {
         api.set_reuse_models(handle, true)?;
         for (id, _, path) in &configuration.models {
+            if configuration.animate && (*id == 1 || *id == 2) { continue; }
             if request.still_image && *id == 4 {
                 continue;
             }
@@ -1082,6 +1110,7 @@ pub fn generate_reference_icon_batch(
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
         animate: false,
+        prompt_embedding: None,
         models: [
             (0, "transformer", Some(batch.transformer.clone())),
             (1, "textEncoder", Some(batch.text_encoder.clone())),
@@ -1206,6 +1235,7 @@ mod ffi {
         attach_video: VideoAttach,
         dll_path: std::path::PathBuf,
         frames: usize,
+        has_audio: bool,
     }
 
     // The registry mutex serializes access. The DLL handle and all copied input
@@ -1224,7 +1254,7 @@ mod ffi {
                 let mut handle = std::ptr::null_mut();
                 api.error(create(duration, &mut handle))?;
                 if handle.is_null() { return Err("slopfab returned an empty reference video handle.".into()); }
-                Ok(Self { api, handle, destroy, append_rgba, audio, attach_video, dll_path, frames: 0 })
+                Ok(Self { api, handle, destroy, append_rgba, audio, attach_video, dll_path, frames: 0, has_audio: false })
             }
         }
         pub fn append(&mut self, bytes: &[u8], width: i32, height: i32, timestamp: f64) -> Result<(), String> {
@@ -1236,8 +1266,11 @@ mod ffi {
             Ok(())
         }
         pub fn set_audio(&mut self, samples: &[f32], channels: i32, sample_rate: i32) -> Result<(), String> {
-            self.api.error(unsafe { (self.audio)(self.handle, samples.as_ptr(), samples.len(), channels, sample_rate, 0.0) })
+            self.api.error(unsafe { (self.audio)(self.handle, samples.as_ptr(), samples.len(), channels, sample_rate, 0.0) })?;
+            self.has_audio = !samples.is_empty();
+            Ok(())
         }
+        pub fn has_audio(&self) -> bool { self.has_audio }
         pub fn attach(&self, request: *mut Request, dll_path: &Path) -> Result<(), String> {
             if dll_path != self.dll_path { return Err("Reference video and generation must use the same slopfab runtime.".into()); }
             self.api.error(unsafe { (self.attach_video)(request, self.handle) })
@@ -1360,6 +1393,8 @@ mod ffi {
         request_create: unsafe extern "C" fn() -> *mut Request,
         request_destroy: unsafe extern "C" fn(*mut Request),
         set_prompt: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
+        set_animate: Option<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>,
+        set_prompt_embedding: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
         set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
         set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
         set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -1437,6 +1472,12 @@ mod ffi {
                         "slopfab_request_set_prompt",
                         unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                     ),
+                    set_animate: library
+                        .get::<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>(b"slopfab_request_set_animate\0")
+                        .ok().map(|symbol| *symbol),
+                    set_prompt_embedding: library
+                        .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_prompt_embedding_path\0")
+                        .ok().map(|symbol| *symbol),
                     set_resolution: symbol!(
                         "slopfab_request_set_resolution",
                         unsafe extern "C" fn(*mut Request, i32, i32) -> i32
@@ -1590,6 +1631,17 @@ mod ffi {
         pub fn set_prompt(&self, r: *mut Request, v: &str) -> Result<(), String> {
             let v = CString::new(v).map_err(|_| "Prompt contains a null byte.".to_string())?;
             self.error(unsafe { (self.set_prompt)(r, v.as_ptr()) })
+        }
+        #[cfg(test)]
+        pub fn disable_animate_for_test(&mut self) { self.set_animate = None; }
+        pub fn set_animate(&self, r: *mut Request, preserve_audio: bool) -> Result<(), String> {
+            let set = self.set_animate.ok_or("Animate requires slopfab.dll API 1.10 or later. Update the runtime.")?;
+            self.error(unsafe { set(r, 1, preserve_audio as i32) })
+        }
+        pub fn set_prompt_embedding(&self, r: *mut Request, path: &Path) -> Result<(), String> {
+            let set = self.set_prompt_embedding.ok_or("This slopfab.dll does not support frozen conditioning. Update the runtime.")?;
+            let path = path_cstring(path)?;
+            self.error(unsafe { set(r, path.as_ptr()) })
         }
         pub fn set_resolution(&self, r: *mut Request, w: i32, h: i32) -> Result<(), String> {
             self.error(unsafe { (self.set_resolution)(r, w, h) })
@@ -1797,11 +1849,15 @@ mod tests {
     }
 
     #[test]
-    fn animate_fixed_prompt_and_four_steps_reach_bundled_dll() {
+    fn animate_recipe_and_audio_selection_reach_bundled_dll() {
+        let root = tempfile::tempdir().unwrap();
+        let embedding = root.path().join("conditioning.safetensors");
+        crate::conditioning::fixture(&embedding);
         let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
             enabled: true, model: None,
             options: BTreeMap::from([
                 ("generationMode".into(), ProviderOption::String("animate".into())),
+                ("promptEmbedding".into(), ProviderOption::String(embedding.to_string_lossy().into_owned())),
                 ("stepOverride".into(), ProviderOption::Number(4.0)),
             ]),
         })]);
@@ -1810,28 +1866,43 @@ mod tests {
         let id = create_reference_video(2.0, &settings).unwrap();
         let result = (|| -> Result<(), String> {
             append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
-            let mut request = GenerationRequest {
+            let request = GenerationRequest {
                 job_id: "animate-test".into(), frames: 48, steps: 20, seed: 1,
+                prompt: "This scene prompt must be ignored by Animate.".into(),
                 canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
+                reference_paths: vec!["repainted.png".into()],
                 ..Default::default()
             };
-            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
-                for include_models in [false, true] {
-                    let handle = RequestHandle::new(&api)?;
-                    configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
-                    assert_eq!(api.resolve(handle.0)?.num_model_evaluations, 3);
-                    assert!(api.describe(handle.0)?.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
-                    request.prompt = "This scene prompt must be ignored by Animate.".into();
-                    let handle = RequestHandle::new(&api)?;
-                    configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
-                    assert!(api.describe(handle.0)?.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
-                    request.prompt.clear();
+            for preserve_audio in [false, true] {
+                if preserve_audio {
+                    set_reference_video_audio(&id, &vec![0; 32_000 * 2 * 4], 1, 32_000)?;
+                }
+                for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                    for include_models in [false, true] {
+                        let handle = RequestHandle::new(&api)?;
+                        configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
+                        assert_eq!(api.resolve(handle.0)?.num_model_evaluations, 3);
+                        let description = api.describe(handle.0)?;
+                        assert!(description.contains("fixed 362-token embedding; video then repainted image"));
+                        assert!(description.contains("reference short edge 416"));
+                        assert!(description.contains("video 1.000000 .. 0.600000 (shift 3.0)"));
+                        assert!(description.contains(if preserve_audio { "pinned driving soundtrack" } else { "generated; driving reference soundtrack omitted" }));
+                        assert!(description.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
+                    }
                 }
             }
             Ok(())
         })();
         release_reference_videos(&[id]).unwrap();
         result.unwrap();
+    }
+
+    #[test]
+    fn animate_reports_missing_runtime_api() {
+        let mut api = ffi::Api::load(&default_dll_path()).unwrap();
+        api.disable_animate_for_test();
+        let handle = RequestHandle::new(&api).unwrap();
+        assert!(api.set_animate(handle.0, true).unwrap_err().contains("1.10"));
     }
 
     #[test]

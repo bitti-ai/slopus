@@ -13,6 +13,7 @@ mod agent_commands;
 mod app_paths;
 mod app_settings;
 mod cuda_support;
+mod conditioning;
 mod diagnostics;
 mod export;
 mod reference_icons;

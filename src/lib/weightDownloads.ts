@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
 import { downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
-import { ENGINE_PATH_FIELDS, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
+import { ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
   type EnginePathId, type GeneratorTemplate, type WeightSource } from "./settings";
 
 export interface WeightGpu { name: string; memoryBytes: number }
@@ -10,6 +10,7 @@ export interface DownloadState {
   templateId: string;
   loraId?: string;
   currentLoraId?: string;
+  currentAdditionalId?: string;
   name?: string;
   field: EnginePathId | null;
   downloaded: number;
@@ -31,7 +32,7 @@ const publish = (next: DownloadState | null) => { state = next; subscribers.forE
 
 export function weightDownloadProgress(download: DownloadState): number {
   if (!download.files) return 0;
-  const current = (download.field || download.loraId || download.currentLoraId) && download.total && download.total > 0
+  const current = (download.field || download.loraId || download.currentLoraId || download.currentAdditionalId) && download.total && download.total > 0
     ? Math.min(1, Math.max(0, download.downloaded / download.total)) : 0;
   return Math.min(download.active ? 99 : 100, 100 * (download.completed + current) / download.files);
 }
@@ -66,8 +67,14 @@ export function refreshDownloadedWeights(): Promise<void> {
   refreshPending = (async () => {
     await refreshDownloadedLoras();
     const before = loadGeneratorTemplateSettings();
-    const paths = [...new Set(before.templates.flatMap((template) => Object.values(template.sources ?? {}).flatMap((sources) => sources.flatMap((source) => source.downloadedPath ? [source.downloadedPath] : []))))];
-    const urls = [...new Set(before.templates.flatMap((template) => Object.values(template.sources ?? {}).flatMap((sources) => sources.map((source) => source.url))))];
+    const paths = [...new Set(before.templates.flatMap((template) => [
+      ...generatorPathFields(template).flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
+      ...(template.additionalSafetensors ?? []).flatMap((file) => file.downloadedPath ? [file.downloadedPath] : []),
+    ]))];
+    const urls = [...new Set(before.templates.flatMap((template) => [
+      ...Object.values(template.sources ?? {}).flatMap((sources) => sources.map((source) => source.url)),
+      ...(template.additionalSafetensors ?? []).map((file) => file.url),
+    ]))];
     if (!paths.length && !urls.length) return;
     const [exists, found, devices] = await Promise.all([
       paths.length ? invoke<Record<string, boolean>>("check_weight_files", { paths }) : Promise.resolve({} as Record<string, boolean>),
@@ -78,7 +85,7 @@ export function refreshDownloadedWeights(): Promise<void> {
     let changed = false;
     const templates = current.templates.map((template) => {
       const restored = { ...template, paths: { ...template.paths }, sources: { ...template.sources } };
-      for (const { id } of ENGINE_PATH_FIELDS) {
+      for (const { id } of generatorPathFields(template)) {
         const sources = template.sources?.[id];
         if (!sources) continue;
         restored.sources[id] = sources.map((source) => {
@@ -96,6 +103,13 @@ export function refreshDownloadedWeights(): Promise<void> {
           if (selected?.downloadedPath) { restored.paths[id] = selected.downloadedPath; changed = true; }
         }
       }
+      restored.additionalSafetensors = template.additionalSafetensors?.map((file) => {
+        if (!before.templates.find(({ id }) => id === template.id)?.additionalSafetensors?.some((old) => old.id === file.id && old.url === file.url && old.downloadedPath === file.downloadedPath)) return file;
+        const downloadedPath = file.downloadedPath && exists?.[file.downloadedPath] !== false ? file.downloadedPath : found?.[file.url];
+        if (downloadedPath === file.downloadedPath) return file;
+        changed = true;
+        return { ...file, downloadedPath };
+      });
       return restored;
     });
     if (changed) {
@@ -116,7 +130,7 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
     const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === templateId);
     if (!template) throw new Error("This generator was removed.");
     const devices = await invoke<WeightGpu[]>("weight_download_hardware");
-    const downloads = ENGINE_PATH_FIELDS.flatMap(({ id }) => {
+    const downloads = generatorPathFields(template).flatMap(({ id }) => {
       if (template.paths[id].trim() && !isDownloadUrl(template.paths[id])) return [];
       const sources = template.sources?.[id] ?? [];
       if (!sources.length) return [];
@@ -125,7 +139,8 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
       return [{ field: id, source, originalPath: template.paths[id] }];
     });
     const loraDownloads = downloadableTemplateLoras(template.loras);
-    publish({ ...state!, files: downloads.length + loraDownloads.length });
+    const additionalDownloads = (template.additionalSafetensors ?? []).filter((file) => !file.downloadedPath);
+    publish({ ...state!, files: downloads.length + loraDownloads.length + additionalDownloads.length });
     unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
       if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
     });
@@ -148,6 +163,19 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
       });
       saveGeneratorTemplateSettings({ ...current, templates });
       publish({ ...state!, completed: state!.completed + 1, field: null, downloaded: 0, total: null });
+    }
+    for (const file of additionalDownloads) {
+      if (cancelled) throw new Error("Download cancelled.");
+      requestId = crypto.randomUUID();
+      publish({ ...state!, currentAdditionalId: file.id, downloaded: 0, total: null });
+      const path = await invoke<string>("download_weight", { requestId, url: file.url });
+      if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+      const current = loadGeneratorTemplateSettings();
+      saveGeneratorTemplateSettings({ ...current, templates: current.templates.map((template) => template.id !== templateId ? template : {
+        ...template, additionalSafetensors: template.additionalSafetensors?.map((entry) =>
+          entry.id === file.id && entry.url === file.url && entry.downloadedPath === file.downloadedPath ? { ...entry, downloadedPath: path } : entry),
+      }) });
+      publish({ ...state!, completed: state!.completed + 1, currentAdditionalId: undefined, downloaded: 0, total: null });
     }
     for (const lora of loraDownloads) {
       if (cancelled) throw new Error("Download cancelled.");
@@ -246,14 +274,18 @@ export async function removeTemplateWeights(templateId: string): Promise<void> {
   if (!isTauri() || state?.active) return;
   const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === templateId);
   if (!template) return;
-  const paths = [...new Set(Object.values(template.sources ?? {}).flatMap((sources) => sources.flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])))];
+  const paths = [...new Set([
+    ...generatorPathFields(template).flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
+    ...(template.additionalSafetensors ?? []).flatMap((file) => file.downloadedPath ? [file.downloadedPath] : []),
+  ])];
   try {
     await invoke("remove_downloaded_weights", { paths });
     const current = loadGeneratorTemplateSettings();
     const templates = current.templates.map((template) => {
       if (template.id !== templateId) return template;
       const restored = { ...template, paths: { ...template.paths }, sources: { ...template.sources } };
-      for (const { id } of ENGINE_PATH_FIELDS) {
+      restored.additionalSafetensors = template.additionalSafetensors?.map((file) => paths.includes(file.downloadedPath ?? "") ? { ...file, downloadedPath: undefined } : file);
+      for (const { id } of generatorPathFields(template)) {
         const sources = template.sources?.[id];
         if (!sources?.length) continue;
         restored.paths[id] = (sources.find((source) => source.downloadedPath === template.paths[id]) ?? sources[0]).url;

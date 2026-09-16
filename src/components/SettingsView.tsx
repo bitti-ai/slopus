@@ -1,3 +1,4 @@
+import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
@@ -9,7 +10,7 @@ import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
-  EMPTY_ENGINE_SETTINGS, ENGINE_PATH_FIELDS,
+  EMPTY_ENGINE_SETTINGS, generatorPathFields,
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
@@ -50,7 +51,7 @@ const stateLabel: Record<PathState, string> = {
 
 function templateSummary(template: GeneratorTemplate): string {
   const loras = downloadableTemplateLoras(template.loras);
-  const pendingModels = ENGINE_PATH_FIELDS.some(({ id }) => isDownloadUrl(template.paths[id])
+  const pendingModels = generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0));
   return `${template.defaultSteps} steps${loras.length && !pendingModels ? ` · Needs ${loras.map(({ name }) => name).join(", ")} LoRA${loras.length > 1 ? "s" : ""}` : ""}`;
 }
@@ -302,12 +303,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt").then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? []).then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
     });
-  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode]);
+  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode, selectedTemplate.additionalSafetensors]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -372,7 +373,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras" | "mode">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -395,7 +396,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const removeTemplate = (id: string) => {
     const template = templateSettings.templates.find((template) => template.id === id);
-    if (template && Object.values(template.sources ?? {}).some((sources) => sources.length > 0)) {
+    if (template && (Object.values(template.sources ?? {}).some((sources) => sources.length > 0) || Boolean(template.additionalSafetensors?.length))) {
       void removeTemplateWeights(id).catch((reason) => setError(String(reason)));
       return;
     }
@@ -418,7 +419,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     saveGeneratorTemplateSettings(next);
   };
 
-  const missing = ENGINE_PATH_FIELDS.filter((field) => field.required && pathState(field, settings[field.id], status) !== "found");
+  const missing = generatorPathFields(selectedTemplate).filter((field) => field.required && pathState(field, settings[field.id], status) !== "found");
 
   return (
     <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
@@ -531,7 +532,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                       ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>
                         {downloadState?.active && downloadState.templateId === template.id ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />}
                       </button>
-                      : <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || (Object.values(template.sources ?? {}).some((sources) => sources.length) ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)} aria-label={Object.values(template.sources ?? {}).some((sources) => sources.length) ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`} title={Object.values(template.sources ?? {}).some((sources) => sources.length) ? `Remove ${template.name} weights and keep the template` : `Remove ${template.name}`}><Trash2 size={15} /></button>}
+                      : <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || ((Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)} aria-label={(Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`} title={(Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? `Remove ${template.name} weights and keep the template` : `Remove ${template.name}`}><Trash2 size={15} /></button>}
                   </div>
                 ))}
               </div>
@@ -575,7 +576,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                 <p>{engineDetail(status, desktop, missing.length)}</p>
                 {status?.platform && <small className="settings-status__platform"><b>Platform</b>{status.platform}</small>}
               </div>
-              {ENGINE_PATH_FIELDS.map((field) => {
+              {generatorPathFields(selectedTemplate).map((field) => {
                 const value = settings[field.id];
                 const state = pathState(field, value, status);
                 return (
@@ -611,6 +612,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 );
               })}
+              <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
               <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
               <label className="generator-editor__advanced">
                 <input type="checkbox" checked={showAdvancedOptions} onChange={(event) => setShowAdvancedOptions(event.target.checked)} />

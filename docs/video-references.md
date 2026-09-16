@@ -3,11 +3,22 @@
 ## Animate
 
 Download **Animate** in Settings → Generators, then select it in the Generator.
-Choose a **Reference video** in the scene inspector. Animate requires a video
-and sends Viggle's bundled [fixed prompt](https://huggingface.co/Viggle/Viggle-Animate/raw/main/assets/fixed_prompt.txt);
-shot descriptions, look, sound and music prompts are not used. The prompt is
-embedded in the app, so generation does not need to fetch it. Video trim and
-soundtrack settings still come from References.
+Choose one **Reference video** and one **Repainted scene frame** in the scene
+inspector. The image should be a frame of the driving scene with the character
+repainted, preserving pose, framing, background and lighting. A standalone
+portrait is not an equivalent input. Continuation and refmods are unsupported.
+
+Slopus enables SlopFab C API 1.10's Animate recipe and supplies the downloaded
+362-token embedding and modality tags. Qwen and the tokenizer are neither
+downloaded nor passed to Animate. The bundled fixed prompt remains descriptive
+text; the DLL uses the frozen embedding instead of encoding it. Shot descriptions,
+look, sound and music prompts are not used. Older DLLs report an update error.
+
+Video trim and soundtrack settings come from References. When a soundtrack is
+included and decoded, Slopus pins it in the output audio latents. This preserves
+it through an audio-VAE round trip, not a sample-identical copy. Without attached
+audio, the model generates audio. References are ordered video first and image
+second, resized using the target canvas, and video flow shift is 3.
 
 The template uses `Viggle-Animate-pruned_rank8_int8_convrot.safetensors` and
 `viggle_animate_distillation_bf16.safetensors` from DeepBeepMeep/MiniMax-H3.
@@ -15,11 +26,18 @@ The enabled distillation LoRA has a **4-step override**, which takes precedence
 over the scene's step count. Existing installations receive the template once
 without replacing their default generator or local model paths.
 
-This uses the DLL's generic H3 reference-generation API with the Viggle
-checkpoint. Its shared text encoder and video/audio VAEs are still required.
-It does not reproduce upstream Viggle's frozen-embedding character-replacement
-pipeline. Planning is tested on both CUDA and Vulkan; rendered animation quality
-requires a run with the downloaded weights and a compatible GPU.
+The video/audio VAEs are still required. Animate also downloads its frozen
+conditioning as an **Additional safetensor** into the weights folder. Existing
+Animate templates receive this download entry once. In a custom Animate template,
+set the conditioning file's **Use** to **Animate conditioning**. Slopus converts
+the downloaded BF16 file losslessly to SlopFab's F32 layout and caches the result
+beside it. Neither file is included in the installer or portable package.
+See [embedding provenance](../src-tauri/assets/README.md).
+
+**Known runtime limitation:** SlopFab's 2026-09-16 comparison with the new recipe
+still produced a flat brown texture. Its VAE reference reconstruction succeeded
+and pinned audio latents remained unchanged. This integration enables the recipe;
+it does not resolve or validate the remaining conditioning/transformer failure.
 
 ## Adding video references
 
