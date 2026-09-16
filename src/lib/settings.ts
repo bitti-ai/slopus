@@ -76,7 +76,18 @@ export interface GeneratorTemplate {
   paths: EngineSettings;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
   loras?: TemplateLora[];
+  additionalSafetensors?: AdditionalSafetensor[];
 }
+
+export interface AdditionalSafetensor {
+  id: string;
+  name: string;
+  url: string;
+  role?: "promptEmbedding";
+  downloadedPath?: string;
+}
+
+export const ANIMATE_CONDITIONING_URL = "https://huggingface.co/drbaph/Viggle-Animate-ComfyUI/resolve/main/text_cond/fixed_embed_fwd_anyframe.safetensors";
 
 export interface WeightSource {
   url: string;
@@ -85,12 +96,19 @@ export interface WeightSource {
   downloadedPath?: string;
 }
 
+export function generatorPathFields(template: Pick<GeneratorTemplate, "mode">): EnginePathField[] {
+  return template.mode === "animate"
+    ? ENGINE_PATH_FIELDS.filter(({ id }) => id !== "textEncoder" && id !== "tokenizer")
+    : ENGINE_PATH_FIELDS;
+}
+
 export const isDownloadUrl = (value: string): boolean => /^https?:\/\//i.test(value.trim());
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
-  return ENGINE_PATH_FIELDS.some(({ id }) => isDownloadUrl(template.paths[id])
+  return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
-    || downloadableTemplateLoras(template.loras).length > 0;
+    || downloadableTemplateLoras(template.loras).length > 0
+    || (template.additionalSafetensors ?? []).some((file) => !file.downloadedPath || isDownloadUrl(file.downloadedPath));
 }
 
 const GENERATOR_TEMPLATES_EVENT = "slopus:generator-templates-changed";
@@ -204,6 +222,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
   const template = minimaxOriginalTemplate();
   const transformer = "https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/Viggle-Animate-pruned_rank8_int8_convrot.safetensors";
   return { ...template, id: "viggle-animate", name: "Animate", mode: "animate", defaultSteps: 4,
+    additionalSafetensors: [{ id: "animate-conditioning", name: "Animate conditioning", url: ANIMATE_CONDITIONING_URL, role: "promptEmbedding" }],
     loras: [{ loraId: VIGGLE_ANIMATE_LORA.id, enabled: true, strength: 1 }],
     paths: { ...template.paths, transformer },
     sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
@@ -213,7 +232,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 7,
+  catalogVersion: 8,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -250,7 +269,18 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       }
       if (entries.length) sources[field.id] = entries;
     }
+    const additionalIds = new Set<string>();
+    const additionalSafetensors: AdditionalSafetensor[] = Array.isArray(candidate.additionalSafetensors)
+      ? candidate.additionalSafetensors.flatMap((file) => {
+        if (!file || typeof file.id !== "string" || !file.id.trim() || additionalIds.has(file.id)
+          || typeof file.url !== "string" || !isDownloadUrl(file.url)) return [];
+        additionalIds.add(file.id);
+        return [{ id: file.id, name: typeof file.name === "string" && file.name.trim() ? file.name.trim() : "Additional safetensor",
+          url: file.url.trim(), ...(file.role === "promptEmbedding" ? { role: "promptEmbedding" as const } : {}),
+          ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
+      }) : [];
     return [{ id, name, defaultSteps, attention, paths, sources,
+      ...(candidate.additionalSafetensors !== undefined ? { additionalSafetensors } : {}),
       ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
       ...(candidate.loras !== undefined ? { loras: normalizeTemplateLoras(candidate.loras) } : {}) }];
   });
@@ -260,7 +290,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -338,6 +368,14 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 7 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 8) {
+          const animate = normalized.templates.find(({ id }) => id === "viggle-animate");
+          if (animate && !animate.additionalSafetensors?.some((file) => file.role === "promptEmbedding")) {
+            animate.additionalSafetensors = [...(animate.additionalSafetensors ?? []), ...viggleAnimateTemplate().additionalSafetensors!];
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 8 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -387,19 +425,28 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors): ProviderSetting {
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
   delete options.schedule;
   delete options.stepOverride;
   delete options.generationMode;
+  delete options.promptEmbedding;
   if (mode === "animate") options.generationMode = "animate";
+  if (mode === "animate") {
+    const path = additionalSafetensors?.find((file) => file.role === "promptEmbedding")?.downloadedPath;
+    if (path && !isDownloadUrl(path)) options.promptEmbedding = path;
+  }
   const loras = resolveTemplateLoras(selection);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
   const stepOverride = highestLoraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
   for (const field of ENGINE_PATH_FIELDS) {
+    if (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer")) {
+      delete options[field.id];
+      continue;
+    }
     const value = settings[field.id].trim();
     if (value && !isDownloadUrl(value)) options[field.id] = value;
     else if (isDownloadUrl(value)) delete options[field.id];

@@ -4,7 +4,7 @@ import { cancelWeightDownload, downloadLora, removeLora, refreshDownloadedLoras,
 import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
-import { createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
+import { ANIMATE_CONDITIONING_URL, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -17,11 +17,73 @@ it("downloads Animate with its transformer and four-step distillation adapter", 
   await downloadTemplateWeights("viggle-animate");
   const template = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "viggle-animate")!;
   expect(templateNeedsDownload(template)).toBe(false);
+  expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")
+    .some(([, args]) => String((args as { url?: string }).url).includes("qwen"))).toBe(false);
   expect(template.paths.transformer).toBe("C:/Slopus/weights/Viggle-Animate-pruned_rank8_int8_convrot.safetensors");
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: ANIMATE_CONDITIONING_URL }));
+  expect(template.additionalSafetensors![0].downloadedPath).toBe("C:/Slopus/weights/fixed_embed_fwd_anyframe.safetensors");
+  expect(engineProviderSetting(template.paths, undefined, template.attention, template.loras, template.mode, template.additionalSafetensors).options.promptEmbedding)
+    .toBe("C:/Slopus/weights/fixed_embed_fwd_anyframe.safetensors");
+  expect(getWeightDownloadState()).toMatchObject({ completed: 5, files: 5, active: false, error: null });
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: VIGGLE_ANIMATE_LORA.url }));
   expect(loadLoras().find(({ id }) => id === VIGGLE_ANIMATE_LORA.id)).toMatchObject({
     path: "C:/Slopus/weights/viggle_animate_distillation_bf16.safetensors", stepOverride: 4,
   });
+});
+
+it("discovers moved additional safetensors and makes missing files downloadable again", async () => {
+  await downloadTemplateWeights("viggle-animate");
+  const animate = () => loadGeneratorTemplateSettings().templates.find(({ id }) => id === "viggle-animate")!;
+  const oldPath = animate().additionalSafetensors![0].downloadedPath!;
+  files.delete(oldPath);
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  const moved = "D:/weights/conditioning.safetensors";
+  files.add(moved);
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "find_downloaded_weights"
+    ? { [ANIMATE_CONDITIONING_URL]: moved } : normal(command, args));
+  await refreshDownloadedWeights();
+  expect(animate().additionalSafetensors![0].downloadedPath).toBe(moved);
+  expect(templateNeedsDownload(animate())).toBe(false);
+  vi.mocked(invoke).mockImplementation(normal);
+  files.delete(moved);
+  await refreshDownloadedWeights();
+  expect(animate().additionalSafetensors![0].downloadedPath).toBeUndefined();
+  expect(templateNeedsDownload(animate())).toBe(true);
+  await downloadTemplateWeights("viggle-animate");
+  expect(getWeightDownloadState()).toMatchObject({ files: 1, completed: 1, error: null });
+  await removeTemplateWeights("viggle-animate");
+  expect(invoke).toHaveBeenCalledWith("remove_downloaded_weights", { paths: expect.arrayContaining([oldPath]) });
+  expect(animate().additionalSafetensors![0]).toMatchObject({ url: ANIMATE_CONDITIONING_URL, role: "promptEmbedding" });
+  expect(animate().additionalSafetensors![0].downloadedPath).toBeUndefined();
+});
+
+it("preserves additional file edits while a download is in flight and retries failures", async () => {
+  const template = createGeneratorTemplate("Extra files");
+  template.additionalSafetensors = [{ id: "extra", name: "Extra", url: "https://example.com/extra.safetensors" }];
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: "", catalogVersion: 8 });
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "download_weight") throw new Error("Network lost");
+    return normal(command, args);
+  });
+  await downloadTemplateWeights(template.id);
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 0, error: "Network lost" });
+  expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates[0])).toBe(true);
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "download_weight") {
+      const current = loadGeneratorTemplateSettings();
+      current.templates[0].additionalSafetensors![0].url = "https://example.com/replacement.safetensors";
+      saveGeneratorTemplateSettings(current);
+    }
+    return normal(command, args);
+  });
+  await retryWeightDownload();
+  const extra = loadGeneratorTemplateSettings().templates[0].additionalSafetensors![0];
+  expect(extra.url).toBe("https://example.com/replacement.safetensors");
+  expect(extra.downloadedPath).toBeUndefined();
+  vi.mocked(invoke).mockImplementation(normal);
+  await retryWeightDownload();
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null });
 });
 
 it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {

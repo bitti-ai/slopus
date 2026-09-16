@@ -135,7 +135,7 @@ exit /b 0
 >>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.
 >>"%~1" echo.
 >>"%~1" echo VIDEO GENERATION
->>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe.
+>>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe. Download generator weights in Settings.
 >>"%~1" echo   Model weights are not included. Set their paths in Settings.
 exit /b 0
 

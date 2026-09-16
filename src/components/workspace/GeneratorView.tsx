@@ -6,7 +6,7 @@ import { referenceRefmodInputs } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
+import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
@@ -59,7 +59,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const runtimeProbe = useRef(0);
   const [loraLibrary, setLoraLibrary] = useState(loadLoras);
   useEffect(() => subscribeLoras(() => setLoraLibrary(loadLoras())), []);
-  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, loraLibrary]);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.additionalSafetensors, loraLibrary]);
   const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
@@ -107,7 +107,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
     if (!selectedTemplate.id) return;
-    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt").then((status) => {
+    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? []).then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);
@@ -615,8 +615,13 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 /** Validate the inputs required by the selected generator before submission. */
 function sendBlocker(job: GenerationJob, references: ProjectReference[], animate = false): string | null {
   const shots = sceneShots(job);
-  if (animate && !usableVideoReferences(references.filter((reference) => job.referenceIds.includes(reference.id))).length) {
-    return "Select a reference video for this scene before animating.";
+  if (animate) {
+    const bound = sceneGenerationReferences(job, references);
+    if (usableVideoReferences(bound).length !== 1) return "Select exactly one reference video for this scene before animating.";
+    if (usableReferenceImages(bound).length !== 1) return "Select exactly one repainted frame of the driving scene before animating.";
+    if (job.usePreviousSceneLastFrame || bound.some((reference) => reference.refmods?.some((refmod) => refmod.strength > 0))) {
+      return "Animate does not support scene continuation or refmods.";
+    }
   }
   if (!animate && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
     return "Describe what happens or add speech in at least one shot before this scene can be generated.";

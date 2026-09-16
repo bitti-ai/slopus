@@ -32,6 +32,22 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__; });
 
+it("adds and downloads an additional safetensor from a generator's settings", async () => {
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  fireEvent.change(screen.getByLabelText("Add additional safetensor URL"), { target: { value: "https://example.com/extra.safetensors" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+  expect(screen.getByLabelText("Additional safetensor 1 URL")).toHaveValue("https://example.com/extra.safetensors");
+  fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 1, error: null }));
+  expect(loadGeneratorTemplateSettings().templates[0].additionalSafetensors![0].downloadedPath).toBe("C:/Slopus/weights/extra.safetensors");
+  fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "animate" } });
+  fireEvent.change(screen.getByLabelText("Additional safetensor 1 use"), { target: { value: "promptEmbedding" } });
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("slopfab_status", expect.objectContaining({ settings: {
+    slopfab: expect.objectContaining({ options: expect.objectContaining({ generationMode: "animate", promptEmbedding: "C:/Slopus/weights/extra.safetensors" }) }),
+  } })));
+});
+
 it("discovers Singularity's existing weights on opening Settings and downloads only missing Turbo", async () => {
   const normal = vi.mocked(invoke).getMockImplementation()!;
   const cached = Object.fromEntries(Object.values(minimaxSingularityTemplate().paths).filter(Boolean)

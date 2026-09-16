@@ -49,6 +49,20 @@ describe("generator templates", () => {
     }
   });
 
+  it("adds conditioning to installed Animate templates once without replacing custom files", () => {
+    const animate = viggleAnimateTemplate();
+    animate.paths.transformer = "D:/models/viggle.safetensors";
+    delete animate.additionalSafetensors;
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [animate], defaultTemplateId: "", catalogVersion: 7 }));
+    const migrated = loadGeneratorTemplateSettings();
+    expect(migrated.templates[0].paths.transformer).toBe(animate.paths.transformer);
+    expect(migrated.templates[0].additionalSafetensors).toEqual(viggleAnimateTemplate().additionalSafetensors);
+    expect(loadGeneratorTemplateSettings()).toEqual(migrated);
+    migrated.templates[0].additionalSafetensors![0].url = "https://example.com/custom.safetensors";
+    saveGeneratorTemplateSettings(migrated);
+    expect(loadGeneratorTemplateSettings().templates[0].additionalSafetensors![0].url).toBe("https://example.com/custom.safetensors");
+  });
+
   it("migrates Animate once and preserves its mode, local weights and four-step adapter", () => {
     const custom = createGeneratorTemplate("Existing");
     saveGeneratorTemplateSettings({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 6 });
@@ -59,15 +73,19 @@ describe("generator templates", () => {
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     expect(template.paths.transformer).toBe("https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/Viggle-Animate-pruned_rank8_int8_convrot.safetensors");
     expect(templateNeedsDownload(template)).toBe(true);
+    template.additionalSafetensors![0].downloadedPath = "D:/weights/conditioning.safetensors";
     template.name = "My animation";
     template.paths = { transformer: "local", textEncoder: "encoder", videoVae: "video", audioVae: "audio", tokenizer: "" };
     saveLoras(loadLoras().map((lora) => lora.id === VIGGLE_ANIMATE_LORA.id ? { ...lora, path: "adapter" } : lora));
     saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)).toEqual(template);
     const options = engineProviderSetting(loadEngineSettings()).options;
-    expect(options).toMatchObject({ generationMode: "animate", stepOverride: 4 });
+    expect(options).toMatchObject({ generationMode: "animate", stepOverride: 4, promptEmbedding: "D:/weights/conditioning.safetensors" });
+    expect(options).not.toHaveProperty("textEncoder");
+    expect(options).not.toHaveProperty("tokenizer");
     expect(JSON.parse(options.loras as string)).toEqual([{ path: "adapter", strength: 1 }]);
     expect(engineProviderSetting(custom.paths, { enabled: true, model: null, options }, "sage2", [], "prompt").options).not.toHaveProperty("generationMode");
+    expect(engineProviderSetting(custom.paths, { enabled: true, model: null, options }, "sage2", [], "prompt").options).not.toHaveProperty("promptEmbedding");
   });
 
   it("adds References with the same settings and VRAM variants except for the main transformer URL", () => {
@@ -96,7 +114,7 @@ describe("generator templates", () => {
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
     expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(7);
+    expect(settings.catalogVersion).toBe(8);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -117,7 +135,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate(), viggleAnimateTemplate()]);
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(7);
+    expect(settings.catalogVersion).toBe(8);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
@@ -171,7 +189,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(7);
+    expect(settings.catalogVersion).toBe(8);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -206,7 +224,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(7);
+    expect(settings.catalogVersion).toBe(8);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,

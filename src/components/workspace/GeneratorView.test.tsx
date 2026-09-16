@@ -35,8 +35,9 @@ it("has no selected generator when all templates still need downloads", () => {
   expect(screen.getByRole("combobox", { name: "Video generator template: No downloaded generators" })).toBeDisabled();
 });
 
-it("animates a blank scene only after selecting a video and submits an empty prompt", () => {
+it("animates a blank scene only with a video and repainted frame", () => {
   const template = viggleAnimateTemplate();
+  template.additionalSafetensors![0].downloadedPath = "conditioning.safetensors";
   template.paths = { transformer: "viggle.safetensors", textEncoder: "encoder", videoVae: "video", audioVae: "audio", tokenizer: "" };
   localStorage.setItem("slopus.loras.v1", JSON.stringify([{ id: template.loras![0].loraId, name: "Viggle", path: "distillation.safetensors", stepOverride: 4 }]));
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 7 }));
@@ -44,7 +45,9 @@ it("animates a blank scene only after selecting a video and submits an empty pro
   initial.generationJobs = [createDraftGenerationJob("", { id: "blank", title: "Blank scene" })];
   initial.references = [{ id: "motion", kind: "video", name: "Motion", description: "", intendedUse: [],
     sourcePath: "C:/motion.mp4", createdAt: "2026-09-15T00:00:00.000Z",
-    video: { startSeconds: 1, durationSeconds: 3, includeAudio: false } }];
+    video: { startSeconds: 1, durationSeconds: 3, includeAudio: false } },
+    { id: "repainted", kind: "image", name: "Repainted frame", description: "", intendedUse: [],
+      relativePath: "references/repainted.png", createdAt: "2026-09-15T00:00:00.000Z" }];
   const submitted = vi.fn();
   function Harness() {
     const [config, setConfig] = useState(initial);
@@ -58,11 +61,18 @@ it("animates a blank scene only after selecting a video and submits an empty pro
   expect(submitted.mock.calls.flatMap(([items]) => items)).toHaveLength(0);
   expect(screen.queryByLabelText("The sound of this scene")).toBeNull();
   fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "motion" } });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "repainted" } });
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
   expect(submitted).toHaveBeenLastCalledWith([expect.objectContaining({ request: expect.objectContaining({
     prompt: "", referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
+    referencePaths: ["C:/project/references/repainted.png"],
   }) })]);
+  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "" } });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "repainted" } });
+  expect(generate).toBeEnabled();
   fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "" } });
   expect(generate).toBeDisabled();
 });
@@ -468,7 +478,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("option", { name: "Fast draft" }));
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
-    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt");
+    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", []);
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
     expect(screen.queryByText("Video model files missing")).not.toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();

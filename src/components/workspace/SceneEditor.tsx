@@ -305,7 +305,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           <option value="">Select a video</option>
           {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
         </select>
-        <small>Animate requires a reference video. Add videos under References. No text prompt is needed.</small>
+        <small>Choose one driving video and one repainted frame of its scene. Enable the video's soundtrack under References to preserve it. No text prompt is needed.</small>
       </label>}
       {!animate && <label className="scene-settings__field">
         <span>Look</span>
@@ -328,19 +328,25 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
         </select>
       </label>}
       <div className="scene-settings__field">
-        <span>Start frame</span>
+        <span>{animate ? "Repainted scene frame" : "Start frame"}</span>
         <div className="scene-settings__start-frame">
           <select
-            value={job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
+            value={animate
+              ? job.startFrameReferenceId ?? imageReferences.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""
+              : job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
             disabled={disabled}
             aria-label="Start frame for this scene"
             onChange={(event) => onChange({
               usePreviousSceneLastFrame: event.target.value === "previous-scene" || undefined,
               startFrameReferenceId: event.target.value === "previous-scene" ? undefined : event.target.value || undefined,
+              ...(animate ? {
+                endFrameReferenceId: undefined,
+                referenceIds: job.referenceIds.filter((id) => !imageReferences.some((reference) => reference.id === id)),
+              } : {}),
             })}
           >
             <option value="">None</option>
-            <option value="previous-scene" disabled={!previousScene}>Previous scene's last frame</option>
+            {!animate && <option value="previous-scene" disabled={!previousScene}>Previous scene's last frame</option>}
             {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
           </select>
           <button
@@ -351,11 +357,11 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             onClick={onAddStartFrame}
           ><ImagePlus size={15} /> Add image</button>
         </div>
-        <small>{job.usePreviousSceneLastFrame
+        <small>{animate ? "Use a frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : job.usePreviousSceneLastFrame
           ? previousScene ? `Continues “${previousScene.title}” using its saved latents with 22 overlapping frames. Generate that scene first, or use Generate All.` : "Move this scene after another scene to continue it."
           : "The selected image anchors the opening frame."}</small>
       </div>
-      <div className="scene-settings__field">
+      {!animate && <div className="scene-settings__field">
         <span>Last frame</span>
         <div className="scene-settings__start-frame">
           <select value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
@@ -368,7 +374,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             onClick={onAddEndFrame}><ImagePlus size={15} /> Add image</button>
         </div>
         <small>The selected image anchors the closing frame.</small>
-      </div>
+      </div>}
       {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
       {!animate && <><label className="scene-settings__field">
         <span>Sound</span>
