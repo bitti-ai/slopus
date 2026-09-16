@@ -8,6 +8,12 @@ inspector. The image should be a frame of the driving scene with the character
 repainted, preserving pose, framing, background and lighting. A standalone
 portrait is not an equivalent input. Continuation and refmods are unsupported.
 
+Animate output is capped at **345 frames (14.375 seconds)**. SlopFab aligns
+frame counts upward to `17*k + 5`; a 15-second request (360 frames at 24 fps)
+would become 362 frames and exceed its 360-frame limit. Slopus caps requests
+within the 15-second range at 345 frames before planning and generation, so
+selecting 14.5 or 15 seconds produces 14.375 seconds of output.
+
 Slopus enables SlopFab C API 1.10's Animate recipe and supplies the downloaded
 362-token embedding and modality tags. Qwen and the tokenizer are neither
 downloaded nor passed to Animate. The bundled fixed prompt remains descriptive
