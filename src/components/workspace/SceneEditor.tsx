@@ -399,6 +399,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
     </section>
     <section className="scene-settings" aria-labelledby={`${job.id}-generation-settings`}>
       <h3 id={`${job.id}-generation-settings`}>Generation</h3>
+      {animate && <p>Animate output is limited to 14.375 seconds. Longer scene lengths are shortened to fit.</p>}
       <div className="scene-settings__numbers">
         <label className="scene-settings__field">
           <span>Steps</span>

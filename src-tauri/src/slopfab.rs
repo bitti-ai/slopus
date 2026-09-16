@@ -19,6 +19,8 @@ use tauri::{AppHandle, Emitter};
 const DLL_FILE_NAME: &str = "slopfab.dll";
 // https://huggingface.co/Viggle/Viggle-Animate/raw/main/assets/fixed_prompt.txt
 const ANIMATE_PROMPT: &str = include_str!("../assets/viggle-animate-fixed-prompt.txt");
+// SlopFab rounds up to 17*k + 5 frames but rejects Animate plans over 360.
+const ANIMATE_MAX_ALIGNED_FRAMES: i32 = (360 - 5) / 17 * 17 + 5;
 /// Tauri stages the repository's runtime resources in development and release
 /// builds. Installers and portable folders use the same relative layout.
 pub fn default_dll_path() -> PathBuf {
@@ -741,7 +743,12 @@ fn configure_request(
         api.set_prompt_embedding(handle, &embedding)?;
     }
     api.set_prompt(handle, if configuration.animate { ANIMATE_PROMPT } else { &request.prompt })?;
-    api.set_frames(handle, request.frames)?;
+    // Keep lengths within the advertised 15-second range from rounding past
+    // Animate's limit. Leave out-of-range requests to the DLL's validation.
+    let frames = if configuration.animate && request.frames <= 360 {
+        request.frames.min(ANIMATE_MAX_ALIGNED_FRAMES)
+    } else { request.frames };
+    api.set_frames(handle, frames)?;
     if request.still_image {
         api.set_still_image(handle)?;
     }
@@ -1891,6 +1898,55 @@ mod tests {
                     }
                 }
             }
+            Ok(())
+        })();
+        release_reference_videos(&[id]).unwrap();
+        result.unwrap();
+    }
+
+    #[test]
+    fn animate_duration_limit_resolves_with_bundled_dll() {
+        let root = tempfile::tempdir().unwrap();
+        let embedding = root.path().join("conditioning.safetensors");
+        crate::conditioning::fixture(&embedding);
+        let settings = BTreeMap::new();
+        let mut configuration = Configuration::from_settings(&settings);
+        configuration.animate = true;
+        configuration.prompt_embedding = Some(embedding);
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        let id = create_reference_video(15.0, &settings).unwrap();
+        let result = (|| -> Result<(), String> {
+            append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
+            let mut request = GenerationRequest {
+                prompt: "A dancer.".into(), steps: 4, seed: 1,
+                canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
+                reference_paths: vec!["repainted.png".into()],
+                ..Default::default()
+            };
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                for include_models in [false, true] {
+                    for (frames, expected) in [(48, 56), (336, 345), (345, 345), (346, 345), (348, 345), (359, 345), (360, 345)] {
+                        request.frames = frames;
+                        let handle = RequestHandle::new(&api)?;
+                        configure_request(&api, handle.0, &request, &configuration, platform, include_models)?;
+                        let plan = api.resolve(handle.0)?;
+                        assert_eq!(plan.aligned_frames, expected, "requested {frames} frames");
+                        assert_eq!(plan.duration_seconds, f64::from(expected) / 24.0);
+                        assert_eq!(scene_frame_window(&request, plan.aligned_frames)?, (0, expected));
+                    }
+                }
+            }
+            request.frames = 361;
+            let handle = RequestHandle::new(&api)?;
+            configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Cuda13, false)?;
+            assert!(api.resolve(handle.0).err().unwrap().contains("at most 15 seconds"));
+
+            // Other generators keep their existing upward alignment at 15 s.
+            configuration.animate = false;
+            request.frames = 360;
+            let handle = RequestHandle::new(&api)?;
+            configure_request(&api, handle.0, &request, &configuration, ComputePlatform::Cuda13, false)?;
+            assert_eq!(api.resolve(handle.0)?.aligned_frames, 362);
             Ok(())
         })();
         release_reference_videos(&[id]).unwrap();
