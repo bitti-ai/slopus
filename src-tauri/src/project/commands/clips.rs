@@ -1,6 +1,6 @@
 use crate::project::*;
 use super::{types::ProjectCommand, batch::*, effects::Effects};
-pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, timestamp: &str, effects: &mut Effects) -> Result<(), String> {
+pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, _timestamp: &str, effects: &mut Effects) -> Result<(), String> {
     match command {
         ProjectCommand::ClipAdd {
             id,
