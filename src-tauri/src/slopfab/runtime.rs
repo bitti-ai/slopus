@@ -1,4 +1,21 @@
-use super::*;
+use super::{
+    config::Configuration,
+    events::{EventSink, NativeEvent},
+    ffi,
+    generation::run_generation,
+    planning::validate_generation_controls,
+    references::ReferenceVideos,
+    types::*,
+};
+use crate::{diagnostics, project::ProviderSetting, rendered};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
+    thread,
+};
 
 #[derive(Clone)]
 pub struct SlopfabRuntime {
@@ -139,14 +156,12 @@ impl SlopfabRuntime {
         flags.insert(request.job_id.clone(), cancel.clone());
         drop(flags);
         let queued_id = request.job_id.clone();
-        events(NativeEvent::Job(
-            JobEvent {
-                job_id: queued_id.clone(),
-                state: "queued",
-                detail: "Queued behind any active slopfab generation.".into(),
-                output: None,
-            },
-        ));
+        events(NativeEvent::Job(JobEvent {
+            job_id: queued_id.clone(),
+            state: "queued",
+            detail: "Queued behind any active slopfab generation.".into(),
+            output: None,
+        }));
         if self
             .sender
             .send(QueueItem {
@@ -206,4 +221,3 @@ pub(super) struct QueueItem {
     pub(super) configuration: Configuration,
     pub(super) cancel: Arc<AtomicBool>,
 }
-

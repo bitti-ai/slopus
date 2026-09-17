@@ -1,13 +1,21 @@
-use super::runtime::{DEFAULT_TIMEOUT_SECONDS, without_endpoint_provider_settings};
-use crate::project::storage::PROJECT_FILE_NAME;
-use crate::generation::models::h3::validate_agent_shot_settings;
-use std::{sync::atomic::Ordering, path::PathBuf};
+use super::runtime::{without_endpoint_provider_settings, DEFAULT_TIMEOUT_SECONDS};
 use super::*;
-use super::{providers::*, providers::output::*, providers::compatible::*, process::*, discovery::*, protocol::*, prompt::*, retry::*};
+use super::{
+    discovery::*, process::*, prompt::*, protocol::*, providers::compatible::*,
+    providers::output::*, providers::*, retry::*,
+};
+use crate::generation::models::h3::validate_agent_shot_settings;
+use crate::project::storage::PROJECT_FILE_NAME;
 use crate::project::*;
-use std::{collections::BTreeMap, path::Path, time::Duration, sync::{Mutex,Arc,atomic::AtomicBool}};
 use serde_json::Value;
 use std::fs;
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+    time::Duration,
+};
+use std::{path::PathBuf, sync::atomic::Ordering};
 
 #[test]
 fn parses_answer_question_and_validates_empty_content() {
@@ -575,9 +583,7 @@ fn discovery_never_selects_a_shell_script_shim() {
     for name in ["claude", "codex"] {
         if let Some(path) = discover_executable(name, None) {
             let extension = path.extension().unwrap_or_default().to_string_lossy();
-            assert!(
-                extension.eq_ignore_ascii_case("exe") || extension.eq_ignore_ascii_case("com")
-            );
+            assert!(extension.eq_ignore_ascii_case("exe") || extension.eq_ignore_ascii_case("com"));
         }
     }
 }
@@ -759,7 +765,7 @@ fn endpoint_credentials_are_removed_from_project_context() {
 
 #[test]
 fn http_turn_cancels_while_waiting_for_a_response() {
-    use std::{net::TcpListener, sync::mpsc, time::Instant, thread};
+    use std::{net::TcpListener, sync::mpsc, thread, time::Instant};
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
     let (accepted_tx, accepted_rx) = mpsc::channel();
@@ -776,13 +782,21 @@ fn http_turn_cancels_while_waiting_for_a_response() {
         accepted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         flag.store(true, Ordering::Release);
     });
-    let config = serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap();
+    let config =
+        serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap();
     let started = Instant::now();
-    let result = run_compatible_endpoint(ProviderId::Local, &config, "Hello", &endpoint_setting(&endpoint, "", Some("model")), cancel, Duration::from_secs(20), &|_| {});
+    let result = run_compatible_endpoint(
+        ProviderId::Local,
+        &config,
+        "Hello",
+        &endpoint_setting(&endpoint, "", Some("model")),
+        cancel,
+        Duration::from_secs(20),
+        &|_| {},
+    );
     let _ = release_tx.send(());
     server.join().unwrap();
     canceller.join().unwrap();
     assert!(result.unwrap_err().contains("cancelled"));
     assert!(started.elapsed() < Duration::from_secs(5));
 }
-

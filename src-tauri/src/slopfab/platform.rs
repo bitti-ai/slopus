@@ -1,4 +1,4 @@
-use super::*;
+use super::ffi;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ComputePlatform {

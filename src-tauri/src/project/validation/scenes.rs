@@ -1,11 +1,13 @@
-use crate::project::*;
-use crate::project::paths::*;
-use std::collections::BTreeSet;
 use super::values::*;
+use crate::project::paths::*;
+use crate::project::*;
+use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for job in &mut config.generation_jobs {
-        let max_seconds = crate::generation::models::for_scene(job.provider_id.as_deref())
-            .unwrap_or_else(crate::generation::models::default_model).capabilities.max_scene_seconds;
+        let limits = crate::generation::models::for_scene(job.provider_id.as_deref())
+            .unwrap_or_else(crate::generation::models::default_model)
+            .capabilities;
+        let max_seconds = limits.max_scene_seconds;
         /* Normalise the scene BEFORE anything is judged, so both layers judge
         the same thing. An empty `shots` array collapses to no key at all —
         the same three-step tidy `normalize_shot_tags` performs, for the same
@@ -32,7 +34,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                         shot.id, job.id
                     ));
                 }
-                if !shot.start_seconds.is_finite() || !(0.0..=max_seconds).contains(&shot.start_seconds) {
+                if !shot.start_seconds.is_finite()
+                    || !(0.0..=max_seconds).contains(&shot.start_seconds)
+                {
                     return Err(format!(
                         "Shot '{}' in scene '{}' starts at {} seconds, outside the 0-{max_seconds} second scene.",
                         shot.id, job.id, shot.start_seconds
@@ -53,10 +57,10 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                 ));
             }
         }
-        if job.steps.is_some_and(|steps| steps < 2) {
+        if job.steps.is_some_and(|steps| steps < limits.min_steps) {
             return Err(format!(
-                "Scene '{}' must use at least 2 generation steps.",
-                job.id
+                "Scene '{}' must use at least {} generation steps.",
+                job.id, limits.min_steps
             ));
         }
         if job.seed.is_some_and(|seed| seed < -1) {
@@ -145,8 +149,11 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             .as_deref()
             .map(normalize_project_path)
             .transpose()?;
-        job.latent_relative_path = job.latent_relative_path.as_deref()
-            .map(normalize_project_path).transpose()?;
+        job.latent_relative_path = job
+            .latent_relative_path
+            .as_deref()
+            .map(normalize_project_path)
+            .transpose()?;
     }
     Ok(())
 }

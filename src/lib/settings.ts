@@ -9,7 +9,7 @@
  * disk layout into a file the user is invited to move, copy, and share.
  *
  * The option names below are the contract with `Configuration::from_settings`
- * in src-tauri/src/slopfab.rs. Renaming one here without renaming it there
+ * in src-tauri/src/slopfab/config.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";

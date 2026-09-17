@@ -1,5 +1,8 @@
-use crate::project::{ProviderSetting, ProviderOption};
-pub(in crate::agent) fn option_string<'a>(setting: &'a ProviderSetting, key: &str) -> Option<&'a str> {
+use crate::project::{ProviderOption, ProviderSetting};
+pub(in crate::agent) fn option_string<'a>(
+    setting: &'a ProviderSetting,
+    key: &str,
+) -> Option<&'a str> {
     match setting.options.get(key) {
         Some(ProviderOption::String(value)) => Some(value),
         _ => None,

@@ -49,7 +49,7 @@ const macroPush: ShotTagSelection = {
 
 describe("shot tag taxonomy", () => {
   it("keeps every id in the shape both validators enforce, and keeps them unique", () => {
-    // The ids are persisted, and `is_shot_tag_id` in src-tauri/src/lib.rs
+    // The ids are persisted, and `is_shot_tag_id` in src-tauri/src/project/validation/values.rs
     // decides whether a file carrying them can be written back. A taxonomy
     // entry that fails this regex is a shot the desktop app would refuse to
     // save AFTER the user tagged it.
@@ -92,7 +92,7 @@ describe("shot tag taxonomy", () => {
 
   it("normalizes exactly the way the Rust validator does", () => {
     // Three steps, same order, same result — see normalize_shot_tags in
-    // src-tauri/src/lib.rs. Drift here means the two layers write different
+    // src-tauri/src/project/validation/values.rs. Drift here means the two layers write different
     // bytes for the same selection.
     expect(normalizeShotTagSelection({ mood: [] })).toBeNull();
     expect(normalizeShotTagSelection({ lighting: ["soft-light", "soft-light", "backlight"] }))

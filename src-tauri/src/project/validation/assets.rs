@@ -1,6 +1,6 @@
-use crate::project::*;
-use crate::project::paths::*;
 use super::values::*;
+use crate::project::paths::*;
+use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
         if asset.id.trim().is_empty() || asset.name.trim().is_empty() {

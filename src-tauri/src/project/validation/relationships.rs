@@ -1,5 +1,5 @@
-use crate::project::*;
 use super::values::*;
+use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     let asset_ids = unique_ids(config.assets.iter().map(|asset| asset.id.as_str()), "asset")?;
     let reference_ids = unique_ids(

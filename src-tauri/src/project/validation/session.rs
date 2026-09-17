@@ -1,5 +1,5 @@
-use crate::project::*;
 use super::values::*;
+use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for message in &config.agent_conversation.messages {
         if message.id.trim().is_empty() || message.content.trim().is_empty() {

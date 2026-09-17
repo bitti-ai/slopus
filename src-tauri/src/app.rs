@@ -1,5 +1,8 @@
-use crate::{agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, slopfab, weights, window};
-use crate::window::{ExitGuard, CloseDecision};
+use crate::window::{CloseDecision, ExitGuard};
+use crate::{
+    agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, slopfab, weights,
+    window,
+};
 use std::io;
 /// Portable distributions carry a marker because Windows updates launch an
 /// installer and cannot replace a portable folder in place.
@@ -8,7 +11,10 @@ fn app_updater_enabled() -> bool {
     !cfg!(debug_assertions)
         && std::env::current_exe()
             .ok()
-            .and_then(|exe| exe.parent().map(|dir| !dir.join("slopus-portable").exists()))
+            .and_then(|exe| {
+                exe.parent()
+                    .map(|dir| !dir.join("slopus-portable").exists())
+            })
             .unwrap_or(false)
 }
 
@@ -19,7 +25,12 @@ pub fn run() {
             use tauri::Manager as _;
             let data_directory = app_paths::prepare(app.handle())?;
             app_settings::ensure_file(&data_directory)?;
-            let window_config = app.config().app.windows.first().ok_or_else(|| io::Error::other("Missing main window configuration"))?;
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .first()
+                .ok_or_else(|| io::Error::other("Missing main window configuration"))?;
             tauri::WebviewWindowBuilder::from_config(app, window_config)?
                 .data_directory(data_directory)
                 .build()?;

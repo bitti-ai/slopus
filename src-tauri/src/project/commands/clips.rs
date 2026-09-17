@@ -1,6 +1,11 @@
+use super::{batch::*, effects::Effects, types::ProjectCommand};
 use crate::project::*;
-use super::{types::ProjectCommand, batch::*, effects::Effects};
-pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, _timestamp: &str, effects: &mut Effects) -> Result<(), String> {
+pub(super) fn apply(
+    project: &mut ProjectConfig,
+    command: &ProjectCommand,
+    _timestamp: &str,
+    effects: &mut Effects,
+) -> Result<(), String> {
     match command {
         ProjectCommand::ClipAdd {
             id,
@@ -35,9 +40,13 @@ pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, _time
                                 && candidate.relative_path == job.output_relative_path
                     });
                     let frame_ms = (1000.0 / f64::from(project.settings.frame_rate)).round() as u64;
-                    let scene_ms =
-                        seconds_to_ms(job.duration_seconds.unwrap_or(effects.defaults.duration_seconds), "scene duration", true)?
-                            .max(frame_ms.max(1));
+                    let scene_ms = seconds_to_ms(
+                        job.duration_seconds
+                            .unwrap_or(effects.defaults.duration_seconds),
+                        "scene duration",
+                        true,
+                    )?
+                    .max(frame_ms.max(1));
                     let asset_id = if let Some(index) = existing {
                         project.assets[index].id.clone()
                     } else {
@@ -249,7 +258,10 @@ pub(super) fn find_clip_location(project: &ProjectConfig, id: &str) -> Option<(u
         })
 }
 
-pub(super) fn target_track_index(project: &ProjectConfig, requested: Option<&str>) -> Result<usize, String> {
+pub(super) fn target_track_index(
+    project: &ProjectConfig,
+    requested: Option<&str>,
+) -> Result<usize, String> {
     let index = match requested {
         Some(id) => project
             .timeline

@@ -1,5 +1,5 @@
-use crate::project::*;
 use crate::project::commands::ProjectCommand;
+use crate::project::*;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

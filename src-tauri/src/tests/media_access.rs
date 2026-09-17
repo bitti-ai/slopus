@@ -1,212 +1,4 @@
 use super::*;
-#[test]
-fn stored_paths_are_normalized_and_escaping_paths_are_rejected() {
-    let mut normalized = fixture();
-    normalized.assets[0].relative_path = Some(".\\media\\imported//macro.mp4".into());
-    assert_eq!(
-        validate_and_normalize_config(normalized).unwrap().assets[0]
-            .relative_path
-            .as_deref(),
-        Some("media/imported/macro.mp4")
-    );
-
-    for path in [
-        "/etc/passwd",
-        "\\Windows\\system.ini",
-        "C:\\Users\\creator\\clip.mp4",
-        "https://example.com/clip.mp4",
-        "media/../../outside.mp4",
-        "references/../outside.png",
-    ] {
-        let mut escaping = fixture();
-        escaping.assets[0].relative_path = Some(path.into());
-        assert!(
-            validate_and_normalize_config(escaping).is_err(),
-            "accepted escaping path {path}"
-        );
-    }
-
-    let mut thumbnail = fixture();
-    thumbnail.thumbnail = Some("../thumbnail.webp".into());
-    let mut reference = fixture();
-    reference.references[1].relative_path = Some("../product.png".into());
-    let mut job = fixture();
-    job.generation_jobs[0].output_relative_path = Some("C:\\output.mp4".into());
-    for config in [thumbnail, reference, job] {
-        assert!(validate_and_normalize_config(config).is_err());
-    }
-}
-
-#[test]
-fn replacement_failure_preserves_original_project_json() {
-    let root = tempfile::tempdir().unwrap();
-    let original = fixture();
-    write_project(root.path(), &original).unwrap();
-    let destination = root.path().join(PROJECT_FILE_NAME);
-    let original_bytes = fs::read(&destination).unwrap();
-
-    let mut changed = original.clone();
-    changed.name = "This must not replace the original".into();
-    let error = write_project_with_replacer(root.path(), &changed, |_, _| {
-        Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "simulated replacement failure",
-        ))
-    })
-    .unwrap_err();
-
-    assert!(error.contains("simulated replacement failure"));
-    assert_eq!(fs::read(&destination).unwrap(), original_bytes);
-    assert_eq!(
-        read_project(root.path()).unwrap().config,
-        without_derived_project_state(validate_and_normalize_config(original).unwrap())
-    );
-    assert_eq!(
-        fs::read_dir(root.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.path().is_file())
-            .count(),
-        1
-    );
-}
-
-#[test]
-fn new_project_uses_the_selected_empty_folder_itself() {
-    let selected = tempfile::tempdir().unwrap();
-    let expected_root = selected.path().canonicalize().unwrap();
-
-    let created = create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap();
-
-    assert_eq!(
-        PathBuf::from(created.folder_path).canonicalize().unwrap(),
-        expected_root
-    );
-    assert!(selected.path().join(PROJECT_FILE_NAME).is_file());
-    assert!(!selected
-        .path()
-        .join(safe_folder_name(&created.config.name))
-        .exists());
-}
-
-#[test]
-fn new_project_rejects_a_nonempty_selected_folder_without_changing_it() {
-    let selected = tempfile::tempdir().unwrap();
-    let existing = selected.path().join("keep.txt");
-    fs::write(&existing, b"user data").unwrap();
-
-    let error =
-        create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap_err();
-
-    assert!(error.contains("not empty"), "unexpected error: {error}");
-    assert_eq!(fs::read(&existing).unwrap(), b"user data");
-    assert!(!selected.path().join(PROJECT_FILE_NAME).exists());
-}
-
-#[test]
-fn project_mutation_rejects_broken_relational_ids() {
-    let mut config = fixture();
-    config.generation_jobs[0]
-        .reference_ids
-        .push("missing-reference".into());
-    assert!(validate_and_normalize_config(config)
-        .unwrap_err()
-        .contains("unknown reference"));
-}
-
-#[test]
-fn reference_icon_files_are_256_square_jpegs_confined_to_the_project() {
-    let root = tempfile::tempdir().unwrap();
-    write_project(root.path(), &fixture()).unwrap();
-    let rgba = vec![128; 768 * 768 * 4];
-    let folder = root.path().to_str().unwrap();
-    let relative = write_reference_icon_frame(folder, "icon-test", &rgba).unwrap();
-    assert_eq!(relative, "references/icons/icon-test.jpg");
-    let jpeg = fs::read(root.path().join(&relative)).unwrap();
-    let mut expected = Vec::new();
-    jpeg_encoder::Encoder::new(&mut expected, 95)
-        .encode(&vec![128; 256 * 256 * 3], 256, 256, jpeg_encoder::ColorType::Rgb)
-        .unwrap();
-    assert_eq!(jpeg, expected);
-    assert_eq!(&jpeg[..2], &[0xff, 0xd8]);
-    assert_eq!(&jpeg[jpeg.len() - 2..], &[0xff, 0xd9]);
-    let frame = jpeg.windows(2).position(|bytes| bytes == [0xff, 0xc0]).unwrap();
-    assert_eq!(u16::from_be_bytes([jpeg[frame + 5], jpeg[frame + 6]]), 256);
-    assert_eq!(u16::from_be_bytes([jpeg[frame + 7], jpeg[frame + 8]]), 256);
-    assert!(write_reference_icon_frame(folder, "../escape", &rgba).is_err());
-    assert!(write_reference_icon_frame(folder, "icon-invalid", &[0; 4]).is_err());
-}
-
-#[test]
-fn reference_categories_and_subcategories_survive_project_save() {
-    let root = tempfile::tempdir().unwrap();
-    for (category, subcategory) in [
-        ("character", "Animation"),
-        ("animal", "Pets"),
-        ("product", "Technology"),
-        ("location", "Urban"),
-        ("style", "Cinematic"),
-    ] {
-        let mut config = fixture();
-        let reference = &mut config.references[0];
-        reference.intended_use = vec![category.into()];
-        reference.subcategory = Some(subcategory.into());
-        reference.icon_relative_path = Some("references/icons/example.jpg".into());
-        reference.description.clear();
-        reference.content = None;
-        write_project(root.path(), &config).unwrap();
-        let restored = read_project(root.path()).unwrap();
-        let reference = &restored.config.references[0];
-        assert_eq!(reference.intended_use, vec![category]);
-        assert_eq!(reference.subcategory.as_deref(), Some(subcategory));
-        assert_eq!(reference.icon_relative_path.as_deref(), Some("references/icons/example.jpg"));
-        assert!(reference.description.is_empty());
-        assert!(reference.content.is_none());
-    }
-}
-
-#[test]
-fn initial_reference_images_are_copied_and_bound_to_the_first_draft() {
-    let root = tempfile::tempdir().unwrap();
-    let source = root.path().join("mood board.webp");
-    fs::write(&source, b"fixture-image").unwrap();
-    let config = fixture();
-
-    let created =
-        create_project_in_with_references(root.path(), &config, std::slice::from_ref(&source))
-            .unwrap();
-    let reference = created
-        .config
-        .references
-        .iter()
-        .find(|reference| reference.id == "ref-initial-1")
-        .unwrap();
-
-    assert_eq!(reference.kind, "image");
-    assert_eq!(reference.intended_use, vec!["style"]);
-    // The description must stay EMPTY. `compileMiniMaxH3Prompt` emits a
-    // reference's description as the subject's traits in the prompt sent to
-    // the paid model, so app-authored filing boilerplate here is shipped to
-    // the model as if the user had written it about their own image
-    // ("<Subject 1> is harbor-facade, shown in <Picture 1>. Visual
-    // reference supplied with the initial project brief."). The app never
-    // invents words and presents them as the user's description — the text
-    // path documents the same rule at src/lib/project.ts:87.
-    assert_eq!(
-        reference.description, "",
-        "an imported reference must carry no app-authored description"
-    );
-    assert!(created
-        .config
-        .generation_jobs
-        .first()
-        .unwrap()
-        .reference_ids
-        .contains(&reference.id));
-    assert!(Path::new(&created.folder_path)
-        .join(reference.relative_path.as_ref().unwrap())
-        .is_file());
-}
 
 #[test]
 fn the_windows_verbatim_prefix_never_reaches_the_user() {
@@ -295,39 +87,6 @@ fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
 }
 
 #[test]
-fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
-    let access = MediaAccess::default();
-    let root = tempfile::tempdir().unwrap();
-    let project = root.path().join("project");
-    fs::create_dir(&project).unwrap();
-    let video = root.path().join("reference cut.mov");
-    fs::write(&video, b"video").unwrap();
-    let image = root.path().join("harbor facade.png");
-    fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
-
-    let referenced = import_reference_file(&access, &video, &project).unwrap();
-    assert_eq!(referenced.kind, "video");
-    assert_eq!(referenced.relative_path, None);
-    assert!(referenced.source_path.is_some());
-    assert!(
-        !project
-            .join("references")
-            .join("reference cut.mov")
-            .exists(),
-        "a video reference was copied into the project"
-    );
-
-    let copied = import_reference_file(&access, &image, &project).unwrap();
-    assert_eq!(copied.kind, "image");
-    assert_eq!(
-        copied.relative_path.as_deref(),
-        Some("references/harbor facade.png")
-    );
-    assert_eq!(copied.source_path, None);
-    assert!(project.join("references/harbor facade.png").is_file());
-}
-
-#[test]
 fn external_media_is_readable_only_because_the_project_names_it() {
     let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
@@ -403,9 +162,12 @@ fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
     // is still refused.
     let sibling = root.path().join("never picked.mp4");
     fs::write(&sibling, b"other rush").unwrap();
-    assert!(
-        external_media_bytes(&access, &project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
-    );
+    assert!(external_media_bytes(
+        &access,
+        &project.to_string_lossy(),
+        &sibling.to_string_lossy()
+    )
+    .is_err());
 }
 
 // S5: the window shipped with `"csp": null`, which is not a policy — it is
@@ -414,6 +176,7 @@ fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
 // attacker something (no inline or eval'd script, nothing off-origin) and
 // stay open in the two directions media previews genuinely need: `blob:`
 // URLs for imported footage and `data:` URIs for thumbnails.
+
 #[test]
 fn the_window_ships_a_policy_that_previews_still_work_under() {
     let config: serde_json::Value =
@@ -471,6 +234,7 @@ fn the_window_ships_a_policy_that_previews_still_work_under() {
 //
 // Turning it off costs nothing the app uses: files come in through the
 // Import button's native dialog, not by dropping them on the window.
+
 #[test]
 fn the_window_leaves_drag_and_drop_to_the_webview() {
     let config: serde_json::Value =
@@ -487,3 +251,140 @@ fn the_window_leaves_drag_and_drop_to_the_webview() {
 // Writes a minimal real project folder and returns it, so a test can say
 // "a folder that holds a project" without the create ceremony.
 
+#[test]
+fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
+    let access = MediaAccess::default();
+    let root = tempfile::tempdir().unwrap();
+    let pictures = root.path().join("Pictures");
+    fs::create_dir(&pictures).unwrap();
+    let private_photo = pictures.join("private.jpg");
+    fs::write(&private_photo, b"PRIVATE PHOTO BYTES").unwrap();
+    let diary = pictures.join("diary.txt");
+    fs::write(&diary, b"DIARY").unwrap();
+    let unnamed = pictures.join("holiday.jpg");
+    fs::write(&unnamed, b"ANOTHER PHOTO").unwrap();
+
+    // A project file the user did not write: a template a colleague sent,
+    // an unzipped folder. Nobody picked these paths in any dialog.
+    let mut config = created_fixture();
+    for (index, (id, file)) in [("named", &private_photo), ("crafted", &diary)]
+        .into_iter()
+        .enumerate()
+    {
+        config.assets.push(ProjectAsset {
+            id: format!("asset-{id}"),
+            kind: "image".into(),
+            name: format!("Shared {index}"),
+            relative_path: None,
+            source_path: Some(external_source_path(file).unwrap()),
+            mime_type: "image/jpeg".into(),
+            duration_ms: None,
+            width: None,
+            height: None,
+            has_audio: None,
+            created_at: config.created_at.clone(),
+        });
+    }
+    let shared = root.path().join("Shared project");
+    fs::create_dir(&shared).unwrap();
+    write_project(&shared, &config).unwrap();
+    let folder = shared.to_string_lossy().into_owned();
+
+    // The rule, stated plainly: the project names it, so it is served.
+    let named = config.assets[0].source_path.clone().unwrap();
+    assert_eq!(
+        external_media_bytes(&access, &folder, &named).unwrap(),
+        b"PRIVATE PHOTO BYTES",
+        "this is the documented perimeter, not a wish about it"
+    );
+
+    // And the two things that DO bound it. Media extensions only, checked
+    // on the canonical path — a project file cannot name credentials.
+    let crafted = config.assets[1].source_path.clone().unwrap();
+    assert!(external_media_bytes(&access, &folder, &crafted)
+        .unwrap_err()
+        .contains("not a media file"));
+    // And only what the project names: not the whole folder around it.
+    assert!(
+        external_media_bytes(&access, &folder, &unnamed.to_string_lossy())
+            .unwrap_err()
+            .contains("not one of the files this project points at")
+    );
+}
+
+// S2: a file picked while project A was open is not project B's to read.
+// The session list used to be process-global, so opening a colleague's
+// project after importing your own rushes handed their project file a
+// reader for your footage — no hand-editing required, the paths were
+// already in memory.
+
+#[test]
+fn one_project_s_picks_are_not_another_project_s_to_read() {
+    let access = MediaAccess::default();
+    let root = tempfile::tempdir().unwrap();
+    let rushes = root.path().join("Rushes");
+    fs::create_dir(&rushes).unwrap();
+    let footage = rushes.join("my footage.mp4");
+    fs::write(&footage, b"A's footage").unwrap();
+
+    let mine = project_folder_at(&root.path().join("Mine"));
+    let theirs = project_folder_at(&root.path().join("Theirs"));
+
+    // Imported into MY project, and not saved yet: only the session list
+    // knows about it.
+    let imported = import_media_file(&access, &footage, &mine).unwrap();
+    let source = imported.source_path.unwrap();
+    assert!(recorded_external_paths(&read_project(&mine).unwrap().config).is_empty());
+
+    assert_eq!(
+        external_media_bytes(&access, &mine.to_string_lossy(), &source).unwrap(),
+        b"A's footage",
+        "the project the clip was imported into must still preview it"
+    );
+    let error = external_media_bytes(&access, &theirs.to_string_lossy(), &source).unwrap_err();
+    assert!(
+        error.contains("not one of the files this project points at"),
+        "another project read a file picked for this one: {error}"
+    );
+}
+
+// S3: `read_project_file` confines the relative path against the folder it
+// is handed, and nothing used to check that the folder was a project. The
+// pair was the hole: every check passed while pointing at `.ssh`.
+
+#[test]
+fn reading_a_project_file_requires_the_folder_to_hold_a_project() {
+    let access = MediaAccess::default();
+    let root = tempfile::tempdir().unwrap();
+    let ssh = root.path().join(".ssh");
+    fs::create_dir(&ssh).unwrap();
+    fs::write(ssh.join("id_rsa"), b"BEGIN OPENSSH PRIVATE KEY").unwrap();
+
+    // `tauri::ipc::Response` is not `Debug`, so the error comes out by hand.
+    let read = |folder: &Path, relative: &str| {
+        read_project_file(folder.to_string_lossy().into_owned(), relative.into())
+            .map(|_| ())
+            .err()
+    };
+    let error = read(&ssh, "id_rsa").expect("a folder with no project was read");
+    assert!(
+        error.contains("does not hold a Slopus project"),
+        "unexpected error: {error}"
+    );
+    // Same shape for the external read, which takes the folder too.
+    assert!(external_media_bytes(
+        &access,
+        &ssh.to_string_lossy(),
+        &ssh.join("id_rsa").to_string_lossy()
+    )
+    .unwrap_err()
+    .contains("does not hold a Slopus project"));
+
+    // A real project still reads its own files.
+    let project = project_folder_at(&root.path().join("project"));
+    fs::create_dir_all(project.join("references")).unwrap();
+    fs::write(project.join("references/harbor.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    assert_eq!(read(&project, "references/harbor.png"), None);
+    // ...and still cannot climb out of itself.
+    assert!(read(&project, "../.ssh/id_rsa").is_some());
+}

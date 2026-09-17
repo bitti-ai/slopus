@@ -1,5 +1,5 @@
+use crate::project::{paths::*, *};
 use crate::{agent, diagnostics, slopfab};
-use crate::project::{*, paths::*};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use tauri::AppHandle;
@@ -15,7 +15,9 @@ pub(crate) struct RuntimeStatus {
 /// has no project in hand — engine paths belong to the machine, not to a
 /// project file — so it cannot go through `runtime_status`.
 #[tauri::command]
-pub(crate) fn slopfab_status(settings: BTreeMap<String, ProviderSetting>) -> slopfab::SlopfabStatus {
+pub(crate) fn slopfab_status(
+    settings: BTreeMap<String, ProviderSetting>,
+) -> slopfab::SlopfabStatus {
     let status = slopfab::status(&settings);
     diagnostics::info(
         "runtime",
@@ -106,4 +108,3 @@ pub(crate) async fn runtime_status(
     }
     result
 }
-

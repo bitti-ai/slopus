@@ -1,18 +1,32 @@
-use super::*;
+use super::{
+    config::*, events::stage_name, ffi::RequestHandle, h3::*, planning::*, platform::*,
+    references::ReferenceVideos, *,
+};
+use crate::project::{ProviderOption, ProviderSetting};
+use std::collections::BTreeMap;
 
 #[test]
 fn animate_requires_video_and_prompt_mode_requires_text() {
     let mut configuration = Configuration::from_settings(&BTreeMap::new());
     let mut request = GenerationRequest::default();
-    assert!(configuration.validate_inputs(&request).unwrap_err().contains("prompt"));
+    assert!(configuration
+        .validate_inputs(&request)
+        .unwrap_err()
+        .contains("prompt"));
     configuration.animate = true;
-    assert!(configuration.validate_inputs(&request).unwrap_err().contains("reference video"));
+    assert!(configuration
+        .validate_inputs(&request)
+        .unwrap_err()
+        .contains("reference video"));
     request.reference_paths.push("image.png".into());
     assert!(configuration.validate_inputs(&request).is_err());
     request.reference_video_ids.push("video".into());
     configuration.validate_inputs(&request).unwrap();
     request.still_image = true;
-    assert!(configuration.validate_inputs(&request).unwrap_err().contains("video generation"));
+    assert!(configuration
+        .validate_inputs(&request)
+        .unwrap_err()
+        .contains("video generation"));
 }
 
 #[test]
@@ -21,23 +35,38 @@ fn animate_recipe_and_audio_selection_reach_bundled_dll() {
     let root = tempfile::tempdir().unwrap();
     let embedding = root.path().join("conditioning.safetensors");
     crate::conditioning::fixture(&embedding);
-    let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
-        enabled: true, model: None,
-        options: BTreeMap::from([
-            ("generationMode".into(), ProviderOption::String("animate".into())),
-            ("promptEmbedding".into(), ProviderOption::String(embedding.to_string_lossy().into_owned())),
-            ("stepOverride".into(), ProviderOption::Number(4.0)),
-        ]),
-    })]);
+    let settings = BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([
+                (
+                    "generationMode".into(),
+                    ProviderOption::String("animate".into()),
+                ),
+                (
+                    "promptEmbedding".into(),
+                    ProviderOption::String(embedding.to_string_lossy().into_owned()),
+                ),
+                ("stepOverride".into(), ProviderOption::Number(4.0)),
+            ]),
+        },
+    )]);
     let configuration = Configuration::from_settings(&settings);
     let api = ffi::Api::load(&configuration.dll_path).unwrap();
     let id = references.create_reference_video(2.0, &settings).unwrap();
     let result = (|| -> Result<(), String> {
         references.append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
         let request = GenerationRequest {
-            job_id: "animate-test".into(), frames: 48, steps: 20, seed: 1,
+            job_id: "animate-test".into(),
+            frames: 48,
+            steps: 20,
+            seed: 1,
             prompt: "This scene prompt must be ignored by Animate.".into(),
-            canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
+            canvas_width: 736,
+            canvas_height: 416,
+            reference_video_ids: vec![id.clone()],
             reference_paths: vec!["repainted.png".into()],
             ..Default::default()
         };
@@ -48,14 +77,30 @@ fn animate_recipe_and_audio_selection_reach_bundled_dll() {
             for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
                 for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
                     let handle = RequestHandle::new(&api)?;
-                    configure_request(&api, &handle, &request, &configuration, platform, purpose, &references)?;
+                    configure_request(
+                        &api,
+                        &handle,
+                        &request,
+                        &configuration,
+                        platform,
+                        purpose,
+                        &references,
+                    )?;
                     assert_eq!(api.resolve(&handle)?.num_model_evaluations, 3);
                     let description = api.describe(&handle)?;
-                    assert!(description.contains("fixed 362-token embedding; video then repainted image"));
+                    assert!(description
+                        .contains("fixed 362-token embedding; video then repainted image"));
                     assert!(description.contains("reference short edge 416"));
                     assert!(description.contains("video 1.000000 .. 0.600000 (shift 3.0)"));
-                    assert!(description.contains(if preserve_audio { "pinned driving soundtrack" } else { "generated; driving reference soundtrack omitted" }));
-                    assert!(description.contains(&format!("prompt              {} characters", ANIMATE_PROMPT.len())));
+                    assert!(description.contains(if preserve_audio {
+                        "pinned driving soundtrack"
+                    } else {
+                        "generated; driving reference soundtrack omitted"
+                    }));
+                    assert!(description.contains(&format!(
+                        "prompt              {} characters",
+                        ANIMATE_PROMPT.len()
+                    )));
                 }
             }
         }
@@ -80,34 +125,77 @@ fn animate_duration_limit_resolves_with_bundled_dll() {
     let result = (|| -> Result<(), String> {
         references.append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
         let mut request = GenerationRequest {
-            prompt: "A dancer.".into(), steps: 4, seed: 1,
-            canvas_width: 736, canvas_height: 416, reference_video_ids: vec![id.clone()],
+            prompt: "A dancer.".into(),
+            steps: 4,
+            seed: 1,
+            canvas_width: 736,
+            canvas_height: 416,
+            reference_video_ids: vec![id.clone()],
             reference_paths: vec!["repainted.png".into()],
             ..Default::default()
         };
         for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
             for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
-                for (frames, expected) in [(48, 56), (336, 345), (345, 345), (346, 345), (348, 345), (359, 345), (360, 345)] {
+                for (frames, expected) in [
+                    (48, 56),
+                    (336, 345),
+                    (345, 345),
+                    (346, 345),
+                    (348, 345),
+                    (359, 345),
+                    (360, 345),
+                ] {
                     request.frames = frames;
                     let handle = RequestHandle::new(&api)?;
-                    configure_request(&api, &handle, &request, &configuration, platform, purpose, &references)?;
+                    configure_request(
+                        &api,
+                        &handle,
+                        &request,
+                        &configuration,
+                        platform,
+                        purpose,
+                        &references,
+                    )?;
                     let plan = api.resolve(&handle)?;
                     assert_eq!(plan.aligned_frames, expected, "requested {frames} frames");
                     assert_eq!(plan.duration_seconds, f64::from(expected) / 24.0);
-                    assert_eq!(scene_frame_window(&request, plan.aligned_frames)?, (0, expected));
+                    assert_eq!(
+                        scene_frame_window(&request, plan.aligned_frames)?,
+                        (0, expected)
+                    );
                 }
             }
         }
         request.frames = 361;
         let handle = RequestHandle::new(&api)?;
-        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, RequestPurpose::Plan, &references)?;
-        assert!(api.resolve(&handle).err().unwrap().contains("at most 15 seconds"));
+        configure_request(
+            &api,
+            &handle,
+            &request,
+            &configuration,
+            ComputePlatform::Cuda13,
+            RequestPurpose::Plan,
+            &references,
+        )?;
+        assert!(api
+            .resolve(&handle)
+            .err()
+            .unwrap()
+            .contains("at most 15 seconds"));
 
         // Other generators keep their existing upward alignment at 15 s.
         configuration.animate = false;
         request.frames = 360;
         let handle = RequestHandle::new(&api)?;
-        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, RequestPurpose::Plan, &references)?;
+        configure_request(
+            &api,
+            &handle,
+            &request,
+            &configuration,
+            ComputePlatform::Cuda13,
+            RequestPurpose::Plan,
+            &references,
+        )?;
         assert_eq!(api.resolve(&handle)?.aligned_frames, 362);
         Ok(())
     })();
@@ -137,15 +225,23 @@ fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
         "video_rows": { "dtype": "F32", "shape": [24, 96], "data_offsets": [0, video_bytes] },
         "audio_rows": { "dtype": "F32", "shape": [130, 32], "data_offsets": [video_bytes, video_bytes + audio_bytes] },
     }).to_string();
-    while header.len() % 8 != 0 { header.push(' '); }
+    while header.len() % 8 != 0 {
+        header.push(' ');
+    }
     let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
     bytes.extend_from_slice(header.as_bytes());
     bytes.resize(bytes.len() + video_bytes + audio_bytes, 0);
     std::fs::write(&path, bytes).unwrap();
     let mut request = GenerationRequest {
-        job_id: "continued".into(), prompt: "The camera keeps moving.".into(),
-        frames: 18, steps: 4, seed: 1, canvas_width: 64, canvas_height: 32,
-        continuation_path: Some(path.clone()), save_latents_path: Some(root.path().join("next.safetensors")),
+        job_id: "continued".into(),
+        prompt: "The camera keeps moving.".into(),
+        frames: 18,
+        steps: 4,
+        seed: 1,
+        canvas_width: 64,
+        canvas_height: 32,
+        continuation_path: Some(path.clone()),
+        save_latents_path: Some(root.path().join("next.safetensors")),
         ..Default::default()
     };
     let settings = BTreeMap::new();
@@ -153,11 +249,23 @@ fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
     let api = ffi::Api::load(&configuration.dll_path).unwrap();
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
         let handle = RequestHandle::new(&api).unwrap();
-        configure_request(&api, &handle, &request, &configuration, platform, RequestPurpose::Generate, &references).unwrap();
+        configure_request(
+            &api,
+            &handle,
+            &request,
+            &configuration,
+            platform,
+            RequestPurpose::Generate,
+            &references,
+        )
+        .unwrap();
         let raw = api.resolve(&handle).unwrap();
         assert_eq!(raw.aligned_frames, 73);
         assert_eq!(raw.latent_frames, 17); // 56-frame window, including 22 overlap.
-        assert_eq!(scene_frame_window(&request, raw.aligned_frames).unwrap(), (39, 34));
+        assert_eq!(
+            scene_frame_window(&request, raw.aligned_frames).unwrap(),
+            (39, 34)
+        );
     }
     let plan = resolve_plan(&request, &settings, &references).unwrap();
     assert_eq!(plan.aligned_frames, 34);
@@ -172,12 +280,22 @@ fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
 
 #[test]
 fn continuation_video_and_audio_skip_the_cumulative_source() {
-    let mut request = GenerationRequest { frames: 119, continuation_path: Some("source".into()), ..Default::default() };
+    let mut request = GenerationRequest {
+        frames: 119,
+        continuation_path: Some("source".into()),
+        ..Default::default()
+    };
     assert_eq!(scene_frame_window(&request, 243).unwrap(), (124, 119));
     // A further continuation skips the full joined source, not just its last scene.
     assert_eq!(scene_frame_window(&request, 362).unwrap(), (243, 119));
-    assert_eq!(scene_audio_offset(124, 24.0, 2, 48_000, 972_000).unwrap(), 496_000);
-    assert_eq!(scene_audio_offset(243, 24.0, 2, 44_100, 2_000_000).unwrap(), 893_026);
+    assert_eq!(
+        scene_audio_offset(124, 24.0, 2, 48_000, 972_000).unwrap(),
+        496_000
+    );
+    assert_eq!(
+        scene_audio_offset(243, 24.0, 2, 44_100, 2_000_000).unwrap(),
+        893_026
+    );
     assert_eq!(scene_audio_offset(124, 24.0, 0, 0, 0).unwrap(), 0);
     assert!(scene_audio_offset(124, 24.0, 2, 48_000, 100).is_err());
     assert!(scene_frame_window(&request, 120).is_err());
@@ -198,21 +316,46 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
     }).to_string();
     let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
     bytes.extend_from_slice(header.as_bytes());
-    for _ in 0..96 { bytes.extend_from_slice(&0.25_f32.to_le_bytes()); }
+    for _ in 0..96 {
+        bytes.extend_from_slice(&0.25_f32.to_le_bytes());
+    }
     std::fs::write(&file, bytes).unwrap();
     let mut request = GenerationRequest {
-        job_id: "refmod-test".into(), prompt: "A portrait.".into(), still_image: true, frames: 1,
-        steps: 20, seed: 1, canvas_width: 768, canvas_height: 768,
-        reference_paths: Vec::new(), reference_video_ids: Vec::new(),
-        refmods: vec![RefmodInput { path: file.to_string_lossy().into_owned(), strength: 0.7, copies: 2 }],
+        job_id: "refmod-test".into(),
+        prompt: "A portrait.".into(),
+        still_image: true,
+        frames: 1,
+        steps: 20,
+        seed: 1,
+        canvas_width: 768,
+        canvas_height: 768,
+        reference_paths: Vec::new(),
+        reference_video_ids: Vec::new(),
+        refmods: vec![RefmodInput {
+            path: file.to_string_lossy().into_owned(),
+            strength: 0.7,
+            copies: 2,
+        }],
         ..Default::default()
     };
     let probe = RequestHandle::new(&api).unwrap();
     let added = api.add_refmod(&probe, &file, 0.7, 2);
     if let Err(error) = &added {
         assert!(error.contains("does not support refmods"), "{error}");
-        eprintln!("Refmod export not yet available in the installed DLL; checked compatibility error.");
-        assert!(configure_request(&api, &probe, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Plan, &references).unwrap_err().contains("does not support refmods"));
+        eprintln!(
+            "Refmod export not yet available in the installed DLL; checked compatibility error."
+        );
+        assert!(configure_request(
+            &api,
+            &probe,
+            &request,
+            &configuration,
+            ComputePlatform::Vulkan,
+            RequestPurpose::Plan,
+            &references
+        )
+        .unwrap_err()
+        .contains("does not support refmods"));
     } else {
         for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
             for still_image in [false, true] {
@@ -220,7 +363,16 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
                 request.frames = if still_image { 1 } else { 120 };
                 for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
                     let handle = RequestHandle::new(&api).unwrap();
-                    configure_request(&api, &handle, &request, &configuration, platform, purpose, &references).unwrap();
+                    configure_request(
+                        &api,
+                        &handle,
+                        &request,
+                        &configuration,
+                        platform,
+                        purpose,
+                        &references,
+                    )
+                    .unwrap();
                     let plan = api.resolve(&handle).unwrap();
                     assert!(plan.aligned_frames >= request.frames);
                 }
@@ -230,75 +382,155 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
     request.refmods[0].strength = 0.0;
     std::fs::remove_file(&file).unwrap();
     let handle = RequestHandle::new(&api).unwrap();
-    configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Generate, &references).unwrap();
+    configure_request(
+        &api,
+        &handle,
+        &request,
+        &configuration,
+        ComputePlatform::Vulkan,
+        RequestPurpose::Generate,
+        &references,
+    )
+    .unwrap();
     request.refmods[0].copies = 11;
-    assert!(configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Plan, &references).is_err());
+    assert!(configure_request(
+        &api,
+        &handle,
+        &request,
+        &configuration,
+        ComputePlatform::Vulkan,
+        RequestPurpose::Plan,
+        &references
+    )
+    .is_err());
 }
 
 #[test]
 fn ordered_loras_and_step_override_reach_cuda_and_vulkan_requests() {
     let references = ReferenceVideos::default();
     let root = tempfile::tempdir().unwrap();
-    let paths = [root.path().join("style.safetensors"), root.path().join("TaoMate.safetensors")];
-    for path in &paths { std::fs::write(path, b"planning does not load weights").unwrap(); }
-    let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
-        enabled: true, model: None,
-        options: BTreeMap::from([
-            ("loras".into(), ProviderOption::String(serde_json::json!([
-                { "path": paths[0], "strength": -0.5 },
-                { "path": paths[1], "strength": 1.0 },
-            ]).to_string())),
-            ("stepOverride".into(), ProviderOption::Number(8.0)),
-        ]),
-    })]);
+    let paths = [
+        root.path().join("style.safetensors"),
+        root.path().join("TaoMate.safetensors"),
+    ];
+    for path in &paths {
+        std::fs::write(path, b"planning does not load weights").unwrap();
+    }
+    let settings = BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([
+                (
+                    "loras".into(),
+                    ProviderOption::String(
+                        serde_json::json!([
+                            { "path": paths[0], "strength": -0.5 },
+                            { "path": paths[1], "strength": 1.0 },
+                        ])
+                        .to_string(),
+                    ),
+                ),
+                ("stepOverride".into(), ProviderOption::Number(8.0)),
+            ]),
+        },
+    )]);
     let configuration = Configuration::from_settings(&settings);
     let api = ffi::Api::load(&configuration.dll_path).unwrap();
     let request = GenerationRequest {
-        job_id: "lora-test".into(), prompt: "A quiet harbour.".into(),
-        frames: 120, still_image: false, steps: 20, seed: 1,
-        canvas_width: 736, canvas_height: 416,
-        reference_paths: Vec::new(), reference_video_ids: Vec::new(),
+        job_id: "lora-test".into(),
+        prompt: "A quiet harbour.".into(),
+        frames: 120,
+        still_image: false,
+        steps: 20,
+        seed: 1,
+        canvas_width: 736,
+        canvas_height: 416,
+        reference_paths: Vec::new(),
+        reference_video_ids: Vec::new(),
         refmods: Vec::new(),
         ..Default::default()
     };
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
         for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
             let handle = RequestHandle::new(&api).unwrap();
-            configure_request(&api, &handle, &request, &configuration, platform, purpose, &references).unwrap();
+            configure_request(
+                &api,
+                &handle,
+                &request,
+                &configuration,
+                platform,
+                purpose,
+                &references,
+            )
+            .unwrap();
             assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, 7);
             let description = api.describe(&handle).unwrap();
             assert!(!description.contains("taomate-3step"));
-            assert!(description.find("style.safetensors").unwrap() < description.find("TaoMate.safetensors").unwrap());
+            assert!(
+                description.find("style.safetensors").unwrap()
+                    < description.find("TaoMate.safetensors").unwrap()
+            );
             assert!(description.contains("strength -0.5"));
         }
     }
-    let invalid = BTreeMap::from([("slopfab".into(), ProviderSetting {
-        enabled: true, model: None,
-        options: BTreeMap::from([("loras".into(), ProviderOption::String("invalid JSON".into()))]),
-    })]);
+    let invalid = BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([(
+                "loras".into(),
+                ProviderOption::String("invalid JSON".into()),
+            )]),
+        },
+    )]);
     assert!(Configuration::from_settings(&invalid).loras.is_err());
     std::fs::remove_file(&paths[0]).unwrap();
     let handle = RequestHandle::new(&api).unwrap();
-    assert!(configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Generate, &references).unwrap_err().contains("LoRA file is missing"));
+    assert!(configure_request(
+        &api,
+        &handle,
+        &request,
+        &configuration,
+        ComputePlatform::Vulkan,
+        RequestPurpose::Generate,
+        &references
+    )
+    .unwrap_err()
+    .contains("LoRA file is missing"));
 }
 
 #[test]
 fn vulkan_video_references_prepare_and_attach_for_planning_and_generation() {
     let references = ReferenceVideos::default();
-    let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
-        enabled: true,
-        model: None,
-        options: BTreeMap::from([("inferenceBackend".into(), ProviderOption::String("vulkan".into()))]),
-    })]);
+    let settings = BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([(
+                "inferenceBackend".into(),
+                ProviderOption::String("vulkan".into()),
+            )]),
+        },
+    )]);
     let id = references.create_reference_video(2.0, &settings).unwrap();
     let result = (|| -> Result<(), String> {
         references.append_reference_video(&id, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
         references.set_reference_video_audio(&id, &vec![0; 32_000 * 2 * 4], 1, 32_000)?;
         let request = GenerationRequest {
-            job_id: "vulkan-reference-test".into(), prompt: "A scene using <Video 1>.".into(),
-            frames: 120, still_image: false, steps: 12, seed: 1,
-            canvas_width: 736, canvas_height: 416,
-            reference_paths: Vec::new(), reference_video_ids: vec![id.clone()],
+            job_id: "vulkan-reference-test".into(),
+            prompt: "A scene using <Video 1>.".into(),
+            frames: 120,
+            still_image: false,
+            steps: 12,
+            seed: 1,
+            canvas_width: 736,
+            canvas_height: 416,
+            reference_paths: Vec::new(),
+            reference_video_ids: vec![id.clone()],
             refmods: Vec::new(),
             ..Default::default()
         };
@@ -306,7 +538,15 @@ fn vulkan_video_references_prepare_and_attach_for_planning_and_generation() {
         let api = ffi::Api::load(&configuration.dll_path)?;
         for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
             let handle = RequestHandle::new(&api)?;
-            configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, purpose, &references)?;
+            configure_request(
+                &api,
+                &handle,
+                &request,
+                &configuration,
+                ComputePlatform::Vulkan,
+                purpose,
+                &references,
+            )?;
             assert!(api.resolve(&handle)?.aligned_frames > 0);
         }
         Ok(())
@@ -320,10 +560,12 @@ fn video_reference_c_api_copies_inputs_and_retains_attached_snapshot() {
     let path = default_dll_path();
     let api = ffi::Api::load(&path).unwrap();
     let request = RequestHandle::new(&api).unwrap();
-    api.set_prompt(&request, "A scene using <Video 1>.").unwrap();
+    api.set_prompt(&request, "A scene using <Video 1>.")
+        .unwrap();
     api.set_frames(&request, 120).unwrap();
     api.set_resolution(&request, 736, 416).unwrap();
-    let mut video = ffi::ReferenceVideoHandle::new(ffi::Api::load(&path).unwrap(), 2.0, path.clone()).unwrap();
+    let mut video =
+        ffi::ReferenceVideoHandle::new(ffi::Api::load(&path).unwrap(), 2.0, path.clone()).unwrap();
     let pixels = vec![127_u8; 64 * 64 * 4];
     video.append(&pixels, 64, 64, 0.0).unwrap();
     assert!(video.append(&pixels, 64, 64, 0.0).is_err());
@@ -377,29 +619,52 @@ fn platform_selection_prefers_supported_cuda_majors_and_falls_back_to_vulkan() {
 #[test]
 fn backend_preference_cannot_enable_cuda_without_cuda_hardware() {
     let mut config = Configuration::from_settings(&BTreeMap::new());
-    assert_eq!(config.platform(ComputePlatform::Cuda13), ComputePlatform::Cuda13);
-    assert_eq!(config.platform(ComputePlatform::Cuda12), ComputePlatform::Cuda12);
-    assert_eq!(config.platform(ComputePlatform::Vulkan), ComputePlatform::Vulkan);
+    assert_eq!(
+        config.platform(ComputePlatform::Cuda13),
+        ComputePlatform::Cuda13
+    );
+    assert_eq!(
+        config.platform(ComputePlatform::Cuda12),
+        ComputePlatform::Cuda12
+    );
+    assert_eq!(
+        config.platform(ComputePlatform::Vulkan),
+        ComputePlatform::Vulkan
+    );
     config.vulkan = true;
-    for detected in [ComputePlatform::Cuda13, ComputePlatform::Cuda12, ComputePlatform::Vulkan] {
+    for detected in [
+        ComputePlatform::Cuda13,
+        ComputePlatform::Cuda12,
+        ComputePlatform::Vulkan,
+    ] {
         assert_eq!(config.platform(detected), ComputePlatform::Vulkan);
     }
 }
 
 #[test]
 fn attention_defaults_to_sage_and_is_independent_of_backend() {
-    assert_eq!(Configuration::from_settings(&BTreeMap::new()).attention, "sage2");
+    assert_eq!(
+        Configuration::from_settings(&BTreeMap::new()).attention,
+        "sage2"
+    );
     for backend in ["cuda", "vulkan"] {
         for attention in ["exact", "flash2", "sage2", "invalid"] {
             let settings = serde_json::from_value(serde_json::json!({
                 "slopfab": { "enabled": true, "model": null,
                     "options": { "inferenceBackend": backend, "attention": attention } }
-            })).unwrap();
+            }))
+            .unwrap();
             let config = Configuration::from_settings(&settings);
-            let expected = if attention == "invalid" { "sage2" } else { attention };
+            let expected = if attention == "invalid" {
+                "sage2"
+            } else {
+                attention
+            };
             assert_eq!(config.attention, expected);
             assert_eq!(config.vulkan, backend == "vulkan");
-            assert!(config.timing_profile("1.4.0", ComputePlatform::Vulkan).contains(&format!("attention={expected}|")));
+            assert!(config
+                .timing_profile("1.4.0", ComputePlatform::Vulkan)
+                .contains(&format!("attention={expected}|")));
         }
     }
 }
@@ -407,7 +672,10 @@ fn attention_defaults_to_sage_and_is_independent_of_backend() {
 #[test]
 #[cfg(windows)]
 fn bundled_dll_reports_a_compatible_api() {
-    assert!(default_dll_path().is_file(), "The build must stage slopfab.dll beside the executable.");
+    assert!(
+        default_dll_path().is_file(),
+        "The build must stage slopfab.dll beside the executable."
+    );
     let runtime = status(&BTreeMap::new());
     assert_ne!(runtime.state, "runtimeMissing", "{}", runtime.detail);
     assert_ne!(runtime.state, "incompatible", "{}", runtime.detail);
@@ -429,11 +697,14 @@ fn stage_ids_are_normalized_without_assuming_an_enum() {
 #[test]
 fn installed_dll_resolves_icons_as_one_still_frame_when_present() {
     let references = ReferenceVideos::default();
-    if !default_dll_path().is_file() { return; }
+    if !default_dll_path().is_file() {
+        return;
+    }
     let request: GenerationRequest = serde_json::from_value(serde_json::json!({
         "jobId": "icon-plan", "prompt": "A red toy car", "frames": 1, "stillImage": true,
         "steps": 20, "seed": 1, "canvasWidth": 768, "canvasHeight": 768
-    })).unwrap();
+    }))
+    .unwrap();
     let plan = resolve_plan(&request, &BTreeMap::new(), &references).unwrap();
     assert_eq!(plan.aligned_frames, 1);
     assert_eq!(plan.latent_frames, 1);
@@ -443,18 +714,30 @@ fn installed_dll_resolves_icons_as_one_still_frame_when_present() {
 #[test]
 fn bundled_dll_accepts_all_attention_modes_on_both_backends() {
     let references = ReferenceVideos::default();
-    if !default_dll_path().is_file() { return; }
+    if !default_dll_path().is_file() {
+        return;
+    }
     let api = ffi::Api::load(&default_dll_path()).unwrap();
     let request: GenerationRequest = serde_json::from_value(serde_json::json!({
         "jobId": "attention-plan", "prompt": "A red toy car", "frames": 1, "stillImage": true,
         "steps": 20, "seed": 1, "canvasWidth": 768, "canvasHeight": 768
-    })).unwrap();
+    }))
+    .unwrap();
     let mut config = Configuration::from_settings(&BTreeMap::new());
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
         for attention in ["exact", "flash2", "sage2"] {
             config.attention = attention;
             let handle = RequestHandle::new(&api).unwrap();
-            configure_request(&api, &handle, &request, &config, platform, RequestPurpose::Plan, &references).unwrap();
+            configure_request(
+                &api,
+                &handle,
+                &request,
+                &config,
+                platform,
+                RequestPurpose::Plan,
+                &references,
+            )
+            .unwrap();
             assert_eq!(api.resolve(&handle).unwrap().aligned_frames, 1);
         }
     }

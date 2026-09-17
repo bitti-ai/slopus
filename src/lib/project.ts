@@ -3,7 +3,7 @@ import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type Sh
 
 export const PROJECT_FILE_NAME = "slopus.json";
 /** What the settings file used to be called, newest first. All are still
- *  opened (`project_file_in` in src-tauri/src/lib.rs); only the current name is
+ *  opened (`project_file_in` in src-tauri/src/project/); only the current name is
  *  ever written. */
 export const LEGACY_PROJECT_FILE_NAMES = ["polstudio.json", "pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
@@ -77,7 +77,7 @@ export const projectRelativePathSchema = z.string().transform((value, context) =
  *  all three absolute forms are accepted on every platform, because a project
  *  file written on Windows is still parsed by tests (and by a reader) on Linux.
  *
- *  Mirrors `normalize_external_path` in src-tauri/src/lib.rs. The two must
+ *  Mirrors `normalize_external_path` in src-tauri/src/project/. The two must
  *  agree in BOTH directions — Rust writes this file before zod ever sees it. */
 export function normalizeExternalPath(value: string): string {
   if (!value || value.includes("\0")) throw new Error("External media paths cannot be empty or contain null bytes.");
@@ -323,7 +323,7 @@ export const projectReferenceSchema = z.object({
    term for instead of losing the user's choices on the next save.
 
    Both layers validate SHAPE, not vocabulary, and they validate the same shape:
-   `is_shot_tag_id` in src-tauri/src/lib.rs is this regex. Were only one side to
+   `is_shot_tag_id` in src-tauri/src/project/ is this regex. Were only one side to
    know the taxonomy, the other would happily persist a tag it then refused to
    read back. */
 export const shotTagIdSchema = z.string().regex(SHOT_TAG_ID_PATTERN, "Shot tag ids start with a lowercase letter and carry only letters, digits, and hyphens.");
@@ -487,7 +487,7 @@ export const generationJobSchema = z.object({
      its shots; everything written before scenes existed keeps them in `prompt`
      and `creativeBrief`, which is why those two may not both be blank when
      there are no shots to hold them. `validate_and_normalize_config` in
-     src-tauri/src/lib.rs applies exactly this rule — the two layers have to
+     src-tauri/src/project/ applies exactly this rule — the two layers have to
      refuse the same files or Rust writes one the UI then cannot open. */
   if (job.shots && job.shots.length > 0) {
     const ids = new Set<string>();

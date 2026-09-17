@@ -1,6 +1,6 @@
+use super::{references::*, scenes::*, timeline::*};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use super::{references::*, scenes::*, timeline::*};
 /// Project purpose, not the types of media it contains. Only video projects
 /// can currently be created; the other values reserve future format support.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

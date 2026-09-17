@@ -1,10 +1,19 @@
+use super::super::prompt::*;
 use super::super::types::*;
+use super::options::*;
 use crate::project::*;
 use serde_json::Value;
-use std::{sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
-use super::options::*;
-use super::super::prompt::*;
-pub(in crate::agent) fn compatible_setting_is_configured(id: ProviderId, setting: &ProviderSetting) -> bool {
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+pub(in crate::agent) fn compatible_setting_is_configured(
+    id: ProviderId,
+    setting: &ProviderSetting,
+) -> bool {
     setting.enabled
         && setting
             .model
@@ -33,7 +42,10 @@ pub(in crate::agent) fn validate_compatible_setting(
     Ok(())
 }
 
-pub(in crate::agent) fn compatible_resource_url(setting: &ProviderSetting, resource: &str) -> Result<String, String> {
+pub(in crate::agent) fn compatible_resource_url(
+    setting: &ProviderSetting,
+    resource: &str,
+) -> Result<String, String> {
     let endpoint = option_string(setting, "endpoint")
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -51,7 +63,9 @@ pub(in crate::agent) fn compatible_resource_url(setting: &ProviderSetting, resou
     Ok(url)
 }
 
-pub(in crate::agent) fn compatible_client(timeout: Duration) -> Result<reqwest::blocking::Client, String> {
+pub(in crate::agent) fn compatible_client(
+    timeout: Duration,
+) -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(timeout)
         .user_agent("Slopus/0.1")
@@ -72,7 +86,11 @@ pub(in crate::agent) fn with_compatible_auth(
     }
 }
 
-pub(in crate::agent) fn compatible_http_error(label: &str, status: reqwest::StatusCode, body: &str) -> String {
+pub(in crate::agent) fn compatible_http_error(
+    label: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+) -> String {
     let detail = serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|value| {
@@ -144,13 +162,22 @@ pub(in crate::agent) fn run_compatible_endpoint(
         .as_deref()
         .expect("compatible setting validated");
     let body = compatible_chat_body(config, prompt, model)?;
-    let client = reqwest::Client::builder().timeout(timeout).user_agent("Slopus/0.1")
-        .build().map_err(|error| error.to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .user_agent("Slopus/0.1")
+        .build()
+        .map_err(|error| error.to_string())?;
     let mut request = client.post(url).json(&body);
-    if let Some(key) = option_string(setting, "apiKey").map(str::trim).filter(|key| !key.is_empty()) {
+    if let Some(key) = option_string(setting, "apiKey")
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
         request = request.bearer_auth(key);
     }
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|error| error.to_string())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| error.to_string())?;
     let (status, response_body) = runtime.block_on(async {
         tokio::select! {
             response = async {

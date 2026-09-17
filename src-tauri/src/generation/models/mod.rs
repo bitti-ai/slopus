@@ -22,15 +22,24 @@ pub(crate) struct ModelDefinition {
     pub capabilities: ModelCapabilities,
     pub agent_instructions: &'static str,
     pub shot_catalog: fn() -> String,
-    pub validate_shot_settings: fn(Option<&crate::project::SceneShot>, &crate::project::SceneShot, &str) -> Result<(), String>,
+    pub validate_shot_settings: fn(
+        Option<&crate::project::SceneShot>,
+        &crate::project::SceneShot,
+        &str,
+    ) -> Result<(), String>,
 }
 
-pub(crate) fn default_model() -> &'static ModelDefinition { &h3::MODEL }
+pub(crate) fn default_model() -> &'static ModelDefinition {
+    &h3::MODEL
+}
 
 /// Unknown persisted provider ids remain readable. They do not silently acquire
 /// H3 authoring rules; a backend must explicitly register support before use.
 pub(crate) fn find(id: &str) -> Option<&'static ModelDefinition> {
-    match id { "minimax-h3" => Some(&h3::MODEL), _ => None }
+    match id {
+        "minimax-h3" => Some(&h3::MODEL),
+        _ => None,
+    }
 }
 
 pub(crate) fn for_scene(id: Option<&str>) -> Option<&'static ModelDefinition> {

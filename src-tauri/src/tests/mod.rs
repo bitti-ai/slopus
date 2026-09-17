@@ -1,9 +1,12 @@
-use crate::project::{*, paths::*, storage::*, lifecycle::*, validation::*};
-use crate::media::{access::*, import::*, artifacts::*};
-use crate::commands::{media::*, artifacts::*};
+use crate::commands::{artifacts::*, media::*};
+use crate::media::{access::*, artifacts::*, import::*};
+use crate::project::{lifecycle::*, paths::*, storage::*, validation::*, *};
 use crate::slopfab;
-use std::{env,fs,io,collections::BTreeMap,path::{Path,PathBuf}};
-
+use std::{
+    collections::BTreeMap,
+    env, fs, io,
+    path::{Path, PathBuf},
+};
 
 pub(super) fn fixture() -> ProjectConfig {
     serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap()
@@ -56,13 +59,16 @@ pub(super) fn scene_fixture() -> ProjectConfig {
 // `Option` field missing `skip_serializing_if` is invisible here until
 // someone remembers to add its name. The authority is the generated
 // `fixtures/rust-serialized-*.json` written by
-// `serialized_wire_format_fixtures_are_regenerated_for_the_frontend`,
+// `serialized_wire_format_matches_frontend_fixtures`,
 // which the frontend test suite parses with the real zod schema — a
 // forgotten field fails there without anyone editing this array.
-const NON_NULLABLE_OPTIONAL_KEYS: [&str; 5] =
-    ["clipId", "durationMs", "width", "height", "color"];
+const NON_NULLABLE_OPTIONAL_KEYS: [&str; 5] = ["clipId", "durationMs", "width", "height", "color"];
 
-pub(super) fn collect_forbidden_nulls(value: &serde_json::Value, path: &str, found: &mut Vec<String>) {
+pub(super) fn collect_forbidden_nulls(
+    value: &serde_json::Value,
+    path: &str,
+    found: &mut Vec<String>,
+) {
     match value {
         serde_json::Value::Object(fields) => {
             for (key, child) in fields {
@@ -99,13 +105,25 @@ pub(super) fn object_of<'a>(
         .unwrap_or_else(|| panic!("{path} is not a JSON object"))
 }
 
-mod group_0;
-mod group_1;
-mod group_2;
-mod group_3;
-
 fn project_folder_at(path: &Path) -> PathBuf {
     fs::create_dir_all(path).unwrap();
     write_project(path, &created_fixture()).unwrap();
     path.to_path_buf()
 }
+
+fn project_folder() -> tempfile::TempDir {
+    let folder = tempfile::tempdir().unwrap();
+    fs::write(
+        folder.path().join(PROJECT_FILE_NAME),
+        serde_json::to_vec(&created_fixture()).unwrap(),
+    )
+    .unwrap();
+    folder
+}
+
+mod artifacts;
+mod media_access;
+mod persistence;
+mod references;
+mod scenes;
+mod schema;

@@ -1,7 +1,17 @@
 use super::types::*;
+use super::{
+    process::probe_command, providers::compatible::compatible_setting_is_configured,
+    providers::options::*, providers::*,
+};
 use crate::project::*;
-use std::{collections::BTreeMap, env, ffi::OsString, path::{Path, PathBuf}, sync::Mutex, time::{Duration, Instant}};
-use super::{providers::*, providers::compatible::compatible_setting_is_configured, process::probe_command, providers::options::*};
+use std::{
+    collections::BTreeMap,
+    env,
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 /// The last answer the probe sweep gave, kept so it is not paid for twice.
 ///
 /// One sweep is four child processes — a version check and an auth check per
@@ -19,7 +29,9 @@ pub(super) struct CachedProbe {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct ProviderDiscovery { cache: std::sync::Arc<Mutex<Option<CachedProbe>>> }
+pub(crate) struct ProviderDiscovery {
+    cache: std::sync::Arc<Mutex<Option<CachedProbe>>>,
+}
 pub(super) const PROVIDER_PROBE_TTL: Duration = Duration::from_secs(120);
 
 /// What the answer depends on: the settings for the agent CLIs themselves.
@@ -67,7 +79,10 @@ where
     statuses
 }
 
-pub fn provider_statuses(discovery: &ProviderDiscovery, settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
+pub fn provider_statuses(
+    discovery: &ProviderDiscovery,
+    settings: &BTreeMap<String, ProviderSetting>,
+) -> Vec<ProviderStatus> {
     let mut statuses = cached_or_probe(
         &discovery.cache,
         provider_probe_key(settings),
@@ -95,7 +110,9 @@ pub fn provider_statuses(discovery: &ProviderDiscovery, settings: &BTreeMap<Stri
     statuses
 }
 
-pub(super) fn probe_provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
+pub(super) fn probe_provider_statuses(
+    settings: &BTreeMap<String, ProviderSetting>,
+) -> Vec<ProviderStatus> {
     [ProviderId::Claude, ProviderId::Codex]
         .into_iter()
         .map(|id| {
@@ -181,9 +198,14 @@ pub(super) fn confined_project_root(folder: &Path) -> Result<PathBuf, String> {
     // and a third-party CLI has no reason to understand the verbatim form. The
     // rest of the app already reports project folders through `display_path`,
     // so the agent hands the CLIs the same spelling the user sees.
-    Ok(PathBuf::from(crate::project::paths::display_path(&canonical)))
+    Ok(PathBuf::from(crate::project::paths::display_path(
+        &canonical,
+    )))
 }
-pub(super) fn discover_executable(name: &str, setting: Option<&ProviderSetting>) -> Option<PathBuf> {
+pub(super) fn discover_executable(
+    name: &str,
+    setting: Option<&ProviderSetting>,
+) -> Option<PathBuf> {
     if let Some(configured) = setting.and_then(|value| option_string(value, "executable")) {
         let path = PathBuf::from(configured);
         #[cfg(windows)]

@@ -1,7 +1,13 @@
-use super::*;
+use super::ffi;
+use super::types::{JobEvent, ProgressEvent};
+use crate::diagnostics;
+use std::sync::Arc;
 
 pub type EventSink = Arc<dyn Fn(NativeEvent) + Send + Sync>;
-pub enum NativeEvent { Job(JobEvent), Progress(ProgressEvent) }
+pub enum NativeEvent {
+    Job(JobEvent),
+    Progress(ProgressEvent),
+}
 
 pub(super) struct CallbackContext {
     pub(super) events: EventSink,
@@ -15,7 +21,7 @@ pub(super) struct CallbackContext {
 }
 
 pub(super) fn progress_sink(context: CallbackContext) -> ffi::ProgressSink {
- Box::new(move |progress| {
+    Box::new(move |progress| {
         diagnostics::debug(
             "slopfab",
             "generation.progress",
@@ -29,23 +35,20 @@ pub(super) fn progress_sink(context: CallbackContext) -> ffi::ProgressSink {
                 "elapsedSeconds": progress.elapsed_seconds,
             }),
         );
-        (context.events)(NativeEvent::Progress(
-            ProgressEvent {
-                job_id: context.job_id.clone(),
-                stage: stage_name(progress.stage),
-                step: progress.step,
-                total_steps: progress.total_steps,
-                planned_steps: context.planned_steps,
-                elapsed_seconds: progress.elapsed_seconds,
-                frames: context.frames,
-                canvas_width: context.canvas_width,
-                canvas_height: context.canvas_height,
-                reference_count: context.reference_count,
-                timing_profile: context.timing_profile.clone(),
-            },
-        ));
-
- })
+        (context.events)(NativeEvent::Progress(ProgressEvent {
+            job_id: context.job_id.clone(),
+            stage: stage_name(progress.stage),
+            step: progress.step,
+            total_steps: progress.total_steps,
+            planned_steps: context.planned_steps,
+            elapsed_seconds: progress.elapsed_seconds,
+            frames: context.frames,
+            canvas_width: context.canvas_width,
+            canvas_height: context.canvas_height,
+            reference_count: context.reference_count,
+            timing_profile: context.timing_profile.clone(),
+        }));
+    })
 }
 pub(super) fn stage_name(stage: i32) -> &'static str {
     match stage {

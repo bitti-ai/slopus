@@ -1,12 +1,12 @@
 use super::cancellation::CancellationRegistry;
-use super::providers::session::{self, TurnInput};
 use super::providers::options::*;
+use super::providers::session::{self, TurnInput};
 use super::types::*;
-use crate::project::{*, validation::validate_and_normalize_config};
+use super::{discovery::*, policy::*, protocol::*, retry::*};
 use crate::project::commands::execute_checked;
 use crate::project::validation::issue::ValidationIssue;
+use crate::project::{validation::validate_and_normalize_config, *};
 use std::{path::Path, time::Duration};
-use super::{discovery::*, policy::*, protocol::*, retry::*};
 pub(super) const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
 #[derive(Clone, Default)]
 pub struct AgentRuntime {
@@ -56,18 +56,31 @@ impl AgentRuntime {
             let mut retries = RetryBudget::default();
             let result = loop {
                 let (events, output) = provider.run_turn(TurnInput {
-                    root: &folder, config: &config, prompt: &attempt_prompt,
-                    cancellation: cancel.clone(), timeout: Duration::from_secs(timeout), on_event: &on_event,
+                    root: &folder,
+                    config: &config,
+                    prompt: &attempt_prompt,
+                    cancellation: cancel.clone(),
+                    timeout: Duration::from_secs(timeout),
+                    on_event: &on_event,
                 })?;
                 all_events.extend(events);
 
-                let checked = parse_turn_result(&output).map_err(|message| ValidationIssue::new("turn.contract", None, "response", message)).and_then(|result| {
-                    if let AgentTurnResult::Commands { commands, .. } = &result {
-                        let next = execute_checked(&config, commands, &config.updated_at, crate::generation::models::default_model().defaults)?;
-                        validate_agent_scene_conventions(&config, &next).map_err(|message| ValidationIssue::new("agent.scene_policy", None, "scenes", message))?;
-                    }
-                    Ok(result)
-                });
+                let checked = parse_turn_result(&output)
+                    .map_err(|message| {
+                        ValidationIssue::new("turn.contract", None, "response", message)
+                    })
+                    .and_then(|result| {
+                        if let AgentTurnResult::Commands { commands, .. } = &result {
+                            let next = execute_checked(
+                                &config,
+                                commands,
+                                &config.updated_at,
+                                crate::generation::models::default_model().defaults,
+                            )?;
+                            validate_scene_policy(&config, &next)?;
+                        }
+                        Ok(result)
+                    });
                 match checked {
                     Ok(valid) => break valid,
                     Err(failure) => {

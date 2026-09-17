@@ -1,8 +1,11 @@
+use super::access::{picked_external_source_path, MediaAccess};
 pub(crate) use super::formats::media_kind_and_mime;
 use crate::project::paths::*;
-use std::{fs, path::{Path, PathBuf}};
 use serde::Serialize;
-use super::access::{MediaAccess, picked_external_source_path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedReferenceImage {
@@ -46,8 +49,10 @@ pub(crate) fn validate_reference_image(source: &Path) -> Result<(String, &'stati
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase)
         .ok_or_else(|| "The selected image needs a file extension.".to_string())?;
-    let mime_type = super::formats::lookup(&extension).filter(|format| format.kind == "image" && format.reference)
-        .map(|format| format.mime).ok_or("Choose a PNG, JPEG, or WebP image.")?;
+    let mime_type = super::formats::lookup(&extension)
+        .filter(|format| format.kind == "image" && format.reference)
+        .map(|format| format.mime)
+        .ok_or("Choose a PNG, JPEG, or WebP image.")?;
     Ok((extension, mime_type))
 }
 
@@ -91,7 +96,8 @@ pub(crate) struct ImportedReference {
 /// Adds one file to a project as a reference, following the same rule the media
 /// panel does: pictures are small and get copied so the folder stays portable;
 /// video and audio are not copied at any size.
-pub(crate) fn import_reference_file(access: &MediaAccess, 
+pub(crate) fn import_reference_file(
+    access: &MediaAccess,
     source: &Path,
     project_folder: &Path,
 ) -> Result<ImportedReference, String> {
@@ -132,7 +138,11 @@ pub(crate) fn import_reference_file(access: &MediaAccess,
 /// "portable" costs the user that much disk to gain a copy they did not ask
 /// for. The project records where the file already lives instead. Images are
 /// small and stay copied, so a project's own artwork travels with it.
-pub(crate) fn import_media_file(access: &MediaAccess, source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
+pub(crate) fn import_media_file(
+    access: &MediaAccess,
+    source: &Path,
+    project_folder: &Path,
+) -> Result<ImportedMediaFile, String> {
     if !source.is_file() {
         return Err(format!("{} does not exist.", source.to_string_lossy()));
     }
@@ -182,27 +192,53 @@ pub(crate) fn import_media_file(access: &MediaAccess, source: &Path, project_fol
     })
 }
 pub(crate) fn reference_attachment_kind(path: &Path) -> Result<&'static str, String> {
-    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
-    super::formats::lookup(&extension).filter(|format| format.reference).map(|format| format.kind)
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    super::formats::lookup(&extension)
+        .filter(|format| format.reference)
+        .map(|format| format.kind)
         .ok_or_else(|| "Choose an image, MP4/MOV video, or refmod safetensors file.".into())
 }
 
-pub(crate) fn import_reference_attachments(access: &MediaAccess, root: &Path, paths: &[PathBuf]) -> Result<Vec<ImportedReference>, String> {
-    let kinds = paths.iter().map(|path| {
-        if !path.is_file() { return Err("The selected reference file does not exist.".into()); }
-        reference_attachment_kind(path)
-    }).collect::<Result<Vec<_>, String>>()?;
-    if kinds.iter().filter(|kind| **kind == "video").count() > 1 {
-        return Err("Add one video per reference. Use another reference for additional videos.".into());
-    }
-    paths.iter().zip(kinds).map(|(path, kind)| {
-        if kind == "image" { return import_reference_file(access, path, root); }
-        Ok(ImportedReference {
-            kind,
-            name: path.file_name().and_then(|name| name.to_str()).unwrap_or("Reference").into(),
-            relative_path: None,
-            source_path: Some(picked_external_source_path(access, path, root)?),
+pub(crate) fn import_reference_attachments(
+    access: &MediaAccess,
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<Vec<ImportedReference>, String> {
+    let kinds = paths
+        .iter()
+        .map(|path| {
+            if !path.is_file() {
+                return Err("The selected reference file does not exist.".into());
+            }
+            reference_attachment_kind(path)
         })
-    }).collect()
+        .collect::<Result<Vec<_>, String>>()?;
+    if kinds.iter().filter(|kind| **kind == "video").count() > 1 {
+        return Err(
+            "Add one video per reference. Use another reference for additional videos.".into(),
+        );
+    }
+    paths
+        .iter()
+        .zip(kinds)
+        .map(|(path, kind)| {
+            if kind == "image" {
+                return import_reference_file(access, path, root);
+            }
+            Ok(ImportedReference {
+                kind,
+                name: path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Reference")
+                    .into(),
+                relative_path: None,
+                source_path: Some(picked_external_source_path(access, path, root)?),
+            })
+        })
+        .collect()
 }
-

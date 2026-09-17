@@ -1,14 +1,31 @@
-use super::*;
+use super::{
+    events::{progress_sink, CallbackContext},
+    ffi::{self, RequestHandle},
+    h3::configure_request,
+    planning::{scene_audio_offset, scene_frame_window, RequestPurpose},
+    platform::detect_platform,
+    runtime::QueueItem,
+    types::OutputMetadata,
+};
+use crate::{diagnostics, rendered};
+use std::sync::atomic::Ordering;
 
-struct FrameSource { generation: ffi::FinishedGeneration, frame_offset: u32 }
+struct FrameSource {
+    generation: ffi::FinishedGeneration,
+    frame_offset: u32,
+}
 impl rendered::FrameSource for FrameSource {
- fn frame_rgba(&self,index:u32,width:u32,height:u32)->Result<Vec<u8>,String>{
- let index=index.checked_add(self.frame_offset).ok_or("Continuation frame index overflow.")?;
- self.generation.frame_rgba8(index,width,height)
- }
+    fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let index = index
+            .checked_add(self.frame_offset)
+            .ok_or("Continuation frame index overflow.")?;
+        self.generation.frame_rgba8(index, width, height)
+    }
 }
 
-pub(super) fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+pub(super) fn run_generation(
+    item: &QueueItem,
+) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     if item.cancel.load(Ordering::Acquire) {
         return Err("Generation was cancelled before it started.".into());
     }
@@ -59,15 +76,27 @@ pub(super) fn run_generation(item: &QueueItem) -> Result<(OutputMetadata, render
         serde_json::json!({ "jobId": item.request.job_id }),
     );
     loop {
-        if item.cancel.load(Ordering::Acquire) { generation.cancel(); }
-        if generation.wait(100)? { break; }
+        if item.cancel.load(Ordering::Acquire) {
+            generation.cancel();
+        }
+        if generation.wait(100)? {
+            break;
+        }
     }
     let generation = generation.finish()?;
     let output = generation.output()?;
-    drop(request);
     let (frame_offset, frames) = scene_frame_window(&item.request, output.frames)?;
-    let source = Box::new(FrameSource { generation, frame_offset: frame_offset as u32 });
-    let audio_offset = scene_audio_offset(frame_offset, output.fps, output.audio_channels, output.audio_sample_rate, output.audio.len())?;
+    let source = Box::new(FrameSource {
+        generation,
+        frame_offset: frame_offset as u32,
+    });
+    let audio_offset = scene_audio_offset(
+        frame_offset,
+        output.fps,
+        output.audio_channels,
+        output.audio_sample_rate,
+        output.audio.len(),
+    )?;
     let mut audio = output.audio;
     audio.drain(..audio_offset);
     let metadata = OutputMetadata {

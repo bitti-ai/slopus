@@ -5,7 +5,10 @@ pub(super) fn full_agent_system_prompt() -> String {
 }
 pub(super) fn system_prompt_for(model: &crate::generation::models::ModelDefinition) -> String {
     let catalog = (model.shot_catalog)();
-    format!("{AGENT_SYSTEM_PROMPT}\n\n{}\n\nSupported shot.settings catalog:\n{catalog}", model.agent_instructions)
+    format!(
+        "{AGENT_SYSTEM_PROMPT}\n\n{}\n\nSupported shot.settings catalog:\n{catalog}",
+        model.agent_instructions
+    )
 }
 pub(super) fn context_prompt(config: &ProjectConfig, prompt: &str) -> Result<String, String> {
     let conversation = serde_json::to_string(&config.agent_conversation.messages)
@@ -24,12 +27,26 @@ pub(super) fn context_prompt(config: &ProjectConfig, prompt: &str) -> Result<Str
 /// project gets the default policy; unknown persisted models remain inert data.
 pub(super) fn project_system_prompt(config: &ProjectConfig) -> String {
     let mut ids = std::collections::BTreeSet::new();
-    let models: Vec<_> = config.generation_jobs.iter()
+    let models: Vec<_> = config
+        .generation_jobs
+        .iter()
         .filter_map(|job| crate::generation::models::for_scene(job.provider_id.as_deref()))
         .filter(|model| ids.insert(model.defaults.provider_id))
         .collect();
-    if models.is_empty() && config.generation_jobs.is_empty() { return full_agent_system_prompt(); }
-    let policies = models.into_iter().map(|model| format!("Model {}:\n{}\nSupported shot.settings catalog:\n{}",
-        model.defaults.provider_id, model.agent_instructions, (model.shot_catalog)())).collect::<Vec<_>>().join("\n\n");
+    if models.is_empty() && config.generation_jobs.is_empty() {
+        return full_agent_system_prompt();
+    }
+    let policies = models
+        .into_iter()
+        .map(|model| {
+            format!(
+                "Model {}:\n{}\nSupported shot.settings catalog:\n{}",
+                model.defaults.provider_id,
+                model.agent_instructions,
+                (model.shot_catalog)()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
     format!("{AGENT_SYSTEM_PROMPT}\n\n{policies}")
 }

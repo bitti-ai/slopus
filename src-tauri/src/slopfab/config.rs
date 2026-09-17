@@ -1,4 +1,7 @@
-use super::*;
+use super::{default_dll_path, platform::ComputePlatform, types::GenerationRequest};
+use crate::project::{ProviderOption, ProviderSetting};
+use serde::Deserialize;
+use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct LoraAdapter {
@@ -57,13 +60,22 @@ impl Configuration {
             ],
             loras: match slopfab.and_then(|setting| setting.options.get("loras")) {
                 None => Ok(Vec::new()),
-                Some(ProviderOption::String(value)) => serde_json::from_str::<Vec<LoraAdapter>>(value)
-                    .map_err(|error| format!("Invalid LoRA settings: {error}")),
+                Some(ProviderOption::String(value)) => {
+                    serde_json::from_str::<Vec<LoraAdapter>>(value)
+                        .map_err(|error| format!("Invalid LoRA settings: {error}"))
+                }
                 _ => Err("LoRA settings must be a JSON array of paths and strengths.".into()),
             },
             step_override: match slopfab.and_then(|setting| setting.options.get("stepOverride")) {
                 None => Ok(None),
-                Some(ProviderOption::Number(value)) if value.is_finite() && value.fract() == 0.0 && *value >= 2.0 && *value <= i32::MAX as f64 => Ok(Some(*value as i32)),
+                Some(ProviderOption::Number(value))
+                    if value.is_finite()
+                        && value.fract() == 0.0
+                        && *value >= 2.0
+                        && *value <= i32::MAX as f64 =>
+                {
+                    Ok(Some(*value as i32))
+                }
                 _ => Err("LoRA step override must be a whole number from 2 to 2147483647.".into()),
             },
         }
@@ -78,7 +90,9 @@ impl Configuration {
                 return Err("Animate requires exactly one reference video.".into());
             }
             if request.reference_paths.len() != 1 {
-                return Err("Animate requires exactly one repainted frame of the driving scene.".into());
+                return Err(
+                    "Animate requires exactly one repainted frame of the driving scene.".into(),
+                );
             }
             if request.continuation_path.is_some() || !request.refmods.is_empty() {
                 return Err("Animate does not support scene continuation or refmods.".into());
@@ -90,7 +104,9 @@ impl Configuration {
     }
 
     pub(super) fn generation_steps(&self, fallback: i32) -> Result<i32, String> {
-        self.step_override.clone().map(|steps| steps.unwrap_or(fallback))
+        self.step_override
+            .clone()
+            .map(|steps| steps.unwrap_or(fallback))
     }
 
     pub(super) fn platform(&self, detected: ComputePlatform) -> ComputePlatform {
@@ -116,8 +132,22 @@ impl Configuration {
             })
             .collect::<Vec<_>>()
             .join(";");
-        let adapters = self.loras.as_ref().map(|loras| loras.iter()
-            .map(|lora| format!("{}@{}", lora.path, lora.strength)).collect::<Vec<_>>().join(";")).unwrap_or_default();
-        format!("slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|steps={:?}", platform.label(), self.attention, self.step_override)
+        let adapters = self
+            .loras
+            .as_ref()
+            .map(|loras| {
+                loras
+                    .iter()
+                    .map(|lora| format!("{}@{}", lora.path, lora.strength))
+                    .collect::<Vec<_>>()
+                    .join(";")
+            })
+            .unwrap_or_default();
+        format!(
+            "slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|steps={:?}",
+            platform.label(),
+            self.attention,
+            self.step_override
+        )
     }
 }

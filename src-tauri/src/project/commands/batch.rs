@@ -1,6 +1,6 @@
-use crate::project::validation::{validate_checked, issue::ValidationIssue};
-use crate::project::{ProjectConfig, GenerationJob};
-use super::{types::*, effects::Effects};
+use super::{effects::Effects, types::*};
+use crate::project::validation::{issue::ValidationIssue, validate_checked};
+use crate::project::{GenerationJob, ProjectConfig};
 /** Apply a complete batch to a clone. Callers validate agent conventions after
  * this returns; neither a command error nor a validator error mutates input. */
 #[cfg(test)]
@@ -16,7 +16,12 @@ pub fn execute_commands_at(
     commands: &[ProjectCommand],
     timestamp: &str,
 ) -> Result<ProjectConfig, String> {
-    execute_with_defaults(current, commands, timestamp, crate::generation::models::default_model().defaults)
+    execute_with_defaults(
+        current,
+        commands,
+        timestamp,
+        crate::generation::models::default_model().defaults,
+    )
 }
 
 pub(crate) fn execute_with_defaults(
@@ -28,31 +33,77 @@ pub(crate) fn execute_with_defaults(
     execute_checked(current, commands, timestamp, defaults).map_err(|issue| issue.message)
 }
 
-pub(crate) fn execute_checked(current: &ProjectConfig, commands: &[ProjectCommand], timestamp: &str, defaults: crate::generation::models::SceneDefaults) -> Result<ProjectConfig, ValidationIssue> {
+pub(crate) fn execute_checked(
+    current: &ProjectConfig,
+    commands: &[ProjectCommand],
+    timestamp: &str,
+    defaults: crate::generation::models::SceneDefaults,
+) -> Result<ProjectConfig, ValidationIssue> {
     if commands.is_empty() {
-        return Err(ValidationIssue::new("commands.empty", None, "commands", "Agent command batch cannot be empty.".into()));
+        return Err(ValidationIssue::new(
+            "commands.empty",
+            None,
+            "commands",
+            "Agent command batch cannot be empty.".into(),
+        ));
     }
     if commands.len() > MAX_COMMANDS_PER_TURN {
-        return Err(ValidationIssue::new("commands.limit", None, "commands", format!("Agent command batch exceeds the limit of {MAX_COMMANDS_PER_TURN} commands.")));
+        return Err(ValidationIssue::new(
+            "commands.limit",
+            None,
+            "commands",
+            format!("Agent command batch exceeds the limit of {MAX_COMMANDS_PER_TURN} commands."),
+        ));
     }
     let mut next = current.clone();
     let mut effects = Effects::new(defaults);
     for (index, command) in commands.iter().enumerate() {
         apply_command(&mut next, command, timestamp, &mut effects).map_err(|error| {
-            ValidationIssue::new("command.invalid", Some((index + 1).to_string()), command_name(command), format!("Command {} ({}): {error}", index + 1, command_name(command)))
+            ValidationIssue::new(
+                "command.invalid",
+                Some((index + 1).to_string()),
+                command_name(command),
+                format!("Command {} ({}): {error}", index + 1, command_name(command)),
+            )
         })?;
     }
-    effects.synchronize(&mut next).map_err(|message| ValidationIssue::new("scene.derived", None, "shots", message))?;
+    effects
+        .synchronize(&mut next)
+        .map_err(|message| ValidationIssue::new("scene.derived", None, "shots", message))?;
     validate_checked(next)
 }
 
-fn apply_command(project: &mut ProjectConfig, command: &ProjectCommand, timestamp: &str, effects: &mut Effects) -> Result<(), String> {
+fn apply_command(
+    project: &mut ProjectConfig,
+    command: &ProjectCommand,
+    timestamp: &str,
+    effects: &mut Effects,
+) -> Result<(), String> {
     match command {
-        ProjectCommand::ProjectSet { .. } => super::project::apply(project, command, timestamp, effects),
-        ProjectCommand::ReferenceAdd { .. } | ProjectCommand::ReferenceSet { .. } | ProjectCommand::ReferenceRemove { .. } => super::references::apply(project, command, timestamp, effects),
-        ProjectCommand::SceneAdd { .. } | ProjectCommand::SceneSet { .. } | ProjectCommand::SceneRemove { .. } | ProjectCommand::SceneMove { .. } => super::scenes::apply(project, command, timestamp, effects),
-        ProjectCommand::ShotAdd { .. } | ProjectCommand::ShotSet { .. } | ProjectCommand::ShotRemove { .. } => super::shots::apply(project, command, timestamp, effects),
-        ProjectCommand::ClipAdd { .. } | ProjectCommand::ClipSet { .. } | ProjectCommand::ClipRemove { .. } => super::clips::apply(project, command, timestamp, effects),
+        ProjectCommand::ProjectSet { .. } => {
+            super::project::apply(project, command, timestamp, effects)
+        }
+        ProjectCommand::ReferenceAdd { .. }
+        | ProjectCommand::ReferenceSet { .. }
+        | ProjectCommand::ReferenceRemove { .. } => {
+            super::references::apply(project, command, timestamp, effects)
+        }
+        ProjectCommand::SceneAdd { .. }
+        | ProjectCommand::SceneSet { .. }
+        | ProjectCommand::SceneRemove { .. }
+        | ProjectCommand::SceneMove { .. } => {
+            super::scenes::apply(project, command, timestamp, effects)
+        }
+        ProjectCommand::ShotAdd { .. }
+        | ProjectCommand::ShotSet { .. }
+        | ProjectCommand::ShotRemove { .. } => {
+            super::shots::apply(project, command, timestamp, effects)
+        }
+        ProjectCommand::ClipAdd { .. }
+        | ProjectCommand::ClipSet { .. }
+        | ProjectCommand::ClipRemove { .. } => {
+            super::clips::apply(project, command, timestamp, effects)
+        }
     }
 }
 pub(super) fn find_scene_mut<'a>(

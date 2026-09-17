@@ -61,5 +61,9 @@ pub(crate) struct ReferenceRefmod {
     #[serde(default = "default_refmod_copies")]
     pub(crate) copies: u32,
 }
-pub(crate) fn default_refmod_strength() -> f64 { 1.0 }
-pub(crate) fn default_refmod_copies() -> u32 { 1 }
+pub(crate) fn default_refmod_strength() -> f64 {
+    1.0
+}
+pub(crate) fn default_refmod_copies() -> u32 {
+    1
+}

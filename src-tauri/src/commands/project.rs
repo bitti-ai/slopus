@@ -1,4 +1,4 @@
-use crate::project::{*, storage::*, lifecycle::*, validation::validate_and_normalize_config};
+use crate::project::{lifecycle::*, storage::*, validation::validate_and_normalize_config, *};
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;

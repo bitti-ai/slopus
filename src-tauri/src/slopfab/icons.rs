@@ -1,4 +1,14 @@
-use super::*;
+use super::{
+    config::Configuration,
+    ffi::{self, RequestHandle},
+    h3::configure_request,
+    planning::RequestPurpose,
+    platform::*,
+    references::ReferenceVideos,
+    types::GenerationRequest,
+};
+use serde::Deserialize;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,14 +50,28 @@ pub(super) fn write_reference_icon(
         ..Default::default()
     };
     let handle = RequestHandle::new(api)?;
-    configure_request(api, &handle, &request, configuration, platform, RequestPurpose::Generate, &ReferenceVideos::default())?;
+    configure_request(
+        api,
+        &handle,
+        &request,
+        configuration,
+        platform,
+        RequestPurpose::Generate,
+        &ReferenceVideos::default(),
+    )?;
     api.resolve(&handle)?;
     let mut generation = handle.start(None)?;
-    while !generation.wait(-1).map_err(|error| format!("Icon '{}': {error}", spec.id))? {}
+    while !generation
+        .wait(-1)
+        .map_err(|error| format!("Icon '{}': {error}", spec.id))?
+    {}
     let generation = generation.finish()?;
     let output = generation.output()?;
     let render_size = crate::reference_icons::RENDER_SIZE;
-    if output.width != render_size as i32 || output.height != render_size as i32 || output.frames != 1 {
+    if output.width != render_size as i32
+        || output.height != render_size as i32
+        || output.frames != 1
+    {
         return Err(format!(
             "Icon '{}' returned {}x{} with {} frames.",
             spec.id, output.width, output.height, output.frames

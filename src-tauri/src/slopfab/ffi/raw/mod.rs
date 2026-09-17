@@ -6,120 +6,10 @@ use std::{
 };
 
 pub enum Request {}
-enum ReferenceVideo {}
-type VideoCreate = unsafe extern "C" fn(f64, *mut *mut ReferenceVideo) -> i32;
-type VideoDestroy = unsafe extern "C" fn(*mut ReferenceVideo);
-type VideoAppend = unsafe extern "C" fn(*mut ReferenceVideo, *const u8, usize, i32, i32, usize, f64) -> i32;
-type VideoAudio = unsafe extern "C" fn(*mut ReferenceVideo, *const f32, usize, i32, i32, f64) -> i32;
-type VideoAttach = unsafe extern "C" fn(*mut Request, *const ReferenceVideo) -> i32;
-
-pub struct ReferenceVideoHandle {
-    api: std::sync::Arc<Api>,
-    handle: *mut ReferenceVideo,
-    destroy: VideoDestroy,
-    append_rgba: VideoAppend,
-    audio: VideoAudio,
-    attach_video: VideoAttach,
-    dll_path: std::path::PathBuf,
-    frames: usize,
-    has_audio: bool,
-}
-
-// The registry mutex serializes access. The DLL handle and all copied input
-// buffers outlive every call, and attached snapshots own their references.
-unsafe impl Send for ReferenceVideoHandle {}
-
-impl ReferenceVideoHandle {
-    pub fn new(api: std::sync::Arc<Api>, duration: f64, dll_path: std::path::PathBuf) -> Result<Self, String> {
-        unsafe {
-            let missing = |error| format!("This slopfab.dll does not support video references. Update the runtime: {error}");
-            let create = *api._library.get::<VideoCreate>(b"slopfab_reference_video_create\0").map_err(missing)?;
-            let destroy = *api._library.get::<VideoDestroy>(b"slopfab_reference_video_destroy\0").map_err(missing)?;
-            let append_rgba = *api._library.get::<VideoAppend>(b"slopfab_reference_video_append_rgba8\0").map_err(missing)?;
-            let audio = *api._library.get::<VideoAudio>(b"slopfab_reference_video_set_audio_f32\0").map_err(missing)?;
-            let attach_video = *api._library.get::<VideoAttach>(b"slopfab_request_add_reference_video\0").map_err(missing)?;
-            let mut handle = std::ptr::null_mut();
-            api.error(create(duration, &mut handle))?;
-            if handle.is_null() { return Err("slopfab returned an empty reference video handle.".into()); }
-            Ok(Self { api, handle, destroy, append_rgba, audio, attach_video, dll_path, frames: 0, has_audio: false })
-        }
-    }
-    pub fn append(&mut self, bytes: &[u8], width: i32, height: i32, timestamp: f64) -> Result<(), String> {
-        if width <= 0 || height <= 0 || width > 1024 || height > 1024 || self.frames >= 361 {
-            return Err("Reference video preparation exceeds the frame or dimension limit.".into());
-        }
-        self.api.error(unsafe { (self.append_rgba)(self.handle, bytes.as_ptr(), bytes.len(), width, height, width as usize * 4, timestamp) })?;
-        self.frames += 1;
-        Ok(())
-    }
-    pub fn set_audio(&mut self, samples: &[f32], channels: i32, sample_rate: i32) -> Result<(), String> {
-        self.api.error(unsafe { (self.audio)(self.handle, samples.as_ptr(), samples.len(), channels, sample_rate, 0.0) })?;
-        self.has_audio = !samples.is_empty();
-        Ok(())
-    }
-    pub fn has_audio(&self) -> bool { self.has_audio }
-    pub fn attach(&self, request: *mut Request, dll_path: &Path) -> Result<(), String> {
-        if dll_path != self.dll_path { return Err("Reference video and generation must use the same slopfab runtime.".into()); }
-        self.api.error(unsafe { (self.attach_video)(request, self.handle) })
-    }
-}
-impl Drop for ReferenceVideoHandle {
-    fn drop(&mut self) { unsafe { (self.destroy)(self.handle) }; }
-}
-
-pub fn has_cuda_device() -> bool {
-    // CUDA's driver API uses the system calling convention on Windows.
-    // Keep the library alive until both calls have returned.
-    unsafe {
-        #[cfg(windows)]
-        let driver = libloading::os::windows::Library::load_with_flags(
-            "nvcuda.dll", 0x00000800, // LOAD_LIBRARY_SEARCH_SYSTEM32
-        ).map(Library::from);
-        #[cfg(not(windows))]
-        let driver = Library::new("libcuda.so.1");
-        let Ok(library) = driver else { return false };
-        let Ok(init) = library.get::<unsafe extern "system" fn(u32) -> i32>(b"cuInit\0") else { return false };
-        let Ok(count) = library.get::<unsafe extern "system" fn(*mut i32) -> i32>(b"cuDeviceGetCount\0") else { return false };
-        let mut devices = 0;
-        init(0) == 0 && count(&mut devices) == 0 && devices > 0
-    }
-}
-pub fn cuda_device_names() -> Vec<String> {
-    gpu_devices().into_iter().map(|device| device.name).collect()
-}
-
-pub fn gpu_devices() -> Vec<super::super::GpuDevice> {
-    // The display driver's API is available without the CUDA toolkit.
-    // Keep the library and fixed-size name buffer alive for every call.
-    unsafe {
-        #[cfg(windows)]
-        let driver = libloading::os::windows::Library::load_with_flags(
-            "nvcuda.dll", 0x00000800, // LOAD_LIBRARY_SEARCH_SYSTEM32
-        ).map(Library::from);
-        #[cfg(not(windows))]
-        let driver = Library::new("libcuda.so.1");
-        let Ok(library) = driver else { return Vec::new() };
-        let Ok(init) = library.get::<unsafe extern "system" fn(u32) -> i32>(b"cuInit\0") else { return Vec::new() };
-        let Ok(count) = library.get::<unsafe extern "system" fn(*mut i32) -> i32>(b"cuDeviceGetCount\0") else { return Vec::new() };
-        let Ok(get) = library.get::<unsafe extern "system" fn(*mut i32, i32) -> i32>(b"cuDeviceGet\0") else { return Vec::new() };
-        let Ok(name) = library.get::<unsafe extern "system" fn(*mut c_char, i32, i32) -> i32>(b"cuDeviceGetName\0") else { return Vec::new() };
-        let memory = library.get::<unsafe extern "system" fn(*mut usize, i32) -> i32>(b"cuDeviceTotalMem_v2\0").ok();
-        let mut count_value = 0;
-        if init(0) != 0 || count(&mut count_value) != 0 { return Vec::new() }
-        (0..count_value).filter_map(|ordinal| {
-            let mut device = 0;
-            let mut buffer = [0u8; 256];
-            if get(&mut device, ordinal) != 0 || name(buffer.as_mut_ptr().cast(), buffer.len() as i32, device) != 0 {
-                return None;
-            }
-            let end = buffer.iter().position(|byte| *byte == 0).unwrap_or(buffer.len());
-            let mut memory_bytes = 0usize;
-            if let Some(memory) = &memory { if memory(&mut memory_bytes, device) != 0 { memory_bytes = 0; } }
-            Some(super::super::GpuDevice { name: String::from_utf8_lossy(&buffer[..end]).into_owned(), memory_bytes: memory_bytes as u64 })
-        }).collect()
-    }
-}
-
+mod device;
+mod reference_video;
+pub use device::{cuda_device_names, gpu_devices, has_cuda_device};
+pub use reference_video::ReferenceVideoHandle;
 pub enum Generation {}
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -200,12 +90,8 @@ pub struct Api {
     reused_models_clear: unsafe extern "C" fn() -> i32,
     resolve_plan: unsafe extern "C" fn(*const Request, *mut Plan) -> i32,
     describe_plan: unsafe extern "C" fn(*const Request, *mut *mut c_char) -> i32,
-    generation_start: unsafe extern "C" fn(
-        *const Request,
-        ProgressFn,
-        *mut c_void,
-        *mut *mut Generation,
-    ) -> i32,
+    generation_start:
+        unsafe extern "C" fn(*const Request, ProgressFn, *mut c_void, *mut *mut Generation) -> i32,
     generation_cancel: unsafe extern "C" fn(*mut Generation),
     generation_wait: unsafe extern "C" fn(*mut Generation, i32) -> i32,
     generation_error: unsafe extern "C" fn(*const Generation) -> *const c_char,
@@ -260,11 +146,17 @@ impl Api {
                     unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                 ),
                 set_animate: library
-                    .get::<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>(b"slopfab_request_set_animate\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>(
+                        b"slopfab_request_set_animate\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_prompt_embedding: library
-                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_prompt_embedding_path\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(
+                        b"slopfab_request_set_prompt_embedding_path\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_resolution: symbol!(
                     "slopfab_request_set_resolution",
                     unsafe extern "C" fn(*mut Request, i32, i32) -> i32
@@ -274,8 +166,11 @@ impl Api {
                     unsafe extern "C" fn(*mut Request, i32) -> i32
                 ),
                 set_still_image: library
-                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_still_image\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(
+                        b"slopfab_request_set_still_image\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_steps: symbol!(
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -293,17 +188,29 @@ impl Api {
                     unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                 ),
                 add_lora: library
-                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>(b"slopfab_request_add_lora\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>(
+                        b"slopfab_request_add_lora\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_save_latents: library
-                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_save_latents\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(
+                        b"slopfab_request_set_save_latents\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_continuation_file: library
-                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(b"slopfab_request_set_continuation_file\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(
+                        b"slopfab_request_set_continuation_file\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 add_refmod: library
-                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(b"slopfab_request_add_refmod\0")
-                    .ok().map(|symbol| *symbol),
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(
+                        b"slopfab_request_add_refmod\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_attention: symbol!(
                     "slopfab_request_set_attention",
                     unsafe extern "C" fn(*mut Request, *const c_char) -> i32
@@ -373,10 +280,10 @@ impl Api {
         unsafe {
             let packed = (self.capi_version)();
             let major = packed >> 24;
-            if major != super::super::EXPECTED_CAPI_MAJOR {
+            if major != crate::slopfab::EXPECTED_CAPI_MAJOR {
                 return Err(format!(
                     "Incompatible slopfab C API major {major}; expected {}.",
-                    super::super::EXPECTED_CAPI_MAJOR
+                    crate::slopfab::EXPECTED_CAPI_MAJOR
                 ));
             }
             Ok(c_string((self.version_string)()))
@@ -406,8 +313,8 @@ impl Api {
         unsafe { (self.request_destroy)(request) }
     }
     pub fn set_cuda_version(&self, value: &str) -> Result<(), String> {
-        let value = CString::new(value)
-            .map_err(|_| "CUDA version contains a null byte.".to_string())?;
+        let value =
+            CString::new(value).map_err(|_| "CUDA version contains a null byte.".to_string())?;
         self.error(unsafe { (self.cuda_set_version)(value.as_ptr()) })
     }
     pub fn cuda_loaded_major(&self) -> Result<i32, String> {
@@ -420,13 +327,19 @@ impl Api {
         self.error(unsafe { (self.set_prompt)(r, v.as_ptr()) })
     }
     #[cfg(test)]
-    pub fn disable_animate_for_test(&mut self) { self.set_animate = None; }
+    pub fn disable_animate_for_test(&mut self) {
+        self.set_animate = None;
+    }
     pub fn set_animate(&self, r: *mut Request, preserve_audio: bool) -> Result<(), String> {
-        let set = self.set_animate.ok_or("Animate requires slopfab.dll API 1.10 or later. Update the runtime.")?;
+        let set = self
+            .set_animate
+            .ok_or("Animate requires slopfab.dll API 1.10 or later. Update the runtime.")?;
         self.error(unsafe { set(r, 1, preserve_audio as i32) })
     }
     pub fn set_prompt_embedding(&self, r: *mut Request, path: &Path) -> Result<(), String> {
-        let set = self.set_prompt_embedding.ok_or("This slopfab.dll does not support frozen conditioning. Update the runtime.")?;
+        let set = self
+            .set_prompt_embedding
+            .ok_or("This slopfab.dll does not support frozen conditioning. Update the runtime.")?;
         let path = path_cstring(path)?;
         self.error(unsafe { set(r, path.as_ptr()) })
     }
@@ -441,12 +354,21 @@ impl Api {
         self.error(unsafe { set(r, 1) })
     }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {
-        let set = self.set_save_latents.ok_or("Saving generation latents requires slopfab.dll API 1.9 or later. Update the runtime.")?;
+        let set = self.set_save_latents.ok_or(
+            "Saving generation latents requires slopfab.dll API 1.9 or later. Update the runtime.",
+        )?;
         let path = path_cstring(path)?;
         self.error(unsafe { set(r, path.as_ptr()) })
     }
-    pub fn set_continuation_file(&self, r: *mut Request, path: &Path, overlap: i32) -> Result<(), String> {
-        let set = self.set_continuation_file.ok_or("Scene continuation requires slopfab.dll API 1.9 or later. Update the runtime.")?;
+    pub fn set_continuation_file(
+        &self,
+        r: *mut Request,
+        path: &Path,
+        overlap: i32,
+    ) -> Result<(), String> {
+        let set = self.set_continuation_file.ok_or(
+            "Scene continuation requires slopfab.dll API 1.9 or later. Update the runtime.",
+        )?;
         let path = path_cstring(path)?;
         self.error(unsafe { set(r, path.as_ptr(), overlap) })
     }
@@ -466,8 +388,7 @@ impl Api {
         self.error(unsafe { (self.reused_models_clear)() })
     }
     pub fn set_attention(&self, r: *mut Request, v: &str) -> Result<(), String> {
-        let v =
-            CString::new(v).map_err(|_| "Attention mode contains a null byte.".to_string())?;
+        let v = CString::new(v).map_err(|_| "Attention mode contains a null byte.".to_string())?;
         self.error(unsafe { (self.set_attention)(r, v.as_ptr()) })
     }
     pub fn set_inference_backend(&self, r: *mut Request, backend: i32) -> Result<(), String> {
@@ -486,7 +407,13 @@ impl Api {
         let path = path_cstring(path)?;
         self.error(unsafe { add(r, path.as_ptr(), strength) })
     }
-    pub fn add_refmod(&self, r: *mut Request, path: &Path, strength: f32, copies: i32) -> Result<(), String> {
+    pub fn add_refmod(
+        &self,
+        r: *mut Request,
+        path: &Path,
+        strength: f32,
+        copies: i32,
+    ) -> Result<(), String> {
         let add = self.add_refmod.ok_or("This slopfab.dll does not support refmods. Install a build with the refmod API (1.8 or later).")?;
         let path = path_cstring(path)?;
         self.error(unsafe { add(r, path.as_ptr(), strength, copies) })
@@ -523,9 +450,7 @@ impl Api {
         userdata: *mut c_void,
     ) -> Result<*mut Generation, String> {
         let mut value = ptr::null_mut();
-        self.error(unsafe {
-            (self.generation_start)(request, callback, userdata, &mut value)
-        })?;
+        self.error(unsafe { (self.generation_start)(request, callback, userdata, &mut value) })?;
         Ok(value)
     }
     pub fn cancel(&self, generation: *mut Generation) {
@@ -614,4 +539,3 @@ unsafe fn c_string(value: *const c_char) -> String {
             .into_owned()
     }
 }
-

@@ -1,8 +1,11 @@
-use crate::{app_paths, diagnostics, reference_icons, rendered};
-use crate::project::paths::*;
 use crate::media::artifacts::*;
+use crate::project::paths::*;
+use crate::{app_paths, diagnostics, reference_icons, rendered};
 use std::fs;
-use tauri::{ipc::{InvokeBody, Request}, AppHandle};
+use tauri::{
+    ipc::{InvokeBody, Request},
+    AppHandle,
+};
 pub(crate) const GENERATED_FOLDER_HEADER: &str = "x-generated-folder";
 pub(crate) const GENERATED_JOB_HEADER: &str = "x-generated-job";
 pub(crate) const THUMBNAIL_FOLDER_HEADER: &str = "x-thumbnail-folder";
@@ -135,13 +138,25 @@ pub(crate) fn list_builtin_reference_icons(app: AppHandle) -> Result<Vec<String>
 }
 
 #[tauri::command]
-pub(crate) fn read_builtin_reference_icon(app: AppHandle, preset_id: String) -> Result<tauri::ipc::Response, String> {
-    reference_icons::read_builtin(&app_paths::data_directory(&app), &preset_id).map(tauri::ipc::Response::new)
+pub(crate) fn read_builtin_reference_icon(
+    app: AppHandle,
+    preset_id: String,
+) -> Result<tauri::ipc::Response, String> {
+    reference_icons::read_builtin(&app_paths::data_directory(&app), &preset_id)
+        .map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]
-pub(crate) fn save_builtin_reference_icon(app: AppHandle, preset_id: String, job_id: String) -> Result<(), String> {
-    reference_icons::save_builtin(&app_paths::data_directory(&app), &preset_id, &reference_icon_pixels(&job_id)?)
+pub(crate) fn save_builtin_reference_icon(
+    app: AppHandle,
+    preset_id: String,
+    job_id: String,
+) -> Result<(), String> {
+    reference_icons::save_builtin(
+        &app_paths::data_directory(&app),
+        &preset_id,
+        &reference_icon_pixels(&job_id)?,
+    )
 }
 /// One frame of a finished render, as RGBA the webview can build a `VideoFrame`
 /// from. A frame at a time because a whole render is hundreds of megabytes and

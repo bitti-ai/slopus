@@ -1,7 +1,7 @@
+use super::super::{process::CommandSpec, prompt::*};
+use super::{ClaudeProvider, CliProvider};
 use crate::project::*;
 use std::path::Path;
-use super::{CliProvider, ClaudeProvider};
-use super::super::{prompt::*, process::CommandSpec};
 impl CliProvider for ClaudeProvider {
     fn label(&self) -> &'static str {
         "Claude Code"
