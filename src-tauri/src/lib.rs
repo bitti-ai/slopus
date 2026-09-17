@@ -1,5 +1,5 @@
 mod agent;
-mod agent_commands;
+use project::commands as agent_commands;
 mod app_paths;
 mod app_settings;
 mod cuda_support;
@@ -11,6 +11,7 @@ mod rendered;
 mod slopfab;
 mod weights;
 mod app;
+mod generation;
 mod commands;
 mod media;
 mod project;

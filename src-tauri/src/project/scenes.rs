@@ -117,3 +117,38 @@ pub(crate) struct GenerationJob {
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
 }
+
+impl GenerationJob {
+    pub(crate) fn draft(id: &str, title: &str, timestamp: &str, defaults: crate::generation::models::SceneDefaults) -> Self {
+        let now = timestamp.to_string();
+        Self {
+                id: id.to_string(),
+                title: title.to_string(),
+                prompt: String::new(),
+                status: "draft".into(),
+                stage: "queued".into(),
+                progress: 0.0,
+                provider_id: Some(defaults.provider_id.into()),
+                creative_brief: String::new(),
+                compiled_prompt: String::new(),
+                generation_snapshot: None,
+                reference_ids: Vec::new(),
+                start_frame_reference_id: None,
+                end_frame_reference_id: None,
+                use_previous_scene_last_frame: None,
+                shot_tags: None,
+                shots: Some(Vec::new()),
+                duration_seconds: Some(defaults.duration_seconds),
+                steps: None,
+                seed: None,
+                soundscape: None,
+                music: None,
+                clip_id: None,
+                output_relative_path: None,
+                latent_relative_path: None,
+                error: None,
+                created_at: now.clone(),
+                updated_at: now,
+        }
+    }
+}
