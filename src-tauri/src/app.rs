@@ -42,6 +42,8 @@ pub fn run() {
             }
             Ok(())
         })
+        .manage(crate::media::access::MediaAccess::default())
+        .manage(agent::ProviderDiscovery::default())
         .manage(agent::AgentRuntime::default())
         .manage(slopfab::SlopfabRuntime::default())
         .manage(weights::WeightDownloads::default())

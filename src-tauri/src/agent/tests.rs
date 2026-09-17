@@ -3,9 +3,9 @@ use crate::project::storage::PROJECT_FILE_NAME;
 use crate::generation::models::h3::validate_agent_shot_settings;
 use std::{sync::atomic::Ordering, path::PathBuf};
 use super::*;
-use super::{providers::*, providers::options::*, providers::output::*, providers::compatible::*, process::*, discovery::*, protocol::*, policy::*, prompt::*, retry::*};
+use super::{providers::*, providers::output::*, providers::compatible::*, process::*, discovery::*, protocol::*, prompt::*, retry::*};
 use crate::project::*;
-use std::{collections::BTreeMap, path::Path, time::Duration, sync::{Mutex,Arc,atomic::AtomicBool}, ffi::OsString};
+use std::{collections::BTreeMap, path::Path, time::Duration, sync::{Mutex,Arc,atomic::AtomicBool}};
 use serde_json::Value;
 use std::fs;
 
@@ -631,7 +631,7 @@ fn engine_paths_do_not_invalidate_the_agent_probe() {
 
 #[test]
 fn installed_provider_probes_end_in_ready_or_auth_required() {
-    for status in provider_statuses(&BTreeMap::new()) {
+    for status in provider_statuses(&ProviderDiscovery::default(), &BTreeMap::new()) {
         if status.executable.is_some() {
             assert!(
                 matches!(status.state, "ready" | "authRequired"),
@@ -785,3 +785,4 @@ fn http_turn_cancels_while_waiting_for_a_response() {
     assert!(result.unwrap_err().contains("cancelled"));
     assert!(started.elapsed() < Duration::from_secs(5));
 }
+

@@ -18,7 +18,8 @@ pub(super) struct CachedProbe {
     statuses: Vec<ProviderStatus>,
 }
 
-pub(super) static PROVIDER_PROBE_CACHE: Mutex<Option<CachedProbe>> = Mutex::new(None);
+#[derive(Clone, Default)]
+pub(crate) struct ProviderDiscovery { cache: std::sync::Arc<Mutex<Option<CachedProbe>>> }
 pub(super) const PROVIDER_PROBE_TTL: Duration = Duration::from_secs(120);
 
 /// What the answer depends on: the settings for the agent CLIs themselves.
@@ -66,9 +67,9 @@ where
     statuses
 }
 
-pub fn provider_statuses(settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
+pub fn provider_statuses(discovery: &ProviderDiscovery, settings: &BTreeMap<String, ProviderSetting>) -> Vec<ProviderStatus> {
     let mut statuses = cached_or_probe(
-        &PROVIDER_PROBE_CACHE,
+        &discovery.cache,
         provider_probe_key(settings),
         PROVIDER_PROBE_TTL,
         || probe_provider_statuses(settings),

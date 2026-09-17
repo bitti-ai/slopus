@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 use super::values::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for job in &mut config.generation_jobs {
+        let max_seconds = crate::generation::models::for_scene(job.provider_id.as_deref())
+            .unwrap_or_else(crate::generation::models::default_model).capabilities.max_scene_seconds;
         /* Normalise the scene BEFORE anything is judged, so both layers judge
         the same thing. An empty `shots` array collapses to no key at all —
         the same three-step tidy `normalize_shot_tags` performs, for the same
@@ -30,9 +32,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                         shot.id, job.id
                     ));
                 }
-                if !shot.start_seconds.is_finite() || !(0.0..=15.0).contains(&shot.start_seconds) {
+                if !shot.start_seconds.is_finite() || !(0.0..=max_seconds).contains(&shot.start_seconds) {
                     return Err(format!(
-                        "Shot '{}' in scene '{}' starts at {} seconds, outside the 0-15 second scene.",
+                        "Shot '{}' in scene '{}' starts at {} seconds, outside the 0-{max_seconds} second scene.",
                         shot.id, job.id, shot.start_seconds
                     ));
                 }
@@ -44,9 +46,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             job.shots = None;
         }
         if let Some(seconds) = job.duration_seconds {
-            if !seconds.is_finite() || !(0.0..=15.0).contains(&seconds) {
+            if !seconds.is_finite() || !(0.0..=max_seconds).contains(&seconds) {
                 return Err(format!(
-                    "Scene '{}' is {seconds} seconds long, outside the 0-15 second range.",
+                    "Scene '{}' is {seconds} seconds long, outside the 0-{max_seconds} second range.",
                     job.id
                 ));
             }

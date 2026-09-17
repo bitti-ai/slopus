@@ -1,7 +1,8 @@
+pub(crate) use super::formats::media_kind_and_mime;
 use crate::project::paths::*;
 use std::{fs, path::{Path, PathBuf}};
 use serde::Serialize;
-use super::access::picked_external_source_path;
+use super::access::{MediaAccess, picked_external_source_path};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedReferenceImage {
@@ -45,12 +46,8 @@ pub(crate) fn validate_reference_image(source: &Path) -> Result<(String, &'stati
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase)
         .ok_or_else(|| "The selected image needs a file extension.".to_string())?;
-    let mime_type = match extension.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        _ => return Err("Choose a PNG, JPEG, or WebP image.".into()),
-    };
+    let mime_type = super::formats::lookup(&extension).filter(|format| format.kind == "image" && format.reference)
+        .map(|format| format.mime).ok_or("Choose a PNG, JPEG, or WebP image.")?;
     Ok((extension, mime_type))
 }
 
@@ -59,9 +56,7 @@ pub(crate) fn copy_reference_image(
     project_folder: &Path,
 ) -> Result<ImportedReferenceImage, String> {
     let (extension, mime_type) = validate_reference_image(source)?;
-    let references_folder = project_folder.join("references");
-    fs::create_dir_all(&references_folder)
-        .map_err(|error| format!("Could not prepare references folder: {error}"))?;
+    let references_folder = ProjectRoot::from_directory(project_folder)?.directory("references")?;
     let display_name = source
         .file_stem()
         .and_then(|value| value.to_str())
@@ -96,7 +91,7 @@ pub(crate) struct ImportedReference {
 /// Adds one file to a project as a reference, following the same rule the media
 /// panel does: pictures are small and get copied so the folder stays portable;
 /// video and audio are not copied at any size.
-pub(crate) fn import_reference_file(
+pub(crate) fn import_reference_file(access: &MediaAccess, 
     source: &Path,
     project_folder: &Path,
 ) -> Result<ImportedReference, String> {
@@ -126,44 +121,18 @@ pub(crate) fn import_reference_file(
                 .unwrap_or("Reference")
                 .to_string(),
             relative_path: None,
-            source_path: Some(picked_external_source_path(source, project_folder)?),
+            source_path: Some(picked_external_source_path(access, source, project_folder)?),
         }),
         _ => Err("Choose an image, a video, or a sound file.".into()),
     }
 }
-
-/// Extensions Slopus accepts, and what each one is. Anything not listed is
-/// refused rather than imported as an unknown blob.
-pub(crate) fn media_kind_and_mime(extension: &str) -> Option<(&'static str, &'static str)> {
-    Some(match extension {
-        "mp4" | "m4v" => ("video", "video/mp4"),
-        "mov" => ("video", "video/quicktime"),
-        "webm" => ("video", "video/webm"),
-        "mkv" => ("video", "video/x-matroska"),
-        "mp3" => ("audio", "audio/mpeg"),
-        "m4a" | "aac" => ("audio", "audio/mp4"),
-        "wav" => ("audio", "audio/wav"),
-        "flac" => ("audio", "audio/flac"),
-        "ogg" | "oga" => ("audio", "audio/ogg"),
-        "png" => ("image", "image/png"),
-        "jpg" | "jpeg" => ("image", "image/jpeg"),
-        "webp" => ("image", "image/webp"),
-        "gif" => ("image", "image/gif"),
-        _ => return None,
-    })
-}
-
-pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
-    "mp4", "m4v", "mov", "webm", "mkv", "mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "png",
-    "jpg", "jpeg", "webp", "gif",
-];
 
 /// Adds one file to the project. Video and audio are NEVER copied: a folder of
 /// rushes is tens of gigabytes, and duplicating it to make the project folder
 /// "portable" costs the user that much disk to gain a copy they did not ask
 /// for. The project records where the file already lives instead. Images are
 /// small and stay copied, so a project's own artwork travels with it.
-pub(crate) fn import_media_file(source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
+pub(crate) fn import_media_file(access: &MediaAccess, source: &Path, project_folder: &Path) -> Result<ImportedMediaFile, String> {
     if !source.is_file() {
         return Err(format!("{} does not exist.", source.to_string_lossy()));
     }
@@ -183,13 +152,11 @@ pub(crate) fn import_media_file(source: &Path, project_folder: &Path) -> Result<
                 .unwrap_or("Imported media")
                 .to_string(),
             relative_path: None,
-            source_path: Some(picked_external_source_path(source, project_folder)?),
+            source_path: Some(picked_external_source_path(access, source, project_folder)?),
             mime_type: mime_type.into(),
         });
     }
-    let media_folder = project_folder.join("media");
-    fs::create_dir_all(&media_folder)
-        .map_err(|error| format!("Could not prepare media folder: {error}"))?;
+    let media_folder = ProjectRoot::from_directory(project_folder)?.directory("media")?;
     let display_name = source
         .file_stem()
         .and_then(|value| value.to_str())
@@ -215,15 +182,12 @@ pub(crate) fn import_media_file(source: &Path, project_folder: &Path) -> Result<
     })
 }
 pub(crate) fn reference_attachment_kind(path: &Path) -> Result<&'static str, String> {
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
-        "png" | "jpg" | "jpeg" | "webp" => Ok("image"),
-        "mp4" | "m4v" | "mov" => Ok("video"),
-        "safetensors" => Ok("refmod"),
-        _ => Err("Choose an image, MP4/MOV video, or refmod safetensors file.".into()),
-    }
+    let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
+    super::formats::lookup(&extension).filter(|format| format.reference).map(|format| format.kind)
+        .ok_or_else(|| "Choose an image, MP4/MOV video, or refmod safetensors file.".into())
 }
 
-pub(crate) fn import_reference_attachments(root: &Path, paths: &[PathBuf]) -> Result<Vec<ImportedReference>, String> {
+pub(crate) fn import_reference_attachments(access: &MediaAccess, root: &Path, paths: &[PathBuf]) -> Result<Vec<ImportedReference>, String> {
     let kinds = paths.iter().map(|path| {
         if !path.is_file() { return Err("The selected reference file does not exist.".into()); }
         reference_attachment_kind(path)
@@ -232,12 +196,13 @@ pub(crate) fn import_reference_attachments(root: &Path, paths: &[PathBuf]) -> Re
         return Err("Add one video per reference. Use another reference for additional videos.".into());
     }
     paths.iter().zip(kinds).map(|(path, kind)| {
-        if kind == "image" { return import_reference_file(path, root); }
+        if kind == "image" { return import_reference_file(access, path, root); }
         Ok(ImportedReference {
             kind,
             name: path.file_name().and_then(|name| name.to_str()).unwrap_or("Reference").into(),
             relative_path: None,
-            source_path: Some(picked_external_source_path(path, root)?),
+            source_path: Some(picked_external_source_path(access, path, root)?),
         })
     }).collect()
 }
+

@@ -16,9 +16,8 @@ use super::import::media_kind_and_mime;
 /// and read YOUR footage: nothing in the read path could tell which project a
 /// pick belonged to. Entries are never written to disk and never survive a
 /// restart; the project file does that.
-pub(crate) static PICKED_EXTERNAL_FILES: std::sync::LazyLock<
-    std::sync::Mutex<BTreeMap<PathBuf, BTreeSet<PathBuf>>>,
-> = std::sync::LazyLock::new(Default::default);
+#[derive(Default)]
+pub(crate) struct MediaAccess { picked: std::sync::Mutex<BTreeMap<PathBuf, BTreeSet<PathBuf>>> }
 
 /// The identity a project folder is remembered by. Canonical, so one folder
 /// spelled two ways is one key. `None` when the folder cannot be resolved, in
@@ -28,24 +27,24 @@ pub(crate) fn session_key(project_folder: &Path) -> Option<PathBuf> {
     project_folder.canonicalize().ok()
 }
 
-pub(crate) fn remember_picked_file(project_folder: &Path, path: &Path) {
+pub(crate) fn remember_picked_file(access: &MediaAccess, project_folder: &Path, path: &Path) {
     let (Some(key), Ok(canonical)) = (session_key(project_folder), path.canonicalize()) else {
         return;
     };
     // A poisoned lock only means another thread panicked mid-insert; the
     // fallback is the project file, so there is nothing to escalate here.
-    if let Ok(mut picked) = PICKED_EXTERNAL_FILES.lock() {
+    if let Ok(mut picked) = access.picked.lock() {
         picked.entry(key).or_default().insert(canonical);
     }
 }
 
 /// Was this file picked in this run *for this project*? A pick made while a
 /// different project was open is not an answer here.
-pub(crate) fn was_picked_for_project(project_folder: &Path, canonical: &Path) -> bool {
+pub(crate) fn was_picked_for_project(access: &MediaAccess, project_folder: &Path, canonical: &Path) -> bool {
     let Some(key) = session_key(project_folder) else {
         return false;
     };
-    PICKED_EXTERNAL_FILES
+    access.picked
         .lock()
         .map(|picked| {
             picked
@@ -71,9 +70,9 @@ pub(crate) fn external_source_path(source: &Path) -> Result<String, String> {
 /// project — so its preview works before the project has been saved. Only the
 /// import paths call this, and they only run on what came back from a native
 /// picker.
-pub(crate) fn picked_external_source_path(source: &Path, project_folder: &Path) -> Result<String, String> {
+pub(crate) fn picked_external_source_path(access: &MediaAccess, source: &Path, project_folder: &Path) -> Result<String, String> {
     let path = external_source_path(source)?;
-    remember_picked_file(project_folder, source);
+    remember_picked_file(access, project_folder, source);
     Ok(path)
 }
 /// Every absolute path this project has recorded — the media and references
@@ -93,7 +92,7 @@ pub(crate) fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
         )
         .collect()
 }
-pub(crate) fn external_media_bytes(folder_path: &str, source_path: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn external_media_bytes(access: &MediaAccess, folder_path: &str, source_path: &str) -> Result<Vec<u8>, String> {
     let root = project_root(folder_path)?;
     let project = read_project(&root)?;
     let requested = PathBuf::from(&source_path)
@@ -107,7 +106,7 @@ pub(crate) fn external_media_bytes(folder_path: &str, source_path: &str) -> Resu
                 .map(|canonical| canonical == requested)
                 .unwrap_or(false)
         });
-    if !recorded && !was_picked_for_project(&root, &requested) {
+    if !recorded && !was_picked_for_project(access, &root, &requested) {
         return Err(format!(
             "{source_path} is not one of the files this project points at."
         ));

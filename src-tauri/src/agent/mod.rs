@@ -11,7 +11,7 @@ mod retry;
 mod providers;
 pub(crate) use types::*;
 pub(crate) use runtime::AgentRuntime;
-pub(crate) use discovery::provider_statuses;
+pub(crate) use discovery::{provider_statuses, ProviderDiscovery};
 pub(crate) use providers::compatible::compatible_models;
 pub(crate) use policy::validate_agent_scene_conventions;
 #[cfg(test)]
