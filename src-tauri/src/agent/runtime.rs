@@ -6,7 +6,7 @@ use crate::project::{*, validation::validate_and_normalize_config};
 use crate::project::commands::execute_checked;
 use crate::project::validation::issue::ValidationIssue;
 use std::{path::Path, time::Duration};
-use super::{providers::*, discovery::*, policy::*, protocol::*, retry::*};
+use super::{discovery::*, policy::*, protocol::*, retry::*};
 pub(super) const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
 #[derive(Clone, Default)]
 pub struct AgentRuntime {

@@ -111,7 +111,7 @@ pub(crate) fn create_project_at_with_references(
                 .map_err(|error| format!("Could not create {child} folder: {error}"))?;
         }
         for (index, source) in reference_paths.iter().enumerate() {
-            let imported = import_reference_file(source, &project_folder)?;
+            let imported = import_reference_file(&crate::media::access::MediaAccess::default(), source, &project_folder)?;
             let mut reference_id = format!("ref-initial-{}", index + 1);
             let mut suffix = 2;
             while config

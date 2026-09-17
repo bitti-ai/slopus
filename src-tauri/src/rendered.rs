@@ -197,7 +197,7 @@ pub fn rgba_from_planar(
 pub fn from_source(
     job_id: &str,
     source: Box<dyn FrameSource>,
-    audio: &[f32],
+    audio: Vec<f32>,
     frame_count: u32,
     width: u32,
     height: u32,
@@ -239,7 +239,7 @@ pub fn from_source(
         frame_count,
         fps,
         source,
-        audio: audio.to_vec(),
+        audio,
         audio_channels,
         audio_sample_rate,
     })
@@ -278,7 +278,7 @@ fn from_output(
     from_source(
         job_id,
         Box::new(OwnedRgba(rgba)),
-        audio,
+        audio.to_vec(),
         frame_count,
         width,
         height,

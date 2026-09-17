@@ -1,4 +1,5 @@
 use super::*;
+use super::batch::execute_commands;
 
 #[test]
 fn scene_creation_uses_injected_model_defaults() {
@@ -16,7 +17,6 @@ fn scene_creation_uses_injected_model_defaults() {
 use crate::project::validation::validate_and_normalize_config;
 use super::clips::find_clip_location;
 use crate::project::*;
-use std::collections::BTreeMap;
 
 fn fixture() -> ProjectConfig {
     serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap()

@@ -21,7 +21,6 @@ mod window;
 pub use app::run;
 pub use slopfab::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
-use project::*;
 
 #[cfg(test)]
 mod tests;

@@ -73,10 +73,12 @@ pub(crate) fn choose_engine_path(
 /// every project shares the answer.
 #[tauri::command]
 pub(crate) async fn runtime_status(
+    discovery: tauri::State<'_, agent::ProviderDiscovery>,
     settings: BTreeMap<String, ProviderSetting>,
 ) -> Result<RuntimeStatus, String> {
+    let discovery = discovery.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
-        providers: agent::provider_statuses(&settings),
+        providers: agent::provider_statuses(&discovery, &settings),
         slopfab: slopfab::status(&settings),
     })
     .await

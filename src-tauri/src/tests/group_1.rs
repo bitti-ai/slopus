@@ -247,6 +247,7 @@ fn the_windows_verbatim_prefix_never_reaches_the_user() {
 
 #[test]
 fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
     fs::create_dir(&project).unwrap();
@@ -264,7 +265,7 @@ fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
     // A rush is not duplicated to make a folder "portable": the project
     // records where it already is.
     for name in ["news broadcast.mp4", "room tone.wav"] {
-        let imported = import_media_file(&outside.join(name), &project).unwrap();
+        let imported = import_media_file(&access, &outside.join(name), &project).unwrap();
         assert_eq!(imported.relative_path, None, "{name} was copied");
         let source = imported.source_path.expect("external media needs a path");
         assert!(
@@ -279,7 +280,7 @@ fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
         assert!(Path::new(&source).is_file());
     }
     // A picture is small, and a project's own artwork should travel with it.
-    let image = import_media_file(&outside.join("title card.png"), &project).unwrap();
+    let image = import_media_file(&access, &outside.join("title card.png"), &project).unwrap();
     assert_eq!(image.relative_path.as_deref(), Some("media/title card.png"));
     assert_eq!(image.source_path, None);
     assert!(project.join("media/title card.png").is_file());
@@ -295,6 +296,7 @@ fn video_and_audio_are_recorded_where_they_are_and_images_are_copied() {
 
 #[test]
 fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
     fs::create_dir(&project).unwrap();
@@ -303,7 +305,7 @@ fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
     let image = root.path().join("harbor facade.png");
     fs::write(&image, b"\x89PNG\r\n\x1a\n").unwrap();
 
-    let referenced = import_reference_file(&video, &project).unwrap();
+    let referenced = import_reference_file(&access, &video, &project).unwrap();
     assert_eq!(referenced.kind, "video");
     assert_eq!(referenced.relative_path, None);
     assert!(referenced.source_path.is_some());
@@ -315,7 +317,7 @@ fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
         "a video reference was copied into the project"
     );
 
-    let copied = import_reference_file(&image, &project).unwrap();
+    let copied = import_reference_file(&access, &image, &project).unwrap();
     assert_eq!(copied.kind, "image");
     assert_eq!(
         copied.relative_path.as_deref(),
@@ -327,6 +329,7 @@ fn a_video_reference_is_pointed_at_while_an_image_reference_is_copied() {
 
 #[test]
 fn external_media_is_readable_only_because_the_project_names_it() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let outside = root.path().join("Rushes");
     fs::create_dir(&outside).unwrap();
@@ -357,23 +360,24 @@ fn external_media_is_readable_only_because_the_project_names_it() {
 
     // The file the user picked, which the project now names.
     assert_eq!(
-        external_media_bytes(folder, &recorded).unwrap(),
+        external_media_bytes(&access, folder, &recorded).unwrap(),
         b"rush bytes"
     );
 
     // A media file next to it that the project does NOT name.
-    let error = external_media_bytes(folder, &unlisted.to_string_lossy()).unwrap_err();
+    let error = external_media_bytes(&access, folder, &unlisted.to_string_lossy()).unwrap_err();
     assert!(error.contains("not one of the files this project points at"));
 
     // And the shape this command must never take: reading anything the
     // caller asks for. A path the project does not carry is refused
     // whatever it points at.
-    assert!(external_media_bytes(folder, &secret.to_string_lossy()).is_err());
-    assert!(external_media_bytes(folder, "/etc/passwd").is_err());
+    assert!(external_media_bytes(&access, folder, &secret.to_string_lossy()).is_err());
+    assert!(external_media_bytes(&access, folder, "/etc/passwd").is_err());
 }
 
 #[test]
 fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
+    let access = MediaAccess::default();
     // Saving is a deliberate act, so the project file on disk does not
     // mention a clip the user just imported. Refusing to read it until they
     // press Save would mean every fresh import shows a broken preview.
@@ -384,14 +388,14 @@ fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
     let clip = root.path().join("just picked.mp4");
     fs::write(&clip, b"fresh rush").unwrap();
 
-    let imported = import_media_file(&clip, &project).unwrap();
+    let imported = import_media_file(&access, &clip, &project).unwrap();
     let source = imported.source_path.unwrap();
     assert!(
         recorded_external_paths(&read_project(&project).unwrap().config).is_empty(),
         "the saved project must not know about the import yet"
     );
     assert_eq!(
-        external_media_bytes(&project.to_string_lossy(), &source).unwrap(),
+        external_media_bytes(&access, &project.to_string_lossy(), &source).unwrap(),
         b"fresh rush"
     );
 
@@ -400,7 +404,7 @@ fn a_clip_imported_a_moment_ago_previews_before_the_project_is_saved() {
     let sibling = root.path().join("never picked.mp4");
     fs::write(&sibling, b"other rush").unwrap();
     assert!(
-        external_media_bytes(&project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
+        external_media_bytes(&access, &project.to_string_lossy(), &sibling.to_string_lossy()).is_err()
     );
 }
 

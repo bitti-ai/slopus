@@ -8,6 +8,7 @@
 use super::*;
 #[test]
 fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let pictures = root.path().join("Pictures");
     fs::create_dir(&pictures).unwrap();
@@ -47,7 +48,7 @@ fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
     // The rule, stated plainly: the project names it, so it is served.
     let named = config.assets[0].source_path.clone().unwrap();
     assert_eq!(
-        external_media_bytes(&folder, &named).unwrap(),
+        external_media_bytes(&access, &folder, &named).unwrap(),
         b"PRIVATE PHOTO BYTES",
         "this is the documented perimeter, not a wish about it"
     );
@@ -55,11 +56,11 @@ fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
     // And the two things that DO bound it. Media extensions only, checked
     // on the canonical path — a project file cannot name credentials.
     let crafted = config.assets[1].source_path.clone().unwrap();
-    assert!(external_media_bytes(&folder, &crafted)
+    assert!(external_media_bytes(&access, &folder, &crafted)
         .unwrap_err()
         .contains("not a media file"));
     // And only what the project names: not the whole folder around it.
-    assert!(external_media_bytes(&folder, &unnamed.to_string_lossy())
+    assert!(external_media_bytes(&access, &folder, &unnamed.to_string_lossy())
         .unwrap_err()
         .contains("not one of the files this project points at"));
 }
@@ -71,6 +72,7 @@ fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
 // already in memory.
 #[test]
 fn one_project_s_picks_are_not_another_project_s_to_read() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let rushes = root.path().join("Rushes");
     fs::create_dir(&rushes).unwrap();
@@ -82,16 +84,16 @@ fn one_project_s_picks_are_not_another_project_s_to_read() {
 
     // Imported into MY project, and not saved yet: only the session list
     // knows about it.
-    let imported = import_media_file(&footage, &mine).unwrap();
+    let imported = import_media_file(&access, &footage, &mine).unwrap();
     let source = imported.source_path.unwrap();
     assert!(recorded_external_paths(&read_project(&mine).unwrap().config).is_empty());
 
     assert_eq!(
-        external_media_bytes(&mine.to_string_lossy(), &source).unwrap(),
+        external_media_bytes(&access, &mine.to_string_lossy(), &source).unwrap(),
         b"A's footage",
         "the project the clip was imported into must still preview it"
     );
-    let error = external_media_bytes(&theirs.to_string_lossy(), &source).unwrap_err();
+    let error = external_media_bytes(&access, &theirs.to_string_lossy(), &source).unwrap_err();
     assert!(
         error.contains("not one of the files this project points at"),
         "another project read a file picked for this one: {error}"
@@ -103,6 +105,7 @@ fn one_project_s_picks_are_not_another_project_s_to_read() {
 // pair was the hole: every check passed while pointing at `.ssh`.
 #[test]
 fn reading_a_project_file_requires_the_folder_to_hold_a_project() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let ssh = root.path().join(".ssh");
     fs::create_dir(&ssh).unwrap();
@@ -120,7 +123,7 @@ fn reading_a_project_file_requires_the_folder_to_hold_a_project() {
         "unexpected error: {error}"
     );
     // Same shape for the external read, which takes the folder too.
-    assert!(external_media_bytes(
+    assert!(external_media_bytes(&access, 
         &ssh.to_string_lossy(),
         &ssh.join("id_rsa").to_string_lossy()
     )
@@ -138,6 +141,7 @@ fn reading_a_project_file_requires_the_folder_to_hold_a_project() {
 
 #[test]
 fn a_project_file_only_yields_media_a_hand_edit_cannot_widen() {
+    let access = MediaAccess::default();
     // Belt and braces for the direction the allow-list alone cannot cover:
     // a HAND-EDITED project file naming something that is not media. The
     // path is recorded, so the allow-list passes — the extension check is
@@ -162,7 +166,7 @@ fn a_project_file_only_yields_media_a_hand_edit_cannot_widen() {
     });
     let created = create_project_in(root.path(), &config).unwrap();
     let recorded = created.config.assets[0].source_path.clone().unwrap();
-    let error = external_media_bytes(&created.folder_path, &recorded).unwrap_err();
+    let error = external_media_bytes(&access, &created.folder_path, &recorded).unwrap_err();
     assert!(
         error.contains("not a media file"),
         "unexpected error: {error}"
@@ -332,18 +336,19 @@ fn refmod_attachments_round_trip_and_validate_ranges_and_paths() {
 
 #[test]
 fn unified_reference_import_copies_images_and_keeps_video_and_refmod_sources() {
+    let access = MediaAccess::default();
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
     fs::create_dir_all(&project).unwrap();
     let paths = [root.path().join("photo.png"), root.path().join("motion.mp4"), root.path().join("person.safetensors")];
     for path in &paths { fs::write(path, b"source").unwrap(); }
-    let imported = import_reference_attachments(&project, &paths).unwrap();
+    let imported = import_reference_attachments(&access, &project, &paths).unwrap();
     assert_eq!(imported.iter().map(|file| file.kind).collect::<Vec<_>>(), ["image", "video", "refmod"]);
     assert!(project.join(imported[0].relative_path.as_ref().unwrap()).is_file());
     assert!(imported[2].relative_path.is_none());
     assert_eq!(imported[2].source_path.as_deref(), Some(external_source_path(&paths[2]).unwrap().as_str()));
     assert!(paths.iter().all(|path| path.is_file()));
-    assert!(import_reference_attachments(&project, &[paths[1].clone(), paths[1].clone()]).unwrap_err().contains("one video"));
+    assert!(import_reference_attachments(&access, &project, &[paths[1].clone(), paths[1].clone()]).unwrap_err().contains("one video"));
     assert!(reference_attachment_kind(Path::new("script.exe")).is_err());
 }
 

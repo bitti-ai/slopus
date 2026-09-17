@@ -7,6 +7,12 @@ use super::storage::project_file_in;
 pub(crate) struct ProjectRoot(PathBuf);
 
 impl ProjectRoot {
+    /// Used while creating a project, before its config file exists.
+    pub(crate) fn from_directory(folder: &Path) -> Result<Self, String> {
+        let root = folder.canonicalize().map_err(|error| format!("Could not resolve project folder: {error}"))?;
+        if !root.is_dir() { return Err("The selected project folder does not exist.".into()); }
+        Ok(Self(root))
+    }
     pub(crate) fn open(folder: &str) -> Result<Self, String> {
         project_root(folder).map(Self)
     }

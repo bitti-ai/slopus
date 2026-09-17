@@ -3,6 +3,7 @@ use crate::project::{ProjectConfig, GenerationJob};
 use super::{types::*, effects::Effects};
 /** Apply a complete batch to a clone. Callers validate agent conventions after
  * this returns; neither a command error nor a validator error mutates input. */
+#[cfg(test)]
 pub fn execute_commands(
     current: &ProjectConfig,
     commands: &[ProjectCommand],
@@ -72,4 +73,3 @@ pub(super) fn ensure_any<const N: usize>(fields: [bool; N], error: &str) -> Resu
         .then_some(())
         .ok_or_else(|| error.into())
 }
-
