@@ -1,7 +1,7 @@
-use crate::project::*;
-use crate::project::paths::*;
-use std::collections::BTreeSet;
 use super::values::*;
+use crate::project::paths::*;
+use crate::project::*;
+use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for reference in &mut config.references {
         if reference.id.trim().is_empty() || reference.name.trim().is_empty() {
@@ -17,8 +17,11 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             .as_deref()
             .map(normalize_external_path)
             .transpose()?;
-        reference.icon_relative_path = reference.icon_relative_path.as_deref()
-            .map(normalize_project_path).transpose()?;
+        reference.icon_relative_path = reference
+            .icon_relative_path
+            .as_deref()
+            .map(normalize_project_path)
+            .transpose()?;
         if reference.relative_path.is_some() && reference.source_path.is_some() {
             return Err(format!(
                 "Reference '{}' cannot have both a project-relative path and an external source path.",
@@ -29,18 +32,40 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         let mut refmod_ids = BTreeSet::new();
         for refmod in &mut reference.refmods {
             let file = &mut refmod.file;
-            if file.id.trim().is_empty() || file.name.trim().is_empty() || !refmod_ids.insert(file.id.clone())
-                || !refmod.strength.is_finite() || !(0.0..=1.0).contains(&refmod.strength)
-                || !(1..=10).contains(&refmod.copies) {
-                return Err("Refmods need unique ids, names, strength 0 to 1 and copies 1 to 10.".into());
+            if file.id.trim().is_empty()
+                || file.name.trim().is_empty()
+                || !refmod_ids.insert(file.id.clone())
+                || !refmod.strength.is_finite()
+                || !(0.0..=1.0).contains(&refmod.strength)
+                || !(1..=10).contains(&refmod.copies)
+            {
+                return Err(
+                    "Refmods need unique ids, names, strength 0 to 1 and copies 1 to 10.".into(),
+                );
             }
-            file.relative_path = file.relative_path.as_deref().map(normalize_project_path).transpose()?;
-            file.source_path = file.source_path.as_deref().map(normalize_external_path).transpose()?;
-            check_one_location("Refmod", file.relative_path.as_ref(), file.source_path.as_ref())?;
+            file.relative_path = file
+                .relative_path
+                .as_deref()
+                .map(normalize_project_path)
+                .transpose()?;
+            file.source_path = file
+                .source_path
+                .as_deref()
+                .map(normalize_external_path)
+                .transpose()?;
+            check_one_location(
+                "Refmod",
+                file.relative_path.as_ref(),
+                file.source_path.as_ref(),
+            )?;
         }
         if let Some(video) = &reference.video {
-            if reference.kind != "video" || !video.start_seconds.is_finite() || video.start_seconds < 0.0
-                || !video.duration_seconds.is_finite() || !(2.0..=15.0).contains(&video.duration_seconds) {
+            if reference.kind != "video"
+                || !video.start_seconds.is_finite()
+                || video.start_seconds < 0.0
+                || !video.duration_seconds.is_finite()
+                || !(2.0..=15.0).contains(&video.duration_seconds)
+            {
                 return Err(format!("Reference '{}' needs a nonnegative clip start and a duration of 2 to 15 seconds.", reference.id));
             }
         }

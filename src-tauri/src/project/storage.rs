@@ -1,6 +1,12 @@
-use super::{ProjectConfig, ProjectRecord, AgentConversation, validation::validate_and_normalize_config, paths::display_path};
+use super::{
+    paths::display_path, validation::validate_and_normalize_config, AgentConversation,
+    ProjectConfig, ProjectRecord,
+};
 use crate::storage::atomic::atomic_replace;
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 pub(crate) const PROJECT_FILE_NAME: &str = "slopus.json";
 /// What the file was called before, newest first. Folders written by earlier
 /// builds still open; the next save writes `slopus.json` and leaves the old
@@ -62,6 +68,10 @@ where
     let json = serde_json::to_string_pretty(&config)
         .map_err(|error| format!("Could not serialize project: {error}"))?;
     let destination = folder.join(PROJECT_FILE_NAME);
-    crate::storage::atomic::write_with_replacer(&destination, format!("{json}\n").as_bytes(), replacer)
-        .map_err(|error| format!("Could not write project config: {error}"))
+    crate::storage::atomic::write_with_replacer(
+        &destination,
+        format!("{json}\n").as_bytes(),
+        replacer,
+    )
+    .map_err(|error| format!("Could not write project config: {error}"))
 }

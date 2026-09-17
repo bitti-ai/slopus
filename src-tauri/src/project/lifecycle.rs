@@ -1,7 +1,10 @@
 use super::*;
 use super::{paths::*, storage::*, validation::validate_and_normalize_config};
 use crate::media::import::import_reference_file;
-use std::{env, fs, path::{Path, PathBuf}};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 pub(crate) const PROJECT_DIRECTORIES: [&str; 6] = [
     "media/imported",
     "media/generated",
@@ -19,7 +22,10 @@ pub(crate) const PROJECT_ROOT_DIRECTORIES: [&str; 5] =
  * require both to still agree. Broad filesystem roots, the user's home, the
  * process working directory, and symlink targets are never valid deletion
  * candidates even if somebody places a project file there. */
-pub(crate) fn delete_project_folder(folder_path: &str, expected_project_id: &str) -> Result<(), String> {
+pub(crate) fn delete_project_folder(
+    folder_path: &str,
+    expected_project_id: &str,
+) -> Result<(), String> {
     if expected_project_id.trim().is_empty() {
         return Err("The project id to delete cannot be empty.".into());
     }
@@ -64,7 +70,10 @@ pub(crate) fn delete_project_folder(folder_path: &str, expected_project_id: &str
     })
 }
 #[cfg(test)]
-pub(crate) fn create_project_in(parent: &Path, config: &ProjectConfig) -> Result<ProjectRecord, String> {
+pub(crate) fn create_project_in(
+    parent: &Path,
+    config: &ProjectConfig,
+) -> Result<ProjectRecord, String> {
     create_project_in_with_references(parent, config, &[])
 }
 
@@ -111,7 +120,11 @@ pub(crate) fn create_project_at_with_references(
                 .map_err(|error| format!("Could not create {child} folder: {error}"))?;
         }
         for (index, source) in reference_paths.iter().enumerate() {
-            let imported = import_reference_file(&crate::media::access::MediaAccess::default(), source, &project_folder)?;
+            let imported = import_reference_file(
+                &crate::media::access::MediaAccess::default(),
+                source,
+                &project_folder,
+            )?;
             let mut reference_id = format!("ref-initial-{}", index + 1);
             let mut suffix = 2;
             while config

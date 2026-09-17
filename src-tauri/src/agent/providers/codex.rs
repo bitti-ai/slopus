@@ -1,7 +1,7 @@
+use super::super::{process::CommandSpec, prompt::*};
+use super::{CliProvider, CodexProvider};
 use crate::project::*;
 use std::{ffi::OsString, path::Path};
-use super::{CliProvider, CodexProvider};
-use super::super::{prompt::*, process::CommandSpec};
 impl CliProvider for CodexProvider {
     fn label(&self) -> &'static str {
         "Codex"

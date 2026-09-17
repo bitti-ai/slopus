@@ -1,8 +1,19 @@
+use super::providers::output::{extract_provider_output, structured_failure};
 use super::types::*;
-use std::{ffi::OsString, io::{BufRead, BufReader, Write}, path::{Path, PathBuf}, process::{Command, Stdio}, sync::{atomic::{AtomicBool, Ordering}, mpsc, Arc}, thread, time::{Duration, Instant}};
-use super::providers::output::{structured_failure, extract_provider_output};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::{
+    ffi::OsString,
+    io::{BufRead, BufReader, Write},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 pub(super) struct CommandSpec {
     pub(crate) executable: PathBuf,
     pub(crate) args: Vec<OsString>,
@@ -39,21 +50,25 @@ pub(super) fn run_subprocess(
     timeout: Duration,
     on_event: &dyn Fn(&AgentEvent),
 ) -> Result<(Vec<AgentEvent>, String), String> {
-    if cancel.load(Ordering::Acquire) { return Err("Agent turn cancelled.".into()); }
+    if cancel.load(Ordering::Acquire) {
+        return Err("Agent turn cancelled.".into());
+    }
     let started = Instant::now();
     let has_stdin_payload = spec.stdin_payload.is_some();
-    let mut child = ChildGuard(Some(quiet_command(&spec.executable)
-        .args(&spec.args)
-        .current_dir(&spec.current_dir)
-        .stdin(if has_stdin_payload {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Could not start agent provider: {error}"))?));
+    let mut child = ChildGuard(Some(
+        quiet_command(&spec.executable)
+            .args(&spec.args)
+            .current_dir(&spec.current_dir)
+            .stdin(if has_stdin_payload {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("Could not start agent provider: {error}"))?,
+    ));
     let (sender, receiver) = mpsc::channel::<(bool, String)>();
     let stdout_sender = sender.clone();
     let stdout = child.stdout.take().expect("configured child stdout");
@@ -73,7 +88,9 @@ pub(super) fn run_subprocess(
     let (input_tx, input_rx) = mpsc::channel();
     if let Some(payload) = spec.stdin_payload {
         let mut stdin = child.stdin.take().expect("configured child stdin");
-        thread::spawn(move || { let _ = input_tx.send(stdin.write_all(payload.as_bytes())); });
+        thread::spawn(move || {
+            let _ = input_tx.send(stdin.write_all(payload.as_bytes()));
+        });
     }
 
     let mut lines = Vec::new();
@@ -81,7 +98,9 @@ pub(super) fn run_subprocess(
     on_event(&started_event);
     let mut events = vec![started_event];
     let status = loop {
-        if let Ok(Err(error)) = input_rx.try_recv() { return Err(format!("Could not send request to agent provider: {error}")); }
+        if let Ok(Err(error)) = input_rx.try_recv() {
+            return Err(format!("Could not send request to agent provider: {error}"));
+        }
         while let Ok((stderr, line)) = receiver.try_recv() {
             if stderr {
                 if is_benign_provider_diagnostic(provider, &line) {
@@ -156,30 +175,56 @@ pub(super) fn run_subprocess(
     let output = extract_provider_output(&lines)?;
     Ok((events, output))
 }
-pub(super) fn probe_command(executable: &Path, args: &[&str], timeout: Duration) -> Result<String, String> {
-    let mut child = ChildGuard(Some(quiet_command(executable)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Could not launch provider: {error}"))?));
+pub(super) fn probe_command(
+    executable: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
+    let mut child = ChildGuard(Some(
+        quiet_command(executable)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("Could not launch provider: {error}"))?,
+    ));
     let start = Instant::now();
+    // Drain both pipes while the child runs. Waiting before reading can fill a
+    // pipe and deadlock even a successful version/authentication probe.
+    let (sender, receiver) = mpsc::channel();
+    drain_probe_pipe(
+        child.stdout.take().expect("configured stdout"),
+        false,
+        sender.clone(),
+    );
+    drain_probe_pipe(
+        child.stderr.take().expect("configured stderr"),
+        true,
+        sender,
+    );
+    let mut status = None;
+    let mut stdout = None;
+    let mut stderr = None;
     loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| format!("Could not inspect provider: {error}"))?
-        {
-            let output = child.0.take().expect("owned child")
-                .wait_with_output()
-                .map_err(|error| format!("Could not read provider version: {error}"))?;
-            let text = String::from_utf8_lossy(if output.stdout.is_empty() {
-                &output.stderr
+        if status.is_none() {
+            status = child
+                .try_wait()
+                .map_err(|error| format!("Could not inspect provider: {error}"))?;
+        }
+        while let Ok((is_stderr, bytes)) = receiver.try_recv() {
+            let bytes =
+                bytes.map_err(|error| format!("Could not read provider version: {error}"))?;
+            if is_stderr {
+                stderr = Some(bytes);
             } else {
-                &output.stdout
-            })
-            .trim()
-            .to_string();
+                stdout = Some(bytes);
+            }
+        }
+        if let (Some(status), Some(stdout), Some(stderr)) = (&status, &stdout, &stderr) {
+            let text = String::from_utf8_lossy(if stdout.is_empty() { stderr } else { stdout })
+                .trim()
+                .to_string();
             return status
                 .success()
                 .then_some(text)
@@ -194,10 +239,50 @@ pub(super) fn probe_command(executable: &Path, args: &[&str], timeout: Duration)
     }
 }
 
+fn drain_probe_pipe(
+    mut pipe: impl std::io::Read + Send + 'static,
+    is_stderr: bool,
+    sender: mpsc::Sender<(bool, std::io::Result<Vec<u8>>)>,
+) {
+    thread::spawn(move || {
+        let result = (|| {
+            let mut bytes = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let count = pipe.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                // Keep a bounded diagnostic, but drain all remaining bytes.
+                let keep = count.min(65_536_usize.saturating_sub(bytes.len()));
+                bytes.extend_from_slice(&buffer[..keep]);
+            }
+            Ok(bytes)
+        })();
+        let _ = sender.send((is_stderr, result));
+    });
+}
+
 /// Every error path reaps the child, including I/O inspection failures.
 struct ChildGuard(Option<std::process::Child>);
-impl std::ops::Deref for ChildGuard { type Target = std::process::Child; fn deref(&self) -> &Self::Target { self.0.as_ref().expect("owned child") } }
-impl std::ops::DerefMut for ChildGuard { fn deref_mut(&mut self) -> &mut Self::Target { self.0.as_mut().expect("owned child") } }
+impl std::ops::Deref for ChildGuard {
+    type Target = std::process::Child;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("owned child")
+    }
+}
+impl std::ops::DerefMut for ChildGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("owned child")
+    }
+}
 impl Drop for ChildGuard {
-    fn drop(&mut self) { if let Some(child) = &mut self.0 { if !matches!(child.try_wait(), Ok(Some(_))) { let _ = child.kill(); } let _ = child.wait(); } }
+    fn drop(&mut self) {
+        if let Some(child) = &mut self.0 {
+            if !matches!(child.try_wait(), Ok(Some(_))) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+    }
 }

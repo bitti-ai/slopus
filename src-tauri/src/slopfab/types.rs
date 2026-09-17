@@ -1,4 +1,6 @@
-use super::*;
+use super::ffi;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +31,9 @@ pub struct GpuDevice {
     pub memory_bytes: u64,
 }
 
-pub fn gpu_devices() -> Vec<GpuDevice> { ffi::gpu_devices() }
+pub fn gpu_devices() -> Vec<GpuDevice> {
+    ffi::gpu_devices()
+}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,4 +143,3 @@ pub(super) struct OutputMetadata {
     pub(super) duration_seconds: f64,
     pub(super) boundary: &'static str,
 }
-

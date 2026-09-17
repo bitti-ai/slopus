@@ -102,15 +102,9 @@ pub enum ProjectCommand {
         steps: Option<i32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         seed: Option<i64>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         sound: Patch<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         music: Patch<String>,
         #[serde(
             default,
@@ -163,25 +157,13 @@ pub enum ProjectCommand {
         start_seconds: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         action: Option<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         name: Patch<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         speech: Patch<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         language: Patch<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Patch::is_unchanged"
-        )]
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
         settings: Patch<BTreeMap<String, Vec<String>>>,
     },
     #[serde(rename = "shot.remove")]
@@ -221,7 +203,6 @@ pub enum ProjectCommand {
     #[serde(rename = "clip.remove")]
     ClipRemove { id: String },
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -17,7 +17,7 @@ import h3ShotGroups from "../../shared/models/minimax-h3-shot-tags.json";
 
    The ids are persisted in `pols.json`, so they are stable forever: rename a
    `label` freely, never an `id`. Both validators constrain ids to
-   `SHOT_TAG_ID_PATTERN` (src/lib/project.ts and src-tauri/src/lib.rs), so a new
+   `SHOT_TAG_ID_PATTERN` (src/lib/project.ts and src-tauri/src/project/validation/values.rs), so a new
    id has to keep that shape.
    --------------------------------------------------------------------------- */
 
@@ -70,7 +70,7 @@ export interface ShotTagGroup {
 export type ShotTagSelection = Record<string, string[]>;
 
 /** Ids both validators accept. Kept in lockstep with `is_shot_tag_id` in
- *  src-tauri/src/lib.rs — a shape neither layer has to guess about. */
+ *  src-tauri/src/project/validation/values.rs — a shape neither layer has to guess about. */
 export const SHOT_TAG_ID_PATTERN = /^[a-z][a-zA-Z0-9-]*$/;
 
 /** The persisted H3 vocabulary is shared with the Rust agent policy. */
@@ -116,7 +116,7 @@ export function countShotTags(selection: ShotTagSelection | null | undefined): n
  *  It deliberately does NOT drop ids this build doesn't recognise. A project
  *  written by a newer build would otherwise lose the user's choices the first
  *  time an older build re-saved it. `validate_and_normalize_config` in
- *  src-tauri/src/lib.rs performs exactly these three steps, in this order, so
+ *  src-tauri/src/project/validation/values.rs performs exactly these three steps, in this order, so
  *  the file is byte-identical whichever layer wrote it last. */
 export function normalizeShotTagSelection(selection: ShotTagSelection | null | undefined): ShotTagSelection | null {
   if (!selection) return null;

@@ -1,25 +1,43 @@
-use super::*;
 use super::batch::execute_commands;
+use super::*;
 
 #[test]
 fn scene_creation_uses_injected_model_defaults() {
     let current = fixture();
-    let batch = parse_jsonl_commands(r#"{"op":"scene.add","id":"future-scene","title":"Future model","seconds":7}
+    let batch = parse_jsonl_commands(
+        r#"{"op":"scene.add","id":"future-scene","title":"Future model","seconds":7}
 {"op":"shot.add","scene":"future-scene","id":"future-shot","at":0,"action":"A bird lands."}
-{"op":"commit","summary":"Create a scene"}"#).unwrap();
-    let next = super::batch::execute_with_defaults(&current, &batch.commands, &current.updated_at,
-        crate::generation::models::SceneDefaults { provider_id: "future-model", duration_seconds: 7.0 }).unwrap();
-    let scene = next.generation_jobs.iter().find(|scene| scene.id == "future-scene").unwrap();
+{"op":"commit","summary":"Create a scene"}"#,
+    )
+    .unwrap();
+    let next = super::batch::execute_with_defaults(
+        &current,
+        &batch.commands,
+        &current.updated_at,
+        crate::generation::models::SceneDefaults {
+            provider_id: "future-model",
+            duration_seconds: 7.0,
+        },
+    )
+    .unwrap();
+    let scene = next
+        .generation_jobs
+        .iter()
+        .find(|scene| scene.id == "future-scene")
+        .unwrap();
     assert_eq!(scene.provider_id.as_deref(), Some("future-model"));
     assert_eq!(scene.prompt, "A bird lands.");
     assert_eq!(current, fixture());
 }
-use crate::project::validation::validate_and_normalize_config;
 use super::clips::find_clip_location;
+use crate::project::validation::validate_and_normalize_config;
 use crate::project::*;
 
 fn fixture() -> ProjectConfig {
-    serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap()
+    serde_json::from_str(include_str!(
+        "../../../../fixtures/project-v1-complete.json"
+    ))
+    .unwrap()
 }
 
 #[test]
@@ -189,8 +207,11 @@ fn a_failed_command_does_not_mutate_the_input() {
 #[test]
 fn project_video_settings_update_both_mirrors_without_retiming_media() {
     let current = validate_and_normalize_config(fixture()).unwrap();
-    let commands = parse_jsonl_commands(r#"{"op":"project.set","aspectRatio":"9:16","resolution":"544p","targetSeconds":90}
-{"op":"commit","summary":"Changed the project video settings."}"#).unwrap();
+    let commands = parse_jsonl_commands(
+        r#"{"op":"project.set","aspectRatio":"9:16","resolution":"544p","targetSeconds":90}
+{"op":"commit","summary":"Changed the project video settings."}"#,
+    )
+    .unwrap();
     let next = execute_commands(&current, &commands.commands).unwrap();
     assert_eq!(next.settings.aspect_ratio, "9:16");
     assert_eq!(next.settings.resolution, "544p");
@@ -199,8 +220,13 @@ fn project_video_settings_update_both_mirrors_without_retiming_media() {
     assert_eq!(next.brief.target_duration_seconds, 90);
     assert_eq!(next.timeline, current.timeline);
     assert_eq!(next.assets, current.assets);
-    for patch in [r#""targetSeconds":601"#, r#""resolution":"8k""#, r#""aspectRatio":"21:9""#] {
-        let command: ProjectCommand = serde_json::from_str(&format!(r#"{{"op":"project.set",{patch}}}"#)).unwrap();
+    for patch in [
+        r#""targetSeconds":601"#,
+        r#""resolution":"8k""#,
+        r#""aspectRatio":"21:9""#,
+    ] {
+        let command: ProjectCommand =
+            serde_json::from_str(&format!(r#"{{"op":"project.set",{patch}}}"#)).unwrap();
         assert!(execute_commands(&current, &[command]).is_err());
     }
 }

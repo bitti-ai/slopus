@@ -1,5 +1,6 @@
-use crate::{agent, agent_commands};
-use crate::project::{*, validation::validate_and_normalize_config};
+use crate::agent;
+use crate::project::commands as agent_commands;
+use crate::project::{validation::validate_and_normalize_config, *};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _};
 #[tauri::command]
@@ -43,7 +44,10 @@ pub(crate) struct AgentTurnEventPayload {
 }
 
 #[tauri::command]
-pub(crate) fn cancel_agent_turn(state: tauri::State<'_, agent::AgentRuntime>, request_id: String) -> bool {
+pub(crate) fn cancel_agent_turn(
+    state: tauri::State<'_, agent::AgentRuntime>,
+    request_id: String,
+) -> bool {
     state.cancel(&request_id)
 }
 

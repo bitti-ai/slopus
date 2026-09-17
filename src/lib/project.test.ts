@@ -724,7 +724,7 @@ describe("project schema", () => {
 
 describe("the frame sizes a project can be", () => {
   it("accepts exactly the ladder plus the names already on disk, and nothing else", () => {
-    /* `is_supported_resolution` in src-tauri/src/lib.rs spells the same nine
+    /* `is_supported_resolution` in src-tauri/src/project/validation/values.rs spells the same nine
        names. They have to agree in BOTH directions: Rust writes the settings
        file before the frontend ever parses it, so a name Rust accepts and zod
        refuses is saved and then fails to open (see CLAUDE.md). */

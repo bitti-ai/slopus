@@ -22,7 +22,17 @@ pub(crate) fn percent_decode(value: &str) -> Result<String, String> {
 }
 
 /// Decode the common raw-binary IPC metadata envelope once.
-pub(crate) fn decoded_header(request: &tauri::ipc::Request<'_>, name: &str) -> Result<String, String> {
-    let value = request.headers().get(name).ok_or_else(|| format!("Missing {name} header."))?;
-    percent_decode(value.to_str().map_err(|_| format!("Invalid {name} header."))?)
+pub(crate) fn decoded_header(
+    request: &tauri::ipc::Request<'_>,
+    name: &str,
+) -> Result<String, String> {
+    let value = request
+        .headers()
+        .get(name)
+        .ok_or_else(|| format!("Missing {name} header."))?;
+    percent_decode(
+        value
+            .to_str()
+            .map_err(|_| format!("Invalid {name} header."))?,
+    )
 }

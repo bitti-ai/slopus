@@ -1,6 +1,6 @@
-use crate::project::*;
-use crate::project::paths::*;
 use super::values::*;
+use crate::project::paths::*;
+use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     if config.schema_version != 1 {
         return Err(format!(

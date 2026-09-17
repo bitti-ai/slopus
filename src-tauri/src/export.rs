@@ -49,7 +49,6 @@ fn safe_file_name(value: &str) -> String {
 /// headers for the same reason: a raw body leaves nowhere else to put them.
 pub(crate) use crate::commands::binary::percent_decode;
 
-
 /// Destinations the save dialog returned in THIS run.
 ///
 /// The path makes a round trip through the webview between the dialog and the
@@ -136,7 +135,6 @@ fn authorized_destination(value: &str) -> Result<PathBuf, String> {
 /// fails half way through cannot leave a truncated file where a playable one
 /// used to be. Flush the complete file before atomically publishing it.
 pub(crate) use crate::storage::atomic::write_atomically;
-
 
 /// Opens the platform's save dialog. `Ok(None)` means the user cancelled, which
 /// is not an error.

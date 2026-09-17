@@ -1,4 +1,48 @@
 use super::*;
+
+#[test]
+fn scene_frame_settings_survive_save_and_reopen_and_validate_images() {
+    let mut config = fixture();
+    let image_id = config
+        .references
+        .iter()
+        .find(|reference| reference.kind == "image")
+        .unwrap()
+        .id
+        .clone();
+    config.generation_jobs[0].end_frame_reference_id = Some(image_id.clone());
+    config.generation_jobs[0].use_previous_scene_last_frame = Some(true);
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    let restored = read_project(folder.path()).unwrap().config;
+    assert_eq!(
+        restored.generation_jobs[0]
+            .end_frame_reference_id
+            .as_deref(),
+        Some(image_id.as_str())
+    );
+    assert_eq!(
+        restored.generation_jobs[0].use_previous_scene_last_frame,
+        Some(true)
+    );
+    config.generation_jobs[0].end_frame_reference_id = Some("missing".into());
+    assert!(validate_and_normalize_config(config.clone())
+        .unwrap_err()
+        .contains("unknown end-frame"));
+    config.generation_jobs[0].end_frame_reference_id = Some(
+        config
+            .references
+            .iter()
+            .find(|reference| reference.kind == "text")
+            .unwrap()
+            .id
+            .clone(),
+    );
+    assert!(validate_and_normalize_config(config)
+        .unwrap_err()
+        .contains("is not an image"));
+}
+
 #[test]
 fn shot_tags_normalize_the_same_way_the_frontend_does() {
     // The three steps `normalizeShotTagSelection` performs in
@@ -223,8 +267,7 @@ fn shot_speech_and_custom_languages_survive_the_project_round_trip() {
     shot.speech = Some("行こう！ Keep this punctuation.".into());
     shot.speech_language = Some("Japanese".into());
 
-    let normalized =
-        validate_and_normalize_config(config).expect("documented H3 speech is valid");
+    let normalized = validate_and_normalize_config(config).expect("documented H3 speech is valid");
     let shot = &normalized.generation_jobs[0].shots.as_ref().unwrap()[0];
     assert_eq!(
         shot.speech.as_deref(),
@@ -233,8 +276,7 @@ fn shot_speech_and_custom_languages_survive_the_project_round_trip() {
     assert_eq!(shot.speech_language.as_deref(), Some("Japanese"));
 
     let mut custom = scene_fixture();
-    custom.generation_jobs[0].shots.as_mut().unwrap()[0].speech_language =
-        Some("Klingon".into());
+    custom.generation_jobs[0].shots.as_mut().unwrap()[0].speech_language = Some("Klingon".into());
     let normalized = validate_and_normalize_config(custom)
         .expect("custom speech languages are not validator errors");
     assert_eq!(
@@ -295,114 +337,6 @@ fn scene_generation_controls_match_the_frontend_boundaries() {
 }
 
 #[test]
-fn validator_accepts_every_boundary_the_frontend_schema_allows() {
-    for aspect_ratio in ["16:9", "9:16", "1:1", "4:5"] {
-        let mut config = fixture();
-        config.settings.aspect_ratio = aspect_ratio.into();
-        config.brief.aspect_ratio = aspect_ratio.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid aspect ratio {aspect_ratio}"
-        );
-    }
-    for resolution in [
-        "416p", "544p", "640p", "768p", "1088p", "1344p", "720p", "1080p", "4k",
-    ] {
-        let mut config = fixture();
-        config.settings.resolution = resolution.into();
-        config.brief.resolution = resolution.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid resolution {resolution}"
-        );
-    }
-    for frame_rate in [24u32, 25, 30, 60] {
-        let mut config = fixture();
-        config.settings.frame_rate = frame_rate;
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid frame rate {frame_rate}"
-        );
-    }
-    for background_color in ["#000000", "#FFFFFF", "#abcdef", "#ABCDEF", "#10131a"] {
-        let mut config = fixture();
-        config.settings.background_color = background_color.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid background color {background_color}"
-        );
-    }
-    for seconds in [0u32, 1, 5, 60, 600] {
-        let mut config = fixture();
-        config.brief.target_duration_seconds = seconds;
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid target duration {seconds}"
-        );
-    }
-    for status in ["draft", "queued", "generating", "ready", "failed"] {
-        let mut config = fixture();
-        config.brief.status = status.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid brief status {status}"
-        );
-    }
-    for kind in ["video", "audio", "image", "caption", "generated"] {
-        let mut config = fixture();
-        config.assets[0].kind = kind.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid asset kind {kind}"
-        );
-    }
-    for kind in ["video", "audio", "caption"] {
-        let mut config = fixture();
-        config.timeline.tracks[0].kind = kind.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid track kind {kind}"
-        );
-    }
-    for status in ["draft", "generated", "approved"] {
-        let mut config = fixture();
-        config.timeline.tracks[0].clips[0].status = status.into();
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid clip status {status}"
-        );
-    }
-    for intent in ["character", "animal", "product", "location", "style", "audio"] {
-        let mut config = fixture();
-        config.references[0].intended_use = vec![intent.into()];
-        assert!(
-            validate_and_normalize_config(config).is_ok(),
-            "rejected valid reference intended use {intent}"
-        );
-    }
-
-    let mut longest_name = fixture();
-    longest_name.name = "n".repeat(120);
-    assert!(
-        validate_and_normalize_config(longest_name).is_ok(),
-        "rejected a 120 character project name"
-    );
-
-    let mut sparse = fixture();
-    sparse.assets[0].width = None;
-    sparse.assets[0].height = None;
-    sparse.assets[0].duration_ms = None;
-    sparse.references[0].content = None;
-    sparse.references[0].intended_use = Vec::new();
-    sparse.generation_jobs[0].provider_id = None;
-    sparse.generation_jobs[0].error = None;
-    assert!(
-        validate_and_normalize_config(sparse).is_ok(),
-        "rejected a config whose optional fields are absent"
-    );
-}
-
-#[test]
 fn timeline_flags_fall_back_to_the_frontend_defaults() {
     let mut value = serde_json::to_value(fixture()).unwrap();
     value["timeline"]["tracks"][0]
@@ -430,115 +364,3 @@ fn timeline_flags_fall_back_to_the_frontend_defaults() {
 The webview names the scene, and the scene names the file. That is the
 whole of the caller's influence over this path, and these pin it.
 ------------------------------------------------------------------- */
-
-fn project_folder() -> tempfile::TempDir {
-    let folder = tempfile::tempdir().unwrap();
-    fs::write(
-        folder.path().join(PROJECT_FILE_NAME),
-        serde_json::to_vec(&created_fixture()).unwrap(),
-    )
-    .unwrap();
-    folder
-}
-
-#[test]
-fn a_rendered_scene_lands_in_the_project_under_its_own_id() {
-    let folder = project_folder();
-    let (destination, relative) =
-        generated_video_destination(&folder.path().to_string_lossy(), "job-initial-brief")
-            .unwrap();
-    assert_eq!(relative, "media/generated/job-initial-brief.mp4");
-    assert!(destination.ends_with("media/generated/job-initial-brief.mp4"));
-    // The folder is made, so the write that follows has somewhere to go.
-    assert!(destination.parent().unwrap().is_dir());
-    // And it really is inside the project, not merely named as though it were.
-    assert!(destination.starts_with(folder.path().canonicalize().unwrap()));
-}
-
-#[test]
-fn latent_archives_are_unique_and_confined_to_the_project() {
-    let folder = project_folder();
-    let root = folder.path().to_string_lossy();
-    let destination = generated_latent_destination(&root, "work-one").unwrap();
-    assert!(destination.ends_with("latents/work-one.safetensors"));
-    fs::write(&destination, b"archive").unwrap();
-    assert!(generated_latent_destination(&root, "work-one").is_err());
-    assert!(generated_latent_destination(&root, "../escape").is_err());
-    let mut request: slopfab::GenerationRequest = serde_json::from_value(serde_json::json!({
-        "jobId": "next", "prompt": "Continue", "frames": 119, "steps": 4, "seed": 1,
-        "canvasWidth": 736, "canvasHeight": 416,
-        "continuationRelativePath": "latents/work-one.safetensors",
-        "saveLatentsPath": "C:/outside.safetensors", "continuationPath": "C:/outside.safetensors",
-    })).unwrap();
-    assert!(request.save_latents_path.is_none());
-    assert!(request.continuation_path.is_none());
-    assert!(prepare_continuation_path(&mut request, None).is_err());
-    prepare_continuation_path(&mut request, Some(&root)).unwrap();
-    assert_eq!(request.continuation_path, Some(destination));
-    for invalid in ["../outside.safetensors", "C:/outside.safetensors", "latents/missing.safetensors"] {
-        request.continuation_relative_path = Some(invalid.into());
-        assert!(prepare_continuation_path(&mut request, Some(&root)).is_err());
-    }
-    let mut config = created_fixture();
-    config.generation_jobs[0].latent_relative_path = Some("latents/work-one.safetensors".into());
-    assert!(validate_and_normalize_config(config.clone()).is_ok());
-    config.generation_jobs[0].latent_relative_path = Some("../outside.safetensors".into());
-    assert!(validate_and_normalize_config(config).is_err());
-}
-
-#[test]
-fn purging_timeline_thumbnails_removes_only_the_named_scene() {
-    let folder = project_folder();
-    let first = folder.path().join("thumbnails/timeline/job-first");
-    let second = folder.path().join("thumbnails/timeline/job-second");
-    fs::create_dir_all(&first).unwrap();
-    fs::create_dir_all(&second).unwrap();
-    fs::write(first.join("00000000.jpg"), b"first").unwrap();
-    fs::write(second.join("00000000.jpg"), b"second").unwrap();
-
-    purge_timeline_thumbnails(
-        folder.path().to_string_lossy().into_owned(),
-        "job-first".into(),
-    )
-    .unwrap();
-
-    assert!(!first.exists());
-    assert!(second.join("00000000.jpg").is_file());
-}
-
-#[test]
-fn a_scene_id_that_is_not_a_scene_id_is_refused_rather_than_scrubbed() {
-    let folder = project_folder();
-    let root = folder.path().to_string_lossy().into_owned();
-    for hostile in [
-        "../../etc/passwd",
-        "..",
-        ".",
-        "job/../../escape",
-        r"job\..\escape",
-        "job:stream",
-        "job.mp4",
-        "",
-        "   ",
-        &"j".repeat(65),
-    ] {
-        assert!(
-            generated_video_destination(&root, hostile).is_err(),
-            "'{hostile}' must not name a file"
-        );
-    }
-    // A dot is refused too — nothing Slopus generates has one, and
-    // allowing it is how a second extension gets in.
-    assert!(generated_file_stem("job-01_A").is_ok());
-    assert!(generated_file_stem("job.01").is_err());
-}
-
-#[test]
-fn a_folder_that_holds_no_project_gets_no_writer() {
-    // The same rule every other command that takes a folderPath follows:
-    // confining a name against an unchecked folder confines nothing.
-    let empty = tempfile::tempdir().unwrap();
-    assert!(generated_video_destination(&empty.path().to_string_lossy(), "job-01").is_err());
-    assert!(generated_video_destination("", "job-01").is_err());
-}
-

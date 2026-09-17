@@ -1,4 +1,7 @@
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 #[cfg(not(windows))]
 pub(crate) fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
     fs::rename(temporary, destination)?;
@@ -47,24 +50,44 @@ pub(crate) fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result
     }
 }
 
-
 static NEXT_TEMPORARY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 struct TemporaryFile(PathBuf);
 impl Drop for TemporaryFile {
-    fn drop(&mut self) { let _ = fs::remove_file(&self.0); }
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
 }
 
-pub(crate) fn write_with_replacer<F>(destination: &Path, bytes: &[u8], replacer: F) -> io::Result<()>
-where F: FnOnce(&Path, &Path) -> io::Result<()> {
+pub(crate) fn write_with_replacer<F>(
+    destination: &Path,
+    bytes: &[u8],
+    replacer: F,
+) -> io::Result<()>
+where
+    F: FnOnce(&Path, &Path) -> io::Result<()>,
+{
     use io::Write;
     use std::sync::atomic::Ordering;
-    let parent = destination.parent().ok_or_else(|| io::Error::other("Destination has no parent"))?;
-    let name = destination.file_name().ok_or_else(|| io::Error::other("Destination has no filename"))?;
+    let parent = destination
+        .parent()
+        .ok_or_else(|| io::Error::other("Destination has no parent"))?;
+    let name = destination
+        .file_name()
+        .ok_or_else(|| io::Error::other("Destination has no filename"))?;
     let (temporary, mut file) = loop {
         let sequence = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
-        let path = parent.join(format!(".{}.{}.{}.tmp", name.to_string_lossy(), std::process::id(), sequence));
-        match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        let path = parent.join(format!(
+            ".{}.{}.{}.tmp",
+            name.to_string_lossy(),
+            std::process::id(),
+            sequence
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
             Ok(file) => break (TemporaryFile(path), file),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),

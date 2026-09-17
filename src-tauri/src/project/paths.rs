@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use super::storage::project_file_in;
+use std::path::{Path, PathBuf};
 
 /// Canonical identity of an existing project. All project artifact I/O resolves
 /// through this boundary, including directories redirected by junctions.
@@ -9,19 +9,29 @@ pub(crate) struct ProjectRoot(PathBuf);
 impl ProjectRoot {
     /// Used while creating a project, before its config file exists.
     pub(crate) fn from_directory(folder: &Path) -> Result<Self, String> {
-        let root = folder.canonicalize().map_err(|error| format!("Could not resolve project folder: {error}"))?;
-        if !root.is_dir() { return Err("The selected project folder does not exist.".into()); }
+        let root = folder
+            .canonicalize()
+            .map_err(|error| format!("Could not resolve project folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected project folder does not exist.".into());
+        }
         Ok(Self(root))
     }
     pub(crate) fn open(folder: &str) -> Result<Self, String> {
         project_root(folder).map(Self)
     }
 
-    pub(crate) fn path(&self) -> &Path { &self.0 }
+    pub(crate) fn path(&self) -> &Path {
+        &self.0
+    }
 
     pub(crate) fn existing(&self, relative: &str) -> Result<PathBuf, String> {
         let relative = normalize_project_path(relative)?;
-        let target = self.0.join(relative).canonicalize().map_err(|error| error.to_string())?;
+        let target = self
+            .0
+            .join(relative)
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
         self.check_containment(&target)?;
         Ok(target)
     }
@@ -34,19 +44,25 @@ impl ProjectRoot {
         for component in relative.split('/') {
             directory.push(component);
             match std::fs::create_dir(&directory) {
-                Ok(()) => {},
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(format!("Could not prepare project directory: {error}")),
             }
-            directory = directory.canonicalize().map_err(|error| error.to_string())?;
+            directory = directory
+                .canonicalize()
+                .map_err(|error| error.to_string())?;
             self.check_containment(&directory)?;
-            if !directory.is_dir() { return Err("The project destination is not a directory.".into()); }
+            if !directory.is_dir() {
+                return Err("The project destination is not a directory.".into());
+            }
         }
         Ok(directory)
     }
 
     fn check_containment(&self, target: &Path) -> Result<(), String> {
-        if !target.starts_with(&self.0) { return Err("Project files must stay inside the project folder.".into()); }
+        if !target.starts_with(&self.0) {
+            return Err("Project files must stay inside the project folder.".into());
+        }
         Ok(())
     }
 }
@@ -65,7 +81,10 @@ mod tests {
         std::fs::write(project.join("slopus.json"), "{}").unwrap();
         let root = ProjectRoot::open(project.to_str().unwrap()).unwrap();
         assert!(root.directory("../outside").is_err());
-        assert!(root.directory("cache/frames").unwrap().starts_with(root.path()));
+        assert!(root
+            .directory("cache/frames")
+            .unwrap()
+            .starts_with(root.path()));
 
         let link = project.join("media");
         #[cfg(unix)]

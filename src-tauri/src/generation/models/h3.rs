@@ -1,9 +1,12 @@
+use super::{ModelCapabilities, ModelDefinition, SceneDefaults};
 use crate::project::SceneShot;
 use std::sync::LazyLock;
-use super::{ModelCapabilities, ModelDefinition, SceneDefaults};
 
 pub(crate) static MODEL: ModelDefinition = ModelDefinition {
-    defaults: SceneDefaults { provider_id: "minimax-h3", duration_seconds: 6.0 },
+    defaults: SceneDefaults {
+        provider_id: "minimax-h3",
+        duration_seconds: 6.0,
+    },
     capabilities: ModelCapabilities {
         max_scene_seconds: 15.0,
         min_steps: 2,
@@ -20,15 +23,52 @@ pub(crate) static MODEL: ModelDefinition = ModelDefinition {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ShotGroup { id: String, multiple: bool, #[serde(default)] scene_wide: bool, options: Vec<ShotOption> }
+struct ShotGroup {
+    id: String,
+    multiple: bool,
+    #[serde(default)]
+    scene_wide: bool,
+    options: Vec<ShotOption>,
+}
 #[derive(serde::Deserialize)]
-struct ShotOption { id: String }
-static GROUPS: LazyLock<Vec<ShotGroup>> = LazyLock::new(|| serde_json::from_str(include_str!("../../../../shared/models/minimax-h3-shot-tags.json")).expect("bundled H3 vocabulary"));
+struct ShotOption {
+    id: String,
+}
+static GROUPS: LazyLock<Vec<ShotGroup>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!(
+        "../../../../shared/models/minimax-h3-shot-tags.json"
+    ))
+    .expect("bundled H3 vocabulary")
+});
 pub(crate) fn shot_catalog() -> String {
-    GROUPS.iter().map(|group| format!("- {}: {}", group.id, group.options.iter().map(|option| option.id.as_str()).collect::<Vec<_>>().join(", "))).collect::<Vec<_>>().join("\n")
+    GROUPS
+        .iter()
+        .map(|group| {
+            format!(
+                "- {}: {}",
+                group.id,
+                group
+                    .options
+                    .iter()
+                    .map(|option| option.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 fn agent_setting_options(group: &str) -> Option<Vec<&'static str>> {
-    GROUPS.iter().find(|candidate| candidate.id == group).map(|group| group.options.iter().map(|option| option.id.as_str()).collect())
+    GROUPS
+        .iter()
+        .find(|candidate| candidate.id == group)
+        .map(|group| {
+            group
+                .options
+                .iter()
+                .map(|option| option.id.as_str())
+                .collect()
+        })
 }
 fn shot_setting_values<'a>(shot: Option<&'a SceneShot>, group: &str) -> &'a [String] {
     shot.and_then(|value| value.settings.as_ref())
@@ -67,13 +107,23 @@ pub(crate) fn validate_agent_shot_settings(
                 ));
             }
         }
-        if !GROUPS.iter().find(|candidate| candidate.id == *group).is_some_and(|group| group.multiple) && values.len() > 1 {
+        if !GROUPS
+            .iter()
+            .find(|candidate| candidate.id == *group)
+            .is_some_and(|group| group.multiple)
+            && values.len() > 1
+        {
             return Err(format!(
                 "Shot '{}' gives single-choice Settings group '{}' more than one option.",
                 shot.id, group
             ));
         }
-        if GROUPS.iter().find(|candidate| candidate.id == *group).is_some_and(|group| group.scene_wide) && shot.id != earliest_shot_id {
+        if GROUPS
+            .iter()
+            .find(|candidate| candidate.id == *group)
+            .is_some_and(|group| group.scene_wide)
+            && shot.id != earliest_shot_id
+        {
             return Err(format!(
                 "Shot '{}' puts scene Look on a later shot. Store visualStyle on the earliest shot only.",
                 shot.id

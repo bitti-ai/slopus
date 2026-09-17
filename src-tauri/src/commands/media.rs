@@ -1,11 +1,13 @@
 use crate::media::formats::*;
-use crate::project::paths::*;
 use crate::media::{access::*, import::*};
+use crate::project::paths::*;
 use std::{fs, path::PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 #[tauri::command]
-pub(crate) fn choose_initial_reference_images(app: AppHandle) -> Result<Vec<PendingReferenceImage>, String> {
+pub(crate) fn choose_initial_reference_images(
+    app: AppHandle,
+) -> Result<Vec<PendingReferenceImage>, String> {
     let selected = app
         .dialog()
         .file()
@@ -156,7 +158,8 @@ pub(crate) fn read_project_file(
 /// What it deliberately does NOT do is trust the caller's string: an argument
 /// the project does not name is refused whatever it points at.
 #[tauri::command]
-pub(crate) fn read_external_media_file(access: tauri::State<'_, MediaAccess>, 
+pub(crate) fn read_external_media_file(
+    access: tauri::State<'_, MediaAccess>,
     folder_path: String,
     source_path: String,
 ) -> Result<tauri::ipc::Response, String> {
@@ -166,7 +169,8 @@ pub(crate) fn read_external_media_file(access: tauri::State<'_, MediaAccess>,
 /// Adds the chosen files to the project: images are copied in, video and audio
 /// are recorded where they already are. An empty list means the user cancelled.
 #[tauri::command]
-pub(crate) fn import_media_files(access: tauri::State<'_, MediaAccess>, 
+pub(crate) fn import_media_files(
+    access: tauri::State<'_, MediaAccess>,
     app: AppHandle,
     folder_path: String,
 ) -> Result<Vec<ImportedMediaFile>, String> {
@@ -193,23 +197,50 @@ pub(crate) fn import_media_files(access: tauri::State<'_, MediaAccess>,
         .collect()
 }
 #[tauri::command]
-pub(crate) fn choose_reference_video(access: tauri::State<'_, MediaAccess>, app: AppHandle, folder_path: String) -> Result<Option<String>, String> {
+pub(crate) fn choose_reference_video(
+    access: tauri::State<'_, MediaAccess>,
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Option<String>, String> {
     let root = project_root(&folder_path)?;
-    let picked = app.dialog().file().set_title("Add a video reference")
-        .add_filter("MP4 video", &video_extensions()).blocking_pick_file();
-    let Some(picked) = picked else { return Ok(None); };
-    let path = picked.into_path().map_err(|error| format!("Could not access selected video: {error}"))?;
-    if !path.is_file() { return Err("The selected video does not exist.".into()); }
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Add a video reference")
+        .add_filter("MP4 video", &video_extensions())
+        .blocking_pick_file();
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked
+        .into_path()
+        .map_err(|error| format!("Could not access selected video: {error}"))?;
+    if !path.is_file() {
+        return Err("The selected video does not exist.".into());
+    }
     picked_external_source_path(&access, &path, &root).map(Some)
 }
 
 #[tauri::command]
-pub(crate) fn choose_reference_files(access: tauri::State<'_, MediaAccess>, app: AppHandle, folder_path: String) -> Result<Vec<ImportedReference>, String> {
+pub(crate) fn choose_reference_files(
+    access: tauri::State<'_, MediaAccess>,
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Vec<ImportedReference>, String> {
     let root = project_root(&folder_path)?;
-    let selected = app.dialog().file().set_title("Add reference files")
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Add reference files")
         .add_filter("Images, videos and refmods", &reference_extensions())
-        .blocking_pick_files().unwrap_or_default();
-    let paths = selected.into_iter().map(|path| path.into_path().map_err(|error| format!("Could not access selected file: {error}")))
+        .blocking_pick_files()
+        .unwrap_or_default();
+    let paths = selected
+        .into_iter()
+        .map(|path| {
+            path.into_path()
+                .map_err(|error| format!("Could not access selected file: {error}"))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     import_reference_attachments(&access, &root, &paths)
 }

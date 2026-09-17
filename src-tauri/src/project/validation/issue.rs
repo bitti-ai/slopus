@@ -14,10 +14,24 @@ pub(crate) struct ValidationIssue {
 }
 
 impl ValidationIssue {
-    pub(crate) fn new(code: &'static str, entity: Option<String>, field: &'static str, message: String) -> Self {
-        Self { key: IssueKey { code, entity, field }, message }
+    pub(crate) fn new(
+        code: &'static str,
+        entity: Option<String>,
+        field: &'static str,
+        message: String,
+    ) -> Self {
+        Self {
+            key: IssueKey {
+                code,
+                entity,
+                field,
+            },
+            message,
+        }
     }
 }
 impl std::fmt::Display for ValidationIssue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.message) }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
 }

@@ -193,7 +193,7 @@ describe("tokens.css", () => {
 
        It stays the DARK ground on purpose. It is what a window is created with
        before any of our code runs, and one static value cannot follow a
-       three-state preference; src-tauri/src/lib.rs repaints it from the OS
+       three-state preference; src-tauri/src/window.rs repaints it from the OS
        theme as soon as the app is up, and theme-boot.js corrects it again on
        the webview's first frame. See the comment above GROUND_DARK for the one
        case that still gets a wrong frame and why nothing here can fix it. */

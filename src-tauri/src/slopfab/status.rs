@@ -1,4 +1,6 @@
-use super::*;
+use super::{config::Configuration, ffi, platform::*, types::*};
+use crate::project::ProviderSetting;
+use std::{collections::BTreeMap, path::Path};
 
 pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
     let configuration = Configuration::from_settings(settings);
@@ -17,9 +19,16 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
         .collect::<Vec<_>>();
     if configuration.animate {
         models.push(ModelStatus {
-            id: "promptEmbedding", configured: configuration.prompt_embedding.is_some(),
-            available: configuration.prompt_embedding.as_deref().is_some_and(Path::is_file),
-            path: configuration.prompt_embedding.as_ref().map(|path| path.to_string_lossy().into_owned()),
+            id: "promptEmbedding",
+            configured: configuration.prompt_embedding.is_some(),
+            available: configuration
+                .prompt_embedding
+                .as_deref()
+                .is_some_and(Path::is_file),
+            path: configuration
+                .prompt_embedding
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
         });
     }
     let dll_path = configuration.dll_path.to_string_lossy().into_owned();

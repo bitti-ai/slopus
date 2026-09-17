@@ -1,6 +1,10 @@
-use crate::project::{*, paths::*, storage::read_project};
-use std::{fs, path::{Path, PathBuf}, collections::{BTreeMap, BTreeSet}};
 use super::import::media_kind_and_mime;
+use crate::project::{paths::*, storage::read_project, *};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+};
 /// Files the user chose from the OS picker in THIS run, canonicalised, keyed by
 /// the canonical folder of the project they were picked FOR.
 ///
@@ -17,7 +21,9 @@ use super::import::media_kind_and_mime;
 /// pick belonged to. Entries are never written to disk and never survive a
 /// restart; the project file does that.
 #[derive(Default)]
-pub(crate) struct MediaAccess { picked: std::sync::Mutex<BTreeMap<PathBuf, BTreeSet<PathBuf>>> }
+pub(crate) struct MediaAccess {
+    picked: std::sync::Mutex<BTreeMap<PathBuf, BTreeSet<PathBuf>>>,
+}
 
 /// The identity a project folder is remembered by. Canonical, so one folder
 /// spelled two ways is one key. `None` when the folder cannot be resolved, in
@@ -40,11 +46,16 @@ pub(crate) fn remember_picked_file(access: &MediaAccess, project_folder: &Path, 
 
 /// Was this file picked in this run *for this project*? A pick made while a
 /// different project was open is not an answer here.
-pub(crate) fn was_picked_for_project(access: &MediaAccess, project_folder: &Path, canonical: &Path) -> bool {
+pub(crate) fn was_picked_for_project(
+    access: &MediaAccess,
+    project_folder: &Path,
+    canonical: &Path,
+) -> bool {
     let Some(key) = session_key(project_folder) else {
         return false;
     };
-    access.picked
+    access
+        .picked
         .lock()
         .map(|picked| {
             picked
@@ -70,7 +81,11 @@ pub(crate) fn external_source_path(source: &Path) -> Result<String, String> {
 /// project — so its preview works before the project has been saved. Only the
 /// import paths call this, and they only run on what came back from a native
 /// picker.
-pub(crate) fn picked_external_source_path(access: &MediaAccess, source: &Path, project_folder: &Path) -> Result<String, String> {
+pub(crate) fn picked_external_source_path(
+    access: &MediaAccess,
+    source: &Path,
+    project_folder: &Path,
+) -> Result<String, String> {
     let path = external_source_path(source)?;
     remember_picked_file(access, project_folder, source);
     Ok(path)
@@ -92,7 +107,11 @@ pub(crate) fn recorded_external_paths(config: &ProjectConfig) -> Vec<String> {
         )
         .collect()
 }
-pub(crate) fn external_media_bytes(access: &MediaAccess, folder_path: &str, source_path: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn external_media_bytes(
+    access: &MediaAccess,
+    folder_path: &str,
+    source_path: &str,
+) -> Result<Vec<u8>, String> {
     let root = project_root(folder_path)?;
     let project = read_project(&root)?;
     let requested = PathBuf::from(&source_path)

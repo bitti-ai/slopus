@@ -204,7 +204,7 @@ export async function readProjectFileUrl(folderPath: string, relativePath: strin
  *  project folder, or at the absolute path the project recorded for it. The
  *  external read goes through its own command, which only serves paths the
  *  project itself names — see `read_external_media_file` in
- *  src-tauri/src/lib.rs. Same revoke rule as `readProjectFileUrl`. */
+ *  src-tauri/src/media/access.rs. Same revoke rule as `readProjectFileUrl`. */
 export async function readMediaFileUrl(folderPath: string, item: StoredLocation, mimeType: string): Promise<string | null> {
   if (!isTauri() || (!item.sourcePath && !item.relativePath)) return null;
   return URL.createObjectURL(new Blob([await readMediaFileBytes(folderPath, item)], { type: mimeType }));

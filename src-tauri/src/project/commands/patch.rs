@@ -10,8 +10,12 @@ pub(crate) enum Patch<T> {
 }
 
 impl<T> Patch<T> {
-    pub(super) fn is_unchanged(&self) -> bool { matches!(self, Self::Unchanged) }
-    pub(super) fn is_changed(&self) -> bool { !self.is_unchanged() }
+    pub(super) fn is_unchanged(&self) -> bool {
+        matches!(self, Self::Unchanged)
+    }
+    pub(super) fn is_changed(&self) -> bool {
+        !self.is_unchanged()
+    }
 }
 
 impl<T: Clone> Patch<T> {
@@ -27,14 +31,18 @@ impl<T: Clone> Patch<T> {
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Patch<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Ok(match Option::<T>::deserialize(deserializer)? {
-            Some(value) => Self::Set(value), None => Self::Clear,
+            Some(value) => Self::Set(value),
+            None => Self::Clear,
         })
     }
 }
 
 impl<T: Serialize> Serialize for Patch<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self { Self::Set(value) => value.serialize(serializer), _ => serializer.serialize_none() }
+        match self {
+            Self::Set(value) => value.serialize(serializer),
+            _ => serializer.serialize_none(),
+        }
     }
 }
 
