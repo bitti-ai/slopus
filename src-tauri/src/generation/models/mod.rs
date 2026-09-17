@@ -21,6 +21,8 @@ pub(crate) struct ModelDefinition {
     pub defaults: SceneDefaults,
     pub capabilities: ModelCapabilities,
     pub agent_instructions: &'static str,
+    pub shot_catalog: fn() -> String,
+    pub validate_shot_settings: fn(Option<&crate::project::SceneShot>, &crate::project::SceneShot, &str) -> Result<(), String>,
 }
 
 pub(crate) fn default_model() -> &'static ModelDefinition { &h3::MODEL }

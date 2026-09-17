@@ -27,6 +27,7 @@ libloading = "0.8"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 jpeg-encoder = "0.6"
+tokio = { version = "1", features = ["rt", "time", "net", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Graphics_Dxgi"] }

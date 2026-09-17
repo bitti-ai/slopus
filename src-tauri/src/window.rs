@@ -84,6 +84,11 @@ pub(crate) fn answer_app_close(window: tauri::Window, state: tauri::State<'_, Ex
  * theme-boot.js corrects it on the first frame the webview draws either way. */
 pub(crate) const GROUND_DARK: tauri::window::Color = tauri::window::Color(0x08, 0x0a, 0x0f, 0xff);
 pub(crate) const GROUND_LIGHT: tauri::window::Color = tauri::window::Color(0xee, 0xf1, 0xf6, 0xff);
+
+pub(crate) fn apply_theme(window: &tauri::WebviewWindow) {
+    let ground = if matches!(window.theme(), Ok(tauri::Theme::Light)) { GROUND_LIGHT } else { GROUND_DARK };
+    let _ = window.set_background_color(Some(ground));
+}
 #[cfg(test)]
 mod tests {
     use super::{CloseDecision, ExitGuard};

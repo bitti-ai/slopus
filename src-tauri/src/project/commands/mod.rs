@@ -11,6 +11,7 @@ mod shots;
 mod clips;
 pub(crate) use types::{ProjectCommand, CommandBatch};
 pub(crate) use jsonl::parse_jsonl_commands;
-pub(crate) use batch::{execute_commands, execute_commands_at};
+pub(crate) use batch::execute_commands_at;
 #[cfg(test)]
 mod tests;
+pub(crate) use batch::execute_checked;

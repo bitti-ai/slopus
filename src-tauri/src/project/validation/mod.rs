@@ -9,16 +9,21 @@ mod timeline;
 mod scenes;
 mod session;
 mod relationships;
+pub(crate) mod issue;
 use crate::project::ProjectConfig;
 
-pub(crate) fn validate_and_normalize_config(mut config: ProjectConfig) -> Result<ProjectConfig, String> {
-    settings::validate(&mut config)?;
-    assets::validate(&mut config)?;
-    references::validate(&mut config)?;
-    super::migrations::normalize_timeline(&mut config)?;
-    timeline::validate(&mut config)?;
-    scenes::validate(&mut config)?;
-    session::validate(&mut config)?;
-    relationships::validate(&mut config)?;
+pub(crate) fn validate_and_normalize_config(config: ProjectConfig) -> Result<ProjectConfig, String> {
+    validate_checked(config).map_err(|issue| issue.message)
+}
+
+pub(crate) fn validate_checked(mut config: ProjectConfig) -> Result<ProjectConfig, issue::ValidationIssue> {
+    settings::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "settings", message))?;
+    assets::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "assets", message))?;
+    references::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "references", message))?;
+    super::migrations::normalize_timeline(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "migrations", message))?;
+    timeline::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "timeline", message))?;
+    scenes::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "scenes", message))?;
+    session::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "session", message))?;
+    relationships::validate(&mut config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "relationships", message))?;
     Ok(config)
 }

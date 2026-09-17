@@ -1,5 +1,5 @@
 use crate::{agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, slopfab, weights, window};
-use crate::window::{ExitGuard, CloseDecision, GROUND_DARK, GROUND_LIGHT};
+use crate::window::{ExitGuard, CloseDecision};
 use std::io;
 /// Portable distributions carry a marker because Windows updates launch an
 /// installer and cannot replace a portable folder in place.
@@ -38,14 +38,7 @@ pub fn run() {
                 Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
             }
             if let Some(window) = app.get_webview_window("main") {
-                let ground = if matches!(window.theme(), Ok(tauri::Theme::Light)) {
-                    GROUND_LIGHT
-                } else {
-                    GROUND_DARK
-                };
-                // A window that will not take a background colour is not a
-                // reason to refuse to start: the webview repaints in a frame.
-                let _ = window.set_background_color(Some(ground));
+                window::apply_theme(&window);
             }
             Ok(())
         })
