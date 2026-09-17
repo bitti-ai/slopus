@@ -14,7 +14,6 @@
 
 use std::{
     collections::BTreeSet,
-    fs,
     path::{Path, PathBuf},
 };
 use tauri::{
@@ -48,28 +47,8 @@ fn safe_file_name(value: &str) -> String {
 /// `%XX` is special; everything else is already the character it looks like.
 /// Shared with the generated-video write, which carries its own paths in
 /// headers for the same reason: a raw body leaves nowhere else to put them.
-pub(crate) fn percent_decode(value: &str) -> Result<String, String> {
-    let source = value.as_bytes();
-    let mut bytes = Vec::with_capacity(source.len());
-    let mut index = 0;
-    while index < source.len() {
-        if source[index] == b'%' {
-            let digits = source
-                .get(index + 1..index + 3)
-                .ok_or_else(|| "The export path was cut short after a % escape.".to_string())?;
-            let text = std::str::from_utf8(digits)
-                .map_err(|_| "The export path has a malformed % escape.".to_string())?;
-            let byte = u8::from_str_radix(text, 16)
-                .map_err(|_| format!("The export path has a malformed % escape: %{text}"))?;
-            bytes.push(byte);
-            index += 3;
-        } else {
-            bytes.push(source[index]);
-            index += 1;
-        }
-    }
-    String::from_utf8(bytes).map_err(|_| "The export path is not valid UTF-8.".to_string())
-}
+pub(crate) use crate::commands::binary::percent_decode;
+
 
 /// Destinations the save dialog returned in THIS run.
 ///
@@ -156,29 +135,8 @@ fn authorized_destination(value: &str) -> Result<PathBuf, String> {
 /// Writes beside the destination and renames on top of it, so an export that
 /// fails half way through cannot leave a truncated file where a playable one
 /// used to be. Flush the complete file before atomically publishing it.
-pub(crate) fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
-    let mut temporary = destination.as_os_str().to_os_string();
-    temporary.push(".part");
-    let temporary = PathBuf::from(temporary);
-    use std::io::Write;
-    let written = (|| {
-        let mut file = fs::File::create(&temporary)?;
-        file.write_all(bytes)?;
-        file.sync_all()
-    })();
-    if let Err(error) = written {
-        let _ = fs::remove_file(&temporary);
-        return Err(format!("Could not write {}: {error}", temporary.to_string_lossy()));
-    }
-    if let Err(error) = crate::atomic_replace(&temporary, destination) {
-        let _ = fs::remove_file(&temporary);
-        return Err(format!(
-            "Could not save {}: {error}",
-            destination.to_string_lossy()
-        ));
-    }
-    Ok(())
-}
+pub(crate) use crate::storage::atomic::write_atomically;
+
 
 /// Opens the platform's save dialog. `Ok(None)` means the user cancelled, which
 /// is not an error.
@@ -231,6 +189,7 @@ pub fn write_export_file(request: Request<'_>) -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn percent_decode_restores_a_windows_path() {

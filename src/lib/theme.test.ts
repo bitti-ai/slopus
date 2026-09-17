@@ -208,7 +208,7 @@ describe("tokens.css", () => {
        rather than a decimal triple nobody could check by eye. */
     const asRustColor = (hex: string) =>
       `Color(${hex.slice(1).match(/../g)!.map((pair) => `0x${pair}`).join(", ")}, 0xff)`;
-    const rust = read("src-tauri/src/lib.rs");
+    const rust = read("src-tauri/src/window.rs");
     expect(rust.toLowerCase()).toContain(asRustColor(THEME_BACKGROUND.dark).toLowerCase());
     expect(rust.toLowerCase()).toContain(asRustColor(THEME_BACKGROUND.light).toLowerCase());
     /* And that they are actually used for this. Two consts nothing calls would
