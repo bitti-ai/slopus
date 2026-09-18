@@ -61,6 +61,29 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                     return Err(format!("Clip '{}' has an invalid transition.", clip.id));
                 }
             }
+            let within = |value: f64, min: f64, max: f64| value.is_finite() && (min..=max).contains(&value);
+            if clip.sharpen.as_ref().is_some_and(|v| !within(v.amount, 0.0, 200.0))
+                || clip.blur.as_ref().is_some_and(|v| !within(v.radius, 0.0, 24.0))
+                || clip.vignette.as_ref().is_some_and(|v| !within(v.amount, 0.0, 100.0))
+                || clip.color_correction.as_ref().is_some_and(|v| !within(v.exposure, -4.0, 4.0) || !within(v.contrast, -100.0, 100.0) || !within(v.saturation, 0.0, 200.0))
+            {
+                return Err(format!("Clip '{}' has invalid video effects.", clip.id));
+            }
+            if let Some(lut) = &clip.lut {
+                if !within(lut.intensity, 0.0, 100.0) {
+                    return Err(format!("Clip '{}' has invalid LUT intensity.", clip.id));
+                }
+                if let Some(table) = &lut.table {
+                    if !(2..=65).contains(&table.size)
+                        || table.name.is_empty() || table.name.chars().count() > 256
+                        || table.values.len() != table.size.pow(3) * 3
+                        || table.values.iter().any(|v| !within(*v, -65504.0, 65504.0))
+                        || (0..3).any(|i| !table.domain_min[i].is_finite() || !table.domain_max[i].is_finite() || table.domain_min[i] >= table.domain_max[i])
+                    {
+                        return Err(format!("Clip '{}' has an invalid LUT table.", clip.id));
+                    }
+                }
+            }
         }
     }
     Ok(())

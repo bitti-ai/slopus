@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { effectSchemas } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
 export const PROJECT_FILE_NAME = "slopus.json";
@@ -201,6 +202,7 @@ export const clipTransitionSchema = z.object({
 });
 
 export const timelineClipSchema = z.object({
+  ...effectSchemas,
   id: idSchema,
   assetId: idSchema,
   trackId: idSchema,

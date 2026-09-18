@@ -40,6 +40,16 @@ pub(crate) struct TimelineClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) chroma_key: Option<ClipChromaKey>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) sharpen: Option<ClipAmount>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) blur: Option<ClipBlur>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_correction: Option<ClipColorCorrection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) vignette: Option<ClipAmount>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) lut: Option<ClipLut>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) transition: Option<ClipTransition>,
 }
 
@@ -62,6 +72,36 @@ pub(crate) struct ClipLook {
 pub(crate) struct ClipChromaKey {
     pub(crate) color: String,
     pub(crate) tolerance: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClipAmount {
+    pub(crate) amount: f64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClipBlur {
+    pub(crate) radius: f64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClipColorCorrection {
+    pub(crate) exposure: f64,
+    pub(crate) contrast: f64,
+    pub(crate) saturation: f64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ClipLut {
+    pub(crate) intensity: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) table: Option<LutTable>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LutTable {
+    pub(crate) name: String,
+    pub(crate) size: usize,
+    pub(crate) domain_min: [f64; 3],
+    pub(crate) domain_max: [f64; 3],
+    pub(crate) values: Vec<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

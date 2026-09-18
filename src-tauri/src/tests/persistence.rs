@@ -165,6 +165,32 @@ fn deleting_a_project_removes_its_folder_and_every_file_inside_it() {
 }
 
 #[test]
+fn video_effects_survive_save_and_reopen() {
+    let mut json = serde_json::to_value(fixture()).unwrap();
+    let clip = &mut json["timeline"]["tracks"][0]["clips"][0];
+    clip["sharpen"] = serde_json::json!({"amount": 60});
+    clip["blur"] = serde_json::json!({"radius": 4});
+    clip["colorCorrection"] = serde_json::json!({"exposure": 1, "contrast": 20, "saturation": 80});
+    clip["vignette"] = serde_json::json!({"amount": 30});
+    clip["lut"] = serde_json::json!({"intensity": 70, "table": {
+        "name": "Identity", "size": 2, "domainMin": [0, 0, 0], "domainMax": [1, 1, 1],
+        "values": [0,0,0, 1,0,0, 0,1,0, 1,1,0, 0,0,1, 1,0,1, 0,1,1, 1,1,1]
+    }});
+    let config = without_derived_project_state(validate_and_normalize_config(serde_json::from_value(json).unwrap()).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let folder = PathBuf::from(&created.folder_path);
+    write_project(&folder, &config).unwrap();
+    assert_eq!(read_project(&folder).unwrap().config, config);
+    let mut invalid = config.clone();
+    invalid.timeline.tracks[0].clips[0].lut.as_mut().unwrap().table.as_mut().unwrap().values.pop();
+    assert!(validate_and_normalize_config(invalid).unwrap_err().contains("LUT table"));
+    let mut invalid = config.clone();
+    invalid.timeline.tracks[0].clips[0].blur.as_mut().unwrap().radius = 25.0;
+    assert!(validate_and_normalize_config(invalid).unwrap_err().contains("video effects"));
+}
+
+#[test]
 fn deletion_refuses_a_different_project_identity_and_keeps_the_folder() {
     let parent = tempfile::tempdir().unwrap();
     let project = project_folder_at(&parent.path().join("Keep this project"));

@@ -142,6 +142,11 @@ pub(super) fn apply(
                     transform: None,
                     look: None,
                     chroma_key: None,
+                    sharpen: None,
+                    blur: None,
+                    color_correction: None,
+                    vignette: None,
+                    lut: None,
                     transition: None,
                 });
         }
