@@ -3,6 +3,7 @@ import { demux, type DemuxedSource } from "./exportPipeline";
 import { readMediaFileBytes } from "./persistence";
 import type { ProjectConfig } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
+import { initialReferenceVideoTrim } from "./referenceVideoTrim";
 
 type VideoInput = NonNullable<SlopfabGenerationRequest["referenceVideos"]>[number];
 const cancelledError = () => new Error("Video reference preparation cancelled.");
@@ -22,14 +23,18 @@ export function referenceVideoRange(input: VideoInput, sourceDuration: number) {
 export function sourceVideoDuration(source: DemuxedSource): number {
   const first = source.samples.reduce((value, sample) => Math.min(value, sample.timestampUs), Infinity);
   const last = source.samples.reduce((value, sample) => Math.max(value, sample.timestampUs + sample.durationUs), -Infinity);
-  return source.durationSeconds ?? (last - first) / 1_000_000;
+  const sampledDuration = (last - first) / 1_000_000;
+  // Fragmented MP4s can have a zero/placeholder track-header duration even
+  // though their fragments contain a full video. Preparation already uses this
+  // same sample origin, so use the actual presentation span for trim bounds.
+  return Number.isFinite(sampledDuration) && sampledDuration > 0 ? sampledDuration : source.durationSeconds ?? NaN;
 }
 
 export async function inspectReferenceVideo(folderPath: string, sourcePath: string) {
   const source = await demux(await readMediaFileBytes(folderPath, { sourcePath }), "Video reference");
   const duration = sourceVideoDuration(source);
-  referenceVideoRange({ name: "Video reference", startSeconds: 0, includeAudio: true }, duration);
-  return { durationSeconds: Math.min(15, duration), includeAudio: Boolean(source.hasAudio) };
+  const { durationSeconds } = initialReferenceVideoTrim(duration);
+  return { durationSeconds, includeAudio: Boolean(source.hasAudio) };
 }
 
 async function referenceDecoderConfig(config: VideoDecoderConfig): Promise<VideoDecoderConfig> {
