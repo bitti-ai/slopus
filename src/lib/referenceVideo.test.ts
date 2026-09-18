@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { demux, type DemuxedSource } from "./exportPipeline";
-import { prepareReferenceVideos, referenceSoundtrack, referenceVideoRange, uploadReferenceVideoFrames } from "./referenceVideo";
+import { inspectReferenceVideo, prepareReferenceVideos, referenceSoundtrack, referenceVideoRange, sourceVideoDuration, uploadReferenceVideoFrames } from "./referenceVideo";
 import { createProjectConfig } from "./project";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -15,6 +15,16 @@ const source: DemuxedSource = { config: { codec: "avc1" }, durationSeconds: 4, h
   samples: [0, 500_000, 1_000_000, 1_500_000, 2_000_000, 2_500_000, 3_000_000].map((timestampUs) => ({
     timestampUs, durationUs: 500_000, key: timestampUs === 0, data: new Uint8Array(1),
   })) };
+
+it.each([0, NaN, .5, 120, undefined])("imports long sources with header duration %s using a capped selection", async (durationSeconds) => {
+  const long = { ...source, durationSeconds, samples: [0, 59_000_000].map((timestampUs) => ({
+    timestampUs, durationUs: 1_000_000, key: true, data: new Uint8Array(1),
+  })) };
+  vi.mocked(demux).mockResolvedValue(long);
+  expect(sourceVideoDuration(long)).toBe(60);
+  await expect(inspectReferenceVideo("C:/project", "C:/long.mp4")).resolves.toEqual({ durationSeconds: 15, includeAudio: false });
+  expect(referenceVideoRange({ ...input, startSeconds: 45, durationSeconds: 15 }, sourceVideoDuration(long))).toEqual({ start: 45, duration: 15 });
+});
 
 function decoderMocks() {
   const frames: Array<{ close: ReturnType<typeof vi.fn> }> = [];
