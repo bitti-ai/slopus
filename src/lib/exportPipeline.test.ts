@@ -611,6 +611,23 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
 }
 
 describe("running an export of external media", () => {
+  it("refuses to silently omit GPU effects when only canvas compositing is available", async () => {
+    const { restore, recorded } = installWebCodecs({ decodes: true, audio: false });
+    try {
+      invoked.mockResolvedValue(await sampleFile(5, 30));
+      const config = externalProject();
+      const video = config.timeline.tracks.find((track) => track.kind === "video" && track.clips.length > 0)!;
+      video.clips[0].sharpen = { amount: 50 };
+      const settings = defaultExportSettings(config);
+      await expect(runExport({
+        folderPath: FOLDER, config, settings, plan: buildExportPlan(config, settings),
+        bitrate: 5_000_000, onProgress: () => {}, cancelled: () => false,
+      })).rejects.toThrow(/effects.*require WebGPU/);
+      expect(recorded.videoChunks).toBe(0);
+      expect(callLog().some((call) => call.cmd.includes("write"))).toBe(false);
+    } finally { restore(); }
+  });
+
   it("dispatches the external read, not a project-relative one", async () => {
     const { restore } = installWebCodecs();
     try {

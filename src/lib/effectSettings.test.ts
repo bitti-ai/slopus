@@ -23,11 +23,15 @@ describe("3D cube import", () => {
   it("accepts Resolve input ranges", () => {
     expect(parseCube(identityCube.replace("LUT_3D_SIZE 2", "LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0 2"), "test.cube").domainMax).toEqual([2, 2, 2]);
   });
+  it("keeps hash characters inside quoted titles", () => {
+    expect(parseCube(identityCube.replace('"Identity"', '"Look #2" # comment'), "test.cube").name).toBe("Look #2");
+  });
   it.each([
     identityCube.replace("LUT_3D_SIZE 2", "LUT_3D_SIZE 66"),
     identityCube.replace("LUT_3D_SIZE 2", "LUT_1D_SIZE 2"),
     identityCube.replace("LUT_3D_SIZE 2", "LUT_3D_SIZE 2\nDOMAIN_MAX 0 1 1"),
     identityCube.replace("LUT_3D_SIZE 2", "LUT_3D_SIZE 2\nLUT_3D_SIZE 2"),
+    identityCube.replace("LUT_3D_SIZE 2", "LUT_3D_SIZE 2\nDOMAIN_MIN 1 0 0\nDOMAIN_MAX 1.000000000001 1 1"),
     identityCube.replace("1 1 1", "1 NaN 1"),
     identityCube.replace("1 1 1", ""),
     identityCube + "\n1 1 1",

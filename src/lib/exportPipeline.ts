@@ -35,6 +35,8 @@ import {
 } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
 import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
+import { hasVideoEffects } from "./effectSettings";
+import { createVideoEffectsProcessor } from "./videoEffectsGpu";
 
 /* ---------------------------------------------------------------------------
    What this machine can do
@@ -230,11 +232,11 @@ async function createWebGpuCompositor(width: number, height: number, background:
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
   const shader = device.createShaderModule({ code: COMPOSITOR_SHADER });
-  const pipeline = device.createRenderPipeline({
+  const makePipeline = (module: GPUShaderModule) => device.createRenderPipeline({
     layout: "auto",
-    vertex: { module: shader, entryPoint: "vs" },
+    vertex: { module, entryPoint: "vs" },
     fragment: {
-      module: shader,
+      module,
       entryPoint: "fs",
       targets: [{
         format,
@@ -246,6 +248,12 @@ async function createWebGpuCompositor(width: number, height: number, background:
     },
     primitive: { topology: "triangle-list" },
   });
+  const pipeline = makePipeline(shader);
+  const processedPipeline = makePipeline(device.createShaderModule({ code: COMPOSITOR_SHADER
+    .replace("var source: texture_external;", "var source: texture_2d<f32>;")
+    .replace("let sampled = textureSampleBaseClampToEdge(source, source_sampler, uv);",
+      "let premultiplied = textureSampleLevel(source, source_sampler, uv, 0.); let sampled = vec4f(premultiplied.rgb / max(premultiplied.a, .00001), premultiplied.a);") }));
+  let effectsProcessor: ReturnType<typeof createVideoEffectsProcessor> | undefined;
   const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const styleUniform = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
@@ -265,14 +273,14 @@ async function createWebGpuCompositor(width: number, height: number, background:
      texture as written: the project's own background colour, unconverted. */
   const clearValue = { r: r / 255, g: g / 255, b: b / 255, a: 1 };
 
-  const pass = (view: GPUTextureView, bindGroup: GPUBindGroup | null) => {
+  const pass = (view: GPUTextureView, bindGroup: GPUBindGroup | null, renderPipeline = pipeline) => {
     if (lost.reason) throw new Error(`This computer's GPU stopped responding during the export: ${lost.reason}`);
     const encoder = device.createCommandEncoder();
     const renderPass = encoder.beginRenderPass({
       colorAttachments: [{ view, clearValue, loadOp: bindGroup ? "load" : "clear", storeOp: "store" }],
     });
     if (bindGroup) {
-      renderPass.setPipeline(pipeline);
+      renderPass.setPipeline(renderPipeline);
       renderPass.setBindGroup(0, bindGroup);
       renderPass.draw(6);
     }
@@ -286,6 +294,8 @@ async function createWebGpuCompositor(width: number, height: number, background:
       pass(context.getCurrentTexture().createView(), null);
     },
     draw(frame, style) {
+      const processed = hasVideoEffects(style);
+      const renderPipeline = processed ? processedPipeline : pipeline;
       const fitted = fitRect(frame.displayWidth, frame.displayHeight, width, height);
       const scale = style.transform.scale / 100;
       const box = {
@@ -302,19 +312,21 @@ async function createWebGpuCompositor(width: number, height: number, background:
       device.queue.writeBuffer(styleUniform, 0, new Float32Array([
         (style.transform.rotation * Math.PI) / 180,
         style.opacity,
-        style.look.temperature / 100,
+        processed ? 0 : style.look.temperature / 100,
         style.revealStart,
         style.revealEnd,
-        style.chromaKey ? 1 : 0,
+        style.chromaKey && !processed ? 1 : 0,
         0,
         0,
         ...(style.chromaKey ? keyColor(style.chromaKey.color) : [0, 0, 0]),
         (style.chromaKey?.tolerance ?? 0) / 100,
       ]));
       // Zero copy: the decoded frame is sampled where it already lives.
-      const external = device.importExternalTexture({ source: frame });
+      const external = processed
+        ? (effectsProcessor ??= createVideoEffectsProcessor(device)).render(frame, style).createView()
+        : device.importExternalTexture({ source: frame });
       const bindGroup = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
+        layout: renderPipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: uniform } },
           { binding: 1, resource: { buffer: styleUniform } },
@@ -322,12 +334,13 @@ async function createWebGpuCompositor(width: number, height: number, background:
           { binding: 3, resource: sampler },
         ],
       });
-      pass(context.getCurrentTexture().createView(), bindGroup);
+      pass(context.getCurrentTexture().createView(), bindGroup, renderPipeline);
     },
     take(timestamp, duration) {
       return new VideoFrame(canvas, { timestamp, duration, alpha: "discard" });
     },
     dispose() {
+      effectsProcessor?.dispose();
       device.destroy();
     },
   };
@@ -348,6 +361,7 @@ function createCanvasCompositor(width: number, height: number, background: strin
     clear: paintBackground,
     draw(frame, style) {
       let picture: VideoFrame | OffscreenCanvas = frame;
+      if (hasVideoEffects(style)) throw new Error("This clip uses video effects that require WebGPU. A GPU is unavailable; effects cannot be included in this export.");
       if (style.chromaKey) {
         keyCanvas ??= new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
         if (keyCanvas.width !== frame.displayWidth) keyCanvas.width = frame.displayWidth;

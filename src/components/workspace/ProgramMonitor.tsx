@@ -1,4 +1,6 @@
 import { ChromaKeyPreview } from "./ChromaKeyPreview";
+import { VideoEffectsPreview } from "./VideoEffectsPreview";
+import { hasVideoEffects } from "../../lib/effectSettings";
 import { ProgramLayer, previewMediaStyle } from "./ProgramLayer";
 import { Film, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -114,7 +116,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     [clip, playheadMs],
   );
   const mediaStyle = frameStyle ? previewMediaStyle(frameStyle) : undefined;
-  const sourceStyle: React.CSSProperties | undefined = clip?.chromaKey ? { ...mediaStyle, visibility: "hidden", position: "absolute" } : mediaStyle;
+  const effects = clip ? hasVideoEffects(clip) : false;
+  const sourceStyle: React.CSSProperties | undefined = clip?.chromaKey || effects ? { ...mediaStyle, visibility: "hidden", position: "absolute" } : mediaStyle;
   /* Sound that should be audible at this moment: audio-only files and embedded
      sound from every active video, minus muted tracks. The visible video plays
      its own stream, so a second audio element is only needed for the rest. */
@@ -435,7 +438,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onError={() => setError("This file could not be decoded.")}
     />}
     {asset && isImage(asset) && url && <img ref={imageRef} src={url} alt={clip?.label ?? ""} style={sourceStyle} />}
-    {asset && url && clip?.chromaKey && <ChromaKeyPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
+    {asset && url && clip && effects && <VideoEffectsPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effects={clip} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
+    {asset && url && !effects && clip?.chromaKey && <ChromaKeyPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
     {clip && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
       style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}

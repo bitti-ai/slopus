@@ -176,18 +176,36 @@ fn video_effects_survive_save_and_reopen() {
         "name": "Identity", "size": 2, "domainMin": [0, 0, 0], "domainMax": [1, 1, 1],
         "values": [0,0,0, 1,0,0, 0,1,0, 1,1,0, 0,0,1, 1,0,1, 0,1,1, 1,1,1]
     }});
-    let config = without_derived_project_state(validate_and_normalize_config(serde_json::from_value(json).unwrap()).unwrap());
+    let config = without_derived_project_state(
+        validate_and_normalize_config(serde_json::from_value(json).unwrap()).unwrap(),
+    );
     let root = tempfile::tempdir().unwrap();
     let created = create_project_in(root.path(), &config).unwrap();
     let folder = PathBuf::from(&created.folder_path);
     write_project(&folder, &config).unwrap();
     assert_eq!(read_project(&folder).unwrap().config, config);
     let mut invalid = config.clone();
-    invalid.timeline.tracks[0].clips[0].lut.as_mut().unwrap().table.as_mut().unwrap().values.pop();
-    assert!(validate_and_normalize_config(invalid).unwrap_err().contains("LUT table"));
+    invalid.timeline.tracks[0].clips[0]
+        .lut
+        .as_mut()
+        .unwrap()
+        .table
+        .as_mut()
+        .unwrap()
+        .values
+        .pop();
+    assert!(validate_and_normalize_config(invalid)
+        .unwrap_err()
+        .contains("LUT table"));
     let mut invalid = config.clone();
-    invalid.timeline.tracks[0].clips[0].blur.as_mut().unwrap().radius = 25.0;
-    assert!(validate_and_normalize_config(invalid).unwrap_err().contains("video effects"));
+    invalid.timeline.tracks[0].clips[0]
+        .blur
+        .as_mut()
+        .unwrap()
+        .radius = 25.0;
+    assert!(validate_and_normalize_config(invalid)
+        .unwrap_err()
+        .contains("video effects"));
 }
 
 #[test]

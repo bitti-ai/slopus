@@ -3,13 +3,16 @@ import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../l
 import { PreviewSources } from "../../lib/exportPipeline";
 import type { ProjectAsset, TimelineClip } from "../../lib/project";
 import { ChromaKeyPreview } from "./ChromaKeyPreview";
+import { VideoEffectsPreview } from "./VideoEffectsPreview";
+import { hasVideoEffects } from "../../lib/effectSettings";
 
-export function previewMediaStyle({ transform, look, opacity, revealStart, revealEnd }: ClipFrameStyle): CSSProperties {
+export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
+  const { transform, look, opacity, revealStart, revealEnd } = frame;
   const warmth = look.temperature / 100;
   return {
     transform: `translate(${transform.positionX}%, ${transform.positionY}%) scale(${transform.scale / 100}) rotate(${transform.rotation}deg)`,
     opacity,
-    filter: warmth === 0 ? "none" : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`,
+    filter: warmth === 0 || hasVideoEffects(frame) ? "none" : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`,
     clipPath: `inset(0 ${(1 - revealEnd) * 100}% 0 ${revealStart * 100}%)`,
   };
 }
@@ -50,12 +53,14 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing }: {
   };
   useEffect(sync, [playheadMs, playing, clip, url]);
   const style = previewMediaStyle(clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs));
-  const sourceStyle: CSSProperties = clip.chromaKey ? { ...style, visibility: "hidden", position: "absolute" } : style;
+  const effects = hasVideoEffects(clip);
+  const sourceStyle: CSSProperties = clip.chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
   return <div className="program-layer" aria-label={`Background clip: ${clip.label}`}>
     {url && (isImage
       ? <img ref={image} src={url} alt={clip.label} style={sourceStyle} onError={() => setError(`Could not decode ${clip.label}.`)} />
       : <video ref={video} src={url} style={sourceStyle} muted playsInline preload="auto" onLoadedMetadata={sync} onError={() => setError(`Could not decode ${clip.label}.`)} />)}
-    {url && clip.chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage} style={style} onError={setError} />}
+    {url && effects && <VideoEffectsPreview source={isImage ? image : video} sourceUrl={url} effects={clip} playing={playing && !isImage} style={style} onError={setError} />}
+    {url && !effects && clip.chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage} style={style} onError={setError} />}
     {error && <div className="program-note program-note--error" role="alert">{error}</div>}
   </div>;
 }
