@@ -45,8 +45,10 @@ The bundled **First/Last Frame** (formerly **Minimax H3 Original**),
 **References**, **First/Last Frame Fast**, and **Singularity** templates each download four model files. References has the same
 settings, with the `minimax_h3_ref2va_pruned_int8_convrot.safetensors` transformer
 in place of the First/Last Frame `minimax_h3_fl2va_pruned_int8_convrot.safetensors`.
-First/Last Frame Fast uses `minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors`
-and defaults to **6 steps**; its other settings are identical. First/Last Frame and
+First/Last Frame Fast uses `fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors`
+and `minimax_h3_video_vae_int8_convrot.safetensors`, and defaults to **8 steps**.
+Existing Fast templates receive the updated URLs and step default once, preserving custom settings.
+First/Last Frame and
 References default to 20 steps.
 Singularity defaults to **4 steps** and uses
 [Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors](https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors)
