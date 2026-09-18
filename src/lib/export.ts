@@ -38,7 +38,9 @@ export interface ExportSettings {
   quality: QualityId;
 }
 
-export interface ClipVisualSettings {
+import type { VideoEffects } from "./effectSettings";
+
+export interface ClipVisualSettings extends VideoEffects {
   transform: ClipTransform;
   look: ClipLook;
   chromaKey?: ClipChromaKey | null;
@@ -57,6 +59,11 @@ export const clipVisualSettings = (clip: TimelineClip): ClipVisualSettings => ({
   transform: clipTransform(clip),
   look: clipLook(clip),
   chromaKey: clip.chromaKey,
+  sharpen: clip.sharpen,
+  blur: clip.blur,
+  colorCorrection: clip.colorCorrection,
+  vignette: clip.vignette,
+  lut: clip.lut,
   transition: clipTransition(clip),
 });
 
