@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const triple = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
+const domainValue = z.number().finite().min(-65504).max(65504);
+const triple = z.tuple([domainValue, domainValue, domainValue]);
 export const lutTableSchema = z.object({
   name: z.string().min(1).max(256),
   size: z.number().int().min(2).max(65),
@@ -9,7 +10,7 @@ export const lutTableSchema = z.object({
   values: z.array(z.number().finite().min(-65504).max(65504)).max(65 ** 3 * 3),
 }).superRefine((table, context) => {
   if (table.values.length !== table.size ** 3 * 3) context.addIssue({ code: "custom", message: "LUT row count does not match its size." });
-  if (table.domainMin.some((min, i) => min >= table.domainMax[i])) context.addIssue({ code: "custom", message: "LUT domain maximum must exceed minimum." });
+  if (table.domainMin.some((min, i) => Math.fround(min) >= Math.fround(table.domainMax[i]))) context.addIssue({ code: "custom", message: "LUT domain maximum must exceed minimum at GPU precision." });
 });
 
 export const effectSchemas = {
@@ -41,7 +42,7 @@ export function parseCube(text: string, filename: string): LutTable {
   const values: number[] = [];
   const seen = new Set<string>();
   for (const [index, raw] of text.replace(/^\uFEFF/, "").split(/\r?\n/).entries()) {
-    const line = raw.replace(/#.*$/, "").trim();
+    const line = (raw.match(/^(?:"[^"]*"|[^"#])*/)?.[0] ?? "").trim();
     if (!line) continue;
     const [tag, ...args] = line.split(/\s+/);
     const fail = (message: string): never => { throw new Error(`Line ${index + 1}: ${message}`); };

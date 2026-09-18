@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineClipSchema, type TimelineClip } from "../../lib/project";
@@ -16,6 +16,50 @@ function Harness() {
 }
 
 describe("clip effects", () => {
+  it("adds, edits and removes the new effects independently", () => {
+    render(<Harness />);
+    for (const name of [/Sharpen Enhance/, /Gaussian Blur Soften/, /Color Correction Adjust/, /Vignette Darken/]) {
+      fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
+      fireEvent.click(screen.getByRole("button", { name }));
+    }
+    fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
+    fireEvent.change(screen.getByLabelText("Blur radius"), { target: { value: "6.5" } });
+    fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "-1.2" } });
+    fireEvent.change(screen.getByLabelText("Saturation"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Vignette amount"), { target: { value: "75" } });
+    expect(JSON.parse(screen.getByTestId("saved").textContent!)).toMatchObject({
+      sharpen: { amount: 120 }, blur: { radius: 6.5 }, colorCorrection: { exposure: -1.2, saturation: 0 }, vignette: { amount: 75 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Remove Gaussian Blur effect" }));
+    expect(JSON.parse(screen.getByTestId("saved").textContent!).blur).toBeUndefined();
+    expect(screen.getByLabelText("Sharpen amount")).toBeTruthy();
+  });
+
+  it("imports a LUT, adjusts its strength, and preserves it after an invalid replacement", async () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
+    fireEvent.click(screen.getByRole("button", { name: /3D LUT Apply/ }));
+    const cube = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
+    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "identity.cube", size: cube.length, text: async () => cube }] } });
+    await screen.findByText("identity.cube · 2³");
+    fireEvent.change(screen.getByLabelText("LUT intensity"), { target: { value: "45" } });
+    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "bad.cube", size: 4, text: async () => "oops" }] } });
+    await screen.findByRole("alert");
+    expect(JSON.parse(screen.getByTestId("saved").textContent!).lut).toMatchObject({ intensity: 45, table: { name: "identity.cube", size: 2 } });
+  });
+
+  it("does not apply an outstanding LUT import to a different clip", async () => {
+    let resolve!: (text: string) => void;
+    const pending = new Promise<string>((done) => { resolve = done; });
+    const onChange = vi.fn();
+    const view = render(<ClipEffects clip={{ ...original, lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "identity.cube", size: 50, text: () => pending }] } });
+    view.rerender(<ClipEffects clip={{ ...original, id: "other", lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
+    resolve("LUT_3D_SIZE 2\n" + "0 0 0\n".repeat(8));
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("adds only chosen effects, persists edits, and removes them without changing other effects", () => {
     render(<Harness />);
     expect(screen.queryByRole("heading", { name: "Look" })).toBeNull();

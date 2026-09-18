@@ -1,8 +1,9 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
+import { MAX_LUT_FILE_BYTES, parseCube } from "../../lib/effectSettings";
 
-type EffectId = "look" | "transition" | "chromaKey";
+type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut";
 type EditorProps = { clip: TimelineClip; update: (patch: Partial<TimelineClip>) => void };
 type EffectDefinition = {
   id: EffectId;
@@ -11,6 +12,43 @@ type EffectDefinition = {
   defaults: Partial<TimelineClip>;
   editor: (props: EditorProps) => ReactNode;
 };
+
+function Slider({ label, value, min = 0, max = 100, step = 1, suffix = "%", onChange }: {
+  label: string; value: number; min?: number; max?: number; step?: number; suffix?: string; onChange: (value: number) => void;
+}) {
+  return <label className="range-field"><span>{label} <b>{value}{suffix}</b></span><input aria-label={label} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+}
+
+function LutEditor(props: EditorProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const latest = useRef(props);
+  latest.current = props;
+  const request = useRef(0);
+  useEffect(() => () => { request.current++; }, []);
+  const lut = props.clip.lut!;
+  return <>
+    <label><span>{lut.table ? "Replace LUT" : "Import LUT"}</span><input aria-label="Import cube LUT" type="file" accept=".cube" onChange={async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      const token = ++request.current;
+      setError(null); setLoading(true);
+      try {
+        if (!file.name.toLowerCase().endsWith(".cube")) throw new Error("Choose a 3D .cube LUT file.");
+        if (file.size > MAX_LUT_FILE_BYTES) throw new Error("LUT files must be smaller than 16 MB.");
+        const table = parseCube(await file.text(), file.name);
+        if (request.current === token) latest.current.update({ lut: { ...latest.current.clip.lut!, table } });
+      } catch (reason) {
+        if (request.current === token) setError(reason instanceof Error ? reason.message : String(reason));
+      } finally { if (request.current === token) setLoading(false); }
+    }} /></label>
+    {loading && <p role="status">Reading LUT…</p>}
+    {lut.table ? <p>{lut.table.name} · {lut.table.size}³</p> : <p>Import a 3D .cube LUT (2–65 points). The LUT is saved with the project.</p>}
+    {error && <p role="alert">{error}</p>}
+    <Slider label="LUT intensity" value={lut.intensity} onChange={(intensity) => props.update({ lut: { ...lut, intensity } })} />
+  </>;
+}
 
 // One catalogue drives the picker, defaults and editors. Missing settings mean
 // the effect is absent; older projects with Look/Transition keep their edits.
@@ -49,6 +87,38 @@ const EFFECTS: readonly EffectDefinition[] = [
         <label className="range-field"><span>Tolerance <b>{key.tolerance}%</b></span><input aria-label="Chroma Key tolerance" type="range" min="0" max="100" step="1" value={key.tolerance} onChange={(event) => update({ chromaKey: { ...key, tolerance: Number(event.target.value) } })} /></label>
       </>;
     },
+  },
+  {
+    id: "sharpen", name: "Sharpen", description: "Enhance fine edges and detail",
+    defaults: { sharpen: { amount: 50 } },
+    editor: ({ clip, update }) => <Slider label="Sharpen amount" value={clip.sharpen!.amount} max={200} onChange={(amount) => update({ sharpen: { amount } })} />,
+  },
+  {
+    id: "blur", name: "Gaussian Blur", description: "Soften the picture with a Gaussian blur",
+    defaults: { blur: { radius: 4 } },
+    editor: ({ clip, update }) => <Slider label="Blur radius" value={clip.blur!.radius} max={24} step={0.5} suffix=" px" onChange={(radius) => update({ blur: { radius } })} />,
+  },
+  {
+    id: "colorCorrection", name: "Color Correction", description: "Adjust exposure, contrast, and saturation",
+    defaults: { colorCorrection: { exposure: 0, contrast: 0, saturation: 100 } },
+    editor: ({ clip, update }) => {
+      const color = clip.colorCorrection!;
+      return <>
+        <Slider label="Exposure" value={color.exposure} min={-4} max={4} step={0.1} suffix=" stops" onChange={(exposure) => update({ colorCorrection: { ...color, exposure } })} />
+        <Slider label="Contrast" value={color.contrast} min={-100} onChange={(contrast) => update({ colorCorrection: { ...color, contrast } })} />
+        <Slider label="Saturation" value={color.saturation} max={200} onChange={(saturation) => update({ colorCorrection: { ...color, saturation } })} />
+      </>;
+    },
+  },
+  {
+    id: "vignette", name: "Vignette", description: "Darken the edges of the picture",
+    defaults: { vignette: { amount: 35 } },
+    editor: ({ clip, update }) => <Slider label="Vignette amount" value={clip.vignette!.amount} onChange={(amount) => update({ vignette: { amount } })} />,
+  },
+  {
+    id: "lut", name: "3D LUT", description: "Apply a color look from a .cube file",
+    defaults: { lut: { intensity: 100 } },
+    editor: (props) => <LutEditor key={props.clip.id} {...props} />,
   },
 ];
 
