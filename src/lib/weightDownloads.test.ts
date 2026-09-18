@@ -238,14 +238,17 @@ it.each([12, 20, 24])("downloads the References transformer for %s GiB of VRAM",
   expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-references")!)).toBe(false);
 });
 
-it("downloads the fast transformer and retains its six-step default", async () => {
+it("downloads the fast transformer and video VAE and retains its eight-step default", async () => {
   await downloadTemplateWeights("minimax-h3-fast");
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors",
+    url: "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors",
+  }));
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
+    url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
   }));
   const template = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-fast")!;
-  expect(template.defaultSteps).toBe(6);
+  expect(template.defaultSteps).toBe(8);
   expect(templateNeedsDownload(template)).toBe(false);
 });
 

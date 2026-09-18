@@ -204,8 +204,13 @@ export function minimaxReferencesTemplate(): GeneratorTemplate {
 }
 
 export function minimaxFastTemplate(): GeneratorTemplate {
-  return minimaxVariantTemplate("minimax-h3-fast", "First/Last Frame Fast",
-    "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors", 6);
+  const template = minimaxVariantTemplate("minimax-h3-fast", "First/Last Frame Fast",
+    "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors", 8);
+  const videoVae = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors";
+  return { ...template,
+    paths: { ...template.paths, videoVae },
+    sources: { ...template.sources, videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
+  };
 }
 
 export function minimaxSingularityTemplate(): GeneratorTemplate {
@@ -232,7 +237,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 8,
+  catalogVersion: 9,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -290,7 +295,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
       ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -374,6 +379,34 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             animate.additionalSafetensors = [...(animate.additionalSafetensors ?? []), ...viggleAnimateTemplate().additionalSafetensors!];
           }
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 8 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 9) {
+          const fast = normalized.templates.find(({ id }) => id === "minimax-h3-fast");
+          if (fast) {
+            const bundled = minimaxFastTemplate();
+            const oldUrls = {
+              transformer: "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors",
+              videoVae: minimaxOriginalTemplate().paths.videoVae,
+            };
+            for (const field of ["transformer", "videoVae"] as const) {
+              const matchesOldUrl = (url: string) => url.replace("/blob/", "/resolve/") === oldUrls[field].replace("/blob/", "/resolve/");
+              const sources = fast.sources?.[field];
+              if (matchesOldUrl(fast.paths[field]) || sources?.some((source) => matchesOldUrl(source.url)
+                && source.downloadedPath === fast.paths[field])) {
+                fast.paths[field] = bundled.paths[field];
+              }
+              if (sources) {
+                fast.sources![field] = sources.map((source) => {
+                  if (!matchesOldUrl(source.url)) return source;
+                  const { downloadedPath: _downloadedPath, ...updated } = source;
+                  return { ...updated, url: bundled.paths[field] };
+                });
+              }
+            }
+            if (fast.defaultSteps === 6) fast.defaultSteps = bundled.defaultSteps;
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 9 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;

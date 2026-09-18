@@ -114,7 +114,7 @@ describe("generator templates", () => {
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
     expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(8);
+    expect(settings.catalogVersion).toBe(9);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -135,7 +135,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate(), viggleAnimateTemplate()]);
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(8);
+    expect(settings.catalogVersion).toBe(9);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
@@ -170,16 +170,53 @@ describe("generator templates", () => {
     expect(loadGeneratorTemplateSettings().templates).toEqual([template, viggleAnimateTemplate()]);
   });
 
-  it("adds First/Last Frame Fast with six steps and its transformer URL", () => {
+  it("adds First/Last Frame Fast with eight steps and its model URLs", () => {
     const original = minimaxOriginalTemplate();
     const fast = minimaxFastTemplate();
-    const transformer = "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors";
-    expect(fast).toEqual({ ...original, id: "minimax-h3-fast", name: "First/Last Frame Fast", defaultSteps: 6,
-      paths: { ...original.paths, transformer },
-      sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, original.sources!.transformer![1]] },
+    const transformer = "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors";
+    const videoVae = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors";
+    expect(fast).toEqual({ ...original, id: "minimax-h3-fast", name: "First/Last Frame Fast", defaultSteps: 8,
+      paths: { ...original.paths, transformer, videoVae },
+      sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, original.sources!.transformer![1]],
+        videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
     });
     saveGeneratorTemplateSettings({ templates: [fast], defaultTemplateId: "", catalogVersion: 4 });
-    expect(loadGeneratorTemplateSettings().templates[0].defaultSteps).toBe(6);
+    expect(loadGeneratorTemplateSettings().templates[0].defaultSteps).toBe(8);
+  });
+
+  it.each([false, true])("upgrades saved Fast model URLs and invalidates old downloads: %s", (downloaded) => {
+    const template = minimaxFastTemplate();
+    template.defaultSteps = 6;
+    const oldUrls = {
+      transformer: "https://huggingface.co/datasets/jacokon/fasth3-live/resolve/main/minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors",
+      videoVae: minimaxOriginalTemplate().paths.videoVae.replace("/blob/", "/resolve/"),
+    };
+    for (const field of ["transformer", "videoVae"] as const) {
+      const downloadedPath = `D:/Models/old-${field}.safetensors`;
+      template.paths[field] = downloaded ? downloadedPath : oldUrls[field];
+      template.sources![field]![0] = { ...template.sources![field]![0], url: oldUrls[field],
+        ...(downloaded ? { downloadedPath } : {}) };
+    }
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 8 }));
+    const settings = loadGeneratorTemplateSettings();
+    expect(settings.templates).toEqual([minimaxFastTemplate()]);
+    expect(settings.catalogVersion).toBe(9);
+    expect(templateNeedsDownload(settings.templates[0])).toBe(true);
+    expect(loadGeneratorTemplateSettings()).toEqual(settings);
+  });
+
+  it("preserves customized Fast models and steps, and does not restore a removed template", () => {
+    const template = minimaxFastTemplate();
+    template.defaultSteps = 12;
+    template.paths.transformer = "D:/Models/custom-transformer.safetensors";
+    template.paths.videoVae = "https://example.com/custom-vae.safetensors";
+    template.sources = { ...template.sources, videoVae: [{ url: template.paths.videoVae, gpuModel: "", minVramGb: 0 }] };
+    delete template.sources.transformer;
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 8 }));
+    expect(loadGeneratorTemplateSettings().templates).toEqual([template]);
+    const original = minimaxOriginalTemplate();
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [original], catalogVersion: 8 }));
+    expect(loadGeneratorTemplateSettings().templates).toEqual([original]);
   });
 
   it.each(["textEncoder", "transformer"] as const)("upgrades saved Minimax %s variants once and preserves downloaded weights", (field) => {
@@ -189,7 +226,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(8);
+    expect(settings.catalogVersion).toBe(9);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -224,7 +261,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(8);
+    expect(settings.catalogVersion).toBe(9);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,
