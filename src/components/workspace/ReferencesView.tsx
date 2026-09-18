@@ -46,20 +46,6 @@ const referenceKindLabel = (reference: ProjectReference) => {
   return `${count} image${count === 1 ? "" : "s"}${isReferenceDescribed(reference) ? " + text" : ""}`;
 };
 
-function ClipSecondsInput({ label, value, min, max = Number.MAX_SAFE_INTEGER, onChange }: {
-  label: string; value: number; min: number; max?: number; onChange: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
-  return <label>{label}<input type="number" min={min} max={max} step={0.1} value={draft}
-    onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-    onBlur={() => {
-      const parsed = Number(draft);
-      const next = draft.trim() && Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : value;
-      setDraft(String(next)); onChange(next);
-    }} /></label>;
-}
-
 export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
@@ -250,14 +236,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       <div className="reference-inspector__scroll">
         {selected ? <>
           {selected.kind === "video" && <section className="reference-video" aria-label="Video reference">
-            <ReferenceVideo folderPath={folderPath} reference={selected} />
-            <p>Use 2–15 seconds per clip, up to 3 clips totaling 15 seconds. Requires a Ref2VA generator. Supports CUDA and Vulkan.</p>
-            <ClipSecondsInput key={`${selected.id}-start`} label="Clip start (seconds)" min={0} value={selected.video?.startSeconds ?? 0}
-              onChange={(startSeconds) => update(selected.id, { video: { durationSeconds: 2, includeAudio: true, ...selected.video, startSeconds } })} />
-            <ClipSecondsInput key={`${selected.id}-duration`} label="Clip duration (seconds)" min={2} max={15} value={selected.video?.durationSeconds ?? 2}
-              onChange={(durationSeconds) => update(selected.id, { video: { startSeconds: 0, includeAudio: true, ...selected.video, durationSeconds } })} />
-            <label><input type="checkbox" checked={selected.video?.includeAudio ?? true}
-              onChange={(event) => update(selected.id, { video: { startSeconds: 0, durationSeconds: 2, ...selected.video, includeAudio: event.target.checked } })} /> Include sound</label>
+            <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
+              onChange={(video) => update(selected.id, { video })} />
+            <p>Long videos are welcome. Only the selected 2–15 seconds are used. Up to 3 references can total 15 seconds per generation.</p>
             <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} /> Remove video</button>
           </section>}
           {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${(!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>

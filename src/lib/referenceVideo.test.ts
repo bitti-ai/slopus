@@ -108,6 +108,23 @@ it("uploads the trimmed interval at clip-relative times and closes every frame",
   expect(close).toHaveBeenCalledOnce();
 });
 
+it("prepares only a late selection from a long source", async () => {
+  const { frames } = decoderMocks();
+  const long = { ...source, durationSeconds: 0, samples: Array.from({ length: 60 }, (_, index) => ({
+    timestampUs: index * 1_000_000, durationUs: 1_000_000, key: index % 5 === 0, data: new Uint8Array(1),
+  })) };
+  vi.mocked(demux).mockResolvedValue(long);
+  const config = createProjectConfig({ name: "Long reference", prompt: "", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 20 });
+  await prepareReferenceVideos("C:/project", {
+    jobId: "job", prompt: "", frames: 120, steps: 4, seed: 1, canvasWidth: 736, canvasHeight: 416, referencePaths: [],
+    referenceVideos: [{ ...input, startSeconds: 45, durationSeconds: 15 }],
+  }, config, () => false, () => {});
+  expect(invoke).toHaveBeenCalledWith("create_reference_video", { durationSeconds: 15, config });
+  const calls = vi.mocked(invoke).mock.calls.filter(([command]) => command === "append_reference_video");
+  expect(calls.map((call) => Number((call[2]?.headers as Record<string, string>)["x-reference-time"]))).toEqual(Array.from({ length: 15 }, (_, i) => i));
+  expect(frames.every((frame) => frame.close.mock.calls.length === 1)).toBe(true);
+});
+
 it("releases native inputs and decoder frames after an upload failure", async () => {
   const { frames, close } = decoderMocks();
   vi.mocked(demux).mockResolvedValue(source);

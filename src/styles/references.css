@@ -607,6 +607,27 @@
   border-radius: var(--radius-sm);
 }
 
+.reference-trim { display: grid; gap: var(--space-2); min-width: 0; }
+.reference-trim__summary { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+.reference-trim__summary span, .reference-trim__ticks { color: var(--text-muted); font-size: var(--text-xs); }
+.reference-video .reference-trim__overview { display: grid; gap: 4px; }
+.reference-trim__overview input { width: 100%; accent-color: var(--accent); }
+.reference-trim__ticks { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.reference-trim__bar { position: relative; height: 40px; margin: 8px 7px 0; border-radius: var(--radius-sm); background: var(--panel-3); touch-action: none; user-select: none; cursor: pointer; }
+.reference-trim__selection { position: absolute; top: 0; bottom: 0; display: flex; border: 2px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 20%, var(--panel-2)); }
+.reference-trim__selection button { touch-action: none; border: 0; padding: 0; }
+.reference-trim__handle { position: absolute; top: -2px; bottom: -2px; width: 14px; border-radius: 3px; background: var(--accent); cursor: ew-resize; z-index: 1; }
+.reference-trim__handle:first-child { left: -7px; }
+.reference-trim__handle:last-child { right: -7px; }
+.reference-trim__handle::after { content: ""; position: absolute; left: 6px; top: 11px; width: 2px; height: 14px; background: var(--panel-2); }
+.reference-trim__move { width: 100%; min-width: 0; overflow: hidden; font-size: var(--text-xs); color: var(--text-primary); background: transparent; cursor: grab; }
+.reference-trim__move:active { cursor: grabbing; }
+.reference-trim__selection button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+.reference-trim__numbers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.reference-trim__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.reference-video .reference-trim__numbers label { display: grid; gap: 4px; min-width: 0; }
+.reference-video .reference-trim__numbers input { width: 100%; min-width: 0; }
+
 .reference-video p {
   color: var(--text-muted);
   font-size: var(--text-xs);
