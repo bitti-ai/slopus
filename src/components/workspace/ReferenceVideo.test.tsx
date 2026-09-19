@@ -39,8 +39,10 @@ it("starts at 0–15 seconds and moves and resizes the selection without reloadi
   expect(video.currentTime).toBe(60);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "ArrowLeft", shiftKey: true });
   expect(saved().durationSeconds).toBe(14);
+  expect(video.currentTime).toBe(74);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection start" }), { key: "ArrowRight", shiftKey: true });
   expect(saved()).toMatchObject({ startSeconds: 61, durationSeconds: 13 });
+  expect(video.currentTime).toBe(61);
   expect(screen.getByLabelText("Long video video preview")).toBe(video);
   expect(readMediaFileUrl).toHaveBeenCalledTimes(1);
 });
@@ -65,7 +67,7 @@ it("drags the selected interval and its edges", async () => {
     constructor(type: string, init: PointerEventInit) { super(type, init); this.pointerId = init.pointerId ?? 1; }
   });
   render(<Harness />);
-  await ready();
+  const video = await ready();
   const bar = screen.getByLabelText("Drag the selection or its edges");
   Object.defineProperty(bar, "setPointerCapture", { value: vi.fn() });
   vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ width: 300, left: 0 } as DOMRect);
@@ -73,10 +75,21 @@ it("drags the selected interval and its edges", async () => {
   fireEvent.pointerMove(bar, { pointerId: 1, clientX: 125 });
   fireEvent.pointerUp(bar, { pointerId: 1 });
   expect(saved()).toMatchObject({ startSeconds: 5, durationSeconds: 15 });
+  expect(video.currentTime).toBe(5);
   fireEvent.pointerDown(screen.getByRole("slider", { name: "Selection end" }), { button: 0, pointerId: 2, clientX: 200 });
+  expect(video.currentTime).toBe(20);
   fireEvent.pointerMove(bar, { pointerId: 2, clientX: 150 });
+  expect(video.currentTime).toBe(15);
   fireEvent.pointerUp(bar, { pointerId: 2 });
   expect(saved()).toMatchObject({ startSeconds: 5, durationSeconds: 10 });
+  expect(video.currentTime).toBe(15);
+  fireEvent.pointerDown(screen.getByRole("slider", { name: "Selection start" }), { button: 0, pointerId: 3, clientX: 50 });
+  expect(video.currentTime).toBe(5);
+  fireEvent.pointerMove(bar, { pointerId: 3, clientX: 70 });
+  expect(video.currentTime).toBe(7);
+  fireEvent.pointerUp(bar, { pointerId: 3 });
+  expect(saved()).toMatchObject({ startSeconds: 7, durationSeconds: 8 });
+  expect(video.currentTime).toBe(7);
 });
 
 it("starts the segment at the frame chosen in the video player", async () => {
