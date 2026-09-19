@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { createProjectConfig, type ProjectRecord } from "../lib/project";
+import { createProjectConfig, type CreateProjectInput, type ProjectRecord } from "../lib/project";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
 
@@ -29,12 +29,13 @@ it("opens settings from the project name, saves both settings mirrors, and resto
   fireEvent.change(dialog.getByLabelText("Aspect Ratio"), { target: { value: "9:16" } });
   fireEvent.change(dialog.getByLabelText("Resolution"), { target: { value: "544p" } });
   fireEvent.change(dialog.getByLabelText("Length in seconds"), { target: { value: "90" } });
+  fireEvent.change(dialog.getByLabelText("Default Look"), { target: { value: "watercolor" } });
   fireEvent.click(dialog.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).not.toBeInTheDocument());
   const saved = onSave.mock.calls[0][0].config;
   expect(saved).toMatchObject({ name: "Updated", id: record.config.id,
     brief: { prompt: "Keep this brief", aspectRatio: "9:16", resolution: "544p", targetDurationSeconds: 90 },
-    settings: { aspectRatio: "9:16", resolution: "544p" },
+    settings: { aspectRatio: "9:16", resolution: "544p", defaultLook: "watercolor" },
   });
   expect(saved.timeline).toEqual(record.config.timeline);
   expect(saved.generationJobs).toEqual(record.config.generationJobs);
@@ -42,6 +43,7 @@ it("opens settings from the project name, saves both settings mirrors, and resto
   fireEvent.click(screen.getByRole("button", { name: "Edit project settings for Updated" }));
   expect(screen.getByLabelText("Resolution")).toHaveValue("544p");
   expect(screen.getByLabelText("Length in seconds")).toHaveValue(90);
+  expect(screen.getByLabelText("Default Look")).toHaveValue("watercolor");
 });
 
 it("cancels pending edits with Escape without saving", () => {
@@ -81,12 +83,12 @@ it("preserves legacy resolution and short project length when opening settings",
   expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ resolution: "1080p", targetDurationSeconds: 5 }));
 });
 
-it.each([false, true])("supports exact numeric lengths and the two slider intervals (editing=%s)", (editing) => {
+it("supports exact numeric lengths and the two slider intervals in project settings", () => {
   const onSubmit = vi.fn(async () => undefined);
-  render(<PromptComposer project={editing ? project().config : undefined} busy={false} onClose={vi.fn()} onCreate={onSubmit} />);
+  render(<PromptComposer project={project().config} busy={false} onClose={vi.fn()} onCreate={onSubmit} />);
   const slider = screen.getByRole("slider", { name: "Length slider" });
   const number = screen.getByRole("spinbutton", { name: "Length in seconds" });
-  const save = screen.getByRole("button", { name: editing ? "Save changes" : "Create project" });
+  const save = screen.getByRole("button", { name: "Save changes" });
   for (const [position, seconds] of [[0, 0], [1, 1], [59, 59], [60, 60], [61, 70], [62, 80], [114, 600]]) {
     fireEvent.change(slider, { target: { value: String(position) } });
     expect(number).toHaveValue(seconds);
@@ -99,4 +101,25 @@ it.each([false, true])("supports exact numeric lengths and the two slider interv
     fireEvent.change(number, { target: { value } });
     expect(save).toBeDisabled();
   }
+});
+
+it.each(["", "claymation"])("creates a project with Look %s and an automatically sized timeline", (look) => {
+  const onCreate = vi.fn(async (_input: CreateProjectInput) => {});
+  render(<PromptComposer busy={false} onClose={vi.fn()} onCreate={onCreate} />);
+  expect(screen.queryByLabelText("Length in seconds")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Default Look"), { target: { value: look } });
+  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ defaultLook: look || null, targetDurationSeconds: 0 }));
+  expect(createProjectConfig(onCreate.mock.calls[0][0]).settings.defaultLook ?? null).toBe(look || null);
+});
+
+it("preserves an automatically extended project and allows clearing its default Look", () => {
+  const config = project().config;
+  config.brief.targetDurationSeconds = 730;
+  config.settings.defaultLook = "watercolor";
+  const onSubmit = vi.fn(async (_input: CreateProjectInput) => {});
+  render(<PromptComposer project={config} busy={false} onClose={vi.fn()} onCreate={onSubmit} />);
+  fireEvent.change(screen.getByLabelText("Default Look"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetDurationSeconds: 730, defaultLook: null }));
 });

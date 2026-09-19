@@ -1,4 +1,11 @@
-import type { TimelineClip, TimelineTrack } from "./project";
+import type { ProjectConfig, TimelineClip, TimelineTrack } from "./project";
+
+/** Grow to contain an edit, retaining the existing length when clips move left or are removed. */
+export function withTimelineTracks(config: ProjectConfig, tracks: TimelineTrack[]): ProjectConfig {
+  const end = tracks.reduce((furthest, track) => track.clips.reduce((value, clip) => Math.max(value, clipEndMs(clip)), furthest), 0);
+  const targetDurationSeconds = Math.max(config.brief.targetDurationSeconds, Math.ceil(end / 1000));
+  return { ...config, brief: { ...config.brief, targetDurationSeconds }, timeline: { tracks } };
+}
 
 /* Editing the timeline, as arithmetic.
  *

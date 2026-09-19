@@ -619,6 +619,7 @@ describe("project workspace timecode", () => {
     fireEvent.dragStart(cardFor(known.assets[0]), { dataTransfer: transfer });
     fireEvent.drop(laneAt(first.container, 0), { dataTransfer: transfer });
     expect(droppedClip(first.onChange, known).durationMs).toBe(40_000);
+    expect(wrote(first.onChange.mock.calls[0][0], known).brief.targetDurationSeconds).toBe(40);
     expect(parseProjectConfig(wrote(first.onChange.mock.calls[0][0], known))).toBeTruthy();
     cleanup();
 
@@ -630,6 +631,22 @@ describe("project workspace timecode", () => {
     fireEvent.dragStart(cardFor(unknown.assets[0]), { dataTransfer: transferTwo });
     fireEvent.drop(laneAt(second.container, 0), { dataTransfer: transferTwo });
     expect(droppedClip(second.onChange, unknown).durationMs).toBe(5_000);
+  });
+
+  it("keeps a long drop at the requested position and grows the saved project beyond ten minutes", () => {
+    const config = measuredVideo(projectWithMedia(), 700_000);
+    const view = mediaPanel(config);
+    const lane = laneAt(view.container, 0) as HTMLElement;
+    lane.getBoundingClientRect = () => ({ left: 100, width: 1000 } as DOMRect);
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(cardFor(config.assets[0]), { dataTransfer });
+    const drop = createEvent.drop(lane, { dataTransfer });
+    Object.defineProperty(drop, "clientX", { value: 1100 });
+    fireEvent(lane, drop);
+    const next = wrote(view.onChange.mock.calls[0][0], config);
+    expect(next.timeline.tracks.flatMap((track) => track.clips)[0]).toMatchObject({ startMs: 30_000, durationMs: 700_000 });
+    expect(next.brief.targetDurationSeconds).toBe(730);
+    expect(parseProjectConfig(next)).toBeTruthy();
   });
 
   it("uses an editable clip name as the inspector heading", () => {
@@ -729,6 +746,16 @@ describe("project workspace timecode", () => {
     expect(parseProjectConfig(view.written()!)).toBeTruthy();
 
     stopHitTesting();
+  });
+
+  it("extends the project when an existing clip is dragged past its end", () => {
+    const config = withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 4_000 }]);
+    const view = timeline(config);
+    drag(view.container.querySelector(".timeline-clip")!, 20, 1220);
+    const moved = view.clipsOn(STORY_TRACK_ID)[0];
+    expect(moved.startMs).toBe(36_000);
+    expect(view.written()!.brief.targetDurationSeconds).toBe(40);
+    expect(parseProjectConfig(view.written()!)).toBeTruthy();
   });
 
   it("moves audio-only media from one audiovisual track to another", () => {

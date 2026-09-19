@@ -267,8 +267,9 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, references, previousScene, defaultSteps, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, animate = false }: {
+export function SceneInspector({ job, shots, references, previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, animate = false }: {
   animate?: boolean;
+  defaultLook?: string | null;
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
@@ -326,6 +327,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           <option value="">None</option>
           {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
+        {!chosen && defaultLook && <small>Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</small>}
       </label>}
       <div className="scene-settings__field">
         <span>{animate ? "Repainted scene frame" : "Start frame"}</span>

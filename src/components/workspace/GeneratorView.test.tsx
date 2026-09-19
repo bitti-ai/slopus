@@ -174,6 +174,20 @@ async function finishFirst(state: ReturnType<typeof setup>) {
 }
 
 describe("Generator scene controls", () => {
+  it.each([["", "Watercolor"], ["claymation", "Claymation"]])("compiles scene Look %s with the project's default", async (sceneLook, expected) => {
+    const initial = project();
+    initial.settings.defaultLook = "watercolor";
+    const state = setup(initial);
+    const selector = screen.getByRole("combobox", { name: "The look of this scene" });
+    expect(selector).toHaveValue("");
+    expect(screen.getByText("Using project Look: Watercolor.")).toBeInTheDocument();
+    if (sceneLook) fireEvent.change(selector, { target: { value: sceneLook } });
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).prompt).toContain(expected);
+    if (!sceneLook) expect(sceneShots(state.latest().generationJobs[0])[0].settings?.visualStyle).toBeUndefined();
+  });
+
   it("only shows debug prompts when enabled, in a closable popup outside the inspector", () => {
     setup();
     expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();

@@ -543,8 +543,8 @@ fn validator_rejects_what_the_frontend_schema_rejects() {
     rejects("unsupported brief status", |config| {
         config.brief.status = "done".into();
     });
-    rejects("target duration above 600 seconds", |config| {
-        config.brief.target_duration_seconds = 900;
+    rejects("invalid project Look", |config| {
+        config.settings.default_look = Some("not a look id".into());
     });
     rejects("unsupported brief aspect ratio", |config| {
         config.brief.aspect_ratio = "21:9".into();
@@ -649,7 +649,7 @@ fn validator_accepts_every_boundary_the_frontend_schema_allows() {
             "rejected valid background color {background_color}"
         );
     }
-    for seconds in [0u32, 1, 5, 60, 600] {
+    for seconds in [0u32, 1, 5, 60, 600, 900, 7200] {
         let mut config = fixture();
         config.brief.target_duration_seconds = seconds;
         assert!(

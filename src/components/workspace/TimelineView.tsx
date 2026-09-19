@@ -20,7 +20,7 @@ import {
   type TimelineTrack,
 } from "../../lib/project";
 import {
-  clipEndMs, findClip, insertClip, moveClip, removeClip, snapTargets, sourceRoom, trimClip,
+  clipEndMs, findClip, insertClip, moveClip, removeClip, snapTargets, sourceRoom, trimClip, withTimelineTracks,
   type SnapOptions, type SourceRoom,
 } from "../../lib/timeline";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
@@ -286,7 +286,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      seconds long would go back to being an unmeasured file, and the next drop
      of it would be a 5-second stand-in. */
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) =>
-    onChange((current) => ({ ...current, timeline: { tracks: nextTracks } }));
+    onChange((current) => withTimelineTracks(current, nextTracks));
   const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
   const updateTransform = (key: keyof NonNullable<TimelineClip["transform"]>, value: number) => {
@@ -495,15 +495,10 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
        image and a file nothing could measure have no length to honour, so they
        get the stated default — see DROPPED_CLIP_MS. */
     const durationMs = asset.durationMs && asset.durationMs > 0 ? asset.durationMs : DROPPED_CLIP_MS;
-    /* Clamp so a drop near the right edge still lands a whole clip on the
-       ruler, against THIS clip's length rather than the 5s default — a long
-       import dropped at the end used to run off the end of the canvas.
-       Math.max last, because a clip longer than the whole canvas makes
-       `duration - durationMs` negative and 0 is the only honest start.
-       A non-finite ratio (a zero-width lane, a lane that has not been laid out
-       yet) would carry NaN into startMs, which zod then refuses to save. */
+    /* Honor the drop position and grow the project to fit the entire clip.
+       A lane not yet laid out has no finite ratio; its drop starts at zero. */
     const position = Number.isFinite(ratio) ? ratio * duration : 0;
-    const startMs = Math.round(Math.max(0, Math.min(duration - durationMs, position)));
+    const startMs = Math.round(Math.max(0, position));
     const clip: TimelineClip = {
       id: `clip-${crypto.randomUUID()}`,
       assetId: asset.id,
@@ -558,7 +553,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       };
       const currentDuration = canvasDuration(current);
       const position = Number.isFinite(ratio) ? ratio * currentDuration : 0;
-      const startMs = Math.round(Math.max(0, Math.min(currentDuration - sceneLengthMs, position)));
+      const startMs = Math.round(Math.max(0, position));
       const clip: TimelineClip = {
         id: clipId,
         assetId: asset.id,
@@ -577,7 +572,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       const nextTracks = insertClip(current.timeline.tracks, trackId, clip, startMs, snap);
       if (!nextTracks) return current;
       const assets = existing ? current.assets : [...current.assets, asset];
-      return { ...current, assets, timeline: { tracks: nextTracks } };
+      return withTimelineTracks({ ...current, assets }, nextTracks);
     });
     setSelectedId(clipId);
   };
