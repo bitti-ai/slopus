@@ -53,8 +53,8 @@ describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
-  it("uses a named New Project form with numeric length and a slider up to 10 minutes", async () => {
-    const { container } = render(<App />);
+  it("uses a named New Project form with a default Look instead of a length", async () => {
+    render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
     expect(screen.getByRole("dialog", { name: "New project" })).not.toBeNull();
@@ -64,17 +64,12 @@ describe("project library controls", () => {
     expect(screen.queryByText(/Add reference images/)).toBeNull();
     expect(screen.queryByText(/Not sure where to start/)).toBeNull();
 
-    const length = screen.getByRole("slider", { name: "Length slider" });
-    expect(length).toHaveAttribute("aria-valuemin", "0");
-    expect(length).toHaveAttribute("aria-valuemax", "600");
-    expect(length).toHaveAttribute("step", "1");
-    expect(length).toHaveAttribute("aria-valuetext", "30 seconds");
-    const number = screen.getByRole("spinbutton", { name: "Length in seconds" });
-    fireEvent.change(number, { target: { value: "137" } });
-    expect(container.querySelector(".composer__options-value")!.textContent).toContain("2 minutes 17 seconds");
-    expect(length).toHaveAttribute("aria-valuetext", "2 minutes 17 seconds");
-    fireEvent.change(length, { target: { value: "114" } });
-    expect(length).toHaveAttribute("aria-valuetext", "10 minutes");
+    expect(screen.queryByLabelText("Length in seconds")).toBeNull();
+    expect(screen.queryByLabelText("Length slider")).toBeNull();
+    const look = screen.getByRole("combobox", { name: "Default Look" });
+    expect(look).toHaveValue("");
+    fireEvent.change(look, { target: { value: "watercolor" } });
+    expect(look).toHaveValue("watercolor");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
   });
 
@@ -152,7 +147,7 @@ describe("project library controls", () => {
     // The settings header says the same numbers as the always-visible fields.
     fireEvent.change(size, { target: { value: "544p" } });
     expect(document.querySelector(".composer__options-value")!.textContent)
-      .toBe("Vertical 9:16 · 544 × 960 · 30 seconds");
+      .toBe("Vertical 9:16 · 544 × 960");
   });
 
   it("opens a newly named empty project on its Agent starting page", async () => {

@@ -60,11 +60,13 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             config.brief.status
         ));
     }
-    if config.brief.target_duration_seconds > 600 {
-        return Err(format!(
-            "Target duration must be between 0 and 600 seconds, received {}.",
-            config.brief.target_duration_seconds
-        ));
+    if config
+        .settings
+        .default_look
+        .as_ref()
+        .is_some_and(|look| !is_shot_tag_id(look))
+    {
+        return Err("Project default Look has an invalid id.".into());
     }
     if !is_supported_aspect_ratio(&config.brief.aspect_ratio) {
         return Err(format!(

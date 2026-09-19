@@ -209,6 +209,22 @@ fn video_effects_survive_save_and_reopen() {
 }
 
 #[test]
+fn project_look_and_extended_duration_survive_save_and_reopen() {
+    let mut config = fixture();
+    config.settings.default_look = Some("watercolor".into());
+    config.brief.target_duration_seconds = 1800;
+    let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let folder = PathBuf::from(&created.folder_path);
+    assert_eq!(read_project(&folder).unwrap().config, config);
+    let mut cleared = config;
+    cleared.settings.default_look = None;
+    write_project(&folder, &cleared).unwrap();
+    assert_eq!(read_project(&folder).unwrap().config, cleared);
+}
+
+#[test]
 fn deletion_refuses_a_different_project_identity_and_keeps_the_folder() {
     let parent = tempfile::tempdir().unwrap();
     let project = project_folder_at(&parent.path().join("Keep this project"));

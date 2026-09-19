@@ -45,6 +45,8 @@ pub(crate) struct ProjectConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) default_look: Option<String>,
     pub(crate) aspect_ratio: String,
     pub(crate) resolution: String,
     pub(crate) frame_rate: u32,

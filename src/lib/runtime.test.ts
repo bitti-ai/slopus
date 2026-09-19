@@ -25,7 +25,10 @@ describe("deterministic browser runtime", () => {
     expect(next.brief).toMatchObject({ resolution: "544p", aspectRatio: "9:16", targetDurationSeconds: 90 });
     expect(next.timeline).toEqual(record.config.timeline);
     expect(record.config.brief.targetDurationSeconds).toBe(30);
-    await expect(executeAgentCommands(record.config, [{ op: "project.set", targetSeconds: 601 }])).rejects.toThrow();
+    await expect(executeAgentCommands(record.config, [{ op: "project.set", targetSeconds: 900 }])).resolves.toMatchObject({
+      brief: { targetDurationSeconds: 900 },
+    });
+    await expect(executeAgentCommands(record.config, [{ op: "project.set", targetSeconds: -1 }])).rejects.toThrow();
     await expect(executeAgentCommands(record.config, [{ op: "project.set", resolution: "8k" }])).rejects.toThrow();
     await expect(executeAgentCommands(record.config, [{ op: "project.set", aspectRatio: "21:9" }])).rejects.toThrow();
   });

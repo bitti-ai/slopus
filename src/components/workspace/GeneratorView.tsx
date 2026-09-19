@@ -302,7 +302,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // retimed shot reach the engine, rather than sending a prompt frozen at
       // draft-creation time. This is the ONE string slopfab is given, and it is
       // the same string the compiled-prompt panel shows.
-      prompt: animate ? "" : compileGenerationJobPrompt(inputs.job, bound),
+      prompt: animate ? "" : compileGenerationJobPrompt(inputs.job, bound, configRef.current.settings.defaultLook),
       ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
       ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
       // The scene's own length, not a fixed six seconds.
@@ -563,6 +563,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               job={selected}
               shots={selectedShots}
               defaultSteps={defaultGenerationSteps}
+              defaultLook={config.settings.defaultLook}
               disabled={false}
               references={config.references}
               importAvailable={isTauri()}
@@ -589,7 +590,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
     {debugEnabled && showDebugPrompt && selected && !openShot && <DebugPromptDialog
       sceneTitle={selected.title}
-      segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs)}
+      segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs, config.settings.defaultLook)}
       onClose={() => setShowDebugPrompt(false)}
     />}
 

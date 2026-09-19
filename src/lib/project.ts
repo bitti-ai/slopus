@@ -234,7 +234,7 @@ export const generationBriefSchema = z.object({
   /* Blank is a real empty project: no brief and no seeded scene. */
   prompt: z.string(),
   status: z.enum(["draft", "queued", "generating", "ready", "failed"]),
-  targetDurationSeconds: z.number().int().min(0).max(600),
+  targetDurationSeconds: z.number().int().min(0).max(4_294_967_295),
   aspectRatio: aspectRatioSchema,
   resolution: resolutionSchema,
 });
@@ -534,6 +534,7 @@ export const projectConfigSchema = z.object({
   updatedAt: isoDateSchema,
   thumbnail: projectRelativePathSchema.nullable(),
   settings: z.object({
+    defaultLook: z.string().regex(SHOT_TAG_ID_PATTERN).nullish(),
     aspectRatio: aspectRatioSchema,
     resolution: resolutionSchema,
     frameRate: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]),
@@ -596,6 +597,7 @@ export interface CreateProjectInput {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   targetDurationSeconds: number;
+  defaultLook?: string | null;
   projectDirectory?: string;
   referenceImages?: PendingReferenceImage[];
 }
@@ -964,12 +966,12 @@ export function compileMiniMaxH3PromptSegments(
   );
 }
 
-export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = []): PromptSegment[] {
-  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references);
+export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references, defaultLook);
 }
 
-export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = []): string {
-  return compileGenerationJobSegments(job, references).map((segment) => segment.value).join("");
+export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): string {
+  return compileGenerationJobSegments(job, references, defaultLook).map((segment) => segment.value).join("");
 }
 
 /** What one shot contributes, already split by who wrote it. */
@@ -988,7 +990,7 @@ interface CompiledShot {
   speechLanguage: SpeechLanguage;
 }
 
-export function compileScenePromptSegments(scene: ScenePrompt, references: ProjectReference[] = []): PromptSegment[] {
+export function compileScenePromptSegments(scene: ScenePrompt, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
   const shots = normalizeSceneShots(scene.shots.length > 0 ? scene.shots : [{ id: "shot-1", startSeconds: 0, action: "", settings: null }]);
   // Same filter pair as `usableImageReferences`, in the same order — see the
   // <Picture N> / reference_paths lockstep note on that function. An
@@ -1032,9 +1034,10 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
 
   // §4.1: the description opens with ONE overall style, so the first shot that
   // carries one sets it for the scene — the picker marks that setting scene-wide
-  // for the same reason. Without one, the guess from the user's own words
-  // stands and is marked as Slopus's doing.
-  const styleFromTag = compiled.map((shot) => shot.tags.style).find((style) => Boolean(style)) ?? null;
+  // for the same reason. Without one, use the project Look. When both are None,
+  // retain the guess from the user's own words, marked as Slopus's doing.
+  const styleFromTag = compiled.map((shot) => shot.tags.style).find((style) => Boolean(style))
+    ?? (defaultLook ? shotTagClauses({ visualStyle: [defaultLook] }).style : null);
   const style = styleFromTag ?? deriveH3Style(compiled.map((shot) => shot.text).join(" "));
   const styleSegment = styleFromTag ? tagged(style) : frame(style);
 
@@ -1358,7 +1361,7 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
     createdAt: now,
     updatedAt: now,
     thumbnail: null,
-    settings: { aspectRatio: input.aspectRatio, resolution: input.resolution, frameRate: 24, backgroundColor: "#10131a" },
+    settings: { aspectRatio: input.aspectRatio, resolution: input.resolution, frameRate: 24, backgroundColor: "#10131a", ...(input.defaultLook ? { defaultLook: input.defaultLook } : {}) },
     brief: {
       prompt: brief, status: "draft", targetDurationSeconds: input.targetDurationSeconds,
       aspectRatio: input.aspectRatio, resolution: input.resolution,
