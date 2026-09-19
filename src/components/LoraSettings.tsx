@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Download, FolderSearch, Layers, Plus, Trash2 } from "lucide-react";
 import "../styles/loras.css";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { highestLoraStepOverride, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
+import { effectiveLoraStrength, highestLoraStepOverride, isLoraMultiplier, isLoraStepOverride, loadLoras, MAX_LORA_MULTIPLIER, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath } from "../lib/runtime";
@@ -44,6 +44,8 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
   const existing = loadLoras().find(({ id }) => id === loraId);
   const [name, setName] = useState(existing?.name ?? "");
   const [path, setPath] = useState(existing?.path ?? "");
+  const [multiplier, setMultiplier] = useState(String(existing?.multiplier ?? 1));
+  const validMultiplier = multiplier.trim() !== "" && isLoraMultiplier(Number(multiplier));
   const [override, setOverride] = useState(existing?.stepOverride !== undefined);
   const [steps, setSteps] = useState(String(existing?.stepOverride ?? 3));
   const [error, setError] = useState<string | null>(null);
@@ -56,13 +58,13 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
     } catch (reason) { setError(String(reason)); }
   };
   const save = () => {
-    if (!name.trim() || (!path.trim() && !existing?.url)) return;
+    if (!name.trim() || (!path.trim() && !existing?.url) || !validMultiplier) return;
     if (path.trim() && (!/^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path.trim()) || path.includes("\0"))) {
       setError("Choose a local LoRA file using its absolute path."); return;
     }
     try {
       const library = loadLoras();
-      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), path: path.trim(), stepOverride: override ? Number(steps) : undefined };
+      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), path: path.trim(), multiplier: Number(multiplier), stepOverride: override ? Number(steps) : undefined };
       saveLoras(existing ? library.map((lora) => lora.id === loraId ? entry : lora) : [...library, entry]);
       onDone();
     } catch (reason) { setError(String(reason)); }
@@ -73,11 +75,13 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
       <label>Name<input aria-label="LoRA name" autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>Local file<div className="settings-path__row"><input aria-label="LoRA path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
         <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}><FolderSearch size={16} /> Browse</button></div></label>
+      <label>Multiplier<input aria-label="LoRA multiplier" aria-describedby="lora-multiplier-help" type="number" min={-MAX_LORA_MULTIPLIER} max={MAX_LORA_MULTIPLIER} step="any" value={multiplier} onChange={(event) => setMultiplier(event.target.value)} /></label>
+      <p id="lora-multiplier-help">Multiplies this LoRA's strength in every generator. 1 keeps the original strength, 0 disables it, and negative values reverse its effect.</p>
       <label className="lora-toggle"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /> Override step count</label>
       {override && <label>Step count<input aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
       <p>The highest override among active LoRAs replaces the scene's step count. Without an override, the scene's steps are used.</p>
       <p>The file stays in its current location.</p>
-      <button className="primary-button" type="button" disabled={!name.trim() || (!path.trim() && !existing?.url) || (override && !isLoraStepOverride(Number(steps)))} onClick={save}>{existing ? "Save Lora" : "Add Lora"}</button>
+      <button className="primary-button" type="button" disabled={!name.trim() || (!path.trim() && !existing?.url) || !validMultiplier || (override && !isLoraStepOverride(Number(steps)))} onClick={save}>{existing ? "Save Lora" : "Add Lora"}</button>
       {error && <p role="alert">{error}</p>}
     </div>
   </div>;
@@ -85,7 +89,8 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
 
 export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
   const library = useLoras();
-  const stepOverride = highestLoraStepOverride(value.filter((entry) => entry.enabled && entry.strength !== 0)
+  const active = value.filter((entry) => entry.enabled && effectiveLoraStrength(entry, library.find(({ id }) => id === entry.loraId)) !== 0);
+  const stepOverride = highestLoraStepOverride(active
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const available = library.filter((entry) => (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
   const update = (index: number, patch: Partial<TemplateLora>) => onChange(value.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
@@ -95,8 +100,8 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
     onChange(next);
   };
   return <section className="template-loras" aria-labelledby="template-loras-heading">
-    <h3 id="template-loras-heading">LoRAs <small>{value.filter((entry) => entry.enabled && entry.strength !== 0).length} active</small></h3>
-    <p>Enable any number of adapters and arrange their order. Strength 0 disables an adapter.</p>
+    <h3 id="template-loras-heading">LoRAs <small>{active.length} active</small></h3>
+    <p>Enable adapters and arrange their order. Strength is multiplied by each LoRA's multiplier in its settings. Either value at 0 disables the adapter.</p>
     <p>Missing active LoRAs with download links are downloaded with the generator.</p>
     {value.map((entry, index) => {
       const lora = library.find(({ id }) => id === entry.loraId);
@@ -105,6 +110,7 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
         <span>{index + 1}.</span>
         <label className="lora-toggle"><input type="checkbox" checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(event) => update(index, { enabled: event.target.checked })} /> {name}{!lora?.path && (lora?.url ? " (download required)" : " (file unavailable)")}</label>
         <label>Strength<input type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength} onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
+        {lora?.multiplier !== undefined && lora.multiplier !== 1 && <small aria-label={`${name} effective strength`}>× {lora.multiplier} = {Number(effectiveLoraStrength(entry, lora).toPrecision(6))}</small>}
         <button className="icon-button" type="button" aria-label={`Move ${name} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={15} /></button>
         <button className="icon-button" type="button" aria-label={`Move ${name} down`} disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={15} /></button>
         <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} onClick={() => onChange(value.filter((_, i) => i !== index))}><Trash2 size={15} /></button>

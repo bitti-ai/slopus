@@ -26,6 +26,13 @@ are passed to SlopFab in displayed order on both CUDA and Vulkan. SlopFab combin
 adapter updates by summing them. Negative strengths are supported. An active
 missing adapter causes an error rather than silently changing the generation.
 
+Open any LoRA from the library to set its **Multiplier** (default **1**).
+This multiplies its strength in every generator template. For example, a LoRA
+multiplier of **0.75** and a template strength of **0.5** send **0.375** to the
+engine. Negative values are supported. A multiplier of **0** disables the
+adapter, skips its download, and excludes its step override. Existing LoRAs
+without a saved multiplier keep their original strength.
+
 Open any LoRA from the library to edit its optional **Override step count**.
 Any supported scene step count (a whole number from 2 to 2147483647) is accepted.
 The highest override among enabled, nonzero-strength LoRAs replaces the scene's
