@@ -25,6 +25,21 @@ import {
 describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
 
+  it("persists MotionCache per template and replaces stale runtime options", () => {
+    const template = createGeneratorTemplate();
+    expect(template.motionCache ?? false).toBe(false);
+    template.motionCache = true;
+    saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 8 });
+    expect(loadGeneratorTemplateSettings().templates[0].motionCache).toBe(true);
+    const enabled = engineProviderSetting(template.paths);
+    expect(enabled.options.motionCache).toBe(true);
+    expect(engineProviderSetting(template.paths, enabled, template.attention, [], "prompt", [], false).options).not.toHaveProperty("motionCache");
+    expect(engineProviderSetting(template.paths, enabled, template.attention, [], "animate", [], true).options).not.toHaveProperty("motionCache");
+    template.motionCache = false;
+    saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 8 });
+    expect(engineProviderSetting(template.paths, enabled).options).not.toHaveProperty("motionCache");
+  });
+
   it("migrates the former flat engine paths into the Default template", () => {
     localStorage.setItem("slopus.engine-paths.v1", JSON.stringify({ transformer: "D:\\Models\\main.safetensors" }));
     const settings = loadGeneratorTemplateSettings();

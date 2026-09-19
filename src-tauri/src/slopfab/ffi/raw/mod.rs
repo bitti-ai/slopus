@@ -58,6 +58,8 @@ pub struct Output {
     pub steps_skipped: i32,
 }
 pub type ProgressFn = Option<unsafe extern "C" fn(*const Progress, *mut c_void)>;
+type SetMotionCache =
+    unsafe extern "C" fn(*mut Request, i32, f32, f32, i32, i32, f32, f32, i32, i32) -> i32;
 
 pub struct Api {
     _library: Library,
@@ -84,6 +86,7 @@ pub struct Api {
     add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
     add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
     set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
+    set_motion_cache: Option<SetMotionCache>,
     set_inference_backend: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_verbose: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_reuse_models: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -215,6 +218,10 @@ impl Api {
                     "slopfab_request_set_attention",
                     unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                 ),
+                set_motion_cache: library
+                    .get::<SetMotionCache>(b"slopfab_request_set_motion_cache\0")
+                    .ok()
+                    .map(|symbol| *symbol),
                 set_inference_backend: symbol!(
                     "slopfab_request_set_inference_backend",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -390,6 +397,21 @@ impl Api {
     pub fn set_attention(&self, r: *mut Request, v: &str) -> Result<(), String> {
         let v = CString::new(v).map_err(|_| "Attention mode contains a null byte.".to_string())?;
         self.error(unsafe { (self.set_attention)(r, v.as_ptr()) })
+    }
+    pub fn set_motion_cache(&self, r: *mut Request, enabled: bool) -> Result<(), String> {
+        let Some(set) = self.set_motion_cache else {
+            return if enabled {
+                Err("This slopfab.dll does not support MotionCache. Update the runtime or disable MotionCache in the generator template.".into())
+            } else {
+                Ok(())
+            };
+        };
+        // Defaults from slopfab/capi.h; the UI exposes only the enable switch.
+        self.error(unsafe { set(r, enabled as i32, 0.15, 1.0, 4, 2, 0.15, 0.95, 8, 0) })
+    }
+    #[cfg(test)]
+    pub fn disable_motion_cache_for_test(&mut self) {
+        self.set_motion_cache = None;
     }
     pub fn set_inference_backend(&self, r: *mut Request, backend: i32) -> Result<(), String> {
         self.error(unsafe { (self.set_inference_backend)(r, backend) })

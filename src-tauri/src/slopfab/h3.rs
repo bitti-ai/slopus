@@ -57,6 +57,7 @@ pub(super) fn configure_request(
     api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
+    api.set_motion_cache(handle, configuration.motion_cache)?;
     api.set_verbose(handle, false)?;
     if let Some(path) = &request.continuation_path {
         api.set_continuation_file(

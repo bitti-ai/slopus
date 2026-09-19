@@ -48,6 +48,17 @@ are injected into runtime requests and are not saved into portable project files
 
 ## Model weights
 
+Generator templates also offer **Enable MotionCache**, off by default. It uses
+SlopFab's default motion-aware denoising reuse settings on CUDA and Vulkan.
+Reuse can reduce transformer calls but may change detail and motion; short
+schedules may finish without reuse. It is unavailable in Animate mode. The
+preference is saved per template and applies to subsequent generation requests.
+Older runtimes remain usable with it off and report a clear error if enabled
+without MotionCache support.
+
+The native defaults are threshold 0.15, motion strength 1, warmup 4 calls,
+at most 2 consecutive skips, active range 0.15–0.95, and subsampling stride 8.
+
 In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
 The bundled **First/Last Frame** (formerly **Minimax H3 Original**),

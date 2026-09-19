@@ -14,6 +14,7 @@ pub(super) struct Configuration {
     pub(super) dll_path: PathBuf,
     pub(super) vulkan: bool,
     pub(super) attention: &'static str,
+    pub(super) motion_cache: bool,
     pub(super) animate: bool,
     pub(super) prompt_embedding: Option<PathBuf>,
     pub(super) models: [(i32, &'static str, Option<PathBuf>); 5],
@@ -45,6 +46,10 @@ impl Configuration {
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             vulkan: string_option("inferenceBackend") == Some("vulkan"),
             animate: string_option("generationMode") == Some("animate"),
+            motion_cache: matches!(
+                slopfab.and_then(|setting| setting.options.get("motionCache")),
+                Some(ProviderOption::Boolean(true))
+            ),
             prompt_embedding: option("promptEmbedding"),
             attention: match string_option("attention") {
                 Some("exact") => "exact",
@@ -82,6 +87,9 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if self.animate && self.motion_cache {
+            return Err("MotionCache is unavailable in Animate mode.".into());
+        }
         if self.animate {
             if request.still_image {
                 return Err("Animate requires video generation.".into());
@@ -144,9 +152,10 @@ impl Configuration {
             })
             .unwrap_or_default();
         format!(
-            "slopfab={version}|platform={}|attention={}|{models}|loras={adapters}|steps={:?}",
+            "slopfab={version}|platform={}|attention={}|motionCache={}|{models}|loras={adapters}|steps={:?}",
             platform.label(),
             self.attention,
+            self.motion_cache,
             self.step_override
         )
     }
