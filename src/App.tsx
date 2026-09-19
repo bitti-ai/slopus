@@ -56,8 +56,7 @@ function App() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectRecord | null>(null);
   const [deletingProject, setDeletingProject] = useState(false);
-  /* Settings is an overlay rather than a view of its own so opening it from
-     inside a project cannot unmount the editor and throw away unsaved edits.
+  /* Settings hides the workspace without unmounting the editor, preserving edits.
      Closing it bumps `settingsRevision`, which is what tells an open project to
      look for the video engine again — the whole point of the screen is fixing
      the engine paths, and the Generator would otherwise go on reporting the
@@ -78,7 +77,12 @@ function App() {
   const updateNotice = ["available", "restart"].includes(updateState.stage) && !settingsOpen
     ? <button className="secondary-button update-notice" onClick={() => { setSettingsInitialTab("updates"); setSettingsOpen(true); }}>{updateState.stage === "restart" ? "Restart to finish updating Slopus" : `Slopus ${updateState.version} is available`}</button> : null;
   const [settingsRevision, setSettingsRevision] = useState(0);
-  const closeSettings = () => { setSettingsOpen(false); setSettingsRevision((value) => value + 1); };
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    setSettingsRevision((value) => value + 1);
+    requestAnimationFrame(() => settingsButton.current?.focus());
+  };
   /* What is installed on this computer. Probed ONCE here rather than every
      time a project opens: it launches two agent CLIs and loads the engine DLL,
      which is seconds of work, and the answer is the same for every project.
@@ -147,7 +151,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Re-probed when the settings overlay closes, because that is where the
+    // Re-probed when the settings page closes, because that is where the
     // engine paths get fixed.
     let live = true;
     setRuntime(null);
@@ -163,6 +167,7 @@ function App() {
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
+      if (settingsOpen) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         searchInput.current?.focus();
@@ -170,7 +175,7 @@ function App() {
     };
     window.addEventListener("keydown", focusSearch);
     return () => window.removeEventListener("keydown", focusSearch);
-  }, []);
+  }, [settingsOpen]);
 
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -240,7 +245,7 @@ function App() {
      paths it holds are what makes generation work at all, and finding out they
      are wrong happens inside a project, not in the library. */
   const settingsLauncher = (
-    <button className="settings-launcher" type="button" onClick={() => { setSettingsInitialTab("engine"); setSettingsOpen(true); }} title="Settings" aria-label="Settings">
+    <button ref={settingsButton} className="settings-launcher" type="button" onClick={() => { setSettingsInitialTab("engine"); setSettingsOpen(true); }} title="Settings" aria-label="Settings">
       <Settings size={22} aria-hidden="true" />
     </button>
   );
@@ -256,10 +261,12 @@ function App() {
 
   if (activeProject) {
     return <>
+      <div hidden={settingsOpen}>
       <ProjectWorkspace key={projectQueueKey(activeProject)} project={activeProject} initialView={activeProjectInitialView} runtime={runtime} workQueue={workQueue} onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))} onBack={() => setActiveProject(null)} onSave={async () => { await workQueue.project(activeProject).save(); }} />
       {settingsLauncher}
       {queueLauncher}
       {queuePanel}
+      </div>
       {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
       {updateNotice}
       <UpdateProgress updater={updater} />
@@ -271,6 +278,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <div hidden={settingsOpen}>
       <main className="library">
         <header className="library__topbar">
           <Brand />
@@ -317,6 +325,7 @@ function App() {
       {queueLauncher}
       {queuePanel}
       {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
+      </div>
       {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
       {updateNotice}
       <UpdateProgress updater={updater} />

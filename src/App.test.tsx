@@ -159,6 +159,17 @@ describe("project library controls", () => {
     expect(await screen.findByRole("heading", { name: "What should we create today?" })).not.toBeNull();
     expect(screen.getByText("Ceramic lamp film")).not.toBeNull();
     expect(screen.queryByText("First scene")).toBeNull();
+    const draft = screen.getByRole("textbox", { name: /Ask Slop about/ });
+    fireEvent.change(draft, { target: { value: "Keep this unfinished idea" } });
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const settings = screen.getByRole("main", { name: "Settings" });
+    expect(screen.queryByRole("textbox", { name: /Ask Slop about/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    fireEvent.keyDown(settings, { key: "Escape" });
+    expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: /Ask Slop about/ })).toBe(draft);
+    expect(draft).toHaveValue("Keep this unfinished idea");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus());
   });
 
   it("creates an empty project when the new-project form is left blank", async () => {

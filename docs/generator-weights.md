@@ -1,5 +1,9 @@
 # Generator weights
 
+Settings opens as a full-screen page with sections in the left sidebar. The
+sidebar stays available while editing generators and LoRAs. **Back** or Escape
+returns to the previous screen, preserving the open project's edits.
+
 ## LoRAs
 
 Settings → Generators includes a separate **LoRAs** library. **TaoMate 3-Step**
