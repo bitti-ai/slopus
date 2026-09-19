@@ -37,6 +37,29 @@ describe("the frame the tabs sit in", () => {
 });
 
 describe("the settings screen", () => {
+  it("remembers MotionCache per generator and disables it in Animate mode", () => {
+    const view = open();
+    editDefaultGenerator();
+    const toggle = () => screen.getByRole("checkbox", { name: "Enable MotionCache" }) as HTMLInputElement;
+    expect(toggle().checked).toBe(false);
+    fireEvent.click(toggle());
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.motionCache).toBe(true);
+    fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "animate" } });
+    expect(toggle().checked).toBe(false);
+    expect(toggle().disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "prompt" } });
+    expect(toggle().checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "New generator" }));
+    expect(toggle().checked).toBe(false);
+    view.unmount();
+    open();
+    editDefaultGenerator();
+    expect(toggle().checked).toBe(true);
+    fireEvent.click(toggle());
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.motionCache).toBe(false);
+  });
+
   it("defaults to Sage and remembers each generator's attention", () => {
     const view = open();
     editDefaultGenerator();

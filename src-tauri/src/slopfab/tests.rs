@@ -406,6 +406,74 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
 }
 
 #[test]
+fn motion_cache_reaches_cuda_and_vulkan_requests_and_changes_timing_profile() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([("motionCache".into(), ProviderOption::Boolean(true))]),
+        },
+    )]));
+    assert!(configuration.motion_cache);
+    assert!(!Configuration::from_settings(&BTreeMap::new()).motion_cache);
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request = GenerationRequest {
+        prompt: "A quiet harbour.".into(),
+        frames: 120,
+        steps: 20,
+        seed: 1,
+        canvas_width: 736,
+        canvas_height: 416,
+        ..Default::default()
+    };
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        let enabled_profile = configuration.timing_profile("test", platform);
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(
+                &api,
+                &handle,
+                &request,
+                &configuration,
+                platform,
+                purpose,
+                &ReferenceVideos::default(),
+            )
+            .unwrap();
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("MotionCache"), "{description}");
+            assert!(description.contains("threshold 0.150"), "{description}");
+            api.set_motion_cache(&handle, false).unwrap();
+            assert!(!api.describe(&handle).unwrap().contains("MotionCache"));
+        }
+        configuration.motion_cache = false;
+        assert_ne!(
+            enabled_profile,
+            configuration.timing_profile("test", platform)
+        );
+        configuration.motion_cache = true;
+    }
+    configuration.animate = true;
+    assert!(configuration
+        .validate_inputs(&request)
+        .unwrap_err()
+        .contains("MotionCache is unavailable in Animate"));
+}
+
+#[test]
+fn older_runtimes_work_with_motion_cache_off_and_explain_missing_support() {
+    let mut api = ffi::Api::load(&default_dll_path()).unwrap();
+    api.disable_motion_cache_for_test();
+    let handle = RequestHandle::new(&api).unwrap();
+    api.set_motion_cache(&handle, false).unwrap();
+    assert!(api
+        .set_motion_cache(&handle, true)
+        .unwrap_err()
+        .contains("does not support MotionCache"));
+}
+
+#[test]
 fn ordered_loras_and_step_override_reach_cuda_and_vulkan_requests() {
     let references = ReferenceVideos::default();
     let root = tempfile::tempdir().unwrap();

@@ -59,7 +59,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const runtimeProbe = useRef(0);
   const [loraLibrary, setLoraLibrary] = useState(loadLoras);
   useEffect(() => subscribeLoras(() => setLoraLibrary(loadLoras())), []);
-  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.additionalSafetensors, loraLibrary]);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.motionCache, selectedTemplate.loras, selectedTemplate.additionalSafetensors, loraLibrary]);
   const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
@@ -107,7 +107,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
     if (!selectedTemplate.id) return;
-    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? []).then((status) => {
+    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false).then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);

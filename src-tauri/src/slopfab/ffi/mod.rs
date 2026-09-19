@@ -42,6 +42,12 @@ impl Api {
             .expect("configure API before creating handles")
             .disable_animate_for_test();
     }
+    #[cfg(test)]
+    pub fn disable_motion_cache_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner)
+            .expect("configure API before creating handles")
+            .disable_motion_cache_for_test();
+    }
     fn check(&self, r: &RequestHandle) -> Result<(), String> {
         if Arc::ptr_eq(&self.inner, &r.api.inner) {
             Ok(())
@@ -106,6 +112,10 @@ impl Api {
     pub fn set_attention(&self, r: &RequestHandle, v: &str) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_attention(r.pointer.as_ptr(), v)
+    }
+    pub fn set_motion_cache(&self, r: &RequestHandle, enabled: bool) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_motion_cache(r.pointer.as_ptr(), enabled)
     }
     pub fn set_inference_backend(&self, r: &RequestHandle, backend: i32) -> Result<(), String> {
         self.check(r)?;

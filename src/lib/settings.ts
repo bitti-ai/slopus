@@ -72,6 +72,7 @@ export interface GeneratorTemplate {
   name: string;
   defaultSteps: number;
   attention: AttentionMode;
+  motionCache?: boolean;
   mode?: "prompt" | "animate";
   paths: EngineSettings;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
@@ -285,6 +286,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
     return [{ id, name, defaultSteps, attention, paths, sources,
+      ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
       ...(candidate.additionalSafetensors !== undefined ? { additionalSafetensors } : {}),
       ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
       ...(candidate.loras !== undefined ? { loras: normalizeTemplateLoras(candidate.loras) } : {}) }];
@@ -458,7 +460,7 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false): ProviderSetting {
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
@@ -466,6 +468,8 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.stepOverride;
   delete options.generationMode;
   delete options.promptEmbedding;
+  delete options.motionCache;
+  if (motionCache && mode !== "animate") options.motionCache = true;
   if (mode === "animate") options.generationMode = "animate";
   if (mode === "animate") {
     const path = additionalSafetensors?.find((file) => file.role === "promptEmbedding")?.downloadedPath;

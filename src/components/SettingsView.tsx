@@ -303,12 +303,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? []).then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false).then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
     });
-  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode, selectedTemplate.additionalSafetensors]);
+  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode, selectedTemplate.additionalSafetensors, selectedTemplate.motionCache]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -373,7 +373,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -571,6 +571,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </select>
                 </label>
               </div>
+              <label className="lora-toggle">
+                <input type="checkbox" aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
+                  checked={selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={selectedTemplate.mode === "animate"}
+                  onChange={(event) => updateTemplate({ motionCache: event.target.checked })} />
+                Enable MotionCache
+              </label>
+              <p id="motion-cache-help">{selectedTemplate.mode === "animate" ? "MotionCache is unavailable in Animate mode." : "Reuses similar denoising results to reduce computation. May affect detail and motion; short generations may not reuse any steps."}</p>
               <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
                 <span><i />{engineHeadline(status, desktop)}</span>
                 <p>{engineDetail(status, desktop, missing.length)}</p>

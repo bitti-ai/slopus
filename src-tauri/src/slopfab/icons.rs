@@ -110,6 +110,7 @@ pub fn generate_reference_icon_batch(
         step_override: Ok(None),
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
+        motion_cache: false,
         animate: false,
         prompt_embedding: None,
         models: [
