@@ -35,11 +35,13 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
   const [dragging, setDragging] = useState(false);
   const selectionPlayback = useRef(false);
   const frameCallback = useRef<number | null>(null);
+  const previewEdge = useRef<"start" | "end">("start");
   useEffect(() => {
     let disposed = false;
     let owned: string | null = null;
     setUrl(null); setError(null); setSourceDuration(null); setPreviewing(false);
     selectionPlayback.current = false;
+    previewEdge.current = "start";
     gesture.current = null; setDragging(false);
     void readMediaFileUrl(folderPath, reference, "video/mp4").then((value) => {
       if (disposed) { if (value) URL.revokeObjectURL(value); return; }
@@ -71,12 +73,20 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
   }, [url]);
   useEffect(() => {
     stop();
-    if (video.current && sourceDuration !== null) video.current.currentTime = start;
+    const time = previewEdge.current === "end" ? end : start;
+    if (video.current && sourceDuration !== null && video.current.currentTime !== time) video.current.currentTime = time;
   }, [start, length]);
 
+  const previewTrim = (action: TrimAction, selection: ReferenceVideoTrim) => {
+    stop();
+    previewEdge.current = action === "end" || action === "duration" ? "end" : "start";
+    const time = selection.startSeconds + (previewEdge.current === "end" ? selection.durationSeconds : 0);
+    if (video.current && video.current.currentTime !== time) video.current.currentTime = time;
+  };
   const change = (action: TrimAction, value: number, original = trim) => {
     if (!original || sourceDuration === null) return;
     const next = editReferenceVideoTrim(original, sourceDuration, action, value);
+    previewTrim(action, next);
     onChange({ ...next, includeAudio: reference.video?.includeAudio ?? true });
   };
   const checkPlayback = () => {
@@ -101,7 +111,7 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
     event.preventDefault(); event.stopPropagation();
     const box = bar.current.getBoundingClientRect();
     if (!box.width) return;
-    stop();
+    previewTrim(action, trim);
     gesture.current = { pointerId: event.pointerId, action, x: event.clientX, width: box.width, trim, windowStart, windowDuration };
     bar.current.setPointerCapture(event.pointerId);
     setDragging(true);

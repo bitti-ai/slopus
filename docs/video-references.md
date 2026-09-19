@@ -76,7 +76,9 @@ selection limit. The handles also support arrow keys (0.1 seconds), Shift+arrow
 You can also seek in the video player and choose **Start at playhead**.
 **Play selection** previews only the chosen segment and stops at its end.
 **Include sound** controls the selected interval's soundtrack. Changing the
-selection seeks the existing player without reloading the source. The segment
+selection seeks the existing player without reloading the source. Trimming the
+start previews the start frame; trimming the end previews the end frame, which
+remains visible after releasing the handle. The segment
 and sound setting are saved with the project and used during generation.
 
 Each selected clip must last 2–15 seconds. A generation can use up to three video clips
