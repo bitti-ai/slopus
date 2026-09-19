@@ -1,10 +1,37 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
-import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
+import { downloadableTemplateLoras, loadLoras, MAX_LORA_MULTIPLIER, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
 beforeEach(() => localStorage.clear());
+
+it("persists library multipliers and combines them with template strengths for generation", () => {
+  saveLoras([
+    { id: "style", name: "Style", path: "D:/style.safetensors", multiplier: 0.75 },
+    { ...TURBO_LORA, multiplier: 0 },
+  ]);
+  const selection = [
+    { loraId: "style", enabled: true, strength: -0.5 },
+    { loraId: TURBO_LORA.id, enabled: true, strength: 1 },
+  ];
+  expect(loadLoras().find(({ id }) => id === "style")?.multiplier).toBe(0.75);
+  expect(downloadableTemplateLoras(selection)).toEqual([]);
+  const options = engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", selection).options;
+  expect(JSON.parse(options.loras as string)).toEqual([{ path: "D:/style.safetensors", strength: -0.375 }]);
+  expect(options).not.toHaveProperty("stepOverride");
+});
+
+it.each([NaN, Infinity, -Infinity, 1e39])("rejects invalid library multiplier %s", (multiplier) => {
+  expect(() => saveLoras([{ ...TURBO_LORA, multiplier }])).toThrow("LoRA multiplier must be a finite number");
+});
+
+it("rejects combined strengths outside the engine's numeric range", () => {
+  saveLoras([{ ...TURBO_LORA, path: "D:/turbo.safetensors", multiplier: MAX_LORA_MULTIPLIER }]);
+  expect(() => engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", [
+    { loraId: TURBO_LORA.id, enabled: true, strength: 2 },
+  ])).toThrow("Combined multiplier for LoRA Turbo");
+});
 
 it("migrates the old schedule to an editable step override", () => {
   localStorage.setItem("slopus.loras.v1", JSON.stringify([{ id: "legacy", name: "Legacy", path: "D:/legacy.safetensors", schedule: "taomate-3step" }]));

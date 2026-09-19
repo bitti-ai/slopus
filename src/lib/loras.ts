@@ -7,6 +7,7 @@ export interface Lora {
   path: string;
   url?: string;
   stepOverride?: number;
+  multiplier?: number;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
 export const TAOMATE_LORA: Lora = {
@@ -36,6 +37,7 @@ export function loadLoras(): Lora[] {
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
+        ...(isLoraMultiplier(entry.multiplier) ? { multiplier: entry.multiplier } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
     }) : [];
@@ -46,6 +48,9 @@ export function loadLoras(): Lora[] {
   } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
+  if (loras.some((lora) => lora.multiplier !== undefined && !isLoraMultiplier(lora.multiplier))) {
+    throw new Error("LoRA multiplier must be a finite number within the supported range.");
+  }
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
     throw new Error(`Step override must be a whole number from 2 to ${MAX_GENERATION_STEPS}.`);
   }
@@ -64,25 +69,38 @@ export function normalizeTemplateLoras(value: unknown): TemplateLora[] {
     if (!entry || typeof entry.loraId !== "string" || !entry.loraId || ids.has(entry.loraId)) return [];
     ids.add(entry.loraId);
     return [{ loraId: entry.loraId, enabled: entry.enabled !== false,
-      strength: typeof entry.strength === "number" && Number.isFinite(entry.strength) && Math.abs(entry.strength) <= 3.4028234663852886e38 ? entry.strength : 1 }];
+      strength: isLoraMultiplier(entry.strength) ? entry.strength : 1 }];
   }) : [];
 }
 
 export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[] {
   const active = new Set(selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
-  return loadLoras().filter((lora) => active.has(lora.id) && lora.url
+  return loadLoras().filter((lora) => active.has(lora.id) && lora.multiplier !== 0 && lora.url
     && (!lora.path.trim() || /^https?:\/\//i.test(lora.path)));
 }
 
 export function resolveTemplateLoras(selection: TemplateLora[] = []) {
   const library = loadLoras();
-  return selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => {
+  return selection.filter((entry) => entry.enabled && entry.strength !== 0).flatMap((entry) => {
     const lora = library.find(({ id }) => id === entry.loraId);
+    const strength = effectiveLoraStrength(entry, lora);
+    if (!isLoraMultiplier(strength)) throw new Error(`Combined multiplier for LoRA ${lora?.name ?? entry.loraId} is outside the supported range.`);
+    if (strength === 0) return [];
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
     }
-    return { path: lora.path.trim(), strength: entry.strength, stepOverride: lora.stepOverride };
+    return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride }];
   });
+}
+
+export const MAX_LORA_MULTIPLIER = 3.4028234663852886e38;
+
+export function isLoraMultiplier(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_LORA_MULTIPLIER;
+}
+
+export function effectiveLoraStrength(entry: TemplateLora, lora?: Lora): number {
+  return entry.strength * (lora?.multiplier ?? 1);
 }
 
 export function isLoraStepOverride(value: unknown): value is number {
