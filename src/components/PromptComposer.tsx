@@ -1,6 +1,6 @@
-import { Clapperboard, Clock3, Monitor, Save, WandSparkles, X } from "lucide-react";
+import { Clapperboard, Monitor, Save, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { outputDimensions, resolutionLabel } from "../lib/export";
+import { outputDimensions } from "../lib/export";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
 import { PROJECT_RESOLUTIONS } from "../lib/project";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
@@ -13,39 +13,19 @@ interface PromptComposerProps {
   error?: string | null;
 }
 
-const aspectRatioLabels: Record<AspectRatio, string> = {
-  "16:9": "Widescreen 16:9",
-  "9:16": "Vertical 9:16",
-  "1:1": "Square 1:1",
-  "4:5": "Portrait 4:5",
-};
-
 /* Chosen because it is the closest rung to the canvas slopfab actually plans a
    16:9 scene onto (1344×768), so a project made without opening this panel is
    not one that has to be rescaled the moment a scene is generated. */
 const DEFAULT_RESOLUTION: Resolution = "768p";
 const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.options;
 
-const durationLabel = (seconds: number) => {
-  if (seconds < 60) return `${seconds} seconds`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}${remainder ? ` ${remainder} seconds` : ""}`;
-};
-
 export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error }: PromptComposerProps) {
   const [name, setName] = useState(project?.name ?? "Untitled video");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(project?.settings.aspectRatio ?? "16:9");
   const [resolution, setResolution] = useState<Resolution>(project?.settings.resolution ?? DEFAULT_RESOLUTION);
   const [defaultLook, setDefaultLook] = useState(project?.settings.defaultLook ?? "");
-  const [durationInput, setDurationInput] = useState(String(project?.brief.targetDurationSeconds ?? 0));
-  const duration = Number(durationInput);
   const dialog = useRef<HTMLDivElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
-  const maxDuration = Math.max(600, Math.ceil((project?.brief.targetDurationSeconds ?? 0) / 10) * 10);
-  const validDuration = durationInput.trim() !== "" && Number.isInteger(duration) && duration >= 0 && duration <= maxDuration;
-  const sliderMax = 60 + (maxDuration - 60) / 10;
-  const sliderPosition = Math.max(0, Math.min(sliderMax, duration <= 60 ? duration : 60 + (duration - 60) / 10));
   const resolutions: readonly Resolution[] = project && !PROJECT_RESOLUTIONS.some((value) => value === project.settings.resolution)
     ? [...PROJECT_RESOLUTIONS, project.settings.resolution] : PROJECT_RESOLUTIONS;
 
@@ -72,13 +52,13 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   }, [busy, onClose]);
 
   const submit = async () => {
-    if (busy || !name.trim() || !validDuration) return;
+    if (busy || !name.trim()) return;
     await onSubmit({
       name: name.trim(),
       prompt: project?.brief.prompt ?? "",
       aspectRatio,
       resolution,
-      targetDurationSeconds: duration,
+      targetDurationSeconds: project?.brief.targetDurationSeconds ?? 60,
       defaultLook: defaultLook || null,
     });
   };
@@ -99,7 +79,6 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
         <section className="composer__options">
           <div className="composer__options-head">
             <span className="composer__options-title">Video settings</span>
-            <span className="composer__options-value">{aspectRatioLabels[aspectRatio]} · {resolutionLabel(resolution, aspectRatio)}</span>
           </div>
           <div className="composer__options-body">
             <div className="composer__options-grid">
@@ -126,45 +105,19 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
                 </select>
               </label>
               <label>
-                <span>Default Look</span>
-                <select aria-label="Default Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
+                <span>Look</span>
+                <select aria-label="Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
                   <option value="">None</option>
                   {LOOKS.map((look) => <option key={look.id} value={look.id}>{look.label}</option>)}
                 </select>
-                <small>Used by scenes whose Look is set to None.</small>
               </label>
-              {project && <div className="composer__duration">
-                <span>
-                  <Clock3 size={15} /> Length
-                  <output htmlFor="project-duration">{validDuration ? durationLabel(duration) : `Enter 0–${maxDuration} seconds`}</output>
-                </span>
-                <input id="project-duration" aria-label="Length in seconds" type="number" min={0} max={maxDuration} step={1} disabled={busy} value={durationInput} onChange={(event) => setDurationInput(event.target.value)} />
-                <input
-                  aria-label="Length slider"
-                  aria-valuetext={durationLabel(duration)}
-                  aria-valuemin={0}
-                  aria-valuemax={maxDuration}
-                  aria-valuenow={validDuration ? duration : 0}
-                  type="range"
-                  min={0}
-                  disabled={busy}
-                  max={sliderMax}
-                  step={1}
-                  value={Number.isFinite(sliderPosition) ? sliderPosition : 0}
-                  onChange={(event) => {
-                    const position = Number(event.target.value);
-                    setDurationInput(String(position <= 60 ? position : 60 + (position - 60) * 10));
-                  }}
-                />
-                <small className="composer__duration-scale"><span>0 seconds</span><span>{durationLabel(maxDuration)}</span></small>
-              </div>}
             </div>
           </div>
         </section>
 
         {error && <p role="alert">{error}</p>}
         <div className="composer__actions">
-          <button className="primary-button composer__submit" disabled={busy || !name.trim() || !validDuration} aria-busy={busy} onClick={() => void submit()}>
+          <button className="primary-button composer__submit" disabled={busy || !name.trim()} aria-busy={busy} onClick={() => void submit()}>
             {busy ? <span className="spinner" /> : project ? <Save size={18} /> : <WandSparkles size={18} />}
             {project ? "Save changes" : "Create project"}
           </button>
