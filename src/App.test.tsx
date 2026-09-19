@@ -66,7 +66,7 @@ describe("project library controls", () => {
 
     expect(screen.queryByLabelText("Length in seconds")).toBeNull();
     expect(screen.queryByLabelText("Length slider")).toBeNull();
-    const look = screen.getByRole("combobox", { name: "Default Look" });
+    const look = screen.getByRole("combobox", { name: "Look" });
     expect(look).toHaveValue("");
     fireEvent.change(look, { target: { value: "watercolor" } });
     expect(look).toHaveValue("watercolor");
@@ -144,10 +144,9 @@ describe("project library controls", () => {
       "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
     ]);
 
-    // The settings header says the same numbers as the always-visible fields.
+    // The header stays short; the fields already show the selected format.
     fireEvent.change(size, { target: { value: "544p" } });
-    expect(document.querySelector(".composer__options-value")!.textContent)
-      .toBe("Vertical 9:16 · 544 × 960");
+    expect(document.querySelector(".composer__options-head")).toHaveTextContent(/^Video settings$/);
   });
 
   it("opens a newly named empty project on its Agent starting page", async () => {

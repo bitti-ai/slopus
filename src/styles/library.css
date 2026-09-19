@@ -210,13 +210,6 @@
   color: var(--text-secondary);
 }
 
-.composer__options-value {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer__options-body {
   padding: var(--space-2) var(--space-5) var(--space-5);
 }
@@ -227,15 +220,13 @@
   gap: var(--space-4);
 }
 
-.composer__options-grid label,
-.composer__duration {
+.composer__options-grid label {
   display: grid;
   gap: var(--space-2);
   min-width: 0;
 }
 
-.composer__options-grid label > span,
-.composer__duration > span {
+.composer__options-grid label > span {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -265,30 +256,6 @@
 .composer__options-grid small {
   color: var(--text-faint);
   font-size: var(--text-2xs);
-}
-
-.composer__duration > span output {
-  margin-left: auto;
-  color: var(--text-secondary);
-  font-weight: var(--weight-semibold);
-}
-
-.composer__options-grid .composer__duration input[type="range"] {
-  height: var(--field-height);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  accent-color: var(--accent-bright);
-  cursor: pointer;
-}
-
-.composer__options-grid .composer__duration input[type="range"]:hover {
-  border: 0;
-}
-
-.composer__duration-scale {
-  display: flex;
-  justify-content: space-between;
 }
 
 /* --- Composer action bar --------------------------------------------------- */

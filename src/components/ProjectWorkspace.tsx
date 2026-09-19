@@ -87,7 +87,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       try {
         session.update((current) => ({
           ...current, name: input.name,
-          brief: { ...current.brief, aspectRatio: input.aspectRatio, resolution: input.resolution, targetDurationSeconds: input.targetDurationSeconds },
+          brief: { ...current.brief, aspectRatio: input.aspectRatio, resolution: input.resolution },
           settings: { ...current.settings, aspectRatio: input.aspectRatio, resolution: input.resolution, defaultLook: input.defaultLook },
         }));
         await session.save();
