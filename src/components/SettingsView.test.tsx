@@ -2,7 +2,6 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 import { loadGeneratorTemplateSettings } from "../lib/settings";
@@ -23,16 +22,15 @@ const open = () => render(<SettingsView onClose={() => undefined} />);
 const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
 const editDefaultGenerator = () => fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
 
-/* jsdom does no layout, so the one thing that can be checked here is that the
-   rule which makes the two tabs the same height is still in the sheet: the
-   panels differ by hundreds of pixels, and a shrink-to-fit dialog moved the tab
-   row out from under the pointer that had just clicked it. */
-describe("the frame the tabs sit in", () => {
-  it("gives the dialog a height of its own rather than letting the open tab set it", () => {
-    const css = readFileSync("src/styles/shell.css", "utf8");
-    const rule = css.slice(css.indexOf(".settings-view {"), css.indexOf(".settings-view__body"));
-    expect(rule).toMatch(/^\s*height: min\(/m);
-    expect(rule).not.toMatch(/^\s*max-height:/m);
+describe("the settings page", () => {
+  it("opens a focused page with vertical navigation and a Back action", () => {
+    const onClose = vi.fn();
+    render(<SettingsView onClose={onClose} />);
+    expect(document.activeElement).toBe(screen.getByRole("main", { name: "Settings" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical");
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
 
@@ -188,10 +186,14 @@ describe("the settings screen", () => {
     // somewhere that says what it is.
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("settings-tab-appearance");
 
-    fireEvent.keyDown(tab("Appearance"), { key: "ArrowRight" });
+    fireEvent.keyDown(tab("Appearance"), { key: "ArrowDown" });
     expect(tab("Diagnostics").getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tab("Diagnostics"), { key: "ArrowLeft" });
+    fireEvent.keyDown(tab("Diagnostics"), { key: "ArrowUp" });
     expect(tab("Appearance").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tab("Appearance"), { key: "Home" });
+    expect(document.activeElement).toBe(tab("Generator"));
+    fireEvent.keyDown(tab("Generator"), { key: "End" });
+    expect(document.activeElement).toBe(tab("Updates"));
   });
 
   it("counts the paths still to set on the engine tab, from either tab", () => {
@@ -234,16 +236,21 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
   });
 
-  it("replaces the settings tabs with the Generators back button while editing", () => {
+  it("keeps sidebar tabs available while editing and allows navigating out of the editor", () => {
     open();
     expect(screen.queryByText("Changes are saved as you type.")).toBeNull();
     editDefaultGenerator();
     const back = screen.getByRole("button", { name: "Generators" });
-    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
-    expect(back.closest(".settings-tabs")).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
+    expect(back.closest(".settings-view__body")).not.toBeNull();
 
     fireEvent.click(back);
     expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
+    editDefaultGenerator();
+    fireEvent.click(tab("Appearance"));
+    expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
+    fireEvent.click(tab("Generator"));
+    expect(screen.queryByLabelText("Generator name")).toBeNull();
   });
 
   it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {

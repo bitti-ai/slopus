@@ -1,5 +1,5 @@
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
-import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video, X } from "lucide-react";
+import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -249,11 +249,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
   </>;
 }
 
-/* Two things live on this screen and they have nothing to do with each other:
-   how the app looks, and where this computer keeps the model files. Stacked,
-   they made a screen taller than the window — five path fields is a long list —
-   so whichever one the user came for was below the fold half the time. One tab
-   each, and neither scrolls on an ordinary window. */
+/* Sidebar navigation remains available inside generator and LoRA editors. */
 const TABS = [
   { id: "engine", label: "Generator" },
   { id: "llms", label: "Agents" },
@@ -268,6 +264,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
      before anything can be rendered, and its status line answers "is Slopus
      ready?" without a click. */
   const [tab, setTab] = useState<TabId>(initialTab);
+  const page = useRef<HTMLElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => { page.current?.focus(); }, []);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
@@ -341,11 +340,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     setTemplateSettings(next);
   };
 
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
+  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId, editingLoraId]);
 
   const browse = async (field: EnginePathField) => {
     setError(null);
@@ -420,22 +415,25 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
   };
 
   const missing = generatorPathFields(selectedTemplate).filter((field) => field.required && pathState(field, settings[field.id], status) !== "found");
+  const selectTab = (id: TabId) => {
+    setTab(id);
+    setEditingTemplateId(null);
+    setEditingLoraId(null);
+  };
 
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-heading">
-      <div className="settings-view">
+    <main className="settings-view" ref={page} tabIndex={-1} aria-labelledby="settings-heading" onKeyDown={(event) => {
+      // The mounted editor must not receive shortcuts while Settings has focus.
+      event.stopPropagation();
+      if (event.key === "Escape" && !event.defaultPrevented) onClose();
+    }}>
         <header className="settings-view__head">
+          <button type="button" className="secondary-button" onClick={onClose} aria-label="Close settings"><ChevronLeft size={18} /> Back</button>
           <h1 id="settings-heading">Settings</h1>
-          <button className="icon-button icon-button--strong" onClick={onClose} aria-label="Close settings"><X size={18} /></button>
         </header>
 
-        {/* A tab is a button that says which panel it opens, so it is a real
-            tablist rather than two buttons that happen to swap the content:
-            the arrow keys move between them, and the panel below is named by
-            the tab that opened it. */}
-        {editingTemplateId || editingLoraId ? <div className="settings-tabs settings-tabs--editor">
-          <button type="button" className="generator-editor__back" onClick={() => { setEditingTemplateId(null); setEditingLoraId(null); }}><ChevronLeft size={16} /> Generators</button>
-        </div> : <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <aside className="settings-sidebar" aria-label="Settings navigation">
+        <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
           {TABS.map((item, index) => (
             <button
               key={item.id}
@@ -446,11 +444,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               aria-controls={`settings-panel-${item.id}`}
               tabIndex={tab === item.id ? 0 : -1}
               className={tab === item.id ? "active" : ""}
-              onClick={() => setTab(item.id)}
+              onClick={() => selectTab(item.id)}
               onKeyDown={(event) => {
-                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                const next = TABS[(index + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
-                setTab(next.id);
+                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = TABS[event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1
+                  : (index + (event.key === "ArrowDown" ? 1 : TABS.length - 1)) % TABS.length];
+                selectTab(next.id);
                 document.getElementById(`settings-tab-${next.id}`)?.focus();
               }}
             >
@@ -460,9 +460,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               {item.id === "engine" && missing.length > 0 && <em title={`${missing.length} model ${missing.length === 1 ? "path" : "paths"} still to set`}>{missing.length}</em>}
             </button>
           ))}
-        </div>}
+        </div>
+        </aside>
 
-        <div className="settings-view__body">
+        <div className="settings-view__content">
+        <div className="settings-view__body" ref={body}>
+          {tab === "engine" && (editingTemplateId || editingLoraId) && <button type="button" className="secondary-button generator-editor__back" onClick={() => { setEditingTemplateId(null); setEditingLoraId(null); }}><ChevronLeft size={16} /> Generators</button>}
           {tab === "updates" && <section className="settings-section" id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates">
             {updates ?? <p>Updates are available in the desktop app.</p>}
           </section>}
@@ -496,8 +499,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
           {tab === "engine" && <section
             className="settings-section"
             id="settings-panel-engine"
-            role={editingTemplateId || editingLoraId ? "region" : "tabpanel"}
-            aria-labelledby={editingLoraId ? "lora-editor-heading" : editingTemplateId ? "generator-editor-heading" : "settings-tab-engine"}
+            role="tabpanel"
+            aria-labelledby="settings-tab-engine"
           >
             {!editingTemplateId && !editingLoraId && <ReferenceIconSetting />}
             {editingLoraId ? <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} /> : !editingTemplateId ? <>{generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
@@ -643,7 +646,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
         {error && <div className="toast" role="alert"><strong>Couldn’t update generator settings</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       </div>
-    </div>
+    </main>
   );
 }
 
