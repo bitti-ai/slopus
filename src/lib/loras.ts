@@ -25,6 +25,12 @@ export const VIGGLE_ANIMATE_LORA: Lora = {
   url: "https://huggingface.co/DeepBeepMeep/MiniMax-H3/resolve/main/loras/viggle_animate_distillation_bf16.safetensors",
   stepOverride: 4,
 };
+export const LIGHTX2V_TURBO_LORA: Lora = {
+  id: "lightx2v-turbo-6step", name: "LightX2V Turbo", path: "",
+  url: "https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/main/experimental/minimax_h3_fl2v_lightx2v_turbo_4to8step_v0.1-v1.0_768p_v4_step600_dareties.safetensors",
+  stepOverride: 6,
+  multiplier: 0.9,
+};
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -44,8 +50,9 @@ export function loadLoras(): Lora[] {
     if (!ids.has(TAOMATE_LORA.id)) entries.unshift({ ...TAOMATE_LORA });
     if (!ids.has(TURBO_LORA.id)) entries.push({ ...TURBO_LORA });
     if (!ids.has(VIGGLE_ANIMATE_LORA.id)) entries.push({ ...VIGGLE_ANIMATE_LORA });
+    if (!ids.has(LIGHTX2V_TURBO_LORA.id)) entries.push({ ...LIGHTX2V_TURBO_LORA });
     return entries;
-  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }]; }
+  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }, { ...LIGHTX2V_TURBO_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.multiplier !== undefined && !isLoraMultiplier(lora.multiplier))) {

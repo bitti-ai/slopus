@@ -6,7 +6,9 @@ Settings → Generators includes a separate **LoRAs** library. **TaoMate 3-Step*
 downloads [TaoMate-H3-3step-ComfyUI.safetensors](https://huggingface.co/CZMartin22/TaoMate-H3-3step-ComfyUI/resolve/main/TaoMate-H3-3step-ComfyUI.safetensors).
 **Turbo** downloads [minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors](https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors)
 and defaults to an editable **4-step override**.
-Both use the same managed `weights` location, background transfer, progress,
+**LightX2V Turbo** downloads [the silveroxides experimental adapter](https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/main/experimental/minimax_h3_fl2v_lightx2v_turbo_4to8step_v0.1-v1.0_768p_v4_step600_dareties.safetensors)
+and defaults to an editable **6-step override** and **0.9 multiplier**.
+These adapters use the same managed `weights` location, background transfer, progress,
 cancellation, retry, and Work Queue controls as model weights. Downloads are
 serialized with weight downloads, and video generation can continue while downloading.
 Missing managed files become downloadable again. Removing a downloaded LoRA
