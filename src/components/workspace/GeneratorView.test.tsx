@@ -273,7 +273,7 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
-    expect(screen.getByRole("option", { name: "Previous scene's last frame" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Previous scene" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Start frame for this scene" }), { target: { value: "previous-scene" } });
     expect(state.latest().generationJobs[1].usePreviousSceneLastFrame).toBe(true);
