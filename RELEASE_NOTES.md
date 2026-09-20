@@ -1,21 +1,40 @@
-# Slopus 0.1.0
+# Slopus 0.1.1
 
-The first public alpha of Slopus: an AI media harness for planning, generating,
-and editing media locally. This release focuses on video workflows.
+This alpha update adds video effects, improved video references, more generator
+controls, and a simpler settings workflow.
 
-## Included
+## What's new
 
-- AI agents for planning projects, writing scenes, and arranging the timeline.
-- Local SlopFab generation with CUDA and Vulkan support.
-- Generator templates, weight downloads, and ordered LoRAs with configurable
-  strengths and step overrides.
-- Reusable references from prompts, images, videos, and refmod files.
-- Built-in reference presets with background icon generation.
-- Timeline editing, preview, and MP4 export using WebCodecs and WebGPU.
-- Editable project resolution, aspect ratio, and target length.
-- Signed application updates and a Work Queue that continues across projects.
-- A `Slopus` user data folder with separate `logs` and `reference-icons` folders;
-  existing settings and icons migrate at startup.
+- GPU video effects in preview and export: sharpening, Gaussian blur, color
+  correction, vignette, and imported `.cube` LUTs.
+- Video references accept longer source files with a 2-15 second selection.
+  A dedicated trim popup previews the active trim edge and supports optional
+  soundtrack conditioning and decoder fallback.
+- Project-wide Looks with scene overrides, plus a timeline that grows
+  automatically as clips are added, moved, or extended.
+- Scene continuation from saved latents, new Singularity and Animate generator
+  templates, and Turbo and LightX2V Turbo LoRA downloads.
+- Per-LoRA strength multipliers, a MotionCache toggle, generator creation in a
+  popup, and template selection for reference icon generation.
+- Full-screen Settings and simpler project and reference controls.
+
+## Fixes and improvements
+
+- Updated the bundled SlopFab runtime and aligned generation planning and
+  progress with model metadata.
+- Added LoRA timestep-grid preparation during downloads and local imports,
+  with a Prepare action for existing adapters.
+- Improved discovery of existing model weights, custom weight folder support,
+  and availability reporting when template LoRAs are missing.
+- Expanded regression coverage across project persistence, generation,
+  references, rendering, and release publishing.
+
+## Known limitations
+
+Animate integration is experimental. Animate output is capped at 345 frames.
+
+The new video effects require WebGPU. Full model inference and CUDA/Vulkan render
+performance have not been revalidated for this release.
 
 ## Getting started
 

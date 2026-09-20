@@ -47,7 +47,8 @@ it("shows startup guidance, opens NVIDIA in the browser, and stays dismissed aft
   fireEvent.click(proceed);
   expect(screen.queryByRole("dialog", { name: "Install CUDA for faster generation" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
-  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("main", { name: "Settings" }), { key: "Escape" });
+  expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
   await waitFor(() => expect(getRuntimeStatus).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("dialog", { name: "Install CUDA for faster generation" })).toBeNull();
 });
