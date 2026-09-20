@@ -67,6 +67,8 @@ Timeline and Export share `ProgramMonitor`. It keeps the current picture and the
 
 With WebGPU, `ProgramPicture` presents all visible layers through one persistent canvas using the export compositor. Each update captures the required `VideoFrame` handles before clearing or drawing; a loading or seeking source leaves the last complete picture intact. Actual timeline gaps clear to the project background. This avoids the black frame caused by handing off between browser video surfaces at a cut. Frames remain in GPU memory, and effect pipelines are prepared when the compositor starts. Machines without WebGPU retain the native-media preview.
 
+Export consumes and closes decoded frames while waiting for decoder backpressure or `flush()`. Waiting for those operations without releasing output can exhaust hardware frame pools and deadlock a run. Video and audio codec waits check cancellation and asynchronous errors; 30 seconds without queue/output progress stops the run with a stage-specific error. Codec and frame resources are released on cancellation and failure. Starting an export pauses preview playback.
+
 ## Independently judged slices
 
 1. Foundation: desktop shell, library, portable project persistence, schema, and always-visible agent prompt.
