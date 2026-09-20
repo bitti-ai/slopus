@@ -90,7 +90,8 @@ rem without a dev server running. The CLI runs the frontend build, embeds dist/
 rem into the binary, and produces the installers.
 echo.
 echo [2/5] Building the release application and installers...
-call npm run tauri build || goto :fail
+rem Use the supplied password or an empty one without an interactive prompt.
+call npm run tauri build -- --ci || goto :fail
 
 if not exist "%RELEASE_EXE%" (
   echo ERROR: Build succeeded but the executable was not found at:
