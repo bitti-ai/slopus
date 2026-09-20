@@ -298,6 +298,8 @@ interface HarnessRecord {
   audioConfig: AudioEncoderConfig | null;
   audioChunks: number;
   videoChunks: number;
+  decoderLiveFrames: number;
+  decoderPeakFrames: number;
 }
 
 class HarnessAudioBuffer {
@@ -328,6 +330,8 @@ interface HarnessOptions {
   /** False: no AudioEncoder/AudioData/OfflineAudioContext at all, which is the
    *  webview `detectExportSupport().audio` has to answer false for. */
   audio?: boolean;
+  decoderPool?: number;
+  decodeOnFlush?: boolean;
 }
 
 function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; recorded: HarnessRecord } {
@@ -346,7 +350,7 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
   ] as const;
   const saved: Record<string, unknown> = {};
   for (const name of names) saved[name] = scope[name];
-  const recorded: HarnessRecord = { audioData: [], audioConfig: null, audioChunks: 0, videoChunks: 0 };
+  const recorded: HarnessRecord = { audioData: [], audioConfig: null, audioChunks: 0, videoChunks: 0, decoderLiveFrames: 0, decoderPeakFrames: 0 };
 
   class HarnessChunk {
     readonly type: "key" | "delta";
@@ -405,7 +409,12 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
 
   scope.VideoDecoder = class {
     state = "configured";
-    decodeQueueSize = 0;
+    private inputs: { timestamp: number; duration: number }[] = [];
+    private liveFrames = 0;
+    private scheduled = false;
+    private flushing = false;
+    private flushed: (() => void) | null = null;
+    get decodeQueueSize() { return options.decodeOnFlush && !this.flushing ? 0 : this.inputs.length; }
     private readonly emit: (frame: unknown) => void;
     constructor(init: { output: (frame: unknown) => void; error: (reason: unknown) => void }) {
       this.emit = init.output;
@@ -413,12 +422,44 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
     configure() {}
     decode(chunk: { timestamp: number; duration: number }) {
       if (!decodes) return;
+      if (options.decoderPool) { this.inputs.push(chunk); this.schedule(); return; }
       const Frame = scope.VideoFrame as new (source: unknown, init: { timestamp: number; duration?: number }) => unknown;
       this.emit(new Frame(null, { timestamp: chunk.timestamp, duration: chunk.duration }));
     }
-    async flush() {}
+    private schedule() {
+      if (this.scheduled || this.state === "closed" || (options.decodeOnFlush && !this.flushing)) return;
+      this.scheduled = true;
+      setTimeout(() => {
+        this.scheduled = false;
+        if (this.state === "closed") return;
+        while (this.inputs.length && this.liveFrames < options.decoderPool!) {
+          const chunk = this.inputs.shift()!;
+          const Frame = scope.VideoFrame as typeof VideoFrame;
+          const frame = new Frame(null as unknown as CanvasImageSource, { timestamp: chunk.timestamp, duration: chunk.duration });
+          this.liveFrames++; recorded.decoderLiveFrames++;
+          recorded.decoderPeakFrames = Math.max(recorded.decoderPeakFrames, recorded.decoderLiveFrames);
+          const close = frame.close.bind(frame);
+          let closed = false;
+          frame.close = () => {
+            if (closed) return;
+            closed = true; close();
+            this.liveFrames--; recorded.decoderLiveFrames--;
+            this.schedule();
+          };
+          this.emit(frame);
+        }
+        if (!this.inputs.length) { this.flushed?.(); this.flushed = null; }
+      }, 0);
+    }
+    async flush() {
+      if (!options.decoderPool) return;
+      this.flushing = true;
+      await new Promise<void>((resolve) => { this.flushed = resolve; this.schedule(); });
+    }
     close() {
       this.state = "closed";
+      this.inputs.length = 0;
+      this.flushed?.();
     }
   };
 
@@ -611,6 +652,81 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
 }
 
 describe("running an export of external media", () => {
+  it.each(["video-queue", "video-flush", "decoder-queue", "decoder-flush", "audio-queue", "audio-flush"])("cancels and closes codecs stuck in %s", async (stuck) => {
+    const harness = installWebCodecs({ decodes: true });
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const closed = vi.fn();
+    const stall = () => { timer ??= setTimeout(() => { cancelled = true; }, 0); };
+    try {
+      const scope = globalThis as unknown as Record<string, any>;
+      const name = stuck.startsWith("video") ? "VideoEncoder" : stuck.startsWith("audio") ? "AudioEncoder" : "VideoDecoder";
+      const Base = scope[name];
+      scope[name] = class extends Base {
+        encode(...args: unknown[]) {
+          super.encode(...args);
+          if (stuck.endsWith("queue")) { Object.defineProperty(this, "encodeQueueSize", { value: 20 }); stall(); }
+        }
+        decode(...args: unknown[]) {
+          if (stuck === "decoder-flush") return; // all output is deferred until flush
+          super.decode(...args);
+          if (stuck.endsWith("queue")) { Object.defineProperty(this, "decodeQueueSize", { value: 20 }); stall(); }
+        }
+        flush() {
+          if (stuck.endsWith("flush")) { stall(); return new Promise<void>(() => {}); }
+          return super.flush();
+        }
+        close() { closed(); super.close(); }
+      };
+      serveFiles({ video: await sampleFile(120, 30), score: scoreFile() });
+      const config = audioProject();
+      const settings = defaultExportSettings(config);
+      await expect(runExport({ folderPath: AUDIO_FOLDER, config, settings, plan: buildExportPlan(config, settings),
+        bitrate: 5_000_000, onProgress: () => {}, cancelled: () => cancelled }).then(() => undefined)).rejects.toBeInstanceOf(ExportCancelled);
+      expect(closed).toHaveBeenCalledTimes(1);
+      expect(callLog().some((call) => call.cmd.includes("write"))).toBe(false);
+    } finally { clearTimeout(timer); harness.restore(); }
+  });
+
+  it.each([
+    { name: "decoder backpressure", frames: 80, decodeOnFlush: false, layered: false },
+    { name: "decoder flush", frames: 9, decodeOnFlush: true, layered: false },
+    { name: "layered decoder backpressure", frames: 80, decodeOnFlush: false, layered: true },
+  ])("recycles a three-frame hardware pool during $name", async ({ frames, decodeOnFlush, layered }) => {
+    const harness = installWebCodecs({ decodes: true, audio: false, decoderPool: 3, decodeOnFlush });
+    const instances: VideoDecoder[] = [];
+    const Decoder = VideoDecoder;
+    vi.stubGlobal("VideoDecoder", class extends Decoder {
+      constructor(init: VideoDecoderInit) { super(init); instances.push(this); }
+    });
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      invoked.mockResolvedValue(await sampleFile(frames, 30));
+      const config = externalProject();
+      const track = config.timeline.tracks.find((track) => track.kind === "video" && track.clips.length)!;
+      track.clips[0].durationMs = Math.floor(frames * 1000 / 30);
+      if (layered) {
+        track.clips[0].look = { opacity: 50, temperature: 0 };
+        config.timeline.tracks.push({ ...track, id: "lower", clips: [{ ...track.clips[0], id: "lower-clip", trackId: "lower", look: { opacity: 100, temperature: 0 } }] });
+      }
+      const settings = defaultExportSettings(config);
+      const plan = buildExportPlan(config, settings);
+      const run = runExport({ folderPath: FOLDER, config, settings, plan, bitrate: 5_000_000,
+        onProgress: () => {}, cancelled: () => cancelled });
+      // A hardware pool cannot output again until an earlier frame is closed.
+      // Stop the mock on timeout so a regression fails without leaking a run.
+      timer = setTimeout(() => { cancelled = true; instances.forEach((decoder) => decoder.close()); }, 5000);
+      await expect(run).resolves.toMatchObject({ audio: false });
+      expect(harness.recorded.videoChunks).toBe(plan.frameCount);
+      expect(harness.recorded.decoderLiveFrames).toBe(0);
+      expect(harness.recorded.decoderPeakFrames).toBeLessThanOrEqual(layered ? 6 : 3);
+    } finally {
+      clearTimeout(timer);
+      harness.restore();
+    }
+  }, 10_000);
+
   it("refuses to silently omit GPU effects when only canvas compositing is available", async () => {
     const { restore, recorded } = installWebCodecs({ decodes: true, audio: false });
     try {

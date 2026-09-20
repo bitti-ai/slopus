@@ -17,6 +17,7 @@
    ========================================================================== */
 
 import { invoke } from "@tauri-apps/api/core";
+import { finishCodec, waitForCodec } from "./codecWait";
 import { isTauri, readMediaFileBytes } from "./persistence";
 import {
   AUDIO_CHANNELS,
@@ -763,23 +764,28 @@ async function probeAudioCodec(): Promise<{ supported: boolean; detail: string }
 async function encodeAudio(
   mix: AudioMix,
   add: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => void,
+  stopIfCancelled: () => void,
 ): Promise<void> {
   const failure: { reason: Error | null } = { reason: null };
+  let packets = 0;
   const encoder = new AudioEncoder({
-    output: (chunk, meta) => add(chunk, meta),
+    output: (chunk, meta) => {
+      try { add(chunk, meta); packets++; }
+      catch (reason) { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); }
+    },
     error: (reason) => {
       failure.reason = reason instanceof Error ? reason : new Error(String(reason));
     },
   });
-  encoder.configure({
-    codec: AUDIO_CODEC,
-    sampleRate: AUDIO_SAMPLE_RATE,
-    numberOfChannels: AUDIO_CHANNELS,
-    bitrate: AUDIO_BITRATE,
-  });
+  const waiting = {
+    stage: "Audio encoding",
+    check: () => { stopIfCancelled(); if (failure.reason) throw failure.reason; },
+    progress: () => `${encoder.encodeQueueSize}:${packets}`,
+  };
   try {
+    encoder.configure({ codec: AUDIO_CODEC, sampleRate: AUDIO_SAMPLE_RATE, numberOfChannels: AUDIO_CHANNELS, bitrate: AUDIO_BITRATE });
     for (let offset = 0; offset < mix.frames; offset += AUDIO_BLOCK) {
-      if (failure.reason) throw failure.reason;
+      waiting.check();
       const count = Math.min(AUDIO_BLOCK, mix.frames - offset);
       // f32-planar: channel 0 then channel 1, exactly as the mix holds them.
       const planar = new Float32Array(count * AUDIO_CHANNELS);
@@ -794,12 +800,11 @@ async function encodeAudio(
         timestamp: Math.round((offset * 1_000_000) / AUDIO_SAMPLE_RATE),
         data: planar,
       });
-      encoder.encode(data);
-      data.close();
-      while (encoder.encodeQueueSize > 16) await tick();
+      try { encoder.encode(data); }
+      finally { data.close(); }
+      await waitForCodec(() => encoder.encodeQueueSize <= 16, waiting);
     }
-    await encoder.flush();
-    if (failure.reason) throw failure.reason;
+    await finishCodec(encoder.flush(), waiting);
   } finally {
     if (encoder.state !== "closed") encoder.close();
   }
@@ -852,7 +857,7 @@ export interface ExportRunOptions {
   plan: ExportPlan;
   bitrate: number;
   onProgress: (progress: ExportProgress) => void;
-  /** Polled once per frame. Returning true aborts with `ExportCancelled`. */
+  /** Polled per frame and during codec waits. True aborts with `ExportCancelled`. */
   cancelled: () => boolean;
 }
 
@@ -890,12 +895,16 @@ async function openLayerFrameReader(
   const pending: VideoFrame[] = [];
   let screen: VideoFrame | null = null;
   let flushed = false;
+  let flushing = false;
+  let disposed = false;
+  let decodedFrames = 0;
   const failure: { reason: Error | null } = { reason: null };
   const decoder = new VideoDecoder({
-    output: (frame) => pending.push(frame),
+    output: (frame) => { if (disposed) frame.close(); else { pending.push(frame); decodedFrames++; } },
     error: (reason) => { failure.reason = reason; },
   });
   const dispose = () => {
+    disposed = true;
     if (decoder.state !== "closed") decoder.close();
     screen?.close();
     pending.forEach((frame) => frame.close());
@@ -904,6 +913,11 @@ async function openLayerFrameReader(
   };
   try { decoder.configure(source.config); }
   catch (reason) { dispose(); throw reason; }
+  const waiting = {
+    stage: `Decoding ${asset.name}`,
+    check: () => { stopIfCancelled(); if (failure.reason) throw failure.reason; },
+    progress: () => `${decoder.decodeQueueSize}:${decodedFrames}`,
+  };
   return {
     async frameAt(wantUs) {
       while (true) {
@@ -917,8 +931,14 @@ async function openLayerFrameReader(
         if (screen && (pending.length || flushed)) return screen;
         if (flushed) throw new Error(`${asset.name} decoded no frames.`);
         if (nextSample >= source.samples.length) {
-          await decoder.flush();
-          flushed = true;
+          if (!flushing) {
+            flushing = true;
+            void decoder.flush().then(() => { flushed = true; }, (reason) => {
+              failure.reason = reason instanceof Error ? reason : new Error(String(reason));
+            });
+          }
+          // Return to the consumer as each frame arrives, even during flush.
+          await waitForCodec(() => pending.length > 0 || flushed, waiting);
         } else {
           // Yield between small batches so output can arrive before feeding
           // more samples. This bounds decoded frames even for long sources.
@@ -929,7 +949,7 @@ async function openLayerFrameReader(
               duration: sample.durationUs, data: sample.data,
             }));
           }
-          while (decoder.decodeQueueSize > 8) { stopIfCancelled(); if (failure.reason) throw failure.reason; await tick(); }
+          await waitForCodec(() => decoder.decodeQueueSize <= 8 || pending.length > 0, waiting);
           await tick();
         }
       }
@@ -1032,13 +1052,21 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   /* On an object because the encoder writes it from its own callback, where
      TypeScript's flow analysis cannot follow the assignment. */
   const encoderFailure: { reason: Error | null } = { reason: null };
+  let encodedPackets = 0;
   const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    output: (chunk, meta) => {
+      try { muxer.addVideoChunk(chunk, meta); encodedPackets++; }
+      catch (reason) { encoderFailure.reason = reason instanceof Error ? reason : new Error(String(reason)); }
+    },
     error: (reason) => {
       encoderFailure.reason = reason instanceof Error ? reason : new Error(String(reason));
     },
   });
-  encoder.configure(encoderConfig(probe.codecString, plan, bitrate));
+  const encoderWait = {
+    stage: "Video encoding",
+    check: () => { stopIfCancelled(); if (encoderFailure.reason) throw encoderFailure.reason; },
+    progress: () => `${encoder.encodeQueueSize}:${encodedPackets}`,
+  };
 
   /* WebGPU first, as the pipeline is meant to run — the decoded frame is
      sampled where it already lives. A machine without it, or a GPU that gives
@@ -1103,14 +1131,14 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       timestampUs(outputIndex),
       timestampUs(outputIndex + 1) - timestampUs(outputIndex),
     );
-    encoder.encode(composited, { keyFrame: outputIndex % keyFrameInterval === 0 });
-    composited.close();
+    try { encoder.encode(composited, { keyFrame: outputIndex % keyFrameInterval === 0 }); }
+    finally { composited.close(); }
     framesDone += 1;
     if (framesDone % 5 === 0 || framesDone === plan.frameCount) {
       report("rendering", framesDone, `Rendering frame ${framesDone} of ${plan.frameCount}.`);
     }
     // Yield so the encoder's own queue drains and the window stays alive.
-    while (encoder.encodeQueueSize > 8) await tick();
+    await waitForCodec(() => encoder.encodeQueueSize <= 8, encoderWait);
     if (framesDone % 12 === 0) await tick();
   };
 
@@ -1201,13 +1229,14 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     const wantUs = (index: number) => sourceTimeMsForFrame(segment, index, plan.frameRate) * 1000;
 
     const pending: VideoFrame[] = [];
+    let decodedFrames = 0;
+    let disposed = false;
     const decoder = new VideoDecoder({
-      output: (frame) => pending.push(frame),
+      output: (frame) => { if (disposed) frame.close(); else { pending.push(frame); decodedFrames++; } },
       error: (reason) => {
         failure.reason = reason instanceof Error ? reason : new Error(String(reason));
       },
     });
-    decoder.configure(source.config);
 
     /* Frames arrive in presentation order, so the frame showing at output time
        W is the last one whose timestamp is at or before W. Each decoded frame
@@ -1216,14 +1245,19 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     const drain = async (final: boolean) => {
       while (pending.length > 0) {
         const frame = pending.shift() as VideoFrame;
-        if (on.screen) {
-          while (nextOutput < segment.endFrame && wantUs(nextOutput) < frame.timestamp) {
-            await emit(on.screen, nextOutput, segment);
-            nextOutput += 1;
+        try {
+          if (on.screen) {
+            while (nextOutput < segment.endFrame && wantUs(nextOutput) < frame.timestamp) {
+              await emit(on.screen, nextOutput, segment);
+              nextOutput += 1;
+            }
+            on.screen.close();
           }
-          on.screen.close();
+          on.screen = frame;
+        } catch (reason) {
+          frame.close();
+          throw reason;
         }
-        on.screen = frame;
         if (nextOutput >= segment.endFrame) break;
       }
       if (final) {
@@ -1237,9 +1271,16 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       }
     };
 
+    const decoderWait = {
+      stage: `Decoding ${asset.name}`,
+      check: () => { encoderWait.check(); if (failure.reason) throw failure.reason; },
+      progress: () => `${decoder.decodeQueueSize}:${decodedFrames}:${nextOutput}`,
+      pump: () => drain(false),
+    };
     try {
+      decoder.configure(source.config);
       for (let index = first; index <= last && nextOutput < segment.endFrame; index += 1) {
-        if (failure.reason) throw failure.reason;
+        decoderWait.check();
         const sample = source.samples[index];
         decoder.decode(
           new EncodedVideoChunk({
@@ -1249,16 +1290,17 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
             data: sample.data,
           }),
         );
-        while (decoder.decodeQueueSize > 12) await tick();
+        await waitForCodec(() => decoder.decodeQueueSize <= 12, decoderWait);
         await drain(false);
       }
       if (nextOutput < segment.endFrame) {
-        await decoder.flush();
+        await finishCodec(decoder.flush(), decoderWait);
         await drain(false);
       }
       if (failure.reason) throw failure.reason;
       await drain(true);
     } finally {
+      disposed = true;
       on.screen?.close();
       for (const frame of pending) frame.close();
       if (decoder.state !== "closed") decoder.close();
@@ -1293,6 +1335,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   };
 
   try {
+    encoder.configure(encoderConfig(probe.codecString, plan, bitrate));
     for (const segment of plan.segments) {
       stopIfCancelled();
       if (segment.kind === "gap") {
@@ -1306,11 +1349,10 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
 
     if (soundtrack) {
       report("finishing", framesDone, `Encoding the mixed soundtrack as AAC…`);
-      await encodeAudio(soundtrack, (chunk, meta) => muxer.addAudioChunk(chunk, meta));
+      await encodeAudio(soundtrack, (chunk, meta) => muxer.addAudioChunk(chunk, meta), encoderWait.check);
     }
     report("finishing", framesDone, "Flushing the encoder and writing the MP4 index…");
-    await encoder.flush();
-    if (encoderFailure.reason) throw encoderFailure.reason;
+    await finishCodec(encoder.flush(), encoderWait);
     muxer.finalize();
     report("done", framesDone, "Encoded.");
     return {

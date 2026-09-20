@@ -226,6 +226,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       return;
     }
     if (!destination) return; // The user closed the save dialog. Nothing to say.
+    setPlaying(false);
     cancelRef.current = false;
     setProgress({ phase: "preparing", framesDone: 0, frameCount: plan.frameCount, detail: "Starting…" });
     try {
@@ -374,7 +375,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
               type="button"
               className="export-transport__play"
               onClick={() => setPlaying((value) => !value)}
-              disabled={plan.frameCount === 0}
+              disabled={running || plan.frameCount === 0}
               aria-label={playing ? "Pause" : "Play"}
               title={plan.frameCount === 0 ? "There is nothing on the timeline to play" : playing ? "Pause" : "Play"}
             >{playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" aria-hidden="true" />}</button>
