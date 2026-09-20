@@ -26,6 +26,9 @@ impl rendered::FrameSource for FrameSource {
 pub(super) fn run_generation(
     item: &QueueItem,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    let _models = super::MODEL_ACCESS
+        .read()
+        .map_err(|_| "Model access lock failed.")?;
     if item.cancel.load(Ordering::Acquire) {
         return Err("Generation was cancelled before it started.".into());
     }

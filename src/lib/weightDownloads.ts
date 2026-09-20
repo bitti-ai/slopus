@@ -19,6 +19,9 @@ export interface DownloadState {
   files: number;
   error: string | null;
   active: boolean;
+  phase?: "preparing";
+  preparePath?: string;
+  allowDownload?: boolean;
 }
 let state: DownloadState | null = null;
 let requestId: string | null = null;
@@ -193,6 +196,8 @@ export async function downloadTemplateWeights(templateId: string): Promise<void>
 }
 
 export async function cancelWeightDownload() {
+  // The DLL preparation call is synchronous and has no cancellation API.
+  if (state?.active && state.phase === "preparing") return;
   cancelled = true;
   if (requestId) await invoke("cancel_weight_download", { requestId });
 }
@@ -201,7 +206,35 @@ async function transferLora(lora: Lora): Promise<void> {
   requestId = crypto.randomUUID();
   const path = await invoke<string>("download_weight", { requestId, url: lora.url });
   if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
-  saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.url === lora.url && entry.path === lora.path ? { ...entry, path } : entry));
+  if (cancelled) throw new Error("Download cancelled.");
+  saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.path === lora.path ? { ...entry, needsPreparation: true } : entry));
+  await prepareLoraFile(path, true);
+  saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.url === lora.url && entry.path === lora.path ? { ...entry, path, needsPreparation: undefined } : entry));
+  publish({ ...state!, phase: undefined });
+}
+
+async function prepareLoraFile(path: string, allowDownload: boolean): Promise<void> {
+  requestId = null;
+  publish({ ...state!, phase: "preparing", downloaded: 0, total: null });
+  await invoke("prepare_lora", { path, allowDownload });
+}
+
+/** Explicit setup for a local or previously downloaded adapter. */
+export async function prepareLora(lora: Pick<Lora, "id" | "name" | "path">, allowDownload = true): Promise<void> {
+  if (!isTauri()) throw new Error("LoRA preparation is available in the desktop app.");
+  if (state?.active) throw new Error("Wait for the current download or preparation to finish.");
+  publish({ templateId: `lora:${lora.id}`, loraId: lora.id, name: lora.name, field: null,
+    downloaded: 0, total: null, completed: 0, files: 1, error: null, active: true,
+    preparePath: lora.path, allowDownload, phase: "preparing" });
+  try {
+    saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.path === lora.path ? { ...entry, needsPreparation: true } : entry));
+    await prepareLoraFile(lora.path, allowDownload);
+    saveLoras(loadLoras().map((entry) => entry.id === lora.id && entry.path === lora.path ? { ...entry, needsPreparation: undefined } : entry));
+    publish({ ...state!, active: false, completed: 1 });
+  } catch (reason) {
+    publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });
+    throw reason;
+  }
 }
 
 /** Uses the same native transfer, storage, cancellation and app-wide lock as weights. */
@@ -226,12 +259,15 @@ export async function downloadLora(loraId: string): Promise<void> {
 }
 
 export function retryWeightDownload(): Promise<void> {
+  if (state?.preparePath && state.loraId) return prepareLora({ id: state.loraId, name: state.name ?? "LoRA", path: state.preparePath }, state.allowDownload)
+    .catch(() => undefined); // The shared status retains the error for another retry.
   return state?.loraId ? downloadLora(state.loraId) : state ? downloadTemplateWeights(state.templateId) : Promise.resolve();
 }
 
 let loraRefreshPending: Promise<void> | null = null;
 export function refreshDownloadedLoras(): Promise<void> {
   if (!isTauri()) return Promise.resolve();
+  if (state?.active) return Promise.resolve();
   if (loraRefreshPending) return loraRefreshPending;
   loraRefreshPending = (async () => {
     const before = loadLoras().filter((entry) => entry.url);
@@ -244,6 +280,7 @@ export function refreshDownloadedLoras(): Promise<void> {
     ]);
     let changed = false;
     const loras = loadLoras().map((entry) => {
+      if (entry.needsPreparation) return entry;
       if (!entry.url || !before.some((old) => old.id === entry.id && old.url === entry.url && old.path === entry.path)) return entry;
       if (entry.path.trim() && !isDownloadUrl(entry.path) && exists?.[entry.path] !== false) return entry;
       const path = found?.[entry.url] || "";

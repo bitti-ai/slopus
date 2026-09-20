@@ -83,6 +83,7 @@ pub struct Api {
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
     add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
+    prepare_lora_grid: Option<unsafe extern "C" fn(*const c_char, i32, i32) -> i32>,
     add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
     add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
     set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
@@ -140,6 +141,12 @@ impl Api {
                     "slopfab_request_create",
                     unsafe extern "C" fn() -> *mut Request
                 ),
+                prepare_lora_grid: library
+                    .get::<unsafe extern "C" fn(*const c_char, i32, i32) -> i32>(
+                        b"slopfab_prepare_lora_grid\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 request_destroy: symbol!(
                     "slopfab_request_destroy",
                     unsafe extern "C" fn(*mut Request)
@@ -428,6 +435,22 @@ impl Api {
         let add = self.add_lora.ok_or("This slopfab.dll does not support LoRAs. Update the DLL or disable the selected LoRAs.")?;
         let path = path_cstring(path)?;
         self.error(unsafe { add(r, path.as_ptr(), strength) })
+    }
+    pub fn prepare_lora_grid(
+        &self,
+        path: &Path,
+        width: i32,
+        allow_download: bool,
+    ) -> Result<(), String> {
+        let prepare = self.prepare_lora_grid.ok_or(
+            "LoRA preparation requires slopfab.dll API 1.13 or later. Update the runtime.",
+        )?;
+        let path = path_cstring(path)?;
+        self.error(unsafe { prepare(path.as_ptr(), width, allow_download as i32) })
+    }
+    #[cfg(test)]
+    pub fn disable_lora_preparation_for_test(&mut self) {
+        self.prepare_lora_grid = None;
     }
     pub fn add_refmod(
         &self,

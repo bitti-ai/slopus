@@ -86,6 +86,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_updater_enabled,
             weights::download_weight,
+            weights::lora::prepare_lora,
             weights::cancel_weight_download,
             weights::check_weight_files,
             weights::find_downloaded_weights,

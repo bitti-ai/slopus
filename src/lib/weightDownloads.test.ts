@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
-import { cancelWeightDownload, downloadLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
+import { cancelWeightDownload, downloadLora, prepareLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
 import { LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
@@ -12,6 +12,54 @@ vi.mock("./persistence", () => ({ isTauri: () => true }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
+
+it("prepares downloaded adapters before publishing them and does not offer fake cancellation", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  let finish!: () => void;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "prepare_lora"
+    ? new Promise<void>((resolve) => { finish = resolve; }) : normal(command, args));
+  const pending = downloadLora(TURBO_LORA.id);
+  await vi.waitFor(() => expect(getWeightDownloadState()?.phase).toBe("preparing"));
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)).toMatchObject({ path: "", needsPreparation: true });
+  await cancelWeightDownload();
+  expect(invoke).not.toHaveBeenCalledWith("cancel_weight_download", expect.anything());
+  expect(invoke).toHaveBeenCalledWith("prepare_lora", { path: expect.stringContaining(".safetensors"), allowDownload: true });
+  expect(getWeightDownloadState()?.active).toBe(true);
+  finish(); await pending;
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.needsPreparation).toBeUndefined();
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null });
+});
+
+it("keeps failed preparation unavailable across discovery and retries it", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "prepare_lora") throw new Error("Grid missing");
+    if (command === "find_downloaded_weights") return { [TURBO_LORA.url!]: "C:/raw-adapter.safetensors" };
+    return normal(command, args);
+  });
+  await downloadLora(TURBO_LORA.id);
+  await refreshDownloadedLoras();
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)).toMatchObject({ path: "", needsPreparation: true });
+  expect(getWeightDownloadState()).toMatchObject({ active: false, phase: "preparing", error: "Grid missing" });
+  expect(() => engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", [{ loraId: TURBO_LORA.id, enabled: true, strength: 1 }])).toThrow(/Prepare LoRA/);
+  vi.mocked(invoke).mockImplementation(normal);
+  await retryWeightDownload();
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null });
+  expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
+});
+
+it("repairs local adapters with local-only assets and preserves that choice on retry", async () => {
+  const lora = { id: "local", name: "Style", path: "D:/style.safetensors" };
+  saveLoras([lora]);
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("Companion missing"));
+  await expect(prepareLora(lora, false)).rejects.toThrow("Companion missing");
+  expect(loadLoras().find(({ id }) => id === lora.id)?.needsPreparation).toBe(true);
+  await retryWeightDownload();
+  expect(invoke).toHaveBeenLastCalledWith("prepare_lora", { path: lora.path, allowDownload: false });
+  expect(loadLoras().find(({ id }) => id === lora.id)).toMatchObject(lora);
+  expect(loadLoras().find(({ id }) => id === lora.id)?.needsPreparation).toBeUndefined();
+  expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
+});
 
 it("downloads Animate with its transformer and four-step distillation adapter", async () => {
   await downloadTemplateWeights("viggle-animate");

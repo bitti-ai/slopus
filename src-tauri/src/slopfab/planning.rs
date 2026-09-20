@@ -20,6 +20,9 @@ pub fn resolve_plan(
     settings: &BTreeMap<String, ProviderSetting>,
     references: &ReferenceVideos,
 ) -> Result<ResolvedPlan, String> {
+    let _models = super::MODEL_ACCESS.try_read().map_err(|_| {
+        "Model files are in use. Retry planning after generation or LoRA preparation finishes."
+    })?;
     validate_generation_controls(request)?;
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;

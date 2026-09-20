@@ -8,6 +8,7 @@ export interface Lora {
   url?: string;
   stepOverride?: number;
   multiplier?: number;
+  needsPreparation?: boolean;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
 export const TAOMATE_LORA: Lora = {
@@ -42,6 +43,7 @@ export function loadLoras(): Lora[] {
         || typeof entry.name !== "string" || !entry.name.trim() || typeof entry.path !== "string") return [];
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
+        ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
         ...(isLoraMultiplier(entry.multiplier) ? { multiplier: entry.multiplier } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
@@ -83,7 +85,7 @@ export function normalizeTemplateLoras(value: unknown): TemplateLora[] {
 export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[] {
   const active = new Set(selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
   return loadLoras().filter((lora) => active.has(lora.id) && lora.multiplier !== 0 && lora.url
-    && (!lora.path.trim() || /^https?:\/\//i.test(lora.path)));
+    && (lora.needsPreparation || !lora.path.trim() || /^https?:\/\//i.test(lora.path)));
 }
 
 export function resolveTemplateLoras(selection: TemplateLora[] = []) {
@@ -93,6 +95,7 @@ export function resolveTemplateLoras(selection: TemplateLora[] = []) {
     const strength = effectiveLoraStrength(entry, lora);
     if (!isLoraMultiplier(strength)) throw new Error(`Combined multiplier for LoRA ${lora?.name ?? entry.loraId} is outside the supported range.`);
     if (strength === 0) return [];
+    if (lora?.needsPreparation) throw new Error(`Prepare LoRA ${lora.name} in Settings before using it.`);
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
     }

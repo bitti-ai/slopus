@@ -34,6 +34,9 @@ pub(super) fn write_reference_icon(
     platform: ComputePlatform,
     spec: &ReferenceIconSpec,
 ) -> Result<(), String> {
+    let _models = super::MODEL_ACCESS
+        .read()
+        .map_err(|_| "Model access lock failed.")?;
     let request = GenerationRequest {
         job_id: spec.id.clone(),
         prompt: spec.prompt.clone(),
