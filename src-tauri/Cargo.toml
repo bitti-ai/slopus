@@ -1,6 +1,6 @@
 [package]
 name = "slopus"
-version = "0.1.0"
+version = "0.1.1"
 description = "An AI media harness for planning, generating, and editing media locally."
 authors = ["Slopus"]
 edition = "2021"
