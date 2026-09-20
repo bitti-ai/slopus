@@ -348,7 +348,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             })}
           >
             <option value="">None</option>
-            {!animate && <option value="previous-scene" disabled={!previousScene}>Previous scene's last frame</option>}
+            {!animate && <option value="previous-scene" disabled={!previousScene}>Previous scene</option>}
             {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
           </select>
           <button
