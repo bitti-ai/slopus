@@ -1,8 +1,17 @@
 # Generator weights
 
-Settings opens as a full-screen page with sections in the left sidebar. The
-sidebar stays available while editing generators and LoRAs. **Back** or Escape
-returns to the previous screen, preserving the open project's edits.
+Settings opens as a full-screen page with sections in the left sidebar.
+Generator templates open in a popup over the page and save edits immediately.
+Escape or the popup's close button returns to the generator list. From Settings,
+**Back** or Escape returns to the previous screen, preserving project edits.
+
+**Reference icon generator** chooses the template used for automatic, manually
+regenerated, and built-in reference icons, independently of the video generator.
+Only available text-prompt templates appear; Animate cannot generate still icons.
+If only one is available, it is used automatically. Without a valid saved choice,
+the video default is used if eligible, otherwise the first available template.
+Icons use the selected template's steps, attention, MotionCache and LoRAs,
+including their step overrides.
 
 ## LoRAs
 

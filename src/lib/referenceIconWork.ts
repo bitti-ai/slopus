@@ -5,9 +5,9 @@ import type { ProjectSession } from "./projectSession";
 import { referenceImages, type ProjectReference } from "./project";
 import { needsReferenceIcon, referenceIconPrompt, REFERENCE_ICON_RENDER_SIZE, REFERENCE_ICON_STEPS } from "./referenceIcons";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } from "./runtime";
-import { withEngineSettings } from "./settings";
+import { engineProviderSetting, generationStepsWithLoras } from "./settings";
 import { activeReferenceRefmods, referenceRefmodInputs } from "./project";
-import { loadReferenceIconAutomation, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
+import { loadReferenceIconAutomation, referenceIconGenerator, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import type { WorkItem } from "./workQueue";
 import { hasPresetIcon, REFERENCE_PRESETS, REFERENCE_TYPES, type ReferencePreset } from "./reference-presets";
 import { saveBuiltinIcon } from "./builtinReferenceIcons";
@@ -254,13 +254,21 @@ export class ReferenceIconWork {
       task.prompt = referenceIconPrompt(reference);
       task.refmodsSnapshot = JSON.stringify(activeReferenceRefmods(reference));
       task.name = reference.name;
+      const template = referenceIconGenerator();
+      if (!template) throw new Error("Choose an available text-prompt generator for reference icons in Settings.");
+      const config = task.session.getSnapshot().config;
+      const runtimeConfig = { ...config, providerSettings: { ...config.providerSettings,
+        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false),
+      } };
+      const steps = generationStepsWithLoras(template.defaultSteps, runtimeConfig);
+      if (this.item) { this.item = { ...this.item, settings: { ...this.item.settings, steps } }; this.publish(); }
       task.nativeId = `icon-${crypto.randomUUID()}`;
       const done = new Promise<void>((resolve) => { task.finish = resolve; });
       await enqueueSlopfabGeneration({
         jobId: task.nativeId, prompt: task.prompt, stillImage: true, frames: 1,
-        steps: REFERENCE_ICON_STEPS, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE, referencePaths: [],
+        steps, seed: -1, canvasWidth: REFERENCE_ICON_RENDER_SIZE, canvasHeight: REFERENCE_ICON_RENDER_SIZE, referencePaths: [],
         ...(activeReferenceRefmods(reference).length ? { refmods: referenceRefmodInputs(task.session.record.folderPath, [reference]) } : {}),
-      }, withEngineSettings(task.session.getSnapshot().config), task.session.record.folderPath);
+      }, runtimeConfig, task.session.record.folderPath);
       task.submitted = true;
       if (task.cancelled) await this.cancelNative(task);
       else if (task.yielded) await this.cancelForVideo(task);

@@ -5,7 +5,9 @@ import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, referenceImages, type ProjectRecord, type ProjectReference } from "./project";
 import { REFERENCE_PRESETS } from "./reference-presets";
 import { referenceIconPrompt } from "./referenceIcons";
-import { loadReferenceIconAutomation, saveReferenceIconAutomation } from "./referenceIconSettings";
+import { loadReferenceIconAutomation, saveReferenceIconAutomation, saveReferenceIconGeneratorId } from "./referenceIconSettings";
+import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "./settings";
+import { saveLoras } from "./loras";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, saveReferenceIcon } from "./runtime";
 import { WorkQueue } from "./workQueue";
 
@@ -70,6 +72,27 @@ it("renders a refmod icon without a description and rejects a result after its s
   expect(requests()[1].refmods![0].copies).toBe(3);
   await finish(requests()[1].jobId);
   expect(session.getSnapshot().config.references[0].iconRelativePath).toContain("references/icons/");
+});
+
+it("renders automatic icons with the chosen template without changing the video generator", async () => {
+  const videoTemplate = createGeneratorTemplate("Video"), icons = createGeneratorTemplate("Icons");
+  icons.paths.transformer = "D:/icons.safetensors";
+  icons.defaultSteps = 12;
+  icons.attention = "exact";
+  icons.motionCache = true;
+  saveLoras([{ id: "style", name: "Style", path: "D:/style.safetensors", multiplier: 0.9, stepOverride: 6 }]);
+  icons.loras = [{ loraId: "style", enabled: true, strength: 1 }];
+  saveGeneratorTemplateSettings({ templates: [videoTemplate, icons], defaultTemplateId: videoTemplate.id, catalogVersion: 9 });
+  saveReferenceIconGeneratorId(icons.id);
+  const { session } = setup([reference("hero")]);
+  await vi.advanceTimersByTimeAsync(1001);
+  const [request, runtime] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+  expect(request).toMatchObject({ stillImage: true, steps: 6 });
+  expect(runtime.providerSettings.slopfab.options).toMatchObject({ transformer: "D:/icons.safetensors", attention: "exact", motionCache: true, stepOverride: 6 });
+  expect(JSON.parse(runtime.providerSettings.slopfab.options.loras as string)).toEqual([{ path: "D:/style.safetensors", strength: 0.9 }]);
+  expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(videoTemplate.id);
+  expect(session.getSnapshot().config.providerSettings).toEqual({});
+  await finish(request.jobId);
 });
 
 it("waits for batch confirmation without blocking video generation", async () => {
