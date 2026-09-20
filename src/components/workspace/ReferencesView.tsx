@@ -238,7 +238,6 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           {selected.kind === "video" && <section className="reference-video" aria-label="Video reference">
             <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
               onChange={(video) => update(selected.id, { video })} />
-            <p>Long videos are welcome. Only the selected 2–15 seconds are used. Up to 3 references can total 15 seconds per generation.</p>
             <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} /> Remove video</button>
           </section>}
           {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${(!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>

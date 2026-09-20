@@ -65,15 +65,13 @@ Source videos may be longer than 15 seconds. Import initially selects the first
 uses the actual video frame timestamps so fragmented MP4s with missing or
 placeholder header durations can still be selected correctly.
 
-Use **Position in full video** to move the reference segment anywhere in the
-source. Drag the highlighted selection to move it without changing its length,
-or drag either edge to trim it. The closer ruler displays up to 30 seconds at a
-time so the edges remain usable on long videos. The start and duration fields
-provide precise edits; all controls stay within the source and the 2–15 second
+Choose **Edit video clip** to open the preview and trim controls in a wide
+popup. Drag the highlighted selection to move it without changing its length,
+or drag either edge to trim it. Scroll the timeline horizontally to reach later
+parts of long videos. The range stays within the source and the 2–15 second
 selection limit. The handles also support arrow keys (0.1 seconds), Shift+arrow
 (1 second), Home, and End.
 
-You can also seek in the video player and choose **Start at playhead**.
 **Play selection** previews only the chosen segment and stops at its end.
 **Include sound** controls the selected interval's soundtrack. Changing the
 selection seeks the existing player without reloading the source. Trimming the

@@ -23,6 +23,7 @@ function Harness({ initial = original }: { initial?: ProjectReference }) {
   return <><ReferenceVideo folderPath="C:/project" reference={reference} onChange={(video) => setReference((current) => projectReferenceSchema.parse({ ...current, video }))} /><output data-testid="saved">{JSON.stringify(reference.video)}</output></>;
 }
 async function ready(duration = 120) {
+  fireEvent.click(screen.getByRole("button", { name: "Edit video clip" }));
   const video = await screen.findByLabelText("Long video video preview") as HTMLVideoElement;
   Object.defineProperty(video, "duration", { value: duration, configurable: true });
   fireEvent.loadedMetadata(video);
@@ -34,7 +35,7 @@ it("starts at 0–15 seconds and moves and resizes the selection without reloadi
   render(<Harness />);
   const video = await ready();
   expect(screen.getByText("0:00.0 – 0:15.0")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Clip position"), { target: { value: "60" } });
+  for (let i = 0; i < 60; i++) fireEvent.keyDown(screen.getByRole("slider", { name: "Move selection" }), { key: "ArrowRight", shiftKey: true });
   expect(saved()).toMatchObject({ startSeconds: 60, durationSeconds: 15 });
   expect(video.currentTime).toBe(60);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "ArrowLeft", shiftKey: true });
@@ -52,8 +53,7 @@ it("keeps the selection in bounds at the end of a long video", async () => {
   await ready(3600);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Move selection" }), { key: "End" });
   expect(saved()).toMatchObject({ startSeconds: 3585, durationSeconds: 15 });
-  fireEvent.change(screen.getByLabelText("Clip duration (seconds)"), { target: { value: "100" } });
-  fireEvent.blur(screen.getByLabelText("Clip duration (seconds)"));
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "End" });
   expect(saved().durationSeconds).toBe(15);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection start" }), { key: "End" });
   expect(saved()).toMatchObject({ startSeconds: 3598, durationSeconds: 2 });
@@ -70,7 +70,7 @@ it("drags the selected interval and its edges", async () => {
   const video = await ready();
   const bar = screen.getByLabelText("Drag the selection or its edges");
   Object.defineProperty(bar, "setPointerCapture", { value: vi.fn() });
-  vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ width: 300, left: 0 } as DOMRect);
+  vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({ width: 1200, left: 0 } as DOMRect);
   fireEvent.pointerDown(screen.getByRole("slider", { name: "Move selection" }), { button: 0, pointerId: 1, clientX: 75 });
   fireEvent.pointerMove(bar, { pointerId: 1, clientX: 125 });
   fireEvent.pointerUp(bar, { pointerId: 1 });
@@ -92,12 +92,25 @@ it("drags the selected interval and its edges", async () => {
   expect(video.currentTime).toBe(7);
 });
 
-it("starts the segment at the frame chosen in the video player", async () => {
+it("opens clip settings in a dialog and preserves edits after closing", async () => {
   render(<Harness />);
-  const video = await ready();
-  video.currentTime = 42;
-  fireEvent.click(screen.getByRole("button", { name: "Start at playhead" }));
-  expect(saved()).toMatchObject({ startSeconds: 42, durationSeconds: 15 });
+  const opener = screen.getByRole("button", { name: "Edit video clip" });
+  opener.focus();
+  expect(screen.queryByLabelText("Long video video preview")).not.toBeInTheDocument();
+  await ready();
+  const dialog = screen.getByRole("dialog", { name: /Long video.*Video clip/ });
+  expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Clip position")).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Move selection" }), { key: "End" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(opener).toHaveFocus();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:video");
+  const reopened = await ready();
+  expect(reopened.currentTime).toBe(105);
+  expect(saved()).toMatchObject({ startSeconds: 105, durationSeconds: 15 });
+  fireEvent.click(screen.getByRole("button", { name: "Close video clip settings" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("plays only the selected interval and keeps soundtrack settings", async () => {

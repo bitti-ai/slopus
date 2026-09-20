@@ -599,10 +599,52 @@
   padding: var(--space-4);
 }
 
+.reference-video-dialog-overlay {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+  backdrop-filter: blur(5px);
+}
+
+.reference-video-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - var(--space-5) * 2);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-2);
+  box-shadow: var(--shadow);
+}
+
+.reference-video-dialog > header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.reference-video-dialog h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-lg);
+}
+
+.reference-video-dialog > .reference-video { min-height: 0; overflow-y: auto; }
+
 .reference-video-preview {
   display: block;
   width: 100%;
-  max-height: 280px;
+  max-height: min(50vh, 460px);
   background: var(--field-bg);
   border-radius: var(--radius-sm);
 }
@@ -610,8 +652,8 @@
 .reference-trim { display: grid; gap: var(--space-2); min-width: 0; }
 .reference-trim__summary { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
 .reference-trim__summary span, .reference-trim__ticks { color: var(--text-muted); font-size: var(--text-xs); }
-.reference-video .reference-trim__overview { display: grid; gap: 4px; }
-.reference-trim__overview input { width: 100%; accent-color: var(--accent); }
+.reference-trim__scroll { min-width: 0; overflow-x: auto; padding-bottom: var(--space-2); }
+.reference-trim__track { width: 100%; padding: 2px 4px; }
 .reference-trim__ticks { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
 .reference-trim__bar { position: relative; height: 40px; margin: 8px 7px 0; border-radius: var(--radius-sm); background: var(--panel-3); touch-action: none; user-select: none; cursor: pointer; }
 .reference-trim__selection { position: absolute; top: 0; bottom: 0; display: flex; border: 2px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 20%, var(--panel-2)); }
@@ -623,10 +665,7 @@
 .reference-trim__move { width: 100%; min-width: 0; overflow: hidden; font-size: var(--text-xs); color: var(--text-primary); background: transparent; cursor: grab; }
 .reference-trim__move:active { cursor: grabbing; }
 .reference-trim__selection button:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
-.reference-trim__numbers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .reference-trim__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.reference-video .reference-trim__numbers label { display: grid; gap: 4px; min-width: 0; }
-.reference-video .reference-trim__numbers input { width: 100%; min-width: 0; }
 
 .reference-video p {
   color: var(--text-muted);
@@ -637,12 +676,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.reference-video input[type="number"] {
-  min-width: 0;
-  width: 80px;
-  margin-left: auto;
 }
 
 .reference-fields__actions {
