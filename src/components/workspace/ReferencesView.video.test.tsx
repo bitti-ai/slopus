@@ -103,20 +103,22 @@ it("imports a video, edits its saved trim and soundtrack, then removes its attac
   fireEvent.click(within(picker).getByRole("button", { name: "New" }));
   expect(latest.references[0]).toMatchObject({ name: "Uncategorized", kind: "text", intendedUse: [] });
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Edit video clip" }));
   const preview = await screen.findByLabelText("Uncategorized video preview");
   Object.defineProperty(preview, "duration", { value: 10, configurable: true });
   fireEvent.loadedMetadata(preview);
   expect(invoke).toHaveBeenCalledWith("choose_reference_files", { folderPath: "C:/project" });
   expect(screen.getByRole("img", { name: "Frame from Uncategorized" })).toHaveAttribute("src", "test:C:/motion.mp4:0");
-  fireEvent.change(screen.getByLabelText("Clip duration (seconds)"), { target: { value: "4" } });
-  fireEvent.blur(screen.getByLabelText("Clip duration (seconds)"));
-  fireEvent.change(screen.getByLabelText("Clip start (seconds)"), { target: { value: "2" } });
-  fireEvent.blur(screen.getByLabelText("Clip start (seconds)"));
+  for (let i = 0; i < 2; i++) fireEvent.keyDown(screen.getByRole("slider", { name: "Selection start" }), { key: "ArrowRight", shiftKey: true });
+  for (let i = 0; i < 4; i++) fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "ArrowLeft", shiftKey: true });
   fireEvent.click(screen.getByLabelText("Include sound"));
   expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).references[0]).toMatchObject({
     name: "Uncategorized", intendedUse: [], kind: "video", sourcePath: "C:/motion.mp4", video: { startSeconds: 2, durationSeconds: 4, includeAudio: false },
   });
   expect(screen.getByRole("img", { name: "Frame from Uncategorized" })).toHaveAttribute("src", "test:C:/motion.mp4:0");
+  fireEvent.click(screen.getByRole("button", { name: "Close video clip settings" }));
+  expect(screen.getByLabelText("Prompt")).toBeEnabled();
+  expect(screen.queryByText(/Long videos are welcome/)).not.toBeInTheDocument();
   vi.mocked(invoke).mockResolvedValueOnce([{ kind: "video", name: "replacement.mp4", sourcePath: "C:/replacement.mp4" }]);
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
   await waitFor(() => expect(screen.getByRole("img", { name: "Frame from Uncategorized" })).toHaveAttribute("src", "test:C:/replacement.mp4:0"));

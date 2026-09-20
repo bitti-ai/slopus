@@ -1,28 +1,54 @@
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, Scissors, X } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectReference } from "../../lib/project";
 import { editReferenceVideoTrim, initialReferenceVideoTrim, normalizeReferenceVideoTrim, referenceTime, type ReferenceVideoTrim, type TrimAction } from "../../lib/referenceVideoTrim";
 
 type VideoOptions = NonNullable<ProjectReference["video"]>;
 
-function SecondsInput({ label, value, min, max, onChange }: {
-  label: string; value: number; min: number; max: number; onChange: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(Math.round(value * 1000) / 1000)), [value]);
-  return <label>{label}<input type="number" min={min} max={max} step="0.1" value={draft}
-    onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
-    onBlur={() => {
-      const parsed = Number(draft);
-      const next = draft.trim() && Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : value;
-      setDraft(String(next)); onChange(next);
-    }} /></label>;
+type ReferenceVideoProps = { folderPath: string; reference: ProjectReference; onChange: (video: VideoOptions) => void };
+
+export function ReferenceVideo(props: ReferenceVideoProps) {
+  const [open, setOpen] = useState(false);
+  const start = props.reference.video?.startSeconds ?? 0;
+  const length = props.reference.video?.durationSeconds ?? 15;
+  return <>
+    {!open && <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>}
+    <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Scissors size={16} /> Edit video clip</button>
+    {open && createPortal(<ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />, document.body)}
+  </>;
 }
 
-export function ReferenceVideo({ folderPath, reference, onChange }: {
-  folderPath: string; reference: ProjectReference; onChange: (video: VideoOptions) => void;
-}) {
+function ReferenceVideoDialog({ onClose, ...props }: ReferenceVideoProps & { onClose: () => void }) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    const workspace = document.querySelector<HTMLElement>(".references-view");
+    const wasInert = workspace?.inert ?? false;
+    if (workspace) workspace.inert = true;
+    dialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      if (workspace) workspace.inert = wasInert;
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+  return <div className="reference-video-dialog-overlay" onKeyDown={(event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") { event.preventDefault(); onClose(); }
+    if (event.key !== "Tab") return;
+    const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), video[controls]') ?? []);
+    if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
+    else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
+  }}>
+    <div ref={dialog} className="reference-video-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-video-heading">
+      <header><h2 id="reference-video-heading">{props.reference.name} — Video clip</h2><button type="button" className="icon-button" aria-label="Close video clip settings" onClick={onClose}><X size={18} /></button></header>
+      <div className="reference-video"><ReferenceVideoEditor {...props} /></div>
+    </div>
+  </div>;
+}
+
+function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVideoProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceDuration, setSourceDuration] = useState<number | null>(null);
@@ -31,8 +57,8 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
   const latest = useRef({ reference, onChange });
   latest.current = { reference, onChange };
   const bar = useRef<HTMLDivElement>(null);
-  const gesture = useRef<{ pointerId: number; action: TrimAction; x: number; width: number; trim: ReferenceVideoTrim; windowStart: number; windowDuration: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const gesture = useRef<{ pointerId: number; action: TrimAction; x: number; width: number; trim: ReferenceVideoTrim; scrollLeft: number } | null>(null);
   const selectionPlayback = useRef(false);
   const frameCallback = useRef<number | null>(null);
   const previewEdge = useRef<"start" | "end">("start");
@@ -42,7 +68,7 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
     setUrl(null); setError(null); setSourceDuration(null); setPreviewing(false);
     selectionPlayback.current = false;
     previewEdge.current = "start";
-    gesture.current = null; setDragging(false);
+    gesture.current = null;
     void readMediaFileUrl(folderPath, reference, "video/mp4").then((value) => {
       if (disposed) { if (value) URL.revokeObjectURL(value); return; }
       owned = value; setUrl(value);
@@ -55,10 +81,14 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
   const start = trim?.startSeconds ?? 0;
   const length = trim?.durationSeconds ?? 15;
   const end = start + length;
-  // A local ruler keeps handles usable even for hour-long sources; the
-  // overview slider moves this window anywhere in the source.
-  const windowDuration = dragging && gesture.current ? gesture.current.windowDuration : Math.min(sourceDuration ?? 30, 30);
-  const windowStart = dragging && gesture.current ? gesture.current.windowStart : Math.max(0, Math.min((sourceDuration ?? 30) - windowDuration, start - (windowDuration - length) / 2));
+  useEffect(() => {
+    const viewport = scroller.current, timeline = bar.current;
+    if (!viewport || !timeline || !sourceDuration || gesture.current || !viewport.clientWidth) return;
+    const scale = timeline.getBoundingClientRect().width / sourceDuration;
+    const left = start * scale, right = end * scale;
+    if (left < viewport.scrollLeft) viewport.scrollLeft = Math.max(0, left - 16);
+    else if (right > viewport.scrollLeft + viewport.clientWidth) viewport.scrollLeft = right - viewport.clientWidth + 16;
+  }, [start, end, sourceDuration]);
 
   const stop = () => {
     selectionPlayback.current = false;
@@ -112,9 +142,8 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
     const box = bar.current.getBoundingClientRect();
     if (!box.width) return;
     previewTrim(action, trim);
-    gesture.current = { pointerId: event.pointerId, action, x: event.clientX, width: box.width, trim, windowStart, windowDuration };
+    gesture.current = { pointerId: event.pointerId, action, x: event.clientX, width: box.width, trim, scrollLeft: scroller.current?.scrollLeft ?? 0 };
     bar.current.setPointerCapture(event.pointerId);
-    setDragging(true);
   };
   const keyboard = (event: KeyboardEvent, action: TrimAction, value: number, min: number, max: number) => {
     const step = event.shiftKey ? 1 : .1;
@@ -148,47 +177,46 @@ export function ReferenceVideo({ folderPath, reference, onChange }: {
       onError={() => setError("This computer cannot preview this video codec.")} />}
     {trim && sourceDuration !== null && <div className="reference-trim" aria-label="Reference segment editor">
       <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(end)}</strong><span>{Number(length.toFixed(2))} s selected · 15 s max</span></div>
-      <label className="reference-trim__overview">Position in full video
-        <input aria-label="Clip position" type="range" min="0" max={sourceDuration - length} step="any" value={start}
-          disabled={sourceDuration === length} onChange={(event) => change("move", Number(event.target.value))} />
-      </label>
-      <div className="reference-trim__ticks"><span>0:00</span><span>Source {referenceTime(sourceDuration)}</span></div>
-      <div ref={bar} className="reference-trim__bar" aria-label="Drag the selection or its edges"
-        onPointerDown={(event) => {
-          if (event.target !== event.currentTarget || event.button !== 0) return;
-          const box = event.currentTarget.getBoundingClientRect();
-          if (box.width) change("move", windowStart + (event.clientX - box.left) / box.width * windowDuration - length / 2);
-        }}
-        onPointerMove={(event) => {
-          const drag = gesture.current;
-          if (!drag || event.pointerId !== drag.pointerId) return;
-          const delta = (event.clientX - drag.x) / drag.width * drag.windowDuration;
-          const original = drag.action === "end" ? drag.trim.startSeconds + drag.trim.durationSeconds : drag.trim.startSeconds;
-          const maximum = drag.windowStart + drag.windowDuration - (drag.action === "move" ? drag.trim.durationSeconds : 0);
-          const value = Math.max(drag.windowStart, Math.min(maximum, original + delta));
-          change(drag.action, Math.round(value * 1000) / 1000, drag.trim);
-        }}
-        onPointerUp={() => { gesture.current = null; setDragging(false); }}
-        onPointerCancel={() => { gesture.current = null; setDragging(false); }}
-        onLostPointerCapture={() => { gesture.current = null; setDragging(false); }}>
-        <div className="reference-trim__selection" style={{ left: `${(start - windowStart) / windowDuration * 100}%`, width: `${length / windowDuration * 100}%` }}>
-          <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection start" aria-valuemin={Math.max(0, end - 15)} aria-valuemax={end - 2} aria-valuenow={start} aria-valuetext={referenceTime(start)}
-            onPointerDown={(event) => beginDrag(event, "start")} onKeyDown={(event) => keyboard(event, "start", start, Math.max(0, end - 15), end - 2)} />
-          <button type="button" className="reference-trim__move" role="slider" aria-label="Move selection" aria-valuemin={0} aria-valuemax={sourceDuration - length} aria-valuenow={start} aria-valuetext={referenceTime(start)}
-            onPointerDown={(event) => beginDrag(event, "move")} onKeyDown={(event) => keyboard(event, "move", start, 0, sourceDuration - length)}>Drag</button>
-          <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection end" aria-valuemin={start + 2} aria-valuemax={Math.min(sourceDuration, start + 15)} aria-valuenow={end} aria-valuetext={referenceTime(end)}
-            onPointerDown={(event) => beginDrag(event, "end")} onKeyDown={(event) => keyboard(event, "end", end, start + 2, Math.min(sourceDuration, start + 15))} />
+      <div ref={scroller} className="reference-trim__scroll" role="region" aria-label="Video trim timeline">
+        <div className="reference-trim__track" style={{ minWidth: `${sourceDuration * 24}px` }}>
+          <div ref={bar} className="reference-trim__bar" aria-label="Drag the selection or its edges"
+            onPointerDown={(event) => {
+              if (event.target !== event.currentTarget || event.button !== 0) return;
+              const box = event.currentTarget.getBoundingClientRect();
+              if (box.width) change("move", (event.clientX - box.left) / box.width * sourceDuration - length / 2);
+            }}
+            onPointerMove={(event) => {
+              const drag = gesture.current;
+              if (!drag || event.pointerId !== drag.pointerId) return;
+              const viewport = scroller.current;
+              if (viewport && viewport.clientWidth) {
+                const bounds = viewport.getBoundingClientRect();
+                if (event.clientX > bounds.right - 24) viewport.scrollLeft += 16;
+                else if (event.clientX < bounds.left + 24) viewport.scrollLeft -= 16;
+              }
+              const delta = (event.clientX - drag.x + (viewport?.scrollLeft ?? 0) - drag.scrollLeft) / drag.width * sourceDuration;
+              const original = drag.action === "end" ? drag.trim.startSeconds + drag.trim.durationSeconds : drag.trim.startSeconds;
+              const maximum = sourceDuration - (drag.action === "move" ? drag.trim.durationSeconds : 0);
+              const value = Math.max(0, Math.min(maximum, original + delta));
+              change(drag.action, Math.round(value * 1000) / 1000, drag.trim);
+            }}
+            onPointerUp={() => { gesture.current = null; }}
+            onPointerCancel={() => { gesture.current = null; }}
+            onLostPointerCapture={() => { gesture.current = null; }}>
+            <div className="reference-trim__selection" style={{ left: `${start / sourceDuration * 100}%`, width: `${length / sourceDuration * 100}%` }}>
+              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection start" aria-valuemin={Math.max(0, end - 15)} aria-valuemax={end - 2} aria-valuenow={start} aria-valuetext={referenceTime(start)}
+                onPointerDown={(event) => beginDrag(event, "start")} onKeyDown={(event) => keyboard(event, "start", start, Math.max(0, end - 15), end - 2)} />
+              <button type="button" className="reference-trim__move" role="slider" aria-label="Move selection" aria-valuemin={0} aria-valuemax={sourceDuration - length} aria-valuenow={start} aria-valuetext={referenceTime(start)}
+                onPointerDown={(event) => beginDrag(event, "move")} onKeyDown={(event) => keyboard(event, "move", start, 0, sourceDuration - length)}>Drag</button>
+              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection end" aria-valuemin={start + 2} aria-valuemax={Math.min(sourceDuration, start + 15)} aria-valuenow={end} aria-valuetext={referenceTime(end)}
+                onPointerDown={(event) => beginDrag(event, "end")} onKeyDown={(event) => keyboard(event, "end", end, start + 2, Math.min(sourceDuration, start + 15))} />
+            </div>
+          </div>
+          <div className="reference-trim__ticks"><span>0:00</span><span>{referenceTime(sourceDuration)}</span></div>
         </div>
-      </div>
-      <div className="reference-trim__ticks"><span>{referenceTime(windowStart)}</span><span>{referenceTime(windowStart + windowDuration)}</span></div>
-      <p>Move the selection or drag its edges. Use the position slider to find a part anywhere in the video.</p>
-      <div className="reference-trim__numbers">
-        <SecondsInput label="Clip start (seconds)" value={start} min={0} max={sourceDuration - length} onChange={(value) => change("move", value)} />
-        <SecondsInput label="Clip duration (seconds)" value={length} min={2} max={Math.min(15, sourceDuration - start)} onChange={(value) => change("duration", value)} />
       </div>
       <div className="reference-trim__actions">
         <button type="button" className="secondary-button" onClick={() => void playSelection()}>{previewing ? <Pause size={14} /> : <Play size={14} />}{previewing ? "Pause selection" : "Play selection"}</button>
-        <button type="button" className="secondary-button" onClick={() => change("move", video.current?.currentTime ?? start)}>Start at playhead</button>
       </div>
       <label><input type="checkbox" checked={reference.video?.includeAudio ?? true}
         onChange={(event) => onChange({ ...trim, includeAudio: event.target.checked })} /> Include sound</label>
