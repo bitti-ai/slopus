@@ -1,37 +1,17 @@
-import { ChromaKeyPreview } from "./ChromaKeyPreview";
-import { VideoEffectsPreview } from "./VideoEffectsPreview";
-import { hasVideoEffects } from "../../lib/effectSettings";
-import { ProgramLayer, previewMediaStyle } from "./ProgramLayer";
-import { Film, TriangleAlert } from "lucide-react";
+import { ProgramLayer } from "./ProgramLayer";
+import { Film } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clipFrameStyle, clipVisualSettings, visibleClipsAt } from "../../lib/export";
+import { clipFrameStyle, clipVisualSettings } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
 import { PreviewSources } from "../../lib/exportPipeline";
+import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
 
-/* The picture, played back.
- *
- * Slopus has no player of its own and does not need one: the webview owns a
- * hardware decoder, and a <video> pointed at the right file at the right offset
- * IS the shot. What this component adds is the part a media element cannot do —
- * being a TIMELINE rather than a file:
- *
- *  * The clip under the playhead decides what is on screen, and crossing a cut
- *    re-points the same element at the next file.
- *  * Timeline time and source time are different numbers. A clip trimmed to
- *    start 8s into a rush shows second 8 of the file at second 0 of the cut.
- *  * Sound from every audiovisual track plays alongside, each additional clip in its own element,
- *    corrected back into step whenever it drifts.
- *
- * While playing, a monotonic animation clock advances the playhead and the
- * media element plays alongside it. Explicit jumps and cuts seek the decoder;
- * the same clock also carries playback through gaps and still images.
- *
- * The whole file is read into a blob, as everywhere else in Slopus (see
- * MediaThumbnail): the project's media lives outside the webview's reach and
- * comes back through Tauri. Blobs are cached per asset for the life of the
- * view, so scrubbing back and forth across a cut re-reads nothing. */
+/* The monitor owns a continuous timeline clock. Each visible or upcoming clip
+ * owns a persistent media element: loading, decoding the first frame and seeking
+ * a trim happen ahead of a cut. Promoting a prepared layer preserves its decoder
+ * and effect renderer, including when a lower track becomes the foreground. */
 
 /** How far a sound may drift from the cut before it is pulled back. Below this
  *  a correction is more audible than the drift it fixes. */
@@ -39,34 +19,12 @@ const AUDIO_DRIFT_LIMIT_S = 0.25;
 /** Seeks below this are not worth the stutter — a paused element is already
  *  showing that frame. Roughly one frame at 30fps. */
 const SEEK_EPSILON_S = 0.033;
-const isImage = (asset: ProjectAsset) => asset.mimeType.startsWith("image/") || asset.kind === "image";
 const carriesAudio = (asset: ProjectAsset | undefined) => Boolean(
   asset && (asset.kind === "audio" || ((asset.kind === "video" || asset.kind === "generated") && asset.hasAudio === true)),
 );
 
 /** Where inside the FILE this moment of the timeline lives. */
 const sourceTimeMs = (clip: TimelineClip, timelineMs: number) => clip.sourceStartMs + (timelineMs - clip.startMs);
-
-const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
-
-/** Set an element's play position without fighting a seek already in flight.
- *  A scrub fires dozens of these a second; a media element that is asked to
- *  seek while seeking drops requests, so the latest target is remembered and
- *  applied when the current one lands. */
-function seekTo(element: HTMLMediaElement, seconds: number, pending: { current: number | null }) {
-  if (!Number.isFinite(seconds)) return;
-  const target = Math.max(0, seconds);
-  if (element.readyState === 0) {
-    pending.current = target;
-    return;
-  }
-  if (element.seeking) {
-    pending.current = target;
-    return;
-  }
-  if (Math.abs(element.currentTime - target) < SEEK_EPSILON_S) return;
-  element.currentTime = target;
-}
 
 type TransformGesture = {
   kind: "move" | "scale" | "rotate";
@@ -105,7 +63,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
 }) {
   const tracks = config.timeline.tracks;
   const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
-  const layers = useMemo(() => visibleClipsAt(tracks, playheadMs, assetsById), [tracks, playheadMs, assetsById]);
+  const segments = useMemo(() => previewSegments(tracks, assetsById), [tracks, assetsById]);
+  const segmentIndex = previewSegmentIndex(segments, playheadMs);
+  const layers = segments[segmentIndex].clips;
+  const prepared = useMemo(() => preparedPreviewClips(segments, segmentIndex), [segments, segmentIndex]);
   const clip = layers[0] ?? null;
   const asset = useMemo(
     () => (clip ? config.assets.find((candidate) => candidate.id === clip.assetId) : undefined),
@@ -115,9 +76,6 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     () => clip ? clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs) : null,
     [clip, playheadMs],
   );
-  const mediaStyle = frameStyle ? previewMediaStyle(frameStyle) : undefined;
-  const effects = clip ? hasVideoEffects(clip) : false;
-  const sourceStyle: React.CSSProperties | undefined = clip?.chromaKey || effects ? { ...mediaStyle, visibility: "hidden", position: "absolute" } : mediaStyle;
   /* Sound that should be audible at this moment: audio-only files and embedded
      sound from every active video, minus muted tracks. The visible video plays
      its own stream, so a second audio element is only needed for the rest. */
@@ -127,11 +85,6 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     .filter((candidate) => playheadMs >= candidate.startMs && playheadMs < clipEndMs(candidate))
     .filter((candidate) => candidate.id !== clip?.id && carriesAudio(assetsById.get(candidate.assetId))),
     [tracks, playheadMs, clip?.id, assetsById]);
-  const videoTrackMuted = useMemo(
-    () => tracks.find((track) => track.id === clip?.trackId)?.muted ?? false,
-    [tracks, clip],
-  );
-
   /** Where the picture ends. Playback stops there rather than running the clock
    *  over a timeline that has nothing left on it. */
   const contentEndMs = useMemo(
@@ -139,21 +92,15 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     [tracks],
   );
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
   const pictureRef = useRef<HTMLDivElement>(null);
   const transformGesture = useRef<TransformGesture | null>(null);
   const audioRefs = useRef(new Map<string, HTMLAudioElement>());
-  const pendingVideoSeek = useRef<number | null>(null);
   /* The last playhead value THIS component produced. Anything else arriving in
      the prop came from outside — the ruler, the scroll wheel, a scene card —
      and has to be seeked to even mid-playback. Without this the monitor cannot
      tell its own echo from a scrub. */
   const advancedTo = useRef<number | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
   const selectionFromPicture = useRef<string | null>(null);
 
@@ -184,34 +131,21 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   /* The playhead as of this render, readable from inside the animation frame
      without making the clock restart every time it ticks. */
   const positionRef = useRef(playheadMs);
-  positionRef.current = playheadMs;
+  const externalSeek = advancedTo.current === null || Math.abs(advancedTo.current - playheadMs) > 1;
+  if (externalSeek) positionRef.current = playheadMs;
 
+  const callbacks = useRef({ onSeek, onPlayingChange });
+  callbacks.current = { onSeek, onPlayingChange };
   const report = useCallback((ms: number) => {
     const rounded = Math.round(ms);
     /* Keep the local clock advancing even when React batches visual updates
        while pointer and hover events are busy. */
-    positionRef.current = rounded;
+    // Keep fractional milliseconds internally; rounding every display tick
+    // otherwise speeds the clock up and eventually forces corrective seeks.
+    positionRef.current = ms;
     advancedTo.current = rounded;
-    onSeek(rounded);
-  }, [onSeek]);
-
-  // The picture's file. Nothing is read for a clip the playhead is not inside.
-  useEffect(() => {
-    if (!asset || (!asset.relativePath && !asset.sourcePath)) {
-      setUrl(null);
-      setReady(false);
-      setError(null);
-      return;
-    }
-    let live = true;
-    setError(null);
-    setReady(false);
-    void sources.url(asset).then(
-      (value) => { if (live) setUrl(value); },
-      (reason) => { if (live) { setUrl(null); setError(describe(reason)); } },
-    );
-    return () => { live = false; };
-  }, [asset, sources]);
+    callbacks.current.onSeek(rounded);
+  }, []);
 
   // The sound files. Each audio clip under the playhead gets its own element,
   // so two tracks can be heard at once rather than one winning.
@@ -233,59 +167,6 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     }
   }, [audioClips, config.assets, sources]);
 
-  /* Scrubbing, every other jump, and the first frame of every new shot.
-     While playing this deliberately does nothing for the playhead's own
-     advance — seeking the element to every animation tick would stutter. It
-     does have to fire on the two other cases:
-     a playhead that moved for some other reason (the ruler, the wheel, a scene
-     card), and a CUT. Crossing a cut re-points the element at another file, or
-     at another moment of the same file, and neither knows where in the footage
-     this clip begins until it is told. */
-  const playingClipId = useRef<string | null>(null);
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !clip || !url) return;
-    const crossedACut = playingClipId.current !== clip.id;
-    playingClipId.current = clip.id;
-    const external = advancedTo.current === null || Math.abs(advancedTo.current - playheadMs) > 1;
-    if (playing && !external && !crossedACut) return;
-    seekTo(video, sourceTimeMs(clip, playheadMs) / 1000, pendingVideoSeek);
-  }, [playheadMs, playing, clip, url]);
-
-  // A seek that lands while another was queued: apply the newest target.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const flush = () => {
-      const target = pendingVideoSeek.current;
-      if (target === null) return;
-      pendingVideoSeek.current = null;
-      seekTo(video, target, pendingVideoSeek);
-    };
-    video.addEventListener("seeked", flush);
-    return () => {
-      video.removeEventListener("seeked", flush);
-    };
-  }, [url]);
-
-  /* Changing src resets the decoder after the cut's seek may have already
-     reached the previous file. Once the new file loads, seek again using the
-     current playhead, including any time spent waiting for that file. */
-  const syncLoadedVideo = (video: HTMLVideoElement) => {
-    pendingVideoSeek.current = null;
-    if (clip) seekTo(video, sourceTimeMs(clip, positionRef.current) / 1000, pendingVideoSeek);
-  };
-
-  /* Play and pause the picture. A media element that is asked to play before it
-     has data rejects, which is a promise nobody was awaiting — caught here so a
-     slow file does not throw into the console on every press. */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (playing && url) void video.play().catch(() => undefined);
-    else video.pause();
-  }, [playing, url, clip?.id]);
-
   /* The clock advances one animation frame at a time. It deliberately does
      not rely on the media element's coarser currentTime update cadence. */
   useEffect(() => {
@@ -304,19 +185,17 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       // stops there instead of running the clock over an empty ruler.
       if (next >= contentEndMs) {
         report(contentEndMs);
-        onPlayingChange(false);
+        callbacks.current.onPlayingChange(false);
         return;
       }
-      /* Past the end of THIS clip while its file still has footage left: the
-         cut is what ends the shot, not the file. Stepping just past the tail
-         hands the next clip — or the gap after it — to the next render. */
-      if (clip && next >= clipEndMs(clip)) report(clipEndMs(clip));
-      else report(next);
+      // Preserve elapsed time across cuts; neither media loads nor React
+      // commits restart the clock or discard the fraction past a boundary.
+      report(next);
       frame = requestAnimationFrame(step);
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [playing, clip, url, contentEndMs, report, onPlayingChange]);
+  }, [playing, contentEndMs, report]);
 
   /* Sound, kept in step with the cut. Each element is put where the playhead
      says it should be, and corrected only once it has drifted audibly — a
@@ -402,10 +281,6 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
   }
   else if (!isTauri()) {
     overlay = <div className="program-note"><Film size={22} /><span>Playback needs the desktop app — the browser preview has no project folder to read the footage from.</span></div>;
-  } else if (error) {
-    overlay = <div className="program-note program-note--error" role="alert"><TriangleAlert size={22} /><span>{clip.label} could not be played: {error}</span></div>;
-  } else if (!url || (!ready && asset && !isImage(asset))) {
-    overlay = <div className="program-note"><span>Loading {clip.label}…</span></div>;
   }
 
   /* The frame is fitted inside the panel and the rest is the project's own
@@ -423,23 +298,22 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onSelectClip(clip.id);
     }}
   >
-    {layers.slice(1).reverse().map((layer) => <ProgramLayer key={layer.id} clip={layer} asset={assetsById.get(layer.assetId)} sources={sources} playheadMs={playheadMs} playing={playing} />)}
-    {/* One element, re-pointed at whatever the playhead is over. Rebuilding it
-        per clip would drop the decoder and re-open the file on every cut. */}
-    {asset && !isImage(asset) && url && <video
-      ref={videoRef}
-      src={url}
-      style={sourceStyle}
-      muted={videoTrackMuted}
-      playsInline
-      preload="auto"
-      onLoadedMetadata={(event) => syncLoadedVideo(event.currentTarget)}
-      onLoadedData={(event) => { syncLoadedVideo(event.currentTarget); setReady(true); }}
-      onError={() => setError("This file could not be decoded.")}
-    />}
-    {asset && isImage(asset) && url && <img ref={imageRef} src={url} alt={clip?.label ?? ""} style={sourceStyle} />}
-    {asset && url && clip && effects && <VideoEffectsPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effects={clip} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
-    {asset && url && !effects && clip?.chromaKey && <ChromaKeyPreview source={isImage(asset) ? imageRef : videoRef} sourceUrl={url} effect={clip.chromaKey} playing={playing && !isImage(asset)} style={mediaStyle} onError={setError} />}
+    <div className="program-media">{prepared.map(({ clip: layer, prepareAtMs }) => {
+      const depth = layers.findIndex((visible) => visible.id === layer.id);
+      return <ProgramLayer
+        key={`${folderPath}:${layer.id}`}
+        clip={layer}
+        asset={assetsById.get(layer.assetId)}
+        sources={sources}
+        playheadMs={depth >= 0 ? playheadMs : prepareAtMs}
+        playing={playing}
+        active={depth >= 0}
+        foreground={depth === 0}
+        muted={depth !== 0 || (tracks.find((track) => track.id === layer.trackId)?.muted ?? false)}
+        externalSeek={externalSeek}
+        depth={depth >= 0 ? layers.length - depth : 0}
+      />;
+    })}</div>
     {clip && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
       style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}

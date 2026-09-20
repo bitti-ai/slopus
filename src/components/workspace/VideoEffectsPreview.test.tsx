@@ -8,12 +8,32 @@ import { VideoEffectsPreview } from "./VideoEffectsPreview";
 vi.mock("../../lib/videoEffectsGpu", () => ({ createVideoEffectsPreview: vi.fn() }));
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
-function Harness({ effects, onError = vi.fn() }: { effects: GpuEffects; onError?: (message: string) => void }) {
+function Harness({ effects, playing = false, onError = vi.fn() }: { effects: GpuEffects; playing?: boolean; onError?: (message: string) => void }) {
   const image = useRef<HTMLImageElement>(null);
-  return <><img ref={image} src="blob:picture" alt="Source" /><VideoEffectsPreview source={image} sourceUrl="blob:picture" effects={effects} playing={false} onError={onError} /></>;
+  return <><img ref={image} src="blob:picture" alt="Source" /><VideoEffectsPreview source={image} sourceUrl="blob:picture" effects={effects} playing={playing} onError={onError} /></>;
 }
 
 describe("GPU effects preview lifecycle", () => {
+  it("reuses the prepared renderer when playback starts and stops", async () => {
+    const renderer = { draw: vi.fn(), dispose: vi.fn() };
+    vi.mocked(createVideoEffectsPreview).mockResolvedValue(renderer);
+    let nextId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextId, callback); return nextId; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    const view = render(<Harness effects={{ blur: { radius: 4 } }} />);
+    await act(async () => undefined);
+    expect(frames.size).toBe(0);
+    view.rerender(<Harness effects={{ blur: { radius: 4 } }} playing />);
+    expect(frames.size).toBe(1);
+    view.rerender(<Harness effects={{ blur: { radius: 4 } }} />);
+    expect(frames.size).toBe(0);
+    expect(createVideoEffectsPreview).toHaveBeenCalledTimes(1);
+    expect(renderer.dispose).not.toHaveBeenCalled();
+    view.unmount();
+    expect(renderer.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("redraws paused media after seeking and editing without recreating GPU resources", async () => {
     const renderer = { draw: vi.fn(), dispose: vi.fn() };
     vi.mocked(createVideoEffectsPreview).mockResolvedValue(renderer);

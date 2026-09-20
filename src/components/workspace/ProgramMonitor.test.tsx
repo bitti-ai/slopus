@@ -2,12 +2,13 @@
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { PreviewSources } from "../../lib/exportPipeline";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+beforeEach(() => { vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined); });
 
 afterEach(() => {
   cleanup();
@@ -52,6 +53,89 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it.each([false, true])("prepares the next trim before a cut and promotes its decoder without seeking (same asset: %s)", async (sameAsset) => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const read = vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
+    const playingElements = new WeakSet<HTMLMediaElement>();
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
+      playingElements.add(this);
+      return Promise.resolve();
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { playingElements.delete(this); });
+    vi.spyOn(HTMLMediaElement.prototype, "paused", "get").mockImplementation(function (this: HTMLMediaElement) { return !playingElements.has(this); });
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(4);
+    const seek = vi.spyOn(HTMLMediaElement.prototype, "currentTime", "set");
+    let now = 0, nextId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextId, callback); return nextId; });
+    const cancel = vi.fn((id: number) => frames.delete(id));
+    vi.stubGlobal("cancelAnimationFrame", cancel);
+    const first = clip({ startMs: 0, durationMs: 1_000, sourceStartMs: 0 });
+    const second = clip({ id: "clip-2", assetId: sameAsset ? first.assetId : "second-asset", startMs: 1_000, sourceStartMs: 8_000 });
+    const config = project([first, second]);
+    if (!sameAsset) config.assets.push({ ...config.assets[0], id: "second-asset", sourcePath: "D:/second.mp4" });
+    const positions = vi.fn();
+    function Harness() {
+      const [position, setPosition] = useState(0);
+      return <ProgramMonitor config={config} folderPath="C:\\Film" playheadMs={position} playing
+        onSeek={(value) => { positions(value); setPosition(value); }} onPlayingChange={() => undefined} />;
+    }
+    const view = render(<Harness />);
+    await act(async () => undefined);
+    const incoming = view.container.querySelector<HTMLVideoElement>('[data-clip-id="clip-2"] video')!;
+    expect(incoming.currentTime).toBe(8);
+    expect(incoming.paused).toBe(true);
+    expect(incoming.muted).toBe(true);
+    expect(incoming.parentElement!.style.visibility).toBe("hidden");
+    fireEvent.loadedData(incoming);
+    const reads = read.mock.calls.length;
+    seek.mockClear(); play.mockClear(); cancel.mockClear();
+    // The display tick falls just past the cut. Keep that residual time and
+    // start the frame already decoded at the trim, without another seek/load.
+    await act(async () => {
+      now = 1_016;
+      const pending = [...frames.values()]; frames.clear(); pending.forEach((callback) => callback(now));
+    });
+    expect(positions).toHaveBeenLastCalledWith(1_016);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[data-clip-id="clip-2"] video')).toBe(incoming);
+    expect(incoming.parentElement!.style.visibility).toBe("visible");
+    expect(incoming.paused).toBe(false);
+    expect(incoming.muted).toBe(false);
+    expect(seek).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(reads);
+    expect(screen.queryByText(/Loading/)).toBeNull();
+    expect(view.container.querySelectorAll("video")).toHaveLength(1);
+  });
+
+  it("keeps upcoming media silent through a gap and applies the latest scrub after a pending seek", async () => {
+    vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(4);
+    let seeking = false;
+    vi.spyOn(HTMLMediaElement.prototype, "seeking", "get").mockImplementation(() => seeking);
+    const config = project([clip()]);
+    const props = { config, folderPath: "C:\\Film", playing: false, onSeek: vi.fn(), onPlayingChange: vi.fn() };
+    const view = render(<ProgramMonitor {...props} playheadMs={0} />);
+    await act(async () => undefined);
+    const video = view.container.querySelector("video")!;
+    expect(video.currentTime).toBe(8);
+    expect(video.muted).toBe(true);
+    expect(video.parentElement!.style.visibility).toBe("hidden");
+    view.rerender(<ProgramMonitor {...props} playheadMs={3_000} />);
+    expect(video.currentTime).toBe(9);
+    seeking = true;
+    view.rerender(<ProgramMonitor {...props} playheadMs={4_000} />);
+    view.rerender(<ProgramMonitor {...props} playheadMs={5_000} />);
+    expect(video.currentTime).toBe(9);
+    seeking = false;
+    fireEvent.seeked(video);
+    expect(video.currentTime).toBe(11);
+    expect(view.container.querySelector("video")).toBe(video);
+  });
+
   it.each([0, 2_000])("continues the longer track at its timeline position after the foreground ends (source offset %i)", async (sourceStartMs) => {
     vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
@@ -93,7 +177,7 @@ describe("the program monitor", () => {
     }
     const { container } = render(<Harness />);
     await act(async () => undefined);
-    const video = container.querySelector<HTMLVideoElement>(".program-picture > video")!;
+    const video = container.querySelector<HTMLVideoElement>('[data-clip-id="long-clip"] video')!;
     expect(container.querySelectorAll("video")).toHaveLength(2);
     for (const element of container.querySelectorAll("video")) {
       ready.add(element);
@@ -104,14 +188,9 @@ describe("the program monitor", () => {
     await advance(4_000);
     expect(video.getAttribute("src")).toBe("blob:asset-long");
     expect(container.querySelectorAll("video")).toHaveLength(1);
-    // A browser resets the media position when src changes. Model a delayed
-    // load too: the correct seek must use where playback has reached by then.
-    ready.delete(video);
-    video.currentTime = 0;
+    // Promoting the lower layer must preserve its existing decoder and src.
+    expect(container.querySelector('[data-clip-id="long-clip"] video')).toBe(video);
     await advance(500);
-    ready.add(video);
-    fireEvent.loadedMetadata(video);
-    fireEvent.loadedData(video);
     expect(video.currentTime).toBe((4_500 + sourceStartMs) / 1000);
     expect(onPlayingChange).not.toHaveBeenCalled();
 
@@ -203,5 +282,25 @@ describe("the program monitor", () => {
     act(() => { now = 16; frames.shift()?.(now); });
     act(() => { now = 32; frames.shift()?.(now); });
     expect(onSeek.mock.calls.map(([position]) => position)).toEqual([16, 32]);
+  });
+
+  it("preserves fractional display ticks instead of accumulating rounding drift", () => {
+    let nextFrame: FrameRequestCallback | undefined;
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const config = project([clip({ startMs: 0, sourceStartMs: 0 })]);
+    const onSeek = vi.fn();
+    function Harness() {
+      const [position, setPosition] = useState(0);
+      return <ProgramMonitor config={config} folderPath="C:\\Film" playheadMs={position} playing
+        onSeek={(value) => { onSeek(value); setPosition(value); }} onPlayingChange={() => undefined} />;
+    }
+    render(<Harness />);
+    for (let frame = 1; frame <= 60; frame++) {
+      act(() => { now = frame * 1000 / 60; nextFrame?.(now); });
+    }
+    expect(onSeek).toHaveBeenLastCalledWith(1000);
   });
 });

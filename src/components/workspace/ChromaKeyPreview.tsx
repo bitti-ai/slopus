@@ -12,6 +12,9 @@ export function ChromaKeyPreview({ source, sourceUrl, effect, playing, style, on
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const settings = useRef(effect);
+  const running = useRef(playing);
+  const updatePlayback = useRef<(() => void) | null>(null);
+  running.current = playing;
   const errorHandler = useRef(onError);
   const redraw = useRef<(() => void) | null>(null);
   settings.current = effect;
@@ -29,18 +32,25 @@ export function ChromaKeyPreview({ source, sourceUrl, effect, playing, style, on
       try { renderer.draw(media, settings.current); }
       catch (reason) { failed = true; errorHandler.current(String(reason)); }
     };
-    const animate = () => { draw(); if (!failed) frame = requestAnimationFrame(animate); };
+    const animate = () => { draw(); if (!failed && running.current) frame = requestAnimationFrame(animate); };
+    updatePlayback.current = () => {
+      cancelAnimationFrame(frame);
+      draw();
+      if (running.current) frame = requestAnimationFrame(animate);
+    };
     redraw.current = draw;
     ["loadeddata", "seeked", "load"].forEach((event) => media.addEventListener(event, draw));
     draw();
-    if (playing) frame = requestAnimationFrame(animate);
+    if (running.current) frame = requestAnimationFrame(animate);
     return () => {
       cancelAnimationFrame(frame);
+      updatePlayback.current = null;
       redraw.current = null;
       ["loadeddata", "seeked", "load"].forEach((event) => media.removeEventListener(event, draw));
       renderer.dispose();
     };
-  }, [source, sourceUrl, playing]);
+  }, [source, sourceUrl]);
+  useEffect(() => updatePlayback.current?.(), [playing]);
   useEffect(() => redraw.current?.(), [effect]);
   return <canvas ref={canvas} className="program-keyed-picture" style={style} aria-label="Chroma Key preview" />;
 }

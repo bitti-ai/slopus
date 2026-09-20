@@ -1544,5 +1544,6 @@
 .clip-effects__picker strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }
 .clip-effects__picker span { font-size: var(--text-xs); color: var(--text-muted); }
 
-.program-layer { position: absolute; inset: 0; pointer-events: none; }
+.program-media { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.program-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .program-picture > video, .program-picture > img, .program-keyed-picture { position: absolute; inset: 0; }
