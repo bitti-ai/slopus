@@ -26,7 +26,7 @@ pub(super) fn configure_request(
         let video = videos
             .get(&request.reference_video_ids[0])
             .ok_or("The prepared reference video no longer exists. Please retry generation.")?;
-        // The setter selects Euler and four boundaries; explicit step settings follow.
+        // Animate supplies recipe defaults; explicit step settings follow.
         api.set_animate(handle, video.has_audio())?;
         let source = configuration.prompt_embedding.as_deref()
             .ok_or("Animate conditioning is missing. Download Animate in Settings and select its conditioning additional safetensor.")?;
@@ -87,16 +87,18 @@ pub(super) fn configure_request(
     }
     if purpose == RequestPurpose::Generate {
         api.set_reuse_models(handle, true)?;
-        for (id, _, path) in &configuration.models {
-            if configuration.animate && (*id == 1 || *id == 2) {
-                continue;
-            }
-            if request.still_image && *id == 4 {
-                continue;
-            }
-            if let Some(path) = path {
-                api.set_model(handle, *id, path)?;
-            }
+    }
+    // Planning reads checkpoint metadata for sampling, conditioning, geometry
+    // and reference capabilities. Give it the same model paths as execution.
+    for (id, _, path) in &configuration.models {
+        if configuration.animate && (*id == 1 || *id == 2) {
+            continue;
+        }
+        if request.still_image && *id == 4 {
+            continue;
+        }
+        if let Some(path) = path {
+            api.set_model(handle, *id, path)?;
         }
     }
     for path in &request.reference_paths {

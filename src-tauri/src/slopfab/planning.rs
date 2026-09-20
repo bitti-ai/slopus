@@ -49,7 +49,7 @@ pub fn resolve_plan(
         latent_width: plan.latent_width,
         latent_height: plan.latent_height,
         description,
-        boundary: "Plan only. No weights were opened and no media file was created.",
+        boundary: "Plan only. Model and adapter metadata may be read; no inference was run or media file created.",
     })
 }
 
