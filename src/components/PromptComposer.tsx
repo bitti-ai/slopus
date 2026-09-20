@@ -1,4 +1,4 @@
-import { Clapperboard, Monitor, Save, WandSparkles, X } from "lucide-react";
+import { Clapperboard, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { outputDimensions } from "../lib/export";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
@@ -105,7 +105,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
                 </select>
               </label>
               <label>
-                <span>Look</span>
+                <span><Palette size={15} aria-hidden="true" /> Look</span>
                 <select aria-label="Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
                   <option value="">None</option>
                   {LOOKS.map((look) => <option key={look.id} value={look.id}>{look.label}</option>)}
