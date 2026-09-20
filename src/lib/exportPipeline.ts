@@ -135,7 +135,7 @@ export async function probeAllCodecs(plan: ExportPlan, bitrate: number): Promise
 
 export type CompositorKind = "webgpu" | "canvas2d";
 
-interface Compositor {
+export interface Compositor {
   readonly kind: CompositorKind;
   /** Paints the background alone — what a frame with no clip over it looks like. */
   clear(): void;
@@ -216,20 +216,22 @@ const NO_GPU_API = "This webview exposes no navigator.gpu at all.";
 const NO_ADAPTER =
   "navigator.gpu exists but requestAdapter() returned no adapter — the usual causes are a virtual machine, an RDP session, or a driver on Chromium's blocklist.";
 
-async function createWebGpuCompositor(width: number, height: number, background: string): Promise<GpuAttempt> {
+async function createWebGpuCompositor(width: number, height: number, background: string, target?: HTMLCanvasElement): Promise<GpuAttempt> {
   if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
     return { compositor: null, reason: NO_GPU_API };
   }
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return { compositor: null, reason: NO_ADAPTER };
   const device = await adapter.requestDevice();
-  const canvas = new OffscreenCanvas(width, height);
-  const context = canvas.getContext("webgpu");
+  const canvas = target ?? new OffscreenCanvas(width, height);
+  const context = canvas.getContext("webgpu") as GPUCanvasContext | null;
   if (!context) {
     device.destroy();
     return { compositor: null, reason: "This computer gave no WebGPU context for an OffscreenCanvas." };
   }
   const format = navigator.gpu.getPreferredCanvasFormat();
+  canvas.width = width;
+  canvas.height = height;
   context.configure({ device, format, alphaMode: "opaque" });
   const shader = device.createShaderModule({ code: COMPOSITOR_SHADER });
   const makePipeline = (module: GPUShaderModule) => device.createRenderPipeline({
@@ -253,7 +255,8 @@ async function createWebGpuCompositor(width: number, height: number, background:
     .replace("var source: texture_external;", "var source: texture_2d<f32>;")
     .replace("let sampled = textureSampleBaseClampToEdge(source, source_sampler, uv);",
       "let premultiplied = textureSampleLevel(source, source_sampler, uv, 0.); let sampled = vec4f(premultiplied.rgb / max(premultiplied.a, .00001), premultiplied.a);") }));
-  let effectsProcessor: ReturnType<typeof createVideoEffectsProcessor> | undefined;
+  // Preview must not compile its effect pipelines on the first effected cut.
+  let effectsProcessor = target ? createVideoEffectsProcessor(device) : undefined;
   const uniform = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const styleUniform = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
@@ -341,10 +344,18 @@ async function createWebGpuCompositor(width: number, height: number, background:
     },
     dispose() {
       effectsProcessor?.dispose();
+      context.unconfigure();
       device.destroy();
     },
   };
   return { compositor, reason: null };
+}
+
+/** The monitor presents through one canvas for its entire lifetime. Sharing
+ * the export compositor keeps VideoFrames in GPU memory and applies the same
+ * transforms, transitions and effects without swapping browser video surfaces. */
+export async function createPreviewCompositor(canvas: HTMLCanvasElement, width: number, height: number, background: string): Promise<Compositor | null> {
+  return (await createWebGpuCompositor(width, height, background, canvas)).compositor;
 }
 
 function createCanvasCompositor(width: number, height: number, background: string): Compositor {

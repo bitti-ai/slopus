@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../lib/export";
 import { PreviewSources } from "../../lib/exportPipeline";
 import type { ProjectAsset, TimelineClip } from "../../lib/project";
@@ -6,6 +6,7 @@ import { ChromaKeyPreview } from "./ChromaKeyPreview";
 import { VideoEffectsPreview } from "./VideoEffectsPreview";
 import { hasVideoEffects } from "../../lib/effectSettings";
 import { isTauri } from "../../lib/persistence";
+import type { PreviewMedia } from "../../lib/previewPresentation";
 
 export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
   const { transform, look, opacity, revealStart, revealEnd } = frame;
@@ -19,7 +20,7 @@ export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
 }
 
 /** Prepared clips keep their decoder and effect renderer when made visible. */
-export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active, foreground, muted, externalSeek, depth }: {
+export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active, foreground, muted, externalSeek, depth, media, composited }: {
   clip: TimelineClip;
   asset: ProjectAsset | undefined;
   sources: PreviewSources;
@@ -30,12 +31,22 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active
   muted: boolean;
   externalSeek: boolean;
   depth: number;
+  media: PreviewMedia;
+  composited: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const video = useRef<HTMLVideoElement>(null);
-  const image = useRef<HTMLImageElement>(null);
+  const video = useRef<HTMLVideoElement | null>(null);
+  const image = useRef<HTMLImageElement | null>(null);
+  const registerVideo = useCallback((element: HTMLVideoElement | null) => {
+    video.current = element;
+    media.set(clip.id, element);
+  }, [media, clip.id]);
+  const registerImage = useCallback((element: HTMLImageElement | null) => {
+    image.current = element;
+    media.set(clip.id, element);
+  }, [media, clip.id]);
   const position = useRef({ clip, playheadMs, playing, active, externalSeek });
   position.current = { clip, playheadMs, playing, active, externalSeek };
   const isImage = asset?.kind === "image" || asset?.mimeType.startsWith("image/");
@@ -80,18 +91,18 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active
   };
   const style = previewMediaStyle(clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs));
   const effects = hasVideoEffects(clip);
-  const sourceStyle: CSSProperties = clip.chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
+  const sourceStyle: CSSProperties = composited || clip.chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
   const showStatus = active && foreground && isTauri() && Boolean(asset?.relativePath || asset?.sourcePath);
   return <div className="program-layer" data-clip-id={clip.id} data-active={active} aria-hidden={!active}
     aria-label={`${foreground ? "Foreground" : "Background"} clip: ${clip.label}`}
     style={{ visibility: active ? "visible" : "hidden", zIndex: depth }}>
     {url && (isImage
-      ? <img ref={image} src={url} alt={clip.label} style={sourceStyle} onError={() => setError(`Could not decode ${clip.label}.`)} />
-      : <video key={url} ref={video} src={url} style={sourceStyle} muted={!active || muted} playsInline preload="auto"
+      ? <img ref={registerImage} src={url} alt={clip.label} style={sourceStyle} onError={() => setError(`Could not decode ${clip.label}.`)} />
+      : <video key={url} ref={registerVideo} src={url} style={sourceStyle} muted={!active || muted} playsInline preload="auto"
         onLoadedMetadata={loaded} onLoadedData={loaded} onCanPlay={loaded} onSeeked={loaded}
         onError={() => setError(`Could not decode ${clip.label}.`)} />)}
-    {url && effects && <VideoEffectsPreview source={isImage ? image : video} sourceUrl={url} effects={clip} playing={playing && active && !isImage} style={style} onError={setError} />}
-    {url && !effects && clip.chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={clip.chromaKey} playing={playing && active && !isImage} style={style} onError={setError} />}
+    {!composited && url && effects && <VideoEffectsPreview source={isImage ? image : video} sourceUrl={url} effects={clip} playing={playing && active && !isImage} style={style} onError={setError} />}
+    {!composited && url && !effects && clip.chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={clip.chromaKey} playing={playing && active && !isImage} style={style} onError={setError} />}
     {showStatus && (error
       ? <div className="program-note program-note--error" role="alert">{error}</div>
       : (!url || (!ready && !isImage)) && <div className="program-note"><span>Loading {clip.label}…</span></div>)}
