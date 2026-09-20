@@ -215,8 +215,31 @@
 
 /* --- Generator templates ------------------------------------------------- */
 
-.reference-icon-settings { margin-bottom: var(--space-5); }
-.reference-icon-settings .generator-template-fields { grid-template-columns: minmax(0, 420px); }
+.reference-icon-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+.reference-icon-option {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+.reference-icon-settings .generator-template-fields {
+  flex: 0 1 320px;
+  min-width: 0;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+}
 .generator-dialog-overlay {
   position: fixed;
   inset: 0;
@@ -499,8 +522,7 @@
 
 /* --- Diagnostics ---------------------------------------------------------- */
 
-.diagnostics-debug-option,
-.reference-icon-option {
+.diagnostics-debug-option {
   display: flex;
   align-items: center;
   gap: var(--space-3);
