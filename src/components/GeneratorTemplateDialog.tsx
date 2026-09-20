@@ -1,4 +1,4 @@
-import { ChevronLeft, X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 export function GeneratorTemplateDialog({ children, footer, onClose }: { children: ReactNode; footer: ReactNode; onClose: () => void }) {
@@ -19,7 +19,7 @@ export function GeneratorTemplateDialog({ children, footer, onClose }: { childre
   }}>
     <div ref={dialog} className="generator-dialog" role="dialog" aria-modal="true" aria-labelledby="generator-editor-heading">
       <header className="generator-dialog__head">
-        <button type="button" className="secondary-button" onClick={onClose}><ChevronLeft size={16} /> Generators</button>
+        <button type="button" className="icon-button icon-button--strong" onClick={onClose} aria-label="Generators" title="Back to generators"><ArrowLeft size={18} /></button>
         <h2 id="generator-editor-heading">Edit generator</h2>
         <button type="button" className="icon-button" aria-label="Close generator settings" onClick={onClose}><X size={18} /></button>
       </header>

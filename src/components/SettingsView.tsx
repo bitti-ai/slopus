@@ -1,6 +1,6 @@
 import { GeneratorTemplateDialog } from "./GeneratorTemplateDialog";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
-import { AlertCircle, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -544,7 +544,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       if (event.key === "Escape" && !event.defaultPrevented) onClose();
     }}>
         <header className="settings-view__head">
-          <button type="button" className="secondary-button" onClick={onClose} aria-label="Close settings"><ChevronLeft size={18} /> Back</button>
+          <button type="button" className="icon-button icon-button--strong" onClick={onClose} aria-label="Close settings" title="Back"><ArrowLeft size={18} /></button>
           <h1 id="settings-heading">Settings</h1>
         </header>
 
