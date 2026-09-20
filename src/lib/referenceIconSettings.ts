@@ -1,3 +1,5 @@
+import { loadGeneratorTemplateSettings, templateNeedsDownload, type GeneratorTemplateSettings } from "./settings";
+
 export type ReferenceIconAutomation = "ask" | "enabled" | "disabled";
 
 const BUILTIN_KEY = "slopus.builtin-reference-icons.v1";
@@ -29,7 +31,31 @@ export function builtinIconVisitAction(): "ask" | "generate" | "skip" {
 
 const STORAGE_KEY = "slopus.reference-icon-automation.v1";
 const CHANGE_EVENT = "slopus:reference-icon-automation-changed";
+const GENERATOR_KEY = "slopus.reference-icon-generator.v1";
+let generatorOverride: string | undefined;
 let sessionOverride: ReferenceIconAutomation | undefined;
+
+export function loadReferenceIconGeneratorId(): string {
+  if (generatorOverride !== undefined) return generatorOverride;
+  try { return localStorage.getItem(GENERATOR_KEY) ?? ""; } catch { return ""; }
+}
+
+export function saveReferenceIconGeneratorId(id: string) {
+  try { localStorage.setItem(GENERATOR_KEY, id); generatorOverride = undefined; }
+  catch { generatorOverride = id; }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export function availableReferenceIconGenerators(settings: GeneratorTemplateSettings) {
+  return settings.templates.filter((template) => template.mode !== "animate" && !templateNeedsDownload(template));
+}
+
+export function referenceIconGenerator(settings = loadGeneratorTemplateSettings(), id = loadReferenceIconGeneratorId()) {
+  const available = availableReferenceIconGenerators(settings);
+  return available.find((template) => template.id === id)
+    ?? available.find((template) => template.id === settings.defaultTemplateId)
+    ?? available[0];
+}
 
 export function loadReferenceIconAutomation(): ReferenceIconAutomation {
   if (sessionOverride) return sessionOverride;
@@ -53,7 +79,7 @@ export function saveReferenceIconAutomation(value: ReferenceIconAutomation) {
 
 export function subscribeReferenceIconAutomation(listener: () => void) {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === null) listener();
+    if (event.key === STORAGE_KEY || event.key === GENERATOR_KEY || event.key === null) listener();
   };
   window.addEventListener(CHANGE_EVENT, listener);
   window.addEventListener("storage", onStorage);

@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
-import { loadGeneratorTemplateSettings } from "../lib/settings";
+import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
+import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -236,21 +237,44 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
   });
 
-  it("keeps sidebar tabs available while editing and allows navigating out of the editor", () => {
+  it("edits generators in a focused popup and returns to Settings on Escape", async () => {
     open();
     expect(screen.queryByText("Changes are saved as you type.")).toBeNull();
-    editDefaultGenerator();
+    const opener = screen.getByRole("button", { name: "Edit Default generator" });
+    opener.focus(); fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "Edit generator" });
     const back = screen.getByRole("button", { name: "Generators" });
-    expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
-    expect(back.closest(".settings-view__body")).not.toBeNull();
+    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
+    expect(document.activeElement).toBe(within(dialog).getByLabelText("Generator name"));
+    const last = within(dialog).getByRole("button", { name: /Clear generator paths/ });
+    last.focus(); fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(back);
 
-    fireEvent.click(back);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
-    editDefaultGenerator();
+    await waitFor(() => expect(document.activeElement).toBe(opener));
     fireEvent.click(tab("Appearance"));
     expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
     fireEvent.click(tab("Generator"));
     expect(screen.queryByLabelText("Generator name")).toBeNull();
+  });
+
+  it("defaults icon generation to the sole available generator and remembers a separate selection", () => {
+    const first = createGeneratorTemplate("Video"), second = createGeneratorTemplate("Icons");
+    const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 9 };
+    saveGeneratorTemplateSettings(templates);
+    const view = open();
+    expect((screen.getByLabelText("Reference icon generator") as HTMLSelectElement).value).toBe(first.id);
+    view.unmount();
+    saveGeneratorTemplateSettings({ ...templates, templates: [first, second] });
+    const reopened = open();
+    fireEvent.change(screen.getByLabelText("Reference icon generator"), { target: { value: second.id } });
+    expect(loadReferenceIconGeneratorId()).toBe(second.id);
+    expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(first.id);
+    reopened.unmount();
+    open();
+    expect((screen.getByLabelText("Reference icon generator") as HTMLSelectElement).value).toBe(second.id);
   });
 
   it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {

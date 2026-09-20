@@ -215,6 +215,41 @@
 
 /* --- Generator templates ------------------------------------------------- */
 
+.reference-icon-settings { margin-bottom: var(--space-5); }
+.reference-icon-settings .generator-template-fields { grid-template-columns: minmax(0, 420px); }
+.generator-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+}
+.generator-dialog {
+  width: min(1000px, 100%);
+  max-height: calc(100dvh - var(--space-5) * 2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.generator-dialog__head {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.generator-dialog__head h2 { flex: 1; margin: 0; font-size: var(--text-lg); }
+.generator-dialog__body { min-height: 0; overflow-y: auto; padding: var(--space-5); overscroll-behavior: contain; }
+.generator-dialog > .weight-download-status { flex-shrink: 0; padding: var(--space-3) var(--space-5); }
+
 .generator-templates {
   margin-bottom: var(--space-4);
   padding: var(--space-4);
