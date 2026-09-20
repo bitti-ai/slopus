@@ -51,7 +51,7 @@ pub(super) fn run_generation(
         RequestPurpose::Generate,
         &item.references,
     )?;
-    api.resolve(&request)?;
+    let plan = api.resolve(&request)?;
     diagnostics::debug(
         "slopfab",
         "generation.request_resolved",
@@ -66,7 +66,7 @@ pub(super) fn run_generation(
         canvas_height: item.request.canvas_height,
         reference_count: item.request.reference_count(),
         timing_profile: timing_profile.clone(),
-        planned_steps: (item.request.steps - 1).max(0),
+        planned_steps: plan.num_model_evaluations,
     };
     let mut generation = request.start(Some(progress_sink(context)))?;
     diagnostics::debug(

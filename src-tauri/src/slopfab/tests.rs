@@ -5,6 +5,115 @@ use super::{
 use crate::project::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
+// Minimal table-model header: planning reads descriptors but never executes
+// these fixture tensors. Active LoRAs also need a valid SafeTensors header.
+fn metadata_checkpoint(path: &std::path::Path, metadata: serde_json::Value) {
+    let header = serde_json::json!({
+        "__metadata__": metadata,
+        "adaln_t_table": { "dtype": "F32", "shape": [1], "data_offsets": [0, 4] },
+        "blocks.0.adaln_proj.linear.weight": { "dtype": "F32", "shape": [1], "data_offsets": [4, 8] }
+    }).to_string();
+    let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+    bytes.extend_from_slice(header.as_bytes());
+    bytes.extend_from_slice(&[0; 8]);
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn model_metadata_is_shared_by_preview_and_execution_requests() {
+    let root = tempfile::tempdir().unwrap();
+    let transformer = root.path().join("model.safetensors");
+    metadata_checkpoint(
+        &transformer,
+        serde_json::json!({
+            "slopfab.sampling": r#"{"version":1,"video_sigma_shift":6,"base_sigmas":[1,0.5,0]}"#
+        }),
+    );
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.models[0].2 = Some(transformer);
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request = GenerationRequest {
+        prompt: "A quiet harbour.".into(),
+        frames: 48,
+        steps: 20,
+        canvas_width: 736,
+        canvas_height: 416,
+        ..Default::default()
+    };
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(
+                &api,
+                &handle,
+                &request,
+                &configuration,
+                platform,
+                purpose,
+                &ReferenceVideos::default(),
+            )
+            .unwrap();
+            // The model's fixed grid overrides the UI's explicit 20 steps.
+            assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, 2);
+            assert!(api.describe(&handle).unwrap().contains("shift 6"));
+            api.set_motion_cache(&handle, true).unwrap();
+            assert!(
+                api.resolve(&handle).is_err(),
+                "fixed grids must reject MotionCache during preview too"
+            );
+        }
+    }
+}
+
+#[test]
+fn preview_enforces_model_conditioning_and_reports_invalid_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    let transformer = root.path().join("model.safetensors");
+    let settings = BTreeMap::from([(
+        "slopfab".into(),
+        ProviderSetting {
+            enabled: true,
+            model: None,
+            options: BTreeMap::from([
+                (
+                    "transformer".into(),
+                    ProviderOption::String(transformer.to_string_lossy().into_owned()),
+                ),
+                (
+                    "inferenceBackend".into(),
+                    ProviderOption::String("vulkan".into()),
+                ),
+            ]),
+        },
+    )]);
+    let request = GenerationRequest {
+        prompt: "A quiet harbour.".into(),
+        frames: 48,
+        steps: 20,
+        canvas_width: 736,
+        canvas_height: 416,
+        ..Default::default()
+    };
+    let references = ReferenceVideos::default();
+    // Undownloaded models still permit a generic geometry preview.
+    assert!(resolve_plan(&request, &settings, &references).is_ok());
+    metadata_checkpoint(
+        &transformer,
+        serde_json::json!({
+            "slopfab.conditioning": r#"{"version":1,"max_frames":40}"#
+        }),
+    );
+    assert!(resolve_plan(&request, &settings, &references)
+        .err()
+        .unwrap()
+        .contains("max_frames"));
+    metadata_checkpoint(
+        &transformer,
+        serde_json::json!({ "slopfab.sampling": "invalid JSON" }),
+    );
+    assert!(resolve_plan(&request, &settings, &references).is_err());
+}
+
 #[test]
 fn animate_requires_video_and_prompt_mode_requires_text() {
     let mut configuration = Configuration::from_settings(&BTreeMap::new());
@@ -88,15 +197,18 @@ fn animate_recipe_and_audio_selection_reach_bundled_dll() {
                     )?;
                     assert_eq!(api.resolve(&handle)?.num_model_evaluations, 3);
                     let description = api.describe(&handle)?;
-                    assert!(description
-                        .contains("fixed 362-token embedding; video then repainted image"));
-                    assert!(description.contains("reference short edge 416"));
-                    assert!(description.contains("video 1.000000 .. 0.600000 (shift 3.0)"));
-                    assert!(description.contains(if preserve_audio {
-                        "pinned driving soundtrack"
-                    } else {
-                        "generated; driving reference soundtrack omitted"
-                    }));
+                    assert!(description.contains("fixed 362-token embedding"));
+                    // The resolved recipe reports target-canvas preprocessing,
+                    // omitted reference audio and video-first packing here.
+                    assert!(description.contains(&format!(
+                        "conditioning-v1:1:362:2048:768:1032192:1:1:0:1:{}:360",
+                        i32::from(preserve_audio)
+                    )));
+                    assert!(description.contains("video 1.000000 .. 0.600000 (shift 3)"));
+                    assert_eq!(
+                        description.contains("pinned driving soundtrack"),
+                        preserve_audio
+                    );
                     assert!(description.contains(&format!(
                         "prompt              {} characters",
                         ANIMATE_PROMPT.len()
@@ -181,7 +293,7 @@ fn animate_duration_limit_resolves_with_bundled_dll() {
             .resolve(&handle)
             .err()
             .unwrap()
-            .contains("at most 15 seconds"));
+            .contains("exceeds conditioning max_frames"));
 
         // Other generators keep their existing upward alignment at 15 s.
         configuration.animate = false;
@@ -482,7 +594,7 @@ fn ordered_loras_and_step_override_reach_cuda_and_vulkan_requests() {
         root.path().join("TaoMate.safetensors"),
     ];
     for path in &paths {
-        std::fs::write(path, b"planning does not load weights").unwrap();
+        metadata_checkpoint(path, serde_json::json!({}));
     }
     let settings = BTreeMap::from([(
         "slopfab".into(),
