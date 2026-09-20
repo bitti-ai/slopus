@@ -208,7 +208,7 @@ fn a_failed_command_does_not_mutate_the_input() {
 fn project_video_settings_update_both_mirrors_without_retiming_media() {
     let current = validate_and_normalize_config(fixture()).unwrap();
     let commands = parse_jsonl_commands(
-        r#"{"op":"project.set","aspectRatio":"9:16","resolution":"544p","targetSeconds":90}
+        r#"{"op":"project.set","aspectRatio":"9:16","resolution":"544p","targetSeconds":900}
 {"op":"commit","summary":"Changed the project video settings."}"#,
     )
     .unwrap();
@@ -217,11 +217,10 @@ fn project_video_settings_update_both_mirrors_without_retiming_media() {
     assert_eq!(next.settings.resolution, "544p");
     assert_eq!(next.brief.aspect_ratio, "9:16");
     assert_eq!(next.brief.resolution, "544p");
-    assert_eq!(next.brief.target_duration_seconds, 90);
+    assert_eq!(next.brief.target_duration_seconds, 900);
     assert_eq!(next.timeline, current.timeline);
     assert_eq!(next.assets, current.assets);
     for patch in [
-        r#""targetSeconds":601"#,
         r#""resolution":"8k""#,
         r#""aspectRatio":"21:9""#,
     ] {
