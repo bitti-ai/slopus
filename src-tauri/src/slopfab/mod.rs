@@ -1,5 +1,15 @@
 //! Native runtime adapter. Raw ABI and resource ownership are confined to ffi.
 use std::path::{Path, PathBuf};
+// Preparation atomically replaces adapters; model readers must be closed first.
+pub(crate) static MODEL_ACCESS: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+pub(crate) fn prepare_lora_grid(
+    path: &Path,
+    width: i32,
+    allow_download: bool,
+) -> Result<(), String> {
+    ffi::Api::load(&default_dll_path())?.prepare_lora_grid(path, width, allow_download)
+}
 mod config;
 mod events;
 mod ffi;

@@ -1,7 +1,7 @@
-# Slopfab 1.12 compatibility
+# Slopfab 1.13 compatibility
 
-Reviewed on 2026-09-20 against Slopfab commit `50ca721` and the local
-`lib/slopfab/slopfab.dll`, which reports C API `1.12.0`.
+Reviewed on 2026-09-20 against Slopfab commit `9b61787` and the local
+`lib/slopfab/slopfab.dll`, which reports C API `1.13.0`.
 
 ## ABI and runtime
 
@@ -43,8 +43,24 @@ during planning instead of being deferred until generation.
 
 Inference no longer downloads a missing AdaLN timestep grid or rewrites the
 adapter to embed it. This affects adapters that need rebasing onto an H3 table
-model and do not already have an embedded grid. Slopus's current LoRA download
-flow downloads the adapter itself; it does not prepare this companion asset.
+model and do not already have an embedded grid. Slopus calls C API 1.13's
+`slopfab_prepare_lora_grid` after downloading a LoRA
+and before saving a newly imported local adapter. The LoRA library's **Prepare**
+action handles existing files. Current H3 profiles use grid width 2688.
+
+Downloaded and repaired adapters permit the pinned legacy grid download. Local
+imports have a **Download missing timestep grid** checkbox; disabling it uses
+local assets only. Preparation may embed the grid in the selected file, using
+Slopfab's atomic replacement. Slopus updates its download completion record
+with the resulting file size and keeps failed preparations unavailable until
+retried successfully. Existing adapters without a preparation status remain
+usable and can be prepared explicitly when needed.
+
+The native operation runs on a blocking worker and excludes model readers,
+generation and removal while replacing the file. The UI shows a preparation
+state instead of a fabricated byte percentage. The synchronous API cannot be
+cancelled, so the cancel action is unavailable during preparation. An older DLL
+can still load, but attempting preparation reports that API 1.13 is required.
 
 For legacy H3 adapters, place `h3_silu_temb_grid.safetensors` beside the adapter,
 or use Slopfab's explicit preparation command before selecting it in Slopus:
@@ -57,12 +73,14 @@ That command explicitly downloads the pinned legacy grid and embeds it in the
 adapter. Omit `--download` to use local assets only. Custom `slopfab.lora_grid`
 metadata requires its declared local asset and matching identity/width; the
 legacy downloader cannot supply arbitrary grids. Already embedded adapters
-need no migration. Automatic asset preparation in Slopus would be a separate
-download-workflow enhancement, not a C ABI binding change.
+need no migration. The CLI is an alternative for manual/offline setup; normal
+Slopus downloads and imports use the DLL directly.
 
 ## Validation limits
 
-All 26 Slopus Slopfab integration tests passed with the updated DLL, including
+Slopus Slopfab integration tests cover the updated DLL, including
 planning for both backends, Animate, MotionCache, video reference ownership,
-continuation and still images. These tests do not run a full model inference;
+continuation and still images. Preparation tests use small local fixtures to
+check embedding, idempotence, missing assets, busy model files, older DLLs and
+download-record updates. These tests do not run a full model inference;
 CUDA/Vulkan numerical output and render performance were not revalidated here.

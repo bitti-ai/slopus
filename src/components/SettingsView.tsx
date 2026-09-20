@@ -525,9 +525,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               </label>
             </div>;
   const downloadStatus = downloadState && <div className="weight-download-status" role="status">
-          <span>{downloadState.name ?? templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : "Download complete")}</span>
-          {downloadState.active && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button>}
-          {downloadState.error && <button type="button" className="secondary-button" onClick={() => void retryWeightDownload()}>Retry download</button>}
+          <span>{downloadState.name ?? templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? downloadState.phase === "preparing" ? "Preparing LoRA…" : `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : downloadState.preparePath ? "LoRA prepared" : "Download complete")}</span>
+          {downloadState.active && downloadState.phase !== "preparing" && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button>}
+          {downloadState.error && <button type="button" className="secondary-button" onClick={() => void retryWeightDownload()}>{downloadState.phase === "preparing" ? "Retry preparation" : "Retry download"}</button>}
         </div>;
   const generatorFooter = <>{downloadStatus}<footer className="settings-view__foot">
           {/* Clearing the paths is an engine action, so it is only offered
@@ -630,7 +630,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
               <div className="generator-template-list" role="list" aria-label={section.title}>
                 {section.templates.map((template) => (
                   <div className={`generator-template-item${templateNeedsDownload(template) ? " generator-template-item--download" : template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
-                    {downloadState?.active && downloadState.templateId === template.id && <span
+                    {downloadState?.active && downloadState.templateId === template.id && downloadState.phase !== "preparing" && <span
                       className="generator-template-item__progress"
                       role="progressbar"
                       aria-label={`Downloading ${template.name} weights`}
@@ -645,7 +645,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                     </label>}
                     <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
                       <Video size={16} aria-hidden="true" />
-                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? `Downloading · ${Math.floor(downloadPercent)}%` : templateSummary(template)}</small>
+                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? downloadState.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%` : templateSummary(template)}</small>
                     </button>
                     {templateNeedsDownload(template)
                       ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>

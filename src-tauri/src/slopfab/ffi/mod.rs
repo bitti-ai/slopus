@@ -36,6 +36,20 @@ impl Api {
     pub fn clear_reused_models(&self) -> Result<(), String> {
         self.inner.clear_reused_models()
     }
+    pub fn prepare_lora_grid(
+        &self,
+        path: &Path,
+        width: i32,
+        allow_download: bool,
+    ) -> Result<(), String> {
+        self.inner.prepare_lora_grid(path, width, allow_download)
+    }
+    #[cfg(test)]
+    pub fn disable_lora_preparation_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner)
+            .expect("configure API before creating handles")
+            .disable_lora_preparation_for_test();
+    }
     #[cfg(test)]
     pub fn disable_animate_for_test(&mut self) {
         Arc::get_mut(&mut self.inner)

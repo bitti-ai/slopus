@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn older_runtimes_report_missing_lora_preparation_without_breaking_planning() {
+    let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+    api.disable_lora_preparation_for_test();
+    assert!(api
+        .prepare_lora_grid(Path::new("adapter.safetensors"), 2688, false)
+        .unwrap_err()
+        .contains("API 1.13"));
+    let request = RequestHandle::new(&api).unwrap();
+    api.set_frames(&request, 48).unwrap();
+    assert!(api.resolve(&request).is_ok());
+}
+
+#[test]
 fn requests_retain_the_library_and_reject_cross_instance_calls() {
     let path = crate::slopfab::default_dll_path();
     let first = Api::load(&path).unwrap();

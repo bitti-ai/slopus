@@ -9,11 +9,51 @@ import { loadGeneratorTemplateSettings, minimaxSingularityTemplate } from "../li
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
-import { loadLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
+import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 const files = new Set<string>();
+
+it("keeps a failed local import editable and supports local-only preparation", async () => {
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === "prepare_lora") throw new Error("Local companion grid missing");
+    return normal(command, args);
+  });
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.change(screen.getByLabelText("LoRA name"), { target: { value: "Offline style" } });
+  fireEvent.change(screen.getByLabelText("LoRA path"), { target: { value: "D:/style.safetensors" } });
+  fireEvent.click(screen.getByLabelText("Download missing timestep grid"));
+  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Local companion grid missing");
+  expect(loadLoras().find(({ name }) => name === "Offline style")).toBeUndefined();
+  expect(invoke).toHaveBeenCalledWith("prepare_lora", { path: "D:/style.safetensors", allowDownload: false });
+  expect(screen.getByLabelText("LoRA name")).toHaveValue("Offline style");
+  vi.mocked(invoke).mockImplementation(normal);
+  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  await screen.findByRole("button", { name: "Prepare LoRA Offline style" });
+  expect(loadLoras().find(({ name }) => name === "Offline style")?.path).toBe("D:/style.safetensors");
+});
+
+it("prepares an existing adapter with a busy state and no unsupported cancel action", async () => {
+  const lora = { id: "local", name: "Existing style", path: "D:/style.safetensors" };
+  saveLoras([lora]);
+  const normal = vi.mocked(invoke).getMockImplementation()!;
+  let finish!: () => void;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "prepare_lora"
+    ? new Promise<void>((resolve) => { finish = resolve; }) : normal(command, args));
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Prepare LoRA Existing style" }));
+  expect(screen.getByRole("button", { name: "Prepare LoRA Existing style" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Remove LoRA Existing style" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Cancel download" })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(/Preparing LoRA/);
+  await act(async () => finish());
+  expect(screen.getByRole("status")).toHaveTextContent("LoRA prepared");
+  expect(loadLoras().find(({ id }) => id === lora.id)?.needsPreparation).toBeUndefined();
+});
 
 beforeEach(() => {
   localStorage.clear(); files.clear(); vi.clearAllMocks();
@@ -123,6 +163,8 @@ it("downloads TaoMate and persists manual adapters, activation, strength and ord
   fireEvent.click(screen.getByLabelText("Override step count"));
   fireEvent.change(screen.getByLabelText("LoRA step override"), { target: { value: "8" } });
   fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  await waitFor(() => expect(loadLoras().find(({ name }) => name === "My style")).toBeDefined());
+  expect(invoke).toHaveBeenCalledWith("prepare_lora", { path: "D:/models/style.safetensors", allowDownload: true });
   const manual = loadLoras().find(({ name }) => name === "My style")!;
   expect(manual.stepOverride).toBe(8);
   expect(manual.multiplier).toBe(0.75);

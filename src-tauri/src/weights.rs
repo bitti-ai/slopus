@@ -21,6 +21,8 @@ struct Progress { request_id: String, downloaded: u64, total: Option<u64> }
 #[derive(Serialize, Deserialize)]
 struct CompletedFile { url: String, bytes: u64 }
 
+pub(crate) mod lora;
+
 fn download_url(value: &str) -> Result<Url, String> {
     let mut url = Url::parse(value.trim()).map_err(|_| "Enter an HTTP or HTTPS download URL.".to_string())?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() {
@@ -182,6 +184,8 @@ pub async fn download_weight(app: AppHandle, downloads: State<'_, WeightDownload
     }
     let event_id = request_id.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let _models = crate::slopfab::MODEL_ACCESS.try_read()
+            .map_err(|_| "Wait for LoRA preparation to finish before downloading weights.")?;
         let roots = configured_weight_roots(&app)?;
         transfer_from_roots(&url, &roots, &cancelled, |downloaded, total| {
             let _ = app.emit("weight-download-progress", Progress { request_id: event_id.clone(), downloaded, total });
@@ -258,6 +262,8 @@ fn validate_removal(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
 #[tauri::command]
 pub async fn remove_downloaded_weights(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let _models = crate::slopfab::MODEL_ACCESS.try_write()
+            .map_err(|_| "Model files are in use. Wait for generation, downloads or preparation to finish.")?;
         let roots = configured_weight_roots(&app)?;
         let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         for path in &paths { validate_removal(path, &roots)?; }
