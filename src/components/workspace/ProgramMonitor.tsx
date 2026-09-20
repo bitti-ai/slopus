@@ -1,12 +1,14 @@
 import { ProgramLayer } from "./ProgramLayer";
+import { ProgramPicture } from "./ProgramPicture";
 import { Film } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clipFrameStyle, clipVisualSettings } from "../../lib/export";
+import { clipFrameStyle, clipVisualSettings, outputDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
 import { PreviewSources } from "../../lib/exportPipeline";
 import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
+import { PreviewMedia } from "../../lib/previewPresentation";
 
 /* The monitor owns a continuous timeline clock. Each visible or upcoming clip
  * owns a persistent media element: loading, decoding the first frame and seeking
@@ -126,6 +128,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
      through Tauri as bytes. The cleanup revokes every URL handed out, so
      leaving the timeline — or opening another project — gives all of it back. */
   const sources = useMemo(() => new PreviewSources(folderPath), [folderPath]);
+  const media = useMemo(() => new PreviewMedia(), [folderPath]);
+  const [composited, setComposited] = useState(false);
+  const dimensions = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const previewScale = Math.min(1, 1280 / Math.max(dimensions.width, dimensions.height));
   useEffect(() => () => sources.dispose(), [sources]);
 
   /* The playhead as of this render, readable from inside the animation frame
@@ -298,6 +304,9 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       onSelectClip(clip.id);
     }}
   >
+    <ProgramPicture key={folderPath} media={media} layers={layers} playheadMs={playheadMs}
+      width={Math.round(dimensions.width * previewScale)} height={Math.round(dimensions.height * previewScale)}
+      background={config.settings.backgroundColor} onAvailable={setComposited} />
     <div className="program-media">{prepared.map(({ clip: layer, prepareAtMs }) => {
       const depth = layers.findIndex((visible) => visible.id === layer.id);
       return <ProgramLayer
@@ -305,6 +314,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
         clip={layer}
         asset={assetsById.get(layer.assetId)}
         sources={sources}
+        media={media}
+        composited={composited}
         playheadMs={depth >= 0 ? playheadMs : prepareAtMs}
         playing={playing}
         active={depth >= 0}

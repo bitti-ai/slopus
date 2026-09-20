@@ -65,6 +65,8 @@ Continuation archives contain the full cumulative sequence. Slopus streams only 
 
 Timeline and Export share `ProgramMonitor`. It keeps the current picture and the next two pictures mounted, loading and seeking upcoming clips before their cuts. Players are keyed by clip so separate trims of one file have separate decoder positions; a lower layer becoming the foreground retains its player. Upcoming players remain paused, hidden and muted. Effect renderers survive play/pause changes, and the timeline clock retains fractional milliseconds and advances continuously across cuts. Leaving the prepared window releases a clip's decoder; blob URLs remain cached until the monitor closes.
 
+With WebGPU, `ProgramPicture` presents all visible layers through one persistent canvas using the export compositor. Each update captures the required `VideoFrame` handles before clearing or drawing; a loading or seeking source leaves the last complete picture intact. Actual timeline gaps clear to the project background. This avoids the black frame caused by handing off between browser video surfaces at a cut. Frames remain in GPU memory, and effect pipelines are prepared when the compositor starts. Machines without WebGPU retain the native-media preview.
+
 ## Independently judged slices
 
 1. Foundation: desktop shell, library, portable project persistence, schema, and always-visible agent prompt.

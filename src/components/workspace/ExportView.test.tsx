@@ -50,7 +50,7 @@ describe("the export view where nothing can encode", () => {
     // The preview is the same player the timeline uses, and in a browser there
     // is no project folder for it to read the footage from.
     expect(screen.getByText(/Playback needs the desktop app/i)).toBeTruthy();
-    expect(document.querySelector("canvas")).toBeNull();
+    expect(document.querySelector("canvas")?.style.visibility).toBe("hidden");
     // The controls are there and are honest about what they can do: there IS
     // something on this timeline, so play is offered.
     expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(false);
