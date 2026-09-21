@@ -268,8 +268,9 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
   onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
 }) {
   const parts = splitActionText(shot.action);
-  const written = shot.action.trim().length > 0;
-  const chosen = selectedShotTagOptions(shot.settings ?? {});
+  const characterReplace = job.sceneType === "character-replace";
+  const written = characterReplace ? Boolean(shot.videoReferenceId && shot.characterReferenceId) : shot.action.trim().length > 0;
+  const chosen = characterReplace ? [] : selectedShotTagOptions(shot.settings ?? {});
 
   return <div
     className={`shot-card ${open ? "shot-card--open" : ""}`}
@@ -291,7 +292,9 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
       <em>{seconds(shot.startSeconds)} – {seconds(endsAt)}</em>
     </span>
     <span className={`shot-card__line ${written ? "" : "shot-card__line--empty"}`}>
-      {written
+      {characterReplace
+        ? written ? `${named.get(shot.videoReferenceId!) ?? "Unavailable video"} → ${named.get(shot.characterReferenceId!) ?? "Unavailable character"}` : "Choose a video and replacement character for this shot."
+        : written
         ? parts.map((part, at) => part.kind === "text"
           ? <span key={at}>{part.value}</span>
           : <em key={at} className="shot-card__ref">{named.get(part.value) ?? `Reference ${order.indexOf(part.value) + 1}`}</em>)
@@ -299,7 +302,7 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
     </span>
     <span className="shot-card__tags">
       {chosen.map(({ group, option }) => <em key={`${group.id}-${option.id}`} className="shot-card__tag">{option.label}</em>)}
-      {chosen.length === 0 && <em className="shot-card__tag shot-card__tag--none">No settings</em>}
+      {chosen.length === 0 && <em className="shot-card__tag shot-card__tag--none">{characterReplace ? "Character Replace" : "No settings"}</em>}
     </span>
     </button>
   </div>;

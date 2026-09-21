@@ -4,6 +4,11 @@ use crate::project::*;
 use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for job in &mut config.generation_jobs {
+        if job.scene_type.as_deref().is_some_and(|value| {
+            !matches!(value, "first-last-frame" | "animate" | "character-replace")
+        }) {
+            return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
+        }
         let limits = crate::generation::models::for_scene(job.provider_id.as_deref())
             .unwrap_or_else(crate::generation::models::default_model)
             .capabilities;
@@ -19,6 +24,12 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if let Some(shots) = job.shots.as_mut() {
             let mut seen: BTreeSet<String> = BTreeSet::new();
             for shot in shots.iter_mut() {
+                if [&shot.video_reference_id, &shot.character_reference_id]
+                    .iter()
+                    .any(|id| id.as_deref() == Some(""))
+                {
+                    return Err(format!("Shot '{}' has an empty reference id.", shot.id));
+                }
                 if shot.id.trim().is_empty() {
                     return Err(format!("Scene '{}' has a shot with an empty id.", job.id));
                 }

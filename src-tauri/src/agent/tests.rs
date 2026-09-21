@@ -135,6 +135,9 @@ fn agent_scene_fixture() -> (ProjectConfig, ProjectConfig) {
         Some("Quiet workshop ventilation under the click of metal tools on the bench.".into());
     job.music = Some("Sparse felt piano at a slow tempo with restrained dynamics.".into());
     job.shots = Some(vec![SceneShot {
+        video_reference_id: None,
+        character_reference_id: None,
+        character_target: None,
         id: "shot-mara-turns".into(),
         name: Some("Mara turns".into()),
         start_seconds: 0.0,
@@ -185,6 +188,9 @@ fn agent_scene_conventions_reject_dialogue_in_action_and_broken_reference_bindin
 #[test]
 fn agent_shot_settings_reject_unknown_ids_and_invalid_camera_combinations() {
     let shot = |id: &str, settings: BTreeMap<String, Vec<String>>| SceneShot {
+        video_reference_id: None,
+        character_reference_id: None,
+        character_target: None,
         id: id.into(),
         name: None,
         start_seconds: 0.0,

@@ -11,6 +11,12 @@ use std::collections::BTreeMap;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SceneShot {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) video_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) character_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) character_target: Option<String>,
     /// Added after scenes shipped. An absent name keeps the numbered Shot N
     /// label, and is skipped so older project files do not grow a new key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -35,6 +41,8 @@ pub(crate) struct SceneShot {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GenerationJob {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) scene_type: Option<String>,
     #[serde(default)]
     pub(crate) title: String,
     /// A MIRROR of the scene's shot lines for a scene-shaped job, and the user's
@@ -128,6 +136,7 @@ impl GenerationJob {
         let now = timestamp.to_string();
         Self {
             id: id.to_string(),
+            scene_type: None,
             title: title.to_string(),
             prompt: String::new(),
             status: "draft".into(),

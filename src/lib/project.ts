@@ -356,8 +356,15 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
+export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "character-replace"]);
+export type SceneType = z.infer<typeof sceneTypeSchema>;
+
 export const sceneShotSchema = z.object({
   id: idSchema,
+  videoReferenceId: idSchema.nullish(),
+  characterReferenceId: idSchema.nullish(),
+  /** Identifies the source character when a video contains several people. */
+  characterTarget: z.string().nullish(),
   /** Optional so every project written before shots could be named keeps
    * round-tripping unchanged. The UI falls back to its numbered Shot N label. */
   name: z.string().min(1).nullish(),
@@ -426,6 +433,7 @@ export function actionReferenceIds(action: string): string[] {
 
 export const generationJobSchema = z.object({
   id: idSchema,
+  sceneType: sceneTypeSchema.nullish(),
   title: z.string().min(1),
   // Not `.min(1)` any more, and neither is `creativeBrief`: a scene the user has
   // emptied out has no text to mirror here, and inventing one would put words in
@@ -797,6 +805,10 @@ export function usableVideoReferences(references: ProjectReference[]): ProjectRe
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
+  if (job.sceneType === "character-replace") {
+    const ids = sceneShots(job).flatMap((shot) => [shot.videoReferenceId, shot.characterReferenceId]);
+    return references.filter((reference) => ids.includes(reference.id));
+  }
   const start = references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const end = references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
@@ -807,7 +819,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
 /** Resolve the adjacent scene when preparing a request; queued work captures
  * its id so subsequent board edits cannot change the source of that run. */
 export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
-  if (!job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
+  if (job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
   const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
   const resolved = { ...job, startFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
@@ -922,6 +934,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
       .map(([group, values]) => [group, [...values].sort()]),
   }));
   return JSON.stringify({
+    ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
     frames: input.frames,
     steps: input.steps,
@@ -967,7 +980,77 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  if (job.sceneType === "character-replace") return compileCharacterReplaceSegments(job, references);
   return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references, defaultLook);
+}
+
+export function characterReplaceBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
+  const videos = usableVideoReferences(references);
+  const characters = usableImageReferences(references).filter((reference) => reference.kind !== "video");
+  for (const [index, shot] of sceneShots(job).entries()) {
+    if (!videos.some((reference) => reference.id === shot.videoReferenceId)) return `Select a video reference for shot ${index + 1}.`;
+    if (!characters.some((reference) => reference.id === shot.characterReferenceId)) return `Select a character reference with an image for shot ${index + 1}.`;
+  }
+  const bound = sceneGenerationReferences(job, references);
+  if (usableVideoReferences(bound).length > 3) return "Character Replace supports up to three video references per scene.";
+  if (usableReferenceImages(bound).length > 9) return "Character Replace supports up to nine reference images per scene.";
+  if (usableVideoReferences(bound).reduce((total, reference) => total + (reference.video?.durationSeconds ?? 2), 0) > 15) return "The selected video clips must total no more than 15 seconds.";
+  return null;
+}
+
+/** H3's six-section editing contract. Numbering follows the actual payload,
+ * including every image of a character reference and stills attached to videos.
+ * https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md */
+function compileCharacterReplaceSegments(job: GenerationJob, references: ProjectReference[]): PromptSegment[] {
+  const bound = sceneGenerationReferences(job, references);
+  const videos = usableVideoReferences(bound);
+  const characters = usableImageReferences(bound).filter((reference) => reference.kind !== "video");
+  const pictures = usableImageReferences(bound).flatMap((reference) => referenceImages(reference).map(() => reference.id));
+  const videoLabel = (id: string | null | undefined) => {
+    const index = videos.findIndex((reference) => reference.id === id);
+    return index < 0 ? "the missing video reference" : `<Video ${index + 1}>`;
+  };
+  const characterLabel = (id: string | null | undefined) => {
+    const index = characters.findIndex((reference) => reference.id === id);
+    return index < 0 ? "the missing character reference" : `<Subject ${index + 1}>`;
+  };
+  const shots = sceneShots(job);
+  const appearances = (id: string, field: "videoReferenceId" | "characterReferenceId") => shots
+    .flatMap((shot, index) => shot[field] === id ? [`[Shot ${index + 1}]`] : []).join(", ");
+  const audioVideos = videos.filter((reference) => reference.video?.includeAudio !== false);
+  const audioLabel = (id: string) => `<Audio ${audioVideos.findIndex((reference) => reference.id === id) + 1}>`;
+  const definitions = [
+    ...videos.map((reference) => frame(`${videoLabel(reference.id)} is the source video to edit in ${appearances(reference.id, "videoReferenceId")}.\n`)),
+    ...characters.flatMap((reference): PromptSegment[] => {
+      const sources = pictures.flatMap((id, index) => id === reference.id ? [`<Picture ${index + 1}>`] : []).join(", ");
+      const detail = referenceDefinition(reference).trim();
+      return [frame(`${characterLabel(reference.id)} is the replacement character shown in ${sources}.`),
+        ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []), frame("\n")];
+    }),
+    ...audioVideos.map((reference) => frame(`${audioLabel(reference.id)} is the enabled soundtrack of ${videoLabel(reference.id)}.\n`)),
+  ];
+  const replacement = (shot: SceneShot): PromptSegment[] => [
+    frame(`In ${videoLabel(shot.videoReferenceId)}, replace `),
+    ...(shot.characterTarget?.trim() ? [own(shot.characterTarget.trim())] : [frame("the main character")]),
+    frame(` with ${characterLabel(shot.characterReferenceId)}. Match the replacement's face, hair, body proportions, clothing and identifying features to the character reference. Preserve the source character's motion, pose, expression, gaze and timing. Keep the camera movement, framing, background, lighting, objects and other characters unchanged. Maintain consistent identity, natural contact, shadows and occlusion throughout the shot.`),
+  ];
+  const retention = [
+    ...videos.map((reference) => `${videoLabel(reference.id)} (${appearances(reference.id, "videoReferenceId")}): partially_preserved - change only the selected character's appearance; retain the performance and surrounding scene.`),
+    ...characters.map((reference) => `${characterLabel(reference.id)} (appears in ${appearances(reference.id, "characterReferenceId")}): fully_preserved - retain the replacement character's visual identity from its reference images.`),
+    ...audioVideos.map((reference) => `${audioLabel(reference.id)}: partially_copy - reuse the source soundtrack during ${appearances(reference.id, "videoReferenceId")}, synchronized to the source performance.`),
+  ];
+  return [
+    frame("subject_definitions:\n"), ...definitions,
+    frame(`\nsummary:\n[video editing + reference generation${audioVideos.length ? " + audio reuse" : ""}] The target video is an edited version of ${videos.map((reference) => videoLabel(reference.id)).join(", ") || "the selected source videos"}. Replace the selected character in each shot with its assigned replacement character.\n\nretention_analysis:\n${retention.join("\n")}\n\ndetailed_description:\nRetain the visual style of each source video.\n`),
+    ...shots.flatMap((shot, index): PromptSegment[] => {
+      const timestamp = `${String(Math.floor(shot.startSeconds / 60)).padStart(2, "0")}:${(shot.startSeconds % 60).toFixed(3).padStart(6, "0")}`;
+      const sourceAudio = audioVideos.find((reference) => reference.id === shot.videoReferenceId);
+      return [frame(`${index ? "\n" : ""}[Shot ${index + 1}] ${index ? `At ${timestamp}, ` : ""}`), ...replacement(shot),
+        ...(sourceAudio ? [frame(` Reuse ${audioLabel(sourceAudio.id)} in sync with this shot.`)] : [frame(" Do not reuse the source soundtrack.")])];
+    }),
+    frame(`\n\noverall_soundscape:\n${audioVideos.length ? `Reuse the ambience, physical sounds and speech from ${audioVideos.map((reference) => audioLabel(reference.id)).join(", ")} in their corresponding shots.` : "Use only ambience and physical sounds consistent with the source scene; no added speech."}`),
+    frame(`\n\nnon_diegetic_music:\n${audioVideos.length ? "Retain only music already present in the reused source soundtrack. Add no new score." : "N/A"}`),
+  ];
 }
 
 export function compileGenerationJobPrompt(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): string {
@@ -1256,6 +1339,7 @@ export function createDraftGenerationJob(
   creativeBrief: string,
   options: {
     id?: string;
+    sceneType?: SceneType;
     title?: string;
     referenceIds?: string[];
     startFrameReferenceId?: string | null;
@@ -1286,6 +1370,7 @@ export function createDraftGenerationJob(
   const text = sceneBriefText(shots);
   return generationJobSchema.parse({
     id,
+    ...(options.sceneType ? { sceneType: options.sceneType } : {}),
     // Their own words, cut short — and only ever their words. See UNTITLED_SCENE.
     title: options.title ?? (text.split(/\s+/).filter(Boolean).slice(0, 6).join(" ") || UNTITLED_SCENE),
     prompt: text,
