@@ -265,10 +265,18 @@ fn a_shot_name_survives_the_project_round_trip() {
 
 #[test]
 fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
-    for scene_type in ["first-last-frame", "animate", "character-replace"] {
+    for scene_type in [
+        "first-last-frame",
+        "animate",
+        "character-replace",
+        "extend",
+        "bridge",
+    ] {
         let mut config = scene_fixture();
         let job = &mut config.generation_jobs[0];
         job.scene_type = Some(scene_type.into());
+        job.start_video_reference_id = Some("start-video".into());
+        job.end_video_reference_id = Some("end-video".into());
         let shot = &mut job.shots.as_mut().unwrap()[0];
         shot.video_reference_id = Some("source-video".into());
         shot.character_reference_id = Some("new-character".into());
@@ -276,6 +284,18 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
         let normalized = validate_and_normalize_config(config).unwrap();
         let saved = serde_json::to_string(&normalized).unwrap();
         let restored: ProjectConfig = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            restored.generation_jobs[0]
+                .start_video_reference_id
+                .as_deref(),
+            Some("start-video")
+        );
+        assert_eq!(
+            restored.generation_jobs[0]
+                .end_video_reference_id
+                .as_deref(),
+            Some("end-video")
+        );
         assert_eq!(
             restored.generation_jobs[0].scene_type.as_deref(),
             Some(scene_type)

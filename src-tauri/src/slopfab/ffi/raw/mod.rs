@@ -79,6 +79,7 @@ pub struct Api {
     set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
+    set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
@@ -119,6 +120,12 @@ impl Api {
                 };
             }
             Ok(Self {
+                set_video_transition: library
+                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(
+                        b"slopfab_request_set_video_transition\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 capi_version: symbol!("slopfab_capi_version", unsafe extern "C" fn() -> u32),
                 version_string: symbol!(
                     "slopfab_capi_version_string",
@@ -373,6 +380,12 @@ impl Api {
         )?;
         let path = path_cstring(path)?;
         self.error(unsafe { set(r, path.as_ptr()) })
+    }
+    pub fn set_video_transition(&self, r: *mut Request, mode: i32) -> Result<(), String> {
+        let set = self.set_video_transition.ok_or(
+            "Extend and Bridge require slopfab.dll API 1.14 or later. Update the runtime.",
+        )?;
+        self.error(unsafe { set(r, mode) })
     }
     pub fn set_continuation_file(
         &self,

@@ -81,6 +81,7 @@ export interface AgentTurnResponse {
 
 export interface SlopfabGenerationRequest {
   jobId: string;
+  videoTransition?: "extend" | "bridge";
   prompt: string;
   frames: number;
   stillImage?: boolean;

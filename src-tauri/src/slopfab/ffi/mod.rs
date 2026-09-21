@@ -89,6 +89,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_frames(r.pointer.as_ptr(), v)
     }
+    pub fn set_video_transition(&self, r: &RequestHandle, mode: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_video_transition(r.pointer.as_ptr(), mode)
+    }
     pub fn set_still_image(&self, r: &RequestHandle) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_still_image(r.pointer.as_ptr())

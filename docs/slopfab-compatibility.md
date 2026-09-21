@@ -1,4 +1,29 @@
-# Slopfab 1.13 compatibility
+# Slopfab compatibility
+
+## API 1.14: Extend and Bridge
+
+The bundled runtime now builds from SlopFab commit `103687a` with
+`SLOPFAB_WITH_FFMPEG=OFF`. API 1.14 adds
+`slopfab_request_set_video_transition`: Extend uses the source video's final
+22 frames as a VAE-encoded temporal guide, and Bridge adds the end video's
+opening 22 frames after the target timeline. Both return only the new segment.
+The existing C ABI structures are unchanged. Older DLLs continue to support
+ordinary generation and give a specific upgrade error for these scene types.
+
+Slopus supplies source handles in start/end order, omits unrelated frame
+anchors and refmods, and generates audio from the text prompt. Source boundary
+encodings use SlopFab's existing media cache. The app still demuxes and decodes
+videos with mp4box.js/WebCodecs and encodes/muxes output through WebCodecs.
+
+Validation covers source-boundary selection, temporal guide positions, cache
+identity, the C API, Rust planning on CUDA/Vulkan, project persistence, UI
+selection, and submitted prompts/payloads. Native core/C API suites, Rust
+integration tests, frontend tests and the production build pass. Full model
+inference and visual seam quality were not evaluated; the GPU was busy with
+another workload. The previous locally modified DLL is preserved under
+`.git/runtime-backups/` by its SHA-256 filename.
+
+## API 1.13
 
 Reviewed on 2026-09-20 against Slopfab commit `9b61787` and the local
 `lib/slopfab/slopfab.dll`, which reports C API `1.13.0`.

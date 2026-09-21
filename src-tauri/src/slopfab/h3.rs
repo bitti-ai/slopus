@@ -59,6 +59,9 @@ pub(super) fn configure_request(
     api.set_attention(handle, configuration.attention)?;
     api.set_motion_cache(handle, configuration.motion_cache)?;
     api.set_verbose(handle, false)?;
+    if let Some(mode) = request.video_transition.as_deref() {
+        api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;
+    }
     if let Some(path) = &request.continuation_path {
         api.set_continuation_file(
             handle,

@@ -87,6 +87,23 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if let Some(mode) = request.video_transition.as_deref() {
+            let expected = match mode {
+                "extend" => 1,
+                "bridge" => 2,
+                _ => return Err("Unsupported video transition mode.".into()),
+            };
+            if self.animate
+                || request.still_image
+                || request.continuation_path.is_some()
+                || request.continuation_relative_path.is_some()
+                || !request.refmods.is_empty()
+                || !request.reference_paths.is_empty()
+                || request.reference_video_ids.len() != expected
+            {
+                return Err("Extend/Bridge requires exactly one/two video references without frame anchors, Animate, continuation or refmods.".into());
+            }
+        }
         if self.animate && self.motion_cache {
             return Err("MotionCache is unavailable in Animate mode.".into());
         }

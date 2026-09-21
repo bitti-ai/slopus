@@ -356,8 +356,9 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "character-replace"]);
+export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "character-replace", "extend", "bridge"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
+export const isVideoTransition = (job: Pick<GenerationJob, "sceneType">): boolean => job.sceneType === "extend" || job.sceneType === "bridge";
 
 export const sceneShotSchema = z.object({
   id: idSchema,
@@ -434,6 +435,8 @@ export function actionReferenceIds(action: string): string[] {
 export const generationJobSchema = z.object({
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
+  startVideoReferenceId: idSchema.nullish(),
+  endVideoReferenceId: idSchema.nullish(),
   title: z.string().min(1),
   // Not `.min(1)` any more, and neither is `creativeBrief`: a scene the user has
   // emptied out has no text to mirror here, and inventing one would put words in
@@ -805,6 +808,14 @@ export function usableVideoReferences(references: ProjectReference[]): ProjectRe
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
+  if (isVideoTransition(job)) {
+    const ids = [job.startVideoReferenceId, ...(job.sceneType === "bridge" ? [job.endVideoReferenceId] : [])];
+    // Role order, not library order: native video 1 is the tail; video 2 is the head.
+    return ids.flatMap((id) => {
+      const reference = usableVideoReferences(references).find((candidate) => candidate.id === id);
+      return reference ? [{ ...reference, images: [], refmods: [] }] : [];
+    });
+  }
   if (job.sceneType === "character-replace") {
     const ids = sceneShots(job).flatMap((shot) => [shot.videoReferenceId, shot.characterReferenceId]);
     return references.filter((reference) => ids.includes(reference.id));
@@ -819,7 +830,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
 /** Resolve the adjacent scene when preparing a request; queued work captures
  * its id so subsequent board edits cannot change the source of that run. */
 export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
-  if (job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
+  if (isVideoTransition(job) || job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
   const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
   const resolved = { ...job, startFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
@@ -863,6 +874,7 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
  *  to show the same bytes for both. */
 export interface ScenePrompt {
   shots: readonly SceneShot[];
+  videoTransition?: "extend" | "bridge";
   startFrameReferenceId?: string | null;
   endFrameReferenceId?: string | null;
   /** Base guide §4.6 / §4.7. Blank or absent falls back to the two default
@@ -912,6 +924,7 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 
 export interface SceneGenerationInput {
   prompt: string;
+  videoTransition?: "extend" | "bridge";
   frames: number;
   steps: number;
   seed: number;
@@ -936,6 +949,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
   return JSON.stringify({
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
+    ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     frames: input.frames,
     steps: input.steps,
     seed: input.seed,
@@ -981,7 +995,24 @@ export function compileMiniMaxH3PromptSegments(
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
   if (job.sceneType === "character-replace") return compileCharacterReplaceSegments(job, references);
+  if (job.sceneType === "extend" || job.sceneType === "bridge") return compileScenePromptSegments({
+    shots: sceneShots(job), videoTransition: job.sceneType, soundscape: job.soundscape, music: job.music,
+  }, sceneGenerationReferences(job, references), defaultLook);
   return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references, defaultLook);
+}
+
+export function videoTransitionBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
+  const videos = usableVideoReferences(references);
+  const start = videos.find((reference) => reference.id === job.startVideoReferenceId);
+  const end = videos.find((reference) => reference.id === job.endVideoReferenceId);
+  if (!start) return "Select a start video reference for this scene.";
+  if (job.sceneType === "bridge" && !end) return "Select an end video reference for this scene.";
+  if (job.sceneType === "bridge" && start.id === end?.id) return "Choose different start and end video references. Use separate trimmed references to bridge within one video.";
+  const bound = sceneGenerationReferences(job, references);
+  if (bound.some((reference) => (reference.video?.durationSeconds ?? 2) < 22 / GENERATION_FRAME_RATE)) return "Each source clip needs at least 22 frames (0.917 seconds) for latent encoding.";
+  if (bound.reduce((total, reference) => total + (reference.video?.durationSeconds ?? 2), 0) > 15) return "Source clips must total no more than 15 seconds. Shorten their ranges in References.";
+  if (danglingReferenceTokens(sceneShots(job), bound).length) return "These shots can cite only the selected start and end video references.";
+  return null;
 }
 
 export function characterReplaceBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
@@ -1245,7 +1276,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // optional opening picture additionally anchors the first frame. The summary
   // reuses existing labels only and carries the user's lines through in order.
   const summary: PromptSegment[] = [
-    frame("[reference generation] "),
+    frame(scene.videoTransition === "extend" ? "[video continuation] Continue from the final frame of <Video 1>. "
+      : scene.videoTransition === "bridge" ? "[video continuation + reference generation] Generate the missing segment after <Video 1> and before <Video 2>. " : "[reference generation] "),
     ...compiled.flatMap((shot) => [
       ...(shot.index === 0 ? [] : [frame(" ")]),
       ...shot.body,
@@ -1281,6 +1313,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     frame("The target video is in a "),
     styleFromTag ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
     frame(" style.\n"),
+    ...(scene.videoTransition ? [frame(scene.videoTransition === "extend"
+      ? "Begin immediately after the final frame of <Video 1>, continuing its subject identity, pose, motion, lighting and camera trajectory. Follow the text direction below. Output only the new continuation; do not replay the source clip.\n"
+      : "Begin immediately after the final frame of <Video 1>. Follow the text direction below, developing continuous action that reaches the subject positions, motion, lighting and camera framing immediately before the opening frame of <Video 2>. Output only the new connecting segment; do not replay either source clip.\n")] : []),
     ...compiled.flatMap((shot) => [
       frame(shot.index === 0 ? marker(shot) : `\n${marker(shot)}`),
       // Framing leads the sentence here, so it takes the capital.
@@ -1300,12 +1335,16 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
 
   return [
     frame("subject_definitions:\n"),
+    ...(scene.videoTransition ? [frame("<Video 1> is the starting source video; its final frames provide the temporal latent anchor for the new segment.\n"),
+      ...(scene.videoTransition === "bridge" ? [frame("<Video 2> is the ending source video; its opening frames provide the temporal latent anchor for the end of the new segment.\n")] : [])] : []),
     ...startDefinition,
     ...endDefinition,
     ...definitions,
     frame("\n\nsummary:\n"),
     ...summary,
     frame(`\n\nretention_analysis:\n${retention.join("\n")}`),
+    ...(scene.videoTransition ? [frame("\n<Video 1>: partially_preserved - continue from its ending state without copying its completed action."),
+      ...(scene.videoTransition === "bridge" ? [frame("\n<Video 2>: partially_preserved - approach its opening state with continuous motion; do not repeat the ending clip.")] : [])] : []),
     frame("\n\ndetailed_description:\n"),
     ...detailed,
     frame("\n\noverall_soundscape:\n"),
