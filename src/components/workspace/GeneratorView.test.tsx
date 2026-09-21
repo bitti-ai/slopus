@@ -6,7 +6,7 @@ import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
-import { GeneratorView } from "./GeneratorView";
+import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
 import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
@@ -42,7 +42,7 @@ it("animates a blank scene only with a video and repainted frame", () => {
   localStorage.setItem("slopus.loras.v1", JSON.stringify([{ id: template.loras![0].loraId, name: "Viggle", path: "distillation.safetensors", stepOverride: 4 }]));
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 7 }));
   const initial = project();
-  initial.generationJobs = [createDraftGenerationJob("", { id: "blank", title: "Blank scene" })];
+  initial.generationJobs = [createDraftGenerationJob("", { id: "blank", title: "Blank scene", sceneType: "animate" })];
   initial.references = [{ id: "motion", kind: "video", name: "Motion", description: "", intendedUse: [],
     sourcePath: "C:/motion.mp4", createdAt: "2026-09-15T00:00:00.000Z",
     video: { startSeconds: 1, durationSeconds: 3, includeAudio: false } },
@@ -85,6 +85,72 @@ const readyRuntime: SlopfabStatus = {
   detail: "Ready",
   models: [],
 };
+
+it("saves scene types and submits Character Replace with the exact selected references", () => {
+  const initial = project();
+  initial.generationJobs = [createDraftGenerationJob("", { id: "replace", title: "Replace scene" })];
+  initial.references = [
+    { id: "motion", kind: "video", name: "Motion", description: "", intendedUse: [], sourcePath: "C:/motion.mp4",
+      video: { startSeconds: 1, durationSeconds: 3, includeAudio: false }, createdAt: "2026-09-21T00:00:00.000Z" },
+    { id: "hero", kind: "image", name: "New hero", description: "", intendedUse: [], relativePath: "references/hero.png", createdAt: "2026-09-21T00:00:00.000Z" },
+  ];
+  let latest = initial;
+  const submitted = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial);
+    latest = config;
+    return <GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime}
+      onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
+  }
+  render(<Harness />);
+  expect(screen.getByLabelText("Scene type")).toHaveValue("first-last-frame");
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "character-replace" } });
+  expect(latest.generationJobs[0].sceneType).toBe("character-replace");
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  const generate = within(screen.getByRole("region", { name: "Replace scene" })).getByRole("button", { name: "Generate" });
+  expect(generate).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Replace scene" }));
+  expect(screen.queryByLabelText("Describe shot 1")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Video reference for this shot"), { target: { value: "motion" } });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("New character reference for this shot"), { target: { value: "hero" } });
+  fireEvent.change(screen.getByLabelText("Character to replace in this shot"), { target: { value: "the person on the left" } });
+  expect(generate).toBeEnabled();
+  fireEvent.click(generate);
+  expect(submitted).toHaveBeenCalledWith([expect.objectContaining({ request: expect.objectContaining({
+    prompt: expect.stringContaining("replace the person on the left with <Subject 1>"),
+    referencePaths: ["C:/project/references/hero.png"],
+    referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
+  }) })]);
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0].shots![0]).toMatchObject({ videoReferenceId: "motion", characterReferenceId: "hero" });
+  fireEvent.click(screen.getByRole("button", { name: "Select scene Replace scene" }));
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "first-last-frame" } });
+  expect(screen.getByLabelText("Start frame for this scene")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "character-replace" } });
+  expect(generate).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Replace scene" }));
+  expect(screen.getByLabelText("New character reference for this shot")).toHaveValue("hero");
+  fireEvent.change(screen.getByLabelText("New character reference for this shot"), { target: { value: "" } });
+  expect(generate).toBeDisabled();
+});
+
+it("keeps an explicitly selected scene type independent of the global generator", () => {
+  const initial = project();
+  initial.generationJobs[0].sceneType = "animate";
+  const state = setup(initial);
+  expect(screen.getByLabelText("Scene type")).toHaveValue("animate");
+  expect(screen.getByLabelText("Reference video for this scene")).toBeInTheDocument();
+  const first = within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" });
+  expect(first).toHaveAttribute("title", "Select an Animate generator for this scene.");
+  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  expect(state.latest().generationJobs[0].status).toBe("draft");
+  expect(state.latest().generationJobs[1].status).toBe("queued");
+});
+
+it("refuses known first/last-frame weights for Character Replace", () => {
+  expect(templateSceneBlocker("character-replace", minimaxOriginalTemplate())).toContain("References or Singularity");
+  expect(templateSceneBlocker("character-replace", viggleAnimateTemplate())).toContain("MiniMax prompt");
+});
 
 const project = (): ProjectConfig => {
   const base = createProjectConfig({
