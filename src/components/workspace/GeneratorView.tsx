@@ -1,7 +1,7 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { characterReplaceBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
+import { characterReplaceBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -167,7 +167,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (updates.sceneType && templateSceneBlocker(updates.sceneType, selectedTemplate)) {
       const candidates = templateSettings.templates.filter((template) => !templateNeedsDownload(template)
         && !templateSceneBlocker(updates.sceneType!, template));
-      const compatible = (updates.sceneType === "character-replace"
+      const compatible = (updates.sceneType === "character-replace" || isVideoTransition(updates)
         ? candidates.find((template) => /ref2v/i.test(template.paths.transformer)) : undefined) ?? candidates[0];
       if (compatible) chooseGeneratorTemplate(compatible.id);
     }
@@ -310,6 +310,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
     return {
       jobId: job.id,
+      ...(job.sceneType === "extend" || job.sceneType === "bridge" ? { videoTransition: job.sceneType } : {}),
       // Recompiled from current state so edits to a bound reference or a
       // retimed shot reach the engine, rather than sending a prompt frozen at
       // draft-creation time. This is the ONE string slopfab is given, and it is
@@ -331,7 +332,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         name: reference.name, relativePath: reference.relativePath, sourcePath: reference.sourcePath,
         startSeconds: reference.video?.startSeconds ?? 0,
         durationSeconds: reference.video?.durationSeconds ?? 2,
-        includeAudio: reference.video?.includeAudio ?? true,
+        includeAudio: isVideoTransition(job) ? false : reference.video?.includeAudio ?? true,
       })),
     };
   };
@@ -398,10 +399,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const batchScenesReady: GenerationJob[] = [];
   for (const [index, job] of jobs.entries()) {
     if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
-    if (job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
+    if (!isVideoTransition(job) && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
     if (templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) continue;
     const previous = jobs[index - 1];
-    const previousWillRender = job.usePreviousSceneLastFrame && previous &&
+    const previousWillRender = !isVideoTransition(job) && job.usePreviousSceneLastFrame && previous &&
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
@@ -415,7 +416,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
-    if (job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
+    if (!isVideoTransition(job) && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
     return templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
 
@@ -531,7 +532,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               index={shotIndex}
               endsAt={shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)}
               duration={sceneDurationSeconds(selected)}
-              references={config.references}
+              references={isVideoTransition(selected) ? sceneGenerationReferences(selected, config.references) : config.references}
               disabled={false}
               onChange={(updates) => patchShot(selected, openShot.id, updates)}
             />
@@ -631,6 +632,10 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
   const shots = sceneShots(job);
   const animate = job.sceneType === "animate";
   const characterReplace = job.sceneType === "character-replace";
+  if (isVideoTransition(job)) {
+    const blocker = videoTransitionBlocker(job, references);
+    if (blocker) return blocker;
+  }
   if (characterReplace) {
     const blocker = characterReplaceBlocker(job, references);
     if (blocker) return blocker;
@@ -659,7 +664,7 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
 export function templateSceneBlocker(type: SceneType, template: GeneratorTemplate): string | null {
   if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
   if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
-  if (type === "character-replace" && /fl2v/i.test(template.paths.transformer)) return "Select a References or Singularity generator for Character Replace.";
+  if ((type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
   return null;
 }
 

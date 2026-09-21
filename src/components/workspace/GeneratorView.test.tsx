@@ -152,6 +152,44 @@ it("refuses known first/last-frame weights for Character Replace", () => {
   expect(templateSceneBlocker("character-replace", viggleAnimateTemplate())).toContain("MiniMax prompt");
 });
 
+it.each(["extend", "bridge"] as const)("submits %s with ordered video anchors and the shot prompt", (type) => {
+  const initial = project();
+  initial.generationJobs = [createDraftGenerationJob("The dancer turns toward the door.", { id: "transition", title: "Transition" })];
+  initial.references = ["end", "start"].map((id) => ({ id, kind: "video" as const, name: id, description: "", intendedUse: [],
+    sourcePath: `C:/${id}.mp4`, video: { startSeconds: 1, durationSeconds: 3, includeAudio: true }, createdAt: "2026-09-21T00:00:00.000Z" }));
+  let latest = initial;
+  const submitted = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial);
+    latest = config;
+    return <GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime}
+      onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
+  }
+  render(<Harness />);
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: type } });
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  const generate = within(screen.getByRole("region", { name: "Transition" })).getByRole("button", { name: "Generate" });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Start video reference for this scene"), { target: { value: "start" } });
+  if (type === "bridge") {
+    expect(generate).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("End video reference for this scene"), { target: { value: "end" } });
+  } else expect(screen.queryByLabelText("End video reference for this scene")).toBeNull();
+  expect(generate).toBeEnabled();
+  fireEvent.click(generate);
+  const request = submitted.mock.calls[0][0][0].request;
+  expect(request.videoTransition).toBe(type);
+  expect(request.referenceVideos.map((video: { sourcePath: string }) => video.sourcePath)).toEqual(type === "extend" ? ["C:/start.mp4"] : ["C:/start.mp4", "C:/end.mp4"]);
+  expect(request.referenceVideos.every((video: { includeAudio: boolean }) => !video.includeAudio)).toBe(true);
+  expect(request.referencePaths).toEqual([]);
+  expect(request).not.toHaveProperty("previousSceneId");
+  expect(request.prompt).toContain("The dancer turns toward the door.");
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0].startVideoReferenceId).toBe("start");
+  fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Transition" }));
+  fireEvent.change(screen.getByLabelText("Describe shot 1"), { target: { value: "" } });
+  expect(generate).toBeDisabled();
+});
+
 const project = (): ProjectConfig => {
   const base = createProjectConfig({
     name: "Drag test",

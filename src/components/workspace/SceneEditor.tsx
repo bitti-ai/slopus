@@ -5,6 +5,7 @@ import {
   danglingReferenceTokens,
   isReferenceUsable,
   isVisualReference,
+  isVideoTransition,
   referenceImages,
   usableVideoReferences,
   normalizeSceneShots,
@@ -325,6 +326,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
 }) {
   const animate = sceneType === "animate";
   const characterReplace = sceneType === "character-replace";
+  const transition = isVideoTransition({ sceneType });
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
   // The style is read off the first shot that carries one, so that is where it
   // is written. One place, never a second field that could disagree with it.
@@ -345,9 +347,32 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           <option value="first-last-frame">First &amp; Last Frame</option>
           <option value="animate">Animate</option>
           <option value="character-replace">Character Replace</option>
+          <option value="extend">Extend</option>
+          <option value="bridge">Bridge</option>
         </select>
       </label>
       {characterReplace && <p>Open a shot to select its source video and new character reference.</p>}
+      {transition && <>
+        <label className="scene-settings__field">
+          <span>{sceneType === "bridge" ? "Start video reference" : "Video reference"}</span>
+          <select aria-label="Start video reference for this scene" value={job.startVideoReferenceId ?? ""} disabled={disabled}
+            onChange={(event) => onChange({ startVideoReferenceId: event.target.value || null })}>
+            <option value="">Select a video</option>
+            {job.startVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.startVideoReferenceId) && <option value={job.startVideoReferenceId}>Unavailable video reference</option>}
+            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+          </select>
+        </label>
+        {sceneType === "bridge" && <label className="scene-settings__field">
+          <span>End video reference</span>
+          <select aria-label="End video reference for this scene" value={job.endVideoReferenceId ?? ""} disabled={disabled}
+            onChange={(event) => onChange({ endVideoReferenceId: event.target.value || null })}>
+            <option value="">Select a video</option>
+            {job.endVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.endVideoReferenceId) && <option value={job.endVideoReferenceId}>Unavailable video reference</option>}
+            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+          </select>
+        </label>}
+        <p>{sceneType === "bridge" ? "Connect the end of the start video to the beginning of the end video." : "Continue from the end of the selected video."} Open a shot to describe the new action. Scene length controls only the new segment.</p>
+      </>}
       {!characterReplace && <>
       {animate && <label className="scene-settings__field">
         <span>Reference video</span>
@@ -383,7 +408,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
         </select>
         {!chosen && defaultLook && <small>Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</small>}
       </label>}
-      <div className="scene-settings__field">
+      {!transition && <div className="scene-settings__field">
         <span>{animate ? "Repainted scene frame" : "Start frame"}</span>
         <div className="scene-settings__start-frame">
           <select
@@ -416,8 +441,8 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
         <small>{animate ? "Use a frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : job.usePreviousSceneLastFrame
           ? previousScene ? `Continues “${previousScene.title}” using its saved latents with 22 overlapping frames. Generate that scene first, or use Generate All.` : "Move this scene after another scene to continue it."
           : "The selected image anchors the opening frame."}</small>
-      </div>
-      {!animate && <div className="scene-settings__field">
+      </div>}
+      {!animate && !transition && <div className="scene-settings__field">
         <span>Last frame</span>
         <div className="scene-settings__start-frame">
           <select value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"

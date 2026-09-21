@@ -5,6 +5,65 @@ use super::{
 use crate::project::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
+#[test]
+fn video_transitions_use_encoded_boundaries_with_the_bundled_runtime() {
+    let references = ReferenceVideos::default();
+    let settings = BTreeMap::new();
+    let configuration = Configuration::from_settings(&settings);
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let start = references.create_reference_video(3.0, &settings).unwrap();
+    let end = references.create_reference_video(2.0, &settings).unwrap();
+    for id in [&start, &end] {
+        references
+            .append_reference_video(id, &vec![127; 64 * 32 * 4], 64, 32, 0.0)
+            .unwrap();
+    }
+    for mode in ["extend", "bridge"] {
+        let mut request = GenerationRequest {
+            prompt: "The dancer turns and walks toward the door.".into(),
+            video_transition: Some(mode.into()),
+            frames: 39,
+            steps: 4,
+            seed: 1,
+            canvas_width: 64,
+            canvas_height: 32,
+            reference_video_ids: if mode == "extend" {
+                vec![start.clone()]
+            } else {
+                vec![start.clone(), end.clone()]
+            },
+            ..Default::default()
+        };
+        for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(
+                    &api,
+                    &handle,
+                    &request,
+                    &configuration,
+                    platform,
+                    purpose,
+                    &references,
+                )
+                .unwrap();
+                let plan = api.resolve(&handle).unwrap();
+                assert_eq!(
+                    scene_frame_window(&request, plan.aligned_frames).unwrap(),
+                    (0, 39)
+                );
+                assert!(api
+                    .describe(&handle)
+                    .unwrap()
+                    .contains(&format!("video transition    {mode}")));
+            }
+        }
+        request.reference_paths.push("stale-first-frame.png".into());
+        assert!(configuration.validate_inputs(&request).is_err());
+    }
+    references.release_reference_videos(&[start, end]).unwrap();
+}
+
 // Minimal table-model header: planning reads descriptors but never executes
 // these fixture tensors. Active LoRAs also need a valid SafeTensors header.
 fn metadata_checkpoint(path: &std::path::Path, metadata: serde_json::Value) {

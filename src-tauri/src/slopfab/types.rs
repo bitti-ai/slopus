@@ -39,6 +39,8 @@ pub fn gpu_devices() -> Vec<GpuDevice> {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
     pub job_id: String,
+    #[serde(default)]
+    pub video_transition: Option<String>,
     pub prompt: String,
     pub frames: i32,
     #[serde(default)]

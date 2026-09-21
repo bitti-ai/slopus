@@ -5,9 +5,21 @@ use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for job in &mut config.generation_jobs {
         if job.scene_type.as_deref().is_some_and(|value| {
-            !matches!(value, "first-last-frame" | "animate" | "character-replace")
+            !matches!(
+                value,
+                "first-last-frame" | "animate" | "character-replace" | "extend" | "bridge"
+            )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
+        }
+        if [&job.start_video_reference_id, &job.end_video_reference_id]
+            .iter()
+            .any(|id| id.as_deref() == Some(""))
+        {
+            return Err(format!(
+                "Scene '{}' has an empty video reference id.",
+                job.id
+            ));
         }
         let limits = crate::generation::models::for_scene(job.provider_id.as_deref())
             .unwrap_or_else(crate::generation::models::default_model)
