@@ -25,6 +25,9 @@ pub(super) fn apply(
                 return Err(format!("shot '{id}' already exists in scene '{scene}'"));
             }
             shots.push(SceneShot {
+                video_reference_id: None,
+                character_reference_id: None,
+                character_target: None,
                 id: id.clone(),
                 name: name.clone(),
                 start_seconds: *start_seconds,

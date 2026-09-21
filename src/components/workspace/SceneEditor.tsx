@@ -21,6 +21,7 @@ import {
   type GenerationJob,
   type ProjectReference,
   type SceneShot,
+  type SceneType,
 } from "../../lib/project";
 import {
   hasCameraMovement,
@@ -180,6 +181,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       </label>
     </div>
 
+    {job.sceneType === "character-replace" ? <CharacterReplaceInputs shot={shot} references={references} disabled={disabled} onChange={onChange} /> : <>
     <div className="shot-card__action">
       <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>Describe the shot</label>
       <div className="shot-action-editor">
@@ -259,7 +261,45 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       shotNumber={shotNumber}
       onChange={(next) => onChange({ settings: normalizeShotTagSelection(next) })}
     />
+    </>}
   </section>;
+}
+
+function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
+  shot: SceneShot; references: ProjectReference[]; disabled: boolean;
+  onChange: (updates: Partial<SceneShot>) => void;
+}) {
+  const videos = usableVideoReferences(references);
+  const characters = references.filter((reference) => reference.kind !== "video" && isVisualReference(reference)
+    && isReferenceUsable(reference) && referenceImages(reference).length > 0);
+  return <div className="scene-settings">
+    <label className="scene-settings__field">
+      <span>Video reference</span>
+      <select aria-label="Video reference for this shot" value={shot.videoReferenceId ?? ""} disabled={disabled}
+        onChange={(event) => onChange({ videoReferenceId: event.target.value || null })}>
+        <option value="">Select a video</option>
+        {shot.videoReferenceId && !videos.some((reference) => reference.id === shot.videoReferenceId) && <option value={shot.videoReferenceId}>Unavailable video reference</option>}
+        {videos.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+      </select>
+      <small>Uses the clip range and soundtrack setting saved under References.</small>
+    </label>
+    <label className="scene-settings__field">
+      <span>New character reference</span>
+      <select aria-label="New character reference for this shot" value={shot.characterReferenceId ?? ""} disabled={disabled}
+        onChange={(event) => onChange({ characterReferenceId: event.target.value || null })}>
+        <option value="">Select a character</option>
+        {shot.characterReferenceId && !characters.some((reference) => reference.id === shot.characterReferenceId) && <option value={shot.characterReferenceId}>Unavailable character reference</option>}
+        {characters.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+      </select>
+    </label>
+    <label className="scene-settings__field">
+      <span>Character to replace</span>
+      <input aria-label="Character to replace in this shot" value={shot.characterTarget ?? ""} disabled={disabled}
+        placeholder="The main character" onChange={(event) => onChange({ characterTarget: event.target.value || null })} />
+      <small>If several characters appear, identify one, for example “the person in the red jacket”.</small>
+    </label>
+    <p>The replacement follows the original performance. Camera movement, background, lighting and other characters are preserved.</p>
+  </div>;
 }
 
 /* --- The scene, opened from its own line ---------------------------------- */
@@ -267,8 +307,8 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. */
-export function SceneInspector({ job, shots, references, previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, animate = false }: {
-  animate?: boolean;
+export function SceneInspector({ job, shots, references, previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+  sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
   shots: SceneShot[];
@@ -283,6 +323,8 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   onChange: (updates: Partial<GenerationJob>) => void;
   onShots: (next: SceneShot[]) => void;
 }) {
+  const animate = sceneType === "animate";
+  const characterReplace = sceneType === "character-replace";
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
   // The style is read off the first shot that carries one, so that is where it
   // is written. One place, never a second field that could disagree with it.
@@ -295,6 +337,18 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   return <section className="scene-inspector" aria-label="This scene">
     <section className="scene-settings" aria-labelledby={`${job.id}-scene-settings`}>
       <h3 id={`${job.id}-scene-settings`}>Scene</h3>
+      <label className="scene-settings__field">
+        <span>Scene type</span>
+        <select aria-label="Scene type" value={sceneType} disabled={disabled}
+          onChange={(event) => onChange({ sceneType: event.target.value as SceneType, usePreviousSceneLastFrame: undefined,
+            ...(event.target.value === "animate" ? { endFrameReferenceId: undefined } : {}) })}>
+          <option value="first-last-frame">First &amp; Last Frame</option>
+          <option value="animate">Animate</option>
+          <option value="character-replace">Character Replace</option>
+        </select>
+      </label>
+      {characterReplace && <p>Open a shot to select its source video and new character reference.</p>}
+      {!characterReplace && <>
       {animate && <label className="scene-settings__field">
         <span>Reference video</span>
         <select aria-label="Reference video for this scene" disabled={disabled}
@@ -398,6 +452,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           onChange={(event) => onChange({ music: event.target.value })}
         />
       </label></>}
+      </>}
     </section>
     <section className="scene-settings" aria-labelledby={`${job.id}-generation-settings`}>
       <h3 id={`${job.id}-generation-settings`}>Generation</h3>

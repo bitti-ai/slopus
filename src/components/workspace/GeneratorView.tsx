@@ -1,7 +1,7 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { usableVideoReferences } from "../../lib/project";
+import { characterReplaceBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -52,7 +52,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
-  const animate = selectedTemplate.mode === "animate";
+  const sceneTypeFor = (job: GenerationJob): SceneType => job.sceneType ?? "first-last-frame";
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -122,6 +122,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   /* A scene can be deleted, and a shot can be removed, from under the panel.
      Falling back to the first scene beats a panel pointing at nothing. */
   const selected = jobs.find((job) => job.id === selection.jobId) ?? jobs[0];
+  const animate = selected ? sceneTypeFor(selected) === "animate" : false;
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
   const openShot = !animate && shotIndex >= 0 ? selectedShots[shotIndex] : null;
@@ -160,6 +161,17 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const updateScene = (job: GenerationJob, updates: Partial<GenerationJob>) =>
     updateJob(job.id, mergeSceneUpdates(job, updates));
+
+  const changeSceneSettings = (job: GenerationJob, updates: Partial<GenerationJob>) => {
+    updateScene(job, updates);
+    if (updates.sceneType && templateSceneBlocker(updates.sceneType, selectedTemplate)) {
+      const candidates = templateSettings.templates.filter((template) => !templateNeedsDownload(template)
+        && !templateSceneBlocker(updates.sceneType!, template));
+      const compatible = (updates.sceneType === "character-replace"
+        ? candidates.find((template) => /ref2v/i.test(template.paths.transformer)) : undefined) ?? candidates[0];
+      if (compatible) chooseGeneratorTemplate(compatible.id);
+    }
+  };
 
   const addFrame = async (job: GenerationJob, edge: "start" | "end") => {
     if (!isTauri()) return;
@@ -302,7 +314,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       // retimed shot reach the engine, rather than sending a prompt frozen at
       // draft-creation time. This is the ONE string slopfab is given, and it is
       // the same string the compiled-prompt panel shows.
-      prompt: animate ? "" : compileGenerationJobPrompt(inputs.job, bound, configRef.current.settings.defaultLook),
+      prompt: sceneTypeFor(job) === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, configRef.current.settings.defaultLook),
       ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
       ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
       // The scene's own length, not a fixed six seconds.
@@ -354,7 +366,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      references steer a scene is decided by writing them into a line or by the
      references already named by its shots. */
   const newScene = () => {
-    const job = createDraftGenerationJob("", { steps: defaultGenerationSteps });
+    const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
+      sceneType: selectedTemplate.mode === "animate" ? "animate" : "first-last-frame" });
     onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
@@ -385,8 +398,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const batchScenesReady: GenerationJob[] = [];
   for (const [index, job] of jobs.entries()) {
     if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
-    if (job.usePreviousSceneLastFrame && index === 0) continue;
-    if (sendBlocker(job, config.references, animate)) continue;
+    if (job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
+    if (templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) continue;
     const previous = jobs[index - 1];
     const previousWillRender = job.usePreviousSceneLastFrame && previous &&
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
@@ -402,8 +415,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
-    if (job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
-    return sendBlocker(job, config.references, animate);
+    if (job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
+    return templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
 
   const changedJobIds = new Set(jobs
@@ -559,7 +572,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <div className="panel-scroll">
             <SceneInspector
               key={selected.id}
-              animate={animate}
+              sceneType={sceneTypeFor(selected)}
               job={selected}
               shots={selectedShots}
               defaultSteps={defaultGenerationSteps}
@@ -571,7 +584,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               previousScene={jobs[jobs.findIndex((job) => job.id === selected.id) - 1]}
               onAddStartFrame={() => void addFrame(selected, "start")}
               onAddEndFrame={() => void addFrame(selected, "end")}
-              onChange={(updates) => updateScene(selected, updates)}
+              onChange={(updates) => changeSceneSettings(selected, updates)}
               onShots={(next) => setShots(selected, next)}
             />
           </div>
@@ -614,8 +627,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 }
 
 /** Validate the inputs required by the selected generator before submission. */
-function sendBlocker(job: GenerationJob, references: ProjectReference[], animate = false): string | null {
+function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
   const shots = sceneShots(job);
+  const animate = job.sceneType === "animate";
+  const characterReplace = job.sceneType === "character-replace";
+  if (characterReplace) {
+    const blocker = characterReplaceBlocker(job, references);
+    if (blocker) return blocker;
+  }
   if (animate) {
     const bound = sceneGenerationReferences(job, references);
     if (usableVideoReferences(bound).length !== 1) return "Select exactly one reference video for this scene before animating.";
@@ -624,16 +643,23 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[], animate
       return "Animate does not support scene continuation or refmods.";
     }
   }
-  if (!animate && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
+  if (!animate && !characterReplace && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
     return "Describe what happens or add speech in at least one shot before this scene can be generated.";
   }
   if (sceneDurationSeconds(job) <= 0) {
     return "This scene is nought seconds long, so there are no frames to render. Give it a length first.";
   }
   const dangling = danglingReferenceTokens(shots, references);
-  if (!animate && dangling.length > 0) {
+  if (!animate && !characterReplace && dangling.length > 0) {
     return "A reference named in one of the lines can no longer be used, and would be left out of the prompt. Swap it for another one or take it out of the line first.";
   }
+  return null;
+}
+
+export function templateSceneBlocker(type: SceneType, template: GeneratorTemplate): string | null {
+  if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
+  if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
+  if (type === "character-replace" && /fl2v/i.test(template.paths.transformer)) return "Select a References or Singularity generator for Character Replace.";
   return null;
 }
 

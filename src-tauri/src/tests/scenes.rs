@@ -227,6 +227,9 @@ fn an_empty_scene_survives_the_round_trip_the_plus_button_creates() {
     job.creative_brief = String::new();
     job.reference_ids = Vec::new();
     job.shots = Some(vec![SceneShot {
+        video_reference_id: None,
+        character_reference_id: None,
+        character_target: None,
         id: "scene-walk-shot-1".into(),
         name: None,
         start_seconds: 0.0,
@@ -258,6 +261,35 @@ fn a_shot_name_survives_the_project_round_trip() {
             .as_deref(),
         Some("Doorway reveal")
     );
+}
+
+#[test]
+fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
+    for scene_type in ["first-last-frame", "animate", "character-replace"] {
+        let mut config = scene_fixture();
+        let job = &mut config.generation_jobs[0];
+        job.scene_type = Some(scene_type.into());
+        let shot = &mut job.shots.as_mut().unwrap()[0];
+        shot.video_reference_id = Some("source-video".into());
+        shot.character_reference_id = Some("new-character".into());
+        shot.character_target = Some("the person on the left".into());
+        let normalized = validate_and_normalize_config(config).unwrap();
+        let saved = serde_json::to_string(&normalized).unwrap();
+        let restored: ProjectConfig = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            restored.generation_jobs[0].scene_type.as_deref(),
+            Some(scene_type)
+        );
+        assert_eq!(
+            normalized.generation_jobs[0].shots,
+            restored.generation_jobs[0].shots
+        );
+        assert!(saved.contains("\"videoReferenceId\":\"source-video\""));
+        assert!(saved.contains("\"characterReferenceId\":\"new-character\""));
+    }
+    let mut config = scene_fixture();
+    config.generation_jobs[0].scene_type = Some("unknown".into());
+    assert!(validate_and_normalize_config(config).is_err());
 }
 
 #[test]
