@@ -44,6 +44,8 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) scene_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pose_video_reference_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) start_video_reference_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) end_video_reference_id: Option<String>,
@@ -141,6 +143,7 @@ impl GenerationJob {
         Self {
             id: id.to_string(),
             scene_type: None,
+            pose_video_reference_id: None,
             start_video_reference_id: None,
             end_video_reference_id: None,
             title: title.to_string(),

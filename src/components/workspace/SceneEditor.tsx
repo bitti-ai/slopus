@@ -14,6 +14,7 @@ import {
   sceneDurationSeconds,
   sceneGenerationSeed,
   sceneGenerationSteps,
+  sceneGenerationReferences,
   splitActionText,
   DEFAULT_SPEECH_LANGUAGE,
   MAX_GENERATION_STEPS,
@@ -62,7 +63,8 @@ export const citableReferences = (references: readonly ProjectReference[]): Proj
  *  The board and the panel both read this, because "Reference 2" on a card and
  *  "Reference 2" in the field have to be the same reference. */
 export function referenceOrder(job: GenerationJob, shots: readonly SceneShot[], references: readonly ProjectReference[]): string[] {
-  const order = citableReferences(references).filter((reference) => job.referenceIds.includes(reference.id)).map((reference) => reference.id);
+  const boundIds = job.sceneType === "pose" ? sceneGenerationReferences(job, [...references]).map((reference) => reference.id) : job.referenceIds;
+  const order = citableReferences(references).filter((reference) => boundIds.includes(reference.id)).map((reference) => reference.id);
   for (const shot of shots) {
     for (const id of actionReferenceIds(shot.action)) if (!order.includes(id)) order.push(id);
   }
@@ -96,7 +98,8 @@ export function writeShots(job: GenerationJob, next: readonly SceneShot[], extra
 /** Everything about ONE shot: when it starts, the line the user wrote for it,
  *  the references that line cites, and the settings hung off it. This is what
  *  clicking a card on the board opens. */
-export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, onChange }: {
+export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, onChange, promptOnly = false }: {
+  promptOnly?: boolean;
   job: GenerationJob;
   /** Every shot of the scene, so the panel can number the references the same
    *  way the compiler does and warn about the ones no line can still cite. */
@@ -116,8 +119,8 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 }) {
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const citable = useMemo(() => citableReferences(references), [references]);
-  const numbered = useMemo(() => citable.filter((reference) => job.referenceIds.includes(reference.id)), [citable, job.referenceIds]);
   const tokenOrder = useMemo(() => referenceOrder(job, shots, references), [job, shots, references]);
+  const numbered = useMemo(() => citable.filter((reference) => tokenOrder.includes(reference.id)), [citable, tokenOrder]);
   const referenceById = useMemo(() => new Map(references.map((reference) => [reference.id, reference])), [references]);
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);
   const settings = shot.settings ?? {};
@@ -164,7 +167,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   };
 
   return <section className="shot-inspector" aria-label={`Shot ${shotNumber}`}>
-    <div className="shot-inspector__timing">
+    {!promptOnly && <div className="shot-inspector__timing">
       <label className="shot-card__start">
         <span>Starts at</span>
         <input
@@ -180,11 +183,11 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         />
         <em>to {seconds(endsAt)}</em>
       </label>
-    </div>
+    </div>}
 
     {job.sceneType === "character-replace" ? <CharacterReplaceInputs shot={shot} references={references} disabled={disabled} onChange={onChange} /> : <>
     <div className="shot-card__action">
-      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>Describe the shot</label>
+      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>{job.sceneType === "pose" ? "Describe where the pose should be used" : "Describe the shot"}</label>
       <div className="shot-action-editor">
         <textarea
           id={`shot-action-${shot.id}`}
@@ -192,7 +195,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
           value={display}
           disabled={disabled}
           aria-label={`Describe shot ${shotNumber}`}
-          placeholder="Example: she walks towards the camera and stops under the awning."
+          placeholder={job.sceneType === "pose" ? "Example: a dancer in a red coat performs this movement on a rainy city street." : "Example: she walks towards the camera and stops under the awning."}
           onChange={(event) => onChange({ action: store(event.target.value) })}
           onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
           onDrop={(event) => {
@@ -221,7 +224,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       </div>
     </div>
 
-    <div className="shot-speech">
+    {!promptOnly && <div className="shot-speech">
       <div className="shot-speech__heading">
         <label className="shot-card__sublabel" htmlFor={`shot-speech-${shot.id}`}>Speech</label>
         <label className="shot-speech__language">
@@ -245,7 +248,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         onChange={(event) => onChange({ speech: event.target.value || null })}
       />
       <p className="shot-speech__hint">Added to the final prompt as MiniMax dialogue.</p>
-    </div>
+    </div>}
 
     <ReferencePalette
       citable={citable}
@@ -256,12 +259,12 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       onInsert={insertAtCaret}
     />
 
-    <ShotSettings
+    {!promptOnly && <ShotSettings
       settings={settings}
       disabled={disabled}
       shotNumber={shotNumber}
       onChange={(next) => onChange({ settings: normalizeShotTagSelection(next) })}
-    />
+    />}
     </>}
   </section>;
 }
@@ -325,6 +328,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   onShots: (next: SceneShot[]) => void;
 }) {
   const animate = sceneType === "animate";
+  const pose = sceneType === "pose";
   const characterReplace = sceneType === "character-replace";
   const transition = isVideoTransition({ sceneType });
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
@@ -346,11 +350,28 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             ...(event.target.value === "animate" ? { endFrameReferenceId: undefined } : {}) })}>
           <option value="first-last-frame">First &amp; Last Frame</option>
           <option value="animate">Animate</option>
+          <option value="pose">Pose</option>
           <option value="character-replace">Character Replace</option>
           <option value="extend">Extend</option>
           <option value="bridge">Bridge</option>
         </select>
       </label>
+      {pose && <>
+        <label className="scene-settings__field">
+          <span>Pose video reference</span>
+          <select aria-label="Pose video reference for this scene" value={job.poseVideoReferenceId ?? ""} disabled={disabled}
+            onChange={(event) => onChange({ poseVideoReferenceId: event.target.value || null })}>
+            <option value="">Select a video</option>
+            {job.poseVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.poseVideoReferenceId) && <option value={job.poseVideoReferenceId}>Unavailable video reference</option>}
+            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
+          </select>
+          <small>Uses the saved clip range for pose and motion. Describe the subject and setting below, with optional references.</small>
+        </label>
+        {shots.map((shot, index) => <ShotInspector key={shot.id} job={job} shots={shots} shot={shot} index={index}
+          endsAt={shots[index + 1]?.startSeconds ?? sceneDurationSeconds(job)} duration={sceneDurationSeconds(job)}
+          references={references} disabled={disabled} promptOnly
+          onChange={(updates) => onShots(shots.map((item) => item.id === shot.id ? { ...item, ...updates } : item))} />)}
+      </>}
       {characterReplace && <p>Open a shot to select its source video and new character reference.</p>}
       {transition && <>
         <label className="scene-settings__field">
@@ -408,7 +429,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
         </select>
         {!chosen && defaultLook && <small>Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</small>}
       </label>}
-      {!transition && <div className="scene-settings__field">
+      {!transition && !pose && <div className="scene-settings__field">
         <span>{animate ? "Repainted scene frame" : "Start frame"}</span>
         <div className="scene-settings__start-frame">
           <select
@@ -442,7 +463,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           ? previousScene ? `Continues “${previousScene.title}” using its saved latents with 22 overlapping frames. Generate that scene first, or use Generate All.` : "Move this scene after another scene to continue it."
           : "The selected image anchors the opening frame."}</small>
       </div>}
-      {!animate && !transition && <div className="scene-settings__field">
+      {!animate && !transition && !pose && <div className="scene-settings__field">
         <span>Last frame</span>
         <div className="scene-settings__start-frame">
           <select value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"

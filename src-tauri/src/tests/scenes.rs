@@ -268,6 +268,7 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
     for scene_type in [
         "first-last-frame",
         "animate",
+        "pose",
         "character-replace",
         "extend",
         "bridge",
@@ -275,6 +276,7 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
         let mut config = scene_fixture();
         let job = &mut config.generation_jobs[0];
         job.scene_type = Some(scene_type.into());
+        job.pose_video_reference_id = Some("pose-video".into());
         job.start_video_reference_id = Some("start-video".into());
         job.end_video_reference_id = Some("end-video".into());
         let shot = &mut job.shots.as_mut().unwrap()[0];
@@ -284,6 +286,12 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
         let normalized = validate_and_normalize_config(config).unwrap();
         let saved = serde_json::to_string(&normalized).unwrap();
         let restored: ProjectConfig = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            restored.generation_jobs[0]
+                .pose_video_reference_id
+                .as_deref(),
+            Some("pose-video")
+        );
         assert_eq!(
             restored.generation_jobs[0]
                 .start_video_reference_id
@@ -309,6 +317,9 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
     }
     let mut config = scene_fixture();
     config.generation_jobs[0].scene_type = Some("unknown".into());
+    assert!(validate_and_normalize_config(config).is_err());
+    let mut config = scene_fixture();
+    config.generation_jobs[0].pose_video_reference_id = Some(String::new());
     assert!(validate_and_normalize_config(config).is_err());
 }
 

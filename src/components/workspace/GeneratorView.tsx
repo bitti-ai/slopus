@@ -1,7 +1,7 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { characterReplaceBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
+import { characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
 import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -167,7 +167,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (updates.sceneType && templateSceneBlocker(updates.sceneType, selectedTemplate)) {
       const candidates = templateSettings.templates.filter((template) => !templateNeedsDownload(template)
         && !templateSceneBlocker(updates.sceneType!, template));
-      const compatible = (updates.sceneType === "character-replace" || isVideoTransition(updates)
+      const compatible = (updates.sceneType === "character-replace" || updates.sceneType === "pose" || isVideoTransition(updates)
         ? candidates.find((template) => /ref2v/i.test(template.paths.transformer)) : undefined) ?? candidates[0];
       if (compatible) chooseGeneratorTemplate(compatible.id);
     }
@@ -399,10 +399,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const batchScenesReady: GenerationJob[] = [];
   for (const [index, job] of jobs.entries()) {
     if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
-    if (!isVideoTransition(job) && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
+    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
     if (templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) continue;
     const previous = jobs[index - 1];
-    const previousWillRender = !isVideoTransition(job) && job.usePreviousSceneLastFrame && previous &&
+    const previousWillRender = !isVideoTransition(job) && job.sceneType !== "pose" && job.usePreviousSceneLastFrame && previous &&
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
@@ -416,7 +416,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "This scene is being saved now.";
-    if (!isVideoTransition(job) && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
+    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
     return templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
 
@@ -632,6 +632,10 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
   const shots = sceneShots(job);
   const animate = job.sceneType === "animate";
   const characterReplace = job.sceneType === "character-replace";
+  if (job.sceneType === "pose") {
+    const blocker = poseBlocker(job, references);
+    if (blocker) return blocker;
+  }
   if (isVideoTransition(job)) {
     const blocker = videoTransitionBlocker(job, references);
     if (blocker) return blocker;
@@ -664,7 +668,7 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
 export function templateSceneBlocker(type: SceneType, template: GeneratorTemplate): string | null {
   if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
   if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
-  if ((type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
+  if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
   return null;
 }
 

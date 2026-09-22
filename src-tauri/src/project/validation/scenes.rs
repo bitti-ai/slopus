@@ -7,14 +7,18 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "first-last-frame" | "animate" | "character-replace" | "extend" | "bridge"
+                "first-last-frame" | "animate" | "pose" | "character-replace" | "extend" | "bridge"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
         }
-        if [&job.start_video_reference_id, &job.end_video_reference_id]
-            .iter()
-            .any(|id| id.as_deref() == Some(""))
+        if [
+            &job.start_video_reference_id,
+            &job.end_video_reference_id,
+            &job.pose_video_reference_id,
+        ]
+        .iter()
+        .any(|id| id.as_deref() == Some(""))
         {
             return Err(format!(
                 "Scene '{}' has an empty video reference id.",

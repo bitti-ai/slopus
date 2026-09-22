@@ -4,6 +4,7 @@ The Scene panel saves a type on each scene:
 
 - **First & Last Frame** keeps the existing shot descriptions, speech, Look, sound, music and optional frame anchors. Older scenes without a type use this type.
 - **Animate** uses an Animate generator, one driving video and one repainted scene frame. It does not send a text prompt.
+- **Pose** uses a selected video for body pose, movement and timing. The Scene panel places the video selector above the shot prompts, where optional references can define the target subject and setting. It uses the video's saved clip range without its soundtrack, attached stills or refmods. Only the selected pose video and references cited in the prompts are sent; frame anchors and previous-scene continuation are inactive. Pose requires a nonempty prompt and reference-capable MiniMax weights (References or Singularity), with the existing limits of three videos, nine images and 15 seconds of reference video.
 - **Character Replace** gives each shot a source video selector, a new character reference selector and an optional description identifying the character to replace. The character reference must contain an image. Blank target descriptions mean the main character.
 - **Extend** takes a source video in the Scene panel and uses the shot descriptions as the continuation prompt.
 - **Bridge** takes start and end video references in the Scene panel and uses the shot descriptions as the prompt for the connecting segment.

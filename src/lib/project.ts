@@ -356,7 +356,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "character-replace", "extend", "bridge"]);
+export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "pose", "character-replace", "extend", "bridge"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const isVideoTransition = (job: Pick<GenerationJob, "sceneType">): boolean => job.sceneType === "extend" || job.sceneType === "bridge";
 
@@ -435,6 +435,7 @@ export function actionReferenceIds(action: string): string[] {
 export const generationJobSchema = z.object({
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
+  poseVideoReferenceId: idSchema.nullish(),
   startVideoReferenceId: idSchema.nullish(),
   endVideoReferenceId: idSchema.nullish(),
   title: z.string().min(1),
@@ -808,6 +809,15 @@ export function usableVideoReferences(references: ProjectReference[]): ProjectRe
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
+  if (job.sceneType === "pose") {
+    // Optional guidance is explicit in the prompt. Old bindings and frame
+    // anchors belong to other modes and must not redefine the target scene.
+    const cited = sceneShots(job).flatMap((shot) => actionReferenceIds(shot.action));
+    return references.filter((reference) => reference.id === job.poseVideoReferenceId || cited.includes(reference.id))
+      .map((reference) => reference.id === job.poseVideoReferenceId
+        ? { ...reference, images: [], refmods: [], video: { startSeconds: 0, durationSeconds: 2, ...reference.video, includeAudio: false } }
+        : reference);
+  }
   if (isVideoTransition(job)) {
     const ids = [job.startVideoReferenceId, ...(job.sceneType === "bridge" ? [job.endVideoReferenceId] : [])];
     // Role order, not library order: native video 1 is the tail; video 2 is the head.
@@ -830,7 +840,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
 /** Resolve the adjacent scene when preparing a request; queued work captures
  * its id so subsequent board edits cannot change the source of that run. */
 export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
-  if (isVideoTransition(job) || job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
+  if (isVideoTransition(job) || job.sceneType === "pose" || job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
   const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
   const resolved = { ...job, startFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
@@ -874,6 +884,7 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
  *  to show the same bytes for both. */
 export interface ScenePrompt {
   shots: readonly SceneShot[];
+  poseVideoReferenceId?: string | null;
   videoTransition?: "extend" | "bridge";
   startFrameReferenceId?: string | null;
   endFrameReferenceId?: string | null;
@@ -994,11 +1005,24 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  if (job.sceneType === "pose") return compileScenePromptSegments({
+    shots: sceneShots(job), poseVideoReferenceId: job.poseVideoReferenceId, soundscape: job.soundscape, music: job.music,
+  }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "character-replace") return compileCharacterReplaceSegments(job, references);
   if (job.sceneType === "extend" || job.sceneType === "bridge") return compileScenePromptSegments({
     shots: sceneShots(job), videoTransition: job.sceneType, soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
   return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references, defaultLook);
+}
+
+export function poseBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
+  if (!usableVideoReferences(references).some((reference) => reference.id === job.poseVideoReferenceId)) return "Select a pose video reference for this scene.";
+  if (sceneShots(job).every((shot) => !shot.action.trim())) return "Describe where the pose should be used before generating this scene.";
+  const bound = sceneGenerationReferences(job, references);
+  if (usableVideoReferences(bound).length > 3) return "Pose supports up to three video references per scene.";
+  if (usableReferenceImages(bound).length > 9) return "Pose supports up to nine reference images per scene.";
+  if (usableVideoReferences(bound).reduce((total, reference) => total + (reference.video?.durationSeconds ?? 2), 0) > 15) return "The selected video clips must total no more than 15 seconds.";
+  return null;
 }
 
 export function videoTransitionBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
@@ -1241,6 +1265,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const video = videoNumbers.get(reference.id);
     const label = referenceLabel(reference, index);
     const lead = index === 0 ? "" : "\n";
+    if (reference.id === scene.poseVideoReferenceId && video) {
+      return [frame(`${lead}${label} is pose and motion guidance from <Video ${video}>. Use its body positions, movement and timing; the prompt and other references define the target subject and setting.`)];
+    }
     if (!detail && pictures.length === 0 && !video && activeReferenceRefmods(reference).length) {
       return [frame(`${lead}${label} uses the attached pre-encoded reference.`)];
     }
@@ -1270,7 +1297,10 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
      scene written before references could be dropped into the text means, and
      what keeps a single untokened shot compiling to the bytes it always did. */
   const anyCited = compiled.some((shot) => shot.citedIds.length > 0);
-  const featured = compiled.map((shot) => anyCited ? shot.citedIds : usable.map((reference) => reference.id));
+  const featured = compiled.map((shot) => (anyCited ? shot.citedIds : usable.map((reference) => reference.id))
+    .filter((id) => id !== scene.poseVideoReferenceId));
+  const poseVideo = scene.poseVideoReferenceId ? videoNumbers.get(scene.poseVideoReferenceId) : undefined;
+  const poseDirection = poseVideo ? `Apply the body pose, movement and timing from <Video ${poseVideo}> to the subject described below. Use the prompt and optional references for identity, clothing, environment, lighting and camera framing. Do not copy the pose video's appearance, background or soundtrack. ` : "";
 
   // §3: task-type prefix. Subject references provide generation guidance; an
   // optional opening picture additionally anchors the first frame. The summary
@@ -1278,6 +1308,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const summary: PromptSegment[] = [
     frame(scene.videoTransition === "extend" ? "[video continuation] Continue from the final frame of <Video 1>. "
       : scene.videoTransition === "bridge" ? "[video continuation + reference generation] Generate the missing segment after <Video 1> and before <Video 2>. " : "[reference generation] "),
+    ...(poseDirection ? [frame(poseDirection)] : []),
     ...compiled.flatMap((shot) => [
       ...(shot.index === 0 ? [] : [frame(" ")]),
       ...shot.body,
@@ -1299,6 +1330,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // bound to the scene but written into none of its lines gets no "appears in"
   // claim at all, because there is no shot it can honestly be placed in.
   const retention = usable.map((reference, index) => {
+    if (reference.id === scene.poseVideoReferenceId && poseVideo) return `${referenceLabel(reference, index)} / <Video ${poseVideo}>: partially_preserved - retain body pose, movement and timing only; generate the subject and setting from the prompt and optional references.`;
     const appearances = compiled.filter((shot) => featured[shot.index].includes(reference.id))
       .map((shot) => `[Shot ${shot.index + 1}]`);
     const where = appearances.length > 0 ? ` (appears in ${appearances.join(", ")})` : "";
@@ -1313,6 +1345,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     frame("The target video is in a "),
     styleFromTag ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
     frame(" style.\n"),
+    ...(poseDirection ? [frame(`${poseDirection.trim()}\n`)] : []),
     ...(scene.videoTransition ? [frame(scene.videoTransition === "extend"
       ? "Begin immediately after the final frame of <Video 1>, continuing its subject identity, pose, motion, lighting and camera trajectory. Follow the text direction below. Output only the new continuation; do not replay the source clip.\n"
       : "Begin immediately after the final frame of <Video 1>. Follow the text direction below, developing continuous action that reaches the subject positions, motion, lighting and camera framing immediately before the opening frame of <Video 2>. Output only the new connecting segment; do not replay either source clip.\n")] : []),

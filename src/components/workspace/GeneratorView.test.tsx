@@ -134,6 +134,51 @@ it("saves scene types and submits Character Replace with the exact selected refe
   expect(generate).toBeDisabled();
 });
 
+it("submits Pose from the scene panel with its video and optional prompt references", () => {
+  const initial = project();
+  initial.generationJobs = [createDraftGenerationJob("", { id: "pose", title: "Pose scene" })];
+  initial.references = [
+    { id: "motion", kind: "video", name: "Motion", description: "", intendedUse: [], sourcePath: "C:/motion.mp4",
+      video: { startSeconds: 1, durationSeconds: 3, includeAudio: true }, createdAt: "2026-09-22T00:00:00.000Z" },
+    { id: "hero", kind: "image", name: "Hero", description: "", intendedUse: [], relativePath: "references/hero.png", createdAt: "2026-09-22T00:00:00.000Z" },
+  ];
+  let latest = initial;
+  const submitted = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial);
+    latest = config;
+    return <GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime}
+      onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
+  }
+  render(<Harness />);
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "pose" } });
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  const generate = within(screen.getByRole("region", { name: "Pose scene" })).getByRole("button", { name: "Generate" });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Pose video reference for this scene"), { target: { value: "motion" } });
+  expect(generate).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Describe shot 1"), { target: { value: "A dancer on a rainy street." } });
+  expect(generate).toBeEnabled();
+  fireEvent.click(generate);
+  expect(submitted.mock.calls[0][0][0].request).toMatchObject({
+    prompt: expect.stringContaining("Apply the body pose, movement and timing from <Video 1>"),
+    referencePaths: [],
+    referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Not in this scene yet Hero/ }));
+  expect(latest.generationJobs[0].shots![0].action).toContain("@[ref:hero]");
+  fireEvent.click(generate);
+  expect(submitted.mock.calls.at(-1)![0][0].request.referencePaths).toEqual(["C:/project/references/hero.png"]);
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0]).toMatchObject({ sceneType: "pose", poseVideoReferenceId: "motion" });
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "first-last-frame" } });
+  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "pose" } });
+  expect(screen.getByLabelText("Pose video reference for this scene")).toHaveValue("motion");
+  fireEvent.change(screen.getByLabelText("Pose video reference for this scene"), { target: { value: "" } });
+  expect(generate).toBeDisabled();
+  expect(templateSceneBlocker("pose", minimaxOriginalTemplate())).toContain("References or Singularity");
+  expect(templateSceneBlocker("pose", viggleAnimateTemplate())).toContain("MiniMax prompt");
+});
+
 it("keeps an explicitly selected scene type independent of the global generator", () => {
   const initial = project();
   initial.generationJobs[0].sceneType = "animate";
