@@ -140,10 +140,9 @@ it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA])("d
   expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: lora.url });
   const path = `C:/Slopus/weights/${lora.url!.split('/').at(-1)}`;
   expect(savedLora()).toMatchObject({ path, stepOverride: lora.stepOverride });
-  expect(savedLora().multiplier).toBe(lora.multiplier);
   const options = engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", [{ loraId: lora.id, enabled: true, strength: 1 }]).options;
   expect(options.stepOverride).toBe(lora.stepOverride);
-  expect(JSON.parse(options.loras as string)).toEqual([{ path, strength: lora.multiplier ?? 1 }]);
+  expect(JSON.parse(options.loras as string)).toEqual([{ path, strength: 1 }]);
   expect(getWeightDownloadState()).toMatchObject({ loraId: lora.id, active: false, completed: 1, error: null });
   files.clear();
   await refreshDownloadedLoras();

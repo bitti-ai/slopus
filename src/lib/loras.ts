@@ -7,7 +7,6 @@ export interface Lora {
   path: string;
   url?: string;
   stepOverride?: number;
-  multiplier?: number;
   needsPreparation?: boolean;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
@@ -30,7 +29,6 @@ export const LIGHTX2V_TURBO_LORA: Lora = {
   id: "lightx2v-turbo-6step", name: "LightX2V Turbo", path: "",
   url: "https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/main/experimental/minimax_h3_fl2v_lightx2v_turbo_4to8step_v0.1-v1.0_768p_v4_step600_dareties.safetensors",
   stepOverride: 6,
-  multiplier: 0.9,
 };
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
@@ -45,7 +43,6 @@ export function loadLoras(): Lora[] {
       return [{ id: entry.id, name: entry.name, path: entry.path,
         ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
-        ...(isLoraMultiplier(entry.multiplier) ? { multiplier: entry.multiplier } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
     }) : [];
@@ -57,9 +54,6 @@ export function loadLoras(): Lora[] {
   } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }, { ...LIGHTX2V_TURBO_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
-  if (loras.some((lora) => lora.multiplier !== undefined && !isLoraMultiplier(lora.multiplier))) {
-    throw new Error("LoRA multiplier must be a finite number within the supported range.");
-  }
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
     throw new Error(`Step override must be a whole number from 2 to ${MAX_GENERATION_STEPS}.`);
   }
@@ -78,13 +72,13 @@ export function normalizeTemplateLoras(value: unknown): TemplateLora[] {
     if (!entry || typeof entry.loraId !== "string" || !entry.loraId || ids.has(entry.loraId)) return [];
     ids.add(entry.loraId);
     return [{ loraId: entry.loraId, enabled: entry.enabled !== false,
-      strength: isLoraMultiplier(entry.strength) ? entry.strength : 1 }];
+      strength: isLoraStrength(entry.strength) ? entry.strength : 1 }];
   }) : [];
 }
 
 export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[] {
   const active = new Set(selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
-  return loadLoras().filter((lora) => active.has(lora.id) && lora.multiplier !== 0 && lora.url
+  return loadLoras().filter((lora) => active.has(lora.id) && lora.url
     && (lora.needsPreparation || !lora.path.trim() || /^https?:\/\//i.test(lora.path)));
 }
 
@@ -92,9 +86,8 @@ export function resolveTemplateLoras(selection: TemplateLora[] = []) {
   const library = loadLoras();
   return selection.filter((entry) => entry.enabled && entry.strength !== 0).flatMap((entry) => {
     const lora = library.find(({ id }) => id === entry.loraId);
-    const strength = effectiveLoraStrength(entry, lora);
-    if (!isLoraMultiplier(strength)) throw new Error(`Combined multiplier for LoRA ${lora?.name ?? entry.loraId} is outside the supported range.`);
-    if (strength === 0) return [];
+    const strength = entry.strength;
+    if (!isLoraStrength(strength)) throw new Error(`Strength for LoRA ${lora?.name ?? entry.loraId} is outside the supported range.`);
     if (lora?.needsPreparation) throw new Error(`Prepare LoRA ${lora.name} in Settings before using it.`);
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
@@ -103,14 +96,10 @@ export function resolveTemplateLoras(selection: TemplateLora[] = []) {
   });
 }
 
-export const MAX_LORA_MULTIPLIER = 3.4028234663852886e38;
+export const MAX_LORA_STRENGTH = 3.4028234663852886e38;
 
-export function isLoraMultiplier(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_LORA_MULTIPLIER;
-}
-
-export function effectiveLoraStrength(entry: TemplateLora, lora?: Lora): number {
-  return entry.strength * (lora?.multiplier ?? 1);
+export function isLoraStrength(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_LORA_STRENGTH;
 }
 
 export function isLoraStepOverride(value: unknown): value is number {
