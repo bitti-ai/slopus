@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsView } from "./SettingsView";
 import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
 import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
+import { loadLoras } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -258,6 +259,33 @@ describe("the settings screen", () => {
     expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
     fireEvent.click(tab("Generator"));
     expect(screen.queryByLabelText("Generator name")).toBeNull();
+  });
+
+  it("edits LoRAs in a focused popup and discards unsaved changes on close", async () => {
+    const onClose = vi.fn();
+    render(<SettingsView onClose={onClose} />);
+    const opener = screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" });
+    opener.focus(); fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "Edit Lora" });
+    const name = within(dialog).getByLabelText("LoRA name");
+    expect(document.activeElement).toBe(name);
+    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
+    expect(within(dialog).queryByLabelText("LoRA multiplier")).toBeNull();
+    const first = within(dialog).getByRole("button", { name: "Generators" });
+    const last = within(dialog).getByRole("button", { name: "Save Lora" });
+    last.focus(); fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.change(name, { target: { value: "Unsaved name" } });
+    fireEvent.keyDown(name, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(loadLoras()[0].name).toBe("TaoMate 3-Step");
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "Close LoRA settings" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("defaults icon generation to the sole available generator and remembers a separate selection", () => {

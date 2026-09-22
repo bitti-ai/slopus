@@ -1,6 +1,6 @@
-import { GeneratorTemplateDialog } from "./GeneratorTemplateDialog";
+import { SettingsEditorDialog } from "./SettingsEditorDialog";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
-import { AlertCircle, ArrowLeft, Check, ChevronLeft, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -538,7 +538,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   return (
     <>
-    <main aria-hidden={editingTemplateId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-labelledby="settings-heading" onKeyDown={(event) => {
+    <main aria-hidden={editingTemplateId || editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-labelledby="settings-heading" onKeyDown={(event) => {
       // The mounted editor must not receive shortcuts while Settings has focus.
       event.stopPropagation();
       if (event.key === "Escape" && !event.defaultPrevented) onClose();
@@ -581,7 +581,6 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
         <div className="settings-view__content">
         <div className="settings-view__body" ref={body}>
-          {tab === "engine" && editingLoraId && <button type="button" className="secondary-button generator-editor__back" onClick={() => { setEditingTemplateId(null); setEditingLoraId(null); }}><ChevronLeft size={16} /> Generators</button>}
           {tab === "updates" && <section className="settings-section" id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates">
             {updates ?? <p>Updates are available in the desktop app.</p>}
           </section>}
@@ -618,8 +617,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
             role="tabpanel"
             aria-labelledby="settings-tab-engine"
           >
-            {!editingLoraId && <ReferenceIconSetting templates={templateSettings} />}
-            {editingLoraId ? <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} /> : <>{generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
+            <ReferenceIconSetting templates={templateSettings} />
+            {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
               <header>
                 <div>
                   <h2 id={`${section.id}-heading`}>{section.title}</h2>
@@ -655,7 +654,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
                   </div>
                 ))}
               </div>
-            </section>)}<LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} /></>}
+            </section>)}<LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
           </section>}
         </div>
 
@@ -665,7 +664,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
         {error && <div className="toast" role="alert"><strong>Couldn’t update generator settings</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       </div>
     </main>
-    {editingTemplateId && <GeneratorTemplateDialog onClose={() => setEditingTemplateId(null)} footer={generatorFooter}>{generatorEditor}</GeneratorTemplateDialog>}
+    {editingTemplateId && <SettingsEditorDialog title="Edit generator" headingId="generator-editor-heading" initialFocusLabel="Generator name" closeLabel="Close generator settings" onClose={() => setEditingTemplateId(null)} footer={generatorFooter}>{generatorEditor}</SettingsEditorDialog>}
+    {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} />}
     </>
   );
 }
