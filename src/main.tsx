@@ -22,11 +22,11 @@ watchSystemTheme(() => {
 /* Slopus is an application window, not a web page. The browser's own
    context menu offers Back, Reload, View source and Inspect — none of which
    mean anything here, and Reload throws away unsaved project edits. Text
-   fields keep theirs: cut/copy/paste/undo are real editing commands, and
+   fields and compiled prompts keep theirs: copy/paste are useful here, and
    taking them away would cost the user more than the menu is worth. */
 document.addEventListener("contextmenu", (event) => {
   const target = event.target as HTMLElement | null;
-  if (target?.closest("input, textarea, [contenteditable='true']")) return;
+  if (target?.closest("input, textarea, [contenteditable='true'], .compiled-prompt__text")) return;
   event.preventDefault();
 });
 

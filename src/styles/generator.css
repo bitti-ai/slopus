@@ -1461,6 +1461,7 @@
 }
 
 .compiled-prompt__text {
+  user-select: text;
   max-height: 280px;
   margin: 0;
   overflow: auto;

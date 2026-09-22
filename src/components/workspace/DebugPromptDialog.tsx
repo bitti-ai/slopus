@@ -25,6 +25,18 @@ export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debu
         event.preventDefault();
         event.stopPropagation();
         onClose();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        event.stopPropagation();
+        const element = prompt.current;
+        const selection = window.getSelection();
+        if (element && selection) {
+          element.focus();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
       } else if (event.key === "Tab") {
         event.preventDefault();
         (document.activeElement === closeButton.current ? prompt.current : closeButton.current)?.focus();

@@ -75,6 +75,8 @@ describe("Reference type presets", () => {
     expect(regenerate).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: "Tab" });
     expect(within(dialog).getByLabelText("The reference icon generation prompt")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    expect(window.getSelection()?.toString()).toBe(referenceIconPrompt(state.latest().references[0]));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
     expect(button).toHaveFocus();

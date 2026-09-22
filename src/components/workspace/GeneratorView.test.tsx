@@ -305,6 +305,8 @@ describe("Generator scene controls", () => {
     expect(within(dialog).getByRole("button", { name: "Close debug prompt" })).toHaveFocus();
     fireEvent.keyDown(window, { key: "Tab" });
     expect(within(dialog).getByLabelText("The compiled MiniMax H3 prompt")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    expect(window.getSelection()?.toString()).toBe(within(dialog).getByLabelText("The compiled MiniMax H3 prompt").textContent);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
     expect(button).toHaveFocus();
