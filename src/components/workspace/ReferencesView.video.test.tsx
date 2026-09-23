@@ -66,6 +66,11 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   expect(latest.references[0].kind).toBe("video");
   expect(screen.getByLabelText("Prompt")).toBeEnabled();
   expect(screen.getByRole("button", { name: "Add file" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Remove reference image" }));
+  expect(parseProjectConfig(latest).references[0]).toMatchObject({
+    kind: "video", sourcePath: "D:/motion.mp4", images: [],
+    video: { startSeconds: 0, durationSeconds: 4, includeAudio: false },
+  });
 });
 
 it("shows an existing refmod icon only in the normal inspector slot and clears it on removal", () => {

@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, FileText, ImagePlus, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isReferenceDescribed, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -58,6 +58,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   onOpenGenerator?: (jobId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
+  const [imagePage, setImagePage] = useState(0);
+  useEffect(() => setImagePage(0), [selectedId]);
   const configRef = useRef(config);
   configRef.current = config;
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
@@ -79,6 +81,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [presetSearch, setPresetSearch] = useState("");
   const selected = config.references.find((ref) => ref.id === selectedId);
   const selectedImages = selected ? referenceImages(selected) : [];
+  const currentImagePage = Math.min(imagePage, Math.max(0, selectedImages.length - 1));
+  const selectedImage = selectedImages[currentImagePage];
   const hasRefmods = Boolean(selected?.refmods?.length);
   const showImages = selectedImages.length > 0 && !hasRefmods;
   const canGenerateIcon = Boolean(selected && (hasRefmods ? activeReferenceRefmods(selected).length : selected.description.trim()));
@@ -93,6 +97,18 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const update = (id: string, patch: Partial<ProjectReference>) => {
     const current = configRef.current;
     onChange({ ...current, references: current.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
+  };
+  const removeImage = () => {
+    if (!selected || !selectedImage) return;
+    const current = configRef.current.references.find((ref) => ref.id === selected.id);
+    if (!current) return;
+    const images = referenceImages(current).filter((image) => image.id !== selectedImage.id);
+    update(current.id, {
+      images,
+      // Move any remaining legacy image into attachments before clearing its path.
+      ...(current.kind === "image" ? { kind: "text", relativePath: null, sourcePath: null } : {}),
+    });
+    setImagePage(Math.min(currentImagePage, Math.max(0, images.length - 1)));
   };
   // Starts empty on purpose. Seeding it with the instruction text meant an
   // unedited definition shipped "Describe the traits…" to the model as if the
@@ -242,7 +258,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           </section>}
           {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${(!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
             {showImages
-              ? <div className="reference-detail-images">{selectedImages.map((image) => <ReferenceImage key={image.id} folderPath={folderPath} relativePath={image.relativePath} sourcePath={image.sourcePath} alt={image.name} />)}</div>
+              ? <div className="reference-detail-images"><ReferenceImage key={selectedImage.id} folderPath={folderPath} relativePath={selectedImage.relativePath} sourcePath={selectedImage.sourcePath} alt={selectedImage.name} /></div>
               : selected.iconRelativePath
                 ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
               : !hasRefmods && selectedPresetIcon
@@ -264,6 +280,12 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                 catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
               }}
             ><RefreshCw size={14} aria-hidden="true" /></button>}
+          </div>}
+          {showImages && <div className="reference-image-controls" role="group" aria-label="Reference images">
+            <button type="button" className="secondary-button" aria-label="Previous reference image" title="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
+            <span aria-live="polite">Image {currentImagePage + 1} of {selectedImages.length}</span>
+            <button type="button" className="secondary-button" aria-label="Next reference image" title="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight size={16} aria-hidden="true" /></button>
+            <button type="button" className="inspector-remove-button" aria-label="Remove reference image" title={`Remove ${selectedImage.name}`} onClick={removeImage}><Trash2 size={16} aria-hidden="true" /></button>
           </div>}
           <div className="reference-fields">
             <label><span>Prompt</span><textarea disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>

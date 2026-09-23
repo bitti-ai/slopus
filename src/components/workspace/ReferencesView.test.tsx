@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createProjectConfig, parseProjectConfig, type ProjectConfig } from "../../lib/project";
+import { createProjectConfig, parseProjectConfig, referenceImages, type ProjectConfig } from "../../lib/project";
 import { ReferencesView } from "./ReferencesView";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { saveDebugOptionsEnabled } from "../../lib/settings";
@@ -59,6 +59,59 @@ function setup(initial = project(), onRegenerateIcon = vi.fn(), pendingIconIds =
 }
 
 describe("Reference type presets", () => {
+  it("pages through one image at a time, resets on reference changes, and removes images through the last page", () => {
+    const initial = project();
+    initial.references[0].images = ["front", "side", "back"].map((name) => ({ id: name, name, relativePath: `references/${name}.png` }));
+    initial.references.push({ ...initial.references[0], id: "ref-other", name: "Other" });
+    const state = setup(initial);
+    const inspector = within(screen.getByRole("complementary"));
+    const previous = () => inspector.getByRole("button", { name: "Previous reference image" });
+    const next = () => inspector.getByRole("button", { name: "Next reference image" });
+    const remove = () => fireEvent.click(inspector.getByRole("button", { name: "Remove reference image" }));
+    expect(inspector.getAllByRole("img")).toHaveLength(1);
+    expect(inspector.getByRole("img", { name: /^front/ })).toBeInTheDocument();
+    expect(previous()).toBeDisabled();
+    fireEvent.click(next());
+    expect(inspector.getByRole("img", { name: /^side/ })).toBeInTheDocument();
+    expect(inspector.queryByRole("img", { name: /^front/ })).not.toBeInTheDocument();
+    fireEvent.click(previous());
+    expect(inspector.getByText("Image 1 of 3")).toBeInTheDocument();
+    fireEvent.click(next());
+    fireEvent.click(screen.getByRole("button", { name: /Other 3 images/ }));
+    expect(inspector.getByText("Image 1 of 3")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Hero 3 images/ }));
+    fireEvent.click(next());
+    remove();
+    expect(inspector.getByText("Image 2 of 2")).toBeInTheDocument();
+    expect(inspector.getByRole("img", { name: /^back/ })).toBeInTheDocument();
+    expect(next()).toBeDisabled();
+    remove();
+    expect(inspector.getByText("Image 1 of 1")).toBeInTheDocument();
+    expect(previous()).toBeDisabled();
+    expect(next()).toBeDisabled();
+    remove();
+    expect(inspector.queryByRole("group", { name: "Reference images" })).not.toBeInTheDocument();
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+    expect(saved.references[0]).toMatchObject({ ...initial.references[0], images: [] });
+    expect(saved.references[1].images).toHaveLength(3);
+    expect(saved.generationJobs).toEqual(initial.generationJobs);
+  });
+
+  it.each(["legacy", "attachment"])("removes the %s image from an older reference without restoring it on reload", (target) => {
+    const initial = project();
+    Object.assign(initial.references[0], { kind: "image", relativePath: "references/legacy.png", sourcePath: null, images: [{ id: "extra", name: "Extra", relativePath: "references/extra.png" }] });
+    const state = setup(initial);
+    if (target === "attachment") fireEvent.click(screen.getByRole("button", { name: "Next reference image" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove reference image" }));
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+    expect(saved.references[0]).toMatchObject({ kind: "text", relativePath: null, sourcePath: null, description: initial.references[0].description });
+    expect(referenceImages(saved.references[0]).map((image) => image.relativePath)).toEqual([target === "legacy" ? "references/extra.png" : "references/legacy.png"]);
+    cleanup();
+    const restored = setup(saved);
+    fireEvent.click(screen.getByRole("button", { name: "Remove reference image" }));
+    expect(referenceImages(parseProjectConfig(restored.latest()).references[0])).toEqual([]);
+  });
+
   it("shows the exact icon regeneration prompt in a debug-only footer dialog", () => {
     const regenerate = vi.fn();
     const state = setup(project(), regenerate);
