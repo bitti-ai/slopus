@@ -239,7 +239,7 @@
   border-radius: 0;
 }
 
-.reference-detail-art .reference-icon-refresh {
+.reference-detail-art :is(.reference-icon-refresh, .reference-image-remove) {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
@@ -258,13 +258,13 @@
   transition: opacity var(--motion-fast);
 }
 
-.reference-detail-art:hover .reference-icon-refresh,
-.reference-detail-art:focus-within .reference-icon-refresh {
+.reference-detail-art:hover :is(.reference-icon-refresh, .reference-image-remove),
+.reference-detail-art:focus-within :is(.reference-icon-refresh, .reference-image-remove) {
   opacity: 1;
   pointer-events: auto;
 }
 
-.reference-detail-art .reference-icon-refresh:hover:not(:disabled) {
+.reference-detail-art :is(.reference-icon-refresh, .reference-image-remove):hover:not(:disabled) {
   background: var(--panel-3);
   border-color: var(--accent);
 }
@@ -275,28 +275,30 @@
 }
 
 @media (hover: none) {
-  .reference-detail-art .reference-icon-refresh {
+  .reference-detail-art :is(.reference-icon-refresh, .reference-image-remove) {
     opacity: 1;
     pointer-events: auto;
   }
 }
 
+.reference-detail-art.reference-detail-art--images {
+  display: block;
+  height: auto;
+}
+
 .reference-detail-images {
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  padding: var(--space-2);
 }
 
 .reference-detail-art--photo .reference-detail-images img {
+  display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
   background: var(--panel-3);
-  object-fit: contain;
 }
+
+.reference-detail-images .reference-image-fallback { min-height: 128px; }
 
 .reference-image-controls {
   display: flex;
@@ -312,8 +314,6 @@
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
-
-.reference-image-controls > .inspector-remove-button { margin-left: auto; }
 
 .reference-image-controls > button:disabled { opacity: 0.5; cursor: default; }
 

@@ -256,7 +256,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               onChange={(video) => update(selected.id, { video })} />
             <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} /> Remove video</button>
           </section>}
-          {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${(!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
+          {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${showImages ? " reference-detail-art--images" : (!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
             {showImages
               ? <div className="reference-detail-images"><ReferenceImage key={selectedImage.id} folderPath={folderPath} relativePath={selectedImage.relativePath} sourcePath={selectedImage.sourcePath} alt={selectedImage.name} /></div>
               : selected.iconRelativePath
@@ -268,6 +268,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                 to print the file's path over the thumbnail, which is neither
                 what the reference IS nor anything the user acts on. */}
             {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
+            {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" title={`Remove ${selectedImage.name}`} onClick={removeImage}><Trash2 size={14} aria-hidden="true" /></button>}
             {!showImages && onRegenerateIcon && <button
               type="button"
               className="reference-icon-refresh"
@@ -285,7 +286,6 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             <button type="button" className="secondary-button" aria-label="Previous reference image" title="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
             <span aria-live="polite">Image {currentImagePage + 1} of {selectedImages.length}</span>
             <button type="button" className="secondary-button" aria-label="Next reference image" title="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight size={16} aria-hidden="true" /></button>
-            <button type="button" className="inspector-remove-button" aria-label="Remove reference image" title={`Remove ${selectedImage.name}`} onClick={removeImage}><Trash2 size={16} aria-hidden="true" /></button>
           </div>}
           <div className="reference-fields">
             <label><span>Prompt</span><textarea disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
