@@ -76,6 +76,9 @@ impl GenerationRequest {
     pub fn reference_count(&self) -> usize {
         self.reference_paths.len() + self.reference_video_ids.len()
     }
+    pub fn refmod_count(&self) -> usize {
+        self.refmods.iter().filter(|refmod| refmod.strength > 0.0).count()
+    }
 }
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

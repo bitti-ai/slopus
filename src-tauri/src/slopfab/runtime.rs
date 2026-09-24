@@ -39,6 +39,7 @@ impl Default for SlopfabRuntime {
                     "canvasWidth": item.request.canvas_width,
                     "canvasHeight": item.request.canvas_height,
                     "referenceCount": item.request.reference_count(),
+                    "refmodCount": item.request.refmod_count(),
                     "randomSeed": item.request.seed == -1,
                 }));
                 let result = run_generation(&item);
@@ -137,6 +138,7 @@ impl SlopfabRuntime {
                 "canvasWidth": request.canvas_width,
                 "canvasHeight": request.canvas_height,
                 "referenceCount": request.reference_count(),
+                "refmodCount": request.refmod_count(),
                 "inputChars": request.prompt.chars().count(),
             }),
         );

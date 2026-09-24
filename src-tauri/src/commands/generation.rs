@@ -87,7 +87,7 @@ pub(crate) fn resolve_slopfab_plan(
     let context = serde_json::json!({
         "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
         "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
-        "referenceCount": request.reference_count(), "inputChars": request.prompt.chars().count(),
+        "referenceCount": request.reference_count(), "refmodCount": request.refmod_count(), "inputChars": request.prompt.chars().count(),
     });
     diagnostics::info(
         "slopfab",

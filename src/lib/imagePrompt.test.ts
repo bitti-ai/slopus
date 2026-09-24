@@ -76,4 +76,15 @@ describe("MiniMax H3 still-image prompts", () => {
     config.brief.prompt = "";
     expect(compileImagePrompt(config).prompt).toBe("");
   });
+  it("describes an active refmod as visual identity conditioning, with no invented picture label", () => {
+    const config = photo();
+    config.references = [{ id: "identity", kind: "text", name: "Woman", description: "", intendedUse: ["character"], createdAt: config.createdAt,
+      refmods: [{ id: "encoded", name: "Identity", sourcePath: "D:/identity.safetensors", strength: 1, copies: 1 }] }];
+    config.imageScene!.referenceIds = ["identity"];
+    const prompt = compileImagePrompt(config).prompt;
+    expect(prompt).toContain("Use the supplied reference conditioning for Woman's identity and appearance in this still image");
+    expect(prompt).not.toMatch(/Additional visual guidance: Woman|<Picture|<Video|safetensors/);
+    config.references[0].refmods![0].strength = 0;
+    expect(compileImagePrompt(config).prompt).not.toContain("Woman");
+  });
 });

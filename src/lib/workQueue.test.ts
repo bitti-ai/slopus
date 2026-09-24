@@ -56,6 +56,25 @@ const finish = async (queue: WorkQueue, id: string) => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("forwards selected refmods to still-image planning and generation with their strength and copies", async () => {
+    const { queue } = setup();
+    const project = imageProject();
+    project.config.references = [{ id: "person", kind: "text", name: "Person", description: "", intendedUse: [], createdAt: project.config.createdAt, refmods: [
+      { id: "identity", name: "Identity", relativePath: "references/person.safetensors", strength: 0.75, copies: 2 },
+      { id: "outfit", name: "Outfit", sourcePath: "D:/Refmods/outfit.safetensors", strength: 1, copies: 1 },
+      { id: "disabled", name: "Disabled", sourcePath: "D:/Refmods/off.safetensors", strength: 0, copies: 3 },
+    ] }];
+    project.config.imageScene!.referenceIds = ["person"];
+    queue.enqueueImage(queue.project(project), template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [], refmods: [
+      { path: "C:/Image/references/person.safetensors", strength: 0.75, copies: 2 },
+      { path: "D:/Refmods/outfit.safetensors", strength: 1, copies: 1 },
+    ] });
+    expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].refmods).toEqual(request.refmods);
+    await queue.cancel(request.jobId);
+  });
   it("submits the complete debug prompt with project look and ordered reference pictures", async () => {
     const { queue } = setup();
     const project = imageProject();

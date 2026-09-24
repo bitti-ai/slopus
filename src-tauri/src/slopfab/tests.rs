@@ -511,6 +511,7 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
     };
     let probe = RequestHandle::new(&api).unwrap();
     let added = api.add_refmod(&probe, &file, 0.7, 2);
+    assert_eq!(request.refmod_count(), 1);
     if let Err(error) = &added {
         assert!(error.contains("does not support refmods"), "{error}");
         eprintln!(
@@ -551,6 +552,7 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
         }
     }
     request.refmods[0].strength = 0.0;
+    assert_eq!(request.refmod_count(), 0);
     std::fs::remove_file(&file).unwrap();
     let handle = RequestHandle::new(&api).unwrap();
     configure_request(
