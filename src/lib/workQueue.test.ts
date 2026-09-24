@@ -12,6 +12,7 @@ import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
+import { compileImagePrompt } from "./imagePrompt";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -55,6 +56,21 @@ const finish = async (queue: WorkQueue, id: string) => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("submits the complete debug prompt with project look and ordered reference pictures", async () => {
+    const { queue } = setup();
+    const project = imageProject();
+    project.config.settings.defaultLook = "watercolor";
+    project.config.references = [{ id: "ocean", kind: "image", name: "Ocean", description: "Turquoise water", relativePath: "references/ocean.png", intendedUse: [], createdAt: project.config.createdAt }];
+    project.config.imageScene!.referenceIds = ["ocean"];
+    const preview = compileImagePrompt(project.config).prompt;
+    queue.enqueueImage(queue.project(project), template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.prompt).toBe(preview);
+    expect(request.prompt).toContain("Visual style: Watercolor.\nTurquoise water Use <Picture 1> as visual references for this subject.");
+    expect(request.referencePaths).toEqual(["C:/Image/references/ocean.png"]);
+    await queue.cancel(request.jobId);
+  });
   it("generates one native still, preserves ongoing edits, saves full-size JPEG, and releases frames", async () => {
     const { queue } = setup(); const session = queue.project(imageProject());
     vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/still.jpg", width: 768, height: 768 });

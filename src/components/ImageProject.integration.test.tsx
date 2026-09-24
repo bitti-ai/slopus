@@ -1,17 +1,53 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "../lib/project";
 import { executeAgentCommands } from "../lib/runtime";
+import { imageScenePrompt } from "../lib/imageScene";
+import { saveDebugOptionsEnabled } from "../lib/settings";
 import fixture from "../../fixtures/project-v1-image.json";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 afterEach(() => { cleanup(); localStorage.clear(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
+
+it("shows the full image prompt at the end of the inspector only when debug is enabled", () => {
+  const project = record();
+  project.config.settings.defaultLook = "watercolor";
+  project.config.references = [
+    { id: "subject", kind: "image", name: "Rocket", description: "A silver rocket", relativePath: "references/rocket.png", images: [{ id: "detail", name: "Detail", relativePath: "references/detail.png", sourcePath: null }], intendedUse: [], createdAt: project.config.createdAt },
+    { id: "mood", kind: "text", name: "Mood", description: "Peaceful and bright", intendedUse: [], createdAt: project.config.createdAt },
+    { id: "unused", kind: "text", name: "Unused", description: "Do not include this reference", intendedUse: [], createdAt: project.config.createdAt },
+  ];
+  project.config.imageScene!.referenceIds = ["subject", "mood"];
+  render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
+  act(() => saveDebugOptionsEnabled(true));
+  // The complete scene prompt is available even with a child selected.
+  fireEvent.click(screen.getByRole("button", { name: "Text" }));
+  fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "TO THE MOON" } });
+  const inspector = screen.getByRole("complementary", { name: "Image node inspector" });
+  const button = within(inspector).getByRole("button", { name: "Debug Prompt" });
+  expect(inspector.lastElementChild).toContainElement(button);
+  button.focus();
+  fireEvent.click(button);
+  const prompt = within(screen.getByRole("dialog", { name: "Debug Prompt" })).getByLabelText("The compiled MiniMax H3 prompt");
+  for (const line of imageScenePrompt(project.config.imageScene!).split("\n")) expect(prompt.textContent).toContain(line);
+  expect(prompt.textContent).toContain('Render the exact text "TO THE MOON".');
+  expect(prompt.textContent).toContain("Visual style: Watercolor.\nA silver rocket Use <Picture 1>, <Picture 2> as visual references for this subject.\nPeaceful and bright");
+  expect(prompt.textContent).not.toContain("Do not include this reference");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+  expect(button).toHaveFocus();
+  fireEvent.click(button);
+  act(() => saveDebugOptionsEnabled(false));
+  expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+});
 
 it("offers image and video projects when creating a folder project", async () => {
   const submit = vi.fn(async () => undefined);

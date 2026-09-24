@@ -255,7 +255,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
     </div>
     <label className="diagnostics-debug-option">
       <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
-      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and Debug Icon Prompt in reference details.</small></span>
+      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and the image inspector, and Debug Icon Prompt in reference details.</small></span>
     </label>
     <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()} title={error ?? undefined}>
       {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file

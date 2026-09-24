@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { Box, ChevronDown, ChevronRight, Copy, Download, Image, Plus, Redo2, Sparkles, Square, Trash2, Undo2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene } from "../../lib/imageScene";
 import { outputDimensions } from "../../lib/export";
+import { compileImagePrompt } from "../../lib/imagePrompt";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
-import { defaultGeneratorTemplate, loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
+import { DebugPromptDialog } from "./DebugPromptDialog";
 import "../../styles/image-editor.css";
 
 export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel, work }: {
@@ -25,6 +27,9 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => !templateNeedsDownload(candidate)) ?? imageTemplates[0];
   const [error, setError] = useState<string | null>(null);
+  const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
+  const [debugPrompt, setDebugPrompt] = useState<string | null>(null);
+  useEffect(() => { if (!debugEnabled) setDebugPrompt(null); }, [debugEnabled]);
   const [boxes, setBoxes] = useState(true);
   const [drawKind, setDrawKind] = useState<"object" | "text" | "group" | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -154,6 +159,9 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       </>}
       {selected.kind !== "root" && <><h3>Placement (0–1000)</h3><label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>{selected.box && <div className="image-box-fields">{(["x", "y", "width", "height"] as const).map((field) => <label key={field}>{field}<input type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} /></label>)}</div>}</>}
       <h3>Color palette</h3><div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button" aria-label={`Remove color ${index + 1}`} onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Trash2 size={13} /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Plus size={14} />Color</button></div>
-    </div></aside>
+    </div>
+      {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(compileImagePrompt(config).prompt))}>Debug Prompt</button></div>}
+    </aside>
+    {debugEnabled && debugPrompt !== null && <DebugPromptDialog sceneTitle={config.name} segments={[{ kind: "brief", value: debugPrompt }]} onClose={() => setDebugPrompt(null)} />}
   </div>;
 }

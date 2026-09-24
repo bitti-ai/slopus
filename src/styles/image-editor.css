@@ -5,7 +5,9 @@
 .image-tree, .image-inspector { min-height: 0; overflow: auto; background: var(--panel); }
 .image-tree { display: flex; flex-direction: column; border-right: 1px solid var(--line-solid); }
 .image-tree > [role="tree"] { flex: 1; overflow: auto; }
-.image-inspector { border-left: 1px solid var(--line-solid); }
+.image-inspector { display: flex; flex-direction: column; border-left: 1px solid var(--line-solid); }
+.image-inspector > header { flex-shrink: 0; }
+.image-inspector > .debug-prompt { margin-top: auto; }
 .image-editor__actions, .image-tree__footer { display: flex; align-items: center; gap: var(--space-1); }
 .image-tree__add { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); padding: var(--space-2); }
 .image-tree__add button { padding-inline: var(--space-2); font-size: var(--text-xs); }

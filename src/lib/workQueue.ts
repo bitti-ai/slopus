@@ -1,10 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageScene, imageScenePrompt } from "./imageScene";
+import { compileImagePrompt } from "./imagePrompt";
 import { outputDimensions } from "./export";
-import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
+import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
 import { engineProviderSetting, type GeneratorTemplate } from "./settings";
-import { SHOT_TAG_GROUPS } from "./shot-tags";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -200,30 +200,17 @@ export class WorkQueue {
     const current = session.getSnapshot().config;
     if (current.generationType !== "image") throw new Error("Open an image project to generate images.");
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
-    const prompt = imageScenePrompt(scene);
-    if (!prompt) throw new Error("Describe the image or add an object before generating.");
+    if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false) } });
-    const references = scene.referenceIds.map((id) => {
-      const reference = current.references.find((candidate) => candidate.id === id);
-      if (!reference) throw new Error(`Selected image reference '${id}' no longer exists.`);
-      if (reference.kind === "video" || reference.kind === "audio") throw new Error("Still images accept image and text references.");
-      return reference;
-    });
+    const { prompt, references } = compileImagePrompt(current);
     const { width, height } = outputDimensions(current.settings.resolution, current.settings.aspectRatio);
-    let picture = 0;
-    const referencePrompts = references.map((reference) => {
-      const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
-      return `${referenceDefinition(reference)}${labels.length ? ` Use ${labels.join(", ")} as visual references for this subject.` : ""}`;
-    });
-    if (picture > 9) throw new Error("MiniMax H3 supports at most nine reference images per generation.");
-    const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === current.settings.defaultLook)?.label;
     const id = `image-${crypto.randomUUID()}`;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: [prompt, ...(look ? [`Visual style: ${look}.`] : []), ...referencePrompts].join("\n"),
+    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt,
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
       referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
