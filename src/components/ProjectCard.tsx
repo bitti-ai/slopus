@@ -58,6 +58,7 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
     assetsById,
   );
   const firstAsset = config.generationType === "image" ? config.assets.find((asset) => asset.id === config.imageScene?.outputAssetId) : firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
+  const posterTimeMs = firstClip?.sourceStartMs ?? 0;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -84,10 +85,10 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}${firstAsset ? " project-card__art--media" : ""}`} style={style}>
           {firstAsset && <MediaThumbnail
-            key={`${firstAsset.id}-${(firstClip?.sourceStartMs ?? 0)}`}
+            key={`${firstAsset.id}-${posterTimeMs}`}
             folderPath={project.folderPath}
             asset={firstAsset}
-            posterTimeSeconds={firstClip!.sourceStartMs / 1000}
+            posterTimeSeconds={posterTimeMs / 1000}
             jpegQuality={0.9}
           />}
           <span className="project-card__format"><Ratio size={13} /> {config.settings.aspectRatio}</span>

@@ -53,6 +53,26 @@ describe("project library controls", () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
+  it("loads a saved image project with a generated cover and no timeline clips", async () => {
+    const config = createProjectConfig({ name: "Saved illustration", prompt: "A ceramic lamp", generationType: "image", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    config.assets = [{
+      id: "image-cover", kind: "image", name: "Generated illustration", relativePath: "media/illustration.jpg", sourcePath: null,
+      mimeType: "image/jpeg", durationMs: null, width: 1920, height: 1088, createdAt: config.createdAt,
+    }];
+    config.imageScene!.outputAssetId = "image-cover";
+    expect(config.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
+    localStorage.setItem("slopus.web-projects.v1", JSON.stringify([{ folderPath: "~/Slopus/Saved illustration", config }]));
+
+    render(<App />);
+
+    const card = await screen.findByRole("button", { name: "Open Saved illustration" });
+    expect(card.querySelector(".media-thumb")).toHaveAttribute("aria-label", "Generated illustration");
+    fireEvent.click(card);
+    expect(await screen.findByRole("button", { name: "Editor" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+    expect(await screen.findByRole("button", { name: "Open Saved illustration" })).toBeInTheDocument();
+  });
+
   it("uses a named New Project form with a default Look instead of a length", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
