@@ -12,6 +12,16 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "image.set")]
+    ImageSet {
+        nodes: Vec<crate::project::image::ImageNode>,
+        background: String,
+        style: crate::project::image::ImageStyle,
+        steps: u32,
+        seed: i64,
+        #[serde(rename = "referenceIds")]
+        reference_ids: Vec<String>,
+    },
     #[serde(rename = "project.set")]
     ProjectSet {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -223,6 +233,7 @@ pub(super) struct CommitLine {
 }
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
+        ProjectCommand::ImageSet { .. } => "image.set",
         ProjectCommand::ProjectSet { .. } => "project.set",
         ProjectCommand::ReferenceAdd { .. } => "ref.add",
         ProjectCommand::ReferenceSet { .. } => "ref.set",

@@ -80,6 +80,18 @@ fn apply_command(
     effects: &mut Effects,
 ) -> Result<(), String> {
     match command {
+        ProjectCommand::ImageSet { nodes, background, style, steps, seed, reference_ids } => {
+            if project.generation_type != crate::project::GenerationType::Image { return Err("image.set requires an image project.".into()); }
+            let scene = crate::project::image::ImageScene {
+                nodes: nodes.clone(), background: background.clone(), style: style.clone(), steps: *steps, seed: *seed,
+                reference_ids: reference_ids.clone(), output_asset_id: project.image_scene.as_ref().and_then(|scene| scene.output_asset_id.clone()),
+            };
+            scene.validate()?;
+            for id in reference_ids { if !project.references.iter().any(|reference| &reference.id == id) { return Err(format!("Image reference '{id}' does not exist.")); } }
+            project.image_scene = Some(scene);
+            project.updated_at = timestamp.into();
+            Ok(())
+        }
         ProjectCommand::ProjectSet { .. } => {
             super::project::apply(project, command, timestamp, effects)
         }

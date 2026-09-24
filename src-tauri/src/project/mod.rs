@@ -2,6 +2,7 @@
 pub(crate) mod lifecycle;
 pub(crate) mod migrations;
 pub(crate) mod model;
+pub(crate) mod image;
 pub(crate) mod paths;
 pub(crate) mod references;
 pub(crate) mod scenes;

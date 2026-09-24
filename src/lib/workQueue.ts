@@ -1,4 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import { createImageScene, imageScenePrompt } from "./imageScene";
+import { outputDimensions } from "./export";
+import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
+import { engineProviderSetting, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -14,7 +19,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
 export interface WorkItem {
-  kind?: "reference-icons";
+  kind?: "reference-icons" | "image";
   id: string;
   projectKey: string;
   folderPath: string;
@@ -32,6 +37,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  image?: boolean;
   id: string;
   session: ProjectSession;
   sceneId: string;
@@ -186,7 +192,42 @@ export class WorkQueue {
     if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
     void this.pump();
   }
+
+  enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
+    if (!isTauri()) throw new Error("Image generation requires the desktop app and MiniMax H3 weights.");
+    if (template.mode === "animate") throw new Error("Choose a MiniMax H3 prompt template for images.");
+    const current = session.getSnapshot().config;
+    if (current.generationType !== "image") throw new Error("Open an image project to generate images.");
+    const scene = current.imageScene ?? createImageScene(current.brief.prompt);
+    const prompt = imageScenePrompt(scene);
+    if (!prompt) throw new Error("Describe the image or add an object before generating.");
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && isWorkActive(item))) return;
+    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false) } });
+    const references = scene.referenceIds.map((id) => {
+      const reference = current.references.find((candidate) => candidate.id === id);
+      if (!reference) throw new Error(`Selected image reference '${id}' no longer exists.`);
+      if (reference.kind === "video" || reference.kind === "audio") throw new Error("Still images accept image and text references.");
+      return reference;
+    });
+    const { width, height } = outputDimensions(current.settings.resolution, current.settings.aspectRatio);
+    const id = `image-${crypto.randomUUID()}`;
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: [prompt, ...references.map((reference) => `${reference.name}: ${reference.description}`)].join("\n"),
+      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
+      referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
+      refmods: referenceRefmodInputs(session.record.folderPath, references),
+    };
+    this.work.set(id, { id, image: true, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.items = [...this.items, { id, kind: "image", projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
+      title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
+    this.publish(); this.icons.yieldToVideo(); void this.pump();
+  }
   private updateScene(work: PendingWork, patch: Partial<GenerationJob>, dirty = true) {
+    if (work.image) return;
     work.session.update((current) => ({
       ...current, generationJobs: current.generationJobs.map((job) => job.id === work.sceneId ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job),
     }), dirty);
@@ -221,7 +262,7 @@ export class WorkQueue {
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });
           }
-          await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
+          if (!work.image) await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
           if (work.cancelled) continue;
           if (work.request.referenceVideos?.length) {
             work.request.referenceVideoIds = await prepareReferenceVideos(next.folderPath, work.request, work.config,
@@ -230,7 +271,7 @@ export class WorkQueue {
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
-          this.patch(work.id, { status: "generating", detail: `Generating ${plan.alignedFrames} frames at ${plan.canvasWidth} × ${plan.canvasHeight}` });
+          this.patch(work.id, { status: "generating", detail: `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}` });
           this.updateScene(work, { status: "generating", stage: "preparing" }, false);
           await enqueueSlopfabGeneration(work.request, work.config, next.folderPath);
           work.submitted = true;
@@ -262,7 +303,7 @@ export class WorkQueue {
     try { await cancelSlopfabGeneration(work.id); }
     catch (reason) {
       work.cancelled = false;
-      this.patch(work.id, { cancelling: false, detail: "Generating video", error: `Could not cancel: ${describeDiagnosticError(reason)}` });
+      this.patch(work.id, { cancelling: false, detail: work.image ? "Generating image" : "Generating video", error: `Could not cancel: ${describeDiagnosticError(reason)}` });
     }
   }
   cancelScenes(session: ProjectSession, sceneIds: string[]) {
@@ -295,7 +336,7 @@ export class WorkQueue {
     const item = this.items.find((candidate) => candidate.id === event.jobId);
     if (!work || !item || !["preparing", "generating"].includes(item.status)) return;
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
-    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading video engine" : "Generating video" });
+    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
@@ -315,6 +356,7 @@ export class WorkQueue {
     // A queued acknowledgement can arrive after progress. It must not rewind it.
   }
   private async encode(work: PendingWork) {
+    if (work.image) { await this.saveImage(work); return; }
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving video", completionAt: null });
     this.updateScene(work, { status: "ready", stage: "encoding", progress: 0.9, error: null }, false);
     try {
@@ -352,7 +394,23 @@ export class WorkQueue {
     if (this.icons.owns(id)) { await this.icons.retrySave(); return; }
     const work = this.work.get(id);
     if (!work) return;
-    try { await work.session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: "Video saved" }); }
+    try { await work.session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: work.image ? "Image saved" : "Video saved" }); }
     catch (reason) { this.patch(id, { error: describeDiagnosticError(reason) }); }
+  }
+  private async saveImage(work: PendingWork) {
+    this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });
+    try {
+      const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id });
+      work.session.update((current) => ({ ...current, thumbnail: saved.relativePath,
+        imageScene: { ...(current.imageScene ?? createImageScene()), outputAssetId: work.id },
+        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, mimeType: "image/jpeg", createdAt: new Date().toISOString() }],
+      }));
+      try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
+      catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
+    } catch (reason) { this.fail(work, reason); }
+    finally {
+      try { await releaseRendered(work.id); }
+      finally { work.finish(); }
+    }
   }
 }

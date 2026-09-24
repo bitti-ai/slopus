@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { imageSceneSchema, type ImageScene } from "./imageScene";
 import { isTauri } from "./persistence";
 import type { TemplateLora } from "./loras";
 import { refreshDownloadedLoras, refreshDownloadedWeights } from "./weightDownloads";
@@ -40,6 +41,7 @@ export interface SlopfabStatus {
 export interface RuntimeStatus { providers: ProviderStatus[]; slopfab: SlopfabStatus }
 
 export type ProjectCommand =
+  | ({ op: "image.set" } & Omit<ImageScene, "outputAssetId">)
   | { op: "project.set"; name?: string; prompt?: string; targetSeconds?: number; aspectRatio?: string; resolution?: string; frameRate?: number; backgroundColor?: string }
   | { op: "ref.add"; id: string; name: string; text: string; use: string[] }
   | { op: "ref.set"; id: string; name?: string; text?: string; use?: string[] }
@@ -308,6 +310,13 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   };
   for (const command of commands) {
     switch (command.op) {
+      case "image.set": {
+        if (next.generationType !== "image") throw new Error("image.set requires an image project.");
+        const { op: _op, ...authored } = command;
+        for (const id of authored.referenceIds) if (!next.references.some((reference) => reference.id === id)) throw new Error(`Image reference '${id}' does not exist.`);
+        next.imageScene = imageSceneSchema.parse({ ...authored, outputAssetId: next.imageScene?.outputAssetId ?? null });
+        break;
+      }
       case "project.set":
         if (command.name !== undefined) next.name = command.name;
         if (command.prompt !== undefined) next.brief.prompt = command.prompt;

@@ -132,6 +132,42 @@ pub(crate) fn save_reference_icon(folder_path: String, job_id: String) -> Result
     write_reference_icon_frame(&folder_path, &job_id, &reference_icon_pixels(&job_id)?)
 }
 
+/// Preserve the full-resolution still; reference icons intentionally downscale.
+#[tauri::command]
+pub(crate) fn save_generated_image(folder_path: String, job_id: String) -> Result<serde_json::Value, String> {
+    let summary = rendered::summary(&job_id).ok_or("The generated image is no longer in memory.")?;
+    if summary.frame_count != 1 { return Err("Expected a single still image.".into()); }
+    let width = u16::try_from(summary.width).map_err(|_| "Image width exceeds JPEG limits.")?;
+    let height = u16::try_from(summary.height).map_err(|_| "Image height exceeds JPEG limits.")?;
+    let rgba = rendered::frame(&job_id, 0)?.ok_or("The generated image has no pixels.")?;
+    let mut bytes = Vec::new();
+    jpeg_encoder::Encoder::new(&mut bytes, 95).encode(&rgba, width, height, jpeg_encoder::ColorType::Rgba)
+        .map_err(|error| format!("Could not encode image: {error}"))?;
+    let root = ProjectRoot::open(&folder_path)?;
+    let stem = generated_file_stem(&job_id)?;
+    let directory = root.directory("media/generated")?;
+    let relative_path = format!("media/generated/{stem}.jpg");
+    crate::storage::atomic::write_atomically(&directory.join(format!("{stem}.jpg")), &bytes)?;
+    Ok(serde_json::json!({ "relativePath": relative_path, "width": width, "height": height }))
+}
+
+#[tauri::command]
+pub(crate) async fn export_generated_image(app: AppHandle, folder_path: String, relative_path: String) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let root = ProjectRoot::open(&folder_path)?;
+        let source = root.existing(&relative_path)?;
+        if !relative_path.starts_with("media/generated/") || source.extension().and_then(|s| s.to_str()) != Some("jpg") {
+            return Err("Choose a generated JPEG image to export.".into());
+        }
+        let Some(destination) = app.dialog().file().set_title("Export image").add_filter("JPEG image", &["jpg", "jpeg"]).set_file_name("image.jpg").blocking_save_file() else { return Ok(false); };
+        let destination = destination.into_path().map_err(|_| "Choose a local image destination.")?;
+        let bytes = fs::read(source).map_err(|error| format!("Could not read image: {error}"))?;
+        crate::storage::atomic::write_atomically(&destination, &bytes)?;
+        Ok(true)
+    }).await.map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 pub(crate) fn list_builtin_reference_icons(app: AppHandle) -> Result<Vec<String>, String> {
     reference_icons::list_builtin(&app_paths::data_directory(&app))

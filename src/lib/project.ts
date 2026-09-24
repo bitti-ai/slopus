@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createImageScene, imageSceneSchema } from "./imageScene";
 import { effectSchemas } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
@@ -8,8 +9,7 @@ export const PROJECT_FILE_NAME = "slopus.json";
  *  ever written. */
 export const LEGACY_PROJECT_FILE_NAMES = ["polstudio.json", "pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
-/** Project purpose, independent of the kinds of media it contains.
- * Non-video values reserve format support for future generation workflows. */
+/** Project purpose, independent of the kinds of media it contains. */
 export const generationTypeSchema = z.enum(["video", "image", "3d", "music", "speech"]);
 export type GenerationType = z.infer<typeof generationTypeSchema>;
 export const DEFAULT_GENERATION_STEPS = 20;
@@ -540,6 +540,7 @@ export const providerSettingsSchema = z.record(idSchema, providerSettingSchema);
 export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   generationType: generationTypeSchema.default("video"),
+  imageScene: imageSceneSchema.nullish(),
   id: idSchema,
   name: z.string().min(1).max(120),
   createdAt: isoDateSchema,
@@ -604,6 +605,7 @@ export type ProjectConfig = z.infer<typeof projectConfigSchema>;
 export interface ProjectRecord { folderPath: string; config: ProjectConfig }
 export interface PendingReferenceImage { sourcePath: string; name: string }
 export interface CreateProjectInput {
+  generationType?: "video" | "image";
   name: string;
   prompt: string;
   aspectRatio: AspectRatio;
@@ -1512,7 +1514,8 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
   const brief = input.prompt.trim();
   return projectConfigSchema.parse({
     schemaVersion: CURRENT_SCHEMA_VERSION,
-    generationType: "video",
+    generationType: input.generationType ?? "video",
+    ...(input.generationType === "image" ? { imageScene: createImageScene(brief) } : {}),
     id: crypto.randomUUID(),
     name: input.name.trim(),
     createdAt: now,
@@ -1532,7 +1535,7 @@ export function createProjectConfig(input: CreateProjectInput): ProjectConfig {
       { id: "track-v3", kind: "video", name: "Track 3", locked: false, muted: false, clips: [] },
     ] },
     references: [],
-    generationJobs: brief ? [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })] : [],
+    generationJobs: brief && input.generationType !== "image" ? [createDraftGenerationJob(brief, { id: "job-initial-brief", title: "First scene", now })] : [],
     providerSettings: {},
   });
 }

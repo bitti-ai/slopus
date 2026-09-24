@@ -20,6 +20,7 @@ const DEFAULT_RESOLUTION: Resolution = "768p";
 const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.options;
 
 export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error }: PromptComposerProps) {
+  const [generationType, setGenerationType] = useState<"video" | "image">(project?.generationType === "image" ? "image" : "video");
   const [name, setName] = useState(project?.name ?? "Untitled video");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(project?.settings.aspectRatio ?? "16:9");
   const [resolution, setResolution] = useState<Resolution>(project?.settings.resolution ?? DEFAULT_RESOLUTION);
@@ -54,6 +55,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   const submit = async () => {
     if (busy || !name.trim()) return;
     await onSubmit({
+      generationType,
       name: name.trim(),
       prompt: project?.brief.prompt ?? "",
       aspectRatio,
@@ -71,6 +73,11 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
         <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label={project ? "Close project settings" : "Close new project"}><X size={18} /></button>
       </header>
       <div className="composer">
+        {!project && <label className="composer__name-row"><span>Project type</span><select aria-label="Project type" value={generationType} disabled={busy} onChange={(event) => {
+          const type = event.target.value as "video" | "image";
+          setGenerationType(type);
+          if (name === "Untitled video" || name === "Untitled image") setName(`Untitled ${type}`);
+        }}><option value="video">Video project</option><option value="image">Image project</option></select></label>}
         <label className="composer__name-row">
           <span>Project name</span>
           <input ref={nameInput} disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
@@ -78,7 +85,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
 
         <section className="composer__options">
           <div className="composer__options-head">
-            <span className="composer__options-title">Video settings</span>
+            <span className="composer__options-title">{generationType === "image" ? "Image settings" : "Video settings"}</span>
           </div>
           <div className="composer__options-body">
             <div className="composer__options-grid">

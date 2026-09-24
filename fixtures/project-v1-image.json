@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "id": "project-image-1",
+  "name": "Ocean poster",
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "thumbnail": null,
+  "settings": {
+    "aspectRatio": "16:9",
+    "resolution": "768p",
+    "frameRate": 30,
+    "backgroundColor": "#10131a"
+  },
+  "brief": {
+    "prompt": "a rocket launch over the ocean at dawn",
+    "status": "draft",
+    "targetDurationSeconds": 60,
+    "aspectRatio": "16:9",
+    "resolution": "768p"
+  },
+  "assets": [],
+  "timeline": {
+    "tracks": [
+      {
+        "id": "track-story",
+        "kind": "video",
+        "name": "Track 1",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
+        "id": "track-v2",
+        "kind": "video",
+        "name": "Track 2",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      },
+      {
+        "id": "track-v3",
+        "kind": "video",
+        "name": "Track 3",
+        "locked": false,
+        "muted": false,
+        "clips": []
+      }
+    ]
+  },
+  "references": [],
+  "generationJobs": [],
+  "providerSettings": {},
+  "generationType": "image",
+  "imageScene": {
+    "nodes": [
+      {
+        "id": "image-root",
+        "parentId": null,
+        "kind": "root",
+        "name": "Image",
+        "description": "A rocket launch over the ocean at dawn",
+        "text": "",
+        "box": null,
+        "colors": [
+          "#204060"
+        ]
+      },
+      {
+        "id": "group-rocket",
+        "parentId": "image-root",
+        "kind": "group",
+        "name": "Rocket",
+        "description": "A white rocket surrounded by glowing vapor",
+        "text": "",
+        "box": {
+          "x": 300,
+          "y": 100,
+          "width": 400,
+          "height": 800
+        },
+        "colors": []
+      },
+      {
+        "id": "title",
+        "parentId": "group-rocket",
+        "kind": "text",
+        "name": "Title",
+        "description": "Bold red lettering",
+        "text": "LIFT OFF",
+        "box": {
+          "x": 350,
+          "y": 150,
+          "width": 300,
+          "height": 100
+        },
+        "colors": [
+          "#FF0000"
+        ]
+      }
+    ],
+    "background": "Ocean at dawn",
+    "style": {
+      "mode": "art",
+      "aesthetics": "Minimal poster",
+      "lighting": "Sunrise",
+      "medium": "Illustration",
+      "detail": "Screen print"
+    },
+    "steps": 20,
+    "seed": 42,
+    "referenceIds": [],
+    "outputAssetId": null
+  }
+}

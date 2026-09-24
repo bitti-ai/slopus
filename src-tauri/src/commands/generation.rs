@@ -123,7 +123,9 @@ pub(crate) fn enqueue_slopfab_generation(
     folder_path: String,
 ) -> Result<(), String> {
     prepare_continuation_path(&mut request, Some(&folder_path))?;
-    request.save_latents_path = Some(generated_latent_destination(&folder_path, &request.job_id)?);
+    if !request.still_image {
+        request.save_latents_path = Some(generated_latent_destination(&folder_path, &request.job_id)?);
+    }
     let job_id = request.job_id.clone();
     let result = validate_and_normalize_config(config).and_then(|config| {
         state.enqueue(

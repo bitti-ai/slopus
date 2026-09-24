@@ -57,7 +57,7 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
     firstVisualMs,
     assetsById,
   );
-  const firstAsset = firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
+  const firstAsset = config.generationType === "image" ? config.assets.find((asset) => asset.id === config.imageScene?.outputAssetId) : firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -84,7 +84,7 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
       <button className="project-card__art-button" onClick={() => onOpen(project)} aria-label={`Open ${config.name}`}>
         <div className={`project-card__art project-card__art--${artwork[index % artwork.length]}${firstAsset ? " project-card__art--media" : ""}`} style={style}>
           {firstAsset && <MediaThumbnail
-            key={`${firstAsset.id}-${firstClip!.sourceStartMs}`}
+            key={`${firstAsset.id}-${(firstClip?.sourceStartMs ?? 0)}`}
             folderPath={project.folderPath}
             asset={firstAsset}
             posterTimeSeconds={firstClip!.sourceStartMs / 1000}
@@ -115,7 +115,7 @@ export function ProjectCard({ project, index, onOpen, onDelete }: ProjectCardPro
         <p className="project-card__path" title={project.folderPath}><Folder size={13} /><span>{project.folderPath}</span></p>
         <div className="project-card__meta">
           <span><Clock3 size={14} /> Edited {relativeDate(config.updatedAt)}</span>
-          <span>{durationLabel(config.brief.targetDurationSeconds)}</span>
+          <span>{config.generationType === "image" ? "Image project" : durationLabel(config.brief.targetDurationSeconds)}</span>
         </div>
       </div>
     </article>

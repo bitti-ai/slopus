@@ -1,8 +1,7 @@
 use super::{references::*, scenes::*, timeline::*};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-/// Project purpose, not the types of media it contains. Only video projects
-/// can currently be created; the other values reserve future format support.
+/// Project purpose, not the types of media it contains. Missing values are video.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum GenerationType {
@@ -21,6 +20,8 @@ pub(crate) struct ProjectConfig {
     pub(crate) schema_version: u32,
     #[serde(default)]
     pub(crate) generation_type: GenerationType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image_scene: Option<super::image::ImageScene>,
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) created_at: String,

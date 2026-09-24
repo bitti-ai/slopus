@@ -137,7 +137,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   };
   const remove = () => {
     if (!selected) return;
-    onChange({ ...config, references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({
+    onChange({ ...config, ...(config.imageScene ? { imageScene: { ...config.imageScene, referenceIds: config.imageScene.referenceIds.filter((id) => id !== selected.id) } } : {}), references: config.references.filter((ref) => ref.id !== selected.id), generationJobs: config.generationJobs.map((job) => ({
       ...job,
       referenceIds: job.referenceIds.filter((id) => id !== selected.id),
       startFrameReferenceId: job.startFrameReferenceId === selected.id ? undefined : job.startFrameReferenceId,

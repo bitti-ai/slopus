@@ -26,6 +26,9 @@ pub(super) fn context_prompt(config: &ProjectConfig, prompt: &str) -> Result<Str
 /// Include only registered model policies used by this project. A new empty
 /// project gets the default policy; unknown persisted models remain inert data.
 pub(super) fn project_system_prompt(config: &ProjectConfig) -> String {
+    if config.generation_type == crate::project::GenerationType::Image {
+        return format!("{AGENT_SYSTEM_PROMPT}\n\n{}", include_str!("../../assets/agent-image.md"));
+    }
     let mut ids = std::collections::BTreeSet::new();
     let models: Vec<_> = config
         .generation_jobs

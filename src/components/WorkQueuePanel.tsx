@@ -45,7 +45,7 @@ export function WorkQueuePanel({ queue, items, onClose }: { queue: WorkQueue; it
     <div className="work-queue__metadata">
       <div className="work-queue__detail"><span>{item.detail}</span>{isWorkActive(item) && item.status !== "queued" && <b>{Math.floor(item.progress * 100)}%</b>}</div>
       {isWorkActive(item) && item.status !== "queued" && <progress max={1} value={item.progress} aria-label={`${item.title} progress`} />}
-      <p className="work-queue__settings">{item.settings.canvasWidth} × {item.settings.canvasHeight} · {item.kind === "reference-icons" ? "JPG icons" : `${(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s`} · {item.settings.steps} steps · {item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}</p>
+      <p className="work-queue__settings">{item.settings.canvasWidth} × {item.settings.canvasHeight} · {item.kind === "reference-icons" ? "JPG icons" : item.kind === "image" ? "JPG image" : `${(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s`} · {item.settings.steps} steps · {item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}</p>
     </div>
     {item.error && <p className="work-queue__error">{item.error}</p>}
     {item.needsSave && <button type="button" className="secondary-button" onClick={() => void queue.retrySave(item.id)}>Retry project save</button>}

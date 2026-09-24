@@ -1,4 +1,5 @@
-import { ArrowLeft, BookOpen, Bot, Download, Film, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Download, Film, Image, Save, Sparkles } from "lucide-react";
+import { ImageEditor } from "./workspace/ImageEditor";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
 import { CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type SlopfabStatus } from "../lib/runtime";
@@ -12,7 +13,7 @@ import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
 import { PromptComposer } from "./PromptComposer";
 
-export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export";
+export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 
 /** The scene badge includes native generation and the final encoding step. */
 export const isGenerationOngoing = (job: GenerationJob) =>
@@ -46,7 +47,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const session = useMemo(() => queue.project(project), [queue, project.folderPath, project.config.id]);
   const { config, saving, dirty, saveError } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
-  const [view, setView] = useState<ProjectView>(initialView);
+  const imageProject = config.generationType === "image";
+  const [view, setView] = useState<ProjectView>(imageProject && !["agent", "references"].includes(initialView) ? "editor" : initialView);
   const [leaving, setLeaving] = useState(false);
   const [savingToLeave, setSavingToLeave] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
@@ -110,7 +112,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       </div>
 
       <nav className="project-nav" aria-label="Project views">
-        {([ ["agent", Bot, "Agent"], ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const).map(([id, Icon, label]) => {
+        {(imageProject ? ([ ["agent", Bot, "Agent"], ["editor", Image, "Editor"], ["references", BookOpen, "References"] ] as const) : ([ ["agent", Bot, "Agent"], ["timeline", Film, "Timeline"], ["generator", Sparkles, "Generator"], ["references", BookOpen, "References"] ] as const)).map(([id, Icon, label]) => {
           const running = id === "generator" ? config.generationJobs.filter(isGenerationOngoing).length : 0;
           return <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
             <Icon size={18} aria-hidden="true" /> {label}
@@ -122,7 +124,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       <div className="project-topbar__actions">
         {/* A real view now: it renders the timeline through WebCodecs and writes
             an .mp4. It stays honest about what it cannot do inside itself. */}
-        <button
+        {!imageProject && <button
           className="secondary-button"
           type="button"
           aria-current={view === "export" ? "page" : undefined}
@@ -130,7 +132,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           title="Render the timeline to a video file"
         >
           <Download size={16} aria-hidden="true" /> Export
-        </button>
+        </button>}
         {/* The standing "All changes saved" pill is gone; the button itself is
             now the only save state there is, so it has to carry it. Off means
             the file on disk already matches what is on screen. */}
@@ -141,13 +143,14 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     </header>
 
     <div className={`project-content project-content--${view}`}>
-      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+      {view === "editor" && imageProject && <ImageEditor config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onCancel={(id) => queue.cancel(id)} work={projectItems.filter((item) => item.kind === "image").at(-1)} />}
+      {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView(imageProject ? "editor" : "generator"); }} />}
       {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
       {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
       {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
     </div>
     <footer className={`project-agent-row${view === "agent" ? " project-agent-row--page" : ""}`}><AgentDock
-      context={view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : view === "export" ? "this export" : "this project"}
+      context={view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : view === "export" ? "this export" : "this project"}
       record={{ ...project, config }}
       providers={runtime?.providers ?? CHECKING_PROVIDERS}
       expanded={view === "agent"}
