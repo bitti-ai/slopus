@@ -134,6 +134,55 @@
   font-weight: var(--weight-medium);
 }
 
+.composer__project-type {
+  min-width: 0;
+  margin: var(--space-5) var(--space-5) 0;
+  padding: 0;
+  border: 0;
+}
+
+.composer__project-type legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.composer__type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.composer__type-option { position: relative; min-width: 0; cursor: pointer; }
+.composer__type-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; clip-path: inset(50%); overflow: hidden; }
+
+.composer__type-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  transition: border-color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.composer__type-icon { display: grid; place-items: center; flex-shrink: 0; width: var(--control-lg); height: var(--control-lg); border-radius: var(--radius-md); background: var(--wash-2); color: var(--text-secondary); }
+.composer__type-copy { display: grid; gap: var(--space-1); min-width: 0; }
+.composer__type-copy strong { color: var(--text-primary); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.composer__type-copy > span { color: var(--text-muted); font-size: var(--text-xs); line-height: var(--leading-normal); }
+.composer__type-indicator { display: grid; place-items: center; flex-shrink: 0; width: var(--space-4); height: var(--space-4); margin-left: auto; border: 1px solid var(--line-strong); border-radius: 50%; }
+.composer__type-indicator::after { content: ""; width: var(--space-2); height: var(--space-2); border-radius: 50%; background: var(--accent); opacity: 0; }
+.composer__type-input:checked + .composer__type-card { border-color: var(--accent); background: var(--accent-soft); }
+.composer__type-input:checked + .composer__type-card .composer__type-icon { color: var(--accent-on-soft); background: var(--accent-soft-strong); }
+.composer__type-input:checked + .composer__type-card .composer__type-indicator { border-color: var(--accent); }
+.composer__type-input:checked + .composer__type-card .composer__type-indicator::after { opacity: 1; }
+.composer__type-input:not(:disabled) + .composer__type-card:hover { border-color: var(--accent-line-strong); }
+.composer__type-input:focus-visible + .composer__type-card { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--space-1); }
+.composer__type-input:disabled + .composer__type-card { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 600px) {
+  .composer__project-type { margin-inline: var(--space-4); }
+  .composer__type-options { grid-template-columns: 1fr; }
+}
+
 .composer__references {
   display: flex;
   flex-wrap: wrap;

@@ -16,7 +16,7 @@ const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parsePro
 it("offers image and video projects when creating a folder project", async () => {
   const submit = vi.fn(async () => undefined);
   render(<PromptComposer busy={false} onCreate={submit} onClose={vi.fn()} />);
-  fireEvent.change(screen.getByLabelText("Project type"), { target: { value: "image" } });
+  fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
   expect(screen.getByLabelText("Project name")).toHaveValue("Untitled image");
   expect(screen.getByText("Image settings")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Create project/ }));

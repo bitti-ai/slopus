@@ -1,4 +1,4 @@
-import { Clapperboard, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
+import { Clapperboard, Image, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { outputDimensions } from "../lib/export";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
@@ -42,7 +42,8 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }
       if (event.key !== "Tab") return;
-      const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)") ?? []);
+      const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)") ?? [])
+        .filter((control) => !(control instanceof HTMLInputElement && control.type === "radio" && !control.checked));
       if (!controls.length) { event.preventDefault(); return; }
       if (!dialog.current?.contains(document.activeElement) || (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls.at(-1))) {
         event.preventDefault(); (event.shiftKey ? controls.at(-1)! : controls[0]).focus();
@@ -73,11 +74,25 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
         <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label={project ? "Close project settings" : "Close new project"}><X size={18} /></button>
       </header>
       <div className="composer">
-        {!project && <label className="composer__name-row"><span>Project type</span><select aria-label="Project type" value={generationType} disabled={busy} onChange={(event) => {
-          const type = event.target.value as "video" | "image";
-          setGenerationType(type);
-          if (name === "Untitled video" || name === "Untitled image") setName(`Untitled ${type}`);
-        }}><option value="video">Video project</option><option value="image">Image project</option></select></label>}
+        {!project && <fieldset className="composer__project-type" disabled={busy}>
+          <legend>Project type</legend>
+          <div className="composer__type-options">
+            {([
+              ["video", Clapperboard, "Video project", "Generate clips and edit a timeline"],
+              ["image", Image, "Image project", "Compose and generate still images"],
+            ] as const).map(([type, Icon, title, description]) => <label className="composer__type-option" key={type}>
+              <input className="composer__type-input" type="radio" name="project-type" value={type} checked={generationType === type} aria-labelledby={`project-type-${type}-label`} aria-describedby={`project-type-${type}-description`} onChange={() => {
+                setGenerationType(type);
+                if (name === "Untitled video" || name === "Untitled image") setName(`Untitled ${type}`);
+              }} />
+              <span className="composer__type-card">
+                <span className="composer__type-icon"><Icon size={24} aria-hidden="true" /></span>
+                <span className="composer__type-copy"><strong id={`project-type-${type}-label`}>{title}</strong><span id={`project-type-${type}-description`}>{description}</span></span>
+                <span className="composer__type-indicator" aria-hidden="true" />
+              </span>
+            </label>)}
+          </div>
+        </fieldset>}
         <label className="composer__name-row">
           <span>Project name</span>
           <input ref={nameInput} disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
