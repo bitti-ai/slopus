@@ -28,7 +28,8 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
   act(() => saveDebugOptionsEnabled(true));
   // The complete scene prompt is available even with a child selected.
-  fireEvent.click(screen.getByRole("button", { name: "Text" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
   fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "TO THE MOON" } });
   const inspector = screen.getByRole("complementary", { name: "Image node inspector" });
   const button = within(inspector).getByRole("button", { name: "Debug Prompt" });
@@ -64,7 +65,8 @@ it("opens the three-tab image workspace and saves hierarchy/inspector edits thro
   render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={save} />);
   const navigation = within(screen.getByRole("navigation", { name: "Project views" }));
   expect(navigation.getAllByRole("button").map((button) => button.textContent)).toEqual([" Agent", " Editor", " References"]);
-  fireEvent.click(screen.getByRole("button", { name: "Text" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
   fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "Hello world" } });
   fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Large blue letters" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));

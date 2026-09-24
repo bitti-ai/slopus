@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { Box, ChevronDown, ChevronRight, Copy, Download, Image, Plus, Redo2, Sparkles, Square, Trash2, Undo2 } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, Download, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene } from "../../lib/imageScene";
 import { outputDimensions } from "../../lib/export";
@@ -14,6 +14,8 @@ import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
 import styleSuggestions from "../../lib/imageStyleSuggestions.json";
 import { applyImageCommand } from "../../lib/imageCommands";
+import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
+import { HierarchyContextMenu } from "./HierarchyContextMenu";
 import "../../styles/image-editor.css";
 
 export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel, work }: {
@@ -27,6 +29,11 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const renameEnding = useRef(false);
+  const hierarchy = useRef<HTMLElement>(null);
+  const clipboard = useSyncExternalStore(subscribeImageNodeClipboard, getImageNodeClipboard);
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
@@ -63,14 +70,47 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     historyChanged((value) => value + 1);
   };
   const patchNode = (patch: Partial<ImageNode>) => commit({ ...scene, nodes: scene.nodes.map((node) => node.id === selected.id ? { ...node, ...patch } : node) });
+  const insertParent = selected.kind === "object" || selected.kind === "text" ? selected.parentId ?? root.id : selected.id;
   const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
-    const next = addImageNode(scene, selected.id, kind, box); commit(next); setSelection(next.nodes.at(-1)!.id);
-    setCollapsed((current) => { const next = new Set(current); next.delete(selected.id); return next; });
+    const next = addImageNode(scene, insertParent, kind, box); commit(next); setSelection(next.nodes.at(-1)!.id);
+    setCollapsed((current) => { const next = new Set(current); next.delete(insertParent); return next; });
   };
   const attempt = (action: () => void | Promise<unknown>) => {
     setError(null);
     try { void Promise.resolve(action()).catch((reason) => setError(String(reason))); }
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  };
+  const focusNode = (id: string) => [...(hierarchy.current?.querySelectorAll<HTMLElement>("[data-image-node]") ?? [])].find((row) => row.dataset.imageNode === id)?.querySelector<HTMLButtonElement>(".image-tree__select")?.focus();
+  const closeContextMenu = () => { setContextMenu(null); focusNode(selected.id); };
+  const startRename = () => { renameEnding.current = false; setRenaming({ id: selected.id, value: selected.name }); };
+  const finishRename = (save: boolean, restoreFocus = true) => {
+    if (!renaming || renameEnding.current) return;
+    renameEnding.current = true;
+    if (save && renaming.value.trim()) commit({ ...scene, nodes: scene.nodes.map((node) => node.id === renaming.id ? { ...node, name: renaming.value.trim() } : node) });
+    const id = renaming.id;
+    setRenaming(null);
+    if (restoreFocus) requestAnimationFrame(() => focusNode(id));
+  };
+  const removeSelected = () => {
+    if (selected.kind === "root") return;
+    const parent = selected.parentId ?? root.id;
+    commit(removeImageNode(scene, selected.id)); setSelection(parent);
+    requestAnimationFrame(() => focusNode(parent));
+  };
+  const paste = () => {
+    const result = pasteImageNode(scene, insertParent);
+    if (!result) return;
+    commit(result.scene); setSelection(result.id);
+    setCollapsed((current) => { const next = new Set(current); next.delete(insertParent); return next; });
+    requestAnimationFrame(() => focusNode(result.id));
+  };
+  const duplicate = () => {
+    if (selected.kind === "root") return;
+    const next = duplicateImageNode(scene, selected.id);
+    const oldIds = new Set(scene.nodes.map((node) => node.id));
+    const copy = next.nodes.find((node) => !oldIds.has(node.id) && node.parentId === selected.parentId)!;
+    commit(next); setSelection(copy.id);
+    requestAnimationFrame(() => focusNode(copy.id));
   };
   const point = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -102,7 +142,6 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     }
     pointer.current = null; setDraftBox(null);
   };
-  const descendants = imageDescendants(scene, selected.id);
   const dropDestination = (event: DragEvent<HTMLDivElement>, target: ImageNode) => {
     const source = scene.nodes.find((node) => node.id === draggedNode);
     if (!source || source.kind === "root" || imageDescendants(scene, source.id).has(target.id)) return null;
@@ -119,7 +158,9 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     const open = !collapsed.has(node.id);
     return <div key={node.id} role="treeitem" aria-selected={selected.id === node.id} aria-expanded={children.length ? open : undefined}>
       <div className={`image-tree__row ${selected.id === node.id ? "selected" : ""}${draggedNode === node.id ? " dragging" : ""}${treeDrop?.id === node.id ? ` image-tree__drop--${treeDrop.placement}` : ""}`} style={{ paddingLeft: `calc(var(--space-2) + ${depth} * var(--space-4))` }}
-        draggable={node.kind !== "root"}
+        data-image-node={node.id}
+        onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); event.stopPropagation(); setSelection(node.id); setContextMenu({ x: event.clientX, y: event.clientY }); }}
+        draggable={node.kind !== "root" && renaming?.id !== node.id}
         onDragStart={(event) => {
           if (node.kind === "root") { event.preventDefault(); return; }
           event.stopPropagation();
@@ -145,19 +186,45 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
           setDraggedNode(null); setTreeDrop(null);
         }}>
         {children.length ? <button className="icon-button" aria-label={`${open ? "Collapse" : "Expand"} ${node.name}`} onClick={() => setCollapsed((current) => { const next = new Set(current); if (open) next.add(node.id); else next.delete(node.id); return next; })}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button> : <span className="image-tree__spacer" />}
-        <button className="image-tree__select" onClick={() => setSelection(node.id)}><span aria-hidden="true">{node.kind === "text" ? "T" : node.kind === "root" ? <Image size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>
+        {renaming?.id === node.id ? <input className="image-tree__rename" aria-label="Rename image node" maxLength={120} ref={(element) => { if (element && document.activeElement !== element) { element.focus(); element.select(); } }} value={renaming.value} onChange={(event) => setRenaming({ ...renaming, value: event.target.value })} onBlur={() => finishRename(true, false)} onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); finishRename(true); }
+          if (event.key === "Escape") { event.preventDefault(); finishRename(false); }
+        }} /> : <button className="image-tree__select" onFocus={() => setSelection(node.id)} onClick={() => setSelection(node.id)}><span aria-hidden="true">{node.kind === "text" ? "T" : node.kind === "root" ? <Image size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>}
       </div>
       {open && children.length > 0 && <div role="group">{children.map((child) => tree(child, depth + 1))}</div>}
     </div>;
   };
   return <div className="image-editor">
-    <aside className="image-tree" aria-label="Image hierarchy">
+    <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={(event) => {
+      if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]") || contextMenu) return;
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && (key === "c" || key === "v")) {
+        event.preventDefault(); event.stopPropagation();
+        attempt(() => key === "c" ? copyImageNode(scene, selected.id) : paste());
+      } else if (key === "delete") { event.preventDefault(); event.stopPropagation(); removeSelected(); }
+      else if (key === "f2") { event.preventDefault(); event.stopPropagation(); startRename(); }
+      else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        event.preventDefault(); event.stopPropagation();
+        const bounds = (event.target as HTMLElement).getBoundingClientRect();
+        setContextMenu({ x: bounds.left, y: bounds.bottom });
+      }
+    }}>
       <header><strong>Scene</strong><div className="image-editor__actions"><button className="icon-button" title="Undo" aria-label="Undo image edit" disabled={!undo.current.length} onClick={() => history(true)}><Undo2 size={16} /></button><button className="icon-button" title="Redo" aria-label="Redo image edit" disabled={!redo.current.length} onClick={() => history(false)}><Redo2 size={16} /></button></div></header>
-      <div className="image-tree__add">{(["object", "text", "group", "background"] as const).map((kind) => <button className="secondary-button" key={kind} onClick={() => add(kind)}><Plus size={14} />{kind[0].toUpperCase() + kind.slice(1)}</button>)}</div>
       <div role="tree" aria-label="Image nodes">{tree(root, 0)}</div>
-      <p className="image-tree__hint">Drag onto a node to nest, or between nodes to reorder.</p>
-      <div className="image-tree__footer"><button className="secondary-button" disabled={selected.kind === "root"} onClick={() => { const next = duplicateImageNode(scene, selected.id); commit(next); setSelection(next.nodes[scene.nodes.length].id); }}><Copy size={15} /> Duplicate</button><button className="icon-button" aria-label="Delete selected node and children" disabled={selected.kind === "root"} onClick={() => { commit(removeImageNode(scene, selected.id)); setSelection(selected.parentId ?? root.id); }}><Trash2 size={16} /></button></div>
+      <p className="image-tree__hint">Right-click to add or edit nodes. Drag onto a node to nest, or between nodes to reorder.</p>
     </aside>
+    {contextMenu && <HierarchyContextMenu {...contextMenu} onClose={closeContextMenu} items={[
+      { label: "New Object", icon: <Box size={15} />, action: () => attempt(() => add("object")) },
+      { label: "New Text", icon: <Type size={15} />, action: () => attempt(() => add("text")) },
+      { label: "New Group", icon: <FolderPlus size={15} />, action: () => attempt(() => add("group")) },
+      { label: "New Background", icon: <Image size={15} />, action: () => attempt(() => add("background")) },
+      { label: "Rename", icon: <Pencil size={15} />, shortcut: "F2", separator: true, action: startRename },
+      { label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", separator: true, disabled: selected.kind === "root", action: () => copyImageNode(scene, selected.id) },
+      { label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", disabled: !clipboard, action: () => attempt(paste) },
+      { label: "Duplicate", icon: <Copy size={15} />, disabled: selected.kind === "root", action: () => attempt(duplicate) },
+      { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
+    ]} />}
     <section className="image-center" aria-label="Image panel">
       <header className="image-toolbar"><button className="primary-button" disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || !imageScenePrompt(scene)} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
         <label>Generator template<select aria-label="Image generator template" value={template?.id ?? ""} disabled={Boolean(active)} onChange={(event) => { setTemplateId(event.target.value); localStorage.setItem("slopus.image-generator-template.v1", event.target.value); const next = imageTemplates.find((candidate) => candidate.id === event.target.value); if (next) commit({ ...scene, steps: next.defaultSteps }); }}>
@@ -188,7 +255,6 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>
       <label>{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
       {selected.kind === "text" && <label>Text to render<input value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></label>}
-      {selected.kind !== "root" && <label>Parent<select value={selected.parentId ?? root.id} onChange={(event) => patchNode({ parentId: event.target.value })}>{scene.nodes.filter((node) => !descendants.has(node.id)).map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}</select></label>}
       {selected.kind === "root" && <>
         <label>Background (environment)<textarea rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
         <h3>Image generation</h3><label>Steps<input type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></label>
