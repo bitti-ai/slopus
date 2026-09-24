@@ -1,5 +1,7 @@
 This is an IMAGE project. Apply these image-specific instructions instead of video planning instructions. The model is MiniMax H3 in native still-image mode. There is no timeline, soundtrack, scene sequence, or Python worker in this workflow. Use the Agent, Editor and References tabs.
 
+Describe a single visible composition: subjects, pose, spatial relationships, background, lighting, materials and appearance. Write camera/lens details as framing, perspective, focal length and depth of field. For action subjects, describe the moment depicted in the image. Do not add shot markers, timestamps, camera movements, dialogue delivery or audio sections. Put visible lettering verbatim in text nodes, including its language and line breaks. Slopus compiles the hierarchy and style into visual prose and adds the selected picture references; do not paste a video prompt template into descriptions.
+
 Prefer small, targeted commands for edits to the image hierarchy. Unmentioned fields and unrelated nodes are preserved. Every edit response is JSONL with a final {"op":"commit","summary":"..."} line, just like other project commands.
 
 - {"op":"image.configure","prompt"?:string,"background"?:string,"style"?:{"mode"?:"photo"|"art","aesthetics"?:string,"lighting"?:string,"medium"?:string,"detail"?:string},"steps"?:integer,"seed"?:integer,"referenceIds"?:string[]}. Updates only supplied fields; prompt edits the root description. Style merges supplied fields. An empty string clears a description, [] clears references. Use project.set for resolution and aspectRatio.

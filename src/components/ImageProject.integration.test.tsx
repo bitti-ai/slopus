@@ -39,7 +39,8 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   const prompt = within(screen.getByRole("dialog", { name: "Debug Prompt" })).getByLabelText("The compiled MiniMax H3 prompt");
   for (const line of imageScenePrompt(project.config.imageScene!).split("\n")) expect(prompt.textContent).toContain(line);
   expect(prompt.textContent).toContain('Render the exact text "TO THE MOON".');
-  expect(prompt.textContent).toContain("Visual style: Watercolor.\nA silver rocket Use <Picture 1>, <Picture 2> as visual references for this subject.\nPeaceful and bright");
+  expect(prompt.textContent).toContain("Visual style: Watercolor.");
+  expect(prompt.textContent).toContain("Use <Picture 1>, <Picture 2> as visual guidance for Rocket. A silver rocket.\nAdditional visual guidance: Peaceful and bright.");
   expect(prompt.textContent).not.toContain("Do not include this reference");
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();

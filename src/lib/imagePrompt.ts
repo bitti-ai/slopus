@@ -14,12 +14,17 @@ export function compileImagePrompt(config: ProjectConfig) {
   let picture = 0;
   const referencePrompts = references.map((reference) => {
     const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
-    return `${referenceDefinition(reference)}${labels.length ? ` Use ${labels.join(", ")} as visual references for this subject.` : ""}`;
+    const definition = referenceDefinition(reference);
+    const content = definition || reference.name;
+    const description = /[.!?。！？]$/.test(content) ? content : `${content}.`;
+    return labels.length
+      ? `Use ${labels.join(", ")} as visual guidance for ${reference.name}. ${description}`
+      : `Additional visual guidance: ${description}`;
   });
   if (picture > 9) throw new Error("MiniMax H3 supports at most nine reference images per generation.");
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === config.settings.defaultLook)?.label;
   return {
-    prompt: [imageScenePrompt(scene), ...(look ? [`Visual style: ${look}.`] : []), ...referencePrompts].join("\n"),
+    prompt: [imageScenePrompt(scene, look), ...(referencePrompts.length ? [`Visual references for this still image:\n${referencePrompts.join("\n")}`] : [])].filter(Boolean).join("\n\n"),
     references,
   };
 }

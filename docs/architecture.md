@@ -31,7 +31,7 @@ An agent can answer, ask the user a question, or propose a compact JSONL command
 
 ## MiniMax H3 prompt contract
 
-Base prompts use the official three-field shape:
+Video base prompts use the official three-field shape:
 
 ```text
 integrated_multimodal_description: [Shot 1] ...
@@ -42,6 +42,8 @@ non_diegetic_music: ...
 ```
 
 Shots are sequential, later shots carry increasing cut timestamps, camera moves combine motion type with meaningful amplitude and speed, and dialogue uses stable speaker IDs. Keyframe jobs prepend the appropriate first/last-frame alignment instruction. Full-reference jobs additionally define stable subject/picture/video/audio labels and retention relationships. The editor stores both the human creative brief and the compiled H3 prompt so either can be revised.
+
+Image projects use Slopus's still-image adaptation of the [H3 visual prompt guidance](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md), rather than a published image-specific schema. `imageScenePrompt` places medium, look, aesthetics, lighting and camera/art details before one composition. It describes nested visual elements, full-image placement percentages, palettes and verbatim quoted lettering. `compileImagePrompt` appends selected visual references, numbering `<Picture N>` in the exact order of the submitted image paths. It adds no shot markers, timestamps, camera motion or audio sections, and preserves authored descriptions. Debug Prompt and generation use this same compiler. The native request sets `stillImage: true` and `frames: 1`.
 
 ## Generation boundary
 

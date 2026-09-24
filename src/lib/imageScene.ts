@@ -73,19 +73,39 @@ export function resizeImageNode(scene: ImageScene, id: string, box: ImageBox): I
     return { ...node, box: { x, y, width: Math.max(1, Math.min(1000 - x, Math.round(node.box.width * box.width / original.width))), height: Math.max(1, Math.min(1000 - y, Math.round(node.box.height * box.height / original.height))) } };
   }) });
 }
-/** H3 accepts prose, not ImgFab's Ideogram-specific caption JSON. Coordinates
- * are composition guidance in the prompt, not a guarantee of exact placement. */
-export function imageScenePrompt(scene: ImageScene): string {
-  const lines: string[] = [];
+const sentence = (text: string) => /[.!?。！？]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
+
+/** Slopus's still-image adaptation of H3's visual prose guidance. No generated
+ * shot markers, timing or audio sections; boxes refer to the full image. */
+export function imageScenePrompt(scene: ImageScene, look?: string): string {
+  const root = scene.nodes.find((node) => node.kind === "root")!;
+  const hasContent = scene.background.trim() || scene.nodes.some((node) => node.description.trim() || node.colors.length || (node.kind === "text" && node.text) || (node.kind !== "root" && node.box));
+  if (!hasContent) return "";
+  const style = [
+    `Medium: ${sentence(scene.style.mode === "photo" ? "Photograph" : scene.style.medium || "Artwork")}`,
+    ...(look?.trim() ? [`Visual style: ${sentence(look)}`] : []),
+    ...(scene.style.aesthetics.trim() ? [`Aesthetics: ${sentence(scene.style.aesthetics)}`] : []),
+    ...(scene.style.lighting.trim() ? [`Lighting: ${sentence(scene.style.lighting)}`] : []),
+    ...(scene.style.detail.trim() ? [`${scene.style.mode === "photo" ? "Camera and lens" : "Art style"}: ${sentence(scene.style.detail)}`] : []),
+  ];
+  const placement = (node: ImageNode) => node.box ? `Position in the full image: left ${node.box.x / 10}%, top ${node.box.y / 10}%, width ${node.box.width / 10}%, height ${node.box.height / 10}%.` : "";
+  const lines: string[] = [
+    ...(root.description.trim() ? [sentence(root.description)] : []),
+    ...(root.colors.length ? [`Overall color palette: ${root.colors.join(", ")}.`] : []),
+    ...(root.box ? [placement(root)] : []),
+    ...(scene.background.trim() ? [`Background: ${sentence(scene.background)}`] : []),
+  ];
   const visit = (node: ImageNode, depth: number) => {
-    const placement = node.box ? ` Placement: left ${node.box.x / 10}%, top ${node.box.y / 10}%, width ${node.box.width / 10}%, height ${node.box.height / 10}% of the image.` : "";
-    const text = node.kind === "text" && node.text ? ` Render the exact text ${JSON.stringify(node.text)}.` : "";
-    const colors = node.colors.length ? ` Colors: ${node.colors.join(", ")}.` : "";
-    if (node.description.trim() || text || colors) lines.push(`${"  ".repeat(depth)}${node.kind}: ${node.description.trim()}${text}${placement}${colors}`);
-    scene.nodes.filter((child) => child.parentId === node.id).forEach((child) => visit(child, depth + 1));
+    const children = scene.nodes.filter((child) => child.parentId === node.id);
+    const description = node.description.trim() ? sentence(node.description) : "";
+    // Quote visible lettering verbatim, including its language and line breaks.
+    const text = node.kind === "text" && node.text ? `Render the exact text "${node.text}".` : "";
+    const colors = node.colors.length ? `Color palette: ${node.colors.join(", ")}.` : "";
+    const subject = node.kind === "group" ? "A grouped arrangement." : node.kind === "text" ? "Visible lettering." : node.kind === "background" ? "A background element." : "A depicted object.";
+    const detail = [subject, description, text, placement(node), colors, ...(children.length ? ["Its composition includes:"] : [])].filter(Boolean).join(" ");
+    lines.push(`${"  ".repeat(depth)}${detail}`);
+    children.forEach((child) => visit(child, depth + 1));
   };
-  scene.nodes.filter((node) => node.kind === "root").forEach((node) => visit(node, 0));
-  if (scene.background.trim()) lines.push(`Background: ${scene.background.trim()}`);
-  const style = [scene.style.mode === "photo" ? "Photograph" : scene.style.medium || "Artwork", scene.style.aesthetics, scene.style.lighting, scene.style.detail].filter(Boolean).join(". ");
-  return lines.length ? `Create a single still image.\n${lines.join("\n")}\nStyle: ${style}.` : "";
+  scene.nodes.filter((node) => node.parentId === root.id).forEach((node) => visit(node, 0));
+  return `Create one still image with a single composition.\n${style.join("\n")}\n\n${lines.join("\n")}`;
 }
