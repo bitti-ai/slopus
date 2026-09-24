@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { imageSceneSchema, type ImageScene } from "./imageScene";
+import { createImageScene } from "./imageScene";
+import { applyImageCommand, type ImageCommand } from "./imageCommands";
 import { isTauri } from "./persistence";
 import type { TemplateLora } from "./loras";
 import { refreshDownloadedLoras, refreshDownloadedWeights } from "./weightDownloads";
@@ -41,7 +42,7 @@ export interface SlopfabStatus {
 export interface RuntimeStatus { providers: ProviderStatus[]; slopfab: SlopfabStatus }
 
 export type ProjectCommand =
-  | ({ op: "image.set" } & Omit<ImageScene, "outputAssetId">)
+  | ImageCommand
   | { op: "project.set"; name?: string; prompt?: string; targetSeconds?: number; aspectRatio?: string; resolution?: string; frameRate?: number; backgroundColor?: string }
   | { op: "ref.add"; id: string; name: string; text: string; use: string[] }
   | { op: "ref.set"; id: string; name?: string; text?: string; use?: string[] }
@@ -310,11 +311,11 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   };
   for (const command of commands) {
     switch (command.op) {
-      case "image.set": {
-        if (next.generationType !== "image") throw new Error("image.set requires an image project.");
-        const { op: _op, ...authored } = command;
-        for (const id of authored.referenceIds) if (!next.references.some((reference) => reference.id === id)) throw new Error(`Image reference '${id}' does not exist.`);
-        next.imageScene = imageSceneSchema.parse({ ...authored, outputAssetId: next.imageScene?.outputAssetId ?? null });
+      case "image.set": case "image.configure": case "image.node.add": case "image.node.set": case "image.node.move": case "image.node.duplicate": case "image.node.remove": {
+        if (next.generationType !== "image") throw new Error(`${command.op} requires an image project.`);
+        const scene = applyImageCommand(next.imageScene ?? createImageScene(next.brief.prompt), command);
+        for (const id of scene.referenceIds) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`Image reference '${id}' must name an existing image or text reference.`);
+        next.imageScene = scene;
         break;
       }
       case "project.set":

@@ -87,3 +87,127 @@ fn agent_image_edits_preserve_outputs_and_reject_video_projects_or_invalid_trees
     let parsed: ProjectCommand = serde_json::from_value(command).unwrap();
     assert!(execute_commands_at(&config, &[parsed], &config.updated_at).is_err());
 }
+
+#[test]
+fn granular_image_commands_edit_subtrees_without_touching_generated_outputs() {
+    use crate::project::commands::{execute_commands_at, parse_jsonl_commands};
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("../../../fixtures/image-commands.json")).unwrap();
+    let stream = cases["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|command| serde_json::to_string(command).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n{\"op\":\"commit\",\"summary\":\"Composed balloons\"}";
+    let commands = parse_jsonl_commands(&stream).unwrap().commands;
+    let mut current = image_fixture();
+    current.image_scene.as_mut().unwrap().output_asset_id = Some("saved-result".into());
+    let next = execute_commands_at(&current, &commands, &current.updated_at).unwrap();
+    let scene = next.image_scene.unwrap();
+    assert_eq!(scene.output_asset_id.as_deref(), Some("saved-result"));
+    assert_eq!(scene.nodes[0].description, "Balloons over the sea");
+    assert_eq!(scene.style.lighting, "Soft morning light");
+    assert_eq!(scene.style.mode, "art");
+    let siblings: Vec<_> = scene
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.as_deref() == Some("image-root"))
+        .map(|node| node.id.as_str())
+        .collect();
+    assert_eq!(siblings, ["caption", "sky-copy", "group-rocket"]);
+    let balloon = scene
+        .nodes
+        .iter()
+        .find(|node| node.id == "sky-copy--balloon")
+        .unwrap();
+    assert_eq!(balloon.parent_id.as_deref(), Some("caption"));
+    assert_eq!(balloon.description, "A red balloon");
+    assert_eq!(
+        balloon.r#box,
+        Some(crate::project::image::ImageBox {
+            x: 250.0,
+            y: 250.0,
+            width: 50.0,
+            height: 50.0
+        })
+    );
+    assert!(scene
+        .nodes
+        .iter()
+        .all(|node| node.id != "sky" && node.id != "balloon"));
+    assert_eq!(
+        scene.nodes.iter().find(|node| node.id == "title"),
+        Some(&current.image_scene.as_ref().unwrap().nodes[2])
+    );
+    for command in &commands {
+        assert!(
+            execute_commands_at(&created_fixture(), &[command.clone()], &current.updated_at)
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn invalid_image_commands_roll_back_the_entire_batch() {
+    use crate::project::commands::{execute_commands_at, ProjectCommand};
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("../../../fixtures/image-commands.json")).unwrap();
+    let current = image_fixture();
+    let original = current.clone();
+    let valid: ProjectCommand = serde_json::from_value(
+        serde_json::json!({"op":"image.configure","background":"Must not stick"}),
+    )
+    .unwrap();
+    for invalid in cases["invalid"].as_array().unwrap() {
+        if let Ok(command) = serde_json::from_value::<ProjectCommand>(invalid.clone()) {
+            assert!(
+                execute_commands_at(&current, &[valid.clone(), command], &current.updated_at)
+                    .is_err(),
+                "{invalid}"
+            );
+        }
+        assert_eq!(current, original);
+    }
+}
+
+#[test]
+fn image_node_patches_distinguish_missing_and_null_and_initialize_older_image_projects() {
+    use crate::project::commands::{execute_commands_at, ProjectCommand};
+    let current = image_fixture();
+    let edit = |config: &ProjectConfig, value: serde_json::Value| {
+        let command: ProjectCommand = serde_json::from_value(value).unwrap();
+        execute_commands_at(config, &[command], &config.updated_at).unwrap()
+    };
+    let renamed = edit(
+        &current,
+        serde_json::json!({"op":"image.node.set","id":"group-rocket","name":"Vehicle"}),
+    );
+    assert_eq!(
+        renamed.image_scene.as_ref().unwrap().nodes[1].r#box,
+        current.image_scene.as_ref().unwrap().nodes[1].r#box
+    );
+    let cleared = edit(
+        &renamed,
+        serde_json::json!({"op":"image.node.set","id":"group-rocket","box":null}),
+    );
+    assert!(cleared.image_scene.as_ref().unwrap().nodes[1]
+        .r#box
+        .is_none());
+    assert_eq!(
+        cleared.image_scene.as_ref().unwrap().nodes[2].r#box,
+        current.image_scene.as_ref().unwrap().nodes[2].r#box
+    );
+    let mut older = current;
+    older.image_scene = None;
+    let initialized = edit(
+        &older,
+        serde_json::json!({"op":"image.node.add","id":"subject","parent":"image-root","kind":"object","name":"Subject"}),
+    );
+    assert_eq!(
+        initialized.image_scene.as_ref().unwrap().nodes[0].description,
+        older.brief.prompt
+    );
+    assert_eq!(initialized.image_scene.as_ref().unwrap().nodes.len(), 2);
+}

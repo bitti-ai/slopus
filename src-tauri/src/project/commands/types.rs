@@ -12,6 +12,75 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "image.configure")]
+    ImageConfigure {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style: Option<super::images::ImageStylePatch>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        steps: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        seed: Option<i64>,
+        #[serde(
+            default,
+            rename = "referenceIds",
+            skip_serializing_if = "Option::is_none"
+        )]
+        reference_ids: Option<Vec<String>>,
+    },
+    #[serde(rename = "image.node.add")]
+    ImageNodeAdd {
+        id: String,
+        parent: String,
+        kind: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        r#box: Option<crate::project::image::ImageBox>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        colors: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+    },
+    #[serde(rename = "image.node.set")]
+    ImageNodeSet {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+        #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+        r#box: Patch<crate::project::image::ImageBox>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        colors: Option<Vec<String>>,
+    },
+    #[serde(rename = "image.node.move")]
+    ImageNodeMove {
+        id: String,
+        parent: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+    },
+    #[serde(rename = "image.node.duplicate")]
+    ImageNodeDuplicate {
+        id: String,
+        #[serde(rename = "newId")]
+        new_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<String>,
+    },
+    #[serde(rename = "image.node.remove")]
+    ImageNodeRemove { id: String },
     #[serde(rename = "image.set")]
     ImageSet {
         nodes: Vec<crate::project::image::ImageNode>,
@@ -233,6 +302,12 @@ pub(super) struct CommitLine {
 }
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
+        ProjectCommand::ImageConfigure { .. } => "image.configure",
+        ProjectCommand::ImageNodeAdd { .. } => "image.node.add",
+        ProjectCommand::ImageNodeSet { .. } => "image.node.set",
+        ProjectCommand::ImageNodeMove { .. } => "image.node.move",
+        ProjectCommand::ImageNodeDuplicate { .. } => "image.node.duplicate",
+        ProjectCommand::ImageNodeRemove { .. } => "image.node.remove",
         ProjectCommand::ImageSet { .. } => "image.set",
         ProjectCommand::ProjectSet { .. } => "project.set",
         ProjectCommand::ReferenceAdd { .. } => "ref.add",

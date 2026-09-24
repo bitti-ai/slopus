@@ -1,0 +1,33 @@
+{
+  "commands": [
+    { "op": "image.configure", "prompt": "Balloons over the sea", "background": "Blue sky", "style": { "lighting": "Soft morning light" }, "steps": 12, "seed": 123 },
+    { "op": "image.node.add", "id": "sky", "parent": "image-root", "kind": "group", "name": "Sky", "box": { "x": 100, "y": 100, "width": 600, "height": 600 } },
+    { "op": "image.node.add", "id": "balloon", "parent": "sky", "kind": "object", "name": "Balloon", "description": "A red balloon", "box": { "x": 200, "y": 200, "width": 100, "height": 100 } },
+    { "op": "image.node.add", "id": "caption", "parent": "sky", "kind": "text", "name": "Caption", "text": "UP", "colors": ["#FF0000"] },
+    { "op": "image.node.move", "id": "caption", "parent": "image-root", "before": "group-rocket" },
+    { "op": "image.node.set", "id": "sky", "box": { "x": 200, "y": 200, "width": 300, "height": 300 } },
+    { "op": "image.node.duplicate", "id": "sky", "newId": "sky-copy", "before": "group-rocket" },
+    { "op": "image.node.move", "id": "sky-copy--balloon", "parent": "caption" },
+    { "op": "image.node.remove", "id": "sky" },
+    { "op": "image.node.set", "id": "caption", "text": "Float", "box": null }
+  ],
+  "invalid": [
+    { "op": "image.node.move", "id": "group-rocket", "parent": "title" },
+    { "op": "image.node.move", "id": "title", "parent": "image-root", "before": "title" },
+    { "op": "image.node.move", "id": "title", "parent": "group-rocket", "before": "image-root" },
+    { "op": "image.node.move", "id": "image-root", "parent": "group-rocket" },
+    { "op": "image.node.remove", "id": "image-root" },
+    { "op": "image.node.remove", "id": "missing" },
+    { "op": "image.node.duplicate", "id": "image-root", "newId": "another-root" },
+    { "op": "image.node.duplicate", "id": "group-rocket", "newId": "title" },
+    { "op": "image.node.add", "id": "new", "parent": "missing", "kind": "text", "name": "New" },
+    { "op": "image.node.add", "id": "title", "parent": "image-root", "kind": "text", "name": "Duplicate ID" },
+    { "op": "image.node.set", "id": "title", "box": { "x": 900, "y": 0, "width": 200, "height": 100 } },
+    { "op": "image.node.set", "id": "title" },
+    { "op": "image.configure", "style": {} },
+    { "op": "image.configure", "steps": 1 },
+    { "op": "image.configure", "referenceIds": ["missing"] },
+    { "op": "image.configure", "outputAssetId": "overwrite" },
+    { "op": "image.node.set", "id": "title", "relativePath": "outside.jpg" }
+  ]
+}

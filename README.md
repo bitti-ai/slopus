@@ -25,6 +25,8 @@ New projects can be **Image projects** or **Video projects**. Existing projects 
 
 Image projects use **Agent**, **Editor**, and **References** tabs. In the Editor, build a hierarchy of objects, text and groups on the left, arrange their placement boxes in the center, and edit descriptions, style, colors and generation settings in the right inspector. Choose a MiniMax H3 generator template above the canvas and press **Generate**. Generation uses the native SlopFab runtime without Python. Full-resolution JPEGs are saved in `media/generated/`, remain available in the image history, and can be exported from the canvas toolbar. Placement boxes guide the model through the prompt; they are not exact masks.
 
+The Agent can add, edit, reorder, reparent, duplicate and remove image nodes, and adjust prompts, style, placement, palettes, references, steps and seeds. Edits are transactional and preserve generated images. See the [image command guide](src-tauri/assets/agent-image.md) for the command vocabulary and examples.
+
 > **GPU recommendation:** A GPU with **24 GB of VRAM or more** is currently recommended for local video generation. We plan to reduce VRAM usage in future updates.
 
 ![Slopus application screenshot](marketing/screenshot1.png)

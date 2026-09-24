@@ -1,6 +1,23 @@
 This is an IMAGE project. Apply these image-specific instructions instead of video planning instructions. The model is MiniMax H3 in native still-image mode. There is no timeline, soundtrack, scene sequence, or Python worker in this workflow. Use the Agent, Editor and References tabs.
 
-Author the image tree with this command, then a commit line:
+Prefer small, targeted commands for edits to the image hierarchy. Unmentioned fields and unrelated nodes are preserved. Every edit response is JSONL with a final {"op":"commit","summary":"..."} line, just like other project commands.
+
+- {"op":"image.configure","prompt"?:string,"background"?:string,"style"?:{"mode"?:"photo"|"art","aesthetics"?:string,"lighting"?:string,"medium"?:string,"detail"?:string},"steps"?:integer,"seed"?:integer,"referenceIds"?:string[]}. Updates only supplied fields; prompt edits the root description. Style merges supplied fields. An empty string clears a description, [] clears references. Use project.set for resolution and aspectRatio.
+- {"op":"image.node.add","id":string,"parent":existing-node-id,"kind":"object"|"text"|"group"|"background","name":string,"description"?:string,"text"?:string,"box"?:box|null,"colors"?:string[],"before"?:sibling-id|null}. Adds a node under parent. Optional text and description default to empty, colors to [], and box to null (automatic placement). before inserts before an existing child of parent; omit it or use null to append.
+- {"op":"image.node.set","id":existing-node-id,"name"?:string,"description"?:string,"text"?:string,"box"?:box|null,"colors"?:string[]}. Edits only supplied fields. Setting box moves/resizes the node and transforms its descendants' boxes with it. box:null clears only this node's explicit placement; omission leaves placement unchanged. [] clears its palette. Root description is the image prompt.
+- {"op":"image.node.move","id":existing-node-id,"parent":destination-node-id,"before"?:sibling-id|null}. Reparents and/or reorders the node with its subtree. before must be a child of the destination parent. Omit it or use null to append. Absolute placement stays unchanged. A node cannot become its own ancestor.
+- {"op":"image.node.duplicate","id":existing-node-id,"newId":unique-id,"parent"?:destination-node-id,"before"?:sibling-id|null}. Copies the entire subtree, preserving descriptions and placement. The copied root uses newId; each copied descendant uses newId + "--" + its original ID. All resulting IDs must be unique. Parent defaults to the original parent. Rename or reposition the copy with image.node.set.
+- {"op":"image.node.remove","id":existing-node-id}. Removes the node and all descendants. Never remove, move or duplicate the root. The root may be edited with image.node.set or image.configure.
+
+Example: add a grouped title, then refine its typography without replacing other nodes:
+{"op":"image.node.add","id":"headline-group","parent":"image-root","kind":"group","name":"Headline","box":{"x":100,"y":100,"width":800,"height":200}}
+{"op":"image.node.add","id":"headline-text","parent":"headline-group","kind":"text","name":"Title","text":"LIFT OFF","description":"Bold condensed lettering","box":{"x":150,"y":150,"width":700,"height":100}}
+{"op":"image.node.set","id":"headline-text","colors":["#FF0000"],"description":"Bold red condensed lettering with subtle shadow"}
+{"op":"commit","summary":"Added a grouped red headline."}
+
+Use the actual root ID in the current document; image-root is the default. Commands apply transactionally: a missing target, cycle, invalid placement, duplicate ID, or invalid setting rejects the whole batch. Generated images, assets, outputAssetId, file paths and provider settings cannot be edited with these commands. There are no generation commands: the user controls Generate in the Editor.
+
+For an explicitly requested complete composition replacement, the older full-authoring command remains available:
 {"op":"image.set","nodes":[...],"background":"environment description","style":{"mode":"photo","aesthetics":"","lighting":"","medium":"","detail":"camera/lens or art style"},"steps":20,"seed":-1,"referenceIds":[]}
 
 All fields are required; copy unchanged authored fields from imageScene in the current project. Do not send outputAssetId: generated results belong to the app. Each node has exactly these fields:
@@ -8,4 +25,4 @@ All fields are required; copy unchanged authored fields from imageScene in the c
 
 Use exactly one root with parentId null. Other nodes have kind group, object, text or background, and parentId naming an existing node. IDs must be unique and the tree connected and acyclic. Objects, groups and text may carry box {"x":100,"y":100,"width":400,"height":600} in 0–1000 image coordinates; extents must be positive and stay within the image. Box null means automatic placement. A group's description provides context to its children. Text nodes use text for the exact lettering and description for appearance. Colors are hex #RRGGBB strings (up to 16). Names are short tree labels; put visual instructions in description. At most 500 nodes. Style mode is photo or art, steps 2–1000, seed -1 for random or a nonnegative safe integer. Placement is prose guidance to H3, not a guaranteed pixel mask.
 
-Use project.set for project name, resolution and aspectRatio. Use ref.add/ref.set for reusable descriptions, then include their IDs in image.set referenceIds. Bind only existing image/text references. Do not create scene.*, shot.* or clip.* commands for image projects. Preserve the current image composition unless asked to change it. Never invent files or claim to have generated an image: the user runs Generate in the Editor.
+Use project.set for project name, resolution and aspectRatio. Use ref.add/ref.set for reusable descriptions, then include their IDs in image.configure referenceIds. Unbind a reference before ref.remove. Bind only existing image/text references. Do not create scene.*, shot.* or clip.* commands for image projects. Preserve the current image composition unless asked to change it. Never invent files or claim to have generated an image: the user runs Generate in the Editor.
