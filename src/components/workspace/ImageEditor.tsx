@@ -21,7 +21,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const selected = scene.nodes.find((node) => node.id === selection) ?? root;
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
-  const [templateId, setTemplateId] = useState(() => defaultGeneratorTemplate().id);
+  const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => !templateNeedsDownload(candidate)) ?? imageTemplates[0];
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     return <div key={node.id} role="treeitem" aria-selected={selected.id === node.id} aria-expanded={children.length ? open : undefined}>
       <div className={`image-tree__row ${selected.id === node.id ? "selected" : ""}`} style={{ paddingLeft: `calc(var(--space-2) + ${depth} * var(--space-4))` }}>
         {children.length ? <button className="icon-button" aria-label={`${open ? "Collapse" : "Expand"} ${node.name}`} onClick={() => setCollapsed((current) => { const next = new Set(current); if (open) next.add(node.id); else next.delete(node.id); return next; })}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button> : <span className="image-tree__spacer" />}
-        <button className="image-tree__select" onClick={() => setSelection(node.id)}><span>{node.kind === "text" ? "T" : node.kind === "root" ? <Image size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>
+        <button className="image-tree__select" onClick={() => setSelection(node.id)}><span aria-hidden="true">{node.kind === "text" ? "T" : node.kind === "root" ? <Image size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>
       </div>
       {open && children.length > 0 && <div role="group">{children.map((child) => tree(child, depth + 1))}</div>}
     </div>;
@@ -113,7 +113,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     </aside>
     <section className="image-center" aria-label="Image panel">
       <header className="image-toolbar"><button className="primary-button" disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || !imageScenePrompt(scene)} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
-        <label>Generator template<select aria-label="Image generator template" value={template?.id ?? ""} disabled={Boolean(active)} onChange={(event) => { setTemplateId(event.target.value); const next = imageTemplates.find((candidate) => candidate.id === event.target.value); if (next) commit({ ...scene, steps: next.defaultSteps }); }}>
+        <label>Generator template<select aria-label="Image generator template" value={template?.id ?? ""} disabled={Boolean(active)} onChange={(event) => { setTemplateId(event.target.value); localStorage.setItem("slopus.image-generator-template.v1", event.target.value); const next = imageTemplates.find((candidate) => candidate.id === event.target.value); if (next) commit({ ...scene, steps: next.defaultSteps }); }}>
           {!imageTemplates.length && <option value="">No MiniMax H3 templates</option>}{imageTemplates.map((item) => <option key={item.id} value={item.id} disabled={templateNeedsDownload(item)}>{item.name}{templateNeedsDownload(item) ? " (download in Settings)" : ""}</option>)}
         </select></label><span className="image-model">MiniMax H3</span>
       </header>
@@ -127,10 +127,11 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
-            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}><rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" /><text x={box.x + 8} y={box.y + 30}>{node.name}</text>{selected.id === node.id && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
+            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}><rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" />{selected.id === node.id && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
           })}
           {draftBox && !pointer.current?.id && <rect className="image-box-draft" {...{ x: draftBox.x, y: draftBox.y, width: draftBox.width, height: draftBox.height }} />}
         </svg>
+        {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>
       <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
       {(error || work?.error) && <p className="image-error" role="alert">{error ?? work?.error}</p>}
@@ -143,7 +144,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       {selected.kind !== "root" && <label>Parent<select value={selected.parentId ?? root.id} onChange={(event) => patchNode({ parentId: event.target.value })}>{scene.nodes.filter((node) => !descendants.has(node.id)).map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}</select></label>}
       {selected.kind === "root" && <>
         <label>Background (environment)<textarea rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
-        <h3>Image generation</h3><label>Steps<input type="number" min="1" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 1000) commit({ ...scene, steps: value }); }} /></label>
+        <h3>Image generation</h3><label>Steps<input type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></label>
         <label>Seed (−1 = random)<input type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></label>
         <label>Aspect ratio<select value={config.settings.aspectRatio} onChange={(event) => { const aspectRatio = event.target.value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, settings: { ...current.settings, aspectRatio }, brief: { ...current.brief, aspectRatio } })); }}>{["16:9", "9:16", "1:1", "4:5"].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label>
         <label>Resolution<select value={config.settings.resolution} onChange={(event) => { const resolution = event.target.value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, settings: { ...current.settings, resolution }, brief: { ...current.brief, resolution } })); }}>{[...new Set([...PROJECT_RESOLUTIONS, config.settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, config.settings.aspectRatio); return <option key={resolution} value={resolution}>{size.width} × {size.height}</option>; })}</select></label>

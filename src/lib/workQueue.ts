@@ -2,8 +2,9 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageScene, imageScenePrompt } from "./imageScene";
 import { outputDimensions } from "./export";
-import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
+import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
 import { engineProviderSetting, type GeneratorTemplate } from "./settings";
+import { SHOT_TAG_GROUPS } from "./shot-tags";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -212,10 +213,17 @@ export class WorkQueue {
       return reference;
     });
     const { width, height } = outputDimensions(current.settings.resolution, current.settings.aspectRatio);
+    let picture = 0;
+    const referencePrompts = references.map((reference) => {
+      const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
+      return `${referenceDefinition(reference)}${labels.length ? ` Use ${labels.join(", ")} as visual references for this subject.` : ""}`;
+    });
+    if (picture > 9) throw new Error("MiniMax H3 supports at most nine reference images per generation.");
+    const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === current.settings.defaultLook)?.label;
     const id = `image-${crypto.randomUUID()}`;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: [prompt, ...references.map((reference) => `${reference.name}: ${reference.description}`)].join("\n"),
+    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: [prompt, ...(look ? [`Visual style: ${look}.`] : []), ...referencePrompts].join("\n"),
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
       referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, references),

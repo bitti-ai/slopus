@@ -122,6 +122,7 @@ fn project_folder() -> tempfile::TempDir {
 }
 
 mod artifacts;
+mod images;
 mod media_access;
 mod persistence;
 mod references;

@@ -22,7 +22,14 @@ pub(crate) fn validate_checked(
     mut config: ProjectConfig,
 ) -> Result<ProjectConfig, issue::ValidationIssue> {
     if let Some(scene) = &config.image_scene {
-        scene.validate().map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "imageScene", message))?;
+        scene.validate().map_err(|message| {
+            issue::ValidationIssue::new(
+                "project.invalid",
+                Some(config.id.clone()),
+                "imageScene",
+                message,
+            )
+        })?;
     }
     settings::validate(&mut config).map_err(|message| {
         issue::ValidationIssue::new(

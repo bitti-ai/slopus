@@ -71,6 +71,13 @@ pub(super) fn apply(
             }
         }
         ProjectCommand::ReferenceRemove { id } => {
+            if project
+                .image_scene
+                .as_ref()
+                .is_some_and(|scene| scene.reference_ids.contains(id))
+            {
+                return Err(format!("reference '{id}' is still used by the image; update image.set before removing it"));
+            }
             let at = project
                 .references
                 .iter()

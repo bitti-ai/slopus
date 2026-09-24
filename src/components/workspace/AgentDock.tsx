@@ -87,7 +87,7 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
   const placeholder = ready
-    ? `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
+    ? record.config.generationType === "image" ? "Ask Slop to compose an image, describe objects, or refine the layout…" : `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
     : blockedDetail ?? "No agent provider is available";
   const providerStatusLabel = requestId && selected
     ? `${selected.label} status: Processing`

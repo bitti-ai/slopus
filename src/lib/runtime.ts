@@ -345,6 +345,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         break;
       }
       case "ref.remove": {
+        if (next.imageScene?.referenceIds.includes(command.id)) throw new Error(`Reference '${command.id}' is still used by the image; update image.set before removing it.`);
         const token = `@[ref:${command.id}]`;
         if (next.generationJobs.some((job) => job.startFrameReferenceId === command.id || job.endFrameReferenceId === command.id || job.shots?.some((shot) => shot.action.includes(token)))) {
           throw new Error(`Reference '${command.id}' is still used by a scene.`);

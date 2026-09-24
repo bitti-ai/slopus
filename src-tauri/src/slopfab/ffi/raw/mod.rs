@@ -371,7 +371,7 @@ impl Api {
         self.error(unsafe { (self.set_frames)(r, v) })
     }
     pub fn set_still_image(&self, r: *mut Request) -> Result<(), String> {
-        let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate reference icons.")?;
+        let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate images and reference icons.")?;
         self.error(unsafe { set(r, 1) })
     }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {

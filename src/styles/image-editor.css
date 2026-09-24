@@ -1,5 +1,6 @@
 .project-content--editor { padding: 0; overflow: hidden; }
 .image-editor { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(220px, 300px); height: 100%; min-height: 0; }
+.image-editor input:not([type="checkbox"]):not([type="range"]):not([type="color"]), .image-editor select, .image-editor textarea { min-height: var(--field-height); padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--field-bg); color: var(--text-primary); }
 .image-editor header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--line-solid); }
 .image-tree, .image-inspector { min-height: 0; overflow: auto; background: var(--panel); }
 .image-tree { display: flex; flex-direction: column; border-right: 1px solid var(--line-solid); }
@@ -31,7 +32,7 @@
 .image-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .image-overlay rect { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
 .image-overlay .selected > rect { stroke-width: 3; }
-.image-overlay text { fill: var(--accent); font: 24px var(--font-sans); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+.image-box-label { position: absolute; margin: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel); font-size: var(--text-xs); pointer-events: none; }
 .image-overlay .image-box-handle { fill: var(--accent); cursor: nwse-resize; }
 .image-overlay.drawing, .image-overlay.drawing rect { cursor: crosshair; }
 .image-status { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); font-size: var(--text-xs); border-top: 1px solid var(--line-solid); }
@@ -53,4 +54,4 @@
 .image-palette { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .image-palette > div { display: flex; align-items: center; }
 .image-palette input[type="color"] { width: var(--control-sm); height: var(--control-sm); padding: var(--space-1); }
-@media (max-width: 1100px) { .image-editor { grid-template-columns: 180px minmax(0, 1fr) 240px; } .image-model { display: none; } }
+@media (max-width: 1100px) { .image-editor { grid-template-columns: 180px minmax(0, 1fr) 240px; } .image-tree__add { grid-template-columns: 1fr; } .image-model { display: none; } }

@@ -948,6 +948,17 @@ fn installed_dll_resolves_icons_as_one_still_frame_when_present() {
     assert_eq!(plan.aligned_frames, 1);
     assert_eq!(plan.latent_frames, 1);
     assert_eq!((plan.canvas_width, plan.canvas_height), (768, 768));
+    for (width, height) in [(1376, 768), (768, 1376), (768, 960)] {
+        let request = GenerationRequest {
+            canvas_width: width,
+            canvas_height: height,
+            ..request.clone()
+        };
+        let plan = resolve_plan(&request, &BTreeMap::new(), &references).unwrap();
+        assert_eq!(plan.aligned_frames, 1);
+        assert_eq!(plan.latent_frames, 1);
+        assert_eq!((plan.canvas_width, plan.canvas_height), (width, height));
+    }
 }
 
 #[test]

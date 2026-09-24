@@ -7,7 +7,7 @@ import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./project";
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
-import { saveEngineSettings, EMPTY_ENGINE_SETTINGS } from "./settings";
+import { saveEngineSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -51,6 +51,58 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+describe("image generation work", () => {
+  const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
+  const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("generates one native still, preserves ongoing edits, saves full-size JPEG, and releases frames", async () => {
+    const { queue } = setup(); const session = queue.project(imageProject());
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/still.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 768, canvasHeight: 768 });
+    expect(config.providerSettings.slopfab.options.transformer).toBe("C:/h3.safetensors");
+    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, background: "Edited during generation" } }));
+    await finish(queue, queue.getSnapshot().find((item) => item.kind === "image")!.id);
+    expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: "C:/Image", jobId: request.jobId });
+    const saved = session.getSnapshot().config;
+    expect(saved.imageScene?.background).toBe("Edited during generation");
+    expect(saved.imageScene?.outputAssetId).toBe(request.jobId);
+    expect(saved.assets[0]).toMatchObject({ kind: "image", mimeType: "image/jpeg", relativePath: "media/generated/still.jpg", width: 768, height: 768 });
+    expect(saved.generationJobs).toHaveLength(0);
+    expect(saveGeneratedScene).not.toHaveBeenCalled();
+    expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).imageScene).toEqual(saved.imageScene);
+  });
+  it("serializes image and video work and allows cancellation before native submission", async () => {
+    const { queue, first } = setup(); const session = queue.project(imageProject());
+    queue.enqueue(first, [submission(first)]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    queue.enqueueImage(session, template);
+    const image = queue.getSnapshot().find((item) => item.kind === "image")!;
+    expect(image.status).toBe("queued");
+    await queue.cancel(image.id);
+    expect(queue.getSnapshot().find((item) => item.id === image.id)?.status).toBe("cancelled");
+    await finish(queue, queue.getSnapshot()[0].id);
+    expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().config.assets).toHaveLength(0);
+  });
+  it("retains the saved image for retry when writing the project fails", async () => {
+    const { queue, saved } = setup(); const session = queue.project(imageProject());
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/still.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    saved.mockRejectedValueOnce(new Error("Disk unavailable"));
+    const id = queue.getSnapshot().find((item) => item.kind === "image")!.id;
+    emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Ready" });
+    await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.needsSave).toBe(true));
+    expect(session.getSnapshot().config.imageScene?.outputAssetId).toBe(id);
+    expect(releaseRendered).toHaveBeenCalledWith(id);
+    await queue.retrySave(id);
+    expect(queue.getSnapshot().find((item) => item.id === id)).toMatchObject({ status: "completed", needsSave: false });
+  });
+});
 
 describe("application work queue", () => {
   it("prepares video inputs for both planning and generation and releases them after completion", async () => {

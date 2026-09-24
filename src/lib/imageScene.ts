@@ -12,7 +12,7 @@ export const imageSceneSchema = z.object({
   nodes: z.array(imageNodeSchema).min(1).max(500),
   background: z.string(),
   style: z.object({ mode: z.enum(["photo", "art"]), aesthetics: z.string(), lighting: z.string(), medium: z.string(), detail: z.string() }),
-  steps: z.number().int().min(1).max(1000), seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER),
+  steps: z.number().int().min(2).max(1000), seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER),
   referenceIds: z.array(z.string().min(1)).max(100),
   outputAssetId: z.string().min(1).nullable(),
 }).superRefine((scene, context) => {
