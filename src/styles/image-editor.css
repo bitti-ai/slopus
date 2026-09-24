@@ -11,7 +11,14 @@
 .image-editor__actions, .image-tree__footer { display: flex; align-items: center; gap: var(--space-1); }
 .image-tree__add { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); padding: var(--space-2); }
 .image-tree__add button { padding-inline: var(--space-2); font-size: var(--text-xs); }
-.image-tree__row { display: flex; align-items: center; min-height: var(--control-md); }
+.image-tree__row { position: relative; display: flex; align-items: center; min-height: var(--control-md); }
+.image-tree__row[draggable="true"] .image-tree__select { cursor: grab; }
+.image-tree__row.dragging { opacity: 0.45; }
+.image-tree__drop--inside { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--panel-3); }
+.image-tree__drop--before::before, .image-tree__drop--after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); pointer-events: none; }
+.image-tree__drop--before::before { top: 0; }
+.image-tree__drop--after::after { bottom: 0; }
+.image-tree__hint { margin: 0; padding: var(--space-2) var(--space-3); color: var(--text-muted); font-size: var(--text-xs); }
 .image-tree__row.selected { background: var(--panel-3); color: var(--text-primary); box-shadow: inset 3px 0 var(--accent); }
 .image-tree__select { display: flex; gap: var(--space-2); align-items: center; flex: 1; min-width: 0; padding: var(--space-2); text-align: left; border: 0; background: transparent; color: inherit; }
 .image-tree__select span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
