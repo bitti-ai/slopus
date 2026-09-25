@@ -37,7 +37,7 @@
 .image-canvas-tools .active { color: var(--accent); }
 .image-viewport { position: relative; flex: 1; min-height: 0; overflow: clip; container-type: size; user-select: none; }
 .image-viewport.panning, .image-viewport.panning * { cursor: grabbing; }
-.image-frame { position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--image-pan-x)), calc(-50% + var(--image-pan-y))); width: calc(min(100cqw - 32px, (100cqh - 32px) * var(--image-ratio)) * var(--image-zoom)); aspect-ratio: var(--image-ratio); background: var(--panel); box-shadow: 0 0 0 1px var(--line-solid); }
+.image-frame { position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--image-pan-x)), calc(-50% + var(--image-pan-y))); width: calc(min(100cqw, 100cqh * var(--image-ratio)) * var(--image-zoom)); aspect-ratio: var(--image-ratio); background: var(--panel); box-shadow: 0 0 0 1px var(--line-solid); }
 .image-frame > img, .image-frame > .reference-image { position: absolute; width: 100%; height: 100%; object-fit: contain; inset: 0; }
 .image-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); text-align: center; padding: var(--space-4); color: var(--text-faint); }
 .image-empty span { max-width: 300px; font-size: var(--text-sm); }
