@@ -275,7 +275,6 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     }}>
       <header><strong>Scene</strong><div className="image-editor__actions"><button className="icon-button" title="Undo" aria-label="Undo image edit" disabled={!undo.current.length} onClick={() => history(true)}><Undo2 size={16} /></button><button className="icon-button" title="Redo" aria-label="Redo image edit" disabled={!redo.current.length} onClick={() => history(false)}><Redo2 size={16} /></button></div></header>
       <div role="tree" aria-label="Image nodes">{tree(root, 0)}</div>
-      <p className="image-tree__hint">Right-click to add or edit nodes. Drag onto a node to nest, or between nodes to reorder.</p>
     </aside>
     {contextMenu && <HierarchyContextMenu {...contextMenu} onClose={closeContextMenu} items={[
       { label: "New Object", icon: <Box size={15} />, action: () => attempt(() => add("object")) },
