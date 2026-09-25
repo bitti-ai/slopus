@@ -105,7 +105,11 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     element.addEventListener("wheel", wheel, { passive: false });
     return () => element.removeEventListener("wheel", wheel);
   }, [images.length]);
-  const { width, height } = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  // Generated assets retain the dimensions returned by the native encoder.
+  // Project settings size only the empty canvas and future generation requests.
+  const { width, height } = output?.width && output?.height
+    ? { width: output.width, height: output.height }
+    : outputDimensions(config.settings.resolution, config.settings.aspectRatio);
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
 
   const commit = (next: ImageScene) => {

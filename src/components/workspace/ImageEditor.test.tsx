@@ -20,6 +20,29 @@ function setup(initial = parseProjectConfig(fixture)) {
   return () => latest;
 }
 
+it("displays each generated image at its saved aspect ratio independently of future generation settings", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [
+    { id: "wide", name: "Wide", kind: "image", relativePath: "media/generated/wide.jpg", mimeType: "image/jpeg", width: 1376, height: 768, createdAt: initial.createdAt },
+    { id: "tall", name: "Tall", kind: "image", relativePath: "media/generated/tall.jpg", mimeType: "image/jpeg", width: 1088, height: 1920, createdAt: initial.createdAt },
+  ];
+  initial.imageScene!.outputAssetId = "wide";
+  const current = setup(initial);
+  const frame = screen.getByLabelText("Image placement canvas").parentElement!;
+  expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
+  fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "1344p" } });
+  fireEvent.change(screen.getByLabelText("Aspect ratio"), { target: { value: "1:1" } });
+  expect(current().settings).toMatchObject({ resolution: "1344p", aspectRatio: "1:1" });
+  expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
+  fireEvent.click(screen.getByRole("button", { name: "View Tall" }));
+  expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1088 / 1920));
+  fireEvent.click(screen.getByRole("button", { name: "View Wide" }));
+  expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(reopened.assets).toEqual(initial.assets);
+  expect(reopened.settings).toMatchObject({ resolution: "1344p", aspectRatio: "1:1" });
+});
+
 it("removes generated images through their context menu and keeps the preview and thumbnail valid", () => {
   const initial = parseProjectConfig(fixture);
   initial.assets = ["First", "Second", "Third"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt }));

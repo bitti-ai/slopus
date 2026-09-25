@@ -100,17 +100,24 @@ describe("image generation work", () => {
     const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
     expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 768, canvasHeight: 768 });
     expect(config.providerSettings.slopfab.options.transformer).toBe("C:/h3.safetensors");
-    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, background: "Edited during generation" } }));
+    session.update((current) => ({ ...current, settings: { ...current.settings, resolution: "1344p", aspectRatio: "1:1" }, imageScene: { ...current.imageScene!, background: "Edited during generation" } }));
     await finish(queue, queue.getSnapshot().find((item) => item.kind === "image")!.id);
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: "C:/Image", jobId: request.jobId });
     const saved = session.getSnapshot().config;
     expect(saved.imageScene?.background).toBe("Edited during generation");
     expect(saved.imageScene?.outputAssetId).toBe(request.jobId);
     expect(saved.assets[0]).toMatchObject({ kind: "image", mimeType: "image/jpeg", relativePath: "media/generated/still.jpg", width: 768, height: 768 });
+    expect(saved.settings.resolution).toBe("1344p");
     expect(saved.generationJobs).toHaveLength(0);
     expect(saveGeneratedScene).not.toHaveBeenCalled();
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
     expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).imageScene).toEqual(saved.imageScene);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).assets[0]).toMatchObject({ width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    const nextRequest = vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0];
+    expect(nextRequest).toMatchObject({ canvasWidth: 1344, canvasHeight: 1344 });
+    await queue.cancel(nextRequest.jobId);
   });
   it("serializes image and video work and allows cancellation before native submission", async () => {
     const { queue, first } = setup(); const session = queue.project(imageProject());
