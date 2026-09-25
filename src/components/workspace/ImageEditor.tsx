@@ -18,6 +18,9 @@ import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNod
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
 import "../../styles/image-editor.css";
 
+const MIN_IMAGE_ZOOM = 0.1;
+const MAX_IMAGE_ZOOM = 8;
+
 export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel, work }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; work?: WorkItem;
@@ -44,12 +47,47 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   useEffect(() => { if (!debugEnabled) setDebugPrompt(null); }, [debugEnabled]);
   const [boxes, setBoxes] = useState(true);
   const [drawKind, setDrawKind] = useState<"object" | "text" | "group" | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
+  const viewport = useRef<HTMLDivElement>(null);
+  const pan = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const [panning, setPanning] = useState(false);
   const [draftBox, setDraftBox] = useState<ImageBox | null>(null);
   const undo = useRef<ImageScene[]>([]);
   const redo = useRef<ImageScene[]>([]);
   const [, historyChanged] = useState(0);
   const pointer = useRef<{ x: number; y: number; scene: ImageScene; id?: string; resize: boolean } | null>(null);
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (pointer.current) return;
+      const bounds = element.getBoundingClientRect();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1);
+      const x = event.clientX - bounds.left - bounds.width / 2;
+      const y = event.clientY - bounds.top - bounds.height / 2;
+      setView((current) => {
+        const zoom = Math.max(MIN_IMAGE_ZOOM, Math.min(MAX_IMAGE_ZOOM, current.zoom * Math.exp(-delta * 0.002)));
+        const ratio = zoom / current.zoom;
+        return { zoom, x: x - (x - current.x) * ratio, y: y - (y - current.y) * ratio };
+      });
+    };
+    // React's delegated wheel listener is passive; canvas zoom must consume it.
+    element.addEventListener("wheel", wheel, { passive: false });
+    const stopPan = () => {
+      const start = pan.current;
+      pan.current = null; setPanning(false);
+      if (start && element.hasPointerCapture(start.pointerId)) element.releasePointerCapture(start.pointerId);
+    };
+    window.addEventListener("blur", stopPan);
+    return () => { element.removeEventListener("wheel", wheel); window.removeEventListener("blur", stopPan); };
+  }, []);
+  const endPan = (event: PointerEvent<HTMLDivElement>) => {
+    if (pan.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    pan.current = null; setPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
@@ -233,10 +271,28 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         </select></label>
         <button className={`icon-button ${boxes ? "active" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} onClick={() => { setBoxes(!boxes); setDrawKind(null); }}><Square size={16} /></button>
         <select aria-label="Canvas tool" value={drawKind ?? "select"} onChange={(event) => { setDrawKind(event.target.value === "select" ? null : event.target.value as typeof drawKind); setBoxes(true); }}><option value="select">Select / move</option><option value="object">Draw object</option><option value="text">Draw text</option><option value="group">Draw group</option></select>
-        <button className="secondary-button" onClick={() => setZoom(1)}>Fit</button><input aria-label="Image zoom" type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /><span>{Math.round(zoom * 100)}%</span>
+        <button className="secondary-button" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>Fit</button><input aria-label="Image zoom" type="range" min={MIN_IMAGE_ZOOM} max={MAX_IMAGE_ZOOM} step="0.01" value={view.zoom} onChange={(event) => { const zoom = Number(event.target.value); setView((current) => ({ zoom, x: current.x * zoom / current.zoom, y: current.y * zoom / current.zoom })); }} /><span>{Math.round(view.zoom * 100)}%</span>
         <button className="icon-button" aria-label="Export image" title="Export image" disabled={!output || !isTauri()} onClick={() => attempt(() => invoke("export_generated_image", { folderPath, relativePath: output!.relativePath }))}><Download size={16} /></button>
       </div>
-      <div className="image-viewport"><div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": zoom } as CSSProperties}>
+      <div ref={viewport} className={`image-viewport${panning ? " panning" : ""}`} title="Scroll to zoom · Drag with the middle mouse button to pan"
+        onPointerDownCapture={(event) => {
+          if (event.button !== 1 || pointer.current || pan.current) return;
+          event.preventDefault(); event.stopPropagation();
+          pan.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+          setPanning(true); event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMoveCapture={(event) => {
+          const start = pan.current;
+          if (!start || start.pointerId !== event.pointerId) return;
+          if (!(event.buttons & 4)) { endPan(event); return; }
+          event.preventDefault(); event.stopPropagation();
+          const dx = event.clientX - start.x; const dy = event.clientY - start.y;
+          pan.current = { ...start, x: event.clientX, y: event.clientY };
+          setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+        }}
+        onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
+        onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
+        <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
         {output ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>Compose your image</strong><span>Add objects, text, and groups, then describe them in the inspector.</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
