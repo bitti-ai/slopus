@@ -47,6 +47,8 @@ Image projects retain the [H3 base prompt structure](https://huggingface.co/Mini
 
 ## Generation boundary
 
+Each newly generated image asset stores an optional `imageGeneration` snapshot captured when the job is queued: the authored image tree, background and style, seed and steps, resolution and aspect ratio, project look, brief, selected reference definitions and attachments, generator template ID, and exact submitted prompt. Completion attaches that snapshot without replacing edits made during generation. Selecting the result restores a copy of its inputs and merges its saved references into the library; other results and unrelated references remain available. The native project schema validates and preserves snapshots on save and reopen. Older images without a snapshot retain the current authoring state when selected.
+
 The slopfab C API is loaded dynamically by the Rust backend. It resolves requests immediately, runs asynchronously, permits only one active generation per process, reports progress from a worker thread, and returns raw planar RGB frames plus interleaved audio. Slopus therefore owns:
 
 - compute-platform selection: CUDA 13 when usable, then CUDA 12, then Vulkan with exact attention;

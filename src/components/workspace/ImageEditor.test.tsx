@@ -4,9 +4,12 @@ import { useState } from "react";
 import { cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
-import { parseProjectConfig, type ProjectConfig } from "../../lib/project";
+import { imageGenerationSnapshotSchema, parseProjectConfig, type ProjectConfig } from "../../lib/project";
+import { imageGenerationSnapshot } from "../../lib/imageHistory";
+import { defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { imageScenePrompt } from "../../lib/imageScene";
 import fixture from "../../../fixtures/project-v1-image.json";
+import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 function setup(initial = parseProjectConfig(fixture)) {
@@ -19,6 +22,34 @@ function setup(initial = parseProjectConfig(fixture)) {
   render(<Harness />);
   return () => latest;
 }
+
+it("restores the hierarchy, prompts, settings and generator when selecting a saved result", () => {
+  const initial = parseProjectConfig(fixture);
+  const original = imageGenerationSnapshot(initial, "Original prompt", defaultGeneratorTemplate().id);
+  const saved = imageGenerationSnapshotSchema.parse(snapshotFixture);
+  saveGeneratorTemplateSettings({ defaultTemplateId: original.generatorTemplateId, templates: [defaultGeneratorTemplate(), { ...defaultGeneratorTemplate(), id: saved.generatorTemplateId, name: "Lantern generator" }] });
+  initial.assets = [original, saved].map((snapshot, index) => ({ id: `result-${index}`, name: `Result ${index}`, kind: "image", relativePath: `media/generated/result-${index}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, imageGeneration: snapshot }));
+  initial.imageScene!.outputAssetId = "result-0";
+  const current = setup(initial);
+  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Unsaved edit" } });
+  expect(screen.getByRole("button", { name: "Undo image edit" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
+  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
+  expect(screen.getByLabelText("Steps")).toHaveValue(30);
+  expect(screen.getByLabelText("Generator")).toHaveValue(saved.generatorTemplateId);
+  expect(screen.getByRole("button", { name: "Lantern" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Lettering" })).toBeInTheDocument();
+  expect(current().references).toEqual(saved.references);
+  expect(current().settings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5" });
+  expect(screen.getByRole("button", { name: "Undo image edit" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Another edit" } });
+  fireEvent.click(screen.getByRole("button", { name: "View Result 0" }));
+  expect(current().imageScene).toEqual({ ...original.scene, outputAssetId: "result-0" });
+  expect(screen.getByLabelText("Generator")).toHaveValue(original.generatorTemplateId);
+  fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
+  expect(current().imageScene).toEqual({ ...saved.scene, outputAssetId: "result-1" });
+  expect(current().assets[1].imageGeneration).toEqual(saved);
+});
 
 it("displays each generated image at its saved aspect ratio independently of future generation settings", () => {
   const initial = parseProjectConfig(fixture);

@@ -107,12 +107,16 @@ describe("image generation work", () => {
     expect(saved.imageScene?.background).toBe("Edited during generation");
     expect(saved.imageScene?.outputAssetId).toBe(request.jobId);
     expect(saved.assets[0]).toMatchObject({ kind: "image", mimeType: "image/jpeg", relativePath: "media/generated/still.jpg", width: 768, height: 768 });
+    expect(saved.assets[0].imageGeneration).toMatchObject({ resolution: "768p", aspectRatio: "1:1", prompt: request.prompt, generatorTemplateId: template.id });
+    expect(saved.assets[0].imageGeneration!.scene.background).not.toBe("Edited during generation");
+    expect(saved.assets[0].imageGeneration!.scene.outputAssetId).toBeNull();
     expect(saved.settings.resolution).toBe("1344p");
     expect(saved.generationJobs).toHaveLength(0);
     expect(saveGeneratedScene).not.toHaveBeenCalled();
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
     expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).imageScene).toEqual(saved.imageScene);
     expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).assets[0]).toMatchObject({ width: 768, height: 768 });
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(saved))).assets[0].imageGeneration).toEqual(saved.assets[0].imageGeneration);
     queue.enqueueImage(session, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
     const nextRequest = vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0];

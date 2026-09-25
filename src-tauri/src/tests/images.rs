@@ -74,6 +74,38 @@ fn image_tree_survives_folder_creation_save_and_reopen() {
 }
 
 #[test]
+fn image_generation_history_survives_native_save_and_reopen_and_validates_snapshots() {
+    let snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    let expected: crate::project::image::ImageGenerationSnapshot = serde_json::from_value(snapshot.clone()).unwrap();
+    let mut config = image_fixture();
+    config.assets.push(serde_json::from_value(serde_json::json!({
+        "id": "image-history", "kind": "image", "name": "Lantern", "relativePath": "media/generated/lantern.jpg",
+        "mimeType": "image/jpeg", "width": 1088, "height": 1344, "createdAt": config.created_at,
+        "imageGeneration": snapshot,
+    })).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let opened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(opened.config.assets[0].image_generation.as_ref(), Some(&expected));
+    let mut updated = opened.config;
+    updated.image_scene.as_mut().unwrap().background = "Changed since generation".into();
+    updated.references.clear();
+    write_project(Path::new(&created.folder_path), &updated).unwrap();
+    let reopened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(reopened.config.assets[0].image_generation.as_ref(), Some(&expected));
+    for invalid in ["tree", "reference", "resolution"] {
+        let mut bad = reopened.config.clone();
+        let history = bad.assets[0].image_generation.as_mut().unwrap();
+        match invalid {
+            "tree" => history.scene.nodes[1].parent_id = Some("missing".into()),
+            "reference" => history.references.clear(),
+            _ => history.resolution = "invalid".into(),
+        }
+        assert!(validate_and_normalize_config(bad).is_err(), "{invalid}");
+    }
+}
+
+#[test]
 fn invalid_image_hierarchies_and_bounds_are_rejected() {
     for invalid in ["cycle", "missing", "duplicate", "disconnected", "bounds"] {
         let mut config = image_fixture();

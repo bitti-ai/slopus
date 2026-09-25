@@ -1,0 +1,26 @@
+{
+  "scene": {
+    "nodes": [
+      { "id": "image-root", "parentId": null, "kind": "root", "name": "Image", "description": "A lantern above a quiet lake", "text": "", "box": null, "colors": ["#204060"] },
+      { "id": "lantern", "parentId": "image-root", "kind": "group", "name": "Lantern", "description": "A red paper lantern", "text": "", "box": { "x": 200, "y": 100, "width": 400, "height": 600 }, "colors": [] },
+      { "id": "lettering", "parentId": "lantern", "kind": "text", "name": "Lettering", "description": "Gold lettering", "text": "静かな夜", "box": { "x": 250, "y": 200, "width": 200, "height": 100 }, "colors": ["#FFD700"] }
+    ],
+    "background": "A moonlit lake",
+    "style": { "mode": "art", "aesthetics": "serene", "lighting": "moonlight", "medium": "Watercolor", "detail": "Ink outlines" },
+    "steps": 30,
+    "seed": 42,
+    "referenceIds": ["lantern-style"],
+    "outputAssetId": null
+  },
+  "resolution": "1088p",
+  "aspectRatio": "4:5",
+  "defaultLook": "watercolor",
+  "briefPrompt": "A lantern above a quiet lake",
+  "prompt": "detailed_description: A watercolor still image. [Shot 1] A lantern above a quiet lake.",
+  "generatorTemplateId": "lantern-generator",
+  "references": [
+    { "id": "lantern-style", "name": "Lantern style", "kind": "text", "description": "Red paper with golden lettering", "intendedUse": ["style"], "createdAt": "2026-01-01T00:00:00.000Z", "refmods": [
+      { "id": "style-refmod", "name": "Lantern style", "relativePath": "references/lantern.safetensors", "strength": 0.75, "copies": 2 }
+    ] }
+  ]
+}

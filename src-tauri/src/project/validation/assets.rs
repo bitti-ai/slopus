@@ -3,6 +3,23 @@ use crate::project::paths::*;
 use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
+        if let Some(snapshot) = &mut asset.image_generation {
+            snapshot.scene.validate()?;
+            if asset.kind != "image"
+                || !is_supported_resolution(&snapshot.resolution)
+                || !is_supported_aspect_ratio(&snapshot.aspect_ratio)
+                || snapshot.default_look.as_deref().is_some_and(|look| !is_shot_tag_id(look))
+                || snapshot.generator_template_id.is_empty()
+                || snapshot.references.len() > 100
+            {
+                return Err("Invalid image generation snapshot settings.".into());
+            }
+            super::references::validate_references(&mut snapshot.references)?;
+            let ids = unique_ids(snapshot.references.iter().map(|reference| reference.id.as_str()), "image snapshot reference")?;
+            if snapshot.scene.reference_ids.iter().any(|id| !ids.contains(id.as_str())) {
+                return Err("Image generation snapshot has a missing reference.".into());
+            }
+        }
         if asset.id.trim().is_empty() || asset.name.trim().is_empty() {
             return Err("Asset id and name cannot be empty.".into());
         }

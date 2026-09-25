@@ -2,6 +2,8 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
+import { imageGenerationSnapshot } from "./imageHistory";
+import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
 import { engineProviderSetting, type GeneratorTemplate } from "./settings";
@@ -39,6 +41,7 @@ export interface WorkItem {
 }
 interface PendingWork {
   image?: boolean;
+  imageGeneration?: ImageGenerationSnapshot;
   id: string;
   session: ProjectSession;
   sceneId: string;
@@ -215,7 +218,7 @@ export class WorkQueue {
       referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.work.set(id, { id, image: true, imageGeneration: imageGenerationSnapshot(config, prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
@@ -398,7 +401,7 @@ export class WorkQueue {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id });
       work.session.update((current) => ({ ...current, thumbnail: saved.relativePath,
         imageScene: { ...(current.imageScene ?? createImageScene()), outputAssetId: work.id },
-        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, mimeType: "image/jpeg", createdAt: new Date().toISOString() }],
+        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: "image/jpeg", createdAt: new Date().toISOString() }],
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }

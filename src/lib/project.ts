@@ -138,6 +138,23 @@ export const LEGACY_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
 
 export const resolutionSchema = z.enum([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
 
+export const imageGenerationSnapshotSchema = z.object({
+  scene: imageSceneSchema,
+  resolution: resolutionSchema,
+  aspectRatio: aspectRatioSchema,
+  defaultLook: z.string().regex(SHOT_TAG_ID_PATTERN).nullable(),
+  briefPrompt: z.string(),
+  prompt: z.string(),
+  generatorTemplateId: z.string().min(1),
+  references: z.array(z.lazy(() => projectReferenceSchema)).max(100),
+}).superRefine((snapshot, context) => {
+  const ids = new Set(snapshot.references.map((reference) => reference.id));
+  if (ids.size !== snapshot.references.length || snapshot.scene.referenceIds.some((id) => !ids.has(id))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Image generation references must have unique IDs and include every selected reference." });
+  }
+});
+export type ImageGenerationSnapshot = z.infer<typeof imageGenerationSnapshotSchema>;
+
 export const projectAssetSchema = z.object({
   id: idSchema,
   kind: z.enum(["video", "audio", "image", "caption", "generated"]),
@@ -161,9 +178,13 @@ export const projectAssetSchema = z.object({
   height: z.number().int().positive().nullish(),
   /** Whether the container has an audio stream. */
   hasAudio: z.boolean().nullish(),
+  imageGeneration: imageGenerationSnapshotSchema.nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
+  if (asset.imageGeneration && asset.kind !== "image") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageGeneration"], message: "Only image assets can store image generation history." });
+  }
   /* A scene may be arranged on the timeline before it has been rendered. Its
    * generated asset is the stable thing the clip points at while the file is
    * still absent; WorkQueue fills the path in when rendering ends. */

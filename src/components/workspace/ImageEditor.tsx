@@ -3,6 +3,7 @@ import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderPlus, Image
 import { addImageNode, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene } from "../../lib/imageScene";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
+import { restoreGeneratedImage } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -142,6 +143,21 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
     const button = [...(imageResults.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((element) => element.dataset.imageAsset === imageMenu?.id);
     setImageMenu(null); button?.focus();
   };
+  const resetImageEditing = (id: string) => {
+    const snapshot = config.assets.find((asset) => asset.id === id)?.imageGeneration;
+    if (!snapshot) return;
+    undo.current = []; redo.current = []; historyChanged((value) => value + 1);
+    pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
+    setCollapsed(new Set()); setSelection(snapshot.scene.nodes.find((node) => node.kind === "root")!.id);
+    if (imageTemplates.some((candidate) => candidate.id === snapshot.generatorTemplateId)) {
+      setTemplateId(snapshot.generatorTemplateId);
+      localStorage.setItem("slopus.image-generator-template.v1", snapshot.generatorTemplateId);
+    }
+  };
+  const selectImage = (id: string) => {
+    resetImageEditing(id);
+    onChange((current) => restoreGeneratedImage(current, id));
+  };
   const removeImage = (id: string) => {
     onChange((current) => {
       const removed = current.assets.find((asset) => asset.id === id && asset.kind === "image");
@@ -153,14 +169,19 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       const next = removingSelected
         ? remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)]
         : remaining.find((asset) => asset.id === currentScene.outputAssetId);
-      return { ...current,
+      const updated = { ...current,
         assets: current.assets.filter((asset) => asset.id !== id),
         imageScene: { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
       };
+      return removingSelected && next ? restoreGeneratedImage(updated, next.id) : updated;
     });
-    requestAnimationFrame(() => (imageResults.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ?? imageResults.current?.querySelector<HTMLButtonElement>("button") ?? viewport.current)?.focus());
+    requestAnimationFrame(() => {
+      const selectedButton = imageResults.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+      if (scene.outputAssetId === id && selectedButton?.dataset.imageAsset) resetImageEditing(selectedButton.dataset.imageAsset);
+      (selectedButton ?? imageResults.current?.querySelector<HTMLButtonElement>("button") ?? viewport.current)?.focus();
+    });
   };
   const startRename = () => { renameEnding.current = false; setRenaming({ id: selected.id, value: selected.name }); };
   const finishRename = (save: boolean, restoreFocus = true) => {
@@ -357,7 +378,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
             setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
           }
         }}
-        onClick={() => onChange((current) => ({ ...current, thumbnail: asset.relativePath ?? null, imageScene: { ...(current.imageScene ?? scene), outputAssetId: asset.id } }))}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
+        onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
       <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>

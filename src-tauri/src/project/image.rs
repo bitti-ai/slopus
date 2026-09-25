@@ -3,6 +3,19 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ImageGenerationSnapshot {
+    pub scene: ImageScene,
+    pub resolution: String,
+    pub aspect_ratio: String,
+    pub default_look: Option<String>,
+    pub brief_prompt: String,
+    pub prompt: String,
+    pub generator_template_id: String,
+    pub references: Vec<super::references::ReusableReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageScene {
     pub nodes: Vec<ImageNode>,
     pub background: String,

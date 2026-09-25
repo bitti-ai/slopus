@@ -3,7 +3,10 @@ use crate::project::paths::*;
 use crate::project::*;
 use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
-    for reference in &mut config.references {
+    validate_references(&mut config.references)
+}
+pub(super) fn validate_references(references: &mut [ReusableReference]) -> Result<(), String> {
+    for reference in references {
         if reference.id.trim().is_empty() || reference.name.trim().is_empty() {
             return Err("Reference id and name cannot be empty.".into());
         }
