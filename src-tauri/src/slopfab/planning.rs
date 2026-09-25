@@ -46,7 +46,7 @@ pub fn resolve_plan(
         canvas_height: plan.canvas_height,
         aligned_frames: frames,
         duration_seconds: plan.duration_seconds * frames as f64 / plan.aligned_frames as f64,
-        model_evaluations: plan.num_model_evaluations,
+        model_evaluations: plan.num_model_evaluations * request.image_edit.as_ref().map_or(1, |edit| edit.edits.len() as i32),
         sequence_rows_without_text: plan.sequence_rows_without_text,
         latent_frames: plan.latent_frames,
         latent_width: plan.latent_width,
@@ -57,6 +57,15 @@ pub fn resolve_plan(
 }
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if let Some(edit) = &request.image_edit {
+        if !request.still_image || request.frames != 1 || request.continuation_relative_path.is_some() || request.continuation_path.is_some() || request.video_transition.is_some()
+            || edit.edits.is_empty() || edit.edits.len() > 499 || request.canvas_width > 8192 || request.canvas_height > 8192
+            || edit.edits.iter().any(|step| step.prompt.trim().is_empty() || step.x < 0 || step.y < 0 || step.width <= 0 || step.height <= 0
+                || i64::from(step.x) + i64::from(step.width) > i64::from(request.canvas_width)
+                || i64::from(step.y) + i64::from(step.height) > i64::from(request.canvas_height)) {
+            return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
+        }
+    }
     let limits = crate::generation::models::h3::MODEL.capabilities;
     if request.reference_paths.len() > limits.max_image_references
         || request.reference_video_ids.len() > limits.max_video_references

@@ -45,6 +45,12 @@ pub struct GenerationRequest {
     pub frames: i32,
     #[serde(default)]
     pub still_image: bool,
+    #[serde(default)]
+    pub image_edit: Option<ImageEditRequest>,
+    #[serde(skip)]
+    pub image_edit_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub image_edit_pixels: Option<std::sync::Arc<Vec<u8>>>,
     pub steps: i32,
     /// -1 asks the host to draw a fresh seed for this generation.
     pub seed: i64,
@@ -63,6 +69,21 @@ pub struct GenerationRequest {
     pub continuation_path: Option<PathBuf>,
     #[serde(skip)]
     pub save_latents_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageEditRequest {
+    pub source_relative_path: String,
+    pub edits: Vec<ImageEditStep>,
+}
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImageEditStep {
+    pub prompt: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

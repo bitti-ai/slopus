@@ -6,6 +6,35 @@ use crate::project::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
+    let references = ReferenceVideos::default();
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.motion_cache = true;
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request = GenerationRequest {
+        prompt: "A red vase".into(), still_image: true, frames: 1, steps: 4, seed: 1,
+        canvas_width: 65, canvas_height: 41,
+        image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
+        image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
+            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31 }
+        ] }), ..Default::default()
+    };
+    validate_generation_controls(&request).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, platform, purpose, &references).unwrap();
+            // Resolving fails if MotionCache is still enabled for inpainting.
+            let plan = api.resolve(&handle).unwrap();
+            assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (96, 64, 1));
+        }
+    }
+    let mut invalid = request;
+    invalid.image_edit.as_mut().unwrap().edits[0].width = 36;
+    assert!(validate_generation_controls(&invalid).is_err());
+}
+
+#[test]
 fn video_transitions_use_encoded_boundaries_with_the_bundled_runtime() {
     let references = ReferenceVideos::default();
     let settings = BTreeMap::new();

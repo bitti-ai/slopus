@@ -10,6 +10,10 @@ use super::{
 use crate::{diagnostics, rendered};
 use std::sync::atomic::Ordering;
 
+#[cfg(test)]
+#[path = "generation_tests.rs"]
+mod tests;
+
 struct FrameSource {
     generation: ffi::FinishedGeneration,
     frame_offset: u32,
@@ -24,6 +28,68 @@ impl rendered::FrameSource for FrameSource {
 }
 
 pub(super) fn run_generation(
+    item: &QueueItem,
+) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    run_edit_sequence(item, run_single_generation)
+}
+
+fn run_edit_sequence(
+    item: &QueueItem,
+    mut generate: impl FnMut(&QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String>,
+) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    let Some(edit) = &item.request.image_edit else { return generate(item); };
+    let count = edit.edits.len();
+    let mut pixels = None;
+    let mut elapsed = 0.0;
+    let mut computed = 0;
+    let mut skipped = 0;
+    for (index, step) in edit.edits.iter().enumerate() {
+        if item.cancel.load(Ordering::Acquire) { return Err("Image editing cancelled.".into()); }
+        let mut request = item.request.clone();
+        request.prompt = step.prompt.clone();
+        request.image_edit.as_mut().unwrap().edits = vec![step.clone()];
+        request.image_edit_pixels = pixels.take();
+        let sink = item.events.clone();
+        let offset = elapsed;
+        let stage = QueueItem {
+            request, configuration: item.configuration.clone(), references: item.references.clone(), cancel: item.cancel.clone(),
+            events: std::sync::Arc::new(move |event| {
+                let event = match event {
+                    super::events::NativeEvent::Progress(mut progress) => {
+                        let per_edit = progress.planned_steps.max(1);
+                        progress.step = index as i32 * per_edit + progress.step.clamp(0, per_edit);
+                        progress.total_steps = per_edit * count as i32;
+                        progress.planned_steps = progress.total_steps;
+                        progress.elapsed_seconds += offset;
+                        progress.timing_profile.push_str(&format!("|imageEdits={count}"));
+                        super::events::NativeEvent::Progress(progress)
+                    }
+                    event => event,
+                };
+                sink(event);
+            }),
+        };
+        let (mut metadata, result) = generate(&stage)?;
+        if item.cancel.load(Ordering::Acquire) { return Err("Image editing cancelled.".into()); }
+        elapsed += metadata.seconds_total;
+        computed += metadata.steps_computed;
+        skipped += metadata.steps_skipped;
+        if index + 1 == count {
+            metadata.seconds_total = elapsed;
+            metadata.steps_computed = computed;
+            metadata.steps_skipped = skipped;
+            metadata.timing_profile.push_str(&format!("|imageEdits={count}"));
+            return Ok((metadata, result));
+        }
+        let rgba = result.frame(0)?.ok_or("Image edit returned no pixels.")?;
+        // Copy only the completed still, then release its generation before
+        // starting the next edit. No intermediate file or lossy encode.
+        pixels = Some(std::sync::Arc::new(rgba.chunks_exact(4).flat_map(|pixel| pixel[..3].iter().copied()).collect()));
+    }
+    Err("Add an image edit before generating.".into())
+}
+
+fn run_single_generation(
     item: &QueueItem,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     let _models = super::MODEL_ACCESS

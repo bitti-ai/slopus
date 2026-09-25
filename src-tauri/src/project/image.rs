@@ -17,6 +17,10 @@ pub(crate) struct ImageGenerationSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageScene {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_image: Option<ImageSource>,
     pub nodes: Vec<ImageNode>,
     pub background: String,
     pub style: ImageStyle,
@@ -24,6 +28,14 @@ pub struct ImageScene {
     pub seed: i64,
     pub reference_ids: Vec<String>,
     pub output_asset_id: Option<String>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageSource {
+    pub relative_path: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -57,6 +69,15 @@ pub struct ImageStyle {
 
 impl ImageScene {
     pub fn validate(&self) -> Result<(), String> {
+        if self.root_type.as_deref().is_some_and(|kind| !matches!(kind, "prompt" | "image")) {
+            return Err("Invalid image root type.".into());
+        }
+        if let Some(source) = &self.source_image {
+            crate::project::paths::normalize_project_path(&source.relative_path)?;
+            if source.name.is_empty() || !(1..=8192).contains(&source.width) || !(1..=8192).contains(&source.height) {
+                return Err("Source image dimensions must be between 1 and 8192 pixels.".into());
+            }
+        }
         if self.nodes.is_empty()
             || self.nodes.len() > 500
             || !(2..=1000).contains(&self.steps)

@@ -54,10 +54,21 @@ pub(super) fn configure_request(
     }
     api.set_steps(handle, configuration.generation_steps(request.steps)?)?;
     api.set_seed(handle, generation_seed(request.seed)?)?;
-    api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
+    if let Some(edit) = &request.image_edit {
+        let step = edit.edits.first().ok_or("Add an image edit before generating.")?;
+        api.set_prompt(handle, &step.prompt)?;
+        let bounds = [step.x, step.y, step.width, step.height];
+        if let Some(pixels) = &request.image_edit_pixels {
+            api.set_image_edit_rgb(handle, pixels, request.canvas_width, request.canvas_height, bounds)?;
+        } else {
+            api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds)?;
+        }
+    } else {
+        api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
+    }
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
-    api.set_motion_cache(handle, configuration.motion_cache)?;
+    api.set_motion_cache(handle, configuration.motion_cache && request.image_edit.is_none())?;
     api.set_verbose(handle, false)?;
     if let Some(mode) = request.video_transition.as_deref() {
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;

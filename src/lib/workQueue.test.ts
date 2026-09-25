@@ -13,6 +13,8 @@ import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 import { compileImagePrompt } from "./imagePrompt";
+import { addImageNode, createImageEditScene } from "./imageScene";
+import { restoreGeneratedImage } from "./imageHistory";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -56,6 +58,33 @@ const finish = async (queue: WorkQueue, id: string) => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("submits ordered inpainting as one job, saves PNG, and leaves a clean edit root", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
+    for (const description of ["A red balloon", "A blue boat"]) {
+      scene = addImageNode(scene, "image-root", "object");
+      scene.nodes.at(-1)!.description = description;
+    }
+    record.config.imageScene = scene;
+    const session = queue.project(record);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/edited.png", width: 101, height: 77 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 101, canvasHeight: 77, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
+      { prompt: expect.stringContaining("A red balloon"), x: 25, y: 19, width: 51, height: 39 },
+      { prompt: expect.stringContaining("A blue boat"), x: 25, y: 19, width: 51, height: 39 },
+    ] } });
+    await finish(queue, request.jobId);
+    expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: record.folderPath, jobId: request.jobId, format: "png" });
+    const result = session.getSnapshot().config;
+    expect(result.imageScene!.nodes).toHaveLength(1);
+    expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png", width: 101, height: 77 } });
+    expect(result.assets[0]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (25, 19, 51, 39)") } });
+    expect(restoreGeneratedImage(result, request.jobId).imageScene!.nodes).toHaveLength(1);
+    expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
+  });
   it("forwards selected refmods to still-image planning and generation with their strength and copies", async () => {
     const { queue } = setup();
     const project = imageProject();

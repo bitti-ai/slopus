@@ -85,6 +85,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::artifacts::save_generated_image,
+            commands::artifacts::open_image_source,
             commands::artifacts::export_generated_image,
             app_updater_enabled,
             weights::download_weight,

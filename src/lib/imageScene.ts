@@ -8,7 +8,14 @@ export const imageNodeSchema = z.object({
   name: z.string().min(1).max(120), description: z.string(), text: z.string(),
   box: boxSchema.nullable(), colors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(16),
 });
+export const imageSourceSchema = z.object({
+  relativePath: z.string().min(1).refine((path) => !path.startsWith("/") && !path.includes("\\") && !path.includes(":") && !path.split("/").includes(".."), "Image source must be a project-relative path."),
+  name: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192),
+});
+export type ImageSource = z.infer<typeof imageSourceSchema>;
 export const imageSceneSchema = z.object({
+  rootType: z.enum(["prompt", "image"]).optional(),
+  sourceImage: imageSourceSchema.nullish(),
   nodes: z.array(imageNodeSchema).min(1).max(500),
   background: z.string(),
   style: z.object({ mode: z.enum(["photo", "art"]), aesthetics: z.string(), lighting: z.string(), medium: z.string(), detail: z.string() }),
@@ -37,6 +44,10 @@ export type ImageBox = NonNullable<ImageNode["box"]>;
 export function createImageScene(prompt = ""): ImageScene {
   return { nodes: [{ id: "image-root", parentId: null, kind: "root", name: "Image", description: prompt, text: "", box: null, colors: [] }],
     background: "", style: { mode: "photo", aesthetics: "", lighting: "", medium: "", detail: "" }, steps: 20, seed: -1, referenceIds: [], outputAssetId: null };
+}
+export function createImageEditScene(sourceImage: ImageSource | null, previous?: ImageScene): ImageScene {
+  return { ...createImageScene(), rootType: "image", sourceImage,
+    steps: previous?.steps ?? 20, seed: previous?.seed ?? -1, referenceIds: previous?.referenceIds ?? [] };
 }
 export function imageDescendants(scene: ImageScene, id: string): Set<string> {
   const ids = new Set([id]);

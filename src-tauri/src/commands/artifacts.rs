@@ -137,6 +137,7 @@ pub(crate) fn save_reference_icon(folder_path: String, job_id: String) -> Result
 pub(crate) fn save_generated_image(
     folder_path: String,
     job_id: String,
+    format: Option<String>,
 ) -> Result<GeneratedImageFile, String> {
     let summary =
         rendered::summary(&job_id).ok_or("The generated image is no longer in memory.")?;
@@ -144,7 +145,46 @@ pub(crate) fn save_generated_image(
         return Err("Expected a single still image.".into());
     }
     let rgba = rendered::frame(&job_id, 0)?.ok_or("The generated image has no pixels.")?;
-    write_generated_image_frame(&folder_path, &job_id, summary.width, summary.height, &rgba)
+    if format.as_deref() == Some("png") {
+        write_generated_png_frame(&folder_path, &job_id, summary.width, summary.height, &rgba)
+    } else if format.is_none() || format.as_deref() == Some("jpg") {
+        write_generated_image_frame(&folder_path, &job_id, summary.width, summary.height, &rgba)
+    } else { Err("Unsupported generated image format.".into()) }
+}
+
+pub(crate) fn write_generated_png_frame(folder: &str, id: &str, width: u32, height: u32, rgba: &[u8]) -> Result<GeneratedImageFile, String> {
+    use image::ImageEncoder;
+    if width == 0 || height == 0 || width > 8192 || height > 8192 || rgba.len() != width as usize * height as usize * 4 {
+        return Err("Invalid PNG image dimensions or pixels.".into());
+    }
+    let root = ProjectRoot::open(folder)?;
+    let stem = generated_file_stem(id)?;
+    let mut bytes = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut bytes).write_image(rgba, width, height, image::ExtendedColorType::Rgba8).map_err(|error| error.to_string())?;
+    crate::storage::atomic::write_atomically(&root.directory("media/generated")?.join(format!("{stem}.png")), &bytes)?;
+    Ok(GeneratedImageFile { relative_path: format!("media/generated/{stem}.png"), width: width as u16, height: height as u16 })
+}
+
+#[tauri::command]
+pub(crate) async fn open_image_source(app: AppHandle, folder_path: String) -> Result<Option<crate::project::image::ImageSource>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let Some(selected) = app.dialog().file().set_title("Open image to edit").add_filter("Images", &["png", "jpg", "jpeg"]).blocking_pick_file() else { return Ok(None); };
+        let path = selected.into_path().map_err(|_| "Choose a local image file.")?;
+        let (width, height) = image::image_dimensions(&path).map_err(|error| format!("Could not read image: {error}"))?;
+        if !(1..=8192).contains(&width) || !(1..=8192).contains(&height) { return Err("Image editing supports up to 8192 pixels per axis.".into()); }
+        let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+        let extension = match image::guess_format(&bytes).map_err(|error| error.to_string())? {
+            image::ImageFormat::Png => "png", image::ImageFormat::Jpeg => "jpg", _ => return Err("Choose a PNG or JPEG image.".into()),
+        };
+        let mut random = [0_u8; 16];
+        getrandom::fill(&mut random).map_err(|error| error.to_string())?;
+        let id = random.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+        let root = ProjectRoot::open(&folder_path)?;
+        let filename = format!("image-source-{id}.{extension}");
+        crate::storage::atomic::write_atomically(&root.directory("media/imported")?.join(&filename), &bytes)?;
+        Ok(Some(crate::project::image::ImageSource { relative_path: format!("media/imported/{filename}"), name: path.file_name().unwrap_or_default().to_string_lossy().into_owned(), width, height }))
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -194,9 +234,9 @@ pub(crate) async fn export_generated_image(
         let root = ProjectRoot::open(&folder_path)?;
         let source = root.existing(&relative_path)?;
         if !relative_path.starts_with("media/generated/")
-            || source.extension().and_then(|s| s.to_str()) != Some("jpg")
+            || !matches!(source.extension().and_then(|s| s.to_str()), Some("jpg" | "jpeg" | "png"))
         {
-            return Err("Choose a generated JPEG image to export.".into());
+            return Err("Choose a generated JPEG or PNG image to export.".into());
         }
         let Some(destination) = app
             .dialog()
@@ -239,13 +279,17 @@ pub(crate) fn export_image_file(
         return Err("Choose a .jpg, .jpeg or .png filename for the exported image.".into());
     }
     let bytes = fs::read(source).map_err(|error| format!("Could not read image: {error}"))?;
-    let bytes = if extension == "png" {
-        let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+    let source_format = image::guess_format(&bytes).map_err(|error| format!("Could not read image format: {error}"))?;
+    let target_format = if extension == "png" { image::ImageFormat::Png } else { image::ImageFormat::Jpeg };
+    let bytes = if source_format != target_format {
+        let image = image::load_from_memory_with_format(&bytes, source_format)
             .map_err(|error| format!("Could not decode image: {error}"))?;
         let mut encoded = std::io::Cursor::new(Vec::new());
-        image
-            .write_to(&mut encoded, image::ImageFormat::Png)
-            .map_err(|error| format!("Could not encode PNG: {error}"))?;
+        if target_format == image::ImageFormat::Jpeg {
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 95).encode_image(&image.to_rgb8()).map_err(|error| error.to_string())?;
+        } else {
+            image.write_to(&mut encoded, target_format).map_err(|error| format!("Could not encode PNG: {error}"))?;
+        }
         encoded.into_inner()
     } else {
         bytes

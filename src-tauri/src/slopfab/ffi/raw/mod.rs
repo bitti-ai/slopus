@@ -60,6 +60,8 @@ pub struct Output {
 pub type ProgressFn = Option<unsafe extern "C" fn(*const Progress, *mut c_void)>;
 type SetMotionCache =
     unsafe extern "C" fn(*mut Request, i32, f32, f32, i32, i32, f32, f32, i32, i32) -> i32;
+type SetImageEditPath = unsafe extern "C" fn(*mut Request, *const c_char, i32, i32, i32, i32, f32, i32) -> i32;
+type SetImageEditRgb = unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize, i32, i32, i32, i32, f32, i32) -> i32;
 
 pub struct Api {
     _library: Library,
@@ -77,6 +79,8 @@ pub struct Api {
     set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
     set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_image_edit_path: Option<SetImageEditPath>,
+    set_image_edit_rgb: Option<SetImageEditRgb>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -188,6 +192,8 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                set_image_edit_path: library.get::<SetImageEditPath>(b"slopfab_request_set_image_edit_path\0").ok().map(|symbol| *symbol),
+                set_image_edit_rgb: library.get::<SetImageEditRgb>(b"slopfab_request_set_image_edit_rgb24\0").ok().map(|symbol| *symbol),
                 set_steps: symbol!(
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -373,6 +379,18 @@ impl Api {
     pub fn set_still_image(&self, r: *mut Request) -> Result<(), String> {
         let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate images and reference icons.")?;
         self.error(unsafe { set(r, 1) })
+    }
+    pub fn set_image_edit_path(&self, r: *mut Request, path: &Path, bounds: [i32; 4]) -> Result<(), String> {
+        let set = self.set_image_edit_path.ok_or("This slopfab.dll does not support bounding-box image editing. Update the runtime.")?;
+        let path = path_cstring(path)?;
+        self.error(unsafe { set(r, path.as_ptr(), bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 0) })
+    }
+    pub fn set_image_edit_rgb(&self, r: *mut Request, pixels: &[u8], width: i32, height: i32, bounds: [i32; 4]) -> Result<(), String> {
+        let set = self.set_image_edit_rgb.ok_or("This slopfab.dll does not support sequential image editing. Update the runtime.")?;
+        if width <= 0 || height <= 0 || pixels.len() != width as usize * height as usize * 3 {
+            return Err("Invalid image edit RGB buffer.".into());
+        }
+        self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 0) })
     }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         let set = self.set_save_latents.ok_or(

@@ -88,6 +88,7 @@ export interface SlopfabGenerationRequest {
   prompt: string;
   frames: number;
   stillImage?: boolean;
+  imageEdit?: { sourceRelativePath: string; edits: import("./imageEditing").ImageEditStep[] };
   steps: number;
   seed: number;
   canvasWidth: number;

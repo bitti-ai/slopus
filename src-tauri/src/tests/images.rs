@@ -5,6 +5,40 @@ fn image_fixture() -> ProjectConfig {
 }
 
 #[test]
+fn edited_png_preserves_exact_pixels_and_exports_to_jpeg() {
+    let folder = project_folder();
+    let rgba: Vec<u8> = (0..65 * 41).flat_map(|index| [(index % 256) as u8, 80, 160, 255]).collect();
+    let saved = crate::commands::artifacts::write_generated_png_frame(&folder.path().to_string_lossy(), "edit-test", 65, 41, &rgba).unwrap();
+    let source = folder.path().join(saved.relative_path);
+    assert_eq!(::image::open(&source).unwrap().to_rgba8().as_raw(), &rgba);
+    let copy = folder.path().join("copy.png");
+    export_image_file(&source, &copy).unwrap();
+    assert_eq!(fs::read(&source).unwrap(), fs::read(copy).unwrap());
+    let jpeg = folder.path().join("export.jpg");
+    export_image_file(&source, &jpeg).unwrap();
+    assert_eq!(::image::image_dimensions(jpeg).unwrap(), (65, 41));
+}
+
+#[test]
+fn image_root_survives_save_and_agent_hierarchy_replacement() {
+    use crate::project::commands::{execute_commands_at, ProjectCommand};
+    let mut config = image_fixture();
+    let scene = config.image_scene.as_mut().unwrap();
+    scene.root_type = Some("image".into());
+    scene.source_image = Some(crate::project::image::ImageSource { relative_path: "media/imported/source.png".into(), name: "Source".into(), width: 65, height: 41 });
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let reopened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(reopened.config.image_scene, config.image_scene);
+    let mut command = serde_json::to_value(config.image_scene.as_ref().unwrap()).unwrap();
+    for field in ["rootType", "sourceImage", "outputAssetId"] { command.as_object_mut().unwrap().remove(field); }
+    command["op"] = serde_json::json!("image.set");
+    let parsed: ProjectCommand = serde_json::from_value(command).unwrap();
+    let changed = execute_commands_at(&config, &[parsed], &config.updated_at).unwrap();
+    assert_eq!(changed.image_scene, config.image_scene);
+}
+
+#[test]
 fn generated_jpeg_preserves_resolution_and_stays_inside_the_project() {
     let folder = project_folder();
     let root = folder.path().to_string_lossy();

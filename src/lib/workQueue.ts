@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { createImageScene, imageScenePrompt } from "./imageScene";
+import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
+import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
 import { imageGenerationSnapshot } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
@@ -203,22 +204,24 @@ export class WorkQueue {
     const current = session.getSnapshot().config;
     if (current.generationType !== "image") throw new Error("Open an image project to generate images.");
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
+    const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false) } });
     const { prompt, references } = compileImagePrompt(current);
-    const { width, height } = outputDimensions(current.settings.resolution, current.settings.aspectRatio);
+    const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt,
+    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
+      ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits } } : {}),
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
       referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, imageGeneration: imageGenerationSnapshot(config, prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.work.set(id, { id, image: true, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
@@ -334,7 +337,7 @@ export class WorkQueue {
     const item = this.items.find((candidate) => candidate.id === event.jobId);
     if (!work || !item || !["preparing", "generating"].includes(item.status)) return;
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
-    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
+    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
@@ -398,10 +401,10 @@ export class WorkQueue {
   private async saveImage(work: PendingWork) {
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });
     try {
-      const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id });
+      const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(work.request.imageEdit ? { format: "png" } : {}) });
       work.session.update((current) => ({ ...current, thumbnail: saved.relativePath,
-        imageScene: { ...(current.imageScene ?? createImageScene()), outputAssetId: work.id },
-        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: "image/jpeg", createdAt: new Date().toISOString() }],
+        imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
+        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }],
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }

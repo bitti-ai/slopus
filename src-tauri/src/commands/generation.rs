@@ -84,6 +84,7 @@ pub(crate) fn resolve_slopfab_plan(
     folder_path: Option<String>,
 ) -> Result<slopfab::ResolvedPlan, String> {
     prepare_continuation_path(&mut request, folder_path.as_deref())?;
+    prepare_image_edit_path(&mut request, folder_path.as_deref())?;
     let context = serde_json::json!({
         "jobId": request.job_id, "frames": request.frames, "steps": request.steps,
         "canvasWidth": request.canvas_width, "canvasHeight": request.canvas_height,
@@ -123,6 +124,7 @@ pub(crate) fn enqueue_slopfab_generation(
     folder_path: String,
 ) -> Result<(), String> {
     prepare_continuation_path(&mut request, Some(&folder_path))?;
+    prepare_image_edit_path(&mut request, Some(&folder_path))?;
     if !request.still_image {
         request.save_latents_path = Some(generated_latent_destination(&folder_path, &request.job_id)?);
     }
@@ -150,6 +152,19 @@ pub(crate) fn enqueue_slopfab_generation(
         );
     }
     result
+}
+
+fn prepare_image_edit_path(request: &mut slopfab::GenerationRequest, folder_path: Option<&str>) -> Result<(), String> {
+    if let Some(edit) = &request.image_edit {
+        let root = crate::project::paths::ProjectRoot::open(folder_path.ok_or("Image edits require a project folder.")?)?;
+        let path = root.existing(&edit.source_relative_path)?;
+        let (width, height) = ::image::image_dimensions(&path).map_err(|error| format!("Could not read source image: {error}"))?;
+        if width != request.canvas_width as u32 || height != request.canvas_height as u32 {
+            return Err("Image edit dimensions do not match the source file.".into());
+        }
+        request.image_edit_path = Some(path);
+    }
+    Ok(())
 }
 
 #[tauri::command]

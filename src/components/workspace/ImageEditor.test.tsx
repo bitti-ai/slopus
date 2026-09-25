@@ -23,6 +23,23 @@ function setup(initial = parseProjectConfig(fixture)) {
   return () => latest;
 }
 
+it("starts an image root from the thumbnail Edit menu and hides root text controls", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "saved", name: "Saved", kind: "image", relativePath: "media/generated/saved.jpg", mimeType: "image/jpeg", width: 101, height: 77, createdAt: initial.createdAt }];
+  const current = setup(initial);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Saved" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  expect(current().imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/saved.jpg", width: 101, height: 77 }, outputAssetId: null });
+  expect(current().imageScene!.nodes).toHaveLength(1);
+  expect(screen.queryByLabelText("Prompt (high-level description)")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open image" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Image placement canvas").parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(101 / 77));
+  fireEvent.change(screen.getByLabelText("Root type"), { target: { value: "prompt" } });
+  expect(screen.getByLabelText("Prompt (high-level description)")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Root type"), { target: { value: "image" } });
+  expect(current().imageScene!.sourceImage).toBeNull();
+});
+
 it("restores the hierarchy, prompts, settings and generator when selecting a saved result", () => {
   const initial = parseProjectConfig(fixture);
   const original = imageGenerationSnapshot(initial, "Original prompt", defaultGeneratorTemplate().id);

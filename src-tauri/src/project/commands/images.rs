@@ -23,6 +23,8 @@ pub struct ImageStylePatch {
 
 fn new_scene(prompt: &str) -> ImageScene {
     ImageScene {
+        root_type: None,
+        source_image: None,
         nodes: vec![ImageNode {
             id: "image-root".into(),
             parent_id: None,
@@ -150,6 +152,8 @@ pub(super) fn apply(
             reference_ids,
         } => {
             scene = ImageScene {
+                root_type: scene.root_type,
+                source_image: scene.source_image,
                 nodes: nodes.clone(),
                 background: background.clone(),
                 style: style.clone(),

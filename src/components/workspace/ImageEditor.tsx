@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
-import { addImageNode, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene } from "../../lib/imageScene";
+import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderOpen, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
+import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { restoreGeneratedImage } from "../../lib/imageHistory";
@@ -27,6 +29,12 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
 }) {
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
   const root = scene.nodes.find((node) => node.kind === "root")!;
+  const imageRoot = scene.rootType === "image";
+  const editPlan = useMemo(() => {
+    if (!imageRoot) return null;
+    try { return { ...compileImageEdits(config), error: null }; }
+    catch (reason) { return { edits: [], error: String(reason instanceof Error ? reason.message : reason) }; }
+  }, [config, imageRoot]);
   const [selection, setSelection] = useState(root.id);
   const selected = scene.nodes.find((node) => node.id === selection) ?? root;
   const [collapsed, setCollapsed] = useState(new Set<string>());
@@ -58,6 +66,12 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const redo = useRef<ImageScene[]>([]);
   const [, historyChanged] = useState(0);
   const pointer = useRef<{ x: number; y: number; scene: ImageScene; id?: string; resize: boolean } | null>(null);
+  useEffect(() => {
+    // Applied edits belong to the old source and must not be resurrected by Undo.
+    undo.current = []; redo.current = []; historyChanged((value) => value + 1);
+    pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
+    setSelection(root.id); setCollapsed(new Set());
+  }, [scene.sourceImage?.relativePath, root.id]);
   useEffect(() => {
     const element = viewport.current;
     if (!element) return;
@@ -108,7 +122,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   }, [images.length]);
   // Generated assets retain the dimensions returned by the native encoder.
   // Project settings size only the empty canvas and future generation requests.
-  const { width, height } = output?.width && output?.height
+  const { width, height } = imageRoot && scene.sourceImage ? scene.sourceImage : output?.width && output?.height
     ? { width: output.width, height: output.height }
     : outputDimensions(config.settings.resolution, config.settings.aspectRatio);
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
@@ -157,6 +171,12 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const selectImage = (id: string) => {
     resetImageEditing(id);
     onChange((current) => restoreGeneratedImage(current, id));
+  };
+  const replaceScene = (next: ImageScene) => {
+    undo.current = []; redo.current = []; historyChanged((value) => value + 1);
+    pointer.current = null; setDraftBox(null); setDrawKind(null); setCollapsed(new Set());
+    setSelection(next.nodes.find((node) => node.kind === "root")!.id);
+    onChange((current) => ({ ...current, imageScene: next }));
   };
   const removeImage = (id: string) => {
     onChange((current) => {
@@ -326,11 +346,12 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
+      { label: "Edit", icon: <Pencil size={15} />, action: () => attempt(() => replaceScene(editGeneratedImage(config, imageMenu.id).imageScene!)) },
       { label: "Remove", icon: <Trash2 size={15} />, danger: true, action: () => removeImage(imageMenu.id) },
     ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools">
-        <button className="primary-button image-generate-button" disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || !imageScenePrompt(scene)} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
+        <button className="primary-button image-generate-button" title={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
         <label className="image-generator">Generator<select aria-label="Generator" value={template?.id ?? ""} disabled={Boolean(active)} onChange={(event) => { setTemplateId(event.target.value); localStorage.setItem("slopus.image-generator-template.v1", event.target.value); const next = imageTemplates.find((candidate) => candidate.id === event.target.value); if (next) commit({ ...scene, steps: next.defaultSteps }); }}>
           {!imageTemplates.length && <option value="">No MiniMax H3 templates</option>}{imageTemplates.map((item) => <option key={item.id} value={item.id} disabled={templateNeedsDownload(item)}>{item.name}{templateNeedsDownload(item) ? " (download in Settings)" : ""}</option>)}
         </select></label>
@@ -357,7 +378,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {output ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>Compose your image</strong><span>Add objects, text, and groups, then describe them in the inspector.</span></div>}
+        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>{imageRoot ? "Open an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Open image in the inspector, then add Object nodes for edits." : "Add objects, text, and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
@@ -367,7 +388,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         </svg>
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>
-      <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
+      <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
       {(error || work?.error) && <p className="image-error" role="alert">{error ?? work?.error}</p>}
       {images.length > 0 && <div ref={imageResults} className="image-results" aria-label="Generated images">{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
         onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
@@ -381,10 +402,19 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
-      <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>
-      <label>{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
+      {selected.kind === "root" && <label>Root type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt root</option><option value="image">Image root</option></select></label>}
+      {selected.kind === "root" && imageRoot ? <>
+        <button className="secondary-button" disabled={!isTauri()} onClick={() => attempt(async () => {
+          const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
+          if (source) replaceScene(createImageEditScene(source, scene));
+        })}><FolderOpen size={16} />Open image</button>
+        {scene.sourceImage && <p>{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
+      </> : <>
+        <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>
+        <label>{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
+      </>}
       {selected.kind === "text" && <label>Text to render<input value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></label>}
-      {selected.kind === "root" && <>
+      {selected.kind === "root" && !imageRoot && <>
         <label>Background (environment)<textarea rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
         <h3>Image generation</h3><label>Steps<input type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></label>
         <label>Seed (−1 = random)<input type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></label>
@@ -398,9 +428,9 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         <h3>References</h3>{config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => <label className="image-check" key={reference.id}><input type="checkbox" checked={scene.referenceIds.includes(reference.id)} onChange={(event) => commit({ ...scene, referenceIds: event.target.checked ? [...scene.referenceIds, reference.id] : scene.referenceIds.filter((id) => id !== reference.id) })} />{reference.name}</label>)}{!config.references.length && <p>Add image or text references in the References tab.</p>}
       </>}
       {selected.kind !== "root" && <><h3>Placement (0–1000)</h3><label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>{selected.box && <div className="image-box-fields">{(["x", "y", "width", "height"] as const).map((field) => <label key={field}>{field}<input type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} /></label>)}</div>}</>}
-      <h3>Color palette</h3><div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button" aria-label={`Remove color ${index + 1}`} onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Trash2 size={13} /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Plus size={14} />Color</button></div>
+      {!(selected.kind === "root" && imageRoot) && <><h3>Color palette</h3><div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button" aria-label={`Remove color ${index + 1}`} onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Trash2 size={13} /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Plus size={14} />Color</button></div></>}
     </div>
-      {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(compileImagePrompt(config).prompt))}>Debug Prompt</button></div>}
+      {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config).prompt))}>Debug Prompt</button></div>}
     </aside>
     {debugEnabled && debugPrompt !== null && <DebugPromptDialog sceneTitle={config.name} segments={[{ kind: "brief", value: debugPrompt }]} onClose={() => setDebugPrompt(null)} />}
   </div>;
