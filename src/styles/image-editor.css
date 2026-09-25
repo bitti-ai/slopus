@@ -32,6 +32,7 @@
 .image-center { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .image-canvas-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--line-solid); font-size: var(--text-xs); }
 .image-generator { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.image-generate-button { width: 144px; flex-shrink: 0; justify-content: center; white-space: nowrap; }
 .image-canvas-tools input[type="range"] { width: 72px; min-width: 0; }
 .image-canvas-tools select { width: auto; max-width: 160px; }
 .image-canvas-tools .active { color: var(--accent); }
