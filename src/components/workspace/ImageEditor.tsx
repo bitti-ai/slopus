@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, Download, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
 import { addImageNode, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene } from "../../lib/imageScene";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
@@ -272,7 +271,6 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         <button className={`icon-button ${boxes ? "active" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} onClick={() => { setBoxes(!boxes); setDrawKind(null); }}><Square size={16} /></button>
         <select aria-label="Canvas tool" value={drawKind ?? "select"} onChange={(event) => { setDrawKind(event.target.value === "select" ? null : event.target.value as typeof drawKind); setBoxes(true); }}><option value="select">Select / move</option><option value="object">Draw object</option><option value="text">Draw text</option><option value="group">Draw group</option></select>
         <button className="secondary-button" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>Fit</button><input aria-label="Image zoom" type="range" min={MIN_IMAGE_ZOOM} max={MAX_IMAGE_ZOOM} step="0.01" value={view.zoom} onChange={(event) => { const zoom = Number(event.target.value); setView((current) => ({ zoom, x: current.x * zoom / current.zoom, y: current.y * zoom / current.zoom })); }} /><span>{Math.round(view.zoom * 100)}%</span>
-        <button className="icon-button" aria-label="Export image" title="Export image" disabled={!output || !isTauri()} onClick={() => attempt(() => invoke("export_generated_image", { folderPath, relativePath: output!.relativePath }))}><Download size={16} /></button>
       </div>
       <div ref={viewport} className={`image-viewport${panning ? " panning" : ""}`} title="Scroll to zoom · Drag with the middle mouse button to pan"
         onPointerDownCapture={(event) => {

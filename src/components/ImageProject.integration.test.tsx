@@ -9,11 +9,47 @@ import { executeAgentCommands } from "../lib/runtime";
 import { imageScenePrompt } from "../lib/imageScene";
 import { saveDebugOptionsEnabled } from "../lib/settings";
 import fixture from "../../fixtures/project-v1-image.json";
+import { invoke } from "@tauri-apps/api/core";
+import * as persistence from "../lib/persistence";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-afterEach(() => { cleanup(); localStorage.clear(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
+
+it("exports the selected image from beside Save and handles cancellation and errors", async () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const project = record();
+  project.config.assets = ["First", "Second"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: project.config.createdAt }));
+  project.config.imageScene!.outputAssetId = "First";
+  let complete!: (value: boolean) => void;
+  const exporting = new Promise<boolean>((resolve) => { complete = resolve; });
+  vi.mocked(invoke).mockImplementation(async (command) => {
+    if (command === "export_generated_image") return await exporting as never;
+    return undefined as never;
+  });
+  render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={vi.fn()} />);
+  const button = screen.getByRole("button", { name: "Export" });
+  expect(button.parentElement).toContainElement(screen.getByRole("button", { name: "Save" }));
+  expect(screen.queryByRole("button", { name: "Export image" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  fireEvent.click(button);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", { folderPath: "D:/Images", relativePath: "media/generated/Second.jpg" }));
+  expect(screen.getByRole("button", { name: "Exporting…" })).toBeDisabled();
+  await act(async () => complete(false));
+  expect(button).toBeEnabled();
+  expect(screen.queryByText("Couldn’t export image")).not.toBeInTheDocument();
+  vi.mocked(invoke).mockRejectedValueOnce("Destination is not writable");
+  fireEvent.click(button);
+  expect(await screen.findByText("Destination is not writable")).toBeInTheDocument();
+  expect(button).toBeEnabled();
+});
+
+it("disables image export until a generated image is selected", () => {
+  render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+});
 
 it("shows the full image prompt at the end of the inspector only when debug is enabled", () => {
   const project = record();

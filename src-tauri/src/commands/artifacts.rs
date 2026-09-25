@@ -203,7 +203,8 @@ pub(crate) async fn export_generated_image(
             .file()
             .set_title("Export image")
             .add_filter("JPEG image", &["jpg", "jpeg"])
-            .set_file_name("image.jpg")
+            .add_filter("PNG image", &["png"])
+            .set_file_name("image")
             .blocking_save_file()
         else {
             return Ok(false);
@@ -211,12 +212,45 @@ pub(crate) async fn export_generated_image(
         let destination = destination
             .into_path()
             .map_err(|_| "Choose a local image destination.")?;
-        let bytes = fs::read(source).map_err(|error| format!("Could not read image: {error}"))?;
-        crate::storage::atomic::write_atomically(&destination, &bytes)?;
+        export_image_file(&source, &destination)?;
         Ok(true)
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// Copy JPEGs without another lossy encode; PNG exports retain the decoded
+/// source pixels and full resolution. File extensions always match the bytes.
+pub(crate) fn export_image_file(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
+    let destination = if destination.extension().is_none() {
+        destination.with_extension("jpg")
+    } else {
+        destination.to_path_buf()
+    };
+    let extension = destination
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
+        return Err("Choose a .jpg, .jpeg or .png filename for the exported image.".into());
+    }
+    let bytes = fs::read(source).map_err(|error| format!("Could not read image: {error}"))?;
+    let bytes = if extension == "png" {
+        let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+            .map_err(|error| format!("Could not decode image: {error}"))?;
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .map_err(|error| format!("Could not encode PNG: {error}"))?;
+        encoded.into_inner()
+    } else {
+        bytes
+    };
+    crate::storage::atomic::write_atomically(&destination, &bytes)
 }
 
 #[tauri::command]

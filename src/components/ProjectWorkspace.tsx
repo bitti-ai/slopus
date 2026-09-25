@@ -12,6 +12,8 @@ import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
 import { PromptComposer } from "./PromptComposer";
+import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "../lib/persistence";
 
 export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 
@@ -48,6 +50,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const { config, saving, dirty, saveError } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   const imageProject = config.generationType === "image";
+  const imageOutput = config.assets.find((asset) => asset.kind === "image" && asset.id === config.imageScene?.outputAssetId);
+  const [exportingImage, setExportingImage] = useState(false);
+  const [imageExportError, setImageExportError] = useState<string | null>(null);
   const [view, setView] = useState<ProjectView>(imageProject && !["agent", "references"].includes(initialView) ? "editor" : initialView);
   const [leaving, setLeaving] = useState(false);
   const [savingToLeave, setSavingToLeave] = useState(false);
@@ -62,6 +67,13 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const changeConfig = (next: ConfigUpdate) => session.update(next);
   const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => session.update(update, false);
   const save = () => session.save().catch(() => undefined);
+  const exportImage = async () => {
+    if (!imageOutput?.relativePath || exportingImage) return;
+    setExportingImage(true); setImageExportError(null);
+    try { await invoke("export_generated_image", { folderPath: project.folderPath, relativePath: imageOutput.relativePath }); }
+    catch (reason) { setImageExportError(String(reason)); }
+    finally { setExportingImage(false); }
+  };
   const leave = async (keepChanges: boolean) => {
     setSavingToLeave(true);
     try {
@@ -122,17 +134,16 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       </nav>
 
       <div className="project-topbar__actions">
-        {/* A real view now: it renders the timeline through WebCodecs and writes
-            an .mp4. It stays honest about what it cannot do inside itself. */}
-        {!imageProject && <button
+        <button
           className="secondary-button"
           type="button"
-          aria-current={view === "export" ? "page" : undefined}
-          onClick={() => setView("export")}
-          title="Render the timeline to a video file"
+          aria-current={!imageProject && view === "export" ? "page" : undefined}
+          disabled={imageProject && (!imageOutput?.relativePath || !isTauri() || exportingImage)}
+          onClick={() => imageProject ? void exportImage() : setView("export")}
+          title={imageProject ? "Save the selected image as JPG or PNG" : "Render the timeline to a video file"}
         >
-          <Download size={16} aria-hidden="true" /> Export
-        </button>}
+          <Download size={16} aria-hidden="true" /> {exportingImage ? "Exporting…" : "Export"}
+        </button>
         {/* The standing "All changes saved" pill is gone; the button itself is
             now the only save state there is, so it has to carry it. Off means
             the file on disk already matches what is on screen. */}
@@ -165,5 +176,6 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       }}
     /></footer>
     {saveError && <div className="toast" role="alert"><strong>Couldn’t save project</strong><span>{saveError}</span><button onClick={session.dismissError}>Dismiss</button></div>}
+    {imageExportError && <div className="toast" role="alert"><strong>Couldn’t export image</strong><span>{imageExportError}</span><button onClick={() => setImageExportError(null)}>Dismiss</button></div>}
   </div>;
 }

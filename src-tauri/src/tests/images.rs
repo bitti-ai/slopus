@@ -25,6 +25,36 @@ fn generated_jpeg_preserves_resolution_and_stays_inside_the_project() {
 }
 
 #[test]
+fn image_export_writes_real_png_or_copies_jpeg_without_changing_pixels_or_resolution() {
+    let folder = project_folder();
+    let root = folder.path().to_string_lossy();
+    let rgba: Vec<u8> = (0..64 * 40).flat_map(|index| [(index % 256) as u8, 80, 160, 255]).collect();
+    let saved = write_generated_image_frame(&root, "export-test", 64, 40, &rgba).unwrap();
+    let source = folder.path().join(saved.relative_path);
+    let jpeg = fs::read(&source).unwrap();
+    for extension in ["jpg", "jpeg", "JPG"] {
+        let destination = folder.path().join(format!("export.{extension}"));
+        export_image_file(&source, &destination).unwrap();
+        assert_eq!(fs::read(destination).unwrap(), jpeg);
+    }
+    let destination = folder.path().join("export.PNG");
+    export_image_file(&source, &destination).unwrap();
+    let png = fs::read(&destination).unwrap();
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let decoded = ::image::load_from_memory_with_format(&png, ::image::ImageFormat::Png).unwrap();
+    let original = ::image::load_from_memory_with_format(&jpeg, ::image::ImageFormat::Jpeg).unwrap();
+    assert_eq!((decoded.width(), decoded.height()), (64, 40));
+    assert_eq!(decoded.to_rgb8(), original.to_rgb8());
+    export_image_file(&source, &folder.path().join("no-extension")).unwrap();
+    assert_eq!(fs::read(folder.path().join("no-extension.jpg")).unwrap(), jpeg);
+    let unsupported = folder.path().join("export.gif");
+    fs::write(&unsupported, b"existing file").unwrap();
+    assert!(export_image_file(&source, &unsupported).is_err());
+    assert_eq!(fs::read(unsupported).unwrap(), b"existing file");
+    assert_eq!(fs::read(source).unwrap(), jpeg);
+}
+
+#[test]
 fn image_tree_survives_folder_creation_save_and_reopen() {
     let root = tempfile::tempdir().unwrap();
     let config = image_fixture();
