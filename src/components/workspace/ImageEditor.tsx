@@ -92,6 +92,19 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
+  useEffect(() => {
+    const element = imageResults.current;
+    if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      if (event.ctrlKey || element.scrollWidth <= element.clientWidth) return;
+      event.preventDefault();
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientWidth : 1;
+      element.scrollLeft += delta * unit;
+    };
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, [images.length]);
   const { width, height } = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
 
