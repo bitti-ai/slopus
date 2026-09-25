@@ -86,8 +86,9 @@ describe("image generation work", () => {
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     expect(request.prompt).toBe(preview);
-    expect(request.prompt).toContain("Visual style: Watercolor.");
-    expect(request.prompt).toContain("Use <Picture 1> as visual guidance for Ocean. Turquoise water.");
+    expect(request.prompt).toContain("Watercolor visual style");
+    expect(request.prompt).toContain("<Subject 1> is Ocean, providing appearance from <Picture 1>. Turquoise water.");
+    expect(request.prompt).toMatch(/overall_soundscape: N\/A\n\nnon_diegetic_music: N\/A$/);
     expect(request.referencePaths).toEqual(["C:/Image/references/ocean.png"]);
     await queue.cancel(request.jobId);
   });

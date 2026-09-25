@@ -75,19 +75,20 @@ export function resizeImageNode(scene: ImageScene, id: string, box: ImageBox): I
 }
 const sentence = (text: string) => /[.!?。！？]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
 
-/** Slopus's still-image adaptation of H3's visual prose guidance. No generated
- * shot markers, timing or audio sections; boxes refer to the full image. */
-export function imageScenePrompt(scene: ImageScene, look?: string): string {
+/** Visual content only. The compiler places style before or after [Shot 1]
+ * according to H3's reference or base format. Boxes refer to the full image. */
+export function imageScenePromptParts(scene: ImageScene, look?: string): { style: string; composition: string } | null {
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const hasContent = scene.background.trim() || scene.nodes.some((node) => node.description.trim() || node.colors.length || (node.kind === "text" && node.text) || (node.kind !== "root" && node.box));
-  if (!hasContent) return "";
-  const style = [
-    `Medium: ${sentence(scene.style.mode === "photo" ? "Photograph" : scene.style.medium || "Artwork")}`,
-    ...(look?.trim() ? [`Visual style: ${sentence(look)}`] : []),
-    ...(scene.style.aesthetics.trim() ? [`Aesthetics: ${sentence(scene.style.aesthetics)}`] : []),
-    ...(scene.style.lighting.trim() ? [`Lighting: ${sentence(scene.style.lighting)}`] : []),
-    ...(scene.style.detail.trim() ? [`${scene.style.mode === "photo" ? "Camera and lens" : "Art style"}: ${sentence(scene.style.detail)}`] : []),
+  if (!hasContent) return null;
+  const treatment = [
+    ...(look?.trim() ? [`${look.trim()} visual style`] : []),
+    ...(scene.style.aesthetics.trim() ? [`${scene.style.aesthetics.trim()} aesthetics`] : []),
+    ...(scene.style.lighting.trim() ? [`${scene.style.lighting.trim()} lighting`] : []),
+    ...(scene.style.detail.trim() ? [`${scene.style.detail.trim()} ${scene.style.mode === "photo" ? "camera and lens characteristics" : "art style"}`] : []),
   ];
+  const medium = scene.style.mode === "photo" ? "A still photograph" : `A still image in ${scene.style.medium.trim() || "an artistic medium"}`;
+  const style = sentence(`${medium}${treatment.length ? ` with ${treatment.join(", ")}` : ""}`);
   const placement = (node: ImageNode) => node.box ? `Position in the full image: left ${node.box.x / 10}%, top ${node.box.y / 10}%, width ${node.box.width / 10}%, height ${node.box.height / 10}%.` : "";
   const lines: string[] = [
     ...(root.description.trim() ? [sentence(root.description)] : []),
@@ -107,5 +108,10 @@ export function imageScenePrompt(scene: ImageScene, look?: string): string {
     children.forEach((child) => visit(child, depth + 1));
   };
   scene.nodes.filter((node) => node.parentId === root.id).forEach((node) => visit(node, 0));
-  return `Create one still image with a single composition.\n${style.join("\n")}\n\n${lines.join("\n")}`;
+  return { style, composition: lines.join("\n") };
+}
+
+export function imageScenePrompt(scene: ImageScene, look?: string): string {
+  const parts = imageScenePromptParts(scene, look);
+  return parts ? `${parts.style}\n${parts.composition}` : "";
 }

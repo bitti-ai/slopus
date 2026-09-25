@@ -46,7 +46,7 @@ it("edits ordered style chips with suggestions, custom tags, removal, undo, and 
   fireEvent.keyDown(window, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "Add Camera / lens tag" }));
   fireEvent.click(screen.getByRole("button", { name: "35mm" }));
-  expect(imageScenePrompt(current().imageScene!)).toContain("Medium: Photograph.\nAesthetics: Minimal poster, intricate, custom finish.\nLighting: Sunrise, golden hour.\nCamera and lens: Screen print, 35mm.");
+  expect(imageScenePrompt(current().imageScene!)).toContain("A still photograph with Minimal poster, intricate, custom finish aesthetics, Sunrise, golden hour lighting, Screen print, 35mm camera and lens characteristics.");
   fireEvent.keyDown(window, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "Add Aesthetics tag" }));
   expect(screen.getByRole("button", { name: "photorealistic" })).toBeInTheDocument();

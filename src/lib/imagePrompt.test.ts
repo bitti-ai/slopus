@@ -6,21 +6,18 @@ import fixture from "../../fixtures/project-v1-image.json";
 
 const photo = () => createProjectConfig({ name: "Portrait", generationType: "image", prompt: "A runner suspended mid-stride", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 });
 describe("MiniMax H3 still-image prompts", () => {
-  it("places photo style before a single visual composition without video scaffolding", () => {
+  it("uses H3's three core fields with style inside the first shot and silent audio", () => {
     const config = photo();
     config.settings.defaultLook = "watercolor";
     config.imageScene!.style = { mode: "photo", aesthetics: "editorial, high contrast", lighting: "golden hour", medium: "Ignored art medium", detail: "85mm, f/1.4" };
     const snapshot = structuredClone(config);
     expect(compileImagePrompt(config).prompt).toBe([
-      "Create one still image with a single composition.",
-      "Medium: Photograph.",
-      "Visual style: Watercolor.",
-      "Aesthetics: editorial, high contrast.",
-      "Lighting: golden hour.",
-      "Camera and lens: 85mm, f/1.4.",
-      "", "A runner suspended mid-stride.",
+      "integrated_multimodal_description: [Shot 1] A still photograph with Watercolor visual style, editorial, high contrast aesthetics, golden hour lighting, 85mm, f/1.4 camera and lens characteristics.",
+      "A runner suspended mid-stride.",
+      "", "overall_soundscape: N/A",
+      "", "non_diegetic_music: N/A",
     ].join("\n"));
-    expect(compileImagePrompt(config).prompt).not.toMatch(/\[Shot|overall_soundscape|non_diegetic_music|integrated_multimodal_description|00:|root:|Ignored art medium/);
+    expect(compileImagePrompt(config).prompt).not.toMatch(/\[Shot 2|00:|root:|Ignored art medium|Medium:|Aesthetics:|Camera and lens:/);
     expect(config).toEqual(snapshot);
   });
 
@@ -28,8 +25,8 @@ describe("MiniMax H3 still-image prompts", () => {
     const config = parseProjectConfig(fixture);
     config.imageScene!.nodes[1].description = "";
     const prompt = compileImagePrompt(config).prompt;
-    expect(prompt).toContain("Medium: Illustration.");
-    expect(prompt).toContain("Art style: Screen print.");
+    expect(prompt).toContain("integrated_multimodal_description: [Shot 1] A still image in Illustration");
+    expect(prompt).toContain("Screen print art style.");
     expect(prompt).toContain("Overall color palette: #204060.");
     expect(prompt).toContain("Background: Ocean at dawn.");
     expect(prompt).toContain("A grouped arrangement. Position in the full image: left 30%, top 10%, width 40%, height 80%. Its composition includes:\n  Visible lettering. Bold red lettering.");
@@ -47,7 +44,7 @@ describe("MiniMax H3 still-image prompts", () => {
     expect(imageScenePrompt(scene)).not.toContain("\\n");
   });
 
-  it("numbers pictures in selected payload order and treats text references as visual guidance", () => {
+  it("uses all six reference sections with stable subjects and pictures in payload order", () => {
     const config = photo();
     config.references = [
       { id: "runner", kind: "image", name: "Runner", description: "Red jersey", relativePath: "references/runner.png", images: [{ id: "detail", name: "Detail", relativePath: "references/detail.png", sourcePath: null }], intendedUse: [], createdAt: config.createdAt },
@@ -58,12 +55,18 @@ describe("MiniMax H3 still-image prompts", () => {
     config.imageScene!.referenceIds = ["track", "palette", "runner"];
     const result = compileImagePrompt(config);
     expect(result.references.map((reference) => reference.id)).toEqual(["track", "palette", "runner"]);
-    expect(result.prompt).toContain([
-      "Visual references for this still image:",
-      "Use <Picture 1> as visual guidance for Track. A gravel track.",
-      "Additional visual guidance: Warm ochre and red.",
-      "Use <Picture 2>, <Picture 3> as visual guidance for Runner. Red jersey.",
-    ].join("\n"));
+    expect(result.prompt.match(/^\w+:/gm)).toEqual(["subject_definitions:", "summary:", "retention_analysis:", "detailed_description:", "overall_soundscape:", "non_diegetic_music:"]);
+    expect(result.prompt).toContain("<Subject 1> is Track, providing appearance from <Picture 1>. A gravel track.");
+    expect(result.prompt).toContain("<Subject 2> is Palette, providing appearance. Warm ochre and red.");
+    expect(result.prompt).toContain("<Subject 3> is Runner, providing appearance from <Picture 2> and <Picture 3>. Red jersey.");
+    expect(result.prompt).toContain("summary:\n[reference generation] A single still image uses <Subject 1>, <Subject 2>, <Subject 3>");
+    expect(result.prompt).toContain("detailed_description:\nA still photograph.\n[Shot 1] A runner suspended mid-stride.");
+    for (let index = 1; index <= 3; index++) {
+      expect(result.prompt).toContain(`<Subject ${index}> (appears in [Shot 1]): fully_preserved`);
+      expect(result.prompt.split("detailed_description:")[1]).toContain(`Use <Subject ${index}>`);
+    }
+    expect(result.prompt).toMatch(/overall_soundscape: N\/A\n\nnon_diegetic_music: N\/A$/);
+    expect(result.prompt).not.toContain("integrated_multimodal_description");
     expect(result.prompt).not.toMatch(/Exclude these words|<Video|<Audio|first frame|last frame/);
     config.imageScene!.referenceIds = ["missing"];
     expect(() => compileImagePrompt(config)).toThrow("no longer exists");
@@ -82,9 +85,24 @@ describe("MiniMax H3 still-image prompts", () => {
       refmods: [{ id: "encoded", name: "Identity", sourcePath: "D:/identity.safetensors", strength: 1, copies: 1 }] }];
     config.imageScene!.referenceIds = ["identity"];
     const prompt = compileImagePrompt(config).prompt;
-    expect(prompt).toContain("Use the supplied reference conditioning for Woman's identity and appearance in this still image");
+    expect(prompt).toContain("<Subject 1> is Woman, providing identity and appearance from the supplied reference conditioning.");
+    expect(prompt).toContain("Use <Subject 1> for Woman's identity and appearance from the supplied reference conditioning.");
     expect(prompt).not.toMatch(/Additional visual guidance: Woman|<Picture|<Video|safetensors/);
     config.references[0].refmods![0].strength = 0;
     expect(compileImagePrompt(config).prompt).not.toContain("Woman");
+    expect(compileImagePrompt(config).prompt).toMatch(/^integrated_multimodal_description: \[Shot 1\]/);
+  });
+  it("keeps picture numbering independent of refmod and text subjects", () => {
+    const config = photo();
+    config.references = [
+      { id: "disabled", kind: "text", name: "Disabled", description: "", intendedUse: [], createdAt: config.createdAt, refmods: [{ id: "off", name: "Off", sourcePath: "D:/off.safetensors", strength: 0, copies: 1 }] },
+      { id: "style", kind: "text", name: "Style", description: "", intendedUse: ["style"], createdAt: config.createdAt, refmods: [{ id: "style-mod", name: "Style", sourcePath: "D:/style.safetensors", strength: 1, copies: 1 }] },
+      { id: "runner", kind: "image", name: "Runner", description: "Red jersey", relativePath: "references/runner.png", intendedUse: ["character"], createdAt: config.createdAt },
+    ];
+    config.imageScene!.referenceIds = config.references.map((reference) => reference.id);
+    const prompt = compileImagePrompt(config).prompt;
+    expect(prompt).toContain("<Subject 1> is Style, providing visual style from the supplied reference conditioning.");
+    expect(prompt).toContain("<Subject 2> is Runner, providing identity and appearance from <Picture 1>.");
+    expect(prompt).not.toMatch(/Disabled|<Subject 3>|<Picture 2>|<Video/);
   });
 });

@@ -37,10 +37,12 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   button.focus();
   fireEvent.click(button);
   const prompt = within(screen.getByRole("dialog", { name: "Debug Prompt" })).getByLabelText("The compiled MiniMax H3 prompt");
-  for (const line of imageScenePrompt(project.config.imageScene!).split("\n")) expect(prompt.textContent).toContain(line);
+  for (const line of imageScenePrompt(project.config.imageScene!, "Watercolor").split("\n")) expect(prompt.textContent).toContain(line);
   expect(prompt.textContent).toContain('Render the exact text "TO THE MOON".');
-  expect(prompt.textContent).toContain("Visual style: Watercolor.");
-  expect(prompt.textContent).toContain("Use <Picture 1>, <Picture 2> as visual guidance for Rocket. A silver rocket.\nAdditional visual guidance: Peaceful and bright.");
+  expect(prompt.textContent).toContain("Watercolor visual style");
+  expect(prompt.textContent).toContain("subject_definitions:\n<Subject 1> is Rocket, providing appearance from <Picture 1> and <Picture 2>. A silver rocket.\n<Subject 2> is Mood, providing appearance. Peaceful and bright.");
+  expect(prompt.textContent).toContain("[Shot 1] A rocket launch over the ocean at dawn.");
+  expect(prompt.textContent).toMatch(/overall_soundscape: N\/A\n\nnon_diegetic_music: N\/A$/);
   expect(prompt.textContent).not.toContain("Do not include this reference");
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
