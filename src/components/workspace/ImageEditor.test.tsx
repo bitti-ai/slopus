@@ -20,6 +20,39 @@ function setup(initial = parseProjectConfig(fixture)) {
   return () => latest;
 }
 
+it("removes generated images through their context menu and keeps the preview and thumbnail valid", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = ["First", "Second", "Third"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt }));
+  initial.imageScene!.outputAssetId = "Second";
+  initial.thumbnail = "media/generated/Second.jpg";
+  const current = setup(initial);
+  const first = screen.getByRole("button", { name: "View First" });
+  fireEvent.contextMenu(first, { clientX: 80, clientY: 90 });
+  expect(screen.getByRole("menu", { name: "Generated image actions" })).toBeInTheDocument();
+  expect(current().imageScene!.outputAssetId).toBe("Second");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(first).toHaveFocus();
+  expect(current().assets).toHaveLength(3);
+  fireEvent.keyDown(first, { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+  expect(screen.queryByRole("button", { name: "View First" })).not.toBeInTheDocument();
+  expect(current().imageScene!.outputAssetId).toBe("Second");
+  expect(current().thumbnail).toBe("media/generated/Second.jpg");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Second" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+  expect(current().imageScene!.outputAssetId).toBe("Third");
+  expect(current().thumbnail).toBe("media/generated/Third.jpg");
+  expect(screen.getByRole("button", { name: "View Third" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Third" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+  expect(current().assets).toHaveLength(0);
+  expect(current().imageScene!.outputAssetId).toBeNull();
+  expect(current().thumbnail).toBeNull();
+  expect(screen.queryByLabelText("Generated images")).not.toBeInTheDocument();
+  expect(screen.getByText("Compose your image")).toBeInTheDocument();
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+});
+
 it("edits ordered style chips with suggestions, custom tags, removal, undo, and mode-specific choices", () => {
   const current = setup();
   expect(screen.getByRole("button", { name: "Aesthetics tag: Minimal poster" })).toBeInTheDocument();

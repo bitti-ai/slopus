@@ -32,6 +32,8 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [imageMenu, setImageMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
   const hierarchy = useRef<HTMLElement>(null);
@@ -119,6 +121,30 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   };
   const focusNode = (id: string) => [...(hierarchy.current?.querySelectorAll<HTMLElement>("[data-image-node]") ?? [])].find((row) => row.dataset.imageNode === id)?.querySelector<HTMLButtonElement>(".image-tree__select")?.focus();
   const closeContextMenu = () => { setContextMenu(null); focusNode(selected.id); };
+  const closeImageMenu = () => {
+    const button = [...(imageResults.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((element) => element.dataset.imageAsset === imageMenu?.id);
+    setImageMenu(null); button?.focus();
+  };
+  const removeImage = (id: string) => {
+    onChange((current) => {
+      const removed = current.assets.find((asset) => asset.id === id && asset.kind === "image");
+      if (!removed) return current;
+      const currentImages = current.assets.filter((asset) => asset.kind === "image");
+      const remaining = currentImages.filter((asset) => asset.id !== id);
+      const currentScene = current.imageScene ?? scene;
+      const removingSelected = currentScene.outputAssetId === id;
+      const next = removingSelected
+        ? remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)]
+        : remaining.find((asset) => asset.id === currentScene.outputAssetId);
+      return { ...current,
+        assets: current.assets.filter((asset) => asset.id !== id),
+        imageScene: { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
+        thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
+        timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
+      };
+    });
+    requestAnimationFrame(() => (imageResults.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ?? imageResults.current?.querySelector<HTMLButtonElement>("button") ?? viewport.current)?.focus());
+  };
   const startRename = () => { renameEnding.current = false; setRenaming({ id: selected.id, value: selected.name }); };
   const finishRename = (save: boolean, restoreFocus = true) => {
     if (!renaming || renameEnding.current) return;
@@ -262,6 +288,9 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       { label: "Duplicate", icon: <Copy size={15} />, disabled: selected.kind === "root", action: () => attempt(duplicate) },
       { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
+    {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
+      { label: "Remove", icon: <Trash2 size={15} />, danger: true, action: () => removeImage(imageMenu.id) },
+    ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools">
         <button className="primary-button" disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || !imageScenePrompt(scene)} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
@@ -272,7 +301,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         <select aria-label="Canvas tool" value={drawKind ?? "select"} onChange={(event) => { setDrawKind(event.target.value === "select" ? null : event.target.value as typeof drawKind); setBoxes(true); }}><option value="select">Select / move</option><option value="object">Draw object</option><option value="text">Draw text</option><option value="group">Draw group</option></select>
         <button className="secondary-button" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>Fit</button><input aria-label="Image zoom" type="range" min={MIN_IMAGE_ZOOM} max={MAX_IMAGE_ZOOM} step="0.01" value={view.zoom} onChange={(event) => { const zoom = Number(event.target.value); setView((current) => ({ zoom, x: current.x * zoom / current.zoom, y: current.y * zoom / current.zoom })); }} /><span>{Math.round(view.zoom * 100)}%</span>
       </div>
-      <div ref={viewport} className={`image-viewport${panning ? " panning" : ""}`} title="Scroll to zoom · Drag with the middle mouse button to pan"
+      <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} title="Scroll to zoom · Drag with the middle mouse button to pan"
         onPointerDownCapture={(event) => {
           if (event.button !== 1 || pointer.current || pan.current) return;
           event.preventDefault(); event.stopPropagation();
@@ -303,7 +332,16 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       </div></div>
       <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
       {(error || work?.error) && <p className="image-error" role="alert">{error ?? work?.error}</p>}
-      {images.length > 0 && <div className="image-results" aria-label="Generated images">{images.map((asset) => <button key={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId} onClick={() => onChange((current) => ({ ...current, thumbnail: asset.relativePath ?? null, imageScene: { ...(current.imageScene ?? scene), outputAssetId: asset.id } }))}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
+      {images.length > 0 && <div ref={imageResults} className="image-results" aria-label="Generated images">{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
+        onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
+        onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
+          }
+        }}
+        onClick={() => onChange((current) => ({ ...current, thumbnail: asset.relativePath ?? null, imageScene: { ...(current.imageScene ?? scene), outputAssetId: asset.id } }))}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
       <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>

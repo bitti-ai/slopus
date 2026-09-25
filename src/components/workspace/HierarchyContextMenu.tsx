@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 export interface HierarchyMenuItem {
   label: string; icon: ReactNode; shortcut?: string; disabled?: boolean; danger?: boolean; separator?: boolean; action: () => void;
 }
-export function HierarchyContextMenu({ x, y, items, onClose }: { x: number; y: number; items: HierarchyMenuItem[]; onClose: () => void }) {
+export function HierarchyContextMenu({ x, y, items, onClose, label = "Image hierarchy actions" }: { x: number; y: number; items: HierarchyMenuItem[]; onClose: () => void; label?: string }) {
   const menu = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y });
   useLayoutEffect(() => {
@@ -22,7 +22,7 @@ export function HierarchyContextMenu({ x, y, items, onClose }: { x: number; y: n
     window.addEventListener("resize", onClose);
     return () => { document.removeEventListener("pointerdown", outside); window.removeEventListener("keydown", escape, true); window.removeEventListener("resize", onClose); };
   }, [onClose]);
-  return createPortal(<div ref={menu} className="image-hierarchy-menu" role="menu" aria-label="Image hierarchy actions" style={position} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => {
+  return createPortal(<div ref={menu} className="image-hierarchy-menu" role="menu" aria-label={label} style={position} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => {
     event.stopPropagation();
     const shortcut = (event.ctrlKey || event.metaKey) ? `Ctrl+${event.key.toUpperCase()}` : event.key;
     const command = items.find((item) => item.shortcut === shortcut && !item.disabled);
