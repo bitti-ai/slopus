@@ -237,7 +237,13 @@
   --fill-subtle-hover: rgba(255, 255, 255, 0.0605);    /* subtle button, list item, menu item */
   --fill-subtle-pressed: rgba(255, 255, 255, 0.0419);
   --thumb-bg: #454545;                 /* slider thumb disc, radio's inner dot on accent */
-  --acrylic: rgba(44, 44, 44, 0.96);   /* menus, flyouts, popovers (with --acrylic-filter) */
+  /* Menus, flyouts, popovers (with --acrylic-filter). Tinted to the palette's
+     blue-grey and thin enough that the blur shows. Over the app's own
+     surfaces it lands near #1b1f28: --text-primary 14.5:1, --text-muted
+     6.4:1, --text-faint 4.8:1. Over a pure-white frame in the monitor it
+     lifts to ~#3e414a, where --text-faint drops to 3.0:1 — menu labels use
+     primary / secondary ink (9.1:1 / 6.3:1 there), faint is only hints. */
+  --acrylic: rgba(30, 34, 44, 0.86);
   --dialog-bg: #12151d;                /* ContentDialog body */
   --dialog-footer-bg: #0d1016;         /* its button row, one step darker */
   --tooltip-bg: #1d212b;
