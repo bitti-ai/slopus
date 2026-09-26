@@ -13,7 +13,7 @@ import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
 import { TitleBar } from "./components/TitleBar";
 import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/UpdatePanel";
-import { CommandBar, CommandBarButton, CommandBarSeparator, EmptyState, InfoBadge, InfoBar, TextField } from "./components/ui";
+import { CommandBar, CommandBarButton, EmptyState, InfoBadge, InfoBar, TextField } from "./components/ui";
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
 import { useRunningExportName } from "./lib/exportJob";
@@ -391,7 +391,20 @@ function App() {
   return (
     <div className="app-shell">
       <div className="app-screen" hidden={settingsOpen}>
-        <TitleBar title="Slopus" secondary="Preview" actions={shellActions} />
+        <TitleBar title="Slopus" secondary="Preview" actions={shellActions}>
+          {/* Search sits in the middle of the title bar, as in Windows Settings. */}
+          <TextField
+            className="titlebar-search"
+            inputRef={searchInput}
+            type="search"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search projects"
+            aria-label="Search projects"
+            aria-keyshortcuts="Control+F"
+            icon={<Search16 />}
+          />
+        </TitleBar>
         <main className="library" aria-labelledby="library-title">
           <div className="library__head">
             <h1 id="library-title" className="library__title">Projects</h1>
@@ -406,23 +419,13 @@ function App() {
             <CommandBar
               aria-label="Library commands"
               className="library__commands"
-              end={<TextField
-                className="library__search"
-                inputRef={searchInput}
-                type="search"
-                value={query}
-                onChange={setQuery}
-                placeholder="Search projects"
-                aria-label="Search projects"
-                aria-keyshortcuts="Control+F"
-                trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search16 /></span>}
-              />}
+              end={<>
+                <CommandBarButton icon={projectLayout === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
+                <CommandBarButton icon={projectLayout === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
+              </>}
             >
               {newProjectButton}
               <CommandBarButton icon={<FolderOpen16 />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
-              <CommandBarSeparator />
-              <CommandBarButton icon={projectLayout === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
-              <CommandBarButton icon={projectLayout === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
             </CommandBar>
             {/* An empty library says so in its empty state; a heading counting
                 "0 projects" above it would only repeat that. */}

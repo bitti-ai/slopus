@@ -68,14 +68,6 @@
   gap: var(--space-1);
 }
 
-.library__commands .ui-command-bar__end {
-  flex: 0 1 280px;
-  margin-left: auto;
-}
-
-.library__search {
-  width: 100%;
-}
 
 /* The tiles scroll here, under the strip. A flex column so the compact empty
    state can centre itself in what is left. */

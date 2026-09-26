@@ -184,3 +184,19 @@
   margin: 0 var(--space-1);
   background: var(--stroke-card);
 }
+
+/* A search box in the title bar's middle, as in Windows Settings: centred,
+   up to 360px, fully rounded, glyph leading. Round corners make the usual
+   bottom focus line look clipped, so focus draws the accent all round. */
+.titlebar-search {
+  width: min(100%, 360px);
+  margin-inline: auto;
+  padding: 0 var(--space-3);
+  border-bottom-color: var(--stroke-control);
+  border-radius: var(--radius-pill);
+}
+
+.titlebar-search:focus-within {
+  border-color: var(--field-focus-line);
+  box-shadow: inset 0 0 0 1px var(--field-focus-line);
+}
