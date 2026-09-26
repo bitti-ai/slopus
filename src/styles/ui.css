@@ -1797,8 +1797,7 @@
 .ui-cmd[aria-pressed="true"],
 .icon-button.icon-button--checked,
 .icon-button[aria-pressed="true"],
-.ui-toggle-button[aria-pressed="true"],
-.ui-toggle-button.is-checked {
+.ui-toggle-button[aria-pressed="true"] {
   color: var(--accent-bright);
   background: var(--accent-soft);
 }
@@ -1807,8 +1806,7 @@
 .ui-cmd[aria-pressed="true"]:hover:not(:disabled),
 .icon-button.icon-button--checked:hover:not(:disabled),
 .icon-button[aria-pressed="true"]:hover:not(:disabled),
-.ui-toggle-button[aria-pressed="true"]:hover:not(:disabled),
-.ui-toggle-button.is-checked:hover:not(:disabled) {
+.ui-toggle-button[aria-pressed="true"]:hover:not(:disabled) {
   color: var(--accent-bright);
   background: var(--accent-soft-strong);
 }
@@ -1817,8 +1815,7 @@
 .ui-cmd[aria-pressed="true"]:active:not(:disabled),
 .icon-button.icon-button--checked:active:not(:disabled),
 .icon-button[aria-pressed="true"]:active:not(:disabled),
-.ui-toggle-button[aria-pressed="true"]:active:not(:disabled),
-.ui-toggle-button.is-checked:active:not(:disabled) {
+.ui-toggle-button[aria-pressed="true"]:active:not(:disabled) {
   color: var(--accent-bright);
   background: var(--accent-soft);
 }
@@ -1938,7 +1935,7 @@
 }
 
 /* ============================================================================
-   TextField — the TextBox as a composite (see .search-field in controls.css)
+   TextField — the TextBox as a composite (see the text-field notes in controls.css)
    ========================================================================== */
 
 .ui-textfield {

@@ -1,7 +1,7 @@
 /* ============================================================================
    controls.css — shared UI primitives used by every surface.
-   Buttons, icon buttons, text fields, check boxes, radios, sliders,
-   progress bars, panel chrome: the WinUI control set, in CSS.
+   Buttons, icon buttons, text fields, check boxes, radios and sliders: the
+   WinUI control set, in CSS.
    ========================================================================== */
 
 /* --- Buttons ---------------------------------------------------------------
@@ -75,56 +75,6 @@
   background: var(--fill-control-disabled);
 }
 
-/* A standard button with a stronger neutral fill: a row's own verb, louder
-   than a subtle control and quieter than the accent. */
-.fill-button {
-  min-height: var(--control-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--stroke-control);
-  border-bottom-color: var(--stroke-control-bottom);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: var(--button-fill-bg);
-  font-size: var(--text-base);
-  font-weight: var(--weight-regular);
-  line-height: var(--leading-normal);
-  transition: var(--transition-control);
-}
-
-.fill-button:hover:not(:disabled) { background: var(--button-fill-hover); }
-
-.fill-button:disabled {
-  opacity: 1;
-  color: var(--text-disabled);
-  background: var(--fill-control-disabled);
-}
-
-.danger-button {
-  width: 100%;
-  min-height: var(--control-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--danger-line);
-  border-radius: var(--radius-sm);
-  color: var(--danger);
-  background: var(--danger-soft);
-  font-size: var(--text-base);
-  font-weight: var(--weight-regular);
-  transition: var(--transition-control);
-}
-
-.danger-button:hover:not(:disabled) {
-  border-color: var(--danger-line-strong);
-  background: var(--danger-soft-strong);
-}
-
 /* --- Icon buttons ---------------------------------------------------------- */
 
 .icon-button {
@@ -156,32 +106,6 @@
 /* A toggle icon button that is on (.icon-button--checked / aria-pressed)
    takes the shared on-state in ui.css ("Toggle on-state"). */
 
-.icon-button--strong {
-  border-color: var(--stroke-control);
-  border-bottom-color: var(--stroke-control-bottom);
-  background: var(--fill-control);
-}
-
-/* Destructive icon action shared by inspector headers. */
-.inspector-remove-button {
-  width: var(--icon-button);
-  height: var(--icon-button);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: none;
-  transition: var(--transition-control);
-}
-
-.inspector-remove-button:hover:not(:disabled) {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
 /* --- Text fields ------------------------------------------------------------
    The Fluent TextBox: 32px, 4px corners, a hairline edge whose BOTTOM is the
    strong stroke, and — while typing — a 2px accent underline and a slightly
@@ -192,7 +116,7 @@
    zero specificity (:where), so any screen's own field rule still wins on the
    properties it sets. It is drawn as a border colour plus a 1px inset shadow
    so the field does not grow a pixel on focus. A composite field — a bordered
-   wrapper around a borderless input, like .search-field — draws the underline
+   wrapper around a borderless input, like .ui-textfield — draws the underline
    on the wrapper instead and sets `box-shadow: none` on the inner input so
    the two never stack. */
 
@@ -230,61 +154,6 @@
 
 .text-field:focus {
   background: var(--fill-input-focus);
-}
-
-/* --- Search field ---------------------------------------------------------- */
-
-.search-field {
-  height: var(--field-height);
-  width: 260px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  color: var(--text-secondary);
-  background: var(--fill-control);
-  border: 1px solid var(--stroke-control);
-  border-bottom-color: var(--stroke-strong);
-  border-radius: var(--radius-sm);
-  transition: var(--transition-control);
-}
-
-.search-field:hover:not(:focus-within) {
-  background: var(--fill-control-hover);
-}
-
-/* The bordered wrapper IS the control, so it carries the TextBox underline —
-   Ctrl+K has to land somewhere obvious. */
-.search-field:focus-within {
-  border-bottom-color: var(--field-focus-line);
-  background: var(--fill-input-focus);
-  box-shadow: inset 0 -1px 0 var(--field-focus-line);
-}
-
-.search-field input {
-  min-width: 0;
-  flex: 1;
-  height: 100%;
-  background: none;
-  border: 0;
-  outline: none;
-  box-shadow: none;                    /* .search-field:focus-within draws it */
-  color: var(--text-primary);
-  font-size: var(--text-base);
-}
-
-.search-field input::placeholder {
-  color: var(--text-faint);
-}
-
-/* The Ctrl K hint inside the search field: a caption-sized key cap. */
-.search-field kbd {
-  font: var(--weight-regular) var(--text-xs) / 1 var(--font-sans);
-  color: var(--text-secondary);
-  border: 1px solid var(--stroke-control);
-  border-bottom-color: var(--stroke-control-bottom);
-  padding: 2px var(--space-1);
-  border-radius: var(--radius-sm);
 }
 
 /* --- Check box, radio button, slider ----------------------------------------
@@ -453,128 +322,6 @@ input[type="range"]:disabled::-webkit-slider-thumb {
     var(--thumb-bg) calc(var(--thumb-dot) + 0.5px)
   );
 }
-
-/* --- Section label ---------------------------------------------------------
-   Sentence case, caption size, semibold: the Fluent section header. The
-   markup may still spell some labels in capitals; that is copy, not style. */
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-/* --- Back link ------------------------------------------------------------- */
-
-.back-link {
-  min-height: var(--control-md);
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  padding: 0 var(--space-2);
-  margin-left: calc(var(--space-2) * -1);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--text-base);
-  transition: var(--transition-control);
-}
-
-.back-link:hover {
-  color: var(--text-primary);
-  background: var(--fill-subtle-hover);
-}
-
-/* --- Panel chrome (shared header strip inside editor panels) ---------------- */
-
-.panel-chrome {
-  height: var(--control-md);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-2) 0 var(--space-3);
-  border-bottom: 1px solid var(--line);
-  color: var(--text-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.panel-chrome > span {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.panel-chrome button {
-  min-height: var(--control-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: none;
-  font-size: var(--text-xs);
-  transition: var(--transition-control);
-}
-
-.panel-chrome button:hover {
-  color: var(--text-primary);
-  background: var(--fill-subtle-hover);
-}
-
-/* A flat status dot. No glow. */
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-}
-
-/* --- Progress ---------------------------------------------------------------
-   The Fluent ProgressBar: a 3px track with 1.5px ends. */
-
-.progress-track {
-  height: var(--progress-height);
-  margin: var(--space-3) 0;
-  border-radius: var(--radius-progress);
-  background: var(--track);
-  overflow: hidden;
-}
-
-.progress-track i {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-progress);
-  background: var(--progress-fill);
-}
-
-.mini-progress {
-  display: block;
-  height: var(--progress-height);
-  margin-top: var(--space-2);
-  border-radius: var(--radius-progress);
-  background: var(--track);
-  overflow: hidden;
-}
-
-.mini-progress em {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-progress);
-  background: var(--progress-fill);
-}
-
-.progress-track i[data-state="done"],
-.mini-progress em[data-state="done"] { background: var(--success); }
 
 /* Toasts are gone: errors and notices are InfoBars placed inline under the
    command bar or title bar (src/components/ui/InfoBar.tsx). */

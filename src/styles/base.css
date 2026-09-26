@@ -204,20 +204,6 @@ textarea:focus-visible,
   }
 }
 
-/* The Fluent ProgressRing, for anything that waits without a known length.
-   A 16px ring whose arc sweeps round; it replaces bouncing dots and pulsing
-   glows. Wears currentColor so it follows whatever label it replaces. */
-.progress-ring {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  border: 2px solid transparent;
-  border-top-color: currentColor;
-  border-right-color: currentColor;
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-}
-
 /* --- Utilities ------------------------------------------------------------- */
 
 .sr-only {
@@ -250,6 +236,3 @@ textarea:focus-visible,
   to { transform: rotate(360deg); }
 }
 
-@keyframes scan {
-  to { transform: translateY(420%); }
-}

@@ -29,8 +29,7 @@
 @import "./export.css";
 @import "./updater.css";
 
-/* Body text entry uses one reading size. Editable inspector headings keep
-   their own hierarchy below. */
+/* Body text entry uses one reading size. */
 :root input:not([type]),
 :root input[type="text"],
 :root input[type="search"],
@@ -41,11 +40,3 @@
   font-size: var(--text-base);
 }
 
-:root .generator-panel .job-title__name,
-:root .generator-panel .shot-title__name,
-:root .reference-inspector .reference-title__name,
-:root .clip-inspector .clip-title__name {
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
