@@ -27,7 +27,8 @@
      SettingsCard      <SettingsCard icon header description>{control}</SettingsCard>; onClick → chevron, href → external.
      SettingsExpander  <SettingsExpander icon header description control={…}>{<SettingsRow …/>}</SettingsExpander>
      SettingsRow       <SettingsRow header description>{control}</SettingsRow> (inside an expander).
-     PropSection       <PropSection title="Transform" persistKey="clip.transform" actions={…}>rows…</PropSection>
+     PropSection       <PropSection title="Transform" persistKey="clip.transform" summary="1 changed" actions={…}>rows…</PropSection>
+                       28px header on chrome; `summary` is right-aligned and stays visible when collapsed.
      PropRow           <PropRow label htmlFor value defaultValue onReset scrub={{ value, onChange, step, min, max }}>{field}</PropRow>
      ContextMenu       <ContextMenu items position={{x,y}|{anchor}} onClose aria-label /> (controlled).
      useContextMenu    const menu = useContextMenu(); onContextMenu={(e) => menu.open(e, items)}; render {menu.element}.
@@ -43,13 +44,25 @@
      ProgressRing      <ProgressRing size={16|20|32} value? aria-label />
      InfoBadge         <InfoBadge value={3} severity="attention" /> or a dot without value.
      Expander          <Expander header description icon defaultExpanded>{content}</Expander>
-     SelectorBar       <SelectorBar items={[{value,label}]} value onChange aria-label /> (tablist).
+     SelectorBar       <SelectorBar items={[{value,label}]} value onChange aria-label compact? /> (tablist;
+                       compact = the 24px segmented form for a pane toolbar).
      CommandBar        <CommandBar aria-label end={…}><CommandBarButton icon label shortcut onClick /><CommandBarSeparator/></CommandBar>
-     PaneHeader        <PaneHeader title="Inspector" actions={…} />
+     PaneHeader        <PaneHeader views={<SelectorBar compact …/>} actions={…} /> — the 36px pane toolbar on
+                       chrome. `title` still works but a pane should not carry one (see ItemHeader).
+     ItemHeader        <ItemHeader color="var(--clip-video)" icon={…} name="Clip" | name={<input className=
+                       "ui-item-header__input" …/>} meta="Video · V1 · 6.2 s" actions={…} chip? id? level? />
+                       — 48px, heads a pane that shows one selected thing.
+     EmptyState        <EmptyState icon={<Film size={32}/>} title="No media yet" description="…" action={…} />
      NavPane/NavItem   <NavPane aria-label footer={…}><NavItem icon label selected badge onClick /></NavPane>
      Flyout            <Flyout open anchor={buttonRef} onClose aria-label>…</Flyout> (light dismiss, acrylic).
      TextField         <TextField value onChange={(v) => …} icon trailing={<button className="ui-textfield__button" …/>} />
-     StatusBar         <StatusBar end={…}>items…</StatusBar> (24px).
+     StatusBar         <StatusBar end={…}>items…</StatusBar> (24px, on chrome).
+
+   Shared CSS rules (ui.css), no component:
+     .ui-selectable    list rows, tiles, cards: selected by aria-selected / aria-pressed / .is-selected →
+                       accent-soft + 3×16 pill (--card: accent ring instead; --separated: --line under a row).
+     Toggle on-state   .icon-button--checked, .ui-cmd--pressed, .icon-button / .ui-cmd / .ui-toggle-button
+                       with aria-pressed="true": accent-soft fill, accent icon.
 
    Non-component helpers live in src/lib:
      lib/commands.ts   useShortcut("Ctrl+S", fn, { enabled, allowInInput, scope, preventDefault, allowInModal }),
@@ -82,6 +95,7 @@ export {
   type RadioGroupProps, type RadioProps, type SelectorBarItem, type SelectorBarProps, type SliderProps, type ToggleSwitchProps,
 } from "./Controls";
 export { Flyout, type FlyoutProps } from "./Flyout";
+export { EmptyState, ItemHeader, type EmptyStateProps, type ItemHeaderProps } from "./Pane";
 export {
   CommandBar, CommandBarButton, CommandBarSeparator, NavItem, NavPane, PaneHeader, StatusBar, TextField,
   type CommandBarButtonProps, type CommandBarProps, type NavItemProps, type NavPaneProps, type PaneHeaderProps,
