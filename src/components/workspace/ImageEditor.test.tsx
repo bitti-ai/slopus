@@ -45,9 +45,9 @@ it("starts an image root from the thumbnail Edit menu and hides root text contro
   expect(current().assets.filter((asset) => asset.imageDraft)).toHaveLength(1);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).assets).toEqual(current().assets);
   expect(screen.getByLabelText("Image placement canvas").parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(101 / 77));
-  fireEvent.change(screen.getByLabelText("Root type"), { target: { value: "prompt" } });
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "prompt" } });
   expect(screen.getByLabelText("Prompt (high-level description)")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Root type"), { target: { value: "image" } });
+  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "image" } });
   expect(current().imageScene!.sourceImage).toBeNull();
 });
 

@@ -413,7 +413,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} />{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} />Editing</span>}</button>)}</div>}
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
-      {selected.kind === "root" && <label>Root type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt root</option><option value="image">Image root</option></select></label>}
+      {selected.kind === "root" && <label>Type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt</option><option value="image">Image</option></select></label>}
       {selected.kind === "root" && imageRoot ? <>
         <button className="secondary-button" disabled={!isTauri()} onClick={() => attempt(async () => {
           const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
