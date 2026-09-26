@@ -325,7 +325,10 @@ export function Expander({ header, description, icon, children, expanded, defaul
 
 /* --- SelectorBar -----------------------------------------------------------------------
    Text tabs with a 3×16px accent pill under the selected one. role=tablist,
-   arrow keys / Home / End move and select (automatic activation). */
+   arrow keys / Home / End move and select (automatic activation).
+   `compact` is the 24px segmented form that sits in a pane toolbar
+   (PaneHeader `views`): 12px segments in one hairline box, the selected one
+   raised on the control fill. */
 
 export interface SelectorBarItem<V extends string = string> {
   value: V;
@@ -342,9 +345,11 @@ export interface SelectorBarProps<V extends string = string> {
   onChange: (value: V) => void;
   "aria-label"?: string;
   className?: string;
+  /** The 24px segmented form for pane toolbars. */
+  compact?: boolean;
 }
 
-export function SelectorBar<V extends string = string>({ items, value, onChange, className, ...aria }: SelectorBarProps<V>) {
+export function SelectorBar<V extends string = string>({ items, value, onChange, className, compact, ...aria }: SelectorBarProps<V>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const enabled = items.map((item, index) => (item.disabled ? -1 : index)).filter((index) => index >= 0);
@@ -360,7 +365,7 @@ export function SelectorBar<V extends string = string>({ items, value, onChange,
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label={aria["aria-label"]} className={cx("ui-selector-bar", className)} onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label={aria["aria-label"]} className={cx("ui-selector-bar", compact && "ui-selector-bar--compact", className)} onKeyDown={onKeyDown}>
       {items.map((item, index) => {
         const selected = item.value === value;
         return (

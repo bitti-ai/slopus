@@ -87,10 +87,17 @@ export function CommandBarSeparator() {
 }
 
 /* --- PaneHeader ------------------------------------------------------------------------
-   32px, 12px semibold title, actions on the trailing edge. */
+   A pane's toolbar: a 36px (--chrome-row) strip on --surface-chrome with a
+   --stroke-divider bottom edge. Views lead (a compact SelectorBar), actions
+   sit on the trailing edge. It is only there when the pane HAS views or
+   actions, and it should not carry a title — a pane is headed by what it
+   holds (ItemHeader) or starts with its content. `title` survives for the
+   callers that still pass one: 12px semibold at the leading edge. */
 
 export interface PaneHeaderProps {
-  title: ReactNode;
+  title?: ReactNode;
+  /** Leading content after the title: the pane's views, e.g. <SelectorBar compact …/>. */
+  views?: ReactNode;
   actions?: ReactNode;
   /** Id for the title, so the pane can be aria-labelledby it. */
   id?: string;
@@ -99,11 +106,12 @@ export interface PaneHeaderProps {
   level?: 2 | 3 | 4;
 }
 
-export function PaneHeader({ title, actions, id, className, level = 2 }: PaneHeaderProps) {
+export function PaneHeader({ title, views, actions, id, className, level = 2 }: PaneHeaderProps) {
   const Heading = `h${level}` as "h2";
   return (
     <div className={cx("ui-pane-header", className)}>
-      <Heading id={id} className="ui-pane-header__title">{title}</Heading>
+      {title !== undefined && <Heading id={id} className="ui-pane-header__title">{title}</Heading>}
+      {views && <div className="ui-pane-header__views">{views}</div>}
       {actions && <div className="ui-pane-header__actions">{actions}</div>}
     </div>
   );
@@ -202,7 +210,9 @@ export function TextField({ value, onChange, icon, trailing, className, inputCla
 }
 
 /* --- StatusBar ----------------------------------------------------------------------------
-   A 24px bar along the bottom of a window or pane, 12px text. It is a
+   A 24px (--chrome-row-sm) strip on --surface-chrome along the bottom of a
+   window or pane, 12px text: labelled mono values on the leading side, state
+   on the trailing side. It is a
    labelled region, not a live region: a playhead timecode would otherwise be
    read out every frame. Put role="status" on the one item that should speak. */
 

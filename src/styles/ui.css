@@ -652,10 +652,20 @@
    ========================================================================== */
 
 .ui-prop-section__header {
-  height: 28px;
+  height: var(--section-row);
   display: flex;
   align-items: center;
+  border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+  background: var(--surface-chrome);
+}
+
+/* One line between two headers, not two: a collapsed section's bottom edge
+   is the next header's top edge. The first section in its container sits
+   under a toolbar or item header that already draws a divider. */
+.ui-prop-section:not(.ui-prop-section--open) + .ui-prop-section > .ui-prop-section__header,
+.ui-prop-section:first-child > .ui-prop-section__header {
+  border-top-color: transparent;
 }
 
 .ui-prop-section__toggle {
@@ -667,7 +677,7 @@
   gap: var(--space-1);
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   color: var(--text-primary);
   background: transparent;
   font-size: var(--text-xs);
@@ -675,6 +685,25 @@
   line-height: var(--leading-snug);
   text-align: left;
   transition: var(--transition-control);
+}
+
+.ui-prop-section__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A count or "1 changed" at the trailing edge, there whether the section is
+   open or not: it is how a collapsed section says what it holds. */
+.ui-prop-section__summary {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .ui-prop-section__toggle:hover { background: var(--fill-subtle-hover); }
@@ -707,7 +736,7 @@
 .ui-prop-row {
   min-height: 28px;
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) 20px;
+  grid-template-columns: var(--prop-label) minmax(0, 1fr) 20px;
   align-items: center;
   column-gap: var(--space-2);
 }
@@ -1347,6 +1376,40 @@
   place-items: center;
 }
 
+/* Compact: the 24px segmented control a pane toolbar holds its views in.
+   One hairline box on the segmented wash; the selected segment is raised on
+   the control fill and keeps the accent pill, pulled in to the box's edge. */
+.ui-selector-bar--compact {
+  height: var(--control-sm);
+  align-items: stretch;
+  gap: 0;
+  padding: 1px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-md);
+  background: var(--wash-1);
+}
+
+.ui-selector-bar--compact .ui-selector-bar__item {
+  min-height: 0;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-selector-bar--compact .ui-selector-bar__item--selected {
+  background: var(--fill-control);
+  box-shadow: 0 0 0 1px var(--stroke-control);
+}
+
+.ui-selector-bar--compact .ui-selector-bar__item--selected::after {
+  bottom: 0;
+  width: 12px;
+  height: 2px;
+  margin-left: -6px;
+}
+
 /* ============================================================================
    CommandBar
    ========================================================================== */
@@ -1424,15 +1487,7 @@
   color: var(--text-disabled);
 }
 
-.ui-cmd--pressed {
-  border-color: var(--accent-line);
-  color: var(--accent-on-soft);
-  background: var(--accent-soft);
-}
-
-.ui-cmd--pressed:hover:not(:disabled) {
-  background: var(--accent-soft-strong);
-}
+/* .ui-cmd--pressed: see "Toggle on-state" below. */
 
 .ui-cmd__icon {
   width: 16px;
@@ -1446,12 +1501,19 @@
    ========================================================================== */
 
 .ui-pane-header {
-  min-height: var(--control-md);
+  height: var(--chrome-row);
+  flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
   padding: 0 var(--space-1) 0 var(--space-3);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
+}
+
+/* No title: the views sit where the title would have. */
+.ui-pane-header:not(:has(> .ui-pane-header__title)) {
+  padding-left: var(--space-2);
 }
 
 .ui-pane-header__title {
@@ -1467,11 +1529,281 @@
   white-space: nowrap;
 }
 
+.ui-pane-header__views {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .ui-pane-header__actions {
   flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
+}
+
+/* ============================================================================
+   ItemHeader — heads a pane that shows one selected thing
+   ========================================================================== */
+
+.ui-item-header {
+  height: var(--item-header);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
+}
+
+/* The kind chip: the kind's glyph in white on the kind's colour (--item-kind,
+   set from the `color` prop). A custom chip (a thumbnail, a reference's art)
+   fills the same 28px square. */
+.ui-item-header__chip {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  color: var(--on-accent);
+  background: var(--item-kind, var(--panel-3));
+}
+
+.ui-item-header__chip--custom > img,
+.ui-item-header__chip--custom > video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ui-item-header__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.ui-item-header__name {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-item-header__name--custom {
+  display: flex;
+  overflow: visible;
+}
+
+/* Rename in place: the input reads as the heading until the mouse or the
+   caret is on it, then shows the text field it is. The 20px height keeps the
+   header at 48px; the negative margin keeps the text where a heading's is. */
+.ui-item-header__input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  margin: 0 0 0 calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  transition: var(--transition-control);
+}
+
+.ui-item-header__input:hover:not(:focus) {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-item-header__input:focus {
+  border-color: var(--stroke-control);
+  background: var(--fill-input-focus);
+}
+
+.ui-item-header__meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-item-header__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ============================================================================
+   EmptyState — the compact one every pane shares
+   ========================================================================== */
+
+.ui-empty-state {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.ui-empty-state__icon {
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+}
+
+.ui-empty-state__icon > svg {
+  width: 32px;
+  height: 32px;
+}
+
+.ui-empty-state__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal);
+}
+
+.ui-empty-state__description {
+  max-width: 36ch;
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-empty-state__action {
+  margin-top: var(--space-4);
+}
+
+/* ============================================================================
+   Selectable item — one rule for list rows, tiles and cards
+   ----------------------------------------------------------------------------
+   Anything the user picks from a set (a scene card, a media card, a shot, a
+   reference tile, a project card) takes `.ui-selectable` and states its
+   selection as aria-selected="true" (listbox / grid options),
+   aria-pressed="true" (toggle-button cards) or `.is-selected`:
+
+     rest      transparent
+     hover     --fill-subtle-hover
+     selected  --accent-soft (one step stronger under the mouse), plus the
+               Fluent 3×16 accent pill at the inline start, like NavItem's
+
+   The pill is a ::before, so the element must not use ::before itself; it is
+   positioned against the element (position: relative is set here).
+   `--separated` adds the --line under a list row. `--card` is for a card
+   with its own stroke and art, where a pill would sit on the thumbnail: the
+   selected card gets an accent ring on its edge instead of the pill. */
+
+.ui-selectable {
+  position: relative;
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.ui-selectable--separated {
+  border-bottom: 1px solid var(--line);
+}
+
+.ui-selectable:hover {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-selectable.is-selected,
+.ui-selectable[aria-selected="true"],
+.ui-selectable[aria-pressed="true"] {
+  background: var(--accent-soft);
+}
+
+.ui-selectable.is-selected:hover,
+.ui-selectable[aria-selected="true"]:hover,
+.ui-selectable[aria-pressed="true"]:hover {
+  background: var(--accent-soft-strong);
+}
+
+.ui-selectable:not(.ui-selectable--card).is-selected::before,
+.ui-selectable:not(.ui-selectable--card)[aria-selected="true"]::before,
+.ui-selectable:not(.ui-selectable--card)[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.ui-selectable--card.is-selected,
+.ui-selectable--card[aria-selected="true"],
+.ui-selectable--card[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ============================================================================
+   Toggle on-state — one look for every on/off button
+   ----------------------------------------------------------------------------
+   A toggle that is on (the agent pane shown, safe areas visible, a
+   CommandBarButton with `pressed`) wears the accent tint: --accent-soft fill
+   and the readable accent on its icon, one step stronger under the mouse.
+   Give the button aria-pressed and one of: .icon-button--checked (or just
+   aria-pressed="true" on an .icon-button), .ui-cmd--pressed (CommandBarButton
+   does it), or `.ui-toggle-button` on any other button. An on button stays
+   tinted under the mouse instead of falling back to the neutral hover, which
+   is what made the old pressed fill look fainter than hover. */
+
+.ui-cmd--pressed,
+.ui-cmd[aria-pressed="true"],
+.icon-button.icon-button--checked,
+.icon-button[aria-pressed="true"],
+.ui-toggle-button[aria-pressed="true"],
+.ui-toggle-button.is-checked {
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
+.ui-cmd--pressed:hover:not(:disabled),
+.ui-cmd[aria-pressed="true"]:hover:not(:disabled),
+.icon-button.icon-button--checked:hover:not(:disabled),
+.icon-button[aria-pressed="true"]:hover:not(:disabled),
+.ui-toggle-button[aria-pressed="true"]:hover:not(:disabled),
+.ui-toggle-button.is-checked:hover:not(:disabled) {
+  color: var(--accent-bright);
+  background: var(--accent-soft-strong);
+}
+
+.ui-cmd--pressed:active:not(:disabled),
+.ui-cmd[aria-pressed="true"]:active:not(:disabled),
+.icon-button.icon-button--checked:active:not(:disabled),
+.icon-button[aria-pressed="true"]:active:not(:disabled),
+.ui-toggle-button[aria-pressed="true"]:active:not(:disabled),
+.ui-toggle-button.is-checked:active:not(:disabled) {
+  color: var(--accent-bright);
+  background: var(--accent-soft);
 }
 
 /* ============================================================================
@@ -1682,15 +2014,16 @@
    ========================================================================== */
 
 .ui-statusbar {
-  min-height: var(--control-sm);
+  min-height: var(--chrome-row-sm);
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   padding: 0 var(--space-3);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--stroke-divider);
   color: var(--text-secondary);
-  background: var(--layer);
+  background: var(--surface-chrome);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
 }

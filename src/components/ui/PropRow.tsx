@@ -1,10 +1,15 @@
 /* PropRow + PropSection — dense inspector rows.
 
-   A row is a grid: 104px label | value | 20px reset. 28px min height, the
-   label in 12px secondary ink. Give it `scrub` and dragging horizontally on
+   A row is a grid: label (--prop-label, 104px) | value | 20px reset. 28px
+   min height, the label in 12px secondary ink. Give it `scrub` and dragging horizontally on
    the label changes the number (ew-resize cursor, pointer capture, `step` per
    pixel, Shift ×10) — the way every node editor does it. The reset button
    appears only when the value differs from its default.
+
+   A section header is a 28px (--section-row) strip on --surface-chrome with
+   a --line above and below: chevron, 12px semibold title, and an optional
+   right-aligned `summary` (a count, "1 changed") that stays visible while
+   the section is collapsed.
 
      <PropSection title="Transform" persistKey="clip.transform">
        <PropRow label="Opacity" htmlFor="opacity" value={opacity} defaultValue={100}
@@ -127,6 +132,8 @@ export interface PropSectionProps {
   onOpenChange?: (open: boolean) => void;
   /** Remember the open state in localStorage under "slopus.section.<key>". */
   persistKey?: string;
+  /** Right-aligned in the header, visible when collapsed too: a count or "1 changed". */
+  summary?: ReactNode;
   /** Buttons at the header's trailing edge (compact icon buttons). */
   actions?: ReactNode;
   className?: string;
@@ -142,7 +149,7 @@ function readOpen(key: string | undefined, fallback: boolean) {
   }
 }
 
-export function PropSection({ title, children, open, defaultOpen = true, onOpenChange, persistKey, actions, className }: PropSectionProps) {
+export function PropSection({ title, children, open, defaultOpen = true, onOpenChange, persistKey, summary, actions, className }: PropSectionProps) {
   const [inner, setInner] = useState(() => readOpen(persistKey, defaultOpen));
   const isOpen = open ?? inner;
   const contentId = useId();
@@ -159,7 +166,8 @@ export function PropSection({ title, children, open, defaultOpen = true, onOpenC
       <div className="ui-prop-section__header">
         <button type="button" className="ui-prop-section__toggle" aria-expanded={isOpen} aria-controls={contentId} onClick={toggle}>
           <ChevronDown size={12} aria-hidden="true" className="ui-prop-section__chevron" />
-          <span>{title}</span>
+          <span className="ui-prop-section__title">{title}</span>
+          {summary !== undefined && summary !== null && summary !== false && <span className="ui-prop-section__summary">{summary}</span>}
         </button>
         {actions && <span className="ui-prop-section__actions">{actions}</span>}
       </div>

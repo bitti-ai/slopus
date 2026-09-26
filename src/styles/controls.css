@@ -153,11 +153,8 @@
   color: var(--text-disabled);
 }
 
-.icon-button--active {
-  color: var(--accent-on-soft);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
+/* A toggle icon button that is on (.icon-button--checked / aria-pressed)
+   takes the shared on-state in ui.css ("Toggle on-state"). */
 
 .icon-button--strong {
   border-color: var(--stroke-control);

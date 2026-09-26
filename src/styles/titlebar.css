@@ -174,10 +174,7 @@
   right: 5px;
 }
 
-/* A toggle button that is on (the agent pane shown). */
-.icon-button--checked {
-  background: var(--fill-subtle-hover);
-}
+/* The Agent toggle's on-state is the shared one (ui.css, "Toggle on-state"). */
 
 .titlebar-separator {
   flex: none;
