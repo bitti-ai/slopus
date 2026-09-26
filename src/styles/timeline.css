@@ -19,8 +19,8 @@
   --pane-timeline-inspector: 340px;
   --pane-timeline-height: 300px;
   --pane-timeline-tracks: 180px;
-  --toolbar-height: 36px;
-  --ruler-height: 24px;
+  --toolbar-height: var(--chrome-row);
+  --ruler-height: 28px;
   --track-video-height: 56px;
   --track-audio-height: 40px;
 
@@ -56,7 +56,7 @@
 .clip-inspector {
   min-width: 0;
   min-height: 0;
-  background: var(--panel);
+  background: var(--surface-pane);
 }
 
 .scene-panel {
@@ -568,9 +568,9 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-1) 0 var(--space-2);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--stroke-divider);
   color: var(--text-secondary);
-  background: var(--layer);
+  background: var(--surface-chrome);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -962,7 +962,7 @@
   container: pro-timeline / inline-size;
   display: grid;
   grid-template-rows: var(--toolbar-height) minmax(0, 1fr);
-  background: var(--panel);
+  background: var(--surface-well);
   user-select: none;
 }
 
@@ -978,8 +978,8 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--line);
-  background: var(--layer);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
 }
 
 .timeline-toolbar__lead {
@@ -1180,9 +1180,9 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   top: 0;
   left: 0;
   z-index: 11;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--layer);
+  border-right: 1px solid var(--stroke-divider);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
 }
 
 .time-ruler {
@@ -1190,8 +1190,8 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   top: 0;
   z-index: 8;
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
-  background-color: var(--layer);
+  border-bottom: 1px solid var(--stroke-divider);
+  background-color: var(--surface-chrome);
   /* Minor ticks, painted rather than rendered: the interval is set inline
      from the zoom (background-size), so a frame-level ruler costs nothing. */
   background-image: linear-gradient(90deg, var(--text-faint) 1px, transparent 1px);
@@ -1236,9 +1236,9 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-1) 0 var(--space-2);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--stroke-divider);
   border-bottom: 1px solid var(--line);
-  background: var(--layer);
+  background: var(--surface-chrome);
 }
 
 .track-head--audio,
@@ -1308,7 +1308,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   height: var(--track-video-height);
   overflow: hidden;
   border-bottom: 1px solid var(--line);
-  background-color: var(--panel);
+  background-color: var(--surface-well);
   background-image: linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   /* Set by the view from the ruler's own label interval, so the lines line up
      with the timecodes above at every zoom. */
@@ -1318,6 +1318,10 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .track-lane.muted .clip-audio-visualization {
   opacity: 0.24;
 }
+
+/* Every other lane a step lighter, so a long clip still reads as sitting on
+   one row. */
+.track-lane--alt { background-color: var(--surface-well-alt); }
 
 /* Lit while a compatible media file is held over this lane. A drop target the
    user cannot see is a drop target the user will not find. */

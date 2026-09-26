@@ -1371,9 +1371,10 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 onPointerDown={onRulerPointerDown}
                 onContextMenu={onRulerMenu}
               />
-              {drawnTracks.map((track) => <TrackRow
+              {drawnTracks.map((track, index) => <TrackRow
                 key={track.id}
                 track={track}
+                alt={index % 2 === 1}
                 label={trackLabels.get(track.id) ?? ""}
                 duration={duration}
                 folderPath={folderPath}
@@ -1468,8 +1469,10 @@ const TimeRuler = memo(function TimeRuler({ rulerRef, scrollRef, durationMs, lan
   </div>;
 });
 
-const TrackRow = memo(function TrackRow({ track, label, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, actions }: {
+const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, actions }: {
   track: ProjectConfig["timeline"]["tracks"][number];
+  /** Every other lane sits a step lighter on the well. */
+  alt: boolean;
   /** "V1", "A1"… */
   label: string;
   duration: number;
@@ -1504,7 +1507,7 @@ const TrackRow = memo(function TrackRow({ track, label, duration, folderPath, ge
       <button className={track.locked ? "active" : ""} onClick={() => actions.current.toggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} aria-pressed={track.locked} {...tooltipProps(track.locked ? "Unlock" : "Lock")}>{track.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
     </div>
     <div
-      className={`track-lane track-lane--${kind} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
+      className={`track-lane track-lane--${kind}${alt ? " track-lane--alt" : ""} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
       /* Which track this lane IS, readable from the DOM: a clip dragged across
          lanes is hit-tested against the document, and the id is how the answer
          gets back to the model. */
