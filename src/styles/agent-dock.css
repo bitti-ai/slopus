@@ -200,3 +200,10 @@
 .agent-composer__send.agent-cancel:hover {
   background: var(--fill-control-hover);
 }
+
+/* The status light beside the picker already shows the chosen provider's
+   state (with a tooltip); the same dot repeated inside the closed picker read
+   as two indicators. The options in the open list keep theirs. */
+.agent-provider.ui-combo > .ui-combo__icon {
+  display: none;
+}
