@@ -1,0 +1,834 @@
+/* ============================================================================
+   settings.css — the settings surface and its sections. Split out of shell.css.
+   ========================================================================== */
+
+/* --- Settings page --------------------------------------------------------- */
+.settings-view {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: clamp(160px, 19vw, 250px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.settings-view__content {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-view__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-6) clamp(16px, 3vw, 48px);
+}
+
+.settings-view__body > .generator-editor__back {
+  margin-bottom: var(--space-4);
+}
+
+.settings-sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--line);
+  background: var(--wash-1);
+}
+
+.settings-view__head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-view__head h1 {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-hero);
+}
+
+/* --- Sidebar tabs ---------------------------------------------------------- */
+
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.settings-tabs button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-lg);
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--text-muted);
+  background: none;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+  cursor: pointer;
+}
+
+.settings-tabs button:hover {
+  color: var(--text-secondary);
+  background: var(--wash-1);
+}
+
+.settings-tabs button.active {
+  color: var(--text-primary);
+  background: var(--accent-soft);
+}
+
+.settings-tabs button.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent-bright);
+}
+
+/* How many paths still need setting, readable from the other tab. */
+.settings-tabs button em {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  border: 1px solid var(--warning-line);
+  background: var(--warning-soft);
+  font: var(--weight-semibold) var(--text-2xs) / 18px var(--font-mono);
+  font-style: normal;
+  text-align: center;
+}
+
+/* --- Generator templates ------------------------------------------------- */
+
+.reference-icon-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+.reference-icon-option {
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+.reference-icon-settings .generator-template-fields {
+  flex: 0 1 320px;
+  min-width: 0;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+}
+.generator-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+}
+.generator-dialog {
+  width: min(1000px, 100%);
+  max-height: calc(100dvh - var(--space-5) * 2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.generator-dialog__head {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.generator-dialog__head h2 { flex: 1; margin: 0; font-size: var(--text-lg); }
+.generator-dialog__body { min-height: 0; overflow-y: auto; padding: var(--space-5); overscroll-behavior: contain; }
+.generator-dialog > .weight-download-status { flex-shrink: 0; padding: var(--space-3) var(--space-5); }
+
+.generator-templates {
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+
+.generator-templates > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.generator-templates h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+}
+
+.generator-templates header p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.generator-template-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.generator-template-item {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: var(--control-sm) minmax(0, 1fr) var(--control-sm);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+}
+
+.generator-template-item--download {
+  grid-template-columns: minmax(0, 1fr) var(--control-sm);
+}
+
+.generator-template-item__progress {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+  background: var(--accent-bright);
+  opacity: 0.22;
+  pointer-events: none;
+  transition: width 0.2s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generator-template-item__progress { transition: none; }
+}
+
+.generator-template-item--selected {
+  border-color: var(--accent-line-strong);
+  background: var(--accent-soft);
+}
+
+.generator-template-item__open {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 0;
+  color: var(--text-primary);
+  background: transparent;
+  text-align: left;
+}
+
+.generator-template-item__open b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generator-template-item__open > svg {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-muted);
+}
+
+.generator-template-item__open small,
+.generator-template-item > label {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.generator-template-item__default {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  cursor: pointer;
+}
+
+.generator-template-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.generator-template-fields label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.generator-template-fields input,
+.generator-template-fields select {
+  min-width: 0;
+  width: 100%;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--field-bg);
+  font-size: var(--text-sm);
+}
+
+.generator-editor__head {
+  margin-bottom: var(--space-4);
+}
+
+.generator-editor__advanced {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.diagnostics-backend {
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  margin: 0 0 var(--space-4);
+}
+
+.generator-editor__head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+}
+
+.generator-editor__back {
+  padding-inline: var(--space-2);
+}
+
+.generator-editor .generator-template-fields {
+  margin: 0 0 var(--space-4);
+}
+
+.settings-status {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+
+.settings-status span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.settings-status i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.settings-status p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.settings-status__platform {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.settings-status__platform b {
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-status--ready {
+  border-color: var(--success-line);
+  background: var(--success-soft);
+}
+
+.settings-status--ready i {
+  background: var(--success);
+}
+
+.settings-status--modelsMissing i,
+.settings-status--incompatible i {
+  background: var(--warning);
+}
+
+.settings-status--runtimeMissing i {
+  background: var(--danger);
+}
+
+/* A section is a whole tab panel now, so it opens at the top of the body
+   rather than a heading's distance below the one before it. */
+.settings-section {
+  margin: 0;
+}
+
+.settings-section .settings-status {
+  margin-bottom: var(--space-2);
+}
+
+/* --- Diagnostics ---------------------------------------------------------- */
+
+.diagnostics-debug-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+  cursor: pointer;
+}
+
+.diagnostics-debug-option input,
+.reference-icon-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.diagnostics-debug-option b,
+.reference-icon-option b {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.diagnostics-debug-option small,
+.reference-icon-option small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* --- Appearance -------------------------------------------------------------
+   Three options, always all three visible: "system" is a real choice, not the
+   absence of one, and a two-state toggle cannot say so. */
+
+.theme-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.theme-choice__option {
+  min-height: var(--control-lg);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  background: var(--wash-1);
+  cursor: pointer;
+  transition: 0.16s ease;
+}
+
+/* The radio still exists and still takes focus — it is only invisible, so the
+   arrow keys, the label click and the screen reader all keep working. The ring
+   is drawn on the card, which is what reads as the control. */
+.theme-choice__option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-choice__option:has(input:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.theme-choice__option > svg {
+  grid-row: 1;
+  flex: 0 0 auto;
+}
+
+.theme-choice__option b {
+  grid-row: 1;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.theme-choice__option small {
+  grid-column: 2;
+  grid-row: 2;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.theme-choice__option:hover {
+  border-color: var(--line-hover);
+  color: var(--text-secondary);
+  background: var(--wash-2);
+}
+
+.theme-choice__option--selected,
+.theme-choice__option--selected:hover {
+  border-color: var(--accent);
+  color: var(--text-secondary);
+  background: var(--accent-soft);
+}
+
+.theme-choice__option--selected > svg {
+  color: var(--accent-bright);
+}
+
+/* --- Prompt LLMs ----------------------------------------------------------- */
+
+.llm-settings__intro {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.llm-provider {
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--wash-1);
+}
+
+.llm-provider + .llm-provider {
+  margin-top: var(--space-4);
+}
+
+.llm-provider--configured {
+  border-color: var(--success-line);
+}
+
+.llm-provider > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.llm-provider h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+}
+
+.llm-provider header p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.llm-provider header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+.llm-provider--configured header > span {
+  color: var(--success);
+}
+
+.llm-provider__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.llm-provider__fields label {
+  min-width: 0;
+}
+
+.llm-provider__fields label > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.llm-provider__fields label em {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  font-style: normal;
+  font-weight: var(--weight-regular);
+  text-transform: uppercase;
+}
+
+.llm-provider__fields input {
+  width: 100%;
+  min-width: 0;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--field-bg);
+  font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
+}
+
+.llm-provider__model {
+  grid-column: 1 / -1;
+}
+
+.llm-provider__model > div {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.llm-provider__model input {
+  flex: 1 1 auto;
+}
+
+.llm-provider__model button {
+  flex: 0 0 auto;
+}
+
+.llm-provider__model .spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.llm-provider__error {
+  margin: var(--space-3) 0 0;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+/* Keep the path on a full-width row so long filenames and URLs remain readable. */
+.settings-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-path label {
+  display: block;
+  cursor: pointer;
+}
+
+.settings-path label b {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+/* "Optional" is a qualifier on the label, not a status — keep it quiet. */
+.settings-path label b em {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--text-faint);
+  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
+  letter-spacing: var(--tracking-label);
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.settings-path__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-path__row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--field-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--field-bg);
+  font: var(--weight-regular) var(--text-sm) / 1 var(--font-mono);
+}
+
+.weight-sources { min-width: 0; font-size: var(--text-sm); color: var(--text-muted); }
+.weight-sources summary { cursor: pointer; }
+.weight-sources p { margin: var(--space-2) 0; }
+.weight-source { display: grid; grid-template-columns: minmax(0, 1fr) 135px 125px auto; gap: var(--space-2); align-items: end; margin: var(--space-3) 0; }
+.weight-source label { min-width: 0; font-size: var(--text-xs); }
+.weight-source input, .weight-source-add input { width: 100%; min-width: 0; height: var(--field-height); padding: 0 var(--space-2); color: var(--text-primary); background: var(--field-bg); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.weight-source-add { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.weight-source-add input { flex: 1; }
+.weight-download-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) 0; color: var(--text-secondary); font-size: var(--text-sm); }
+.weight-download-status span { flex: 1 1 100%; }
+.settings-view__content > .weight-download-status {
+  flex-shrink: 0;
+  padding: var(--space-3) clamp(16px, 3vw, 48px);
+  border-top: 1px solid var(--line);
+}
+
+.settings-path__row .secondary-button {
+  flex: 0 0 auto;
+}
+
+.settings-path__state {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.settings-path--found .settings-path__state {
+  color: var(--success);
+}
+
+.settings-path--missing .settings-path__state {
+  color: var(--danger);
+}
+
+.settings-path--missing .settings-path__row input {
+  border-color: var(--danger-line-strong);
+}
+
+.settings-view__foot {
+  flex-shrink: 0;
+  padding: var(--space-4) clamp(16px, 3vw, 48px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.settings-view__foot span {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+/* --- Responsive ------------------------------------------------------------ */
+
+@media (max-width: 650px) {
+  .settings-view {
+    grid-template-columns: 124px minmax(0, 1fr);
+  }
+
+  .settings-sidebar { padding: var(--space-3) var(--space-1); }
+  .settings-tabs button { padding: var(--space-2); font-size: var(--text-sm); }
+  .settings-view__body { padding: var(--space-4) var(--space-3); }
+
+  .settings-path {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .generator-template-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-path__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-view__foot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .theme-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .llm-provider__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .llm-provider__model {
+    grid-column: auto;
+  }
+
+  .llm-provider__model > div {
+    flex-direction: column;
+  }
+
+}

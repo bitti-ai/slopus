@@ -17,9 +17,11 @@
 
 /* Application surfaces */
 @import "./shell.css";
+@import "./settings.css";
 @import "./work-queue.css";
 @import "./library.css";
 @import "./workspace.css";
+@import "./agent-dock.css";
 @import "./generator.css";
 @import "./timeline.css";
 @import "./references.css";
