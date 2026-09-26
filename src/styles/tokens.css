@@ -156,6 +156,7 @@
   --section-row: 28px;                 /* PropSection header, property rows */
   --prop-label: 104px;                 /* the one label column width */
   --pane-side-default: 340px;          /* a side pane's default width */
+  --titlebar-height: 48px;             /* the window caption / app header row */
 
   /* --- Motion -------------------------------------------------------------
      Fluent timings. Control state (hover, pressed) is a colour change over

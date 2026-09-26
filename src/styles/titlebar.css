@@ -22,13 +22,13 @@
   display: flex;
   align-items: center;
   flex: none;
-  height: 48px;
+  height: var(--titlebar-height);
   min-width: 0;
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -38,30 +38,30 @@
   display: flex;
   align-items: center;
   flex: none;
-  gap: 4px;
+  gap: var(--space-1);
   height: 100%;
 }
 
 .titlebar__leading {
-  padding-left: 4px;
+  padding-left: var(--space-1);
 }
 
 .titlebar__actions {
-  padding: 0 8px;
+  padding: 0 var(--space-2);
 }
 
 .titlebar__identity {
   display: flex;
   align-items: center;
   flex: 0 1 auto;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
-  padding: 0 8px 0 16px;
+  padding: 0 var(--space-2) 0 var(--space-4);
 }
 
 /* A leading slot (Back) already provides the left inset. */
 .titlebar__leading + .titlebar__identity {
-  padding-left: 4px;
+  padding-left: var(--space-1);
 }
 
 .titlebar__icon {
@@ -165,13 +165,14 @@
 .titlebar-command__badge {
   position: absolute;
   top: 0;
-  right: -2px;
+  right: calc(var(--space-1) / -2);
   pointer-events: none;
 }
 
+/* The dot sits inside the button's corner, clear of the 16px glyph. */
 .titlebar-command__badge--dot {
-  top: 5px;
-  right: 5px;
+  top: calc(var(--space-1) + 1px);
+  right: calc(var(--space-1) + 1px);
 }
 
 /* The Agent toggle's on-state is the shared one (ui.css, "Toggle on-state"). */
