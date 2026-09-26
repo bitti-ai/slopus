@@ -88,7 +88,7 @@ export function TitleBar({
       {/* Not tab stops, like Windows' own: the keyboard reaches them through
           Alt+Space, Win+Up/Down and Alt+F4. */}
       <div className="titlebar__captions" role="group" aria-label="Window controls">
-        <button type="button" className="titlebar__caption" tabIndex={-1} aria-label="Minimize" title="Minimize" onClick={run(minimizeWindow)}>
+        <button type="button" className="titlebar__caption" tabIndex={-1} aria-label="Minimize" data-tooltip="Minimize" onClick={run(minimizeWindow)}>
           <span aria-hidden="true">{GLYPH.minimize}</span>
         </button>
         <button
@@ -96,12 +96,12 @@ export function TitleBar({
           className="titlebar__caption titlebar__caption--maximize"
           tabIndex={-1}
           aria-label={maximized ? "Restore" : "Maximize"}
-          title={maximized ? "Restore Down" : "Maximize"}
+          data-tooltip={maximized ? "Restore Down" : "Maximize"}
           onClick={run(toggleMaximizeWindow)}
         >
           <span aria-hidden="true">{maximized ? GLYPH.restore : GLYPH.maximize}</span>
         </button>
-        <button type="button" className="titlebar__caption titlebar__caption--close" tabIndex={-1} aria-label="Close" title="Close" onClick={run(closeWindow)}>
+        <button type="button" className="titlebar__caption titlebar__caption--close" tabIndex={-1} aria-label="Close" data-tooltip="Close" onClick={run(closeWindow)}>
           <span aria-hidden="true">{GLYPH.close}</span>
         </button>
       </div>
