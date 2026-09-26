@@ -28,46 +28,58 @@
   grid-template-columns: minmax(0, 1fr) auto var(--pane-export-settings);
 }
 
-/* --- Preview ----------------------------------------------------------------- */
+/* --- Preview -----------------------------------------------------------------
+   The preview IS the stage: edge to edge on --surface-stage, no inset, no
+   border. The frame is fitted inside the screen above the transport bar — full
+   width whenever the frame's shape allows, letterboxed by the stage colour —
+   and the bar runs the full width under it. */
 
 .export-preview {
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
   background: var(--surface-stage);
 }
 
-/* The stage is the frame plus its transport bar. It is also the element that
+/* The stage is the screen plus its transport bar. It is also the element that
    goes fullscreen, so the bar comes along. */
 .export-stage {
   position: relative;
-  width: 100%;
-  max-width: calc((100vh - 220px) * var(--frame-aspect, 1.7778));
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* --line would vanish on black in light theme; the stage has its own ink. */
-  border: 1px solid color-mix(in srgb, var(--on-stage) 16%, transparent);
-  border-radius: var(--radius-sm);
   /* Black in both themes: the frame paints the project's own background, and
      a matching surround would hide where the picture ends. Everything painted
      on it uses the --stage-* tokens. */
-  background: var(--stage-bg);
+  background: var(--surface-stage);
+}
+
+/* Everything above the transport bar. A size container, so the frame inside
+   can be fitted against both its width and its height. */
+.export-screen {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  container-type: size;
 }
 
 /* The project's frame, at the project's shape: `aspect-ratio` and
    `--frame-aspect` are set inline from the export plan (see ExportView). It
    never takes the shape of whatever is under the playhead — the export writes
-   ONE frame size for the whole file. */
+   ONE frame size for the whole file. Contained: the full width of the screen,
+   unless that would make it taller than the screen. */
 .export-picture {
   position: relative;
-  width: 100%;
-  min-height: 0;
+  width: min(100cqw, 100cqh * var(--frame-aspect, 1.7778));
+  max-width: 100%;
+  max-height: 100%;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -79,10 +91,14 @@
 }
 
 .export-stage__caption {
-  margin: var(--space-2) 0 0;
+  position: absolute;
+  inset: auto 0 var(--space-3);
+  margin: 0;
   color: var(--on-stage);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
+  text-align: center;
+  pointer-events: none;
 }
 
 /* --- Transport ----------------------------------------------------------------
@@ -142,16 +158,7 @@
    foot, revealed by a moving pointer and hidden again when it rests — the one
    place an auto-hiding overlay belongs. */
 .export-stage:fullscreen {
-  max-width: none;
-  border: 0;
-  border-radius: 0;
   background: var(--stage-bg);
-}
-
-.export-stage:fullscreen .export-picture {
-  flex: 1 1 auto;
-  aspect-ratio: auto !important;
-  height: 100%;
 }
 
 .export-stage:fullscreen .export-transport {

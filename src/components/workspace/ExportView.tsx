@@ -351,16 +351,21 @@ export function ExportView({ config, folderPath, onClose }: {
         >
           {/* The frame IS the project's frame. Sized from the plan rather than
               from whatever is under the playhead: the export writes one frame
-              size for the whole file, and this shows that size the whole time. */}
-          <div className="export-picture" style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}>
-            <ProgramMonitor
-              config={config}
-              folderPath={folderPath}
-              playheadMs={previewTimeMs}
-              playing={playing}
-              onSeek={seek}
-              onPlayingChange={changePlaying}
-            />
+              size for the whole file, and this shows that size the whole time.
+              The screen around it is the stage: the frame is fitted inside it
+              (full width when the shape allows) and the rest is stage colour. */}
+          <div className="export-screen">
+            <div className="export-picture" style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}>
+              <ProgramMonitor
+                config={config}
+                folderPath={folderPath}
+                playheadMs={previewTimeMs}
+                playing={playing}
+                onSeek={seek}
+                onPlayingChange={changePlaying}
+              />
+            </div>
+            {empty && <p className="export-stage__caption">Nothing on the timeline yet</p>}
           </div>
           {/* Windowed: a plain 36px bar under the picture. Fullscreen: the
               same bar over the picture's foot, hiding when the pointer rests. */}
@@ -399,7 +404,6 @@ export function ExportView({ config, folderPath, onClose }: {
             >{fullscreen ? <ExitFullScreen16 aria-hidden="true" /> : <FullScreen16 aria-hidden="true" />}</button>
           </div>
         </div>
-        {empty && <p className="export-stage__caption">Nothing on the timeline yet</p>}
       </section>
 
       <Splitter {...settingsPane.splitterProps} reverse aria-label="Resize export settings" aria-controls="export-settings" />
