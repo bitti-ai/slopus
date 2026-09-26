@@ -56,7 +56,7 @@ type DropTarget = { kind: "scene"; beforeJobId: string | null } | { kind: "shot"
 export const isMenuKey = (event: KeyboardEvent): boolean =>
   event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 
-/** The Generator board: every scene as a 32px group header with its shots in
+/** The Generator board: every scene as a 28px section header with its shots in
  *  a tile grid underneath. Headers own the scene-wide actions and timing; a
  *  tile opens its shot in the inspector. Both are drag sources and drop
  *  targets, and both carry a right-click menu. */
@@ -268,6 +268,7 @@ export function SceneBoard({
         className={[
           "scene-section",
           selection.jobId === job.id ? "scene-section--current" : "",
+          isCollapsed ? "scene-section--collapsed" : "",
           dragging?.kind === "scene" && dragging.jobId === job.id ? "scene-section--dragging" : "",
           sceneDrop === job.id ? "scene-section--drop-before" : "",
           sceneDrop === null && jobIndex === jobs.length - 1 ? "scene-section--drop-after" : "",
@@ -311,7 +312,7 @@ export function SceneBoard({
             aria-expanded={!isCollapsed}
             aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${job.title}`}
             onClick={() => toggle(job.id)}
-          >{isCollapsed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}</button>
+          >{isCollapsed ? <ChevronRight size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</button>
 
           <span
             className="scene-rule__drag"
@@ -358,8 +359,10 @@ export function SceneBoard({
           >
             {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${indicator}`}>{statusIcon(indicator, 16)}</span>}
             <b className="scene-rule__title" data-tooltip={job.title}>{job.title}</b>
-            <span className="scene-rule__caption">{shots.length === 1 ? "1 shot" : `${shots.length} shots`} · {seconds(duration)}</span>
             {job.status !== "draft" && indicator !== "generating" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
+            {/* The section's summary, at the trailing edge like any section
+                header's count. */}
+            <span className="scene-rule__caption">{shots.length === 1 ? "1 shot" : `${shots.length} shots`} · {seconds(duration)}</span>
           </button>
 
           <label className="scene-rule__length" data-tooltip="Scene length">
@@ -504,7 +507,7 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
       : "No description";
 
   return <div
-    className={`shot-card${open ? " shot-card--open" : ""}${dragSource ? " shot-card--dragging" : ""}`}
+    className={`shot-card ui-selectable ui-selectable--card${open ? " is-selected" : ""}${dragSource ? " shot-card--dragging" : ""}`}
     aria-label={`${name} of ${job.title}`}
     draggable
     onDragStart={onDragStart}

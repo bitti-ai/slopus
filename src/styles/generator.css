@@ -132,9 +132,10 @@
 
 /* --- The board ---------------------------------------------------------------
 
-   Every scene in the project as a 32px group header — the Explorer "group by"
-   look: a chevron, the name, a caption, and a divider underneath — with its
-   shots as tiles in an auto-filling grid below it.
+   Every scene in the project as a section header — the same 28px chrome strip
+   as the inspector's sections: a chevron, the name at 12px semibold, and the
+   shot count at the trailing edge — with its shots as tiles in an
+   auto-filling grid below it.
    ========================================================================== */
 
 .scene-board {
@@ -174,11 +175,21 @@
 
 .scene-rule {
   min-width: 0;
-  min-height: var(--control-md);
+  height: var(--section-row);
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
+  padding: 0 var(--space-1);
+  border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
+  background: var(--surface-chrome);
+}
+
+/* One line between two headers, not two, and none under the command bar's
+   divider — the PropSection rule. */
+.scene-section:first-child > .scene-rule,
+.scene-section--collapsed + .scene-section > .scene-rule {
+  border-top-color: transparent;
 }
 
 .scene-rule__toggle,
@@ -293,7 +304,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-base);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   text-overflow: ellipsis;
@@ -308,11 +319,16 @@
   white-space: nowrap;
 }
 
+.scene-rule__caption {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
 .scene-rule__badge {
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  line-height: 18px;
+  line-height: 16px;
 }
 
 .scene-rule__length {
@@ -331,8 +347,9 @@
 
    The tile is a SUMMARY and a target: a frame, the name and times, one line
    of the shot's words. 4px corners and a hairline edge like any Fluent grid
-   item; hover is a fill, the open shot an accent fill with an accent edge.
-   The grid auto-fills 200px-and-up columns, so it needs no breakpoints.
+   item; rest, hover and the open shot are the shared selectable-card rule
+   (.ui-selectable--card: an accent fill and ring). The grid auto-fills
+   200px-and-up columns, so it needs no breakpoints.
    ========================================================================== */
 
 .shot-grid {
@@ -340,7 +357,7 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--space-2);
   margin: 0;
-  padding: var(--space-2) 0 var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   list-style: none;
 }
 
@@ -383,19 +400,7 @@
   border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
   color: inherit;
-  background: var(--card);
   text-align: left;
-  transition: var(--transition-control);
-}
-
-.shot-card:hover {
-  background: var(--card-hover);
-}
-
-.shot-card--open,
-.shot-card--open:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .shot-card--dragging {
