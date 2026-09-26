@@ -82,7 +82,7 @@ it("shows an existing refmod icon only in the normal inspector slot and clears i
   const { container } = render(<ReferencesView folderPath="C:/project" config={config} onChange={onChange} onRegenerateIcon={vi.fn()} pendingIconIds={new Set(["ref"])} />);
   expect(container.querySelector(".reference-detail-art .reference-detail-preset-icon")).toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Refmod attachments" })).queryByRole("img")).not.toBeInTheDocument();
-  expect(screen.getByTitle(filename)).toHaveTextContent(filename);
+  expect(screen.getByText(filename)).toHaveAttribute("data-tooltip", filename);
   expect(screen.getByRole("button", { name: "Regenerate reference icon" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Remove refmods" }));
   expect(onChange.mock.calls[0][0].references[0]).toMatchObject({ description: "Existing description", refmods: [], iconRelativePath: undefined });
@@ -121,7 +121,7 @@ it("imports a video, edits its saved trim and soundtrack, then removes its attac
     name: "Uncategorized", intendedUse: [], kind: "video", sourcePath: "C:/motion.mp4", video: { startSeconds: 2, durationSeconds: 4, includeAudio: false },
   });
   expect(screen.getByRole("img", { name: "Frame from Uncategorized" })).toHaveAttribute("src", "test:C:/motion.mp4:0");
-  fireEvent.click(screen.getByRole("button", { name: "Close video clip settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(screen.getByLabelText("Prompt")).toBeEnabled();
   expect(screen.queryByText(/Long videos are welcome/)).not.toBeInTheDocument();
   vi.mocked(invoke).mockResolvedValueOnce([{ kind: "video", name: "replacement.mp4", sourcePath: "C:/replacement.mp4" }]);

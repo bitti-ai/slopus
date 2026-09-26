@@ -7,6 +7,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, referenceImages, type ProjectConfig } from "../../lib/project";
 import { ReferencesView } from "./ReferencesView";
+import { choose, chooseOption, comboValue } from "./comboTestUtils";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { saveDebugOptionsEnabled } from "../../lib/settings";
 import { REFERENCE_PRESETS } from "../../lib/reference-presets";
@@ -77,9 +78,9 @@ describe("Reference type presets", () => {
     fireEvent.click(previous());
     expect(inspector.getByText("Image 1 of 3")).toBeInTheDocument();
     fireEvent.click(next());
-    fireEvent.click(screen.getByRole("button", { name: /Other 3 images/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Other 3 images/ }));
     expect(inspector.getByText("Image 1 of 3")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Hero 3 images/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Hero 3 images/ }));
     fireEvent.click(next());
     remove();
     expect(inspector.getByText("Image 2 of 2")).toBeInTheDocument();
@@ -115,28 +116,26 @@ describe("Reference type presets", () => {
   it("shows the exact icon regeneration prompt in a debug-only footer dialog", () => {
     const regenerate = vi.fn();
     const state = setup(project(), regenerate);
-    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug icon prompt" })).not.toBeInTheDocument();
     act(() => saveDebugOptionsEnabled(true));
-    const button = screen.getByRole("button", { name: "Debug Icon Prompt" });
+    const button = screen.getByRole("button", { name: "Debug icon prompt" });
     expect(button.closest(".reference-inspector")?.lastElementChild).toBe(button.parentElement);
     button.focus();
     fireEvent.click(button);
-    const dialog = screen.getByRole("dialog", { name: "Debug Icon Prompt" });
+    const dialog = screen.getByRole("dialog", { name: "Debug icon prompt" });
     expect(dialog.closest("aside")).toBeNull();
-    expect(within(dialog).getByLabelText("The reference icon generation prompt").textContent).toBe(referenceIconPrompt(state.latest().references[0]));
-    expect(within(dialog).getByRole("button", { name: "Close debug icon prompt" })).toHaveFocus();
+    const prompt = within(dialog).getByLabelText("The reference icon generation prompt");
+    expect(prompt.textContent).toBe(referenceIconPrompt(state.latest().references[0]));
+    expect(prompt).toHaveFocus();
     expect(regenerate).not.toHaveBeenCalled();
-    fireEvent.keyDown(window, { key: "Tab" });
-    expect(within(dialog).getByLabelText("The reference icon generation prompt")).toHaveFocus();
-    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    fireEvent.keyDown(prompt, { key: "a", metaKey: true });
     expect(window.getSelection()?.toString()).toBe(referenceIconPrompt(state.latest().references[0]));
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
-    expect(button).toHaveFocus();
+    fireEvent.keyDown(prompt, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Debug icon prompt" })).not.toBeInTheDocument();
     fireEvent.click(button);
     act(() => saveDebugOptionsEnabled(false));
-    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Debug icon prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug icon prompt" })).not.toBeInTheDocument();
   });
 
   it("uses the selected reference's latest name, category, subcategory and description", () => {
@@ -144,22 +143,22 @@ describe("Reference type presets", () => {
     const initial = project();
     initial.references.push({ ...initial.references[0], id: "ref-animal", name: "Pet", intendedUse: ["animal"], subcategory: "Pets", description: "A golden retriever." });
     const state = setup(initial);
-    fireEvent.click(screen.getByRole("button", { name: /Pet A golden retriever/ }));
+    fireEvent.click(screen.getByRole("option", { name: /^Pet / }));
     fireEvent.change(screen.getByRole("textbox", { name: "Reference name" }), { target: { value: "Buddy" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "A sleepy golden retriever.\nSoft light." } });
-    fireEvent.click(screen.getByRole("button", { name: "Debug Icon Prompt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Debug icon prompt" }));
     const prompt = screen.getByLabelText("The reference icon generation prompt");
     expect(prompt.textContent).toBe(referenceIconPrompt(state.latest().references[1]));
     expect(prompt.textContent).toContain("animal with its whole body visible");
     expect(prompt.textContent).toContain("Subcategory: Pets");
-    fireEvent.click(screen.getByRole("button", { name: "Close debug icon prompt" }));
-    expect(screen.queryByRole("dialog", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Debug icon prompt" })).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Debug icon prompt" })).not.toBeInTheDocument();
   });
 
   it("does not show icon debugging without a selected reference", () => {
     saveDebugOptionsEnabled(true);
     setup({ ...project(), references: [] });
-    expect(screen.queryByRole("button", { name: "Debug Icon Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug icon prompt" })).not.toBeInTheDocument();
   });
 
   it("requests an icon refresh for the selected reference and disables duplicate requests", () => {
@@ -182,11 +181,11 @@ describe("Reference type presets", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Animal" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Pets" }));
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Pets" }));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "retriever" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /Golden retriever/ }));
     expect(state.latest().references[0]).toMatchObject({ name: "Golden retriever", intendedUse: ["animal"], subcategory: "Pets", description: "Golden retriever." });
-    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("animal");
+    expect(comboValue(screen.getByRole("combobox", { name: "Category" }))).toBe("animal");
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("Golden retriever.");
   });
 
@@ -201,12 +200,12 @@ describe("Reference type presets", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: label }));
-    fireEvent.click(within(dialog).getByRole("button", { name: subcategory }));
+    fireEvent.click(within(dialog).getByRole("tab", { name: subcategory }));
     fireEvent.click(within(dialog).getByRole("button", { name: "New" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(state.latest().references).toHaveLength(2);
     expect(state.latest().references[0]).toMatchObject({ description: "", content: null, intendedUse: [category], subcategory });
-    expect(screen.getByRole("combobox", { name: "Subcategory" })).toHaveValue(subcategory);
+    expect(comboValue(screen.getByRole("combobox", { name: "Subcategory" }))).toBe(subcategory);
     fireEvent.change(screen.getByRole("textbox", { name: "Reference name" }), { target: { value: "My reference" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "Keep the cool blue colors." } });
     const saved = parseProjectConfig(state.latest());
@@ -214,12 +213,12 @@ describe("Reference type presets", () => {
     const restored = setup(saved);
     expect(screen.getByRole("textbox", { name: "Reference name" })).toHaveValue("My reference");
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("Keep the cool blue colors.");
-    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue(category);
-    expect(screen.getByRole("combobox", { name: "Subcategory" })).toHaveValue(subcategory);
-    fireEvent.change(screen.getByRole("combobox", { name: "Subcategory" }), { target: { value: "" } });
+    expect(comboValue(screen.getByRole("combobox", { name: "Category" }))).toBe(category);
+    expect(comboValue(screen.getByRole("combobox", { name: "Subcategory" }))).toBe(subcategory);
+    choose("Subcategory", "None");
     expect(restored.latest().references[0].subcategory).toBe("");
     const nextCategory = category === "product" ? "style" : "product";
-    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: nextCategory } });
+    choose("Category", nextCategory === "style" ? "Style" : "Product");
     expect(restored.latest().references[0]).toMatchObject({ intendedUse: [nextCategory], subcategory: "", description: "Keep the cool blue colors." });
   });
 
@@ -230,14 +229,14 @@ describe("Reference type presets", () => {
 
     expect(name).toHaveValue("Hero");
     expect(header).not.toBeNull();
-    expect(within(header!).getByRole("button", { name: "Remove reference" })).toHaveClass("inspector-remove-button");
+    expect(within(header!).getByRole("button", { name: "Delete reference" })).toHaveClass("icon-button");
     fireEvent.change(name, { target: { value: "Lead traveler" } });
 
     expect(state.latest().references[0].name).toBe("Lead traveler");
-    expect(screen.getByRole("button", { name: /Lead traveler/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Lead traveler/ })).toBeInTheDocument();
   });
 
-  it("opens the new-reference picker from the add card", () => {
+  it("opens the new-reference picker from the command bar", () => {
     const state = setup();
     expect(screen.queryByRole("button", { name: "New definition" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add image" })).not.toBeInTheDocument();
@@ -255,7 +254,7 @@ describe("Reference type presets", () => {
 
   it("keeps legacy uncategorized references editable", () => {
     setup();
-    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("custom");
+    expect(comboValue(screen.getByRole("combobox", { name: "Category" }))).toBe("custom");
     expect(screen.queryByRole("button", { name: "Choose preset" })).not.toBeInTheDocument();
     expect(screen.queryByText("Intended use")).not.toBeInTheDocument();
     expect(screen.queryByText(/Select any that apply/)).not.toBeInTheDocument();
@@ -267,11 +266,11 @@ describe("Reference type presets", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Character" }));
-    const groups = within(dialog).getByRole("group", { name: "Character subcategories" });
-    expect(within(groups).getByRole("button", { name: "Film" })).toBeInTheDocument();
-    expect(within(groups).getByRole("button", { name: "Television" })).toBeInTheDocument();
-    expect(within(groups).getByRole("button", { name: "Public figures" })).toBeInTheDocument();
-    fireEvent.click(within(groups).getByRole("button", { name: "Television" }));
+    const groups = within(dialog).getByRole("tablist", { name: "Character subcategories" });
+    expect(within(groups).getByRole("tab", { name: "Film" })).toBeInTheDocument();
+    expect(within(groups).getByRole("tab", { name: "Television" })).toBeInTheDocument();
+    expect(within(groups).getByRole("tab", { name: "Public figures" })).toBeInTheDocument();
+    fireEvent.click(within(groups).getByRole("tab", { name: "Television" }));
     expect(within(dialog).getByRole("button", { name: /Sherlock Holmes · Benedict Cumberbatch/ })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /Sherlock Holmes · Benedict Cumberbatch/ }));
 
@@ -279,7 +278,7 @@ describe("Reference type presets", () => {
     expect(reference.intendedUse).toEqual(["character"]);
     expect(reference.description).toBe("Sherlock Holmes, Benedict Cumberbatch portrayal.");
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(reference.description);
-    expect(screen.getByRole("combobox", { name: "Subcategory" })).toHaveValue("Television");
+    expect(comboValue(screen.getByRole("combobox", { name: "Subcategory" }))).toBe("Television");
     fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "Sherlock in a blue coat." } });
     expect(state.latest().references[0]).toMatchObject({ intendedUse: ["character"], subcategory: "Television", description: "Sherlock in a blue coat." });
   });
@@ -307,8 +306,8 @@ describe("Reference type presets", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
     const dialog = screen.getByRole("dialog", { name: "Add a reference" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Location" }));
-    const groups = within(dialog).getByRole("group", { name: "Location subcategories" });
-    fireEvent.click(within(groups).getByRole("button", { name: "Sci-fi" }));
+    const groups = within(dialog).getByRole("tablist", { name: "Location subcategories" });
+    fireEvent.click(within(groups).getByRole("tab", { name: "Sci-fi" }));
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Search reference options" }), { target: { value: "lunar" } });
     expect(within(dialog).getByRole("button", { name: /Lunar base/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /Victorian manor/ })).not.toBeInTheDocument();
@@ -317,8 +316,8 @@ describe("Reference type presets", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const settings = screen.getByRole("region", { name: "Location settings" });
     expect(settings.closest("aside")).not.toBeNull();
-    fireEvent.change(within(settings).getByRole("combobox", { name: "Time of day" }), { target: { value: "night" } });
-    fireEvent.change(within(settings).getByRole("combobox", { name: "Season" }), { target: { value: "winter" } });
+    chooseOption(within(settings).getByRole("combobox", { name: "Time of day" }), "Night");
+    chooseOption(within(settings).getByRole("combobox", { name: "Season" }), "Winter");
 
     expect(state.latest().references[0]).toMatchObject({
       intendedUse: ["location"],
@@ -342,18 +341,18 @@ describe("Reference type presets", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /Coastal village/ }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(state.latest().references).toHaveLength(2);
-    expect(screen.getByRole("combobox", { name: "Weather" })).toHaveValue("");
-    fireEvent.change(screen.getByRole("combobox", { name: "Time of day" }), { target: { value: "night" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Weather" }), { target: { value: "rain" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Season" }), { target: { value: "winter" } });
+    expect(comboValue(screen.getByRole("combobox", { name: "Weather" }))).toBe("");
+    chooseOption(screen.getByRole("combobox", { name: "Time of day" }), "Night");
+    chooseOption(screen.getByRole("combobox", { name: "Weather" }), "Rain");
+    chooseOption(screen.getByRole("combobox", { name: "Season" }), "Winter");
     const saved = parseProjectConfig(state.latest());
     expect(saved.references[0].description).toBe("Coastal village, at night, in rain, in winter.");
     cleanup();
     const restored = setup(saved);
-    expect(screen.getByRole("combobox", { name: "Time of day" })).toHaveValue("night");
-    expect(screen.getByRole("combobox", { name: "Weather" })).toHaveValue("rain");
-    expect(screen.getByRole("combobox", { name: "Season" })).toHaveValue("winter");
-    fireEvent.change(screen.getByRole("combobox", { name: "Weather" }), { target: { value: "" } });
+    expect(comboValue(screen.getByRole("combobox", { name: "Time of day" }))).toBe("night");
+    expect(comboValue(screen.getByRole("combobox", { name: "Weather" }))).toBe("rain");
+    expect(comboValue(screen.getByRole("combobox", { name: "Season" }))).toBe("winter");
+    chooseOption(screen.getByRole("combobox", { name: "Weather" }), "None");
     expect(restored.latest().references[0]).toMatchObject({
       description: "Coastal village, at night, in winter.",
       content: "Coastal village, at night, in winter.",
@@ -370,7 +369,7 @@ describe("Reference type presets", () => {
     fireEvent.click(within(newPicker).getByRole("button", { name: "Location" }));
     fireEvent.click(within(newPicker).getByRole("button", { name: /Coastal village/ }));
     expect(restored.latest().references[0].description).toBe("Coastal village.");
-    expect(screen.getByRole("combobox", { name: "Time of day" })).toHaveValue("");
+    expect(comboValue(screen.getByRole("combobox", { name: "Time of day" }))).toBe("");
   });
 
   it("attaches multiple images to a new product without changing its category or prompt", async () => {
@@ -400,5 +399,80 @@ describe("Reference type presets", () => {
       ],
     });
     expect(state.latest().references[0]).not.toHaveProperty("relativePath");
+  });
+});
+
+describe("Reference library views and selection", () => {
+  const three = () => {
+    const initial = project();
+    const base = initial.references[0];
+    initial.references = [
+      base,
+      { ...base, id: "ref-cat", name: "Cat", intendedUse: ["animal"] },
+      { ...base, id: "ref-lamp", name: "Lamp", intendedUse: ["product"] },
+    ];
+    initial.generationJobs[0].referenceIds = ["ref-lamp"];
+    return initial;
+  };
+
+  it("switches to a sortable Details view and remembers the choice", () => {
+    setup(three());
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(localStorage.getItem("slopus.references.view")).toBe("details");
+    const grid = screen.getByRole("grid", { name: "References" });
+    const names = () => within(grid).getAllByRole("row").slice(1).map((row) => row.querySelector("td")?.textContent);
+    expect(within(grid).getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Name", "Type", "Contents", "Used by"]);
+    expect(names()).toEqual(["Cat", "Hero", "Lamp"]);
+    fireEvent.click(within(grid).getByRole("button", { name: /Name/ }));
+    expect(names()).toEqual(["Lamp", "Hero", "Cat"]);
+    fireEvent.click(within(grid).getByRole("button", { name: /Used by/ }));
+    expect(names()[2]).toBe("Lamp");
+    expect(within(grid).getByText("1 scene")).toBeInTheDocument();
+  });
+
+  it("multi-selects with Ctrl and Shift and deletes the selection", () => {
+    const state = setup(three());
+    fireEvent.click(screen.getByRole("option", { name: /^Hero/ }));
+    fireEvent.click(screen.getByRole("option", { name: /^Lamp/ }), { shiftKey: true });
+    expect(screen.getAllByRole("option").filter((option) => option.getAttribute("aria-selected") === "true")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("option", { name: /^Cat/ }), { ctrlKey: true });
+    expect(screen.getByRole("region", { name: "References status" })).toHaveTextContent("2 selected");
+    // The inspector still edits one reference: the last one clicked.
+    expect(screen.getByRole("textbox", { name: "Reference name" })).toHaveValue("Cat");
+    const lamp = screen.getByRole("option", { name: /^Lamp/ });
+    lamp.focus();
+    fireEvent.keyDown(lamp, { key: "Delete" });
+    expect(state.latest().references.map((reference) => reference.id)).toEqual(["ref-cat"]);
+    expect(state.latest().generationJobs[0].referenceIds).toEqual([]);
+  });
+
+  it("moves through the library with the arrow keys and renames with F2", async () => {
+    setup(three());
+    const hero = screen.getByRole("option", { name: /^Hero/ });
+    expect(hero).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("option", { name: /^Cat/ })).toHaveAttribute("tabindex", "-1");
+    hero.focus();
+    fireEvent.keyDown(hero, { key: "ArrowRight" });
+    expect(screen.getByRole("option", { name: /^Cat/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(screen.getByRole("option", { name: /^Cat/ }), { key: "F2" });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Reference name" })).toHaveFocus());
+    expect(screen.getByRole("textbox", { name: "Reference name" })).toHaveValue("Cat");
+  });
+
+  it("opens a reference menu that lists the scenes using it", () => {
+    const open = vi.fn();
+    const initial = three();
+    render(<ReferencesView config={initial} folderPath="C:\project" onChange={vi.fn()} onOpenGenerator={open} />);
+    fireEvent.contextMenu(screen.getByRole("option", { name: /^Lamp/ }));
+    const menu = screen.getByRole("menu", { name: "Lamp actions" });
+    expect(within(menu).getByRole("menuitem", { name: /Show in File Explorer/ })).toBeDisabled();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: `Open ${initial.generationJobs[0].title}` }));
+    expect(open).toHaveBeenCalledWith(initial.generationJobs[0].id);
+  });
+
+  it("says so in one line when nothing is selected", () => {
+    setup({ ...project(), references: [] });
+    expect(screen.getByText("Select a reference to see its details.")).toBeInTheDocument();
+    expect(screen.getByText("No references yet.")).toBeInTheDocument();
   });
 });

@@ -109,7 +109,7 @@ it("opens clip settings in a dialog and preserves edits after closing", async ()
   const reopened = await ready();
   expect(reopened.currentTime).toBe(105);
   expect(saved()).toMatchObject({ startSeconds: 105, durationSeconds: 15 });
-  fireEvent.click(screen.getByRole("button", { name: "Close video clip settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 

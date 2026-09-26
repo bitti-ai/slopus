@@ -1,6 +1,6 @@
-import { Pause, Play, Scissors, X } from "lucide-react";
+import { Pause, Play, Scissors } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { createPortal } from "react-dom";
+import { ContentDialog } from "../ui";
 import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectReference } from "../../lib/project";
 import { editReferenceVideoTrim, initialReferenceVideoTrim, normalizeReferenceVideoTrim, referenceTime, type ReferenceVideoTrim, type TrimAction } from "../../lib/referenceVideoTrim";
@@ -16,36 +16,16 @@ export function ReferenceVideo(props: ReferenceVideoProps) {
   return <>
     {!open && <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>}
     <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Scissors size={16} /> Edit video clip</button>
-    {open && createPortal(<ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />, document.body)}
+    {open && <ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />}
   </>;
 }
 
+/** Clip settings in a ContentDialog: the preview is large, so it is a modal
+ *  rather than something squeezed into the inspector. */
 function ReferenceVideoDialog({ onClose, ...props }: ReferenceVideoProps & { onClose: () => void }) {
-  const dialog = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    const workspace = document.querySelector<HTMLElement>(".references-view");
-    const wasInert = workspace?.inert ?? false;
-    if (workspace) workspace.inert = true;
-    dialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => {
-      if (workspace) workspace.inert = wasInert;
-      if (opener?.isConnected) opener.focus();
-    };
-  }, []);
-  return <div className="reference-video-dialog-overlay" onKeyDown={(event) => {
-    event.stopPropagation();
-    if (event.key === "Escape") { event.preventDefault(); onClose(); }
-    if (event.key !== "Tab") return;
-    const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), video[controls]') ?? []);
-    if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
-    else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
-  }}>
-    <div ref={dialog} className="reference-video-dialog" role="dialog" aria-modal="true" aria-labelledby="reference-video-heading">
-      <header><h2 id="reference-video-heading">{props.reference.name} — Video clip</h2><button type="button" className="icon-button" aria-label="Close video clip settings" onClick={onClose}><X size={18} /></button></header>
-      <div className="reference-video"><ReferenceVideoEditor {...props} /></div>
-    </div>
-  </div>;
+  return <ContentDialog title={`${props.reference.name} — Video clip`} closeText="Done" onClose={onClose} width={1100} className="reference-video-dialog">
+    <div className="reference-video"><ReferenceVideoEditor {...props} /></div>
+  </ContentDialog>;
 }
 
 function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVideoProps) {

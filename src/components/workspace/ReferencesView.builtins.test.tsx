@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createProjectConfig } from "../../lib/project";
@@ -49,11 +49,11 @@ it("generates a preset icon without selecting its card and supports regenerating
 
 it("asks on the first Add reference visit, explains video priority, and remembers Start", async () => {
   const view = open();
-  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /reference icons/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /^Add a reference/ }));
-  const prompt = await screen.findByRole("alertdialog", { name: "Generate built-in reference icons?" });
+  const prompt = await screen.findByRole("dialog", { name: "Generate built-in reference icons?" });
   expect(prompt).toHaveTextContent("take a long time");
-  expect(prompt).toHaveTextContent("pauses for normal video generation");
+  expect(prompt).toHaveTextContent("pauses for video generation");
   expect(view.generate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("checkbox", { name: /Don't ask again/ }));
   fireEvent.click(screen.getByRole("button", { name: "Start generation" }));
@@ -63,13 +63,13 @@ it("asks on the first Add reference visit, explains video priority, and remember
   open(view.generate);
   fireEvent.click(screen.getByRole("button", { name: /^Add a reference/ }));
   await waitFor(() => expect(view.generate).toHaveBeenCalledTimes(2));
-  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /reference icons/ })).toBeNull();
 });
 
 it("remembers Cancel across sessions without starting generation", async () => {
   const view = open();
   fireEvent.click(screen.getByRole("button", { name: /^Add a reference/ }));
-  await screen.findByRole("alertdialog");
+  await screen.findByRole("dialog");
   fireEvent.click(screen.getByRole("checkbox", { name: /Don't ask again/ }));
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   sessionStorage.clear();
@@ -80,11 +80,11 @@ it("remembers Cancel across sessions without starting generation", async () => {
 it("does not ask again on another visit in the same session when Cancel is not remembered", async () => {
   open();
   fireEvent.click(screen.getByRole("button", { name: /^Add a reference/ }));
-  await screen.findByRole("alertdialog");
+  await screen.findByRole("dialog");
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  fireEvent.click(screen.getByRole("button", { name: "Close type picker" }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Add a reference" })).getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: /^Add a reference/ }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("list_builtin_reference_icons"));
-  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /reference icons/ })).toBeNull();
   expect(localStorage.getItem("slopus.builtin-reference-icons.v1")).toBeNull();
 });
