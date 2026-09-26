@@ -661,6 +661,13 @@
   text-decoration-color: currentColor;
 }
 
+/* An unnamed shot shows its number as the placeholder; it is the name until
+   one is typed, so it reads in the name's ink, not a hint's. */
+.generator-panel .ui-item-header__input::placeholder {
+  color: var(--text-primary);
+  opacity: 1;
+}
+
 /* The pane's scrolling middle. It takes what the head and the debug row
    leave, and scrolls inside it. Its sections run edge to edge, the first one
    straight under the item header. */
