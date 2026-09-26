@@ -30,9 +30,13 @@
   overflow: hidden;
 }
 
+/* Settings fills this: .settings-view is flex: 1 with its own scrolling
+   panes, so the content area is a flex column of definite height. */
 .app-screen__content {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
 }

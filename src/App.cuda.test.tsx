@@ -34,18 +34,21 @@ it("shows startup guidance, opens NVIDIA in the browser, and stays dismissed aft
   render(<App />);
   const dialog = await screen.findByRole("dialog", { name: "Install CUDA for faster generation" });
   expect(within(dialog).getByText(/Vulkan fallback backend, with longer generation times/)).toBeInTheDocument();
+  expect(within(dialog).getByText(/RTX 5090/)).toBeInTheDocument();
+  const download = within(dialog).getByRole("button", { name: "Download CUDA" });
   const proceed = within(dialog).getByRole("button", { name: "Continue with Vulkan" });
-  expect(proceed).toHaveFocus();
-  const download = within(dialog).getByRole("link", { name: "Download CUDA from NVIDIA" });
-  expect(download).toHaveAttribute("href", "https://developer.nvidia.com/cuda-downloads");
+  // [Primary] [Close]: Download is the default (Enter), Continue is Esc.
+  expect(download).toHaveFocus();
+  // Tab wraps inside the dialog; the step between the two is the browser's.
+  proceed.focus();
   fireEvent.keyDown(proceed, { key: "Tab" });
   expect(download).toHaveFocus();
   fireEvent.keyDown(download, { key: "Tab", shiftKey: true });
   expect(proceed).toHaveFocus();
   fireEvent.click(download);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("open_cuda_download", { version: "latest" }));
-  fireEvent.click(proceed);
-  expect(screen.queryByRole("dialog", { name: "Install CUDA for faster generation" })).toBeNull();
+  // Opening the page answers the question.
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Install CUDA for faster generation" })).toBeNull());
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
   fireEvent.keyDown(screen.getByRole("main", { name: "Settings" }), { key: "Escape" });
   expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
@@ -57,13 +60,15 @@ it("offers the CUDA 12.8 archive for older RTX cards and allows Escape to procee
   vi.mocked(getRuntimeStatus).mockResolvedValue({ ...detected, slopfab: { ...detected.slopfab, cudaDeviceNames: ["NVIDIA GeForce RTX 3080"] } });
   render(<App />);
   const dialog = await screen.findByRole("dialog", { name: "Install CUDA for faster generation" });
-  const download = within(dialog).getByRole("link", { name: "Download CUDA 12.8 from NVIDIA" });
-  expect(download).toHaveAttribute("href", "https://developer.nvidia.com/cuda-12-8-0-download-archive");
+  const download = within(dialog).getByRole("button", { name: "Download CUDA 12.8" });
   vi.mocked(invoke).mockRejectedValueOnce(new Error("Browser unavailable"));
   fireEvent.click(download);
-  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Browser unavailable");
+  const alert = await within(dialog).findByRole("alert");
+  expect(alert).toHaveTextContent("Browser unavailable");
+  // The address is still there to type in by hand.
+  expect(alert).toHaveTextContent("https://developer.nvidia.com/cuda-12-8-0-download-archive");
   expect(invoke).toHaveBeenCalledWith("open_cuda_download", { version: "12.8" });
-  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.keyDown(download, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Install CUDA for faster generation" })).toBeNull();
 });
 

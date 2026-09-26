@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
@@ -23,6 +23,8 @@ beforeEach(() => {
     return undefined;
   });
 });
+/** The command bar's New project (the empty library offers a second one). */
+const newProject = async () => within(await screen.findByRole("toolbar", { name: "Library commands" })).getByRole("button", { name: "New project" });
 afterEach(() => { cleanup(); delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; });
 
 it("selects a folder before showing the form and keeps its path when the project is renamed", async () => {
@@ -33,7 +35,7 @@ it("selects a folder before showing the form and keeps its path when the project
     return regular(command, args);
   });
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "New project" }));
+  fireEvent.click(await newProject());
   expect(invoke).toHaveBeenCalledWith("choose_new_project_folder");
   expect(screen.queryByRole("dialog", { name: "New project" })).not.toBeInTheDocument();
   finish(selected);
@@ -48,7 +50,7 @@ it("selects a folder before showing the form and keeps its path when the project
 it("cancels without opening the form, then blocks a nonempty folder next to Create", async () => {
   selected = null;
   render(<App />);
-  const start = await screen.findByRole("button", { name: "New project" });
+  const start = await newProject();
   fireEvent.click(start);
   await waitFor(() => expect(start).toBeEnabled());
   expect(screen.queryByRole("dialog", { name: "New project" })).not.toBeInTheDocument();
@@ -57,10 +59,12 @@ it("cancels without opening the form, then blocks a nonempty folder next to Crea
   await screen.findByRole("dialog", { name: "New project" });
   const create = screen.getByRole("button", { name: "Create project" });
   expect(create).toBeDisabled();
-  expect(screen.getByRole("alert").parentElement).toBe(create.parentElement);
+  // The reason is an InfoBar inside the dialog, not red text by the button.
+  const dialog = screen.getByRole("dialog", { name: "New project" });
+  expect(within(dialog).getByRole("alert")).toHaveTextContent("The selected folder is not empty.");
   expect(invoke).not.toHaveBeenCalledWith("create_project", expect.anything());
   selected = { folderPath: "D:/Empty", error: null };
-  fireEvent.click(screen.getByRole("button", { name: "Change folder" }));
+  fireEvent.click(screen.getByRole("button", { name: "Browse…" }));
   await waitFor(() => expect(screen.getByLabelText("Project folder")).toHaveValue("D:/Empty"));
   expect(screen.getByLabelText("Project name")).toHaveValue("Empty");
   expect(create).toBeEnabled();
@@ -68,7 +72,7 @@ it("cancels without opening the form, then blocks a nonempty folder next to Crea
 
 it("rechecks the selected directory before creating", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "New project" }));
+  fireEvent.click(await newProject());
   await screen.findByRole("dialog", { name: "New project" });
   selected = { ...selected!, error: "The selected folder is not empty." };
   fireEvent.click(screen.getByRole("button", { name: "Create project" }));

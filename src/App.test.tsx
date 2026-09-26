@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
 import { createProjectConfig, STORY_TRACK_ID } from "./lib/project";
@@ -45,7 +45,7 @@ describe("how long ago a project was edited", () => {
       sourceStartMs: 750, label: "Opening shot", color: null, status: "approved",
     }] } : track);
     const { container } = render(<ProjectCard project={{ folderPath: "C:\\Ceramic Lamp", config }} index={0} onOpen={() => undefined} />);
-    expect(container.querySelector(".project-card__art > .media-thumb")?.getAttribute("aria-label")).toBe("Opening shot");
+    expect(container.querySelector(".project-card__thumb > .media-thumb")?.getAttribute("aria-label")).toBe("Opening shot");
   });
 });
 
@@ -65,12 +65,20 @@ describe("project library controls", () => {
 
     render(<App />);
 
-    const card = await screen.findByRole("button", { name: "Open Saved illustration" });
+    const card = await screen.findByRole("option", { name: "Saved illustration" });
     expect(card.querySelector(".media-thumb")).toHaveAttribute("aria-label", "Generated illustration");
+    // One click selects, like a GridView item; it does not open.
     fireEvent.click(card);
-    expect(await screen.findByRole("button", { name: "Editor" })).toHaveAttribute("aria-current", "page");
+    expect(card).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tab", { name: "Editor" })).toBeNull();
+    fireEvent.doubleClick(card);
+    expect(await screen.findByRole("tab", { name: "Editor" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
-    expect(await screen.findByRole("button", { name: "Open Saved illustration" })).toBeInTheDocument();
+    const again = await screen.findByRole("option", { name: "Saved illustration" });
+    // The tile that was opened is still the selected one, and Enter opens it.
+    expect(again).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(again, { key: "Enter" });
+    expect(await screen.findByRole("tab", { name: "Editor" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("uses a named New Project form with a default Look instead of a length", async () => {
@@ -93,18 +101,18 @@ describe("project library controls", () => {
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
   });
 
-  it("focuses search with Ctrl/Cmd+K and switches between grid and list", async () => {
+  it("puts the brand in the title bar, focuses search with Ctrl+F and switches between grid and list", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
-    expect(container.querySelector(".brand__wordmark")?.textContent).toBe("Slopus");
-    expect(container.querySelector(".brand__edition")?.textContent).toBe("ALPHA");
-    expect(container.querySelector(".brand .slopus-logo__ticket")).toBeNull();
-    const icon = container.querySelector(".brand img");
-    expect(icon?.getAttribute("src")).toContain("marketing/icon.png");
-    expect(icon?.nextElementSibling?.textContent).toBe("Slopus");
+    // 16px icon, "Slopus" and "Preview" as the window caption; no web header.
+    expect(container.querySelector(".titlebar__title")?.textContent).toBe("Slopus");
+    expect(container.querySelector(".titlebar__secondary")?.textContent).toBe("Preview");
+    expect(container.querySelector(".titlebar__icon img")?.getAttribute("src")).toContain("marketing/icon.png");
+    expect(screen.getByRole("heading", { level: 1, name: "Projects" })).toBeInTheDocument();
+    expect(container.querySelector("kbd")).toBeNull();
 
-    const search = screen.getByRole("textbox", { name: "Search projects" });
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const search = screen.getByRole("searchbox", { name: "Search projects" });
+    fireEvent.keyDown(document.body, { key: "f", ctrlKey: true });
     expect(document.activeElement).toBe(search);
 
     const list = screen.getByRole("button", { name: "List view" });
@@ -113,30 +121,67 @@ describe("project library controls", () => {
     expect(container.querySelector(".project-grid--list")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
-    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Open project" })).not.toBeNull());
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Open", "Delete project…"]);
+  });
+
+  it("opens the tile menu with a right-click and moves the selection with the arrow keys", async () => {
+    // Opening a video project mounts the program monitor; jsdom plays nothing.
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    const tiles = screen.getAllByRole("option");
+    expect(tiles.length).toBeGreaterThan(1);
+    expect(tiles.map((tile) => tile.tabIndex)).toEqual(tiles.map((_, index) => index === 0 ? 0 : -1));
+    fireEvent.contextMenu(tiles[1], { clientX: 40, clientY: 40 });
+    expect(tiles[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open" }));
+    expect(await screen.findByRole("button", { name: "Back to project library" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+    const again = await screen.findAllByRole("option");
+    again[1].focus();
+    fireEvent.keyDown(again[1], { key: "ArrowLeft" });
+    expect(again[0]).toHaveFocus();
+    expect(again[0]).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(again[0], { key: "End" });
+    expect(again.at(-1)).toHaveFocus();
   });
 
   it("confirms permanent project deletion before removing it from the library", async () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete Project" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete project…" }));
 
     const dialog = screen.getByRole("alertdialog", { name: "Delete “Northern Light — Brand Film”?" });
     expect(dialog.textContent).toContain("permanently deletes the project folder and every file inside it");
     expect(dialog.textContent).toContain("~/Slopus/Northern Light");
+    // Cancel is the default answer.
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Northern Light — Brand Film")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Project" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete project…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(screen.queryByText("Northern Light — Brand Film")).toBeNull());
     const stored = JSON.parse(localStorage.getItem("slopus.web-projects.v1") ?? "[]") as Array<{ config: { id: string } }>;
     expect(stored.some((project) => project.config.id === "sample-1")).toBe(false);
     expect(screen.getByText("2 projects")).not.toBeNull();
+  });
+
+  it("answers the app accelerators: Ctrl+N and Ctrl+,", async () => {
+    render(<App />);
+    await screen.findByText("Northern Light — Brand Film");
+    fireEvent.keyDown(document.body, { key: "n", ctrlKey: true });
+    expect(await screen.findByRole("dialog", { name: "New project" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull();
+    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
+    expect(screen.getByRole("main", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Projects" })).toBeNull();
   });
 
   it("offers frame sizes MiniMax H3 can generate, relabelled when the shape changes", async () => {
@@ -164,21 +209,23 @@ describe("project library controls", () => {
       "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
     ]);
 
-    // The header stays short; the fields already show the selected format.
     fireEvent.change(size, { target: { value: "544p" } });
-    expect(document.querySelector(".composer__options-head")).toHaveTextContent(/^Video settings$/);
+    expect(size).toHaveValue("544p");
   });
 
-  it("opens a newly named empty project on its Agent starting page", async () => {
+  it("opens a newly named empty project with the agent pane showing", async () => {
+    localStorage.setItem("slopus.workspace.agentPane", "closed");
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Ceramic lamp film" } });
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
-    expect(await screen.findByRole("heading", { name: "What should we create today?" })).not.toBeNull();
-    expect(screen.getByText("Ceramic lamp film")).not.toBeNull();
+    // A new project starts with the Agent, even if the pane was last closed.
+    const pane = await screen.findByRole("complementary", { name: "Agent" });
+    expect(screen.getByRole("button", { name: "Agent" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Edit project settings for Ceramic lamp film" })).toBeInTheDocument();
     expect(screen.queryByText("First scene")).toBeNull();
-    const draft = screen.getByRole("textbox", { name: /Ask Slop about/ });
+    const draft = within(pane).getByRole("textbox", { name: /Ask Slop about/ });
     fireEvent.change(draft, { target: { value: "Keep this unfinished idea" } });
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     const settings = screen.getByRole("main", { name: "Settings" });
@@ -198,7 +245,7 @@ describe("project library controls", () => {
     expect(screen.getByRole("dialog", { name: "New project" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    expect(await screen.findByRole("heading", { name: "What should we create today?" })).not.toBeNull();
+    expect(await screen.findByRole("complementary", { name: "Agent" })).toBeVisible();
     expect(screen.getAllByText("Untitled video").length).toBeGreaterThan(0);
     expect(screen.queryByText("First scene")).toBeNull();
   });
@@ -215,6 +262,7 @@ describe("project library controls", () => {
     expect(await screen.findByText("Readable film")).not.toBeNull();
     // …and the bad one is named rather than silently vanishing.
     const alert = await screen.findByRole("alert");
+    expect(alert).toHaveClass("ui-infobar");
     expect(alert.textContent).toContain("couldn’t be read");
     expect(alert.textContent).toContain("~/Slopus/Broken");
   });
