@@ -1,18 +1,18 @@
-.tag-editor { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; font-size: var(--text-sm); }
-.tag-editor__chips, .tag-editor__suggestions { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
-.tag-editor__chip { display: inline-flex; align-items: center; max-width: 100%; border-radius: 14px; background: var(--panel-3); border: 1px solid var(--line); }
-.tag-editor__chip:hover { border-color: var(--line-strong); }
+/* The style token box: a TextBox holding 4px tokens (24px, 12px text, a small
+   square remove button) followed by an inline input; suggestions drop down
+   as an acrylic list under the field. */
+.tag-editor { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; font-size: var(--text-xs); }
+.tag-editor__label { color: var(--text-secondary); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.tag-editor__field { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: var(--field-height); padding: 3px var(--space-1); border: 1px solid var(--stroke-control); border-bottom-color: var(--stroke-strong); border-radius: var(--radius-sm); background: var(--fill-control); cursor: text; transition: var(--transition-control); }
+.tag-editor__field:hover { background: var(--fill-control-hover); }
+.tag-editor__field:focus-within { border-bottom-color: var(--field-focus-line); background: var(--fill-input-focus); box-shadow: inset 0 -1px 0 var(--field-focus-line); }
+.tag-editor__chip { display: inline-flex; align-items: center; max-width: 100%; height: var(--control-sm); border: 1px solid var(--stroke-control); border-radius: var(--radius-sm); background: var(--fill-control-alt); }
 .tag-editor__chip.dragging { opacity: 0.45; }
-.tag-editor__drag { min-width: 0; padding: 4px 3px 4px 9px; border: 0; background: transparent; color: var(--text-primary); font-size: inherit; text-align: left; overflow-wrap: anywhere; cursor: grab; touch-action: none; user-select: none; }
+.tag-editor__drag { min-width: 0; height: 100%; padding: 0 2px 0 var(--space-2); overflow: hidden; border: 0; border-radius: var(--radius-sm) 0 0 var(--radius-sm); background: transparent; color: var(--text-primary); font-size: var(--text-xs); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: grab; touch-action: none; user-select: none; }
 .tag-editor__drag:active { cursor: grabbing; }
-.tag-editor__remove { display: grid; place-items: center; flex: 0 0 24px; align-self: stretch; padding: 3px; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); }
-.tag-editor__remove:hover { color: var(--danger); }
-.tag-editor__add { display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px; border: 1px solid var(--line-strong); border-radius: 14px; background: transparent; color: var(--text-muted); font-size: inherit; }
-.tag-editor__add:hover, .tag-editor__add[aria-expanded="true"] { background: var(--panel-3); color: var(--text-primary); }
-.tag-editor__popup { position: fixed; z-index: 115; width: min(280px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); color: var(--text-primary); box-shadow: var(--shadow-sm); font-size: var(--text-sm); }
-.tag-editor__custom { display: flex; gap: var(--space-1); }
-.tag-editor__custom input { width: 100%; min-width: 0; min-height: var(--field-height); padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--field-bg); color: var(--text-primary); }
-.tag-editor__custom button { flex-shrink: 0; }
-.tag-editor__hint { color: var(--text-muted); font-size: var(--text-xs); }
-.tag-editor__suggestions button { padding: 4px 8px; border: 1px solid transparent; border-radius: 12px; background: var(--panel-2); color: var(--text-primary); font-size: inherit; }
-.tag-editor__suggestions button:hover { background: var(--panel-3); border-color: var(--line-strong); }
+.tag-editor__remove { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; margin-right: 1px; padding: 0; border: 0; border-radius: 2px; background: transparent; color: var(--text-secondary); }
+.tag-editor__remove:hover { color: var(--text-primary); background: var(--fill-subtle-hover); }
+.tag-editor__input { flex: 1 0 64px; min-width: 64px; height: var(--control-sm); padding: 0 var(--space-1); border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text-primary); font-size: var(--text-sm); }
+.tag-editor__suggestions { position: fixed; z-index: 960; max-height: 264px; overflow-y: auto; padding: var(--space-1); border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); box-shadow: var(--shadow-sm); color: var(--text-primary); font-size: var(--text-base); }
+.tag-editor__suggestion { display: flex; align-items: center; min-height: var(--control-md); padding: 0 var(--space-3); border-radius: var(--radius-sm); }
+.tag-editor__suggestion--active { background: var(--fill-subtle-hover); }

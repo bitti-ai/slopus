@@ -1,33 +1,47 @@
-import { Plus, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "../../styles/tag-editor.css";
 
-/** ImgFab's ordered style chips, stored as the existing comma-separated string. */
+const MAX_SUGGESTIONS = 8;
+
+/** ImgFab's ordered style tokens, stored as the existing comma-separated string.
+ *
+ *  A token box, the way Windows mail "To" fields work: the tokens, then an
+ *  inline text box. Typing filters the suggestions under it; Enter (or a
+ *  comma) commits what was typed or the highlighted suggestion as a token;
+ *  Backspace in an empty box removes the last token. Tokens reorder by drag
+ *  or Alt+Left/Right. */
 export function TagEditor({ label, value, suggestions, onChange }: {
   label: string; value: string; suggestions: readonly string[]; onChange: (value: string) => void;
 }) {
   const id = useId();
   const tags = value.split(",").map((tag) => tag.trim()).filter(Boolean);
+  const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
-  const [custom, setCustom] = useState("");
-  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const [active, setActive] = useState(-1);
+  const [position, setPosition] = useState<{ left: number; top: number; width: number }>({ left: 0, top: 0, width: 0 });
   const [dragging, setDragging] = useState<number | null>(null);
   const host = useRef<HTMLDivElement>(null);
-  const addButton = useRef<HTMLButtonElement>(null);
-  const popup = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const drag = useRef<{ index: number; x: number; y: number; active: boolean } | null>(null);
-  const available = suggestions.filter((suggestion) => !tags.some((tag) => tag.toLowerCase() === suggestion.toLowerCase()));
-  const close = () => { setOpen(false); addButton.current?.focus(); };
+  const query = text.trim().toLowerCase();
+  const available = suggestions
+    .filter((suggestion) => !tags.some((tag) => tag.toLowerCase() === suggestion.toLowerCase()))
+    .filter((suggestion) => !query || suggestion.toLowerCase().includes(query))
+    .slice(0, MAX_SUGGESTIONS);
+  const listOpen = open && available.length > 0;
+  const listId = `${id}-suggestions`;
+
   const add = (raw: string) => {
     const next = [...tags];
     for (const tag of raw.split(",").map((part) => part.trim()).filter(Boolean)) {
       if (!next.some((existing) => existing.toLowerCase() === tag.toLowerCase())) next.push(tag);
     }
     if (next.length !== tags.length) onChange(next.join(", "));
-    setCustom("");
-    input.current?.focus();
+    setText("");
+    setActive(-1);
   };
   const move = (from: number, to: number) => {
     if (from === to || to < 0 || to >= tags.length) return;
@@ -35,46 +49,37 @@ export function TagEditor({ label, value, suggestions, onChange }: {
     next.splice(to, 0, next.splice(from, 1)[0]);
     onChange(next.join(", "));
   };
+  const removeAt = (index: number) => onChange(tags.filter((_, i) => i !== index).join(", "));
+
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!listOpen) return;
     const place = () => {
-      const anchor = addButton.current!.getBoundingClientRect();
-      const bounds = popup.current!.getBoundingClientRect();
-      const top = anchor.bottom + 6 + bounds.height <= window.innerHeight - 8 ? anchor.bottom + 6 : anchor.top - bounds.height - 6;
-      setPosition({ left: Math.max(8, Math.min(anchor.left, window.innerWidth - bounds.width - 8)), top: Math.max(8, top) });
+      const box = field.current?.getBoundingClientRect();
+      if (box) setPosition({ left: box.left, top: box.bottom + 2, width: box.width });
     };
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [open, available.length]);
-  useEffect(() => {
-    if (!open) return;
-    input.current?.focus();
-    const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !host.current?.contains(event.target) && !popup.current?.contains(event.target)) setOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
-    };
-    document.addEventListener("pointerdown", outside);
-    window.addEventListener("keydown", escape, true);
-    return () => { document.removeEventListener("pointerdown", outside); window.removeEventListener("keydown", escape, true); };
-  }, [open]);
+  }, [listOpen]);
 
-  return <div className="tag-editor" ref={host} role="group" aria-labelledby={`${id}-label`} onBlur={(event) => {
-    const next = event.relatedTarget;
-    if (next instanceof Node && !host.current?.contains(next) && !popup.current?.contains(next)) setOpen(false);
-  }}>
+  return <div className="tag-editor" ref={host} role="group" aria-labelledby={`${id}-label`}>
     <span className="tag-editor__label" id={`${id}-label`}>{label}</span>
-    <div className="tag-editor__chips">
+    <div className="tag-editor__field" ref={field} onMouseDown={(event) => {
+      // A click on the field's empty space puts the caret in the text box.
+      if (event.target === event.currentTarget) { event.preventDefault(); input.current?.focus(); }
+    }}>
       {tags.map((tag, index) => <span key={`${index}-${tag}`} data-tag-index={index} className={`tag-editor__chip${dragging === index ? " dragging" : ""}`}>
-        <button type="button" className="tag-editor__drag" aria-label={`${label} tag: ${tag}`} title="Drag to reorder, or use Alt + Left/Right" onKeyDown={(event) => {
+        <button type="button" className="tag-editor__drag" aria-label={`${label} tag: ${tag}`} aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight" data-tooltip="Drag to reorder" data-tooltip-shortcut="Alt+Left, Alt+Right" onKeyDown={(event) => {
           if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
             event.preventDefault(); event.stopPropagation();
             const to = index + (event.key === "ArrowLeft" ? -1 : 1);
             move(index, to);
             if (to >= 0 && to < tags.length) requestAnimationFrame(() => host.current?.querySelector<HTMLButtonElement>(`[data-tag-index="${to}"] .tag-editor__drag`)?.focus());
+          } else if (event.key === "Delete" || event.key === "Backspace") {
+            event.preventDefault(); event.stopPropagation();
+            removeAt(index);
+            requestAnimationFrame(() => input.current?.focus());
           }
         }} onPointerDown={(event) => {
           if (event.button !== 0) return;
@@ -96,16 +101,70 @@ export function TagEditor({ label, value, suggestions, onChange }: {
           }
           drag.current = null; setDragging(null);
         }} onLostPointerCapture={() => { drag.current = null; setDragging(null); }}>{tag}</button>
-        <button type="button" className="tag-editor__remove" aria-label={`Remove ${tag} from ${label}`} onClick={() => onChange(tags.filter((_, i) => i !== index).join(", "))}><X size={12} /></button>
+        <button type="button" className="tag-editor__remove" aria-label={`Remove ${tag} from ${label}`} tabIndex={-1} onClick={() => removeAt(index)}><X size={12} aria-hidden="true" /></button>
       </span>)}
-      <button ref={addButton} type="button" className="tag-editor__add" aria-label={`Add ${label} tag`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? `${id}-popup` : undefined} onClick={() => setOpen(!open)}><Plus size={13} /> Add</button>
+      <input
+        ref={input}
+        className="tag-editor__input"
+        role="combobox"
+        aria-label={`Add ${label} tag`}
+        aria-autocomplete="list"
+        aria-expanded={listOpen}
+        aria-controls={listOpen ? listId : undefined}
+        aria-activedescendant={listOpen && active >= 0 ? `${listId}-${active}` : undefined}
+        placeholder={tags.length ? "" : "Add a tag…"}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value;
+          // A typed comma commits everything before it.
+          if (next.includes(",")) { add(next); return; }
+          setText(next);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => { setOpen(false); setActive(-1); }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (listOpen && active >= 0) add(available[active]);
+            else if (text.trim()) add(text);
+          } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!available.length) return;
+            setOpen(true);
+            const step = event.key === "ArrowDown" ? 1 : -1;
+            setActive((current) => (current + step + available.length + (current < 0 && step < 0 ? 1 : 0)) % available.length);
+          } else if (event.key === "Escape" && (listOpen || text)) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (listOpen) setOpen(false); else setText("");
+          } else if (event.key === "Backspace" && !text && tags.length) {
+            event.preventDefault();
+            removeAt(tags.length - 1);
+          }
+        }}
+      />
     </div>
-    {open && createPortal(<div ref={popup} id={`${id}-popup`} className="tag-editor__popup" role="dialog" aria-label={`Add ${label} tag`} style={position}>
-      <strong>Add tag</strong>
-      <div className="tag-editor__custom"><input ref={input} aria-label={`Custom ${label} tags`} placeholder="Custom tag…" value={custom} onChange={(event) => setCustom(event.target.value)} onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); add(custom); }
-      }} /><button type="button" className="secondary-button" disabled={!custom.trim()} onClick={() => add(custom)}>Add</button></div>
-      {available.length > 0 && <><span className="tag-editor__hint">Suggestions</span><div className="tag-editor__suggestions">{available.map((tag) => <button type="button" key={tag} onClick={() => add(tag)}>{tag}</button>)}</div></>}
+    {listOpen && createPortal(<div
+      id={listId}
+      role="listbox"
+      className="tag-editor__suggestions"
+      aria-label={`${label} suggestions`}
+      style={{ left: position.left, top: position.top, minWidth: position.width }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {available.map((suggestion, index) => <div
+        key={suggestion}
+        id={`${listId}-${index}`}
+        role="option"
+        aria-selected={index === active}
+        className={`tag-editor__suggestion${index === active ? " tag-editor__suggestion--active" : ""}`}
+        onMouseMove={() => setActive(index)}
+        onClick={() => add(suggestion)}
+      >{suggestion}</div>)}
     </div>, document.body)}
   </div>;
 }

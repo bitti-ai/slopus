@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
+import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, type ProjectConfig } from "../../lib/project";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
 import { defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
@@ -45,9 +46,9 @@ it("starts an image root from the thumbnail Edit menu and hides root text contro
   expect(current().assets.filter((asset) => asset.imageDraft)).toHaveLength(1);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).assets).toEqual(current().assets);
   expect(screen.getByLabelText("Image placement canvas").parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(101 / 77));
-  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "prompt" } });
+  choose("Type", "Prompt");
   expect(screen.getByLabelText("Prompt (high-level description)")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Type"), { target: { value: "image" } });
+  choose("Type", "Image");
   expect(current().imageScene!.sourceImage).toBeNull();
 });
 
@@ -64,7 +65,7 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
   expect(screen.getByLabelText("Steps")).toHaveValue(30);
-  expect(screen.getByLabelText("Generator")).toHaveValue(saved.generatorTemplateId);
+  expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(saved.generatorTemplateId);
   expect(screen.getByRole("button", { name: "Lantern" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Lettering" })).toBeInTheDocument();
   expect(current().references).toEqual(saved.references);
@@ -73,7 +74,7 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Another edit" } });
   fireEvent.click(screen.getByRole("button", { name: "View Result 0" }));
   expect(current().imageScene).toEqual({ ...original.scene, outputAssetId: "result-0" });
-  expect(screen.getByLabelText("Generator")).toHaveValue(original.generatorTemplateId);
+  expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(original.generatorTemplateId);
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(current().imageScene).toEqual({ ...saved.scene, outputAssetId: "result-1" });
   expect(current().assets[1].imageGeneration).toEqual(saved);
@@ -89,8 +90,8 @@ it("displays each generated image at its saved aspect ratio independently of fut
   const current = setup(initial);
   const frame = screen.getByLabelText("Image placement canvas").parentElement!;
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
-  fireEvent.change(screen.getByLabelText("Resolution"), { target: { value: "1344p" } });
-  fireEvent.change(screen.getByLabelText("Aspect ratio"), { target: { value: "1:1" } });
+  choose("Resolution", /^\d+ × 1344$|^1344 × \d+$|1344/);
+  choose("Aspect ratio", "1:1");
   expect(current().settings).toMatchObject({ resolution: "1344p", aspectRatio: "1:1" });
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   fireEvent.click(screen.getByRole("button", { name: "View Tall" }));
@@ -141,7 +142,7 @@ it("creates a blank draft from the image bar and preserves it while browsing", (
   const current = setup(initial);
   fireEvent.contextMenu(screen.getByRole("button", { name: "View Saved" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
-  expect(screen.getByLabelText("Type")).toHaveValue("prompt");
+  expect(comboValue(screen.getByRole("combobox", { name: "Type" }))).toBe("prompt");
   expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("");
   expect(current().imageScene!.nodes).toHaveLength(1);
   expect(screen.getByRole("button", { name: "View New image" })).toHaveAttribute("aria-pressed", "true");
@@ -165,39 +166,44 @@ it("creates an image from the empty bar's keyboard context menu", () => {
   expect(current().assets[0]).toMatchObject({ name: "New image", imageDraft: true });
 });
 
-it("edits ordered style chips with suggestions, custom tags, removal, undo, and mode-specific choices", () => {
+it("edits ordered style tokens with suggestions, custom tags, removal, undo, and mode-specific choices", () => {
   const current = setup();
   expect(screen.getByRole("button", { name: "Aesthetics tag: Minimal poster" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Add Aesthetics tag" }));
-  const popup = within(screen.getByRole("dialog", { name: "Add Aesthetics tag" }));
-  expect(popup.getByRole("button", { name: "whimsical" })).toBeInTheDocument();
-  fireEvent.click(popup.getByRole("button", { name: "vibrant" }));
-  expect(popup.queryByRole("button", { name: "vibrant" })).not.toBeInTheDocument();
-  const custom = popup.getByRole("textbox", { name: "Custom Aesthetics tags" });
-  fireEvent.change(custom, { target: { value: " VIBRANT, intricate, custom finish, , " } });
-  fireEvent.keyDown(custom, { key: "Enter" });
+  const aesthetics = screen.getByRole("combobox", { name: "Add Aesthetics tag" });
+  fireEvent.focus(aesthetics);
+  const list = () => within(screen.getByRole("listbox", { name: "Aesthetics suggestions" }));
+  expect(list().getByRole("option", { name: "whimsical" })).toBeInTheDocument();
+  fireEvent.change(aesthetics, { target: { value: "vibr" } });
+  fireEvent.click(list().getByRole("option", { name: "vibrant" }));
+  fireEvent.change(aesthetics, { target: { value: "vibr" } });
+  expect(screen.queryByRole("option", { name: "vibrant" })).not.toBeInTheDocument();
+  fireEvent.change(aesthetics, { target: { value: " intricate" } });
+  fireEvent.keyDown(aesthetics, { key: "Enter" });
+  fireEvent.change(aesthetics, { target: { value: "custom finish, " } });
   expect(current().imageScene!.style.aesthetics).toBe("Minimal poster, vibrant, intricate, custom finish");
-  expect(custom).toHaveValue("");
-  fireEvent.keyDown(window, { key: "Escape" });
-  expect(screen.getByRole("button", { name: "Add Aesthetics tag" })).toHaveFocus();
+  expect(aesthetics).toHaveValue("");
+  fireEvent.keyDown(aesthetics, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Remove vibrant from Aesthetics" }));
   fireEvent.keyDown(screen.getByRole("button", { name: "Aesthetics tag: intricate" }), { key: "ArrowLeft", altKey: true });
   expect(current().imageScene!.style.aesthetics).toBe("intricate, Minimal poster, custom finish");
   fireEvent.click(screen.getByRole("button", { name: "Undo image edit" }));
   expect(current().imageScene!.style.aesthetics).toBe("Minimal poster, intricate, custom finish");
-  fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "photo" } });
-  fireEvent.click(screen.getByRole("button", { name: "Add Lighting tag" }));
-  fireEvent.click(screen.getByRole("button", { name: "golden hour" }));
-  fireEvent.keyDown(window, { key: "Escape" });
-  fireEvent.click(screen.getByRole("button", { name: "Add Camera / lens tag" }));
-  fireEvent.click(screen.getByRole("button", { name: "35mm" }));
+  choose("Mode", "Photo");
+  const lighting = screen.getByRole("combobox", { name: "Add Lighting tag" });
+  fireEvent.change(lighting, { target: { value: "golden" } });
+  fireEvent.keyDown(lighting, { key: "ArrowDown" });
+  fireEvent.keyDown(lighting, { key: "Enter" });
+  const camera = screen.getByRole("combobox", { name: "Add Camera / lens tag" });
+  fireEvent.change(camera, { target: { value: "35mm" } });
+  fireEvent.click(screen.getByRole("option", { name: "35mm" }));
   expect(imageScenePrompt(current().imageScene!)).toContain("A still photograph with Minimal poster, intricate, custom finish aesthetics, Sunrise, golden hour lighting, Screen print, 35mm camera and lens characteristics.");
-  fireEvent.keyDown(window, { key: "Escape" });
-  fireEvent.click(screen.getByRole("button", { name: "Add Aesthetics tag" }));
-  expect(screen.getByRole("button", { name: "photorealistic" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "whimsical" })).not.toBeInTheDocument();
-  fireEvent.pointerDown(screen.getByLabelText("Mode"));
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.blur(camera);
+  fireEvent.focus(aesthetics);
+  expect(screen.getByRole("option", { name: "photorealistic" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "whimsical" })).not.toBeInTheDocument();
+  fireEvent.keyDown(aesthetics, { key: "Backspace" });
+  expect(current().imageScene!.style.aesthetics).toBe("Minimal poster, intricate");
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
 });
 
@@ -310,4 +316,68 @@ it("supports menu keyboard navigation and tree shortcuts without intercepting na
   fireEvent.contextMenu(screen.getByRole("tree", { name: "Image nodes" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New Group" }));
   expect(current().imageScene!.nodes.at(-1)).toMatchObject({ kind: "group", parentId: "image-root" });
+});
+
+it("walks the tree with arrow keys as a single tab stop and duplicates with Ctrl+D", () => {
+  const current = setup();
+  const image = screen.getByRole("button", { name: "Image" });
+  expect(image).toHaveAttribute("tabindex", "0");
+  expect(screen.getByRole("button", { name: "Rocket" })).toHaveAttribute("tabindex", "-1");
+  fireEvent.keyDown(image, { key: "ArrowDown" });
+  expect(screen.getByRole("button", { name: "Rocket" })).toHaveAttribute("tabindex", "0");
+  fireEvent.keyDown(screen.getByRole("button", { name: "Rocket" }), { key: "ArrowLeft" });
+  expect(screen.queryByRole("button", { name: "Title" })).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Rocket" }), { key: "ArrowRight" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Rocket" }), { key: "ArrowRight" });
+  expect(screen.getByRole("button", { name: "Title" })).toHaveAttribute("tabindex", "0");
+  fireEvent.keyDown(screen.getByRole("button", { name: "Title" }), { key: "d", ctrlKey: true });
+  expect(current().imageScene!.nodes.map((node) => node.name)).toContain("Title copy");
+  expect(screen.getByRole("button", { name: "Title copy" })).toHaveAttribute("tabindex", "0");
+  fireEvent.keyDown(screen.getByRole("button", { name: "Title copy" }), { key: "Home" });
+  expect(screen.getByRole("button", { name: "Image" })).toHaveAttribute("tabindex", "0");
+});
+
+it("undoes and redoes image edits with the keyboard inside the editor only", () => {
+  const current = setup();
+  const before = current().imageScene!.nodes.length;
+  const rocket = screen.getByRole("button", { name: "Rocket" });
+  fireEvent.click(rocket);
+  fireEvent.keyDown(rocket, { key: "d", ctrlKey: true });
+  expect(current().imageScene!.nodes).toHaveLength(before + 2);
+  const tree = screen.getByRole("tree", { name: "Image nodes" });
+  fireEvent.keyDown(tree, { key: "z", ctrlKey: true });
+  expect(current().imageScene!.nodes).toHaveLength(before);
+  fireEvent.keyDown(tree, { key: "y", ctrlKey: true });
+  expect(current().imageScene!.nodes).toHaveLength(before + 2);
+  // Outside the editor Ctrl+Z is the project's, not this editor's.
+  fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+  expect(current().imageScene!.nodes).toHaveLength(before + 2);
+});
+
+it("picks canvas tools from a radio group or their letter keys and zooms from the keyboard", () => {
+  setup();
+  const tools = screen.getByRole("radiogroup", { name: "Canvas tool" });
+  expect(within(tools).getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.click(within(tools).getByRole("radio", { name: "Draw text" }));
+  expect(within(tools).getByRole("radio", { name: "Draw text" })).toHaveAttribute("aria-checked", "true");
+  const canvas = screen.getByLabelText("Image placement canvas");
+  fireEvent.keyDown(canvas, { key: "g" });
+  expect(within(tools).getByRole("radio", { name: "Draw group" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.keyDown(canvas, { key: "v" });
+  expect(within(tools).getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
+  expect(within(tools).getByRole("radio", { name: "Draw object" })).toHaveAttribute("data-tooltip-shortcut", "O");
+
+  const zoom = screen.getByRole("combobox", { name: "Image zoom" });
+  const frame = canvas.parentElement!;
+  expect(zoom).toHaveTextContent("Fit");
+  fireEvent.keyDown(canvas, { key: "=", ctrlKey: true });
+  expect(frame.style.getPropertyValue("--image-zoom")).toBe("1.5");
+  expect(zoom).toHaveTextContent("150%");
+  fireEvent.keyDown(canvas, { key: "-", ctrlKey: true });
+  fireEvent.keyDown(canvas, { key: "-", ctrlKey: true });
+  expect(frame.style.getPropertyValue("--image-zoom")).toBe("0.75");
+  choose("Image zoom", "200%");
+  expect(frame.style.getPropertyValue("--image-zoom")).toBe("2");
+  fireEvent.keyDown(canvas, { key: "0", ctrlKey: true });
+  expect(zoom).toHaveTextContent("Fit");
 });

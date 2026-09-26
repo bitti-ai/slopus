@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderOpen, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
+import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderOpen, FolderPlus, Group, Image, MousePointer2, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
@@ -18,6 +18,8 @@ import styleSuggestions from "../../lib/imageStyleSuggestions.json";
 import { applyImageCommand } from "../../lib/imageCommands";
 import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
+import { useShortcut } from "../../lib/commands";
+import { ComboBox, InfoBar, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
 import "../../styles/image-editor.css";
 
 const MIN_IMAGE_ZOOM = 0.1;
@@ -46,6 +48,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
   const hierarchy = useRef<HTMLElement>(null);
+  const editorRoot = useRef<HTMLDivElement>(null);
+  const editorId = useId();
+  const treePane = usePaneSize("image.tree", 240, { min: 180, max: 420 });
+  const inspectorPane = usePaneSize("image.inspector", 300, { min: 240, max: 520 });
   const clipboard = useSyncExternalStore(subscribeImageNodeClipboard, getImageNodeClipboard);
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
@@ -285,11 +291,105 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     const before = placement === "before" ? target.id : placement === "after" ? siblings[siblings.findIndex((node) => node.id === target.id) + 1]?.id : undefined;
     return { id: target.id, placement, parent, before } as const;
   };
+  /* --- Keyboard ---------------------------------------------------------------
+     The tree is one Tab stop (roving tabindex): Up/Down walk the visible rows,
+     Right opens a node or steps into it, Left closes it or steps out,
+     Home/End jump. F2, Delete, Ctrl+C/V/D and Shift+F10 act on the selection.
+     Undo and redo are this editor's own history, bound to its root so they
+     never reach the project's undo while focus is in here. */
+  const visibleNodes = (): ImageNode[] => {
+    const out: ImageNode[] = [];
+    const walk = (node: ImageNode) => {
+      out.push(node);
+      if (collapsed.has(node.id)) return;
+      scene.nodes.filter((child) => child.parentId === node.id).forEach(walk);
+    };
+    walk(root);
+    return out;
+  };
+  const selectAndFocus = (id: string) => { setSelection(id); requestAnimationFrame(() => focusNode(id)); };
+  const treeKeys = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]") || contextMenu) return;
+    const key = event.key.toLowerCase();
+    const handled = () => { event.preventDefault(); event.stopPropagation(); };
+    if ((event.ctrlKey || event.metaKey) && (key === "c" || key === "v")) {
+      handled();
+      attempt(() => key === "c" ? copyImageNode(scene, selected.id) : paste());
+    } else if ((event.ctrlKey || event.metaKey) && key === "d") { handled(); attempt(duplicate); }
+    else if (key === "delete") { handled(); removeSelected(); }
+    else if (key === "f2") { handled(); startRename(); }
+    else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      handled();
+      const bounds = (event.target as HTMLElement).getBoundingClientRect();
+      setContextMenu({ x: bounds.left, y: bounds.bottom });
+    } else if (["ArrowUp", "ArrowDown", "Home", "End", "ArrowLeft", "ArrowRight"].includes(event.key) && !event.altKey && !event.ctrlKey) {
+      const rows = visibleNodes();
+      const at = rows.findIndex((node) => node.id === selected.id);
+      const children = scene.nodes.filter((child) => child.parentId === selected.id);
+      const open = children.length > 0 && !collapsed.has(selected.id);
+      let next: ImageNode | undefined;
+      if (event.key === "ArrowUp") next = rows[at - 1];
+      else if (event.key === "ArrowDown") next = rows[at + 1];
+      else if (event.key === "Home") next = rows[0];
+      else if (event.key === "End") next = rows.at(-1);
+      else if (event.key === "ArrowRight") {
+        if (children.length && !open) { handled(); setCollapsed((current) => { const set = new Set(current); set.delete(selected.id); return set; }); return; }
+        next = open ? children[0] : undefined;
+      } else if (event.key === "ArrowLeft") {
+        if (open) { handled(); setCollapsed((current) => new Set(current).add(selected.id)); return; }
+        next = scene.nodes.find((node) => node.id === selected.parentId);
+      }
+      handled();
+      if (next) selectAndFocus(next.id);
+    }
+  };
+  useShortcut(["Ctrl+Z"], () => { if (!undo.current.length) return false; history(true); }, { scope: editorRoot });
+  useShortcut(["Ctrl+Y", "Ctrl+Shift+Z"], () => { if (!redo.current.length) return false; history(false); }, { scope: editorRoot });
+
+  /* Canvas tools: a radio group of icon toggles with one-letter keys. */
+  const TOOLS = [
+    { id: null, label: "Select", key: "V", icon: <MousePointer2 size={16} /> },
+    { id: "object", label: "Draw object", key: "O", icon: <Box size={16} /> },
+    { id: "text", label: "Draw text", key: "T", icon: <Type size={16} /> },
+    { id: "group", label: "Draw group", key: "G", icon: <Group size={16} /> },
+  ] as const;
+  const chooseTool = (id: typeof drawKind) => { setDrawKind(id); if (id) setBoxes(true); };
+  useShortcut("V", () => chooseTool(null), { scope: editorRoot });
+  useShortcut("O", () => chooseTool("object"), { scope: editorRoot });
+  useShortcut("T", () => chooseTool("text"), { scope: editorRoot });
+  useShortcut("G", () => chooseTool("group"), { scope: editorRoot });
+  useShortcut("Escape", () => { if (!drawKind) return false; chooseTool(null); }, { scope: editorRoot });
+
+  /* Zoom: Fit is the frame fitted to the viewport (100% of the fit); the
+     percentages scale from there. */
+  const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 8];
+  const zoomTo = (zoom: number) => setView((current) => {
+    const next = Math.max(MIN_IMAGE_ZOOM, Math.min(MAX_IMAGE_ZOOM, zoom));
+    return { zoom: next, x: current.x * next / current.zoom, y: current.y * next / current.zoom };
+  });
+  const fit = () => setView({ zoom: 1, x: 0, y: 0 });
+  const zoomStep = (direction: 1 | -1) => {
+    const next = direction > 0 ? ZOOM_STEPS.find((step) => step > view.zoom + 1e-6) : [...ZOOM_STEPS].reverse().find((step) => step < view.zoom - 1e-6);
+    if (next) zoomTo(next);
+  };
+  useShortcut("Ctrl+0", fit, { scope: editorRoot });
+  useShortcut("Ctrl+1", () => zoomTo(1), { scope: editorRoot });
+  useShortcut(["Ctrl+=", "Ctrl++", "Ctrl+Shift+="], () => zoomStep(1), { scope: editorRoot });
+  useShortcut("Ctrl+-", () => zoomStep(-1), { scope: editorRoot });
+  const fitted = view.zoom === 1 && view.x === 0 && view.y === 0;
+  const zoomPresets = [0.25, 0.5, 0.75, 1, 1.5, 2];
+  const zoomValue = fitted ? "fit" : zoomPresets.find((step) => Math.abs(step - view.zoom) < 1e-6)?.toString() ?? "custom";
+  const zoomOptions = [
+    { value: "fit", label: "Fit" },
+    ...(zoomValue === "custom" ? [{ value: "custom", label: `${Math.round(view.zoom * 100)}%`, disabled: true }] : []),
+    ...zoomPresets.map((step) => ({ value: String(step), label: `${step * 100}%` })),
+  ];
+
   const tree = (node: ImageNode, depth: number) => {
     const children = scene.nodes.filter((child) => child.parentId === node.id);
     const open = !collapsed.has(node.id);
-    return <div key={node.id} role="treeitem" aria-selected={selected.id === node.id} aria-expanded={children.length ? open : undefined}>
-      <div className={`image-tree__row ${selected.id === node.id ? "selected" : ""}${draggedNode === node.id ? " dragging" : ""}${treeDrop?.id === node.id ? ` image-tree__drop--${treeDrop.placement}` : ""}`} style={{ paddingLeft: `calc(var(--space-2) + ${depth} * var(--space-4))` }}
+    return <div key={node.id} role="treeitem" aria-selected={selected.id === node.id} aria-expanded={children.length ? open : undefined} aria-level={depth + 1}>
+      <div className={`image-tree__row ${selected.id === node.id ? "selected" : ""}${draggedNode === node.id ? " dragging" : ""}${treeDrop?.id === node.id ? ` image-tree__drop--${treeDrop.placement}` : ""}`} style={{ paddingLeft: `calc(var(--space-1) + ${depth} * 12px)` }}
         data-image-node={node.id}
         onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); event.stopPropagation(); setSelection(node.id); setContextMenu({ x: event.clientX, y: event.clientY }); }}
         draggable={node.kind !== "root" && renaming?.id !== node.id}
@@ -317,34 +417,28 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           });
           setDraggedNode(null); setTreeDrop(null);
         }}>
-        {children.length ? <button className="icon-button" aria-label={`${open ? "Collapse" : "Expand"} ${node.name}`} onClick={() => setCollapsed((current) => { const next = new Set(current); if (open) next.add(node.id); else next.delete(node.id); return next; })}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button> : <span className="image-tree__spacer" />}
+        {children.length
+          ? <button className="image-tree__chevron" tabIndex={-1} aria-label={`${open ? "Collapse" : "Expand"} ${node.name}`} onClick={() => setCollapsed((current) => { const next = new Set(current); if (open) next.add(node.id); else next.delete(node.id); return next; })}>{open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}</button>
+          : <span className="image-tree__spacer" />}
         {renaming?.id === node.id ? <input className="image-tree__rename" aria-label="Rename image node" maxLength={120} ref={(element) => { if (element && document.activeElement !== element) { element.focus(); element.select(); } }} value={renaming.value} onChange={(event) => setRenaming({ ...renaming, value: event.target.value })} onBlur={() => finishRename(true, false)} onKeyDown={(event) => {
           event.stopPropagation();
           if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); finishRename(true); }
           if (event.key === "Escape") { event.preventDefault(); finishRename(false); }
-        }} /> : <button className="image-tree__select" onFocus={() => setSelection(node.id)} onClick={() => setSelection(node.id)}><span aria-hidden="true">{node.kind === "text" ? "T" : node.kind === "root" ? <Image size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>}
+        }} /> : <button className="image-tree__select" tabIndex={selected.id === node.id ? 0 : -1} data-tooltip={node.name} onFocus={() => setSelection(node.id)} onClick={() => setSelection(node.id)}><span className="image-tree__icon" aria-hidden="true">{node.kind === "text" ? <Type size={16} /> : node.kind === "root" ? <Image size={16} /> : node.kind === "group" ? <Group size={16} /> : <Box size={16} />}</span><span>{node.name}</span></button>}
       </div>
       {open && children.length > 0 && <div role="group">{children.map((child) => tree(child, depth + 1))}</div>}
     </div>;
   };
-  return <div className="image-editor">
-    <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={(event) => {
-      if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]") || contextMenu) return;
-      const key = event.key.toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && (key === "c" || key === "v")) {
-        event.preventDefault(); event.stopPropagation();
-        attempt(() => key === "c" ? copyImageNode(scene, selected.id) : paste());
-      } else if (key === "delete") { event.preventDefault(); event.stopPropagation(); removeSelected(); }
-      else if (key === "f2") { event.preventDefault(); event.stopPropagation(); startRename(); }
-      else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-        event.preventDefault(); event.stopPropagation();
-        const bounds = (event.target as HTMLElement).getBoundingClientRect();
-        setContextMenu({ x: bounds.left, y: bounds.bottom });
-      }
-    }}>
-      <header><strong>Scene</strong><div className="image-editor__actions"><button className="icon-button" title="Undo" aria-label="Undo image edit" disabled={!undo.current.length} onClick={() => history(true)}><Undo2 size={16} /></button><button className="icon-button" title="Redo" aria-label="Redo image edit" disabled={!redo.current.length} onClick={() => history(false)}><Redo2 size={16} /></button></div></header>
+  const rootField = (field: string) => `${editorId}-${field}`;
+  return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
+    <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
+      <PaneHeader title="Scene" actions={<>
+        <button className="icon-button image-pane-button" aria-label="Undo image edit" aria-keyshortcuts="Control+Z" {...tooltipProps("Undo", "Ctrl+Z")} disabled={!undo.current.length} onClick={() => history(true)}><Undo2 size={16} aria-hidden="true" /></button>
+        <button className="icon-button image-pane-button" aria-label="Redo image edit" aria-keyshortcuts="Control+Y" {...tooltipProps("Redo", "Ctrl+Y")} disabled={!redo.current.length} onClick={() => history(false)}><Redo2 size={16} aria-hidden="true" /></button>
+      </>} />
       <div role="tree" aria-label="Image nodes">{tree(root, 0)}</div>
     </aside>
+    <Splitter {...treePane.splitterProps} aria-label="Resize hierarchy" />
     {contextMenu && <HierarchyContextMenu {...contextMenu} onClose={closeContextMenu} items={[
       { label: "New Object", icon: <Box size={15} />, action: () => attempt(() => add("object")) },
       { label: "New Text", icon: <Type size={15} />, action: () => attempt(() => add("text")) },
@@ -353,7 +447,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { label: "Rename", icon: <Pencil size={15} />, shortcut: "F2", separator: true, action: startRename },
       { label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", separator: true, disabled: selected.kind === "root", action: () => copyImageNode(scene, selected.id) },
       { label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", disabled: !clipboard, action: () => attempt(paste) },
-      { label: "Duplicate", icon: <Copy size={15} />, disabled: selected.kind === "root", action: () => attempt(duplicate) },
+      { label: "Duplicate", icon: <Copy size={15} />, shortcut: "Ctrl+D", disabled: selected.kind === "root", action: () => attempt(duplicate) },
       { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
@@ -367,16 +461,52 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">
-      <div className="image-canvas-tools">
-        <button className="primary-button image-generate-button" title={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}><Sparkles size={16} />{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
-        <label className="image-generator">Generator<select aria-label="Generator" value={template?.id ?? ""} disabled={Boolean(active)} onChange={(event) => { setTemplateId(event.target.value); localStorage.setItem("slopus.image-generator-template.v1", event.target.value); const next = imageTemplates.find((candidate) => candidate.id === event.target.value); if (next) commit({ ...scene, steps: next.defaultSteps }); }}>
-          {!imageTemplates.length && <option value="">No MiniMax H3 templates</option>}{imageTemplates.map((item) => <option key={item.id} value={item.id} disabled={templateNeedsDownload(item)}>{item.name}{templateNeedsDownload(item) ? " (download in Settings)" : ""}</option>)}
-        </select></label>
-        <button className={`icon-button ${boxes ? "active" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} onClick={() => { setBoxes(!boxes); setDrawKind(null); }}><Square size={16} /></button>
-        <select aria-label="Canvas tool" value={drawKind ?? "select"} onChange={(event) => { setDrawKind(event.target.value === "select" ? null : event.target.value as typeof drawKind); setBoxes(true); }}><option value="select">Select / move</option><option value="object">Draw object</option><option value="text">Draw text</option><option value="group">Draw group</option></select>
-        <button className="secondary-button" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>Fit</button><input aria-label="Image zoom" type="range" min={MIN_IMAGE_ZOOM} max={MAX_IMAGE_ZOOM} step="0.01" value={view.zoom} onChange={(event) => { const zoom = Number(event.target.value); setView((current) => ({ zoom, x: current.x * zoom / current.zoom, y: current.y * zoom / current.zoom })); }} /><span>{Math.round(view.zoom * 100)}%</span>
+      <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">
+        <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Square size={14} aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
+        <ComboBox
+          className="image-generator"
+          aria-label="Generator"
+          data-tooltip="Generator"
+          value={template?.id ?? ""}
+          disabled={Boolean(active) || !imageTemplates.length}
+          placeholder="No MiniMax H3 templates"
+          options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: templateNeedsDownload(item), description: templateNeedsDownload(item) ? "Download in Settings" : undefined }))}
+          onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
+        />
+        <span className="image-tools__separator" role="separator" aria-orientation="vertical" />
+        <button className={`image-tool${boxes ? " image-tool--on" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} data-tooltip="Show placement boxes" onClick={() => { setBoxes(!boxes); setDrawKind(null); }}><Square size={16} aria-hidden="true" /></button>
+        <div className="image-tools__group" role="radiogroup" aria-label="Canvas tool" onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          const at = TOOLS.findIndex((tool) => tool.id === drawKind);
+          const next = TOOLS[(at + (event.key === "ArrowRight" ? 1 : -1) + TOOLS.length) % TOOLS.length];
+          chooseTool(next.id);
+          requestAnimationFrame(() => event.currentTarget.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
+        }}>
+          {TOOLS.map((tool) => <button
+            key={tool.label}
+            type="button"
+            role="radio"
+            aria-checked={drawKind === tool.id}
+            aria-label={tool.label}
+            aria-keyshortcuts={tool.key}
+            tabIndex={drawKind === tool.id ? 0 : -1}
+            className={`image-tool${drawKind === tool.id ? " image-tool--on" : ""}`}
+            {...tooltipProps(tool.label, tool.key)}
+            onClick={() => chooseTool(tool.id)}
+          ><span aria-hidden="true">{tool.icon}</span></button>)}
+        </div>
+        <span className="image-tools__separator" role="separator" aria-orientation="vertical" />
+        <ComboBox
+          className="image-zoom"
+          aria-label="Image zoom"
+          data-tooltip="Zoom (Ctrl+0 fit, Ctrl+1 100%, Ctrl+= in, Ctrl+- out)"
+          value={zoomValue}
+          options={zoomOptions}
+          onChange={(value) => { if (value === "fit") fit(); else if (value !== "custom") zoomTo(Number(value)); }}
+        />
       </div>
-      <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} title="Scroll to zoom · Drag with the middle mouse button to pan"
+      <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} data-tooltip="Scroll to zoom · drag with the middle button to pan"
         onPointerDownCapture={(event) => {
           if (event.button !== 1 || pointer.current || pan.current) return;
           event.preventDefault(); event.stopPropagation();
@@ -395,7 +525,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>{imageRoot ? "Open an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Open image in the inspector, then add Object nodes for edits." : "Add objects, text, and groups, then describe them in the inspector."}</span></div>}
+        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={32} aria-hidden="true" /><strong>{imageRoot ? "Open an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Open image in the inspector, then add Object nodes for edits." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
@@ -405,13 +535,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </svg>
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>
-      <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
-      {(error || work?.error) && <p className="image-error" role="alert">{error ?? work?.error}</p>}
+      {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt`}</span></div>
       <div ref={imageResults} tabIndex={0} className="image-results" aria-label="Generated images" onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: null, x: event.clientX, y: event.clientY }); }} onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) {
           event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); setContextMenu(null); setImageMenu({ id: null, x: bounds.left, y: bounds.top });
         }
-      }}>{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
+      }}>{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} data-tooltip={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
         onKeyDown={(event) => {
           if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
@@ -420,38 +550,58 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
           }
         }}
-        onClick={() => selectImage(asset.id)}>{asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image size={24} aria-hidden="true" />}{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}</button>)}</div>
+        onClick={() => selectImage(asset.id)}>{asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image size={24} aria-hidden="true" />}{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}</button>)}</div>
     </section>
-    <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
-      {selected.kind === "root" && <label>Type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt</option><option value="image">Image</option></select></label>}
-      {selected.kind === "root" && imageRoot ? <>
-        <button className="secondary-button" disabled={!isTauri()} onClick={() => attempt(async () => {
-          const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
-          if (source) replaceScene(createImageEditScene(source, scene));
-        })}><FolderOpen size={16} />Open image</button>
-        {scene.sourceImage && <p>{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
-      </> : <>
-        <label>Name<input value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></label>
-        <label>{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
-      </>}
-      {selected.kind === "text" && <label>Text to render<input value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></label>}
-      {selected.kind === "root" && !imageRoot && <>
-        <label>Background (environment)<textarea rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
-        <h3>Image generation</h3><label>Steps<input type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></label>
-        <label>Seed (−1 = random)<input type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></label>
-        <label>Aspect ratio<select value={config.settings.aspectRatio} onChange={(event) => { const aspectRatio = event.target.value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, settings: { ...current.settings, aspectRatio }, brief: { ...current.brief, aspectRatio } })); }}>{["16:9", "9:16", "1:1", "4:5"].map((ratio) => <option key={ratio}>{ratio}</option>)}</select></label>
-        <label>Resolution<select value={config.settings.resolution} onChange={(event) => { const resolution = event.target.value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, settings: { ...current.settings, resolution }, brief: { ...current.brief, resolution } })); }}>{[...new Set([...PROJECT_RESOLUTIONS, config.settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, config.settings.aspectRatio); return <option key={resolution} value={resolution}>{size.width} × {size.height}</option>; })}</select></label>
-        <h3>Style</h3><label>Mode<select value={scene.style.mode} onChange={(event) => commit({ ...scene, style: { ...scene.style, mode: event.target.value as "photo" | "art" } })}><option value="photo">Photo</option><option value="art">Art</option></select></label>
-        <TagEditor label="Aesthetics" value={scene.style.aesthetics} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoAestheticsSuggestions : styleSuggestions.ArtAestheticsSuggestions} onChange={(aesthetics) => commit({ ...scene, style: { ...scene.style, aesthetics } })} />
-        <TagEditor label="Lighting" value={scene.style.lighting} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoLightingSuggestions : styleSuggestions.ArtLightingSuggestions} onChange={(lighting) => commit({ ...scene, style: { ...scene.style, lighting } })} />
-        {scene.style.mode === "art" && <TagEditor label="Medium" value={scene.style.medium} suggestions={styleSuggestions.MediumSuggestions} onChange={(medium) => commit({ ...scene, style: { ...scene.style, medium } })} />}
-        <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
-        <h3>References</h3>{config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => <label className="image-check" key={reference.id}><input type="checkbox" checked={scene.referenceIds.includes(reference.id)} onChange={(event) => commit({ ...scene, referenceIds: event.target.checked ? [...scene.referenceIds, reference.id] : scene.referenceIds.filter((id) => id !== reference.id) })} />{reference.name}</label>)}{!config.references.length && <p>Add image or text references in the References tab.</p>}
-      </>}
-      {selected.kind !== "root" && <><h3>Placement (0–1000)</h3><label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>{selected.box && <div className="image-box-fields">{(["x", "y", "width", "height"] as const).map((field) => <label key={field}>{field}<input type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} /></label>)}</div>}</>}
-      {!(selected.kind === "root" && imageRoot) && <><h3>Color palette</h3><div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button" aria-label={`Remove color ${index + 1}`} onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Trash2 size={13} /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Plus size={14} />Color</button></div></>}
-    </div>
-      {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config).prompt))}>Debug Prompt</button></div>}
+    <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
+    <aside className="image-inspector" aria-label="Image node inspector">
+      <PaneHeader title={<>Inspector <span className="image-inspector__kind">{selected.kind}</span></>} />
+      <div className="image-inspector__fields">
+        {selected.kind === "root" && <PropRow label="Type" htmlFor={rootField("type")}>
+          <ComboBox id={rootField("type")} aria-label="Type" value={imageRoot ? "image" : "prompt"} options={[{ value: "prompt", label: "Prompt" }, { value: "image", label: "Image" }]}
+            onChange={(value) => replaceScene(value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })} />
+        </PropRow>}
+        {selected.kind === "root" && imageRoot ? <>
+          <button className="secondary-button" disabled={!isTauri()} onClick={() => attempt(async () => {
+            const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
+            if (source) replaceScene(createImageEditScene(source, scene));
+          })}><FolderOpen size={16} aria-hidden="true" />Open image</button>
+          {scene.sourceImage && <p className="image-inspector__caption">{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
+        </> : <>
+          <PropRow label="Name" htmlFor={rootField("name")}><input id={rootField("name")} className="text-field" value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></PropRow>
+          <label className="image-inspector__area">{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea className="text-field" rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
+        </>}
+        {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
+        {selected.kind === "root" && !imageRoot && <>
+          <label className="image-inspector__area">Background (environment)<textarea className="text-field" rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
+          <PropSection title="Image generation" persistKey="image.generation">
+            <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
+            <PropRow label="Seed" htmlFor={rootField("seed")}><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} data-tooltip="-1 picks a random seed" onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
+            <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={config.settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, settings: { ...current.settings, aspectRatio }, brief: { ...current.brief, aspectRatio } })); }} /></PropRow>
+            <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={config.settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, config.settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, config.settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, settings: { ...current.settings, resolution }, brief: { ...current.brief, resolution } })); }} /></PropRow>
+          </PropSection>
+          <PropSection title="Style" persistKey="image.style">
+            <PropRow label="Mode" htmlFor={rootField("mode")}><ComboBox id={rootField("mode")} aria-label="Mode" value={scene.style.mode} options={[{ value: "photo", label: "Photo" }, { value: "art", label: "Art" }]} onChange={(value) => commit({ ...scene, style: { ...scene.style, mode: value as "photo" | "art" } })} /></PropRow>
+            <TagEditor label="Aesthetics" value={scene.style.aesthetics} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoAestheticsSuggestions : styleSuggestions.ArtAestheticsSuggestions} onChange={(aesthetics) => commit({ ...scene, style: { ...scene.style, aesthetics } })} />
+            <TagEditor label="Lighting" value={scene.style.lighting} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoLightingSuggestions : styleSuggestions.ArtLightingSuggestions} onChange={(lighting) => commit({ ...scene, style: { ...scene.style, lighting } })} />
+            {scene.style.mode === "art" && <TagEditor label="Medium" value={scene.style.medium} suggestions={styleSuggestions.MediumSuggestions} onChange={(medium) => commit({ ...scene, style: { ...scene.style, medium } })} />}
+            <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
+          </PropSection>
+          <PropSection title="References" persistKey="image.references">
+            {config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => <label className="image-check" key={reference.id}><input type="checkbox" checked={scene.referenceIds.includes(reference.id)} onChange={(event) => commit({ ...scene, referenceIds: event.target.checked ? [...scene.referenceIds, reference.id] : scene.referenceIds.filter((id) => id !== reference.id) })} />{reference.name}</label>)}
+            {!config.references.length && <p className="image-inspector__caption">None yet — add them under References.</p>}
+          </PropSection>
+        </>}
+        {selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
+          <label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>
+          {selected.box && (["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={rootField(field)}>
+            <input id={rootField(field)} className="text-field" type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} />
+          </PropRow>)}
+        </PropSection>}
+        {!(selected.kind === "root" && imageRoot) && <PropSection title="Color palette" persistKey="image.palette">
+          <div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button image-pane-button" aria-label={`Remove color ${index + 1}`} data-tooltip="Remove color" onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Trash2 size={14} aria-hidden="true" /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Plus size={14} aria-hidden="true" />Color</button></div>
+        </PropSection>}
+      </div>
+      {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config).prompt))}>Debug prompt</button></div>}
     </aside>
     {debugEnabled && debugPrompt !== null && <DebugPromptDialog sceneTitle={config.name} segments={[{ kind: "brief", value: debugPrompt }]} onClose={() => setDebugPrompt(null)} />}
   </div>;

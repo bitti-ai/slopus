@@ -1,70 +1,87 @@
+/* ============================================================================
+   image-editor.css — the image project's editor: the node tree, the canvas
+   with its tool strip, and the inspector. Both side panes are resizable
+   (usePaneSize → --pane-image-tree / --pane-image-inspector) instead of
+   stepping at width breakpoints.
+   ========================================================================== */
+
 .project-content--editor { padding: 0; overflow: hidden; }
-.image-editor { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(220px, 300px); height: 100%; min-height: 0; }
-.image-editor input:not([type="checkbox"]):not([type="range"]):not([type="color"]), .image-editor select, .image-editor textarea { min-height: var(--field-height); padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--field-bg); color: var(--text-primary); }
-.image-editor header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--line-solid); }
-.image-tree, .image-inspector { min-height: 0; overflow: auto; background: var(--panel); }
-.image-tree { display: flex; flex-direction: column; border-right: 1px solid var(--line-solid); }
-.image-tree > [role="tree"] { flex: 1; overflow: auto; }
-.image-inspector { display: flex; flex-direction: column; border-left: 1px solid var(--line-solid); }
-.image-inspector > header { flex-shrink: 0; }
+.image-editor { display: grid; grid-template-columns: var(--pane-image-tree, 240px) auto minmax(0, 1fr) auto var(--pane-image-inspector, 300px); height: 100%; min-height: 0; background: var(--layer); }
+.image-tree, .image-inspector { min-width: 0; min-height: 0; overflow: auto; background: var(--panel); }
+.image-tree { display: flex; flex-direction: column; }
+.image-tree > .ui-pane-header, .image-inspector > .ui-pane-header { flex-shrink: 0; border-bottom: 1px solid var(--line); }
+.image-tree > [role="tree"] { flex: 1; overflow: auto; padding: var(--space-1) 0; }
+.image-inspector { display: flex; flex-direction: column; }
 .image-inspector > .debug-prompt { margin-top: auto; }
-.image-editor__actions { display: flex; align-items: center; gap: var(--space-1); }
-.image-tree__row { position: relative; display: flex; align-items: center; min-height: var(--control-md); }
+.image-inspector__kind { margin-left: var(--space-1); color: var(--text-muted); font-weight: var(--weight-regular); text-transform: capitalize; }
+.image-pane-button.icon-button { width: var(--control-sm); height: var(--control-sm); }
+
+/* --- Tree rows -----------------------------------------------------------------
+   28px rows inset 4px with 4px corners, a 20px chevron, 12px per level.
+   Selection is a subtle fill and the 3×16px accent pill; the drop indicators
+   are 2px accent bars (before/after) or an accent outline (inside). */
+.image-tree__row { position: relative; display: flex; align-items: center; gap: 2px; height: 28px; margin: 2px var(--space-1); padding-right: var(--space-2); border-radius: var(--radius-sm); color: var(--text-primary); font-size: var(--text-base); transition: background-color var(--motion-fast) linear; }
+.image-tree__row:hover { background: var(--fill-subtle-hover); }
+.image-tree__row.selected { background: var(--fill-subtle-hover); }
+.image-tree__row.selected::before { content: ""; position: absolute; left: 0; top: 6px; width: 3px; height: 16px; border-radius: 2px; background: var(--accent); }
 .image-tree__row[draggable="true"] .image-tree__select { cursor: grab; }
 .image-tree__row.dragging { opacity: 0.45; }
-.image-tree__drop--inside { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--panel-3); }
-.image-tree__drop--before::before, .image-tree__drop--after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); pointer-events: none; }
-.image-tree__drop--before::before { top: 0; }
-.image-tree__drop--after::after { bottom: 0; }
-.image-tree__row.selected { background: var(--panel-3); color: var(--text-primary); box-shadow: inset 3px 0 var(--accent); }
-.image-tree__select { display: flex; gap: var(--space-2); align-items: center; flex: 1; min-width: 0; padding: var(--space-2); text-align: left; border: 0; background: transparent; color: inherit; }
+.image-tree__drop--inside { outline: 2px solid var(--accent); outline-offset: -2px; }
+.image-tree__drop--before::after, .image-tree__drop--after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; border-radius: 1px; background: var(--accent); pointer-events: none; }
+.image-tree__drop--before::after { top: -2px; }
+.image-tree__drop--after::after { bottom: -2px; }
+.image-tree__chevron { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); }
+.image-tree__chevron:hover { background: var(--fill-subtle-hover); color: var(--text-primary); }
+.image-tree__spacer { flex: 0 0 20px; }
+.image-tree__select { display: flex; gap: var(--space-2); align-items: center; flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-1); text-align: left; border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; }
+.image-tree__icon { display: grid; flex: 0 0 auto; color: var(--text-secondary); }
 .image-tree__select span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.image-tree__spacer { width: var(--control-sm); flex-shrink: 0; }
-.image-editor .image-tree__rename { flex: 1; min-width: 0; width: 100%; margin: var(--space-1); padding: var(--space-1); min-height: var(--control-sm); }
-.image-hierarchy-menu { position: fixed; z-index: 115; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: var(--space-1); border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); box-shadow: var(--shadow-sm); }
-.image-hierarchy-menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); text-align: left; font-size: var(--text-sm); }
-.image-hierarchy-menu button:hover:not(:disabled), .image-hierarchy-menu button:focus-visible { background: var(--panel-3); }
-.image-hierarchy-menu button:disabled { opacity: 0.4; }
-.image-hierarchy-menu button.danger { color: var(--danger); }
-.image-hierarchy-menu kbd { margin-left: auto; color: var(--text-muted); font: inherit; font-size: var(--text-xs); }
-.image-hierarchy-menu [role="separator"] { height: 1px; margin: var(--space-1); background: var(--line-solid); }
-.image-center { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
-.image-canvas-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--line-solid); font-size: var(--text-xs); }
-.image-generator { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.image-generate-button { width: 144px; flex-shrink: 0; justify-content: center; white-space: nowrap; }
-.image-canvas-tools input[type="range"] { width: 72px; min-width: 0; }
-.image-canvas-tools select { width: auto; max-width: 160px; }
-.image-canvas-tools .active { color: var(--accent); }
+.image-editor .image-tree__rename { flex: 1; min-width: 0; width: 100%; height: var(--control-sm); padding: 0 var(--space-1); }
+
+/* --- Canvas and its tool strip ------------------------------------------------ */
+.image-center { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--layer); }
+.image-canvas-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); min-height: var(--space-7); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line); }
+.image-generate-button { flex-shrink: 0; white-space: nowrap; }
+.image-generator { width: 200px; max-width: 32%; }
+.image-zoom { width: 96px; min-width: 96px; }
+.image-tools__separator { width: 1px; height: 20px; margin: 0 var(--space-1); background: var(--line); }
+.image-tools__group { display: inline-flex; gap: 2px; }
+/* 32px icon toggles; the checked tool is an accent-soft fill. */
+.image-tool { display: grid; place-items: center; width: var(--icon-button); height: var(--icon-button); padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-primary); background: transparent; transition: var(--transition-control); }
+.image-tool:hover { background: var(--fill-subtle-hover); }
+.image-tool:active { background: var(--fill-subtle-pressed); }
+.image-tool--on, .image-tool--on:hover { border-color: var(--accent-line); color: var(--accent-on-soft); background: var(--accent-soft); }
+.image-tool > span { display: grid; }
 .image-viewport { position: relative; flex: 1; min-height: 0; overflow: clip; container-type: size; user-select: none; }
 .image-viewport.panning, .image-viewport.panning * { cursor: grabbing; }
 .image-frame { position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--image-pan-x)), calc(-50% + var(--image-pan-y))); width: calc(min(100cqw, 100cqh * var(--image-ratio)) * var(--image-zoom)); aspect-ratio: var(--image-ratio); background: var(--panel); box-shadow: 0 0 0 1px var(--line-solid); }
 .image-frame > img, .image-frame > .reference-image { position: absolute; width: 100%; height: 100%; object-fit: contain; inset: 0; }
-.image-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); text-align: center; padding: var(--space-4); color: var(--text-faint); }
-.image-empty span { max-width: 300px; font-size: var(--text-sm); }
+.image-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); text-align: center; padding: var(--space-4); color: var(--text-muted); }
+.image-empty strong { color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); }
+.image-empty span { max-width: 300px; font-size: var(--text-xs); }
 .image-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
 .image-overlay rect { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
 .image-overlay .selected > rect { stroke-width: 3; }
 .image-box-label { position: absolute; margin: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel); font-size: var(--text-xs); pointer-events: none; }
 .image-overlay .image-box-handle { fill: var(--accent); cursor: nwse-resize; }
 .image-overlay.drawing, .image-overlay.drawing rect { cursor: crosshair; }
-.image-status { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); font-size: var(--text-xs); border-top: 1px solid var(--line-solid); }
-.image-status progress { width: 100%; height: var(--space-1); accent-color: var(--accent); }
-.image-error { margin: 0; padding: var(--space-2) var(--space-3); color: var(--danger); }
-.image-results { display: flex; min-height: 82px; gap: var(--space-2); overflow-x: auto; padding: var(--space-2); border-top: 1px solid var(--line-solid); }
-.image-results button { position: relative; flex: 0 0 72px; height: 64px; padding: 0; overflow: hidden; border: 2px solid transparent; background: var(--panel); }
+.image-status { display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); min-height: var(--control-sm); padding: 0 var(--space-3); color: var(--text-secondary); font-size: var(--text-xs); border-top: 1px solid var(--line); }
+.image-center > .image-error { margin: var(--space-2); }
+.image-results { display: flex; min-height: 82px; gap: var(--space-2); overflow-x: auto; padding: var(--space-2); border-top: 1px solid var(--line); }
+.image-results button { position: relative; flex: 0 0 72px; height: 64px; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: var(--radius-sm); background: var(--panel); }
 .image-draft-badge { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 2px; background: var(--glass); color: var(--text-primary); font-size: var(--text-2xs); }
 .image-results button[aria-pressed="true"] { border-color: var(--accent); }
 .image-results img { width: 100%; height: 100%; object-fit: cover; }
-.image-inspector__fields { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
-.image-inspector label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
-.image-inspector input, .image-inspector textarea, .image-inspector select { width: 100%; min-width: 0; }
-.image-inspector textarea { resize: vertical; }
-.image-inspector h3 { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--text-primary); }
-.image-inspector p { font-size: var(--text-sm); margin: 0; }
-.image-inspector .image-check { flex-direction: row; align-items: center; gap: var(--space-2); }
-.image-check input[type="checkbox"] { width: var(--check-size); }
-.image-box-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.image-palette { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.image-palette > div { display: flex; align-items: center; }
-.image-palette input[type="color"] { width: var(--control-sm); height: var(--control-sm); padding: var(--space-1); }
-@media (max-width: 1100px) { .image-editor { grid-template-columns: 180px minmax(0, 1fr) 240px; } }
+
+/* --- Inspector -------------------------------------------------------------------
+   Label + control pairs are PropRows; the free-text fields stay full width
+   with a 12px label above. */
+.image-inspector__fields { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); }
+.image-inspector__area { display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.image-inspector__area textarea { width: 100%; height: auto; min-width: 0; padding: var(--space-2); font-weight: var(--weight-regular); line-height: var(--leading-normal); resize: vertical; }
+.image-inspector__caption { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }
+.image-inspector .ui-prop-section__content { padding-inline: 0; }
+.image-inspector .image-check { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; font-size: var(--text-base); }
+.image-palette { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.image-palette > div { display: flex; align-items: center; gap: 2px; }
+.image-palette input[type="color"] { width: var(--control-sm); height: var(--control-sm); padding: 2px; border: 1px solid var(--stroke-control); border-radius: var(--radius-sm); background: var(--fill-control); }
