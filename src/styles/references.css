@@ -1045,14 +1045,18 @@
   gap: var(--space-2);
   margin: 0;
   padding: 0 var(--space-3);
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-strong);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  background: var(--field-bg);
+  background: var(--fill-control);
 }
 
+/* The wrapper is the text field, so it carries the TextBox underline. */
 .reference-preset-search:focus-within {
-  border-color: var(--accent);
+  border-bottom-color: var(--field-focus-line);
+  background: var(--fill-input-focus);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
 }
 
 .reference-preset-toolbar {
@@ -1076,6 +1080,7 @@
   flex: 1 1 auto;
   border: 0;
   outline: 0;
+  box-shadow: none;                    /* the wrapper draws the underline */
   color: var(--text-primary);
   background: transparent;
   font: inherit;

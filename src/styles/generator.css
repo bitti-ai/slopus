@@ -982,6 +982,7 @@
   border: 0;
   border-radius: 0;
   outline: 0;
+  box-shadow: none;                    /* .shot-action-editor draws the underline */
   color: var(--text-primary);
   background: transparent;
   font-family: var(--font-sans);
@@ -1898,8 +1899,6 @@
 
 .job-ref input {
   grid-row: 1 / 3;
-  width: 15px;
-  height: 15px;
   margin: 0 var(--space-1) 0 0;
   accent-color: var(--accent-bright);
 }

@@ -270,7 +270,6 @@
   --accent-line: rgba(107, 141, 255, 0.28);
   --accent-line-strong: rgba(103, 138, 245, 0.55);
   --accent-disabled: rgba(255, 255, 255, 0.158); /* a checked box / accent button, disabled */
-  --eyebrow: #8fa0d8;                  /* accent-tinted section label (sentence case) */
 
   /* --- On-accent -----------------------------------------------------------
      The primary button and the send button stay blue in BOTH themes, so what
@@ -479,7 +478,6 @@
     --accent-line: rgba(45, 91, 215, 0.3);
     --accent-line-strong: rgba(30, 79, 208, 0.6);
     --accent-disabled: rgba(0, 0, 0, 0.2169);
-    --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
     --on-accent-disabled: #ffffff;
 
@@ -608,7 +606,6 @@
   --accent-line: rgba(45, 91, 215, 0.3);
   --accent-line-strong: rgba(30, 79, 208, 0.6);
   --accent-disabled: rgba(0, 0, 0, 0.2169);
-  --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
   --on-accent-disabled: #ffffff;
 

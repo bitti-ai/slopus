@@ -157,6 +157,7 @@
   padding: 0;
   border: 0;
   outline: 0;
+  box-shadow: none;                    /* .agent-dock draws the underline */
   color: var(--text-primary);
   background: none;
   font-family: inherit;
