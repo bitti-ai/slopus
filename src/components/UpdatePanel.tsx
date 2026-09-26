@@ -86,7 +86,7 @@ export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blo
         </div>
         {action && <div className="update-card__action">{action}</div>}
       </div>
-      {state.error && <InfoBar severity="error" title="Update failed" message={state.error} />}
+      {state.error && <InfoBar severity="error" message={state.error} />}
       {state.version && blocked && state.stage !== "restart" && !transferring && <InfoBar severity="warning" message={blocked} />}
       {state.stage === "restart" && blocked && <InfoBar severity="warning" message={blocked} />}
       {state.notes && (
