@@ -17,11 +17,11 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
-it("exports the selected image from beside Save and handles cancellation and errors", async () => {
+it("exports the selected image from the Export tab and handles cancellation and errors", async () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   const project = record();
-  project.config.assets = ["First", "Second"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: project.config.createdAt }));
+  project.config.assets = ["First", "Second"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", width: 1024, height: 768, createdAt: project.config.createdAt }));
   project.config.imageScene!.outputAssetId = "First";
   let complete!: (value: boolean) => void;
   const exporting = new Promise<boolean>((resolve) => { complete = resolve; });
@@ -30,25 +30,50 @@ it("exports the selected image from beside Save and handles cancellation and err
     return undefined as never;
   });
   render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={vi.fn()} />);
-  const button = screen.getByRole("button", { name: "Export" });
-  expect(button.parentElement).toContainElement(screen.getByRole("button", { name: "Save" }));
-  expect(screen.queryByRole("button", { name: "Export image" })).not.toBeInTheDocument();
+  // No title-bar Export button any more: only Save sits among the commands.
+  expect(screen.queryByRole("button", { name: /^Export/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  fireEvent.click(within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: /Export/ }));
+  const settings = screen.getByRole("region", { name: "Export settings" });
+  expect(within(settings).getByText("JPG or PNG, chosen when saving")).toBeInTheDocument();
+  expect(within(settings).getByText("1024 × 768 px")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Image preview" })).toContainElement(screen.getByRole("img", { name: /Second/ }));
+  const button = within(settings).getByRole("button", { name: "Export…" });
   fireEvent.click(button);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", { folderPath: "D:/Images", relativePath: "media/generated/Second.jpg" }));
-  expect(screen.getByRole("button", { name: "Exporting…" })).toBeDisabled();
+  expect(within(settings).getByRole("button", { name: "Exporting…" })).toBeDisabled();
   await act(async () => complete(false));
   expect(button).toBeEnabled();
+  expect(button).toHaveTextContent("Export…");
   expect(screen.queryByText("Couldn’t export image")).not.toBeInTheDocument();
   vi.mocked(invoke).mockRejectedValueOnce("Destination is not writable");
   fireEvent.click(button);
-  expect(await screen.findByText("Destination is not writable")).toBeInTheDocument();
+  expect(await within(settings).findByText("Destination is not writable")).toBeInTheDocument();
+  expect(within(settings).getByText("Couldn’t export image")).toBeInTheDocument();
   expect(button).toBeEnabled();
 });
 
-it("disables image export until a generated image is selected", () => {
+it("disables image export until a generated image is selected, and says why", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={vi.fn()} />);
-  expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+  fireEvent.keyDown(document.body, { key: "e", code: "KeyE", ctrlKey: true });
+  expect(within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: /Export/ })).toHaveAttribute("aria-selected", "true");
+  const button = screen.getByRole("button", { name: "Export…" });
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("data-tooltip", "Generate an image in the Editor first.");
+  expect(screen.getByText("No image to export yet")).toBeInTheDocument();
+});
+
+it("disables image export outside the desktop app", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(false);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const project = record();
+  project.config.assets = [{ id: "Only", name: "Only", kind: "image", relativePath: "media/generated/Only.jpg", mimeType: "image/jpeg", createdAt: project.config.createdAt }];
+  project.config.imageScene!.outputAssetId = "Only";
+  render(<ProjectWorkspace project={project} initialView="export" onBack={vi.fn()} onSave={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Export…" })).toBeDisabled();
+  expect(screen.getAllByText("Exporting is available in the Slopus desktop app.").length).toBeGreaterThan(0);
+  expect(screen.queryByText(/ × .* px/)).not.toBeInTheDocument();
 });
 
 it("shows the full image prompt at the end of the inspector only when debug is enabled", () => {
@@ -101,7 +126,7 @@ it("opens the three-tab image workspace and saves hierarchy/inspector edits thro
   const save = vi.fn(async () => undefined);
   render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={save} />);
   const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
-  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Editor", "References"]);
+  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Editor", "References", "Export"]);
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
   fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "Hello world" } });
@@ -115,6 +140,9 @@ it("opens the three-tab image workspace and saves hierarchy/inspector edits thro
   fireEvent.click(navigation.getByRole("tab", { name: /References/ }));
   fireEvent.click(navigation.getByRole("tab", { name: /Editor/ }));
   expect(screen.getByRole("tree", { name: "Image nodes" })).toBeInTheDocument();
+  fireEvent.keyDown(document.body, { key: "3", code: "Digit3", ctrlKey: true });
+  expect(navigation.getByRole("tab", { name: /Export/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("region", { name: "Image preview" })).toBeInTheDocument();
 });
 
 it("keeps the video tabs and applies image agent commands without changing generated output", async () => {

@@ -8,6 +8,7 @@ import { WorkQueue, projectQueueKey } from "../lib/workQueue";
 import { useShortcut } from "../lib/commands";
 import { AgentDock } from "./workspace/AgentDock";
 import { ExportView } from "./workspace/ExportView";
+import { ImageExportView } from "./workspace/ImageExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
@@ -17,8 +18,6 @@ import { TitleBar } from "./TitleBar";
 import { InfoBadge, InfoBar, SelectorBar, Splitter, StatusBar, tooltipProps, usePaneSize } from "./ui";
 import { ProjectStatusSlot } from "./workspace/ProjectStatus";
 import { outputDimensions, videoDurationMs } from "../lib/export";
-import { invoke } from "@tauri-apps/api/core";
-import { isTauri } from "../lib/persistence";
 
 /** "agent" is not a view any more — the agent is a docked pane — but opening
  *  a project "on the agent" still means something: the pane opens with it. */
@@ -130,11 +129,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const { config, saving, dirty, saveError, canUndo, canRedo, savedAt } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   const imageProject = config.generationType === "image";
-  const imageOutput = config.assets.find((asset) => asset.kind === "image" && asset.id === config.imageScene?.outputAssetId);
-  const [exportingImage, setExportingImage] = useState(false);
-  const [imageExportError, setImageExportError] = useState<string | null>(null);
   const [view, setView] = useState<ShownView>(() => {
-    if (imageProject) return initialView === "references" ? "references" : "editor";
+    if (imageProject) return initialView === "references" || initialView === "export" ? initialView : "editor";
     return initialView === "agent" || initialView === "editor" ? "timeline" : initialView;
   });
   const [agentOpen, setAgentOpenState] = useState(() => initialView === "agent" || readAgentPane());
@@ -167,14 +163,6 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const changeConfig = (next: ConfigUpdate, key?: string) => session.edit(next, key);
   const recordMeasurement = (update: (current: ProjectConfig) => ProjectConfig) => session.update(update, false);
   const save = () => session.save().catch(() => undefined);
-  const exportImage = async () => {
-    if (!imageOutput?.relativePath || exportingImage) return;
-    setExportingImage(true); setImageExportError(null);
-    try { await invoke("export_generated_image", { folderPath: project.folderPath, relativePath: imageOutput.relativePath }); }
-    catch (reason) { setImageExportError(String(reason)); }
-    finally { setExportingImage(false); }
-  };
-  const imageExportDisabled = !imageOutput?.relativePath || Boolean(imageOutput.imageDraft) || !isTauri() || exportingImage;
   const leave = async (keepChanges: boolean) => {
     setSavingToLeave(true);
     try {
@@ -201,7 +189,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const lengthMs = useMemo(() => videoDurationMs(config), [config]);
   const sequenceFormat = `${frameWidth}×${frameHeight} · ${config.settings.frameRate} fps · ${formatSequenceLength(lengthMs)}`;
 
-  const views: ShownView[] = imageProject ? ["editor", "references"] : ["timeline", "generator", "references", "export"];
+  const views: ShownView[] = imageProject ? ["editor", "references", "export"] : ["timeline", "generator", "references", "export"];
   const running = config.generationJobs.filter(isGenerationOngoing).length;
   const toggleAgent = () => {
     const open = !agentOpen;
@@ -220,7 +208,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     if (!next) return false;
     setView(next);
   }, { enabled: idle, allowInInput: true });
-  useShortcut("Ctrl+E", () => { if (imageProject) { if (!imageExportDisabled) void exportImage(); } else setView("export"); }, { enabled: idle, allowInInput: true });
+  useShortcut("Ctrl+E", () => { setView("export"); }, { enabled: idle, allowInInput: true });
   useShortcut("Ctrl+Shift+A", toggleAgent, { enabled: idle, allowInInput: true });
   useShortcut("Alt+ArrowLeft", goBack, { enabled: idle });
 
@@ -256,11 +244,6 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo16 /></button>
         <span className="titlebar-separator" aria-hidden="true" />
         <div className="project-commands">
-          {imageProject && (
-            <button type="button" className="secondary-button" disabled={imageExportDisabled} onClick={() => void exportImage()} data-tooltip="Save the image as JPG or PNG" data-tooltip-shortcut="Ctrl+E">
-              <Download16 aria-hidden="true" /> {exportingImage ? "Exporting…" : "Export"}
-            </button>
-          )}
           {/* The standing "All changes saved" pill is gone; the button itself is
               the save state. Off means the file on disk already matches what is
               on screen. */}
@@ -289,9 +272,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       />
     </TitleBar>
 
-    {(saveError || imageExportError) && <div className="project-infobars">
-      {saveError && !editingProject && !leaving && <InfoBar severity="error" title="Couldn’t save project" message={saveError} onClose={session.dismissError} />}
-      {imageExportError && <InfoBar severity="error" title="Couldn’t export image" message={imageExportError} onClose={() => setImageExportError(null)} />}
+    {saveError && <div className="project-infobars">
+      {!editingProject && !leaving && <InfoBar severity="error" title="Couldn’t save project" message={saveError} onClose={session.dismissError} />}
     </div>}
 
     <ProjectStatusSlot.Provider value={statusSlot}>
@@ -301,7 +283,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView(imageProject ? "editor" : "generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-        {view === "export" && <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />}
+        {view === "export" && (imageProject
+          ? <ImageExportView config={config} folderPath={project.folderPath} />
+          : <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />)}
       </div>
       {agentOpen && <Splitter {...agentPane.splitterProps} reverse aria-label="Resize agent pane" aria-controls={`${panelId}-agent`} />}
       {/* Kept mounted while hidden, so a running turn and the conversation
