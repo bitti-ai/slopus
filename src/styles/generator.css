@@ -13,14 +13,14 @@
    breakpoints any more: a narrow window narrows the board, and the splitter
    is how the inspector gets out of the way. */
 .generator-view {
-  --pane-generator-inspector: 380px;                /* usePaneSize sets the real width inline */
+  --pane-generator-inspector: var(--pane-side-default); /* usePaneSize sets the real width inline */
   height: 100%;
   min-height: 0;
   display: grid;
   /* Floors on both sides: with the agent pane open in a 900px window the view
      is ~540px wide, and a fixed inspector squeezed the scene list to nothing. */
-  grid-template-columns: minmax(280px, 1fr) auto minmax(260px, var(--pane-generator-inspector));
-  background: var(--layer);
+  grid-template-columns: minmax(280px, 1fr) auto minmax(280px, var(--pane-generator-inspector));
+  background: var(--surface-pane);
 }
 
 /* Nothing to inspect until there is a scene, so the board takes the width. */
@@ -38,10 +38,13 @@
   flex-direction: column;
 }
 
+/* The command bar is chrome: a 36px strip with the divider where it meets
+   the board's well. */
 .generator-command {
   flex: 0 0 auto;
-  min-height: var(--space-7);
-  border-bottom: 1px solid var(--line);
+  min-height: var(--chrome-row);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
 }
 
 /* "Generate all" is the screen's one accent button, as in the mock: an accent
@@ -64,17 +67,15 @@
   color: var(--danger);
 }
 
+/* The board is where the shots are laid out, so it sits in the well; the
+   scene headers across it are chrome, edge to edge. */
 .generator-board {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-3);
-}
-
-.generator-board__empty {
-  margin: var(--space-2) 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  background: var(--surface-well);
 }
 
 .generator-status {
@@ -632,131 +633,38 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--surface-pane);
 }
 
-/* A 40px pane header: the (editable) name at 14px semibold, a delete button
-   at the trailing edge; a shot's header leads with its scene as the way back
-   up. */
-.panel-head {
-  flex: 0 0 auto;
+/* The open item heads the pane (ItemHeader). A shot's meta line ends with
+   its scene as a quiet link back up. */
+.generator-panel__up {
   min-width: 0;
-  min-height: var(--space-7);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1) 0 var(--space-2);
-  border-bottom: 1px solid var(--line);
-}
-
-.panel-head__title {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-/* Reads as the heading it sits in until it is hovered or focused; focus is
-   the TextBox underline. */
-.panel-title__name {
-  width: 100%;
-  min-width: 0;
-  height: var(--control-md);
-  padding: 0 var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: none;
-  font: inherit;
-  text-overflow: ellipsis;
-}
-
-.panel-title__name:hover:not(:focus) {
-  background: var(--fill-subtle-hover);
-}
-
-.panel-title__name:focus {
-  border-color: var(--stroke-control);
-  border-bottom-color: var(--field-focus-line);
-  outline: none;
-  background: var(--fill-input-focus);
-  box-shadow: inset 0 -1px 0 var(--field-focus-line);
-}
-
-.panel-title__name::placeholder {
-  color: var(--text-primary);
-  opacity: 1;
-}
-
-.panel-head__up {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 45%;
-  height: var(--control-sm);
-  padding: 0 var(--space-1);
-  overflow: hidden;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: none;
-  font-size: var(--text-base);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
 }
 
-.panel-head__up:hover {
+.generator-panel__up:hover {
   color: var(--text-primary);
-  background: var(--fill-subtle-hover);
-}
-
-.panel-head__sep {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-}
-
-.panel-head__delete {
-  flex: 0 0 auto;
-}
-
-.status-icon {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  color: var(--accent-bright);
-}
-
-.status-icon--generating svg,
-.status-icon--ready svg {
-  animation: spin 1.4s linear infinite;
-}
-
-.status-icon--completed { color: var(--success); }
-.status-icon--changed { color: var(--warning); }
-
-.status-icon--failed,
-.status-icon--cancelled {
-  color: var(--danger);
-}
-
-.status-icon--draft {
-  color: var(--text-muted);
+  text-decoration-color: currentColor;
 }
 
 /* The pane's scrolling middle. It takes what the head and the debug row
-   leave, and scrolls inside it. */
+   leave, and scrolls inside it. Its sections run edge to edge, the first one
+   straight under the item header. */
 .panel-scroll {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3) var(--space-3);
   overflow-y: auto;
 }
 
@@ -764,14 +672,33 @@
 .scene-inspector {
   display: flex;
   flex-direction: column;
+}
+
+/* A shot's prompt inside the Pose scene's own section: no headers of its
+   own, just the fields one under another. */
+.shot-inspector--flat {
   gap: var(--space-3);
 }
 
+/* The fields in a section breathe a little more than a stack of rows. */
+.shot-inspector .ui-prop-section__content,
+.scene-settings .ui-prop-section__content {
+  gap: var(--space-1);
+}
+
+/* Each scene section is the first child of its region, so the shared rule
+   drops its top line; the second one needs it back when the first is open
+   (a collapsed header already draws that line underneath). */
+.scene-settings:has(> .ui-prop-section--open) + .scene-settings > .ui-prop-section > .ui-prop-section__header {
+  border-top-color: var(--line);
+}
+
 /* Inspector rows (PropRow) inside the pane, and the caption that explains
-   one: 12px secondary, indented to line up with the row's value column. */
+   one: 12px secondary, indented to line up with the row's value column —
+   the label column plus the row's gap, less the 6px the row hangs out by. */
 .prop-caption {
   margin: 0 0 var(--space-1);
-  padding-left: calc(104px + var(--space-2));
+  padding-left: calc(var(--prop-label) + var(--space-2) - 6px);
   color: var(--text-muted);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
@@ -789,10 +716,6 @@
   width: var(--control-sm);
   height: var(--control-sm);
   flex: 0 0 auto;
-}
-
-.scene-settings .ui-prop-section__content {
-  padding-inline: 0;
 }
 
 /* The full-width fields: a 12px label over a textarea. */
@@ -896,12 +819,9 @@
   background: var(--danger-soft);
 }
 
-/* --- Settings on a shot ---------------------------------------------------- */
-
-.shot-settings {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
+/* --- Settings on a shot ------------------------------------------------------
+   Its own section in the shot's pane; the header names it and counts what is
+   set. */
 
 .shot-settings__chips {
   display: flex;
@@ -971,12 +891,8 @@
   line-height: var(--leading-snug);
 }
 
-/* --- References that can be dropped into a line ---------------------------- */
-
-.reference-palette {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
-}
+/* --- References that can be dropped into a line ------------------------------
+   A section of the shot's pane, or (inside the Pose scene) a labelled block. */
 
 .reference-palette__lead {
   display: block;

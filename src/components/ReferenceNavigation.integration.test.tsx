@@ -21,6 +21,6 @@ it("shows only titles in Used by and opens the selected generation", () => {
   expect(within(usage).queryByRole("button", { name: "First scene" })).not.toBeInTheDocument();
   fireEvent.click(row);
   expect(screen.queryByRole("textbox", { name: "Reference name" })).not.toBeInTheDocument();
-  expect(container.querySelector<HTMLInputElement>(".job-title__name")?.value).toBe("The forest encounter");
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Rename The forest encounter" }).value).toBe("The forest encounter");
   expect(screen.getByRole("region", { name: "This scene" })).toBeInTheDocument();
 });

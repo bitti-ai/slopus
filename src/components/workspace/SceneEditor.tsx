@@ -1,5 +1,5 @@
 import { ImagePlus, X } from "lucide-react";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
   actionReferenceIds,
@@ -167,7 +167,16 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
     onChange({ action: store(`${before}${lead}${token}${trail}${after}`) });
   };
 
-  return <section className="shot-inspector" aria-label={`Shot ${shotNumber}`}>
+  /* Open on its own, a shot is three sections: the shot itself, the
+     references its line can cite, and its settings. Inside the Pose scene's
+     section (promptOnly) it is just the fields, with no headers of its own. */
+  const group = (title: string, key: string, summary: ReactNode, children: ReactNode) => promptOnly
+    ? children
+    : <PropSection title={title} persistKey={`generator.shot.${key}`} summary={summary}>{children}</PropSection>;
+  const chosenSettings = selectedShotTagOptions(settings).length;
+
+  return <section className={`shot-inspector${promptOnly ? " shot-inspector--flat" : ""}`} aria-label={`Shot ${shotNumber}`}>
+    {group("Shot", "shot", `${seconds(shot.startSeconds)} – ${seconds(endsAt)}`, <>
     {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`}>
       <input
         id={`shot-start-${shot.id}`}
@@ -247,23 +256,25 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         />
       </PropRow>
     </div>}
+    </>}
+    </>)}
 
-    <ReferencePalette
+    {job.sceneType !== "character-replace" && group("References", "references", citable.length || undefined, <ReferencePalette
+      labelled={promptOnly}
       citable={citable}
       numbered={numbered}
       dangling={dangling}
       referenceById={referenceById}
       disabled={disabled}
       onInsert={insertAtCaret}
-    />
+    />)}
 
-    {!promptOnly && <ShotSettings
+    {job.sceneType !== "character-replace" && !promptOnly && group("Settings", "settings", chosenSettings || undefined, <ShotSettings
       settings={settings}
       disabled={disabled}
       shotNumber={shotNumber}
       onChange={(next) => onChange({ settings: normalizeShotTagSelection(next) })}
-    />}
-    </>}
+    />)}
   </section>;
 }
 
@@ -358,7 +369,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
 
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
-      <PropSection title="Scene" persistKey="generator.scene">
+      <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label}>
         <PropRow label="Scene type" htmlFor={`${id}-type`}>
           <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES}
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
@@ -485,7 +496,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
       </PropSection>
     </div>
     <div role="region" aria-label="Generation" className="scene-settings">
-      <PropSection title="Generation" persistKey="generator.generation">
+      <PropSection title="Generation" persistKey="generator.generation" summary={`${sceneGenerationSteps(job, defaultSteps)} steps`}>
         {animate && <p className="prop-caption">Animate output is limited to 14.375 seconds; longer scenes are shortened to fit.</p>}
         <PropRow label="Steps" htmlFor={`${id}-steps`}>
           <CommittedNumberInput
@@ -586,7 +597,6 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
   const group = pending ? shotTagGroup(pending) : undefined;
 
   return <div className="shot-settings">
-    <span className="shot-card__sublabel">Settings</span>
     <ul className="shot-settings__chips">
       {chosen.map(({ group: owner, option }) => <li key={`${owner.id}-${option.id}`}>
         <span className="setting-tag" data-tooltip={`Adds “${option.term}” to the prompt`}>
@@ -636,7 +646,9 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
 
 /* --- The references this scene can use ------------------------------------ */
 
-function ReferencePalette({ citable, numbered, dangling, referenceById, disabled, onInsert }: {
+function ReferencePalette({ labelled, citable, numbered, dangling, referenceById, disabled, onInsert }: {
+  /** Name the palette itself, where no section header does it. */
+  labelled: boolean;
   citable: ProjectReference[];
   numbered: ProjectReference[];
   dangling: string[];
@@ -645,7 +657,7 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
   onInsert: (referenceId: string) => void;
 }) {
   return <div className="reference-palette">
-    <span className="shot-card__sublabel">References</span>
+    {labelled && <span className="shot-card__sublabel">References</span>}
     {citable.length === 0 && <span className="reference-palette__lead">None yet — add one under References.</span>}
     <ul>
       {citable.map((reference) => {

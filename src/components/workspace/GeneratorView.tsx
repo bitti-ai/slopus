@@ -3,19 +3,19 @@ import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
 import { characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
-import { LayoutGrid, List, Plus, Square, Trash2, WandSparkles } from "lucide-react";
+import { Clapperboard, LayoutGrid, List, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useShortcut } from "../../lib/commands";
 import { askNative } from "../../lib/nativeShell";
-import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, Splitter, StatusBar, tooltipProps, usePaneSize } from "../ui";
+import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, StatusBar, tooltipProps, usePaneSize } from "../ui";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
 import { SceneBoard, type BoardDensity, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
-import { statusIcon } from "./sceneStatus";
+import { STATUS_BADGE, type SceneIndicatorStatus } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -77,7 +77,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setDensity(next);
     try { localStorage.setItem(DENSITY_KEY, next); } catch { /* storage unavailable */ }
   };
-  const inspectorPane = usePaneSize("generator.inspector", 380, { min: 280, max: 640 });
+  const inspectorPane = usePaneSize("generator.inspector", 340, { min: 280, max: 560 });
   const root = useRef<HTMLDivElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
@@ -138,6 +138,9 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
   const openShot = !animate && shotIndex >= 0 ? selectedShots[shotIndex] : null;
+  const shotEndsAt = selected && openShot
+    ? shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)
+    : 0;
 
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
@@ -561,7 +564,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             onRemoveScene={(job) => void confirmRemoveScene(job)}
             onRemoveShot={(job, shotId) => void confirmRemoveShot(job, shotId)}
           />
-          : <p className="generator-board__empty">No scenes yet.</p>}
+          : <EmptyState
+            icon={<Clapperboard />}
+            title="No scenes yet"
+            description="Add a scene, then write what happens in each of its shots."
+            action={<button type="button" className="secondary-button" onClick={newScene}>Add a scene</button>}
+          />}
       </div>
 
       <StatusBar
@@ -580,31 +588,36 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     {selected && <aside id="generator-inspector" className="generator-panel" aria-label={openShot ? `${openShot.name ?? `Shot ${shotIndex + 1}`} of ${selected.title}` : `Scene: ${selected.title}`}>
       {openShot
         ? <>
-          <header className="panel-head">
-            {/* The way back up: the scene this shot belongs to, which is the
-                same thing its header on the board opens. */}
-            <button type="button" className="panel-head__up" data-tooltip={`Back to ${selected.title}`} onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
-              {selected.title}
-            </button>
-            <span className="panel-head__sep" aria-hidden="true">›</span>
-            <h2 className="panel-head__title"><input
+          {/* The open shot heads the pane. Its meta line leads back up to the
+              scene it belongs to, which is the same thing its header on the
+              board opens. */}
+          <ItemHeader
+            color="var(--clip-generated)"
+            icon={<Clapperboard size={16} />}
+            name={<input
               ref={titleInput}
-              className="panel-title__name shot-title__name"
+              className="ui-item-header__input"
               value={openShot.name ?? ""}
               placeholder={`Shot ${shotIndex + 1}`}
               aria-label={`Rename shot ${shotIndex + 1}`}
               aria-keyshortcuts="F2"
               onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
-            /></h2>
-            {selectedShots.length > 1 && <button
+            />}
+            meta={<>
+              {`Shot ${shotIndex + 1} · ${seconds(shotEndsAt - openShot.startSeconds)} · in `}
+              <button type="button" className="generator-panel__up" data-tooltip={`Back to ${selected.title}`} onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
+                {selected.title}
+              </button>
+            </>}
+            actions={selectedShots.length > 1 && <button
               type="button"
-              className="icon-button panel-head__delete"
+              className="icon-button"
               aria-label={`Delete shot ${shotIndex + 1}`}
               aria-keyshortcuts="Delete"
               {...tooltipProps("Delete shot", "Delete")}
               onClick={() => void confirmRemoveShot(selected, openShot.id)}
             ><Trash2 size={16} aria-hidden="true" /></button>}
-          </header>
+          />
           <div className="panel-scroll">
             <ShotInspector
               key={openShot.id}
@@ -612,7 +625,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               shots={selectedShots}
               shot={openShot}
               index={shotIndex}
-              endsAt={shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)}
+              endsAt={shotEndsAt}
               duration={sceneDurationSeconds(selected)}
               references={isVideoTransition(selected) ? sceneGenerationReferences(selected, config.references) : config.references}
               disabled={false}
@@ -621,28 +634,30 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           </div>
         </>
         : <>
-          <header className="panel-head">
-            {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
-            {/* The title is the one part of a scene Slopus writes for the
-                user, so it has to be theirs to change. Blanking it falls back
-                rather than saving a nameless scene the schema would reject. */}
-            <h2 className="panel-head__title"><input
+          {/* The title is the one part of a scene Slopus writes for the user,
+              so it has to be theirs to change. Blanking it falls back rather
+              than saving a nameless scene the schema would reject. */}
+          <ItemHeader
+            color="var(--clip-generated)"
+            icon={<Sparkles size={16} />}
+            name={<input
               ref={titleInput}
-              className="panel-title__name job-title__name"
+              className="ui-item-header__input"
               value={selected.title}
               aria-label={`Rename ${selected.title}`}
               aria-keyshortcuts="F2"
               onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
-            /></h2>
-            <button
+            />}
+            meta={sceneMeta(selected, selectedShots.length, selectedIndicator)}
+            actions={<button
               type="button"
-              className="icon-button panel-head__delete"
+              className="icon-button"
               aria-label={`Delete scene ${selected.title}`}
               aria-keyshortcuts="Delete"
               {...tooltipProps("Delete scene", "Delete")}
               onClick={() => void confirmRemoveScene(selected)}
-            ><Trash2 size={16} aria-hidden="true" /></button>
-          </header>
+            ><Trash2 size={16} aria-hidden="true" /></button>}
+          />
 
           <div className="panel-scroll">
             <SceneInspector
@@ -728,6 +743,16 @@ export function templateSceneBlocker(type: SceneType, template: GeneratorTemplat
   if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
   return null;
 }
+
+const seconds = (value: number): string => `${value.toFixed(1)} s`;
+
+/** The scene header's meta line: "Scene · 2 shots · 6.0 s · Finished". A
+ *  draft says nothing about its state, the same as its line on the board. */
+const sceneMeta = (job: GenerationJob, shots: number, indicator: SceneIndicatorStatus | undefined) => {
+  const parts = ["Scene", shots === 1 ? "1 shot" : `${shots} shots`, seconds(sceneDurationSeconds(job))];
+  if (job.status !== "draft" && indicator) parts.push(STATUS_BADGE[indicator]);
+  return parts.join(" · ");
+};
 
 /** The status bar's one line: "3 scenes · 1 rendering · 2 waiting". */
 const boardSummary = (active: number, waiting: number, total: number) => {

@@ -734,7 +734,7 @@ describe("Generator scene controls", () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "Shot 2 of First scene" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Rename shot 2" }), { target: { value: "Doorway reveal" } });
-    const shotHeader = screen.getByRole("textbox", { name: "Rename shot 2" }).closest("header");
+    const shotHeader = screen.getByRole("textbox", { name: "Rename shot 2" }).closest(".ui-item-header");
     const removeButton = within(shotHeader!).getByRole("button", { name: "Delete shot 2" });
     expect(removeButton).toHaveClass("icon-button");
     expect(removeButton).toHaveTextContent("");
