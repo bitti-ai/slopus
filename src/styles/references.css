@@ -12,10 +12,11 @@
    user's (usePaneSize → --pane-references-inspector); there are no width
    breakpoints, so a narrow window narrows the library instead. */
 .references-view {
+  --pane-references-inspector: 380px;                /* usePaneSize sets the real width inline */
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto var(--pane-references-inspector, 380px);
+  grid-template-columns: minmax(0, 1fr) auto var(--pane-references-inspector);
   background: var(--layer);
 }
 

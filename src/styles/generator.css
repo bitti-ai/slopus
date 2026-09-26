@@ -13,10 +13,11 @@
    breakpoints any more: a narrow window narrows the board, and the splitter
    is how the inspector gets out of the way. */
 .generator-view {
+  --pane-generator-inspector: 380px;                /* usePaneSize sets the real width inline */
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto var(--pane-generator-inspector, 380px);
+  grid-template-columns: minmax(0, 1fr) auto var(--pane-generator-inspector);
   background: var(--layer);
 }
 

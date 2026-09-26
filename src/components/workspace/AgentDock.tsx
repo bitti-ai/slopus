@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, Check, ChevronDown, LoaderCircle } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ArrowUp, Eraser, Square, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
@@ -16,19 +16,30 @@ import {
 import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
+import { ComboBox, PaneHeader, ProgressRing, tooltipProps } from "../ui";
 
 interface AgentActivity {
   kind: "output" | "diagnostic" | "validation";
   text: string;
 }
 
-export function AgentDock({ context, record, providers, expanded, onPromptStart, onCommands }: {
+/** The agent as a docked tool pane: a 32px header (title, provider, clear,
+ *  close), the conversation, and a flush text box with a send button.
+ *
+ *  The pane container — its placement, splitter and show/hide — belongs to the
+ *  workspace. `onClose` wires the header's close button to it; without it the
+ *  button is not shown. `expanded` is accepted for compatibility and no longer
+ *  changes the layout: the pane is always the full conversation. */
+export function AgentDock({ context, record, providers, onPromptStart, onCommands, onClose }: {
   context: string;
   record: ProjectRecord;
   providers: ProviderStatus[];
-  expanded: boolean;
+  /** @deprecated The dock is always a pane now; kept so callers need not change. */
+  expanded?: boolean;
   onPromptStart: () => void;
   onCommands: (commands: ProjectCommand[]) => Promise<void>;
+  /** Hide the pane (the header's × button). */
+  onClose?: () => void;
 }) {
   const configured = loadAgentProvider() ?? record.config.providerSettings.agent?.options.selectedProvider;
   const initial = providers.some((item) => item.id === configured)
@@ -36,21 +47,26 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
     : providers.find((item) => item.state === "ready")?.id ?? "claude";
   const [provider, setProvider] = useState<ProviderId>(initial);
   const [prompt, setPrompt] = useState("");
+  const [lastPrompt, setLastPrompt] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
-  const [hasStarted, setHasStarted] = useState(false);
   const activeRequest = useRef<string | null>(null);
   const conversation = useRef<HTMLDivElement | null>(null);
+  const field = useRef<HTMLTextAreaElement | null>(null);
+  const cancelButton = useRef<HTMLButtonElement | null>(null);
   const selected = providers.find((item) => item.id === provider);
   const ready = selected?.state === "ready";
   const messages = useMemo(() => sessionMessages.slice(-4), [sessionMessages]);
+  const empty = !messages.length && !pendingPrompt && !activity.length && !error && !requestId;
 
   useEffect(() => {
     setSessionMessages([]);
-    setHasStarted(false);
+    setActivity([]);
+    setError(null);
+    setPendingPrompt(null);
   }, [record.config.id]);
 
   /* One listener lives for the dock's lifetime. A request id filters out any
@@ -80,14 +96,20 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
 
   useEffect(() => {
     const panel = conversation.current;
-    if (expanded && panel) panel.scrollTop = panel.scrollHeight;
-  }, [activity, messages, error, expanded, pendingPrompt]);
+    if (panel) panel.scrollTop = panel.scrollHeight;
+  }, [activity, messages, error, pendingPrompt, requestId]);
+
+  /* The text box is disabled while a turn runs; keep the focus in the pane
+     (on the stop button) so Esc still reaches it. */
+  useEffect(() => {
+    if (requestId && document.activeElement === field.current) cancelButton.current?.focus();
+  }, [requestId]);
 
   const blockedDetail = selected && !ready
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
   const placeholder = ready
-    ? record.config.generationType === "image" ? "Ask Slop to compose an image, describe objects, or refine the layout…" : `Ask Slop to write a new scene from a prompt, refine ${context}, or make an edit…`
+    ? record.config.generationType === "image" ? "Ask Slop to compose an image or refine the layout" : `Ask Slop about ${context}`
     : blockedDetail ?? "No agent provider is available";
   const providerStatusLabel = requestId && selected
     ? `${selected.label} status: Processing`
@@ -98,13 +120,13 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
   const send = async () => {
     const clean = prompt.trim();
     if (!clean || !ready || requestId) return;
-    setHasStarted(true);
     onPromptStart();
     const id = crypto.randomUUID();
     activeRequest.current = id;
     setRequestId(id);
     setError(null);
     setPendingPrompt(clean);
+    setLastPrompt(clean);
     setActivity([]);
     try {
       const response = await runAgentTurn(record, provider, clean, id, sessionMessages);
@@ -119,150 +141,99 @@ export function AgentDock({ context, record, providers, expanded, onPromptStart,
     } finally {
       activeRequest.current = null;
       setRequestId(null);
+      requestAnimationFrame(() => field.current?.focus());
     }
+  };
+  const cancel = () => { if (requestId) void cancelAgentTurn(requestId); };
+  const clear = () => {
+    setSessionMessages([]);
+    setActivity([]);
+    setError(null);
+    setPendingPrompt(null);
   };
 
   return (
-    <div className={`agent-dock-wrap${expanded ? " agent-dock-wrap--expanded" : ""}${expanded && !hasStarted ? " agent-dock-wrap--welcome" : ""}`}>
-      {expanded && !hasStarted && <h1 className="agent-welcome-title">What should we create today?</h1>}
-      {expanded && hasStarted && <div className="agent-expanded-content">
-        <h1 className="sr-only">Agent</h1>
-        <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
-          {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
-          {pendingPrompt && <p className="agent-conversation__user agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
-          {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
-            <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
-          </p>)}
-          {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
-          {requestId && <p className="agent-conversation__waiting" aria-label="Waiting for the next agent response">
-            <b>Slop</b><span className="agent-conversation__waiting-dots" aria-hidden="true"><i /><i /><i /></span>
-          </p>}
-        </div>
-      </div>}
-      <div className="agent-dock-row">
-        <form className="agent-dock" onSubmit={(event) => { event.preventDefault(); void send(); }}>
-          {!expanded && <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel}><i /></span>}
-          <textarea
-            aria-label={`Ask Slop about ${context}`}
-            rows={expanded ? 2 : 1}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }}
-            placeholder={placeholder}
-            title={placeholder}
-            disabled={!ready || Boolean(requestId)}
+    <div
+      className="agent-dock"
+      onKeyDown={(event) => {
+        // Esc stops a running turn, from anywhere in the pane.
+        if (event.key === "Escape" && requestId && !event.defaultPrevented) {
+          event.preventDefault();
+          cancel();
+        }
+      }}
+    >
+      <PaneHeader
+        title="Agent"
+        className="agent-dock__header"
+        actions={<>
+          <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel} data-tooltip={blockedDetail ?? providerStatusLabel}><i /></span>
+          <ComboBox
+            className="agent-provider"
+            aria-label="Agent provider"
+            value={provider}
+            disabled={Boolean(requestId) || !providers.length}
+            placeholder="Choose LLM"
+            options={providers.map((item) => ({
+              value: item.id,
+              label: item.label,
+              icon: <span className={`agent-provider-light agent-provider--${item.state}`}><i /></span>,
+              description: item.state === "ready" ? undefined : providerStateLabel(item.state),
+            }))}
+            onChange={(next) => { setProvider(next as ProviderId); saveAgentProvider(next as ProviderId); }}
           />
-          <div className="agent-dock__actions">
-            {expanded && <AgentProviderSelector providers={providers} provider={provider} busy={Boolean(requestId)} statusLabel={providerStatusLabel} detail={blockedDetail} onChange={(next) => { setProvider(next); saveAgentProvider(next); }} />}
-            {requestId
-              ? <button type="button" className="agent-cancel" onClick={() => void cancelAgentTurn(requestId)} aria-label="Cancel agent turn"><LoaderCircle className="agent-busy" size={16} aria-hidden="true" /></button>
-              : <button type="submit" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" title={ready ? "Send to Slop — or press Enter" : blockedDetail ?? "No agent provider is available"}><ArrowUp size={16} /></button>}
-          </div>
-        </form>
+          <button type="button" className="icon-button agent-dock__action" aria-label="Clear conversation" {...tooltipProps("Clear conversation")} disabled={Boolean(requestId) || empty} onClick={clear}><Eraser size={16} aria-hidden="true" /></button>
+          {onClose && <button type="button" className="icon-button agent-dock__action" aria-label="Close agent" {...tooltipProps("Close")} onClick={onClose}><X size={16} aria-hidden="true" /></button>}
+        </>}
+      />
+      <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
+        {empty && <p className="agent-conversation__empty">Ask Slop to write scenes from a prompt, refine shots or edit {context}.</p>}
+        {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
+        {pendingPrompt && <p className="agent-conversation__user agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
+        {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
+          <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
+        </p>)}
+        {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
+        {requestId && <p className="agent-conversation__waiting" aria-label="Waiting for the next agent response">
+          <b>Slop</b><span className="agent-conversation__thinking"><ProgressRing size={16} aria-label="Thinking" /><span aria-hidden="true">Thinking…</span></span>
+        </p>}
       </div>
+      <form className="agent-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
+        <textarea
+          ref={field}
+          className="text-field agent-composer__field"
+          aria-label={`Ask Slop about ${context}`}
+          aria-keyshortcuts="Enter Shift+Enter ArrowUp Escape"
+          rows={2}
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            // Up in an empty box brings back the last prompt, like a shell.
+            if (event.key === "ArrowUp" && !prompt && lastPrompt) {
+              event.preventDefault();
+              setPrompt(lastPrompt);
+              return;
+            }
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
+          placeholder={placeholder}
+          data-tooltip={ready ? undefined : placeholder}
+          disabled={!ready || Boolean(requestId)}
+        />
+        {requestId
+          ? <button ref={cancelButton} type="button" className="agent-composer__send agent-cancel" onClick={cancel} aria-label="Cancel agent turn" aria-keyshortcuts="Escape" {...tooltipProps("Stop", "Esc")}><Square size={14} aria-hidden="true" /></button>
+          : <button type="submit" className="agent-composer__send" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" aria-keyshortcuts="Enter" {...tooltipProps(ready ? "Send" : blockedDetail ?? "No agent provider is available", ready ? "Enter" : undefined)}><ArrowUp size={16} aria-hidden="true" /></button>}
+      </form>
     </div>
   );
 }
 
-function AgentProviderSelector({ providers, provider, busy, statusLabel, detail, onChange }: {
-  providers: ProviderStatus[];
-  provider: ProviderId;
-  busy: boolean;
-  statusLabel: string;
-  detail: string | null;
-  onChange: (provider: ProviderId) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
-  const listId = useId();
-  const selected = providers.find((item) => item.id === provider);
-  const expanded = open && !busy;
-
-  useEffect(() => {
-    if (busy) setOpen(false);
-  }, [busy]);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [expanded]);
-
-  const show = () => {
-    setActiveIndex(Math.max(0, providers.findIndex((item) => item.id === provider)));
-    setOpen(true);
-  };
-  const pick = (item: ProviderStatus) => {
-    if (busy) return;
-    onChange(item.id);
-    setOpen(false);
-  };
-
-  return <div ref={root} className="agent-provider" title={detail ?? undefined}>
-    <button
-      type="button"
-      className="agent-provider__trigger"
-      role="combobox"
-      aria-label="Agent provider"
-      aria-expanded={expanded}
-      aria-haspopup="listbox"
-      aria-controls={expanded ? listId : undefined}
-      aria-activedescendant={expanded && providers[activeIndex] ? `${listId}-${activeIndex}` : undefined}
-      disabled={busy}
-      onClick={() => expanded ? setOpen(false) : show()}
-      onBlur={() => setOpen(false)}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          if (!expanded) show();
-          else if (providers.length) setActiveIndex((index) => (index + (event.key === "ArrowDown" ? 1 : -1) + providers.length) % providers.length);
-        } else if (expanded && (event.key === "Home" || event.key === "End")) {
-          event.preventDefault();
-          setActiveIndex(event.key === "Home" ? 0 : providers.length - 1);
-        } else if (expanded && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          if (providers[activeIndex]) pick(providers[activeIndex]);
-        } else if (event.key === "Escape" && expanded) {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen(false);
-        } else if (event.key === "Tab") setOpen(false);
-      }}
-    >
-      <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={statusLabel}><i /></span>
-      <span className="agent-provider__name">{selected?.label ?? "Choose LLM"}</span>
-      <ChevronDown size={14} aria-hidden="true" />
-    </button>
-    {expanded && <div id={listId} className="agent-provider__options" role="listbox" aria-label="Agent providers">
-      {providers.map((item, index) => <div
-        key={item.id}
-        id={`${listId}-${index}`}
-        role="option"
-        aria-selected={item.id === provider}
-        className={`agent-provider__option${index === activeIndex ? " agent-provider__option--active" : ""}`}
-        onMouseDown={(event) => event.preventDefault()}
-        onMouseMove={() => setActiveIndex(index)}
-        onClick={() => pick(item)}
-      >
-        <span className={`agent-provider-light agent-provider--${item.state}`} aria-hidden="true"><i /></span>
-        <span>{item.label}</span>
-        {item.id === provider && <Check size={14} aria-hidden="true" />}
-      </div>)}
-    </div>}
-  </div>;
-}
-
 const activityLabel = (kind: AgentActivity["kind"]): string => {
   switch (kind) {
-    case "output": return "LLM";
+    case "output": return "Slop";
     case "validation": return "Validator";
     case "diagnostic": return "Error";
   }

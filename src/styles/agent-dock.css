@@ -1,316 +1,46 @@
 /* ============================================================================
-   agent-dock.css — the agent dock, its provider selector and conversation.
-   Split out of workspace.css.
+   agent-dock.css — the agent as a docked tool pane: a 32px pane header
+   (title, provider status and ComboBox, clear, close), the conversation, and a
+   flush text box with a send button. No glass, shadow, glow or halo: it is a
+   pane like the inspectors, sitting on the same layer. The pane container
+   (placement, splitter, show/hide) is the workspace's (.project-agent-pane).
    ========================================================================== */
 
-/* --- Agent dock ------------------------------------------------------------ */
-
-.project-agent-row {
-  position: relative;
-  z-index: 30;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-3) var(--space-5);
-  height: calc(var(--control-lg) + var(--space-5) + 1px);
-  border-top: 1px solid var(--line-solid);
-  background: var(--panel);
-  transition: height var(--motion-panel) var(--ease-decelerate);
-}
-
-/* The Agent tab owns the workspace below the project top bar. Its height is
-   stable; additional output scrolls inside it instead of repeatedly resizing
-   the editor behind it. Use the app background here so the space around the
-   conversation does not become a second grey panel. */
-.project-agent-row--page {
-  height: calc(100vh - var(--topbar-height));
-  height: calc(100dvh - var(--topbar-height));
-  min-height: 0;
-  align-items: stretch;
-  border-top-color: transparent;
-  background: var(--bg);
-  box-shadow: none;
-}
-
-/* The settings launcher is fixed over the bottom-left corner, which is this
-   row. The dock stays CENTRED and gives up width instead of shifting right —
-   an off-centre dock reads as a layout bug, a narrower one does not. 256px is
-   twice the launcher's widest measure, so the reserve is symmetric. */
-.agent-dock-wrap {
-  position: relative;
-  width: min(880px, calc(100% - 256px));
-  display: flex;
-  min-height: var(--control-lg);
-  flex-direction: column;
-  justify-content: flex-end;
-}
-
-.agent-dock-wrap--expanded {
-  height: 100%;
-  min-height: 0;
-}
-
-/* Before the first turn, equal flexible tracks above and below the composer
-   put the prompt itself at the page's vertical centre. The welcome heading
-   lives at the foot of the upper track, so it does not push the prompt down.
-   After submit, this modifier disappears and the existing flex layout
-   naturally pins the composer beneath the conversation. */
-.agent-dock-wrap--welcome {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
-  justify-content: stretch;
-}
-
-.agent-dock-wrap--welcome .agent-welcome-title {
-  grid-row: 1;
-  align-self: end;
-  margin-bottom: var(--space-5);
-}
-
-.agent-dock-wrap--welcome .agent-dock-row {
-  grid-row: 2;
-}
-
-.agent-welcome-title {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-tight);
-  text-align: center;
-}
-
-.agent-expanded-content {
-  min-height: 0;
-  flex: 0 1 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(6px);
-  transition:
-    flex-grow var(--motion-panel) var(--ease-decelerate),
-    opacity var(--motion-normal) linear,
-    transform var(--motion-panel) var(--ease-decelerate),
-    visibility 0s linear var(--motion-panel);
-}
-
-.agent-dock-wrap--expanded .agent-expanded-content {
-  flex-grow: 1;
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-  transition-delay: 0s;
-}
-
-.agent-dock-row {
-  min-width: 0;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .agent-dock {
-  height: var(--control-lg);
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-2) 0 var(--space-3);
-  border: 1px solid var(--stroke-control);
-  border-bottom-color: var(--stroke-strong);
-  border-radius: var(--radius-lg);
-  background: var(--dock-bg);
-}
-
-/* The dock is a text field: focus is the Fluent TextBox underline (a 2px
-   accent bottom edge, drawn as border + 1px inset so nothing shifts), never
-   a halo. */
-.agent-dock:focus-within {
-  border-bottom-color: var(--field-focus-line);
-  box-shadow: inset 0 -1px 0 var(--field-focus-line);
-}
-
-/* The full Agent composer has three visual rows: two for the prompt and one
-   for controls. The compact dock remains one line tall everywhere else. */
-.agent-dock-wrap--expanded .agent-dock {
-  height: auto;
-  min-height: 103px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 45px var(--control-sm);
-  gap: var(--space-2);
-  padding-block: var(--space-2);
-}
-
-/* The placeholder carries real guidance (and, when Slop is blocked, the reason
-   plus the fix), so it must taper off with an ellipsis instead of being sliced
-   through the middle of a word. The full text stays in the field's title. */
-.agent-dock textarea {
-  min-width: 0;
-  flex: 1 1 0;
-  height: 1.5em;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  box-shadow: none;                    /* .agent-dock draws the underline */
-  color: var(--text-primary);
-  background: none;
-  font-family: inherit;
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-  resize: none;
-  overflow-y: hidden;
-  text-overflow: ellipsis;
-}
-
-.agent-dock-wrap--expanded .agent-dock textarea {
-  width: 100%;
   height: 100%;
-  padding: var(--space-2) var(--space-3);
-  overflow-y: auto;
-}
-
-.agent-dock textarea::placeholder {
-  color: var(--text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-dock__actions {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--layer);
+}
+
+.agent-dock__header {
   flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent-dock__header .ui-pane-header__actions {
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  justify-content: flex-end;
+  gap: 2px;
 }
 
-.agent-dock-wrap--expanded .agent-dock__actions {
-  justify-self: end;
-}
-
-.agent-dock button {
+.agent-dock__action.icon-button {
   width: var(--control-sm);
   height: var(--control-sm);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--dock-send-border);
-  border-radius: var(--radius-sm);
-  color: var(--on-accent);
-  background: var(--accent-fill);
 }
 
-.agent-dock button:disabled {
-  color: var(--text-faint);
-  border-color: var(--line-solid);
-  background: var(--panel-3);
-}
-
-.agent-dock .agent-cancel {
-  border-color: var(--danger-line-strong);
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.agent-busy {
-  flex: 0 0 auto;
-  color: var(--danger);
-  animation: spin 1.2s linear infinite;
-}
-
-/* --- Provider selector ----------------------------------------------------- */
-
-.agent-provider {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.agent-dock .agent-provider__trigger {
-  width: auto;
-  max-width: 250px;
-  min-height: var(--control-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: var(--wash-1);
-  box-shadow: none;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-}
-
-.agent-dock .agent-provider__trigger:hover:not(:disabled),
-.agent-dock .agent-provider__trigger[aria-expanded="true"] {
-  border-color: var(--line-hover);
-  color: var(--text-primary);
-  background: var(--wash-2);
-}
-
-.agent-provider__name {
+/* A compact provider picker in the header. */
+.ui-combo.agent-provider {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-provider__trigger > svg {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-}
-
-.agent-dock .agent-provider__trigger:disabled {
-  color: var(--text-faint);
-  background: var(--panel-3);
-}
-
-.agent-provider__trigger:disabled .agent-provider__name,
-.agent-provider__trigger:disabled > svg {
-  opacity: 0.6;
-}
-
-.agent-provider__options {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--space-2));
-  z-index: 30;
-  min-width: 180px;
-  padding: var(--space-1);
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-lg);
-  background: var(--acrylic);
-  backdrop-filter: var(--acrylic-filter);
-  box-shadow: var(--shadow-sm);
-}
-
-.agent-provider__option {
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 14px;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-md);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.agent-provider__option[aria-selected="true"] {
-  color: var(--accent-bright);
-}
-
-.agent-provider__option--active {
-  background: var(--wash-2);
+  width: auto;
+  max-width: 160px;
+  height: var(--control-sm);
+  min-height: var(--control-sm);
+  margin-left: var(--space-1);
+  font-size: var(--text-xs);
 }
 
 .agent-provider-light {
@@ -330,53 +60,39 @@
 }
 
 /* Provider state is real information — every state gets a truthful colour. */
-.agent-provider--ready i {
-  background: var(--success);
-}
+.agent-provider--ready i { background: var(--success); }
 
 .agent-provider--authRequired i,
 .agent-provider--notInstalled i {
   background: var(--warning);
 }
 
-.agent-provider--unavailable i {
-  background: var(--danger);
-}
+.agent-provider--unavailable i { background: var(--danger); }
 
 .agent-provider--disabled i,
 .agent-provider--unknown i {
   background: var(--text-faint);
 }
 
-/* --- Conversation overlay -------------------------------------------------- */
+/* --- Conversation ------------------------------------------------------------ */
 
 .agent-conversation {
   user-select: text;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: auto;
-  margin-bottom: var(--space-3);
-  padding: var(--space-2);
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-lg);
-  /* A flyout over the workspace, so it is one of the few surfaces allowed
-     acrylic (tokens.css rule 11). */
-  background: var(--acrylic);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: var(--acrylic-filter);
-}
-
-.agent-dock-wrap--expanded .agent-conversation {
-  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
 }
 
 .agent-conversation p {
-  display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
-  padding: var(--space-3);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
 }
@@ -387,85 +103,100 @@
   overflow-wrap: anywhere;
 }
 
-.agent-conversation p + p {
-  border-top: 1px solid var(--line);
-}
-
+/* Speaker labels: 12px semibold, sentence case, secondary ink. */
 .agent-conversation b {
-  color: var(--accent-bright);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
 }
 
-.agent-conversation__user b {
-  color: var(--text-muted);
+.agent-conversation__pending > span {
+  color: var(--text-secondary);
 }
 
-.agent-conversation__assistant b {
-  color: var(--accent-bright);
-}
-
-.agent-conversation__output b {
-  color: var(--accent-bright);
-}
-
-.agent-conversation__validation,
-.agent-conversation__validation b {
+.agent-conversation__validation > span {
   color: var(--warning);
 }
 
-.agent-conversation__system,
-.agent-conversation__empty {
+.agent-conversation__diagnostic > span,
+.agent-conversation__error > span {
+  color: var(--danger);
+}
+
+.agent-conversation p.agent-conversation__empty {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.agent-conversation__thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* --- Composer -------------------------------------------------------------------
+   A flush TextBox (4px corners, the accent underline on focus) with the send
+   button beside it. */
+
+.agent-composer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.agent-composer__field.text-field {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 56px;
+  max-height: 200px;
+  padding: 6px var(--space-2);
+  font-family: inherit;
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.agent-composer__field::placeholder {
   color: var(--text-muted);
 }
 
-.agent-conversation__error,
-.agent-conversation__error b {
-  color: var(--danger) !important;
+.agent-composer__send {
+  width: var(--icon-button);
+  height: var(--icon-button);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--button-primary-stroke);
+  border-bottom-color: var(--button-primary-stroke-bottom);
+  border-radius: var(--radius-sm);
+  color: var(--on-accent);
+  background: var(--button-primary-bg);
+  transition: var(--transition-control);
 }
 
-/* "Waiting for a reply" is a 16px Fluent ProgressRing, not three bouncing
-   dots. The markup still renders the three <i>s; they are hidden and the
-   ring is drawn by the wrapper itself, the same arc as .progress-ring. */
-.agent-conversation__waiting-dots {
-  min-height: 1.5em;
-  display: inline-flex;
-  align-items: center;
-  color: var(--accent-bright);
+.agent-composer__send:hover:not(:disabled) {
+  background: var(--button-primary-hover);
 }
 
-.agent-conversation__waiting-dots::before {
-  content: "";
-  width: 16px;
-  height: 16px;
-  border: 2px solid transparent;
-  border-top-color: currentColor;
-  border-right-color: currentColor;
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
+.agent-composer__send:disabled {
+  border-color: transparent;
+  color: var(--button-primary-off-ink);
+  background: var(--button-primary-off-bg);
 }
 
-.agent-conversation__waiting-dots i {
-  display: none;
+.agent-composer__send.agent-cancel {
+  border-color: var(--stroke-control);
+  color: var(--text-primary);
+  background: var(--fill-control);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .project-agent-row,
-  .agent-expanded-content {
-    transition: none;
-  }
-
-  /* Keep processing feedback moving even when decorative motion is reduced.
-     These override the global reduced-motion animation reset in base.css. */
-  .agent-busy {
-    animation-duration: 1.2s !important;
-    animation-iteration-count: infinite !important;
-  }
-
-  .agent-conversation__waiting-dots::before {
-    animation-duration: 0.9s !important;
-    animation-iteration-count: infinite !important;
-  }
+.agent-composer__send.agent-cancel:hover {
+  background: var(--fill-control-hover);
 }
-

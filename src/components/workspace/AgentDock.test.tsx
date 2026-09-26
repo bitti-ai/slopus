@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, type ProjectRecord } from "../../lib/project";
-import { AGENT_TURN_EVENT, runAgentTurn, type AgentTurnEventPayload, type ProviderStatus } from "../../lib/runtime";
+import { AGENT_TURN_EVENT, cancelAgentTurn, runAgentTurn, type AgentTurnEventPayload, type ProviderStatus } from "../../lib/runtime";
 import { AgentDock, readableProviderOutput } from "./AgentDock";
 
 let eventHandler: ((event: { payload: AgentTurnEventPayload }) => void) | undefined;
@@ -50,53 +50,46 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
-  it("shows only the provider light when compact and moves a name-only selector into the Agent controls", async () => {
+  it("is a docked pane with a header, a provider picker and a one-line empty state", async () => {
     const available: ProviderStatus[] = [
       providers[0],
       { id: "claude", label: "Claude Code", state: "ready", executable: "claude", version: "test", detail: "Ready" },
     ];
-    const view = (expanded: boolean) => <AgentDock context="this project" record={project()} providers={available} expanded={expanded} onPromptStart={() => undefined} onCommands={async () => undefined} />;
-    const app = render(view(false));
+    const onClose = vi.fn();
+    render(<AgentDock context="this project" record={project()} providers={available} onPromptStart={() => undefined} onCommands={async () => undefined} onClose={onClose} />);
     await act(async () => { await Promise.resolve(); });
 
+    expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "What should we create today?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Ask Slop to write scenes");
     expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Agent provider" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Codex")).not.toBeInTheDocument();
-
-    app.rerender(view(true));
-    expect(screen.getByRole("heading", { name: "What should we create today?" })).toBeInTheDocument();
-    expect(screen.queryByText("No activity yet. Send a prompt to start.")).not.toBeInTheDocument();
     const selector = screen.getByRole("combobox", { name: "Agent provider" });
     fireEvent.click(selector);
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Codex", "Claude Code"]);
-    expect(selector.closest(".agent-dock__actions")).not.toBeNull();
     fireEvent.click(screen.getByRole("option", { name: "Claude Code" }));
     expect(selector).toHaveTextContent("Claude Code");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Claude Code status: Ready" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close agent" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("supports keyboard selection and dismisses the provider menu without submitting a prompt", async () => {
+  it("hides the close button when the workspace gives it nothing to close", async () => {
+    render(<AgentDock context="this project" record={project()} providers={providers} expanded onPromptStart={() => undefined} onCommands={async () => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole("button", { name: "Close agent" })).not.toBeInTheDocument();
+  });
+
+  it("changes provider from the keyboard without submitting a prompt", async () => {
     const available: ProviderStatus[] = [providers[0], { ...providers[0], id: "claude", label: "Claude Code" }];
     render(<AgentDock context="this project" record={project()} providers={available} expanded onPromptStart={() => undefined} onCommands={async () => undefined} />);
     await act(async () => { await Promise.resolve(); });
     const selector = screen.getByRole("combobox", { name: "Agent provider" });
     selector.focus();
     fireEvent.keyDown(selector, { key: "ArrowDown" });
-    fireEvent.keyDown(selector, { key: "End" });
-    expect(selector).toHaveAttribute("aria-activedescendant", screen.getByRole("option", { name: "Claude Code" }).id);
-    fireEvent.keyDown(selector, { key: "Enter" });
     expect(selector).toHaveTextContent("Claude Code");
     expect(selector).toHaveFocus();
     expect(runAgentTurn).not.toHaveBeenCalled();
-    fireEvent.click(selector);
-    fireEvent.keyDown(selector, { key: "Home" });
-    fireEvent.keyDown(selector, { key: "Escape" });
-    expect(selector).toHaveTextContent("Claude Code");
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    fireEvent.click(selector);
-    fireEvent.pointerDown(document.body);
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("hands an accepted command batch to the workspace before completing the turn", async () => {
@@ -118,53 +111,59 @@ describe("Slop output panel", () => {
     expect(onPromptStart).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the Agent page as its expanded view and requests it when a turn starts", async () => {
+  it("shows the running turn with a progress ring, stops it with Esc, and recalls the last prompt with Up", async () => {
     let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
     vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    const record = project();
     const onPromptStart = vi.fn();
-    const view = (expanded: boolean) => <AgentDock context="this generation queue" record={record} providers={providers} expanded={expanded} onPromptStart={onPromptStart} onCommands={async () => undefined} />;
-    const app = render(view(false));
+    render(<AgentDock context="this generation queue" record={project()} providers={providers} onPromptStart={onPromptStart} onCommands={async () => undefined} />);
     await act(async () => { await Promise.resolve(); });
 
-    expect(screen.queryByRole("log", { name: "Slop output" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Slop output/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Agent provider" })).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "1");
-
-    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" }), { target: { value: "Create four shots" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    const field = screen.getByRole("textbox", { name: "Ask Slop about this generation queue" });
+    fireEvent.change(field, { target: { value: "Create four shots" } });
+    fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
     expect(onPromptStart).toHaveBeenCalledTimes(1);
 
-    app.rerender(view(true));
     const log = screen.getByRole("log", { name: "Slop output" });
-    expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Codex status: Processing" })).toHaveClass("agent-provider--ready");
-    expect(screen.getByRole("textbox", { name: "Ask Slop about this generation queue" })).toHaveAttribute("rows", "2");
-    expect(screen.getByRole("combobox", { name: "Agent provider" })).toHaveTextContent("Codex");
-    expect(screen.getByRole("combobox", { name: "Agent provider" })).not.toHaveTextContent("Ready");
-    expect(log).toHaveTextContent("Create four shots");
-    expect(log).not.toHaveTextContent("Sending this request to Codex");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Agent provider" })).toBeDisabled();
-    expect(screen.getByLabelText("Waiting for the next agent response")).toBeInTheDocument();
+    expect(log).toHaveTextContent("Create four shots");
+    expect(within(log).getByText("You")).toBeInTheDocument();
+    const waiting = screen.getByLabelText("Waiting for the next agent response");
+    expect(within(waiting).getByRole("progressbar", { name: "Thinking" })).toBeInTheDocument();
     Object.defineProperty(log, "scrollHeight", { configurable: true, value: 900 });
 
     const requestId = vi.mocked(runAgentTurn).mock.calls[0][3];
     act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text: "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"op\\\":\\\"scene.remove\\\",\\\"id\\\":\\\"old-scene\\\"}\\n{\\\"op\\\":\\\"commit\\\",\\\"summary\\\":\\\"Drafted the scene.\\\"}\"}}" } } }));
     act(() => eventHandler?.({ payload: { requestId, event: { type: "validation", round: 1, maxRounds: 3, text: "Shot 4 starts at 18 seconds." } } }));
-    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Drafted the scene.");
-    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
+    expect(log).toHaveTextContent("Drafted the scene.");
+    expect(log).toHaveTextContent("Correction 1 of 3: Shot 4 starts at 18 seconds.");
     expect(screen.getByLabelText("Waiting for the next agent response")).toBe(log.lastElementChild);
     expect(log.scrollTop).toBe(900);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Cancel agent turn" }), { key: "Escape" });
+    expect(cancelAgentTurn).toHaveBeenCalledWith(requestId);
 
     await act(async () => finish({ result: { kind: "answer", content: "Done" }, events: [], messages: [] }));
-    expect(screen.getByRole("img", { name: "Codex status: Ready" })).not.toHaveClass("agent-provider-light--busy");
+    expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Agent provider" })).toBeEnabled();
     expect(screen.queryByLabelText("Waiting for the next agent response")).not.toBeInTheDocument();
+    expect(field).toHaveValue("");
+    fireEvent.keyDown(field, { key: "ArrowUp" });
+    expect(field).toHaveValue("Create four shots");
+  });
+
+  it("clears the conversation from the pane header", async () => {
+    vi.mocked(runAgentTurn).mockRejectedValue(new Error("Nope."));
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={() => undefined} onCommands={async () => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+    const clear = screen.getByRole("button", { name: "Clear conversation" });
+    expect(clear).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await screen.findByText(/Nope/);
+    fireEvent.click(clear);
+    expect(screen.queryByText(/Nope/)).not.toBeInTheDocument();
   });
 
   it("keeps a follow-up visible when the provider times out", async () => {
