@@ -146,6 +146,17 @@
   --check-size: 20px;                  /* checkbox and radio box */
   --slider-thumb: 20px;                /* range thumb, outer disc */
 
+  /* --- Pane anatomy -------------------------------------------------------
+     The fixed heights a pane is assembled from. A pane is headed by the
+     selected item (--item-header) or by its toolbar (--chrome-row), never by
+     a title bar; sections inside it start with a --section-row header. */
+  --chrome-row: 36px;                  /* pane toolbars, command bars */
+  --chrome-row-sm: 24px;               /* pane footers, the status bar */
+  --item-header: 48px;                 /* the selected-item header */
+  --section-row: 28px;                 /* PropSection header, property rows */
+  --prop-label: 104px;                 /* the one label column width */
+  --pane-side-default: 340px;          /* a side pane's default width */
+
   /* --- Motion -------------------------------------------------------------
      Fluent timings. Control state (hover, pressed) is a colour change over
      --motion-fast, linear. Things that open or slide use --motion-normal or
@@ -175,14 +186,39 @@
   --panel-2: #12151d;                  /* a surface sitting on a panel */
   --panel-3: #171b24;                  /* chips, menus, skeletons, placeholders */
 
+  /* --- Surface roles ---------------------------------------------------------
+     The ladder every page is built from. Each region takes a ROLE, and
+     neighbouring regions sit on different rungs, so a pane reads as a pane
+     without a title bar telling you so:
+       base    the window and title bar (Mica shows through when available)
+       pane    pane bodies: sources, inspectors, agent, Library, Settings
+       chrome  raised strips that hold controls: item headers, pane toolbars,
+               command bars, section headers, ruler, track heads, footers,
+               the status bar
+       well    recessed ground where media is laid out: timeline lanes, the
+               Generator board, the References grid (--surface-well-alt is
+               its alternating row)
+       stage   behind the picture: program monitor, Export preview. Dark in
+               both themes (see --stage-bg).
+     --line divides things INSIDE one surface; --stroke-divider is the
+     stronger edge where two rungs meet (under a header or toolbar, beside the
+     track-head column, between panes). */
+  --surface-base: var(--bg);
+  --surface-pane: var(--panel);
+  --surface-chrome: #161a24;
+  --surface-well: #07090d;
+  --surface-well-alt: #0a0d12;
+  --surface-stage: var(--stage-bg);
+  --stroke-divider: rgba(255, 255, 255, 0.16);
+
   /* --- Fluent layers --------------------------------------------------------
      The WinUI surface stack, named the way the Fluent spec names it so the
      next person can look a value up. Opaque surfaces are aliases of the panel
      steps above; the fills and strokes are translucent overlays in the WinUI
      proportions (white over dark, black-or-white over light) so they read the
      same on whatever they sit on. */
-  --layer: var(--panel);               /* a pane laid on the ground (LayerFill) */
-  --layer-alt: var(--panel-2);         /* a second pane on a layer (LayerFillAlt) */
+  --layer: var(--surface-pane);        /* a pane laid on the ground (LayerFill) */
+  --layer-alt: var(--surface-chrome);  /* a second pane on a layer (LayerFillAlt) */
   --card: rgba(255, 255, 255, 0.0512); /* CardBackgroundFill: settings rows, tiles */
   --card-hover: rgba(255, 255, 255, 0.0837);   /* a clickable card under the mouse */
   --card-pressed: rgba(255, 255, 255, 0.0326);
@@ -310,12 +346,21 @@
      badge, the clip, the waveform. */
   --audio: #7cc3bc;
 
-  /* --- Timeline clips -------------------------------------------------------
-     --clip-color comes from the MEDIA, not the palette, so a clip stays a
-     saturated block in both themes; these are the colours a clip falls back
-     to when its media gives none. */
-  --clip-video-default: #516fba;
-  --clip-audio-default: #3d817c;
+  /* --- Clip kinds -----------------------------------------------------------
+     One colour per kind of item, used wherever that kind appears: timeline
+     clips, track chips, the inspector's kind chip, media cards, Generator
+     shots. Saturated blocks that wear white ink, so they are the same in both
+     themes. --clip-color on a clip still comes from its MEDIA when it has
+     one; these are what it falls back to. The *-default names are the old
+     spelling, kept as aliases. */
+  --clip-video: #4a68c8;               /* film strip */
+  --clip-generated: #7d58c9;           /* sparkle */
+  --clip-image: #3f8a5c;               /* picture */
+  --clip-audio: #2f7d77;               /* waveform */
+  --clip-caption: #9c6a1c;             /* text "T" */
+  --clip-video-default: var(--clip-video);
+  --clip-audio-default: var(--clip-audio);
+  --snap: #f2c94c;                     /* snap target line while dragging */
 
   /* --- Elevation ------------------------------------------------------------
      Fluent's two shadows, and nothing else. Cards have none (rule 8). */
@@ -359,8 +404,8 @@
    take the WinUI light values (white control fills over a grey ground, black
    subtle fills). The accent darkens rather than brightens, because "more
    contrast" points the other way here. Aliases (--layer, --glass, the focus
-   ring colour) are not restated: they follow the names they
-   point at.
+   ring colour, --surface-base / -pane / -stage) are not restated: they
+   follow the names they point at.
    ========================================================================== */
 
 @media (prefers-color-scheme: light) {
@@ -371,6 +416,11 @@
     --panel: #ffffff;
     --panel-2: #f5f7fa;
     --panel-3: #e9ecf3;
+
+    --surface-chrome: #f5f7fa;
+    --surface-well: #e4e8ef;
+    --surface-well-alt: #eaedf3;
+    --stroke-divider: rgba(15, 23, 42, 0.18);
 
     --card: rgba(255, 255, 255, 0.7);
     --card-hover: rgba(249, 249, 249, 0.5);
@@ -449,8 +499,12 @@
 
     --audio: #10706a;                  /* 5.9:1 on --panel */
 
-    --clip-video-default: #516fba;     /* the media's own hue: unchanged */
-    --clip-audio-default: #3d817c;
+    --clip-video: #4a68c8;             /* the kind colours: unchanged */
+    --clip-generated: #7d58c9;
+    --clip-image: #3f8a5c;
+    --clip-audio: #2f7d77;
+    --clip-caption: #9c6a1c;
+    --snap: #a27800;
 
     --shadow: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
     --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.14);
@@ -473,6 +527,11 @@
   --panel: #ffffff;
   --panel-2: #f5f7fa;
   --panel-3: #e9ecf3;
+
+  --surface-chrome: #f5f7fa;
+  --surface-well: #e4e8ef;
+  --surface-well-alt: #eaedf3;
+  --stroke-divider: rgba(15, 23, 42, 0.18);
 
   --card: rgba(255, 255, 255, 0.7);
   --card-hover: rgba(249, 249, 249, 0.5);
@@ -551,8 +610,12 @@
 
   --audio: #10706a;                  /* 5.9:1 on --panel */
 
-  --clip-video-default: #516fba;     /* the media's own hue: unchanged */
-  --clip-audio-default: #3d817c;
+  --clip-video: #4a68c8;             /* the kind colours: unchanged */
+  --clip-generated: #7d58c9;
+  --clip-image: #3f8a5c;
+  --clip-audio: #2f7d77;
+  --clip-caption: #9c6a1c;
+  --snap: #a27800;
 
   --shadow: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
   --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.14);
