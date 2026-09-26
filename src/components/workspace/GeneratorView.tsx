@@ -3,7 +3,7 @@ import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
 import { characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
-import { Clapperboard, LayoutGrid, List, Plus, Sparkles, Square, Trash2, WandSparkles } from "lucide-react";
+import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useShortcut } from "../../lib/commands";
@@ -512,8 +512,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         aria-label="Generator"
         className="generator-command"
         end={<>
-          <CommandBarButton icon={<LayoutGrid size={16} />} label="Tiles" pressed={density === "tiles"} onClick={() => chooseDensity("tiles")} />
-          <CommandBarButton icon={<List size={16} />} label="List" pressed={density === "list"} onClick={() => chooseDensity("list")} />
+          <CommandBarButton icon={density === "tiles" ? <GridView16Filled /> : <GridView16 />} label="Tiles" pressed={density === "tiles"} onClick={() => chooseDensity("tiles")} />
+          <CommandBarButton icon={density === "list" ? <ListView16Filled /> : <ListView16 />} label="List" pressed={density === "list"} onClick={() => chooseDensity("list")} />
         </>}
       >
         {/* The generator the next render uses, with its readiness as a glyph
@@ -535,7 +535,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         {cancellable.length > 0
           ? <CommandBarButton
             className="generator-command__cancel"
-            icon={<Square size={14} />}
+            icon={<Stop14 />}
             label="Cancel all"
             showLabel
             tooltip={generateAllTooltip}
@@ -543,14 +543,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           />
           : <CommandBarButton
             className="generator-command__generate"
-            icon={<WandSparkles size={16} />}
+            icon={<Wand16 />}
             label="Generate all"
             showLabel
             tooltip={generateAllTooltip}
             disabled={active.length > 0}
             onClick={() => void generateAll()}
           />}
-        <CommandBarButton icon={<Plus size={16} />} label="Add scene" showLabel onClick={newScene} />
+        <CommandBarButton icon={<Add16 />} label="Add scene" showLabel onClick={newScene} />
       </CommandBar>
 
       <div className="generator-board">
@@ -576,7 +576,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             onRemoveShot={(job, shotId) => void confirmRemoveShot(job, shotId)}
           />
           : <EmptyState
-            icon={<Clapperboard />}
+            icon={<Scene32 />}
             title="No scenes yet"
             description="Add a scene, then write what happens in each of its shots."
             action={<button type="button" className="secondary-button" onClick={newScene}>Add a scene</button>}
@@ -600,7 +600,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               board opens. */}
           <ItemHeader
             color="var(--clip-generated)"
-            icon={<Clapperboard size={16} />}
+            icon={<Scene16 />}
             name={<h2 className="generator-panel__name"><input
                 ref={titleInput}
                 className="ui-item-header__input"
@@ -623,7 +623,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               aria-keyshortcuts="Delete"
               {...tooltipProps("Delete shot", "Delete")}
               onClick={() => void confirmRemoveShot(selected, openShot.id)}
-            ><Trash2 size={16} aria-hidden="true" /></button>}
+            ><Delete16 aria-hidden="true" /></button>}
           />
           <div className="panel-scroll">
             <ShotInspector
@@ -646,7 +646,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               than saving a nameless scene the schema would reject. */}
           <ItemHeader
             color="var(--clip-generated)"
-            icon={<Sparkles size={16} />}
+            icon={<Sparkle16 />}
             name={<h2 className="generator-panel__name"><input
                 ref={titleInput}
                 className="ui-item-header__input"
@@ -663,7 +663,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               aria-keyshortcuts="Delete"
               {...tooltipProps("Delete scene", "Delete")}
               onClick={() => void confirmRemoveScene(selected)}
-            ><Trash2 size={16} aria-hidden="true" /></button>}
+            ><Delete16 aria-hidden="true" /></button>}
           />
 
           <div className="panel-scroll">

@@ -1,4 +1,4 @@
-import { Check, Clock3, Download, Film, ListTodo, TriangleAlert, X } from "lucide-react";
+import { Check16, Clock16, Dismiss16, Download16, Film16, Warning16, WorkQueue32 } from "./ui/icons";
 import { useState, useSyncExternalStore, type RefObject } from "react";
 import { GENERATION_FRAME_RATE } from "../lib/project";
 import { isWorkActive, type WorkItem, type WorkQueue } from "../lib/workQueue";
@@ -17,10 +17,10 @@ import { Flyout, ProgressBar, ProgressRing } from "./ui";
 const settingsLine = (item: WorkItem) => `${item.settings.canvasWidth} × ${item.settings.canvasHeight} · ${item.kind === "reference-icons" ? "JPG icons" : item.kind === "image" ? "JPG image" : `${(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s`} · ${item.settings.steps} steps · ${item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}`;
 
 function StateGlyph({ item }: { item: WorkItem }) {
-  if (item.status === "completed") return <Check size={16} />;
-  if (item.status === "failed") return <TriangleAlert size={16} />;
-  if (item.status === "queued") return <Clock3 size={16} />;
-  if (item.status === "cancelled") return <X size={16} />;
+  if (item.status === "completed") return <Check16 />;
+  if (item.status === "failed") return <Warning16 />;
+  if (item.status === "queued") return <Clock16 />;
+  if (item.status === "cancelled") return <Dismiss16 />;
   return <ProgressRing size={16} />;
 }
 
@@ -59,7 +59,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
         {item.needsSave && <button type="button" className="work-queue__link" onClick={() => void queue.retrySave(item.id)}>Retry project save</button>}
       </div>
       {isWorkActive(item) && item.status !== "encoding" && (
-        <button type="button" className="icon-button work-queue__cancel" disabled={item.cancelling} aria-label={`Cancel ${item.title} in ${item.projectName}`} data-tooltip="Cancel" onClick={() => void queue.cancel(item.id)}><X size={16} /></button>
+        <button type="button" className="icon-button work-queue__cancel" disabled={item.cancelling} aria-label={`Cancel ${item.title} in ${item.projectName}`} data-tooltip="Cancel" onClick={() => void queue.cancel(item.id)}><Dismiss16 /></button>
       )}
     </li>;
   };
@@ -71,20 +71,20 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
         {finished.length > 0 && <button type="button" className="work-queue__link" onClick={() => queue.clearFinished()}>Clear finished</button>}
       </header>
       <div className="work-queue__list">
-        {items.length === 0 && !download && !exporting && <div className="work-queue__empty"><ListTodo size={32} aria-hidden="true" /><strong>No work yet</strong><span>Generated scenes and images show up here.</span></div>}
+        {items.length === 0 && !download && !exporting && <div className="work-queue__empty"><WorkQueue32 aria-hidden="true" /><strong>No work yet</strong><span>Generated scenes and images show up here.</span></div>}
         {current.length > 0 && <section aria-label="In progress"><ul>{current.map(row)}</ul></section>}
         {exporting && <section aria-label="Export"><ul><li className="work-queue__row">
-          <span className="work-queue__state work-queue__state--preparing" aria-hidden="true"><Film size={16} /></span>
+          <span className="work-queue__state work-queue__state--preparing" aria-hidden="true"><Film16 /></span>
           <div className="work-queue__text">
             <span className="work-queue__title" data-tooltip={exportJob.destination ?? undefined}>{exportTitle}</span>
             <span className="work-queue__caption">{exporting.detail || "Exporting"} · {exportPercent}%</span>
             <ProgressBar value={exportPercent} aria-label={`${exportTitle} progress`} className="work-queue__progress" />
           </div>
-          <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${exportTitle}`} data-tooltip="Cancel" disabled={exportJob.cancelling} onClick={cancelExportJob}><X size={16} /></button>
+          <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${exportTitle}`} data-tooltip="Cancel" disabled={exportJob.cancelling} onClick={cancelExportJob}><Dismiss16 /></button>
         </li></ul></section>}
         {download && <section aria-label="Weight downloads"><ul><li className="work-queue__row">
           <span className={`work-queue__state work-queue__state--${download.active ? "preparing" : download.error ? "failed" : "completed"}`} aria-hidden="true">
-            {download.active ? <Download size={16} /> : download.error ? <TriangleAlert size={16} /> : <Check size={16} />}
+            {download.active ? <Download16 /> : download.error ? <Warning16 /> : <Check16 />}
           </span>
           <div className="work-queue__text">
             <span className="work-queue__title">{downloadName}</span>
@@ -101,7 +101,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
           {download.active && <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${downloadName} download`} data-tooltip="Cancel" onClick={() => {
             setDownloadError(null);
             void cancelWeightDownload().catch((reason) => setDownloadError(String(reason)));
-          }}><X size={16} /></button>}
+          }}><Dismiss16 /></button>}
         </li></ul></section>}
         {upcoming.length > 0 && <section aria-label="Upcoming work"><h3 className="work-queue__group">Up next · {upcoming.length}</h3><ul>{upcoming.map(row)}</ul></section>}
         {finished.length > 0 && <section aria-label="Finished work"><h3 className="work-queue__group">Finished</h3><ul>{finished.map(row)}</ul></section>}

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ExternalLink, FolderInput, GripVertical, Pencil, Plus, Square, Trash2, WandSparkles } from "lucide-react";
+import { Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
 import { useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   SCENE_MAX_SECONDS,
@@ -133,15 +133,15 @@ export function SceneBoard({
     const blocker = generationBlocker(job);
     return [
       cancellable
-        ? { id: "cancel", label: "Cancel generation", icon: <Square size={16} />, onSelect: () => onGenerate(job) }
-        : { id: "generate", label: "Generate", icon: <WandSparkles size={16} />, disabled: Boolean(blocker), onSelect: () => onGenerate(job) },
-      { id: "rename", label: "Rename", icon: <Pencil size={16} />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: null }) },
-      { id: "add-shot", label: "Add shot", icon: <Plus size={16} />, onSelect: () => onAddShot(job) },
+        ? { id: "cancel", label: "Cancel generation", icon: <Stop16 />, onSelect: () => onGenerate(job) }
+        : { id: "generate", label: "Generate", icon: <Wand16 />, disabled: Boolean(blocker), onSelect: () => onGenerate(job) },
+      { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: null }) },
+      { id: "add-shot", label: "Add shot", icon: <Add16 />, onSelect: () => onAddShot(job) },
       { separator: true },
-      { id: "up", label: "Move up", icon: <ArrowUp size={16} />, disabled: jobIndex === 0, onSelect: () => onMoveScene(job.id, jobs[jobIndex - 1]?.id ?? null) },
-      { id: "down", label: "Move down", icon: <ArrowDown size={16} />, disabled: jobIndex === jobs.length - 1, onSelect: () => onMoveScene(job.id, jobs[jobIndex + 2]?.id ?? null) },
+      { id: "up", label: "Move up", icon: <ArrowUp16 />, disabled: jobIndex === 0, onSelect: () => onMoveScene(job.id, jobs[jobIndex - 1]?.id ?? null) },
+      { id: "down", label: "Move down", icon: <ArrowDown16 />, disabled: jobIndex === jobs.length - 1, onSelect: () => onMoveScene(job.id, jobs[jobIndex + 2]?.id ?? null) },
       { separator: true },
-      { id: "delete", label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, disabled: !onRemoveScene, onSelect: () => onRemoveScene?.(job) },
+      { id: "delete", label: "Delete", icon: <Delete16 />, shortcut: "Delete", danger: true, disabled: !onRemoveScene, onSelect: () => onRemoveScene?.(job) },
     ];
   };
 
@@ -149,12 +149,12 @@ export function SceneBoard({
     const alone = sceneShots(job).length <= 1;
     const others = jobs.filter((candidate) => candidate.id !== job.id);
     return [
-      { id: "open", label: "Open", icon: <ExternalLink size={16} />, onSelect: () => onSelect({ jobId: job.id, shotId: shot.id }) },
-      { id: "rename", label: "Rename", icon: <Pencil size={16} />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: shot.id }) },
+      { id: "open", label: "Open", icon: <OpenExternal16 />, onSelect: () => onSelect({ jobId: job.id, shotId: shot.id }) },
+      { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: shot.id }) },
       ...(others.length ? [{ separator: true } as const, {
         id: "move-to",
         label: "Move to",
-        icon: <FolderInput size={16} />,
+        icon: <MoveTo16 />,
         disabled: alone,
         items: others.map((target): MenuEntry => ({
           id: `move-${target.id}`,
@@ -163,7 +163,7 @@ export function SceneBoard({
         })),
       }] : []),
       { separator: true },
-      { id: "delete", label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, disabled: alone || !onRemoveShot, onSelect: () => onRemoveShot?.(job, shot.id) },
+      { id: "delete", label: "Delete", icon: <Delete16 />, shortcut: "Delete", danger: true, disabled: alone || !onRemoveShot, onSelect: () => onRemoveShot?.(job, shot.id) },
     ];
   };
 
@@ -312,7 +312,7 @@ export function SceneBoard({
             aria-expanded={!isCollapsed}
             aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${job.title}`}
             onClick={() => toggle(job.id)}
-          >{isCollapsed ? <ChevronRight size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}</button>
+          >{isCollapsed ? <ChevronRight12 aria-hidden="true" /> : <ChevronDown12 aria-hidden="true" />}</button>
 
           <span
             className="scene-rule__drag"
@@ -343,7 +343,7 @@ export function SceneBoard({
                 openSceneMenu(event);
               }
             }}
-          ><GripVertical size={16} aria-hidden="true" /></span>
+          ><Grip16 aria-hidden="true" /></span>
 
           <button
             type="button"
@@ -357,7 +357,7 @@ export function SceneBoard({
               openSceneMenu(event);
             }}
           >
-            {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${indicator}`}>{statusIcon(indicator, 16)}</span>}
+            {job.status !== "draft" && <span className={`scene-rule__status scene-rule__status--${indicator}`}>{statusIcon(indicator)}</span>}
             <b className="scene-rule__title" data-tooltip={job.title}>{job.title}</b>
             {job.status !== "draft" && indicator !== "generating" && <span className="scene-rule__badge">{STATUS_BADGE[indicator]}</span>}
             {/* The section's summary, at the trailing edge like any section
@@ -377,14 +377,14 @@ export function SceneBoard({
             />
           </label>
 
-          <HeaderButton label={`Add a shot to ${job.title}`} tooltip="Add shot" onClick={() => onAddShot(job)}><Plus size={16} /></HeaderButton>
+          <HeaderButton label={`Add a shot to ${job.title}`} tooltip="Add shot" onClick={() => onAddShot(job)}><Add16 /></HeaderButton>
           <HeaderButton
             label={cancellable ? "Cancel" : "Generate"}
             tooltip={cancellable ? `Cancel ${job.title}` : blocker ?? `Generate ${job.title}`}
             className={cancellable ? "scene-rule__cancel" : undefined}
             disabled={!cancellable && Boolean(blocker)}
             onClick={() => onGenerate(job)}
-          >{cancellable ? <Square size={14} /> : <WandSparkles size={16} />}</HeaderButton>
+          >{cancellable ? <Stop14 /> : <Wand16 />}</HeaderButton>
         </header>
 
         {!isCollapsed && <ol

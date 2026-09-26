@@ -1,4 +1,4 @@
-import { ChevronDown, Ellipsis, FolderOpen, Plus, RotateCcw } from "lucide-react";
+import { Add16, ChevronDown12, FolderOpen14, More14, Reset14, Reset16 } from "../ui/icons";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
 import { isEffectOn, parseCube } from "../../lib/effectSettings";
@@ -81,7 +81,7 @@ function LutEditor({ clip, update, disabled }: EditorProps) {
         aria-label={lut.table ? "Replace LUT" : "Import LUT"}
         {...tooltipProps(inTauri() ? "Choose a .cube file" : "Available in the desktop app")}
         onClick={() => void browse()}
-      ><FolderOpen size={14} aria-hidden="true" /> Browse…</button>
+      ><FolderOpen14 aria-hidden="true" /> Browse…</button>
     </PropRow>
     {loading && <p className="clip-effect__note" role="status">Reading LUT…</p>}
     {lut.table && <p className="clip-effect__note">{lut.table.name} · {lut.table.size}³</p>}
@@ -218,11 +218,11 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
       <Checkbox className="clip-effect__bypass" checked={on} disabled={disabled} aria-label={`${effect.name} on`}
         {...tooltipProps(on ? "Turn off (bypass)" : "Turn on")} onChange={bypass} />
       <button type="button" className="clip-effect__toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <ChevronDown size={12} aria-hidden="true" className="clip-effect__chevron" />
+        <ChevronDown12 aria-hidden="true" className="clip-effect__chevron" />
         <h3 className="clip-effect__name">{effect.name}</h3>
       </button>
       <button type="button" className="clip-effect__action" aria-label={`Reset ${effect.name}`} {...tooltipProps("Reset")} disabled={disabled} onClick={reset}>
-        <RotateCcw size={14} aria-hidden="true" />
+        <Reset14 aria-hidden="true" />
       </button>
       <button
         ref={more}
@@ -233,11 +233,11 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
         {...tooltipProps("More options")}
         disabled={disabled}
         onClick={() => more.current && menu.open(more.current, [
-          { label: "Reset", icon: <RotateCcw size={16} />, onSelect: reset },
+          { label: "Reset", icon: <Reset16 />, onSelect: reset },
           { separator: true },
           { label: "Remove", shortcut: "Delete", danger: true, onSelect: onRemove },
         ], { "aria-label": `${effect.name} options`, placement: "bottom-end", focusFirst: true })}
-      ><Ellipsis size={14} aria-hidden="true" /></button>
+      ><More14 aria-hidden="true" /></button>
     </header>
     {open && <fieldset className="clip-effect__body" disabled={disabled}>{effect.editor({ clip, update: keyed, disabled })}</fieldset>}
     {menu.element}
@@ -280,7 +280,7 @@ export function ClipEffects({ clip, disabled, onChange }: {
       aria-haspopup="dialog"
       aria-expanded={open}
       onClick={() => setOpen((value) => !value)}
-    ><Plus size={16} aria-hidden="true" /> Add effect</button>
+    ><Add16 aria-hidden="true" /> Add effect</button>
     <Flyout open={open} anchor={trigger} onClose={() => setOpen(false)} aria-label="Available effects" role="group" placement="top" width={220}>
       <div ref={list} className="clip-effects__picker" onKeyDown={moveFocus}>
         {available.map((effect) => <button

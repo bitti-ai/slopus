@@ -1,4 +1,4 @@
-import { ChevronFirst, ChevronLast, Maximize, Minimize, Pause, Play, StepBack, StepForward } from "lucide-react";
+import { ExitFullScreen16, FullScreen16, GoToEnd16, GoToStart16, NextFrame16, Pause16, Play16, PreviousFrame16 } from "../ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   audioMixBytes,
@@ -365,8 +365,8 @@ export function ExportView({ config, folderPath, onClose }: {
           {/* Windowed: a plain 36px bar under the picture. Fullscreen: the
               same bar over the picture's foot, hiding when the pointer rests. */}
           <div className="export-transport" role="group" aria-label="Video playback controls">
-            <button type="button" className="export-transport__button" onClick={() => seekToFrame(0)} disabled={transportDisabled} aria-label="Go to start" {...tooltipProps("Go to start", "Home")}><ChevronFirst size={16} aria-hidden="true" /></button>
-            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame - 1)} disabled={transportDisabled} aria-label="Previous frame" {...tooltipProps("Previous frame", "Left")}><StepBack size={16} aria-hidden="true" /></button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(0)} disabled={transportDisabled} aria-label="Go to start" {...tooltipProps("Go to start", "Home")}><GoToStart16 aria-hidden="true" /></button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame - 1)} disabled={transportDisabled} aria-label="Previous frame" {...tooltipProps("Previous frame", "Left")}><PreviousFrame16 aria-hidden="true" /></button>
             <button
               type="button"
               className="export-transport__button"
@@ -374,9 +374,9 @@ export function ExportView({ config, folderPath, onClose }: {
               disabled={runningHere || transportDisabled}
               aria-label={playing ? "Pause" : "Play"}
               {...tooltipProps(empty ? "Nothing on the timeline to play" : playing ? "Pause" : "Play", empty ? undefined : "Space")}
-            >{playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
-            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame + 1)} disabled={transportDisabled} aria-label="Next frame" {...tooltipProps("Next frame", "Right")}><StepForward size={16} aria-hidden="true" /></button>
-            <button type="button" className="export-transport__button" onClick={() => seekToFrame(lastFrame)} disabled={transportDisabled} aria-label="Go to end" {...tooltipProps("Go to end", "End")}><ChevronLast size={16} aria-hidden="true" /></button>
+            >{playing ? <Pause16 aria-hidden="true" /> : <Play16 aria-hidden="true" />}</button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame + 1)} disabled={transportDisabled} aria-label="Next frame" {...tooltipProps("Next frame", "Right")}><NextFrame16 aria-hidden="true" /></button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(lastFrame)} disabled={transportDisabled} aria-label="Go to end" {...tooltipProps("Go to end", "End")}><GoToEnd16 aria-hidden="true" /></button>
             <Slider
               className="export-transport__scrub"
               min={0}
@@ -396,7 +396,7 @@ export function ExportView({ config, folderPath, onClose }: {
               onClick={toggleFullscreen}
               aria-label={fullscreen ? "Exit full screen" : "Full screen"}
               {...tooltipProps(fullscreen ? "Exit full screen" : "Full screen", fullscreen ? "Esc" : undefined)}
-            >{fullscreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}</button>
+            >{fullscreen ? <ExitFullScreen16 aria-hidden="true" /> : <FullScreen16 aria-hidden="true" />}</button>
           </div>
         </div>
         {empty && <p className="export-stage__caption">Nothing on the timeline yet</p>}

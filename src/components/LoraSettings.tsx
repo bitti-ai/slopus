@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Download, Layers, LoaderCircle, Plus, Trash2, Wrench } from "lucide-react";
+import { Add20, ArrowDown16, ArrowUp16, Delete16, Download16, Lora20, Spinner16, Wrench16 } from "./ui/icons";
 import "../styles/loras.css";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { highestLoraStepOverride, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
@@ -28,7 +28,7 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, []);
   return <SettingsGroup heading="LoRAs">
-    <SettingsCard icon={<Plus size={20} />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
+    <SettingsCard icon={<Add20 />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
       <button className="secondary-button" type="button" onClick={onAdd}>Add LoRA</button>
     </SettingsCard>
     <div className="settings-card-list" role="list" aria-label="LoRAs">
@@ -36,15 +36,15 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
         const active = download?.active && download.loraId === lora.id;
         const preparing = active && download?.phase === "preparing";
         const percent = download ? Math.floor(weightDownloadProgress(download)) : 0;
-        return <OpenableCard key={lora.id} icon={<Layers size={20} />} header={lora.name} openLabel={`Edit ${lora.name} LoRA`} onOpen={() => onEdit(lora.id)}
+        return <OpenableCard key={lora.id} icon={<Lora20 />} header={lora.name} openLabel={`Edit ${lora.name} LoRA`} onOpen={() => onEdit(lora.id)}
           description={<span data-tooltip={lora.path || undefined}>{active ? preparing ? "Preparing…" : `Downloading · ${percent}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</span>}
           progress={active && !preparing && <ProgressBar className="settings-progress" value={weightDownloadProgress(download!)} aria-label={`Downloading ${lora.name}`} />}
           actions={<>
             {lora.path && <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Prepare LoRA ${lora.name}`} data-tooltip="Prepare missing timestep grid"
-              onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{preparing ? <LoaderCircle size={16} className="spin" /> : <Wrench size={16} />}</button>}
+              onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{preparing ? <Spinner16 className="spin" /> : <Wrench16 />}</button>}
             {lora.url && !lora.path
-              ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} data-tooltip="Download" onClick={() => void downloadLora(lora.id)}><Download size={16} /></button>
-              : <button className="icon-button" type="button" disabled={Boolean(download?.active)} aria-label={`Remove LoRA ${lora.name}`} data-tooltip="Remove" onClick={() => void removeLora(lora.id).catch((reason) => setError(String(reason)))}><Trash2 size={16} /></button>}
+              ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} data-tooltip="Download" onClick={() => void downloadLora(lora.id)}><Download16 /></button>
+              : <button className="icon-button" type="button" disabled={Boolean(download?.active)} aria-label={`Remove LoRA ${lora.name}`} data-tooltip="Remove" onClick={() => void removeLora(lora.id).catch((reason) => setError(String(reason)))}><Delete16 /></button>}
           </>} />;
       })}
     </div>
@@ -124,17 +124,17 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
     {value.map((entry, index) => {
       const lora = library.find(({ id }) => id === entry.loraId);
       const name = lora?.name ?? "Missing LoRA";
-      return <SettingsCard key={entry.loraId} className="template-lora" icon={<Layers size={20} />} header={`${index + 1}. ${name}`}
+      return <SettingsCard key={entry.loraId} className="template-lora" icon={<Lora20 />} header={`${index + 1}. ${name}`}
         description={!lora?.path ? (lora?.url ? "Download required" : "File unavailable") : undefined}>
         <label className="template-lora__strength">Strength<input className="text-field settings-field settings-field--number" type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength}
           onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
-        <button className="icon-button" type="button" aria-label={`Move ${name} up`} data-tooltip="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={16} /></button>
-        <button className="icon-button" type="button" aria-label={`Move ${name} down`} data-tooltip="Move down" disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={16} /></button>
-        <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} data-tooltip="Remove" onClick={() => onChange(value.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
+        <button className="icon-button" type="button" aria-label={`Move ${name} up`} data-tooltip="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp16 /></button>
+        <button className="icon-button" type="button" aria-label={`Move ${name} down`} data-tooltip="Move down" disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown16 /></button>
+        <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} data-tooltip="Remove" onClick={() => onChange(value.filter((_, i) => i !== index))}><Delete16 /></button>
         <ToggleSwitch checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(enabled) => update(index, { enabled })} />
       </SettingsCard>;
     })}
-    <SettingsCard icon={<Plus size={20} />} header="Add a LoRA" description="A strength of 0 turns an adapter off. Missing active LoRAs download with the generator.">
+    <SettingsCard icon={<Add20 />} header="Add a LoRA" description="A strength of 0 turns an adapter off. Missing active LoRAs download with the generator.">
       <ComboBox aria-label="Add LoRA to generator" value="" disabled={!available.length} placeholder={available.length ? "Choose a LoRA" : "None available"}
         onChange={(loraId) => { if (loraId) onChange([...value, { loraId, enabled: true, strength: 1 }]); }}
         options={available.map((lora) => ({ value: lora.id, label: lora.name }))} />

@@ -1,4 +1,4 @@
-import { ImagePlus, X } from "lucide-react";
+import { Dismiss12, ImageAdd16 } from "../ui/icons";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
@@ -365,7 +365,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
     disabled={disabled || !importAvailable}
     data-tooltip={importAvailable ? label : "Image import is available in the desktop app"}
     onClick={onClick}
-  ><ImagePlus size={16} aria-hidden="true" /></button>;
+  ><ImageAdd16 aria-hidden="true" /></button>;
 
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
@@ -607,7 +607,7 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
             disabled={disabled}
             aria-label={`Remove ${owner.label}: ${option.label} from shot ${shotNumber}`}
             onClick={() => onChange(toggleShotTag(settings, owner.id, option.id))}
-          ><X size={12} aria-hidden="true" /></button>
+          ><Dismiss12 aria-hidden="true" /></button>
         </span>
       </li>)}
       {chosen.length === 0 && <li className="shot-settings__none">None</li>}

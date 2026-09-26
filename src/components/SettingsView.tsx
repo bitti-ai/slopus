@@ -1,8 +1,10 @@
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import {
-  Activity, AlertCircle, ArrowLeft, Bot, Check, ChevronRight, Cpu, Download, FileBox, FileText, Folder, Gauge, Image, ListOrdered,
-  LoaderCircle, MoreHorizontal, Palette, Plus, RefreshCw, RotateCcw, Settings2, Sparkles, SquarePen, Trash2, Video, Zap,
-} from "lucide-react";
+  Add20, Agent16, Agent16Filled, Agent20, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
+  Diagnostics16Filled, Download16, Download20, Error16, Error20, Flash20, Folder20, Gauge20, Gpu20, Image20, ModelFile20, More16,
+  Options20, Palette16, Palette16Filled, Palette20, Refresh16, Refresh16Filled, Rename20, Reset16, Sparkle20, Spinner16,
+  Spinner20, Steps20, TextFile20, Video16, Video16Filled, Video20,
+} from "./ui/icons";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -82,7 +84,7 @@ function DownloadStatus({ state, templateName, onError }: { state: DownloadState
       : `${state.completed}/${state.files} files · ${(state.downloaded / 1024 ** 3).toFixed(2)} GB${state.total ? ` / ${(state.total / 1024 ** 3).toFixed(2)} GB` : ""}`
     : state.preparePath ? "LoRA prepared" : "Download complete");
   return <div className="ui-settings-card settings-download-status" role="status">
-    <span className="ui-settings-card__icon" aria-hidden="true">{state.error ? <AlertCircle size={20} /> : state.active ? <Download size={20} /> : <Check size={20} />}</span>
+    <span className="ui-settings-card__icon" aria-hidden="true">{state.error ? <Error20 /> : state.active ? <Download20 /> : <Check20 />}</span>
     <span className="ui-settings-card__text">
       <span className="ui-settings-card__header">{state.name ?? templateName}</span>
       <span className="ui-settings-card__description">{text}</span>
@@ -102,10 +104,10 @@ function ReferenceIconSetting({ templates }: { templates: GeneratorTemplateSetti
   const available = availableReferenceIconGenerators(templates);
   const selected = referenceIconGenerator(templates, chosenId);
   return <SettingsGroup heading="Reference icons">
-    <SettingsCard icon={<Sparkles size={20} />} header="Automatic reference icon generation">
+    <SettingsCard icon={<Sparkle20 />} header="Automatic reference icon generation">
       <ToggleSwitch checked={automation !== "disabled"} aria-label="Automatic reference icon generation" onChange={(on) => saveReferenceIconAutomation(on ? "ask" : "disabled")} />
     </SettingsCard>
-    <SettingsCard icon={<Image size={20} />} header="Reference icon generator">
+    <SettingsCard icon={<Image20 />} header="Reference icon generator">
       <ComboBox aria-label="Reference icon generator" disabled={!available.length} value={selected?.id ?? ""} placeholder="No available generators"
         onChange={saveReferenceIconGeneratorId} options={available.map((template) => ({ value: template.id, label: template.name }))} />
     </SettingsCard>
@@ -127,7 +129,7 @@ function AppearanceSetting() {
     saveTheme(next);
     applyTheme(next);
   };
-  return <SettingsCard icon={<Palette size={20} />} header="App theme" description="Select which app theme to display">
+  return <SettingsCard icon={<Palette20 />} header="App theme" description="Select which app theme to display">
     <ComboBox aria-label="App theme" value={choice} onChange={pick} options={themeOptions} />
   </SettingsCard>;
 }
@@ -139,7 +141,7 @@ const endpointProviders: { id: EndpointProviderId; label: string; detail: string
     id: "openrouter",
     label: "OpenRouter",
     detail: "Use models from openrouter.ai through its OpenAI-compatible API.",
-    icon: <Bot size={20} />,
+    icon: <Agent20 />,
     endpointPlaceholder: "https://openrouter.ai/api/v1",
     keyRequired: true,
   },
@@ -147,7 +149,7 @@ const endpointProviders: { id: EndpointProviderId; label: string; detail: string
     id: "local",
     label: "Local OpenAI-compatible",
     detail: "Use a server on this computer or network that implements /models and /chat/completions.",
-    icon: <Cpu size={20} />,
+    icon: <Gpu20 />,
     endpointPlaceholder: "http://localhost:1234/v1",
     keyRequired: false,
   },
@@ -188,7 +190,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
       const configured = isEndpointProviderConfigured(provider.id, value);
       const listId = `llm-models-${provider.id}`;
       return <SettingsExpander key={provider.id} className="llm-provider" icon={provider.icon} header={provider.label} description={provider.detail}
-        control={<span className="llm-provider__status">{configured ? <><Check size={14} aria-hidden="true" /> Configured</> : "Not configured"}</span>}>
+        control={<span className="llm-provider__status">{configured ? <><Check14 aria-hidden="true" /> Configured</> : "Not configured"}</span>}>
         <SettingsRow header="Endpoint">
           <TextField className="settings-field" aria-label={`${provider.label} endpoint`} value={value.endpoint} spellCheck={false} placeholder={provider.endpointPlaceholder} onChange={(next) => update(provider.id, "endpoint", next)} />
         </SettingsRow>
@@ -199,7 +201,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
           <TextField className="settings-field" list={listId} aria-label={`${provider.label} model`} value={value.model} spellCheck={false} placeholder="Select or enter a model ID" onChange={(next) => update(provider.id, "model", next)} />
           <datalist id={listId}>{models[provider.id].map((model) => <option value={model} key={model} />)}</datalist>
           <button type="button" className="secondary-button" disabled={!desktop || !value.endpoint.trim() || loading === provider.id} onClick={() => void discover(provider.id)} data-tooltip={desktop ? "Load models from this endpoint" : "Model discovery is available in the desktop app"}>
-            {loading === provider.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />} Load models
+            {loading === provider.id ? <Spinner16 className="spin" /> : <Refresh16 />} Load models
           </button>
         </SettingsRow>
         {errors[provider.id] && <div className="settings-expander-message"><InfoBar severity="error" message={errors[provider.id]} /></div>}
@@ -230,7 +232,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
   };
 
   return <SettingsGroup>
-    <SettingsCard icon={<Cpu size={20} />} header="GPU backend">
+    <SettingsCard icon={<Gpu20 />} header="GPU backend">
       <ComboBox aria-label="GPU backend" value={cudaAvailable ? backend : "vulkan"} disabled={!desktop || !cudaAvailable} onChange={(value) => {
         const next = value as InferenceBackend;
         saveInferenceBackend(next);
@@ -238,10 +240,10 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
         onBackendChange();
       }} options={[...(cudaAvailable ? [{ value: "cuda", label: "CUDA" }] : []), { value: "vulkan", label: "Vulkan" }]} />
     </SettingsCard>
-    <SettingsCard icon={<Settings2 size={20} />} header="Enable debug options" description="Show Debug Prompt in scene settings and the image inspector, and Debug Icon Prompt in reference details">
+    <SettingsCard icon={<Options20 />} header="Enable debug options" description="Show Debug Prompt in scene settings and the image inspector, and Debug Icon Prompt in reference details">
       <ToggleSwitch checked={debugEnabled} aria-label="Enable debug options" onChange={saveDebugOptionsEnabled} />
     </SettingsCard>
-    <SettingsCard icon={opening ? <LoaderCircle className="spin" size={20} /> : <FileText size={20} />} header="Show log file" actionIcon="external" disabled={!desktop || opening} onClick={() => void reveal()} />
+    <SettingsCard icon={opening ? <Spinner20 className="spin" /> : <TextFile20 />} header="Show log file" actionIcon="external" disabled={!desktop || opening} onClick={() => void reveal()} />
     {error && <InfoBar severity="error" title="Couldn’t show the log file" message={error} onClose={() => setError(null)} />}
   </SettingsGroup>;
 }
@@ -249,11 +251,11 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
 /* --- The page ------------------------------------------------------------------------ */
 
 const TABS = [
-  { id: "engine", label: "Generator", icon: Video },
-  { id: "llms", label: "Agents", icon: Bot },
-  { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "diagnostics", label: "Diagnostics", icon: Activity },
-  { id: "updates", label: "Updates", icon: RefreshCw },
+  { id: "engine", label: "Generator", icon: Video16, selectedIcon: Video16Filled },
+  { id: "llms", label: "Agents", icon: Agent16, selectedIcon: Agent16Filled },
+  { id: "appearance", label: "Appearance", icon: Palette16, selectedIcon: Palette16Filled },
+  { id: "diagnostics", label: "Diagnostics", icon: Diagnostics16, selectedIcon: Diagnostics16Filled },
+  { id: "updates", label: "Updates", icon: Refresh16, selectedIcon: Refresh16Filled },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -485,12 +487,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
         : value.trim() ? <span className="settings-path__value" data-tooltip={value}>{middleEllipsis(value)}</span> : "Not set";
     return <div className={`settings-path settings-path--${state}`} key={field.id}>
       <SettingsCard
-        icon={field.directory ? <Folder size={20} /> : <FileBox size={20} />}
+        icon={field.directory ? <Folder20 /> : <ModelFile20 />}
         header={<>{field.label}{!field.required && <span className="settings-path__optional"> (optional)</span>}</>}
         description={description}
       >
         {state !== "unset" && <span className="settings-path__state" data-tooltip={state === "found" ? "Found" : undefined}>
-          {state === "found" ? <Check size={16} aria-hidden="true" /> : state === "missing" ? <AlertCircle size={16} aria-hidden="true" /> : null}
+          {state === "found" ? <Check16 aria-hidden="true" /> : state === "missing" ? <Error16 aria-hidden="true" /> : null}
           <span className={state === "found" ? "sr-only" : undefined}>{stateLabel[state]}</span>
         </span>}
         <button type="button" className="secondary-button" onClick={() => void browse(field)} disabled={!desktop || Boolean(downloading)}
@@ -499,7 +501,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
         </button>
         <button type="button" className="icon-button" aria-label={`More options for ${field.label}`} data-tooltip="More options" aria-haspopup="menu"
           disabled={Boolean(downloading)} onClick={(event) => setPathMenu({ field, anchor: event.currentTarget })}>
-          <MoreHorizontal size={16} />
+          <More16 />
         </button>
       </SettingsCard>
       {showAdvancedOptions && <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />}
@@ -508,8 +510,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   const generatorEditor = editingTemplate && <>
     <div className="settings-page__actions">
-      {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download size={16} /> Download weights</button>}
-      <button type="button" className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>
+      {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download16 /> Download weights</button>}
+      <button type="button" className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><Reset16 /> Clear generator paths</button>
     </div>
     {downloadStatus}
     <InfoBar severity={engineSeverity(status, desktop)} title={engineHeadline(status, desktop)} message={<>
@@ -518,14 +520,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     </>} />
 
     <SettingsGroup heading="General">
-      <SettingsCard icon={<SquarePen size={20} />} header="Name">
+      <SettingsCard icon={<Rename20 />} header="Name">
         <input ref={nameField} className="text-field settings-field" aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
       </SettingsCard>
-      <SettingsCard icon={<Video size={20} />} header="Mode">
+      <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
       </SettingsCard>
-      <SettingsCard icon={<ListOrdered size={20} />} header="Default steps">
+      <SettingsCard icon={<Steps20 />} header="Default steps">
         <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
           const value = Number(event.target.value);
           if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
@@ -534,11 +536,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     </SettingsGroup>
 
     <SettingsGroup heading="Performance">
-      <SettingsCard icon={<Gauge size={20} />} header="Attention">
+      <SettingsCard icon={<Gauge20 />} header="Attention">
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
           options={[{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }]} />
       </SettingsCard>
-      <SettingsCard icon={<Zap size={20} />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
+      <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
           checked={selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={selectedTemplate.mode === "animate"}
           onChange={(on) => updateTemplate({ motionCache: on })} />
@@ -553,7 +555,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
 
     <SettingsGroup heading="Advanced">
-      <SettingsCard icon={<Settings2 size={20} />} header="Show advanced options" description="Per-GPU download sources for each model file">
+      <SettingsCard icon={<Options20 />} header="Show advanced options" description="Per-GPU download sources for each model file">
         <ToggleSwitch aria-label="Show advanced options" checked={showAdvancedOptions} onChange={setShowAdvancedOptions} />
       </SettingsCard>
     </SettingsGroup>
@@ -567,7 +569,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     {downloadStatus}
     <ReferenceIconSetting templates={templateSettings} />
     {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
-      {section.id === "generators" && <SettingsCard icon={<Plus size={20} />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
+      {section.id === "generators" && <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
         <button type="button" className="secondary-button" onClick={addTemplate}>New generator</button>
       </SettingsCard>}
       <div className="settings-card-list" role="list" aria-label={section.title}>
@@ -576,20 +578,20 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
           const isDefault = template.id === templateSettings.defaultTemplateId;
           const active = downloadState?.active && downloadState.templateId === template.id;
           const weights = hasDownloadedWeights(template);
-          return <OpenableCard key={template.id} icon={<Video size={20} />} header={template.name} openRef={`template:${template.id}`}
+          return <OpenableCard key={template.id} icon={<Video20 />} header={template.name} openRef={`template:${template.id}`}
             openLabel={`Edit ${template.name} generator`} onOpen={() => openTemplate(template.id)}
             description={active ? downloadState?.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%`
               : `${!needsDownload && isDefault ? "Used by default · " : ""}${templateSummary(template)}`}
             progress={active && downloadState?.phase !== "preparing" && <ProgressBar className="settings-progress" value={downloadPercent} aria-label={`Downloading ${template.name} weights`} />}
             actions={needsDownload
               ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} data-tooltip={`Download ${template.name} weights`}>
-                {active ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}
+                {active ? <Spinner16 className="spin" /> : <Download16 />}
               </button>
               : <>
                 {!isDefault && <button type="button" className="secondary-button" onClick={() => makeDefault(template.id)} aria-label={`Set ${template.name} as default`}>Set as default</button>}
                 <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || (weights ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)}
                   aria-label={weights ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`}
-                  data-tooltip={weights ? "Remove weights and keep the template" : "Remove generator"}><Trash2 size={16} /></button>
+                  data-tooltip={weights ? "Remove weights and keep the template" : "Remove generator"}><Delete16 /></button>
               </>} />;
         })}
       </div>
@@ -610,15 +612,15 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       back();
     }}>
       <NavPane aria-label="Settings sections" className="settings-nav" header={
-        <button type="button" className="icon-button settings-nav__back" onClick={back} aria-label="Back" data-tooltip="Back"><ArrowLeft size={16} /></button>
+        <button type="button" className="icon-button settings-nav__back" onClick={back} aria-label="Back" data-tooltip="Back"><Back16 /></button>
       }>
         {TABS.map((item, index) => {
-          const Icon = item.icon;
+          const Icon = tab === item.id ? item.selectedIcon : item.icon;
           const count = item.id === "engine" ? missing.length : 0;
           return <NavItem
             key={item.id}
             id={`settings-tab-${item.id}`}
-            icon={<Icon size={16} />}
+            icon={<Icon />}
             label={item.label}
             selected={tab === item.id}
             badge={count > 0 ? count : undefined}
@@ -643,7 +645,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
           {editingTemplate
             ? <nav className="settings-breadcrumb" aria-label="Breadcrumb">
                 <button type="button" className="settings-breadcrumb__link" onClick={leaveTemplate}>Generators</button>
-                <ChevronRight size={20} aria-hidden="true" className="settings-breadcrumb__separator" />
+                <ChevronRight20 aria-hidden="true" className="settings-breadcrumb__separator" />
                 <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{editingTemplate.name || "Untitled generator"}</h1>
               </nav>
             : <h1 id="settings-page-heading" className="settings-page__title">{current.label}</h1>}

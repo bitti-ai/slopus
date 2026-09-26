@@ -1,4 +1,4 @@
-import { AlertCircle, Ban, Check, Clock3, LoaderCircle, RefreshCw } from "lucide-react";
+import { Check16, Clock16, Error16, Prohibited16, Refresh16, Spinner16 } from "../ui/icons";
 import { sceneDurationSeconds, sceneShots, type GenerationJob } from "../../lib/project";
 
 /* What a scene's status is CALLED, in one place.
@@ -36,13 +36,13 @@ export const STATUS_WORD: Record<JobStatus, string> = {
 
 /* Encoding turns the same spinner as rendering: it is the app working, not the
    app waiting, and a tick beside "saving" would say it was already done. */
-export const statusIcon = (status: SceneIndicatorStatus, size = 16) =>
-  status === "generating" || status === "ready" ? <LoaderCircle size={size} />
-    : status === "completed" ? <Check size={size} />
-      : status === "failed" ? <AlertCircle size={size} />
-        : status === "cancelled" ? <Ban size={size} />
-          : status === "changed" ? <RefreshCw size={size} />
-          : <Clock3 size={size} />;
+export const statusIcon = (status: SceneIndicatorStatus) =>
+  status === "generating" || status === "ready" ? <Spinner16 />
+    : status === "completed" ? <Check16 />
+      : status === "failed" ? <Error16 />
+        : status === "cancelled" ? <Prohibited16 />
+          : status === "changed" ? <Refresh16 />
+          : <Clock16 />;
 
 /** The shape of a scene — how long it runs and how many shots it is cut into. */
 export const sceneShape = (job: GenerationJob) => {

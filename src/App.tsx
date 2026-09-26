@@ -4,7 +4,7 @@ import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerat
 import { CudaSetupDialog } from "./components/CudaSetupDialog";
 import { missingCudaDownload } from "./lib/cudaSupport";
 import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
-import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
+import { Add16, FolderOpen16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, Search16, Search32, Settings16, WorkQueue16 } from "./components/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { DeleteProjectDialog, canConfirmNatively, confirmProjectDeletionNatively } from "./components/DeleteProjectDialog";
 import { ProjectCard } from "./components/ProjectCard";
@@ -305,14 +305,14 @@ function App() {
   const queueTrigger = (ref: RefObject<HTMLButtonElement>) => (
     <button ref={ref} type="button" className="icon-button titlebar-command" onClick={() => setWorkQueueOpen((open) => !open)}
       aria-label="Work queue" aria-haspopup="dialog" aria-expanded={workQueueOpen} data-tooltip={queueCount ? `Work queue · ${queueCount} running or queued` : "Work queue"}>
-      <ListTodo size={16} aria-hidden="true" />
+      <WorkQueue16 aria-hidden="true" />
       {queueCount > 0 && <InfoBadge className="titlebar-command__badge" value={queueCount} />}
     </button>
   );
   const shellActions = <>
     <button ref={settingsButton} type="button" className="icon-button titlebar-command" onClick={() => openSettings(updateNeedsAttention(updateState.stage) ? "updates" : "engine")}
       aria-label="Settings" data-tooltip={updateNeedsAttention(updateState.stage) ? "Settings · update available" : "Settings"} data-tooltip-shortcut="Ctrl+," aria-keyshortcuts="Control+,">
-      <Settings size={16} aria-hidden="true" />
+      <Settings16 aria-hidden="true" />
       {updateNeedsAttention(updateState.stage) && <InfoBadge className="titlebar-command__badge titlebar-command__badge--dot" />}
     </button>
     {queueTrigger(queueButton)}
@@ -384,7 +384,7 @@ function App() {
   const showUpdateInfo = ["downloading", "installing", "restart"].includes(updateState.stage) || (updateState.stage === "available" && !updateInfoDismissed);
   const newProjectButton = (
     <button type="button" className="primary-button" disabled={busy} onClick={() => void chooseCreationFolder()} data-tooltip="New project" data-tooltip-shortcut="Ctrl+N" aria-keyshortcuts="Control+N">
-      <Plus size={16} aria-hidden="true" /> New project
+      <Add16 aria-hidden="true" /> New project
     </button>
   );
 
@@ -415,14 +415,14 @@ function App() {
                 placeholder="Search projects"
                 aria-label="Search projects"
                 aria-keyshortcuts="Control+F"
-                trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search size={16} /></span>}
+                trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search16 /></span>}
               />}
             >
               {newProjectButton}
-              <CommandBarButton icon={<FolderOpen size={16} />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
+              <CommandBarButton icon={<FolderOpen16 />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
               <CommandBarSeparator />
-              <CommandBarButton icon={<Grid2X2 size={16} />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
-              <CommandBarButton icon={<List size={16} />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
+              <CommandBarButton icon={projectLayout === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
+              <CommandBarButton icon={projectLayout === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
             </CommandBar>
             {/* An empty library says so in its empty state; a heading counting
                 "0 projects" above it would only repeat that. */}
@@ -456,19 +456,19 @@ function App() {
               /* The compact shared empty state: only the first-run hero below
                  is large. */
               <EmptyState
-                icon={<Search size={32} />}
+                icon={<Search32 />}
                 title={`No results for “${query}”`}
                 description="Search looks at project names, descriptions and folders."
                 action={<button type="button" className="secondary-button" onClick={() => setQuery("")}>Clear search</button>}
               />
             ) : (
               <div className="library-empty">
-                <FolderOpen size={48} aria-hidden="true" />
+                <FolderOpen48 aria-hidden="true" />
                 <h3>No projects yet</h3>
                 <p>Create a project or open an existing project folder.</p>
                 <div className="library-empty__actions">
                   {newProjectButton}
-                  <button type="button" className="secondary-button" disabled={busy} onClick={() => void openFromFolder()}><FolderOpen size={16} aria-hidden="true" /> Open project…</button>
+                  <button type="button" className="secondary-button" disabled={busy} onClick={() => void openFromFolder()}><FolderOpen16 aria-hidden="true" /> Open project…</button>
                 </div>
               </div>
             )}

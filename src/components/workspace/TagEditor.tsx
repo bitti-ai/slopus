@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Dismiss12 } from "../ui/icons";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "../../styles/tag-editor.css";
@@ -101,7 +101,7 @@ export function TagEditor({ label, value, suggestions, onChange }: {
           }
           drag.current = null; setDragging(null);
         }} onLostPointerCapture={() => { drag.current = null; setDragging(null); }}>{tag}</button>
-        <button type="button" className="tag-editor__remove" aria-label={`Remove ${tag} from ${label}`} tabIndex={-1} onClick={() => removeAt(index)}><X size={12} aria-hidden="true" /></button>
+        <button type="button" className="tag-editor__remove" aria-label={`Remove ${tag} from ${label}`} tabIndex={-1} onClick={() => removeAt(index)}><Dismiss12 aria-hidden="true" /></button>
       </span>)}
       <input
         ref={input}

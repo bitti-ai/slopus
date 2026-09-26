@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight16 } from "./ui/icons";
 import type { ReactNode } from "react";
 
 /* A settings card that opens something (a generator, a LoRA) AND carries its
@@ -19,7 +19,7 @@ export function OpenableCard({ icon, header, description, progress, openLabel, o
     </span>
     <span className="ui-settings-card__control settings-open-card__control">
       {actions}
-      <ChevronRight size={16} aria-hidden="true" className="ui-settings-card__glyph" />
+      <ChevronRight16 aria-hidden="true" className="ui-settings-card__glyph" />
     </span>
   </div>;
 }

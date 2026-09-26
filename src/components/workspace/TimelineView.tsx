@@ -2,10 +2,11 @@ import { clipEffectCount, ClipEffects } from "./ClipEffects";
 import { ProjectStatus } from "./ProjectStatus";
 import { PreviewEngineStatus } from "./PreviewEngineStatus";
 import {
-  AudioLines, ChevronFirst, ChevronLast, Clapperboard, Copy, Ellipsis, Film, Image as ImageIcon, LayoutGrid, List, Lock, LockOpen,
-  MousePointerClick, PanelLeft, PanelRight, Pause, Play, Plus, Scan, Scissors, Sparkles, StepBack, StepForward, Trash2, Type, Upload,
-  Volume2, VolumeX, ZoomIn, ZoomOut,
-} from "lucide-react";
+  Add16, Audio12, Audio16, Copy16, CursorClick32, Cut16, Delete16, Film12, Film16, Film20, Film32, GoToEnd16, GoToStart16,
+  GridView16, GridView16Filled, Image12, Image16, Import16, ListView16, ListView16Filled, Lock14Filled, More16, Mute14Filled,
+  NextFrame16, PanelLeft16, PanelLeft16Filled, PanelRight16, PanelRight16Filled, Pause16, Play16, PreviousFrame16, SafeArea16,
+  SafeArea16Filled, Scene32, Sparkle12, Sparkle16, Speaker14, Text12, Text16, Unlock14, ZoomIn16, ZoomOut16,
+} from "../ui/icons";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { outputDimensions, resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
@@ -81,11 +82,11 @@ const SHUTTLE_SPEEDS = [1, 2, 4];
    the MEDIA's; a clip whose file is missing takes its track's. */
 type ClipKind = "video" | "generated" | "image" | "audio" | "caption";
 const CLIP_KINDS: Record<ClipKind, { label: string; color: string; icon: React.ReactNode; glyph: React.ReactNode }> = {
-  video: { label: "Video", color: "var(--clip-video)", icon: <Film size={16} />, glyph: <Film size={12} aria-hidden="true" /> },
-  generated: { label: "Generated video", color: "var(--clip-generated)", icon: <Sparkles size={16} />, glyph: <Sparkles size={12} aria-hidden="true" /> },
-  image: { label: "Still image", color: "var(--clip-image)", icon: <ImageIcon size={16} />, glyph: <ImageIcon size={12} aria-hidden="true" /> },
-  audio: { label: "Audio", color: "var(--clip-audio)", icon: <AudioLines size={16} />, glyph: <AudioLines size={12} aria-hidden="true" /> },
-  caption: { label: "Caption", color: "var(--clip-caption)", icon: <Type size={16} />, glyph: <Type size={12} aria-hidden="true" /> },
+  video: { label: "Video", color: "var(--clip-video)", icon: <Film16 />, glyph: <Film12 aria-hidden="true" /> },
+  generated: { label: "Generated video", color: "var(--clip-generated)", icon: <Sparkle16 />, glyph: <Sparkle12 aria-hidden="true" /> },
+  image: { label: "Still image", color: "var(--clip-image)", icon: <Image16 />, glyph: <Image12 aria-hidden="true" /> },
+  audio: { label: "Audio", color: "var(--clip-audio)", icon: <Audio16 />, glyph: <Audio12 aria-hidden="true" /> },
+  caption: { label: "Caption", color: "var(--clip-caption)", icon: <Text16 />, glyph: <Text12 aria-hidden="true" /> },
 };
 const trackKindOf = (track: TimelineTrack): ClipKind => track.kind === "audio" ? "audio" : track.kind === "caption" ? "caption" : "video";
 const clipKindOf = (asset: ProjectAsset | undefined, track: TimelineTrack): ClipKind => asset?.kind ?? trackKindOf(track);
@@ -1048,14 +1049,14 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const locked = !track || track.locked;
     return [
       { label: "Cut", shortcut: "Ctrl+X", disabled: locked, onSelect: () => cutClip(clip) },
-      { label: "Copy", icon: <Copy size={16} />, shortcut: "Ctrl+C", onSelect: () => copyClip(clip) },
+      { label: "Copy", icon: <Copy16 />, shortcut: "Ctrl+C", onSelect: () => copyClip(clip) },
       { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, onSelect: () => paste(clip.trackId) },
       { separator: true },
-      { label: "Split at playhead", icon: <Scissors size={16} />, shortcut: "Ctrl+K", disabled: !canSplit(clip), onSelect: () => splitClip(clip) },
+      { label: "Split at playhead", icon: <Cut16 />, shortcut: "Ctrl+K", disabled: !canSplit(clip), onSelect: () => splitClip(clip) },
       { label: "Duplicate", shortcut: "Ctrl+D", disabled: locked, onSelect: () => duplicateClip(clip) },
       { label: "Rename", shortcut: "F2", onSelect: () => { setSelectedId(clip.id); renameSelected(); } },
       { separator: true },
-      { label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, disabled: locked, onSelect: () => deleteClip(clip.id) },
+      { label: "Delete", icon: <Delete16 />, shortcut: "Delete", danger: true, disabled: locked, onSelect: () => deleteClip(clip.id) },
     ];
   };
   const laneTimeAt = (event: React.MouseEvent<HTMLElement>) => {
@@ -1172,7 +1173,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 onClick={() => void importMedia()}
                 disabled={importing || !isTauri()}
                 {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
-              ><Upload size={16} aria-hidden="true" /> Import</button>
+              ><Import16 aria-hidden="true" /> Import</button>
               {panelTab === "media" && <div className="scene-panel__layout" role="group" aria-label="Media layout">
                 <button
                   type="button"
@@ -1180,14 +1181,14 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   aria-pressed={mediaLayout === "grid"}
                   onClick={() => chooseMediaLayout("grid")}
                   {...tooltipProps("Grid")}
-                ><LayoutGrid size={16} aria-hidden="true" /><span className="sr-only">Grid</span></button>
+                >{mediaLayout === "grid" ? <GridView16Filled aria-hidden="true" /> : <GridView16 aria-hidden="true" />}<span className="sr-only">Grid</span></button>
                 <button
                   type="button"
                   className="ui-toggle-button scene-panel__toggle"
                   aria-pressed={mediaLayout === "list"}
                   onClick={() => chooseMediaLayout("list")}
                   {...tooltipProps("List")}
-                ><List size={16} aria-hidden="true" /><span className="sr-only">List</span></button>
+                >{mediaLayout === "list" ? <ListView16Filled aria-hidden="true" /> : <ListView16 aria-hidden="true" />}<span className="sr-only">List</span></button>
               </div>}
             </>}
           />
@@ -1221,7 +1222,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 >
                   <span className="scene-card__thumb">
                     {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
-                      : <Film size={20} aria-hidden="true" />}
+                      : <Film20 aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
                   <span>
@@ -1232,7 +1233,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   </span>
                 </button>;
               })}
-              <button className="secondary-button scene-add" onClick={addScene}><Plus size={16} /> Add scene</button>
+              <button className="secondary-button scene-add" onClick={addScene}><Add16 /> Add scene</button>
             </div>
           ) : (
             <div className={`media-grid media-grid--${mediaLayout}`} role="tabpanel" aria-label="Media">
@@ -1259,7 +1260,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   onContextMenu={(event) => {
                     setMediaSelectedId(asset.id);
                     menu.open(event, [
-                      { label: "Remove from project", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, onSelect: () => removeMediaAsset(asset.id) },
+                      { label: "Remove from project", icon: <Delete16 />, shortcut: "Delete", danger: true, onSelect: () => removeMediaAsset(asset.id) },
                     ], { "aria-label": `${asset.name} actions` });
                   }}
                   {...tooltipProps(`${asset.name}. Drag onto a track to use it.`)}
@@ -1272,7 +1273,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               </div>)}
               {mediaAssets.length === 0 && !importError && <EmptyState
                 className="media-grid__empty"
-                icon={<Film />}
+                icon={<Film32 />}
                 title="No media yet"
                 description="Import video, sound or images, then drag them onto a track."
                 action={<button
@@ -1281,7 +1282,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   onClick={() => void importMedia()}
                   disabled={importing || !isTauri()}
                   {...tooltipProps(isTauri() ? undefined : "Importing files is available in the desktop app")}
-                ><Upload size={16} aria-hidden="true" /> Import media</button>}
+                ><Import16 aria-hidden="true" /> Import media</button>}
               />}
               {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
@@ -1312,7 +1313,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 />
                 : <EmptyState
                   className="program-empty"
-                  icon={<Clapperboard />}
+                  icon={<Scene32 />}
                   title="Nothing on the timeline yet"
                   description="Drop media on a track, or generate a scene."
                   action={<button
@@ -1321,7 +1322,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     onClick={() => void importMedia()}
                     disabled={importing || !isTauri()}
                     {...tooltipProps(isTauri() ? undefined : "Importing files is available in the desktop app")}
-                  ><Upload size={16} aria-hidden="true" /> Import media</button>}
+                  ><Import16 aria-hidden="true" /> Import media</button>}
                 />}
               {safeArea && <div className="program-safe" aria-hidden="true"><i className="program-safe__frame"><b className="program-safe__action" /><b className="program-safe__title" /></i></div>}
             </div>
@@ -1356,7 +1357,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               aria-label="Safe areas"
               {...tooltipProps("Title and action safe areas")}
               onClick={() => setSafeArea((value) => !value)}
-            ><Scan size={16} aria-hidden="true" /></button>
+            >{safeArea ? <SafeArea16Filled aria-hidden="true" /> : <SafeArea16 aria-hidden="true" />}</button>
           </footer>
         </main>
 
@@ -1386,7 +1387,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 aria-haspopup="menu"
                 {...tooltipProps("More options")}
                 onClick={(event) => menu.open(event.currentTarget, clipMenuItems(selected), { "aria-label": `${selected.label} actions`, placement: "bottom-end", focusFirst: true })}
-              ><Ellipsis size={16} aria-hidden="true" /></button>}
+              ><More16 aria-hidden="true" /></button>}
             />
             <PropSection title="Timing" persistKey="timeline.clip.timing" summary={`${shortTimecode(selected.startMs, fps)} → ${shortTimecode(clipEndMs(selected), fps)}`}>
               <PropRow label="Starts at"><span className="inspector-value">{formatTimecode(selected.startMs, fps)}</span></PropRow>
@@ -1430,7 +1431,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             </PropSection>
           </> : <EmptyState
             className="inspector-empty"
-            icon={<MousePointerClick />}
+            icon={<CursorClick32 />}
             title={clipCount === 0 ? "Nothing on the timeline yet" : "No clip selected"}
             description={clipCount === 0
               ? "Drag media or a scene onto a track, then select the clip to edit it here."
@@ -1473,24 +1474,24 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           {/* Go to start · Frame back · Play/Pause · Frame forward · Go to end —
               the order every NLE uses, flat 28px buttons, no accent fill. */}
           <div className="timeline-transport" role="group" aria-label="Transport">
-            <button onClick={() => goTo(0)} aria-label="Go to start" {...tooltipProps(transportBlockedBy ?? "Go to start", transportBlockedBy ? undefined : "Home")} disabled={transportBlockedBy !== null}><ChevronFirst size={16} /></button>
-            <button onClick={() => stepFrames(-1)} aria-label="Previous frame" {...tooltipProps(transportBlockedBy ?? "Previous frame", transportBlockedBy ? undefined : "Left")} disabled={transportBlockedBy !== null}><StepBack size={16} /></button>
-            <button className="play-button" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} {...tooltipProps(transportBlockedBy ?? (playing ? "Pause" : "Play"), transportBlockedBy ? undefined : "Space")}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
-            <button onClick={() => stepFrames(1)} aria-label="Next frame" {...tooltipProps(transportBlockedBy ?? "Next frame", transportBlockedBy ? undefined : "Right")} disabled={transportBlockedBy !== null}><StepForward size={16} /></button>
-            <button onClick={() => goTo(contentEndMs)} aria-label="Go to end" {...tooltipProps(transportBlockedBy ?? "Go to end", transportBlockedBy ? undefined : "End")} disabled={transportBlockedBy !== null}><ChevronLast size={16} /></button>
+            <button onClick={() => goTo(0)} aria-label="Go to start" {...tooltipProps(transportBlockedBy ?? "Go to start", transportBlockedBy ? undefined : "Home")} disabled={transportBlockedBy !== null}><GoToStart16 /></button>
+            <button onClick={() => stepFrames(-1)} aria-label="Previous frame" {...tooltipProps(transportBlockedBy ?? "Previous frame", transportBlockedBy ? undefined : "Left")} disabled={transportBlockedBy !== null}><PreviousFrame16 /></button>
+            <button className="play-button" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} {...tooltipProps(transportBlockedBy ?? (playing ? "Pause" : "Play"), transportBlockedBy ? undefined : "Space")}>{playing ? <Pause16 /> : <Play16 />}</button>
+            <button onClick={() => stepFrames(1)} aria-label="Next frame" {...tooltipProps(transportBlockedBy ?? "Next frame", transportBlockedBy ? undefined : "Right")} disabled={transportBlockedBy !== null}><NextFrame16 /></button>
+            <button onClick={() => goTo(contentEndMs)} aria-label="Go to end" {...tooltipProps(transportBlockedBy ?? "Go to end", transportBlockedBy ? undefined : "End")} disabled={transportBlockedBy !== null}><GoToEnd16 /></button>
             {playing && rate !== 1 && <span className="transport-rate" aria-live="polite">{rate > 0 ? `${rate}×` : `−${-rate}×`}</span>}
           </div>
           <div className="timeline-tools">
-            <button onClick={splitSelected} disabled={splitBlockedBy !== null} {...tooltipProps(splitBlockedBy ?? "Split at playhead", splitBlockedBy ? undefined : "Ctrl+K")}><Scissors size={16} /> Split</button>
-            <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} {...tooltipProps(duplicateBlockedBy ?? "Duplicate clip", duplicateBlockedBy ? undefined : "Ctrl+D")}><Copy size={16} /> Duplicate</button>
-            <button onClick={removeSelected} disabled={deleteBlockedBy !== null} {...tooltipProps(deleteBlockedBy ?? "Delete clip", deleteBlockedBy ? undefined : "Delete")}><Trash2 size={16} /> Delete</button>
+            <button onClick={splitSelected} disabled={splitBlockedBy !== null} {...tooltipProps(splitBlockedBy ?? "Split at playhead", splitBlockedBy ? undefined : "Ctrl+K")}><Cut16 /> Split</button>
+            <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} {...tooltipProps(duplicateBlockedBy ?? "Duplicate clip", duplicateBlockedBy ? undefined : "Ctrl+D")}><Copy16 /> Duplicate</button>
+            <button onClick={removeSelected} disabled={deleteBlockedBy !== null} {...tooltipProps(deleteBlockedBy ?? "Delete clip", deleteBlockedBy ? undefined : "Delete")}><Delete16 /> Delete</button>
             <span className="timeline-tools__separator" aria-hidden="true" />
-            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond / ZOOM_STEP)} disabled={!lanePx || pxPerSecond <= minPps + 1e-6} aria-label="Zoom out" {...tooltipProps("Zoom out", "-")}><ZoomOut size={16} /></button>
+            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond / ZOOM_STEP)} disabled={!lanePx || pxPerSecond <= minPps + 1e-6} aria-label="Zoom out" {...tooltipProps("Zoom out", "-")}><ZoomOut16 /></button>
             <Slider className="timeline-zoom" aria-label="Timeline zoom" min={0} max={100} step={1} value={zoomSliderValue} disabled={!lanePx} onChange={zoomFromSlider} />
-            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond * ZOOM_STEP)} disabled={!lanePx || pxPerSecond >= maxPps - 1e-6} aria-label="Zoom in" {...tooltipProps("Zoom in", "=")}><ZoomIn size={16} /></button>
+            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond * ZOOM_STEP)} disabled={!lanePx || pxPerSecond >= maxPps - 1e-6} aria-label="Zoom in" {...tooltipProps("Zoom in", "=")}><ZoomIn16 /></button>
             <span className="timeline-tools__separator" aria-hidden="true" />
-            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleSources} aria-pressed={sourcesOpen} aria-label="Media panel" {...tooltipProps(sourcesOpen ? "Hide media panel" : "Show media panel")}><PanelLeft size={16} /></button>
-            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleInspector} aria-pressed={inspectorOpen} aria-label="Inspector" {...tooltipProps(inspectorOpen ? "Hide inspector" : "Show inspector")}><PanelRight size={16} /></button>
+            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleSources} aria-pressed={sourcesOpen} aria-label="Media panel" {...tooltipProps(sourcesOpen ? "Hide media panel" : "Show media panel")}>{sourcesOpen ? <PanelLeft16Filled /> : <PanelLeft16 />}</button>
+            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleInspector} aria-pressed={inspectorOpen} aria-label="Inspector" {...tooltipProps(inspectorOpen ? "Hide inspector" : "Show inspector")}>{inspectorOpen ? <PanelRight16Filled /> : <PanelRight16 />}</button>
           </div>
         </header>
         <div className="timeline-body">
@@ -1668,8 +1669,8 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
         {...tooltipProps("Rename track")}
         onChange={(event) => actions.current.rename(track.id, event.target.value || "Untitled track")}
       />
-      <button className={track.muted ? "active" : ""} onClick={() => actions.current.toggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`} aria-pressed={track.muted} {...tooltipProps(track.muted ? "Unmute" : "Mute")}>{track.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
-      <button className={track.locked ? "active" : ""} onClick={() => actions.current.toggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} aria-pressed={track.locked} {...tooltipProps(track.locked ? "Unlock" : "Lock")}>{track.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
+      <button className={track.muted ? "active" : ""} onClick={() => actions.current.toggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`} aria-pressed={track.muted} {...tooltipProps(track.muted ? "Unmute" : "Mute")}>{track.muted ? <Mute14Filled /> : <Speaker14 />}</button>
+      <button className={track.locked ? "active" : ""} onClick={() => actions.current.toggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} aria-pressed={track.locked} {...tooltipProps(track.locked ? "Unlock" : "Lock")}>{track.locked ? <Lock14Filled /> : <Unlock14 />}</button>
     </div>
     <div
       className={`track-lane track-lane--${kind}${alt ? " track-lane--alt" : ""}${track.locked ? " track-lane--locked" : ""} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}

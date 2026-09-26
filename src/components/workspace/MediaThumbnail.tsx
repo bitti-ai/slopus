@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Music2, TriangleAlert, Video } from "lucide-react";
+import { Audio22, Image22, Video22, Warning22 } from "../ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectAsset } from "../../lib/project";
@@ -277,9 +277,9 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
   /* Three states, said plainly: sound never has a picture, a file the project
      points at but cannot read is a problem worth seeing, and everything else
      is the placeholder that was always here. */
-  const icon = asset.kind === "audio" ? <Music2 size={22} />
-    : failed ? <TriangleAlert size={22} />
-      : asset.kind === "image" ? <ImageIcon size={22} /> : <Video size={22} />;
+  const icon = asset.kind === "audio" ? <Audio22 />
+    : failed ? <Warning22 />
+      : asset.kind === "image" ? <Image22 /> : <Video22 />;
   return <span
     className="media-thumb"
     role="img"

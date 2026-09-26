@@ -1,4 +1,4 @@
-import { Pipette } from "lucide-react";
+import { Eyedropper16 } from "../ui/icons";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { Flyout, tooltipProps } from "../ui";
 
@@ -144,7 +144,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (hex
         onBlur={() => setDraft(value.toUpperCase())}
       />
       {Dropper && <button type="button" className="icon-button" aria-label="Pick a colour from the screen" {...tooltipProps("Pick a colour from the screen")} onClick={() => void sample()}>
-        <Pipette size={16} aria-hidden="true" />
+        <Eyedropper16 aria-hidden="true" />
       </button>}
     </div>
   </div>;

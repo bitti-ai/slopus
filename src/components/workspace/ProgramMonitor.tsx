@@ -1,6 +1,6 @@
 import { ProgramLayer } from "./ProgramLayer";
 import { ProgramPicture } from "./ProgramPicture";
-import { Film } from "lucide-react";
+import { Film16 } from "../ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clipFrameStyle, clipVisualSettings, outputDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
@@ -313,10 +313,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   let overlay: React.ReactNode = null;
   if (!hasClips || !clip) overlay = null;
   else if (asset?.kind === "generated" && !asset.relativePath && !asset.sourcePath) {
-    overlay = <div className="program-note"><Film size={16} /><span>{clip.label} isn’t generated yet</span></div>;
+    overlay = <div className="program-note"><Film16 /><span>{clip.label} isn’t generated yet</span></div>;
   }
   else if (!isTauri()) {
-    overlay = <div className="program-note"><Film size={16} /><span>Playback needs the desktop app</span></div>;
+    overlay = <div className="program-note"><Film16 /><span>Playback needs the desktop app</span></div>;
   }
 
   /* The frame is fitted inside the panel and the rest is the project's own

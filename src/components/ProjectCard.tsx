@@ -1,4 +1,4 @@
-import { ExternalLink, Film, FolderOpen, Image as ImageIcon, MoreHorizontal, Trash2 } from "lucide-react";
+import { Delete16, Film32, FolderOpen16, Image32, More16, OpenExternal16 } from "./ui/icons";
 import { forwardRef, type KeyboardEvent, type MouseEvent, type Ref } from "react";
 import { resolutionLabel, visibleClipAt } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
@@ -73,14 +73,14 @@ export const ProjectCard = forwardRef(function ProjectCard(
   const firstAsset = config.generationType === "image" ? config.assets.find((asset) => asset.id === config.imageScene?.outputAssetId) : firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
   const posterTimeMs = firstClip?.sourceStartMs ?? 0;
   const image = config.generationType === "image";
-  const Glyph = image ? ImageIcon : Film;
+  const Glyph = image ? Image32 : Film32;
   const meta = `Edited ${relativeDate(config.updatedAt)} · ${image ? "Image" : durationLabel(config.brief.targetDurationSeconds)}`;
   const prompt = config.brief.prompt.trim();
 
   const items: MenuEntry[] = [
-    { id: "open", label: "Open", icon: <ExternalLink size={16} />, onSelect: () => onOpen(project) },
-    ...(onReveal ? [{ id: "reveal", label: "Show in File Explorer", icon: <FolderOpen size={16} />, onSelect: () => onReveal(project) }] : []),
-    ...(onDelete ? [{ separator: true } as const, { id: "delete", label: "Delete project…", icon: <Trash2 size={16} />, onSelect: () => onDelete(project) }] : []),
+    { id: "open", label: "Open", icon: <OpenExternal16 />, onSelect: () => onOpen(project) },
+    ...(onReveal ? [{ id: "reveal", label: "Show in File Explorer", icon: <FolderOpen16 />, onSelect: () => onReveal(project) }] : []),
+    ...(onDelete ? [{ separator: true } as const, { id: "delete", label: "Delete project…", icon: <Delete16 />, onSelect: () => onDelete(project) }] : []),
   ];
   const openMenu = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {
     onSelect?.(project);
@@ -108,7 +108,7 @@ export const ProjectCard = forwardRef(function ProjectCard(
       onContextMenu={openMenu}
     >
       <div className={`project-card__thumb${firstAsset ? " project-card__thumb--media" : ""}`} style={style}>
-        <Glyph className="project-card__glyph" size={32} aria-hidden="true" />
+        <Glyph className="project-card__glyph" aria-hidden="true" />
         {firstAsset && <MediaThumbnail
           key={`${firstAsset.id}-${posterTimeMs}`}
           folderPath={project.folderPath}
@@ -132,7 +132,7 @@ export const ProjectCard = forwardRef(function ProjectCard(
         data-tooltip="More options"
         onClick={(event) => { event.stopPropagation(); onSelect?.(project); menu.open(event.currentTarget, items, { placement: "bottom" }); }}
         onDoubleClick={(event) => event.stopPropagation()}
-      ><MoreHorizontal size={16} /></button>
+      ><More16 /></button>
     </div>
     {/* Outside the tile: the menu is portalled, but React events still bubble
         through the component tree, and a right-click in the menu must not

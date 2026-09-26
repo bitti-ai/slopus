@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, Bot, Eraser, Square, X } from "lucide-react";
+import { Agent32, Clear16, Dismiss16, Send16, Stop14 } from "../ui/icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
@@ -202,14 +202,14 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
           />
         </>}
         actions={<>
-          <button type="button" className="icon-button agent-dock__action" aria-label="Clear conversation" {...tooltipProps("Clear conversation")} disabled={Boolean(requestId) || empty} onClick={clear}><Eraser size={16} aria-hidden="true" /></button>
-          {onClose && <button type="button" className="icon-button agent-dock__action" aria-label="Close agent" {...tooltipProps("Close")} onClick={onClose}><X size={16} aria-hidden="true" /></button>}
+          <button type="button" className="icon-button agent-dock__action" aria-label="Clear conversation" {...tooltipProps("Clear conversation")} disabled={Boolean(requestId) || empty} onClick={clear}><Clear16 aria-hidden="true" /></button>
+          {onClose && <button type="button" className="icon-button agent-dock__action" aria-label="Close agent" {...tooltipProps("Close")} onClick={onClose}><Dismiss16 aria-hidden="true" /></button>}
         </>}
       />
       <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
         {empty && <EmptyState
           className="agent-conversation__empty"
-          icon={<Bot size={32} />}
+          icon={<Agent32 />}
           title="Nothing asked yet"
           description={`Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
         />}
@@ -249,8 +249,8 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
           disabled={!ready || Boolean(requestId)}
         />
         {requestId
-          ? <button ref={cancelButton} type="button" className="agent-composer__send agent-cancel" onClick={cancel} aria-label="Cancel agent turn" aria-keyshortcuts="Escape" {...tooltipProps("Stop", "Esc")}><Square size={14} aria-hidden="true" /></button>
-          : <button type="submit" className="agent-composer__send" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" aria-keyshortcuts="Enter" {...tooltipProps(ready ? "Send" : blockedDetail ?? "No agent provider is available", ready ? "Enter" : undefined)}><ArrowUp size={16} aria-hidden="true" /></button>}
+          ? <button ref={cancelButton} type="button" className="agent-composer__send agent-cancel" onClick={cancel} aria-label="Cancel agent turn" aria-keyshortcuts="Escape" {...tooltipProps("Stop", "Esc")}><Stop14 aria-hidden="true" /></button>
+          : <button type="submit" className="agent-composer__send" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" aria-keyshortcuts="Enter" {...tooltipProps(ready ? "Send" : blockedDetail ?? "No agent provider is available", ready ? "Enter" : undefined)}><Send16 aria-hidden="true" /></button>}
       </form>
     </div>
   );

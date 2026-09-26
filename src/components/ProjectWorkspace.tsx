@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Bot, ChevronDown, Download, Film, Image, Redo2, Save, Sparkles, Undo2 } from "lucide-react";
+import { Agent16, Agent16Filled, Back16, ChevronDown12, Download16, Download16Filled, Film16, Film16Filled, Image16, Image16Filled, Redo16, References16, References16Filled, Save16, Sparkle16, Sparkle16Filled, Undo16 } from "./ui/icons";
 import { ImageEditor } from "./workspace/ImageEditor";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
@@ -224,7 +224,11 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   useShortcut("Ctrl+Shift+A", toggleAgent, { enabled: idle, allowInInput: true });
   useShortcut("Alt+ArrowLeft", goBack, { enabled: idle });
 
-  const viewIcon = (id: ShownView) => id === "timeline" ? <Film size={16} /> : id === "generator" ? <Sparkles size={16} /> : id === "references" ? <BookOpen size={16} /> : id === "export" ? <Download size={16} /> : <Image size={16} />;
+  const viewIcon = (id: ShownView, selected: boolean) => id === "timeline" ? (selected ? <Film16Filled /> : <Film16 />)
+    : id === "generator" ? (selected ? <Sparkle16Filled /> : <Sparkle16 />)
+      : id === "references" ? (selected ? <References16Filled /> : <References16 />)
+        : id === "export" ? (selected ? <Download16Filled /> : <Download16 />)
+          : selected ? <Image16Filled /> : <Image16 />;
   const shortcutOf = (index: number) => `Ctrl+${index + 1}`;
 
   return <div className="project-shell">
@@ -245,27 +249,27 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
 
     <TitleBar
       className="project-titlebar"
-      leading={<button type="button" className="icon-button" onClick={goBack} aria-label="Back to project library" data-tooltip="Back to projects" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><ArrowLeft size={16} /></button>}
-      title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown size={12} aria-hidden="true" /></button>}
+      leading={<button type="button" className="icon-button" onClick={goBack} aria-label="Back to project library" data-tooltip="Back to projects" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
+      title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown12 aria-hidden="true" /></button>}
       actions={<>
-        <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo2 size={16} /></button>
-        <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo2 size={16} /></button>
+        <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo16 /></button>
+        <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo16 /></button>
         <span className="titlebar-separator" aria-hidden="true" />
         <div className="project-commands">
           {imageProject && (
             <button type="button" className="secondary-button" disabled={imageExportDisabled} onClick={() => void exportImage()} data-tooltip="Save the image as JPG or PNG" data-tooltip-shortcut="Ctrl+E">
-              <Download size={16} aria-hidden="true" /> {exportingImage ? "Exporting…" : "Export"}
+              <Download16 aria-hidden="true" /> {exportingImage ? "Exporting…" : "Export"}
             </button>
           )}
           {/* The standing "All changes saved" pill is gone; the button itself is
               the save state. Off means the file on disk already matches what is
               on screen. */}
           <button type="button" className="primary-button" onClick={() => void save()} disabled={saving || !dirty} data-tooltip={saving ? "Saving…" : dirty ? "Save" : "Everything is saved"} data-tooltip-shortcut="Ctrl+S" aria-keyshortcuts="Control+S">
-            <Save size={16} aria-hidden="true" /> {saving ? "Saving…" : "Save"}
+            <Save16 aria-hidden="true" /> {saving ? "Saving…" : "Save"}
           </button>
         </div>
         <span className="titlebar-separator" aria-hidden="true" />
-        <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}`} aria-label="Agent" aria-pressed={agentOpen} aria-controls={`${panelId}-agent`} data-tooltip={agentOpen ? "Hide agent" : "Show agent"} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A" onClick={toggleAgent}><Bot size={16} /></button>
+        <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}`} aria-label="Agent" aria-pressed={agentOpen} aria-controls={`${panelId}-agent`} data-tooltip={agentOpen ? "Hide agent" : "Show agent"} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A" onClick={toggleAgent}>{agentOpen ? <Agent16Filled /> : <Agent16 />}</button>
         {titleBarActions}
       </>}
     >
@@ -280,7 +284,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           label: id === "generator" && running > 0
             ? <span className="project-views__label" data-tooltip={`${running} generation${running === 1 ? "" : "s"} running or queued`} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span><InfoBadge value={running} severity="informational" /></span>
             : <span className="project-views__label" data-tooltip={VIEW_LABELS[id]} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span></span>,
-          icon: viewIcon(id),
+          icon: viewIcon(id, id === view),
         }))}
       />
     </TitleBar>

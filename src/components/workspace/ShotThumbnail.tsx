@@ -1,4 +1,4 @@
-import { Ban, Clock3, Film, LoaderCircle, Pause, Play, TriangleAlert } from "lucide-react";
+import { Clock18, Film18, Pause20, Play20Filled, Prohibited18, Spinner18, Spinner20, Warning18, Warning20 } from "../ui/icons";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { sceneDurationSeconds, type GenerationJob } from "../../lib/project";
@@ -219,20 +219,20 @@ export function shotPoster(folderPath: string, relativePath: string, seconds: nu
  *  the scene the user can see and act on, never a shrug. */
 function placeholder(job: GenerationJob, failed: boolean, cancelling: boolean): { icon: ReactNode; word: string } {
   if (cancelling && (job.status === "queued" || job.status === "generating")) {
-    return { icon: <LoaderCircle size={18} className="spin" />, word: "Cancelling..." };
+    return { icon: <Spinner18 className="spin" />, word: "Cancelling..." };
   }
   switch (job.status) {
-    case "generating": return { icon: <LoaderCircle size={18} className="spin" />, word: `Rendering ${Math.round(job.progress * 100)}%` };
-    case "queued": return { icon: <Clock3 size={18} />, word: "Waiting to render" };
-    case "ready": return { icon: <LoaderCircle size={18} className="spin" />, word: "Saving the file" };
-    case "failed": return { icon: <TriangleAlert size={18} />, word: "Didn’t finish" };
-    case "cancelled": return { icon: <Ban size={18} />, word: "Cancelled" };
+    case "generating": return { icon: <Spinner18 className="spin" />, word: `Rendering ${Math.round(job.progress * 100)}%` };
+    case "queued": return { icon: <Clock18 />, word: "Waiting to render" };
+    case "ready": return { icon: <Spinner18 className="spin" />, word: "Saving the file" };
+    case "failed": return { icon: <Warning18 />, word: "Didn’t finish" };
+    case "cancelled": return { icon: <Prohibited18 />, word: "Cancelled" };
     case "completed": return job.outputRelativePath
       ? failed
-        ? { icon: <TriangleAlert size={18} />, word: "No preview" }
-        : { icon: <Film size={18} />, word: "Opening the file…" }
-      : { icon: <TriangleAlert size={18} />, word: "No file saved" };
-    default: return { icon: <Film size={18} />, word: "Not rendered yet" };
+        ? { icon: <Warning18 />, word: "No preview" }
+        : { icon: <Film18 />, word: "Opening the file…" }
+      : { icon: <Warning18 />, word: "No file saved" };
+    default: return { icon: <Film18 />, word: "Not rendered yet" };
   }
 }
 
@@ -415,7 +415,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
         />
         : <img src={result.poster} alt="" loading="lazy" />}
       <span className={`shot-thumb__play ${loadingPlayback ? "shot-thumb__play--loading" : ""}`} aria-hidden="true">
-        {loadingPlayback ? <LoaderCircle size={20} className="spin" /> : playing ? <Pause size={20} /> : playFailed ? <TriangleAlert size={20} /> : <Play size={20} fill="currentColor" />}
+        {loadingPlayback ? <Spinner20 className="spin" /> : playing ? <Pause20 /> : playFailed ? <Warning20 /> : <Play20Filled />}
       </span>
     </button>;
   }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileBox, Plus, Trash2 } from "lucide-react";
+import { Add20, Delete16, ModelFile20 } from "./ui/icons";
 import { isDownloadUrl, type AdditionalSafetensor } from "../lib/settings";
 import { ComboBox, InfoBar, SettingsCard, SettingsExpander, SettingsGroup, SettingsRow } from "./ui";
 
@@ -13,10 +13,10 @@ export function AdditionalSafetensorsEditor({ value, disabled, animate, onChange
   const [error, setError] = useState<string | null>(null);
   const update = (id: string, patch: Partial<AdditionalSafetensor>) => onChange(value.map((file) => file.id === id ? { ...file, ...patch } : file));
   return <SettingsGroup heading={`Additional safetensors (${value.length})`}>
-    {value.map((file, index) => <SettingsExpander key={`${file.id}-${file.url}`} icon={<FileBox size={20} />} header={file.name || "Additional safetensor"}
+    {value.map((file, index) => <SettingsExpander key={`${file.id}-${file.url}`} icon={<ModelFile20 />} header={file.name || "Additional safetensor"}
       description={<span data-tooltip={file.downloadedPath}>{file.downloadedPath ? "Downloaded" : "Download required"}</span>} defaultExpanded={!file.downloadedPath}
       control={<button type="button" className="icon-button" disabled={disabled} aria-label={`Remove additional safetensor ${index + 1}`} data-tooltip="Remove"
-        onClick={() => onChange(value.filter((entry) => entry.id !== file.id))}><Trash2 size={16} /></button>}>
+        onClick={() => onChange(value.filter((entry) => entry.id !== file.id))}><Delete16 /></button>}>
       <SettingsRow header="Name">
         <input className="text-field settings-field" aria-label={`Additional safetensor ${index + 1} name`} value={file.name} disabled={disabled}
           onChange={(event) => update(file.id, { name: event.target.value })} />
@@ -36,7 +36,7 @@ export function AdditionalSafetensorsEditor({ value, disabled, animate, onChange
         }} options={[{ value: "", label: "Additional file" }, { value: "promptEmbedding", label: "Animate conditioning" }]} />
       </SettingsRow>}
     </SettingsExpander>)}
-    <SettingsCard icon={<Plus size={20} />} header="Add a file" description="Downloads with this generator into your weights folder">
+    <SettingsCard icon={<Add20 />} header="Add a file" description="Downloads with this generator into your weights folder">
       <input className="text-field settings-field" aria-label="Add additional safetensor URL" value={url} disabled={disabled} placeholder="https://…" spellCheck={false}
         onChange={(event) => setUrl(event.target.value)} />
       <button type="button" className="secondary-button" disabled={disabled || !isDownloadUrl(url) || value.some((file) => file.url === url.trim())} onClick={() => {

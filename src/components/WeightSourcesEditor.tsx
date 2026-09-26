@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Add16, Delete16 } from "./ui/icons";
 import { isDownloadUrl, type WeightSource } from "../lib/settings";
 import { Expander, InfoBar } from "./ui";
 
@@ -21,13 +21,13 @@ export function WeightSourcesEditor({ label, sources, disabled, onChange }: {
       }} /></label>
       <label>GPU model<input className="text-field" aria-label={`${label} variant ${index + 1} GPU model`} defaultValue={source.gpuModel} placeholder="Any GPU" disabled={disabled} onBlur={(event) => update(index, { gpuModel: event.target.value })} /></label>
       <label>Minimum VRAM (GB)<input className="text-field" aria-label={`${label} variant ${index + 1} minimum VRAM`} type="number" min={0} step={1} value={source.minVramGb} disabled={disabled} onChange={(event) => update(index, { minVramGb: Math.max(0, Number(event.target.value) || 0) })} /></label>
-      <button type="button" className="icon-button" disabled={disabled} onClick={() => onChange(sources.filter((_, i) => i !== index))} aria-label={`Remove ${label} variant ${index + 1}`} data-tooltip="Remove variant"><Trash2 size={16} /></button>
+      <button type="button" className="icon-button" disabled={disabled} onClick={() => onChange(sources.filter((_, i) => i !== index))} aria-label={`Remove ${label} variant ${index + 1}`} data-tooltip="Remove variant"><Delete16 /></button>
     </div>)}
     <div className="weight-source-add">
       <input className="text-field" aria-label={`Add ${label} download URL`} value={url} disabled={disabled} placeholder="https://…" onChange={(event) => setUrl(event.target.value)} />
       <button type="button" className="secondary-button" disabled={disabled || !isDownloadUrl(url) || sources.some((source) => source.url === url.trim())} onClick={() => {
         onChange([...sources, { url: url.trim(), gpuModel: "", minVramGb: 0 }]); setUrl("");
-      }}><Plus size={16} /> Add URL</button>
+      }}><Add16 /> Add URL</button>
     </div>
     {error && <InfoBar severity="error" message={error} onClose={() => setError(null)} />}
   </Expander>;

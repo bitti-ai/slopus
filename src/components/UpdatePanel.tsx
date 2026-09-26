@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, RefreshCw, RotateCcw } from "lucide-react";
+import { Download32, Refresh32, Reset32, Success32 } from "./ui/icons";
 import { useSyncExternalStore, type ReactNode } from "react";
 import type { AppUpdater } from "../lib/updater";
 import { Expander, InfoBar, ProgressBar, ProgressRing } from "./ui";
@@ -54,10 +54,10 @@ export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blo
   const transferring = state.stage === "downloading" || state.stage === "installing";
 
   const glyph: ReactNode = state.stage === "checking" ? <ProgressRing size={32} aria-label="Checking for updates" />
-    : state.stage === "current" ? <CheckCircle2 size={32} aria-hidden="true" />
-      : state.stage === "restart" ? <RotateCcw size={32} aria-hidden="true" />
-        : state.stage === "available" || transferring ? <Download size={32} aria-hidden="true" />
-          : <RefreshCw size={32} aria-hidden="true" />;
+    : state.stage === "current" ? <Success32 aria-hidden="true" />
+      : state.stage === "restart" ? <Reset32 aria-hidden="true" />
+        : state.stage === "available" || transferring ? <Download32 aria-hidden="true" />
+          : <Refresh32 aria-hidden="true" />;
 
   const action = state.stage === "disabled" || transferring ? null
     : state.stage === "restart"

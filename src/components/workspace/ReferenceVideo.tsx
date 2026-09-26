@@ -1,4 +1,4 @@
-import { Pause, Play, Scissors } from "lucide-react";
+import { Cut16, Pause14, Play14 } from "../ui/icons";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { ContentDialog } from "../ui";
 import { readMediaFileUrl } from "../../lib/persistence";
@@ -15,7 +15,7 @@ export function ReferenceVideo(props: ReferenceVideoProps) {
   const length = props.reference.video?.durationSeconds ?? 15;
   return <>
     {!open && <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>}
-    <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Scissors size={16} /> Edit video clip</button>
+    <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Cut16 /> Edit video clip</button>
     {open && <ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />}
   </>;
 }
@@ -196,7 +196,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
         </div>
       </div>
       <div className="reference-trim__actions">
-        <button type="button" className="secondary-button" onClick={() => void playSelection()}>{previewing ? <Pause size={14} /> : <Play size={14} />}{previewing ? "Pause selection" : "Play selection"}</button>
+        <button type="button" className="secondary-button" onClick={() => void playSelection()}>{previewing ? <Pause14 /> : <Play14 />}{previewing ? "Pause selection" : "Play selection"}</button>
       </div>
       <label><input type="checkbox" checked={reference.video?.includeAudio ?? true}
         onChange={(event) => onChange({ ...trim, includeAudio: event.target.checked })} /> Include sound</label>

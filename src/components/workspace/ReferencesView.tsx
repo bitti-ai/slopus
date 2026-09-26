@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, FileText, FolderOpen, ImagePlus, Images, LayoutGrid, List, MousePointerClick, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Add16, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh14, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -363,15 +363,15 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     const file = referenceFile(folderPath, reference);
     const many = selection.length > 1 && selection.includes(reference.id);
     return [
-      { id: "rename", label: "Rename", icon: <Pencil size={16} />, shortcut: "F2", disabled: many, onSelect: () => rename(reference.id) },
-      { id: "add-file", label: "Add file…", icon: <ImagePlus size={16} />, disabled: many || Boolean(reference.refmods?.length) || importingFiles, onSelect: () => { selectOnly(reference.id); void addFiles(reference.id); } },
-      { id: "reveal", label: "Show in File Explorer", icon: <FolderOpen size={16} />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
+      { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: many, onSelect: () => rename(reference.id) },
+      { id: "add-file", label: "Add file…", icon: <ImageAdd16 />, disabled: many || Boolean(reference.refmods?.length) || importingFiles, onSelect: () => { selectOnly(reference.id); void addFiles(reference.id); } },
+      { id: "reveal", label: "Show in File Explorer", icon: <FolderOpen16 />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
       { separator: true },
       ...(users.length
-        ? users.map((job): MenuEntry => ({ id: `open-${job.id}`, label: `Open ${job.title}`, icon: <ExternalLink size={16} />, disabled: !onOpenGenerator, onSelect: () => onOpenGenerator?.(job.id) }))
+        ? users.map((job): MenuEntry => ({ id: `open-${job.id}`, label: `Open ${job.title}`, icon: <OpenExternal16 />, disabled: !onOpenGenerator, onSelect: () => onOpenGenerator?.(job.id) }))
         : [{ id: "unused", label: "Not used by any scene", disabled: true, onSelect: () => undefined } as MenuEntry]),
       { separator: true },
-      { id: "delete", label: many ? `Delete ${selection.length} references` : "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, onSelect: () => remove(many ? selection : [reference.id]) },
+      { id: "delete", label: many ? `Delete ${selection.length} references` : "Delete", icon: <Delete16 />, shortcut: "Delete", danger: true, onSelect: () => remove(many ? selection : [reference.id]) },
     ];
   };
   const openMenu = (source: MouseEvent | KeyboardEvent, id: string) => {
@@ -401,7 +401,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
       : presetIcon
         ? <span className="reference-art reference-art--photo"><PresetIcon preset={presetIcon} /></span>
-      : <span className="reference-art reference-art--text"><FileText size={24} aria-hidden="true" /></span>;
+      : <span className="reference-art reference-art--text"><TextFile24 aria-hidden="true" /></span>;
   };
 
   const rovingId = selectedId && ordered.some((reference) => reference.id === selectedId) ? selectedId : ordered[0]?.id;
@@ -417,7 +417,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     const active = sort.key === key;
     return <th scope="col" aria-sort={active ? (sort.descending ? "descending" : "ascending") : "none"}>
       <button type="button" onClick={() => setSort((current) => ({ key, descending: current.key === key ? !current.descending : false }))}>
-        {label}{active && (sort.descending ? <ArrowDown size={12} aria-hidden="true" /> : <ArrowUp size={12} aria-hidden="true" />)}
+        {label}{active && (sort.descending ? <ArrowDown12 aria-hidden="true" /> : <ArrowUp12 aria-hidden="true" />)}
       </button>
     </th>;
   };
@@ -428,14 +428,14 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         aria-label="References"
         className="references-command"
         end={<>
-          <CommandBarButton icon={<LayoutGrid size={16} />} label="Icons" pressed={view === "icons"} onClick={() => chooseView("icons")} />
-          <CommandBarButton icon={<List size={16} />} label="Details" pressed={view === "details"} onClick={() => chooseView("details")} />
+          <CommandBarButton icon={view === "icons" ? <GridView16Filled /> : <GridView16 />} label="Icons" pressed={view === "icons"} onClick={() => chooseView("icons")} />
+          <CommandBarButton icon={view === "details" ? <ListView16Filled /> : <ListView16 />} label="Details" pressed={view === "details"} onClick={() => chooseView("details")} />
         </>}
       >
-        <CommandBarButton icon={<Plus size={16} />} label="Add a reference" tooltip="Add reference" showLabel onClick={openNewReference} />
+        <CommandBarButton icon={<Add16 />} label="Add a reference" tooltip="Add reference" showLabel onClick={openNewReference} />
         <CommandBarSeparator />
-        <CommandBarButton icon={<ImagePlus size={16} />} label="Add file" showLabel disabled={!selected || importingFiles || hasRefmods || selection.length > 1} onClick={() => void addFiles()} />
-        <CommandBarButton icon={<Trash2 size={16} />} label="Delete" shortcut="Delete" disabled={!selection.length} onClick={() => remove()} />
+        <CommandBarButton icon={<ImageAdd16 />} label="Add file" showLabel disabled={!selected || importingFiles || hasRefmods || selection.length > 1} onClick={() => void addFiles()} />
+        <CommandBarButton icon={<Delete16 />} label="Delete" shortcut="Delete" disabled={!selection.length} onClick={() => remove()} />
       </CommandBar>
       {importError && <InfoBar severity="error" title="Couldn’t add reference" message={importError} onClose={() => setImportError(null)} />}
       {iconError && <InfoBar severity="error" title="Couldn’t regenerate icon" message={iconError} onClose={() => setIconError(null)} />}
@@ -443,7 +443,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         <h2 className="sr-only" id="reference-library-heading">Reference library</h2>
         {config.references.length === 0
           ? <EmptyState
-            icon={<Images />}
+            icon={<Images32 />}
             title="No references yet"
             description="A reference keeps a character, a place or a look the same in every scene that uses it."
             action={<button type="button" className="secondary-button" onClick={openNewReference}>New reference</button>}
@@ -476,7 +476,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   {ordered.map((ref) => {
                     const users = usedBy(ref.id).length;
                     return <tr key={ref.id} className={selectedIds.has(ref.id) ? "reference-row--selected" : undefined} aria-label={`${ref.name} ${referenceKindLabel(ref)}`} {...itemProps(ref)}>
-                      <td><span className="reference-row__name"><span className="reference-row__icon" aria-hidden="true">{referenceImages(ref).length || ref.kind === "video" ? <ImagePlus size={14} /> : <FileText size={14} />}</span><span>{ref.name}</span></span></td>
+                      <td><span className="reference-row__name"><span className="reference-row__icon" aria-hidden="true">{referenceImages(ref).length || ref.kind === "video" ? <ImageAdd14 /> : <TextFile14 />}</span><span>{ref.name}</span></span></td>
                       <td>{referenceTypeLabel(referenceType(ref))}</td>
                       <td>{referenceKindLabel(ref)}</td>
                       <td>{users === 0 ? "—" : users === 1 ? "1 scene" : `${users} scenes`}</td>
@@ -513,7 +513,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           referenceKindLabel(selected),
           jobs.length === 0 ? "Not used" : jobs.length === 1 ? "1 scene" : `${jobs.length} scenes`,
         ].join(" · ")}
-        actions={<button className="icon-button" onClick={() => remove([selected.id])} aria-label="Delete reference" {...tooltipProps("Delete reference", "Delete")}><Trash2 size={16} aria-hidden="true" /></button>}
+        actions={<button className="icon-button" onClick={() => remove([selected.id])} aria-label="Delete reference" {...tooltipProps("Delete reference", "Delete")}><Delete16 aria-hidden="true" /></button>}
       />}
       <div className="reference-inspector__scroll">
         {selected ? <>
@@ -521,7 +521,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             <section className="reference-video" aria-label="Video reference">
               <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
                 onChange={(video) => update(selected.id, { video })} />
-              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} aria-hidden="true" /> Remove video</button>
+              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Delete16 aria-hidden="true" /> Remove video</button>
             </section>
           </PropSection>}
           {/* The picture at a readable size, where the chip is only a glance:
@@ -538,10 +538,10 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
                 : !hasRefmods && selectedPresetIcon
                   ? <PresetIcon className="reference-detail-preset-icon" preset={selectedPresetIcon} alt={`${selected.name} reference icon`} />
-                : <span><FileText size={16} aria-hidden="true" /></span>}
+                : <span><TextFile16 aria-hidden="true" /></span>}
               {/* A caption only where there is no picture to look at. */}
               {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
-              {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" {...tooltipProps(`Remove ${selectedImage.name}`)} onClick={removeImage}><Trash2 size={14} aria-hidden="true" /></button>}
+              {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" {...tooltipProps(`Remove ${selectedImage.name}`)} onClick={removeImage}><Delete14 aria-hidden="true" /></button>}
               {!showImages && onRegenerateIcon && <button
                 type="button"
                 className="reference-icon-refresh"
@@ -553,12 +553,12 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   try { onRegenerateIcon(selected.id); }
                   catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
                 }}
-              ><RefreshCw size={14} aria-hidden="true" /></button>}
+              ><Refresh14 aria-hidden="true" /></button>}
             </div>
             {showImages && <div className="reference-image-controls" role="group" aria-label="Reference images">
-              <button type="button" className="icon-button" aria-label="Previous reference image" data-tooltip="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
+              <button type="button" className="icon-button" aria-label="Previous reference image" data-tooltip="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft16 aria-hidden="true" /></button>
               <span aria-live="polite">Image {currentImagePage + 1} of {selectedImages.length}</span>
-              <button type="button" className="icon-button" aria-label="Next reference image" data-tooltip="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight size={16} aria-hidden="true" /></button>
+              <button type="button" className="icon-button" aria-label="Next reference image" data-tooltip="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight16 aria-hidden="true" /></button>
             </div>}
           </PropSection>}
           <PropSection title="Prompt" persistKey="references.prompt" summary={hasRefmods ? "Locked by refmods" : isReferenceDescribed(selected) ? undefined : "Not described"}>
@@ -577,7 +577,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             title="Refmods"
             persistKey="references.refmods"
             summary={selected.refmods!.length}
-            actions={<button type="button" className="icon-button prop-row__button" aria-label="Remove refmods" data-tooltip="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Trash2 size={16} aria-hidden="true" /></button>}
+            actions={<button type="button" className="icon-button prop-row__button" aria-label="Remove refmods" data-tooltip="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Delete16 aria-hidden="true" /></button>}
           >
             <section className="reference-refmods" aria-label="Refmod attachments">
               <p>Needs a Ref2VA generator. Strength 0 turns a refmod off; more copies use more GPU memory.</p>
@@ -635,11 +635,11 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           </PropSection>
           <PropSection title="Used by" persistKey="references.used-by" summary={jobs.length}>
             <div className="reference-used-by">
-              {jobs.length ? jobs.map((job) => <button type="button" key={job.id} onClick={() => onOpenGenerator?.(job.id)} data-tooltip={`Open ${job.title}`}><b>{job.title}</b><ChevronRight size={16} aria-hidden="true" /></button>) : <p>No scenes yet.</p>}
+              {jobs.length ? jobs.map((job) => <button type="button" key={job.id} onClick={() => onOpenGenerator?.(job.id)} data-tooltip={`Open ${job.title}`}><b>{job.title}</b><ChevronRight16 aria-hidden="true" /></button>) : <p>No scenes yet.</p>}
             </div>
           </PropSection>
         </> : <EmptyState
-          icon={<MousePointerClick />}
+          icon={<CursorClick32 />}
           title="Nothing selected"
           description="Select a reference to see its details."
         />}
@@ -679,7 +679,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         </nav>
         <section>
           {pickerType !== "custom" && <>
-            <label className="reference-preset-search"><Search size={16} aria-hidden="true" /><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder={`Search ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`} aria-label="Search reference options" /></label>
+            <label className="reference-preset-search"><Search16 aria-hidden="true" /><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder={`Search ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`} aria-label="Search reference options" /></label>
             <SelectorBar
               className="reference-subcategories"
               aria-label={`${referenceTypeLabel(pickerType)} subcategories`}
@@ -697,7 +697,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   setIconError(null);
                   try { onRegenerateBuiltinIcon(preset.id); }
                   catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
-                }}><RefreshCw size={20} aria-hidden="true" /></button>}
+                }}><Refresh20 aria-hidden="true" /></button>}
               </div>)}
               {visiblePresets.length === 0 && <p>No results for “{presetSearch.trim()}”.</p>}
             </div>

@@ -1,4 +1,4 @@
-import { Image as ImageIcon, TriangleAlert } from "lucide-react";
+import { Image22, Warning22 } from "../ui/icons";
 import { useEffect, useState } from "react";
 import { readMediaFileUrl } from "../../lib/persistence";
 
@@ -64,7 +64,7 @@ export function ReferenceImage({ folderPath, relativePath, sourcePath = null, al
   /* Two different states, said plainly rather than with one ambiguous
      placeholder: still loading, or the file is not where the project says. */
   return <span className={`reference-image-fallback ${className}`.trim()} role="img" aria-label={failed ? `${alt} — file missing` : `${alt} — loading`}>
-    {failed ? <TriangleAlert size={22} aria-hidden="true" /> : <ImageIcon size={22} aria-hidden="true" />}
+    {failed ? <Warning22 aria-hidden="true" /> : <Image22 aria-hidden="true" />}
     <em>{failed ? "File not found" : "Loading…"}</em>
   </span>;
 }
