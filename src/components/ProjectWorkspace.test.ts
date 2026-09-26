@@ -15,6 +15,8 @@ import { GeneratorView } from "./workspace/GeneratorView";
 import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { saveDebugOptionsEnabled } from "../lib/settings";
+import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
+import { chooseOption, optionNames } from "./workspace/comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -297,13 +299,13 @@ describe("project workspace timecode", () => {
       onBack: () => undefined, onSave: async () => undefined,
     }));
     fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
-    await screen.findByRole("heading", { name: "Generator" });
+    await screen.findByRole("toolbar", { name: "Generator" });
     // A new project already carries one draft made from the user's own words.
     // "Add or generate a scene" must open that, not stack a second near-identical
     // shot the user has no way to tell apart.
     expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "New scene draft" })).toBeNull();
-    expect(screen.queryByText("DRAFT")).toBeNull();
+    expect(screen.queryByText("Draft")).toBeNull();
   });
 
   it("leaves the monitor empty rather than explaining the emptiness", () => {
@@ -384,7 +386,7 @@ describe("project workspace timecode", () => {
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     expect(document.querySelector(".debug-prompt-dialog .compiled-prompt__text")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Debug Prompt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Debug prompt" }));
     const prompt = document.querySelector(".debug-prompt-dialog .compiled-prompt__text")!.textContent!;
     expect(prompt).toContain("<Subject 1>");
     expect(prompt).not.toContain("Lead character");
@@ -436,7 +438,7 @@ describe("project workspace timecode", () => {
 
     expect(container.querySelector(".job-refs")).toBeNull();
     expect(container.querySelector(".scene-settings img, .scene-settings .reference-image-fallback")).toBeNull();
-    expect(within(screen.getByRole("combobox", { name: "Start frame for this scene" })).getByRole("option", { name: "Lamp photograph" })).toBeTruthy();
+    expect(optionNames(screen.getByRole("combobox", { name: "Start frame for this scene" }))).toContain("Lamp photograph");
   });
 
   it("keeps scene settings editable while a scene is running", () => {
@@ -472,7 +474,7 @@ describe("project workspace timecode", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Timeline" }));
     await screen.findByRole("heading", { name: "Timeline", level: 2 });
     fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
-    await screen.findByRole("heading", { name: "Generator" });
+    await screen.findByRole("toolbar", { name: "Generator" });
     /* The trip unmounted the generator, so the panel is back on the scene and
        the card is where the words have to have survived. */
     expect(screen.getByRole("button", { name: "Shot 1 of First scene" }).textContent)
@@ -492,7 +494,7 @@ describe("project workspace timecode", () => {
     ] });
     const onChange = vi.fn();
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined }));
-    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
     // It would take a binding slot and then be dropped by the compiler, so the
     // shot would claim a reference its prompt never mentions.
     expect(onChange.mock.calls[0][0].generationJobs[0].referenceIds).toEqual([]);
@@ -557,7 +559,7 @@ describe("project workspace timecode", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const { container } = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined }));
     const view = container.querySelector(".references-view")!;
-    expect(Array.from(view.children).slice(0, 2).map((element) => element.className)).toEqual(["references-main", "reference-inspector"]);
+    expect(Array.from(view.children).map((element) => element.className.split(" ")[0])).toEqual(["references-main", "ui-splitter", "reference-inspector"]);
     expect(container.querySelector(".references-heading__actions")).toBeNull();
     expect(screen.getByRole("button", { name: /Add a reference/ })).not.toBeNull();
     expect(container.querySelector(".reference-inspector__scroll")).not.toBeNull();
@@ -584,7 +586,7 @@ describe("project workspace timecode", () => {
    *  test returns to the scene panel more than once. */
   const openDebugPrompt = () => {
     act(() => saveDebugOptionsEnabled(true));
-    const button = screen.getByRole("button", { name: "Debug Prompt" });
+    const button = screen.getByRole("button", { name: "Debug prompt" });
     if (button.getAttribute("aria-expanded") === "false") fireEvent.click(button);
   };
 
@@ -592,8 +594,21 @@ describe("project workspace timecode", () => {
    *  Settings are added one at a time now, rather than laid out as a wall of
    *  every term the vocabulary holds. */
   function addSetting(shotNumber: number, group: string, value: string) {
-    fireEvent.change(screen.getByRole("combobox", { name: `Add a setting to shot ${shotNumber}` }), { target: { value: group } });
-    fireEvent.change(screen.getByRole("combobox", { name: new RegExp(`^Value for .* on shot ${shotNumber}$`) }), { target: { value } });
+    const owner = SHOT_TAG_GROUPS.find((item) => item.id === group)!;
+    chooseOption(screen.getByRole("combobox", { name: `Add a setting to shot ${shotNumber}` }), new RegExp(`^${owner.label}`));
+    chooseOption(screen.getByRole("combobox", { name: new RegExp(`^Value for .* on shot ${shotNumber}$`) }), owner.options.find((option) => option.id === value)!.label);
+  }
+
+  /** A setting or look ComboBox, chosen by the stored value the old <select>s took. */
+  function chooseTag(name: string, value: string) {
+    const combobox = screen.getByRole("combobox", { name });
+    const group = name.startsWith("Add a setting")
+      ? undefined
+      : name === "The look of this scene"
+        ? SHOT_TAG_GROUPS.find((item) => item.id === "visualStyle")
+        : SHOT_TAG_GROUPS.find((item) => name.startsWith(`Value for ${item.label} `));
+    const label = group ? group.options.find((option) => option.id === value)!.label : SHOT_TAG_GROUPS.find((item) => item.id === value)!.label;
+    chooseOption(combobox, group ? label : new RegExp(`^${label}`));
   }
 
   const lampProject = () => createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
@@ -617,7 +632,7 @@ describe("project workspace timecode", () => {
          that it does. */
       expect(screen.queryByRole("heading", { name: "Start another scene" })).toBeNull();
       expect(container.querySelector(".generation-composer")).toBeNull();
-      expect(screen.getByRole("button", { name: "Add a scene" })).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Add scene" })).not.toBeNull();
       unmount();
     }
   });
@@ -681,7 +696,7 @@ describe("project workspace timecode", () => {
     const config = lampProject();
     const onChange = vi.fn();
     const { rerender } = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
 
     const next = onChange.mock.calls.at(-1)![0];
     // It goes to the bottom and does not disturb the scene already there.
@@ -808,12 +823,14 @@ describe("project workspace timecode", () => {
     // Not merely disabled — it says why, the way every other blocked control on
     // this screen does.
     const menu = screen.getByRole("combobox", { name: "Add a setting to shot 1" });
-    const speed = within(menu).getByRole("option", { name: /^Movement speed/ }) as HTMLOptionElement;
-    expect(speed.disabled).toBe(true);
-    expect(speed.textContent).toContain("needs a camera movement first");
+    fireEvent.click(menu);
+    const speed = screen.getByRole("option", { name: /^Movement speed/ });
+    expect(speed).toHaveAttribute("aria-disabled", "true");
+    expect(speed.textContent).toContain("Needs a camera movement first");
     // The look belongs to the whole scene, so it is not offered per shot — it is
     // on the scene's own panel instead.
-    expect(within(menu).queryByRole("option", { name: "Look" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Look" })).toBeNull();
+    fireEvent.click(menu);
     openScene();
     expect(screen.getByRole("combobox", { name: "The look of this scene" })).not.toBeNull();
   });
@@ -918,10 +935,10 @@ describe("project workspace timecode", () => {
     const token = screen.getByRole("combobox", { name: "Reference 1 · Red-haired woman — choose another reference" });
     expect(token.closest(".shot-action-editor")).not.toBeNull();
     expect(screen.queryByText("Every reference in the line can be swapped for another:")).toBeNull();
-    expect([...token.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
-      "Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line",
+    expect(optionNames(token)).toEqual([
+      "Reference 1 · Red-haired woman", "Reference 2 · City street", "Remove from the line",
     ]);
-    fireEvent.change(token, { target: { value: "ref-street" } });
+    chooseOption(token, "Reference 2 · City street");
     next = onChange.mock.calls.at(-1)![0];
     show(next);
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-street] walks towards the camera on @[ref:ref-street]");
@@ -991,7 +1008,8 @@ describe("project workspace timecode", () => {
     const app = render(view());
     const show = () => app.rerender(view());
     const set = (role: string, name: string, value: string) => {
-      fireEvent.change(screen.getByRole(role, { name }), { target: { value } });
+      if (role === "combobox") chooseTag(name, value);
+      else fireEvent.change(screen.getByRole(role, { name }), { target: { value } });
       show();
     };
     const press = (name: string) => { fireEvent.click(screen.getByRole("button", { name })); show(); };
@@ -1098,10 +1116,10 @@ describe("project workspace timecode", () => {
 
     // And the swap: the same sentence, pointed at the other reference.
     shot(1);
-    const token = document.querySelector(".reference-smart-chip") as HTMLSelectElement;
-    expect([...token.options].map((option) => option.textContent))
-      .toEqual(["Reference 1 · Red-haired woman", "Reference 2 · City street", "Take it out of the line"]);
-    fireEvent.change(token, { target: { value: "ref-street" } });
+    const token = document.querySelector(".reference-smart-chip") as HTMLElement;
+    expect(optionNames(token))
+      .toEqual(["Reference 1 · Red-haired woman", "Reference 2 · City street", "Remove from the line"]);
+    chooseOption(token, "Reference 2 · City street");
     show();
     scene();
     expect(document.querySelector(".compiled-prompt__text")!.textContent)
@@ -1114,7 +1132,7 @@ describe("project workspace timecode", () => {
     render(createElement(GeneratorView, { config, folderPath: "C:\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined }));
     // The card's picture is the placeholder that says why there is no picture.
     expect(screen.getByRole("img", { name: "Shot 1 — Cancelled" })).not.toBeNull();
-    expect(screen.getByText("CANCELLED")).not.toBeNull();
+    expect(document.querySelector(".scene-rule__badge")?.textContent).toBe("Cancelled");
     expect(screen.getAllByText("Cancelled").length).toBeGreaterThan(0);
     expect(document.querySelector(".job-progress-block")).toBeNull();
     expect(screen.queryByText("Waiting in queue")).toBeNull();
