@@ -12,7 +12,7 @@ export function AdditionalSafetensorsEditor({ value, disabled, animate, onChange
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const update = (id: string, patch: Partial<AdditionalSafetensor>) => onChange(value.map((file) => file.id === id ? { ...file, ...patch } : file));
-  return <SettingsGroup heading={`Additional safetensors (${value.length})`} className="additional-safetensors">
+  return <SettingsGroup heading={`Additional safetensors (${value.length})`}>
     {value.map((file, index) => <SettingsExpander key={`${file.id}-${file.url}`} icon={<FileBox size={20} />} header={file.name || "Additional safetensor"}
       description={<span data-tooltip={file.downloadedPath}>{file.downloadedPath ? "Downloaded" : "Download required"}</span>} defaultExpanded={!file.downloadedPath}
       control={<button type="button" className="icon-button" disabled={disabled} aria-label={`Remove additional safetensor ${index + 1}`} data-tooltip="Remove"

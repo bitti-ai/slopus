@@ -43,7 +43,8 @@
 .image-canvas-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); min-height: var(--space-7); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line); }
 .image-generate-button { flex-shrink: 0; white-space: nowrap; }
 .image-generator { width: 200px; max-width: 32%; }
-.image-zoom { width: 96px; min-width: 96px; }
+/* Editable: typed percentages up to "800%" plus the 32px drop-down button. */
+.image-zoom { width: 112px; min-width: 112px; }
 .image-tools__separator { width: 1px; height: 20px; margin: 0 var(--space-1); background: var(--line); }
 .image-tools__group { display: inline-flex; gap: 2px; }
 /* 32px icon toggles; the checked tool is an accent-soft fill. */

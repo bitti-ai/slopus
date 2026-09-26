@@ -168,7 +168,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   };
 
   return <section className="shot-inspector" aria-label={`Shot ${shotNumber}`}>
-    {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`} className="shot-inspector__timing">
+    {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`}>
       <input
         id={`shot-start-${shot.id}`}
         className="text-field"

@@ -552,7 +552,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
     <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
 
-    <SettingsGroup heading="Advanced" className="generator-editor__advanced">
+    <SettingsGroup heading="Advanced">
       <SettingsCard icon={<Settings2 size={20} />} header="Show advanced options" description="Per-GPU download sources for each model file">
         <ToggleSwitch aria-label="Show advanced options" checked={showAdvancedOptions} onChange={setShowAdvancedOptions} />
       </SettingsCard>

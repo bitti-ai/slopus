@@ -1145,7 +1145,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 >
                   <span className="scene-card__thumb">
                     {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
-                      : <Film size={20} className="scene-card__glyph" aria-hidden="true" />}
+                      : <Film size={20} aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
                   <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>

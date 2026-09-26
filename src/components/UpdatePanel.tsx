@@ -90,7 +90,7 @@ export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blo
       {state.version && blocked && state.stage !== "restart" && !transferring && <InfoBar severity="warning" message={blocked} />}
       {state.stage === "restart" && blocked && <InfoBar severity="warning" message={blocked} />}
       {state.notes && (
-        <Expander header="What’s new" description={state.version ? `Slopus ${state.version}` : undefined} className="update-panel__notes-expander">
+        <Expander header="What’s new" description={state.version ? `Slopus ${state.version}` : undefined}>
           <pre className="update-panel__notes">{state.notes}</pre>
         </Expander>
       )}

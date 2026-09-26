@@ -120,7 +120,7 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
     [next[index], next[index + delta]] = [next[index + delta], next[index]];
     onChange(next);
   };
-  return <SettingsGroup heading={<>LoRAs <span className="settings-group__count">{active.length} active</span></>} className="template-loras">
+  return <SettingsGroup heading={<>LoRAs <span className="settings-group__count">{active.length} active</span></>}>
     {value.map((entry, index) => {
       const lora = library.find(({ id }) => id === entry.loraId);
       const name = lora?.name ?? "Missing LoRA";

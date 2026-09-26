@@ -541,7 +541,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           <div className="reference-fields">
             <label><span>Prompt</span><textarea className="text-field" disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
             {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
-              : !isReferenceDescribed(selected) && <p className="reference-fields__hint">{selected.kind === "video"
+              : !isReferenceDescribed(selected) && <p>{selected.kind === "video"
                 ? "The clip is sent as a reference. Add a prompt to describe what to keep."
                 : selectedImages.length > 0
                   ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."

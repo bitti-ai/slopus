@@ -742,6 +742,18 @@
   white-space: nowrap;
 }
 
+/* Bypass: the checkbox sits ahead of the chevron, and a switched-off
+   effect's name reads secondary, the way Premiere dims an fx that is off. */
+.clip-effect__bypass {
+  flex: none;
+  margin-left: var(--space-2);
+  padding-block: 0;
+}
+
+.clip-effect--bypassed .clip-effect__name {
+  color: var(--text-secondary);
+}
+
 .clip-effect__action {
   width: 24px;
   height: 24px;

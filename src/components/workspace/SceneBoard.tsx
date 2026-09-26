@@ -378,7 +378,7 @@ export function SceneBoard({
           <HeaderButton
             label={cancellable ? "Cancel" : "Generate"}
             tooltip={cancellable ? `Cancel ${job.title}` : blocker ?? `Generate ${job.title}`}
-            className={cancellable ? "scene-rule__cancel" : "scene-rule__generate"}
+            className={cancellable ? "scene-rule__cancel" : undefined}
             disabled={!cancellable && Boolean(blocker)}
             onClick={() => onGenerate(job)}
           >{cancellable ? <Square size={14} /> : <WandSparkles size={16} />}</HeaderButton>

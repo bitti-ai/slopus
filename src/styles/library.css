@@ -354,7 +354,7 @@
 }
 
 .composer__field .text-field,
-.composer__field select {
+.composer__field .ui-combo {
   width: 100%;
   min-width: 0;
 }

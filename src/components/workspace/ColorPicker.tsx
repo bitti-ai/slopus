@@ -143,7 +143,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (hex
         onChange={(event) => typed(event.target.value)}
         onBlur={() => setDraft(value.toUpperCase())}
       />
-      {Dropper && <button type="button" className="icon-button color-picker__dropper" aria-label="Pick a colour from the screen" {...tooltipProps("Pick a colour from the screen")} onClick={() => void sample()}>
+      {Dropper && <button type="button" className="icon-button" aria-label="Pick a colour from the screen" {...tooltipProps("Pick a colour from the screen")} onClick={() => void sample()}>
         <Pipette size={16} aria-hidden="true" />
       </button>}
     </div>
