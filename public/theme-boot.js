@@ -14,6 +14,12 @@
  * and deliberately duplicates the storage key and the two --bg values, because
  * nothing here may depend on the bundle having loaded. theme.test.ts pins both
  * copies against tokens.css so they cannot drift apart in silence.
+ *
+ * On Windows 11 the window is transparent with Mica behind it. Rust announces
+ * that through `window.__SLOPUS_BACKDROP__` (an initialization script, which
+ * runs before this file); it becomes <html data-backdrop="mica"> here, before
+ * the first paint, and the ground is left transparent so the backdrop shows.
+ * src/styles/window.css does the rest.
  */
 (function () {
   var GROUND = { dark: "#080a0f", light: "#eef1f6" };
@@ -30,6 +36,8 @@
   }
 
   var root = document.documentElement;
+  var mica = window.__SLOPUS_BACKDROP__ === "mica";
+  if (mica) root.setAttribute("data-backdrop", "mica");
   if (choice === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", choice);
 
@@ -40,5 +48,5 @@
         ? "light"
         : "dark";
   }
-  root.style.backgroundColor = GROUND[resolved];
+  root.style.backgroundColor = mica ? "transparent" : GROUND[resolved];
 })();

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { installGlobalDiagnostics } from "./lib/diagnostics";
+import { followSystemAccent, installBrowserGuards } from "./lib/nativeShell";
 import { applyTheme, loadTheme, watchSystemTheme } from "./lib/theme";
 import "./styles/index.css";
 
@@ -11,24 +12,25 @@ import "./styles/index.css";
 applyTheme(loadTheme());
 installGlobalDiagnostics();
 
-/* Only "system" needs watching, and only for the inline ground colour and the
-   theme-color meta — tokens.css repaints the app itself through
+/* Only "system" needs watching, and only for the inline ground colour —
+   tokens.css repaints the app itself through
    `@media (prefers-color-scheme)` with no JavaScript involved. The listener is
    never torn down because it lives exactly as long as the window does. */
 watchSystemTheme(() => {
   if (loadTheme() === "system") applyTheme("system");
 });
 
+/* The Windows accent colour replaces the palette's own blue, live; with no
+   accent to read (a browser, Windows without UISettings) tokens.css stays. */
+followSystemAccent();
+
 /* Slopus is an application window, not a web page. The browser's own
    context menu offers Back, Reload, View source and Inspect — none of which
-   mean anything here, and Reload throws away unsaved project edits. Text
-   fields and compiled prompts keep theirs: copy/paste are useful here, and
-   taking them away would cost the user more than the menu is worth. */
-document.addEventListener("contextmenu", (event) => {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest("input, textarea, [contenteditable='true'], .compiled-prompt__text")) return;
-  event.preventDefault();
-});
+   mean anything here — and F5 / Ctrl+R reload the page and throw away
+   unsaved project edits. Text fields and compiled prompts keep a menu, but a
+   native Cut/Copy/Paste/Select all one rather than Edge's. A dropped file
+   no longer navigates the window away. See installBrowserGuards. */
+installBrowserGuards();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

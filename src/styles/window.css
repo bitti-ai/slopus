@@ -1,0 +1,39 @@
+/* ============================================================================
+   The window itself — what sits under every screen.
+
+   MICA. On Windows 11 the window is transparent with the Mica backdrop behind
+   it (src-tauri/src/native_shell.rs), and <html data-backdrop="mica"> says so
+   from before the first paint (public/theme-boot.js). Here that attribute
+   turns the app's ground transparent, so the title bar and navigation stand
+   on Mica the way a native app's do; content layers keep painting their own
+   --panel on top. Without the attribute — Windows 10, a browser — nothing in
+   this block applies and the solid --bg from tokens.css stays.
+
+   `:root:root` outranks the three --bg declarations in tokens.css (bare
+   :root, the media-guarded light block and [data-theme="light"]) by one
+   class, so this holds in both themes whatever order the sheets load in.
+   The inline ground theme.ts writes is `transparent` under Mica too.
+
+   Anything that painted --bg as an OPAQUE plate — a cut-out, a mask edge, a
+   sticky header meant to hide what scrolls under it — becomes see-through
+   under Mica and must use --panel (or a layer token) instead.
+   ========================================================================== */
+
+:root:root[data-backdrop="mica"] {
+  --bg: transparent;
+}
+
+:root[data-backdrop="mica"],
+:root[data-backdrop="mica"] body {
+  background: transparent;
+}
+
+/* ── Nothing drags out of the window ──────────────────────────────────────
+   An image or a link dragged in a browser becomes a file or a URL on the
+   desktop; in an app window it is the logo and the card thumbnails coming
+   loose. Elements the app itself makes draggable (scene cards, clips, library
+   rows) set draggable="true" and are left alone. */
+img:not([draggable="true"]),
+a:not([draggable="true"]) {
+  -webkit-user-drag: none;
+}

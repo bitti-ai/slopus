@@ -1,0 +1,153 @@
+/* ============================================================================
+   Title bar — src/components/TitleBar.tsx.
+
+   The window is frameless, so this row is the whole Windows caption: 48px
+   tall, like Photos, Clipchamp and Terminal, where the app's own header and
+   the caption are one strip. It is transparent on purpose: under Mica
+   (window.css) the backdrop shows through it exactly as it does through a
+   native caption, and on Windows 10 it sits on the solid ground.
+
+   The three caption buttons follow Windows 11's own metrics — 46px wide, the
+   full height of the bar, square, glyphs from Segoe Fluent Icons at 10px —
+   and its colours: a subtle wash on hover, a lighter one pressed, and on the
+   close button the system's #C42B1C with a white glyph in BOTH themes. That
+   red is the only colour literal in this file; theme.test.ts exempts exactly
+   those two rules and says why.
+
+   No cursor rule anywhere: the caption is arrow-cursor territory, as in every
+   native window.
+   ========================================================================== */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 48px;
+  min-width: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.titlebar__leading,
+.titlebar__actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  height: 100%;
+}
+
+.titlebar__leading {
+  padding-left: 4px;
+}
+
+.titlebar__actions {
+  padding: 0 8px;
+}
+
+.titlebar__identity {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 8px 0 16px;
+}
+
+/* A leading slot (Back) already provides the left inset. */
+.titlebar__leading + .titlebar__identity {
+  padding-left: 4px;
+}
+
+.titlebar__icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.titlebar__icon > img,
+.titlebar__icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.titlebar__title,
+.titlebar__secondary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.titlebar__title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.titlebar__secondary {
+  flex: 0 2 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.titlebar__middle {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+}
+
+/* A window that is not the active one greys its caption. */
+.titlebar--inactive .titlebar__title,
+.titlebar--inactive .titlebar__secondary,
+.titlebar--inactive .titlebar__caption {
+  color: var(--text-muted);
+}
+
+.titlebar__captions {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+}
+
+.titlebar__caption {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  font-size: 10px;
+  line-height: 1;
+  transition: background-color var(--motion-fast) linear, color var(--motion-fast) linear;
+}
+
+.titlebar__caption:hover {
+  background: var(--wash-2);
+}
+
+.titlebar__caption:active {
+  background: var(--wash-1);
+  color: var(--text-secondary);
+}
+
+.titlebar__caption--close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.titlebar__caption--close:active {
+  background: #c93f33;
+  color: #ffffff;
+}

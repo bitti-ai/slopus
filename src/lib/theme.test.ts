@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  applyTheme, loadTheme, resolveTheme, saveTheme, systemTheme,
+  applyTheme, BACKDROP_GLOBAL, hasMicaBackdrop, loadTheme, resolveTheme, saveTheme, systemTheme,
   THEME_BACKGROUND, THEME_KEY, watchSystemTheme,
 } from "./theme";
 
@@ -55,6 +55,8 @@ describe("theme preference", () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-backdrop");
+    delete (window as unknown as Record<string, unknown>)[BACKDROP_GLOBAL];
     document.documentElement.style.backgroundColor = "";
     stubMatchMedia(false);
   });
@@ -97,6 +99,24 @@ describe("theme preference", () => {
     expect(document.documentElement.style.backgroundColor).toBe("rgb(238, 241, 246)");
     applyTheme("dark");
     expect(document.documentElement.style.backgroundColor).toBe("rgb(8, 10, 15)");
+  });
+
+  it("paints no ground at all over Mica, in either theme", () => {
+    /* Any inline colour would sit on top of the backdrop and hide it. */
+    (window as unknown as Record<string, unknown>)[BACKDROP_GLOBAL] = "mica";
+    stubMatchMedia(true);
+    applyTheme("system");
+    expect(document.documentElement.style.backgroundColor).toBe("transparent");
+    applyTheme("dark");
+    expect(document.documentElement.style.backgroundColor).toBe("transparent");
+    /* The native global becomes the attribute window.css keys on, even when
+       theme-boot.js never ran. */
+    expect(document.documentElement.getAttribute("data-backdrop")).toBe("mica");
+  });
+
+  it("keeps the solid ground where there is no Mica", () => {
+    expect(hasMicaBackdrop()).toBe(false);
+    expect(document.documentElement.hasAttribute("data-backdrop")).toBe(false);
   });
 
   it("reports OS changes and unsubscribes cleanly", () => {
@@ -216,10 +236,23 @@ describe("tokens.css", () => {
     expect(rust).toContain("set_background_color");
     expect(rust).toContain("tauri::Theme::Light");
 
-    /* index.html's meta ships the dark ground and applyTheme rewrites it on
-       every switch, so the static value only has to be a real palette entry. */
-    expect(read("index.html").toLowerCase()).toContain(`content="${THEME_BACKGROUND.dark.toLowerCase()}"`);
-    expect(read("src/lib/theme.ts")).toContain('meta[name="theme-color"]');
+    /* index.html used to ship a theme-color meta that applyTheme rewrote on
+       every switch. A desktop window has no browser chrome for it to tint, so
+       both are gone; this keeps them from drifting back in as a sixth copy. */
+    expect(read("index.html")).not.toContain("theme-color");
+    expect(read("src/lib/theme.ts")).not.toContain("theme-color");
+  });
+
+  it("goes transparent under Mica in the boot script as well as in theme.ts", () => {
+    /* theme-boot.js runs before the bundle, so it has to know about the
+       backdrop on its own; otherwise the first frame paints an opaque ground
+       over Mica and the window flashes solid before theme.ts clears it. */
+    const boot = read("public/theme-boot.js");
+    expect(boot).toContain(BACKDROP_GLOBAL);
+    expect(boot).toContain('setAttribute("data-backdrop", "mica")');
+    expect(boot).toContain('"transparent"');
+    /* And the global is the one Rust actually sets. */
+    expect(read("src-tauri/src/native_shell.rs")).toContain(`"${BACKDROP_GLOBAL}"`);
   });
 });
 
@@ -434,6 +467,16 @@ function ruleBlocks(css: string): { selector: string; body: string }[] {
 
 /** Rule → why that rule is allowed to name a colour. Keyed by file name. */
 const LITERALS_ALLOWED: Record<string, Record<string, string>> = {
+  "titlebar.css": {
+    /* Windows paints its own close button this way in every app and in both
+       themes: #C42B1C with a white glyph. It is the system's caption mark, not
+       a surface of this palette, and a themed red here would be the one close
+       button on the desktop that looks different. */
+    ".titlebar__caption--close:hover":
+      "the Windows caption close red with its white glyph, identical in both themes",
+    ".titlebar__caption--close:active":
+      "the pressed shade of the same Windows caption close red",
+  },
   "library.css": {
     /* library.css says all of this in prose above the rules; the point of
        repeating it here is that the guard knows, not that a reader does. */

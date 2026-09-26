@@ -21,6 +21,8 @@
  * fall back to the bare `:root` dark palette. Do not "simplify" that guard.
  */
 
+import { setWindowTheme } from "./nativeShell";
+
 export type ThemeChoice = "system" | "light" | "dark";
 
 /** What actually gets painted once the choice is resolved against the OS. */
@@ -32,11 +34,13 @@ const LEGACY_THEME_KEY = "polstudio.theme.v1";
 export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"];
 
 /* The two grounds, duplicated from tokens.css (--bg). They are needed BEFORE
-   any stylesheet exists — the boot snippet in index.html paints the document
-   with one of them so the window never flashes the other theme — so this is
-   the one place a raw colour is allowed outside tokens.css. Keep them in step
-   with `--bg`; the test in theme.test.ts reads tokens.css and fails if they
-   drift. */
+   any stylesheet exists — public/theme-boot.js paints the document with one
+   of them so the window never flashes the other theme — so this is the one
+   place a raw colour is allowed outside tokens.css. Keep them in step with
+   `--bg`; the test in theme.test.ts reads tokens.css and fails if they drift.
+
+   Under Mica (Windows 11) neither is painted: the ground is the backdrop
+   itself, see `hasMicaBackdrop` below and src/styles/window.css. */
 export const THEME_BACKGROUND: Record<ResolvedTheme, string> = {
   dark: "#080a0f",
   light: "#eef1f6",
@@ -78,22 +82,41 @@ export function resolveTheme(choice: ThemeChoice): ResolvedTheme {
   return choice === "system" ? systemTheme() : choice;
 }
 
+/** The global src-tauri/src/native_shell.rs sets from an initialization
+ *  script — before any page script — when the window has Mica behind it. */
+export const BACKDROP_GLOBAL = "__SLOPUS_BACKDROP__";
+
+/** True when the window is transparent with Mica behind it. Read from the
+ *  attribute theme-boot.js writes, or straight from the native global when
+ *  that script never ran (a test renderer, a stripped index.html), in which
+ *  case the attribute is written here. */
+export function hasMicaBackdrop(): boolean {
+  const root = document.documentElement;
+  if (root.getAttribute("data-backdrop") === "mica") return true;
+  const native = (window as unknown as Record<string, unknown>)[BACKDROP_GLOBAL] === "mica";
+  if (native) root.setAttribute("data-backdrop", "mica");
+  return native;
+}
+
 /** Writes the choice onto <html> and repaints the document ground.
  *
- *  The ground is set inline as well as by CSS because index.html sets it that
- *  way before the stylesheet has loaded; leaving a stale inline colour behind
- *  would out-specify the stylesheet and strand the old theme's background
- *  under the new theme's panels. */
+ *  The ground is set inline as well as by CSS because theme-boot.js sets it
+ *  that way before the stylesheet has loaded; leaving a stale inline colour
+ *  behind would out-specify the stylesheet and strand the old theme's
+ *  background under the new theme's panels. Under Mica the inline ground is
+ *  `transparent`, for the same reason in reverse: any colour there would
+ *  cover the backdrop.
+ *
+ *  It also hands the choice to the native window, whose theme tints Mica and
+ *  the system menus and message boxes. */
 export function applyTheme(choice: ThemeChoice): ResolvedTheme {
   const root = document.documentElement;
   if (choice === "system") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", choice);
 
   const resolved = resolveTheme(choice);
-  root.style.backgroundColor = THEME_BACKGROUND[resolved];
-
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", THEME_BACKGROUND[resolved]);
+  root.style.backgroundColor = hasMicaBackdrop() ? "transparent" : THEME_BACKGROUND[resolved];
+  void setWindowTheme(choice);
 
   return resolved;
 }
