@@ -1,9 +1,10 @@
-import { Clapperboard, FolderOpen, Image, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { outputDimensions } from "../lib/export";
+import { useShortcut } from "../lib/commands";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
 import { PROJECT_RESOLUTIONS } from "../lib/project";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
+import { ContentDialog, InfoBar, RadioGroup } from "./ui";
 
 interface PromptComposerProps {
   busy: boolean;
@@ -25,6 +26,12 @@ const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.optio
 
 const folderName = (path?: string) => path?.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || "Untitled video";
 
+/* New project, and the same form as Project settings for an open project.
+   A standard 548px ContentDialog on a solid layer: the project type as two
+   radio buttons, the folder as a read-only path with Browse…, the name, and
+   the format. [Create] [Cancel] in the footer; Enter creates, Esc cancels.
+   Errors — a folder that is not empty, a failed save — are an InfoBar in the
+   body rather than red text beside the button. */
 export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error, folderPath, folderError, checkingFolder, onChooseFolder }: PromptComposerProps) {
   const [generationType, setGenerationType] = useState<"video" | "image">(project?.generationType === "image" ? "image" : "video");
   const [name, setName] = useState(project?.name ?? folderName(folderPath));
@@ -38,36 +45,23 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(project?.settings.aspectRatio ?? "16:9");
   const [resolution, setResolution] = useState<Resolution>(project?.settings.resolution ?? DEFAULT_RESOLUTION);
   const [defaultLook, setDefaultLook] = useState(project?.settings.defaultLook ?? "");
-  const dialog = useRef<HTMLDivElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
+  const id = useId();
   const resolutions: readonly Resolution[] = project && !PROJECT_RESOLUTIONS.some((value) => value === project.settings.resolution)
     ? [...PROJECT_RESOLUTIONS, project.settings.resolution] : PROJECT_RESOLUTIONS;
+  const blocked = busy || Boolean(checkingFolder) || Boolean(folderError) || !name.trim();
+  const close = () => { if (!busy) onClose(); };
 
-  /* Naming is the only authored content required before the Agent takes over. */
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    nameInput.current?.focus({ preventScroll: true });
-    nameInput.current?.select();
-    return () => { if (opener?.isConnected) opener.focus(); };
-  }, []);
+  /* Naming is the only authored content required before the Agent takes over,
+     so the name is focused and selected, ready to type over. */
+  useEffect(() => { nameInput.current?.select(); }, []);
 
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }
-      if (event.key !== "Tab") return;
-      const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)") ?? [])
-        .filter((control) => !(control instanceof HTMLInputElement && control.type === "radio" && !control.checked));
-      if (!controls.length) { event.preventDefault(); return; }
-      if (!dialog.current?.contains(document.activeElement) || (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls.at(-1))) {
-        event.preventDefault(); (event.shiftKey ? controls.at(-1)! : controls[0]).focus();
-      }
-    };
-    window.addEventListener("keydown", close, true);
-    return () => window.removeEventListener("keydown", close, true);
-  }, [busy, onClose]);
+  /* Esc is the dialog's own key while focus is in it. This catches it when
+     focus has wandered to the page (a click on the title bar). */
+  useShortcut("Escape", close, { allowInModal: true, allowInInput: true });
 
   const submit = async () => {
-    if (busy || checkingFolder || folderError || !name.trim()) return;
+    if (blocked) return;
     await onSubmit({
       generationType,
       name: name.trim(),
@@ -79,90 +73,83 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
     });
   };
 
+  const message = folderError || error;
   return (
-    <div ref={dialog} className="composer-overlay" role="dialog" aria-modal="true" aria-labelledby="create-heading">
-      <section className="composer-shell">
-      <header className="composer-heading">
-        <h2 id="create-heading">{project ? "Project settings" : "New project"}</h2>
-        <button className="icon-button icon-button--strong" onClick={onClose} disabled={busy} aria-label={project ? "Close project settings" : "Close new project"}><X size={18} /></button>
-      </header>
-      <div className="composer">
-        {!project && <fieldset className="composer__project-type" disabled={busy}>
-          <legend>Project type</legend>
-          <div className="composer__type-options">
-            {([
-              ["video", Clapperboard, "Video project", "Generate clips and edit a timeline"],
-              ["image", Image, "Image project", "Compose and generate still images"],
-            ] as const).map(([type, Icon, title, description]) => <label className="composer__type-option" key={type}>
-              <input className="composer__type-input" type="radio" name="project-type" value={type} checked={generationType === type} aria-labelledby={`project-type-${type}-label`} aria-describedby={`project-type-${type}-description`} onChange={() => {
-                setGenerationType(type);
-                if (!folderPath && (name === "Untitled video" || name === "Untitled image")) setName(`Untitled ${type}`);
-              }} />
-              <span className="composer__type-card">
-                <span className="composer__type-icon"><Icon size={24} aria-hidden="true" /></span>
-                <span className="composer__type-copy"><strong id={`project-type-${type}-label`}>{title}</strong><span id={`project-type-${type}-description`}>{description}</span></span>
-                <span className="composer__type-indicator" aria-hidden="true" />
-              </span>
-            </label>)}
-          </div>
-        </fieldset>}
-        {!project && folderPath && <div className="composer__folder-row">
-          <label><span>Project folder</span><input aria-label="Project folder" readOnly value={folderPath} title={folderPath} /></label>
-          <button className="secondary-button" type="button" disabled={busy || checkingFolder} onClick={() => void onChooseFolder?.()}><FolderOpen size={16} />Change folder</button>
-        </div>}
-        <label className="composer__name-row">
-          <span>Project name</span>
-          <input ref={nameInput} disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
-        </label>
-
-        <section className="composer__options">
-          <div className="composer__options-head">
-            <span className="composer__options-title">{generationType === "image" ? "Image settings" : "Video settings"}</span>
-          </div>
-          <div className="composer__options-body">
-            <div className="composer__options-grid">
-              <label>
-                <span><Monitor size={15} /> Aspect Ratio</span>
-                <select disabled={busy} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
-                  <option value="16:9">Widescreen 16:9</option>
-                  <option value="9:16">Vertical 9:16</option>
-                  <option value="1:1">Square 1:1</option>
-                  <option value="4:5">Portrait 4:5</option>
-                </select>
-              </label>
-              {/* The real pixels, not a name for them. Every rung is a multiple
-                  of 32 on both edges — what MiniMax H3 generates at — and they
-                  are relabelled when the shape above changes, because 768p is
-                  1376×768 widescreen and 768×1376 vertical. */}
-              <label>
-                <span><Clapperboard size={15} /> Resolution</span>
-                <select disabled={busy} value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
-                  {resolutions.map((option) => {
-                    const { width, height } = outputDimensions(option, aspectRatio);
-                    return <option key={option} value={option}>{width} × {height}{option === DEFAULT_RESOLUTION ? " (default)" : ""}</option>;
-                  })}
-                </select>
-              </label>
-              <label>
-                <span><Palette size={15} aria-hidden="true" /> Look</span>
-                <select aria-label="Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
-                  <option value="">None</option>
-                  {LOOKS.map((look) => <option key={look.id} value={look.id}>{look.label}</option>)}
-                </select>
-              </label>
+    <ContentDialog
+      title={project ? "Project settings" : "New project"}
+      primaryText={project ? (busy ? "Saving…" : "Save changes") : (busy ? "Creating…" : "Create project")}
+      onPrimary={() => void submit()}
+      primaryDisabled={blocked}
+      closeText="Cancel"
+      onClose={close}
+      disableEscape={busy}
+      defaultButton="primary"
+      initialFocus={nameInput}
+      className="composer"
+    >
+      <div className="composer__form">
+        {!project && (
+          <RadioGroup
+            label="Project type"
+            orientation="horizontal"
+            value={generationType}
+            disabled={busy}
+            onChange={(type) => {
+              setGenerationType(type);
+              if (!folderPath && (name === "Untitled video" || name === "Untitled image")) setName(`Untitled ${type}`);
+            }}
+            options={[
+              { value: "video", label: "Video project" },
+              { value: "image", label: "Image project" },
+            ]}
+          />
+        )}
+        {!project && folderPath && (
+          <div className="composer__field">
+            <label htmlFor={`${id}-folder`}>Project folder</label>
+            <div className="composer__folder-row">
+              <input id={`${id}-folder`} className="text-field" aria-label="Project folder" readOnly value={folderPath} data-tooltip={folderPath} />
+              <button className="secondary-button" type="button" disabled={busy || checkingFolder} onClick={() => void onChooseFolder?.()}>Browse…</button>
             </div>
           </div>
-        </section>
-
-        <div className="composer__actions">
-          {(folderError || error) && <p className="composer__error" id="create-error" role="alert">{folderError || error}</p>}
-          <button className="primary-button composer__submit" disabled={busy || checkingFolder || Boolean(folderError) || !name.trim()} aria-describedby={folderError || error ? "create-error" : undefined} aria-busy={busy || checkingFolder} onClick={() => void submit()}>
-            {busy ? <span className="spinner" /> : project ? <Save size={18} /> : <WandSparkles size={18} />}
-            {project ? "Save changes" : "Create project"}
-          </button>
+        )}
+        <div className="composer__field">
+          <label htmlFor={`${id}-name`}>Project name</label>
+          <input id={`${id}-name`} ref={nameInput} className="text-field" disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
         </div>
+        <div className="composer__grid">
+          <div className="composer__field">
+            <label htmlFor={`${id}-aspect`}>Aspect Ratio</label>
+            <select id={`${id}-aspect`} disabled={busy} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
+              <option value="16:9">Widescreen 16:9</option>
+              <option value="9:16">Vertical 9:16</option>
+              <option value="1:1">Square 1:1</option>
+              <option value="4:5">Portrait 4:5</option>
+            </select>
+          </div>
+          {/* The real pixels, not a name for them. Every rung is a multiple
+              of 32 on both edges — what MiniMax H3 generates at — and they
+              are relabelled when the shape above changes, because 768p is
+              1376×768 widescreen and 768×1376 vertical. */}
+          <div className="composer__field">
+            <label htmlFor={`${id}-resolution`}>Resolution</label>
+            <select id={`${id}-resolution`} disabled={busy} value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
+              {resolutions.map((option) => {
+                const { width, height } = outputDimensions(option, aspectRatio);
+                return <option key={option} value={option}>{width} × {height}{option === DEFAULT_RESOLUTION ? " (default)" : ""}</option>;
+              })}
+            </select>
+          </div>
+          <div className="composer__field">
+            <label htmlFor={`${id}-look`}>Look</label>
+            <select id={`${id}-look`} aria-label="Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
+              <option value="">None</option>
+              {LOOKS.map((look) => <option key={look.id} value={look.id}>{look.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {message && <InfoBar severity="error" title={folderError ? "Choose another folder" : project ? "Couldn’t save" : "Couldn’t create the project"} message={message} />}
       </div>
-      </section>
-    </div>
+    </ContentDialog>
   );
 }

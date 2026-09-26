@@ -1,83 +1,170 @@
-.work-queue-launcher {
-  display: flex;
-  border-radius: var(--radius-pill);
-  left: auto;
-  right: var(--space-4);
-  width: auto;
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-.work-queue-launcher b {
-  display: grid;
-  place-items: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 4px;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: var(--text-xs);
-}
-.work-queue-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 150;
-  background: var(--scrim);
-}
-.work-queue-panel {
-  position: absolute;
-  right: var(--space-4);
-  bottom: 76px;
+/* ============================================================================
+   work-queue.css — the work queue flyout (WorkQueuePanel.tsx).
+
+   It hangs from the queue button in the title bar on the shared .ui-flyout
+   surface (acrylic, 8px corners, flyout shadow; ui.css). No scrim and no
+   window dimming: it is a light-dismiss popup, not a dialog. Inside: a 14px
+   semibold header with a link-style "Clear finished", then one flat list —
+   rows separated by hairlines, a 16px state glyph, a title, a caption and,
+   while the work runs, the 3px ProgressBar. The fixed launcher pill that used
+   to float in the bottom-right corner is gone; the title bar carries the
+   button and its InfoBadge.
+   ========================================================================== */
+
+.work-queue.ui-flyout {
   display: flex;
   flex-direction: column;
-  width: min(440px, calc(100vw - 32px));
-  max-height: calc(100dvh - 108px);
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
+  max-height: min(560px, calc(100vh - 64px));
+  padding: 0;
   overflow: hidden;
 }
+
 .work-queue__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+  flex: none;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
 }
-.work-queue__header > div { display: flex; gap: var(--space-2); align-items: center; }
-.work-queue__header h2 { margin: 0; font-size: var(--text-lg); }
-.work-queue__intro { margin: 0; padding: 0 var(--space-4) var(--space-3); color: var(--text-muted); font-size: var(--text-sm); }
-.work-queue__list { overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-4) var(--space-4); }
-.work-queue__list h3 { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
-.work-queue__list h3 > button { margin-left: auto; border: 0; background: transparent; color: var(--text-muted); font-size: var(--text-xs); }
-.work-queue__list h3 > button:hover { color: var(--text-primary); }
-.work-queue__list ul { list-style: none; margin: 0; padding: 0; }
-.work-queue__item { margin-bottom: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel-2); }
-.work-queue__item-heading { display: flex; gap: var(--space-2); align-items: center; }
-.work-queue__item-heading > div { display: grid; flex: 1; min-width: 0; gap: 2px; }
-.work-queue__item-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: var(--weight-medium); }
-.work-queue__item-heading div > span { color: var(--text-muted); font-size: var(--text-xs); }
-.work-queue__state { display: grid; place-items: center; color: var(--text-muted); }
+
+.work-queue__header h2 {
+  margin: 0;
+  margin-right: auto;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal);
+}
+
+/* A hyperlink-looking button: accent text, no fill, no hand cursor (it is a
+   command, not a navigation). */
+.work-queue__link {
+  justify-self: start;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-bright);
+  font-size: var(--text-sm);
+  transition: var(--transition-control);
+}
+
+.work-queue__link:hover {
+  background: var(--fill-subtle-hover);
+}
+
+.work-queue__link:active {
+  background: var(--fill-subtle-pressed);
+}
+
+.work-queue__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--space-2);
+}
+
+.work-queue__list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-queue__group {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  line-height: 16px;
+}
+
+.work-queue__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  border-top: 1px solid var(--stroke-card);
+}
+
+.work-queue__list section:first-child > ul > .work-queue__row:first-child {
+  border-top-color: transparent;
+}
+
+.work-queue__state {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 20px;
+  color: var(--text-secondary);
+}
+
 .work-queue__state--completed { color: var(--success); }
 .work-queue__state--failed { color: var(--danger); }
-.work-queue__state--generating, .work-queue__state--encoding, .work-queue__state--preparing { color: var(--accent-bright); }
-.work-queue__detail { display: flex; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-secondary); }
-.work-queue__detail b { font-variant-numeric: tabular-nums; }
-.work-queue__item progress { display: block; width: 100%; height: var(--progress-height); margin-top: var(--space-2); border: 0; border-radius: var(--radius-progress); overflow: hidden; accent-color: var(--accent); }
-.work-queue__item progress::-webkit-progress-bar { background: var(--line); }
-.work-queue__item progress::-webkit-progress-value { background: var(--accent); }
-.work-queue__settings { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--text-muted); }
-.work-queue__item--compact { margin-bottom: var(--space-1); padding: var(--space-2); }
-.work-queue__item--compact .work-queue__item-heading > div { display: flex; align-items: baseline; gap: var(--space-2); }
-.work-queue__item--compact .work-queue__item-heading strong { min-width: 0; font-size: var(--text-sm); }
-.work-queue__item--compact .work-queue__item-heading div > span { min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-queue__item--compact .work-queue__metadata { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-2); margin-top: var(--space-1); }
-.work-queue__item--compact .work-queue__detail,
-.work-queue__item--compact .work-queue__settings { margin: 0; overflow-wrap: anywhere; }
-.work-queue__error { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--danger); overflow-wrap: anywhere; }
-.work-queue__empty { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) 0; color: var(--text-muted); }
-.work-queue__empty p { margin: 0; font-size: var(--text-sm); }
-.work-queue__spinner { animation: work-queue-spin 1s linear infinite; }
-@keyframes work-queue-spin { to { transform: rotate(360deg); } }
+.work-queue__state--generating,
+.work-queue__state--encoding,
+.work-queue__state--preparing { color: var(--accent); }
+
+.work-queue__text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.work-queue__title,
+.work-queue__caption {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.work-queue__title {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.work-queue__caption {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-queue__progress {
+  margin-top: var(--space-1);
+}
+
+.work-queue__error {
+  color: var(--danger);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.work-queue__cancel {
+  flex: none;
+}
+
+.work-queue__empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.work-queue__empty strong {
+  margin-top: var(--space-2);
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.work-queue__empty span {
+  font-size: var(--text-xs);
+}

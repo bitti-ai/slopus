@@ -1,9 +1,94 @@
-.update-panel { display: grid; gap: var(--space-4); }
-.update-panel h2, .update-panel p { margin: 0; }
-.update-panel p { font-size: var(--text-base); line-height: var(--leading-normal); }
-.update-panel__notes { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 240px; overflow: auto; }
-.update-panel__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.update-notice { position: fixed; right: var(--space-6); bottom: var(--space-6); z-index: 30; }
-.update-progress { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--bg); }
-.update-progress .update-panel { width: min(480px, 90vw); padding: var(--space-6); background: var(--panel); border-radius: var(--radius-lg); }
-.update-progress progress { width: 100%; }
+/* ============================================================================
+   updater.css — Settings > Updates (UpdatePanel.tsx).
+
+   Windows Update's header card: a 48px status glyph, a 20px status line, a
+   caption with the last check, a 3px bar while a download runs, and the one
+   action at the trailing edge. A card is a 1px stroke on --card, no shadow.
+   Nothing here covers the window any more: the download used to take the
+   whole screen over (inset: 0) with an unstyled <progress>; it now runs
+   inside the card and the rest of the app stays usable.
+   ========================================================================== */
+
+.update-panel {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.update-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-4);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.update-card__glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  color: var(--accent);
+}
+
+.update-card--current .update-card__glyph {
+  color: var(--success);
+}
+
+.update-card--disabled .update-card__glyph {
+  color: var(--text-secondary);
+}
+
+.update-card__text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Fluent Subtitle, 20/28 semibold. */
+.update-card__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.update-card__caption {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.update-card__progress-label {
+  margin-top: var(--space-2);
+}
+
+.update-card__progress {
+  margin-top: var(--space-1);
+  max-width: 360px;
+}
+
+.update-card__action {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+}
+
+.update-panel__notes {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}

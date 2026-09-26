@@ -1,67 +1,38 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Info } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { CudaDownload } from "../lib/cudaSupport";
+import { ContentDialog, InfoBar } from "./ui";
 
+/* Shown once at startup when an NVIDIA card is present but no usable CUDA is.
+   [Download CUDA] opens NVIDIA's page in the browser and closes the dialog;
+   [Continue with Vulkan] (and Esc) just closes it. If the browser cannot be
+   opened the dialog stays, with the reason, and the link as text. */
 export function CudaSetupDialog({ download, onContinue }: { download: CudaDownload; onContinue: () => void }) {
-  const dialog = useRef<HTMLDivElement>(null);
-  const proceed = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    proceed.current?.focus();
-    return () => opener?.focus?.();
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onContinue();
-      }
-      if (event.key !== "Tab" || !dialog.current) return;
-      const stops = Array.from(dialog.current.querySelectorAll<HTMLElement>("a[href], button"));
-      const first = stops[0], last = stops[stops.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (!event.shiftKey && (active === last || !dialog.current.contains(active))) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && (active === first || !dialog.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onContinue]);
+  const cuda = download.version === "12.8" ? "CUDA 12.8" : "CUDA";
 
   const openDownload = async () => {
     setError(null);
     try {
       await invoke("open_cuda_download", { version: download.version });
+      onContinue();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
 
-  return <div className="exit-guard-backdrop">
-    <div className="exit-guard" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="cuda-setup-title" aria-describedby="cuda-setup-description">
-      <div className="exit-guard__head">
-        <span className="exit-guard__mark" aria-hidden="true"><Info size={20} /></span>
-        <h2 id="cuda-setup-title">Install CUDA for faster generation</h2>
-      </div>
-      <div className="exit-guard__body" id="cuda-setup-description">
-        <p>Slopus detected your {download.gpuName}, but could not find a usable CUDA installation.</p>
-        <p>You can continue using the Vulkan fallback backend, with longer generation times.</p>
-        <p>For faster generation, install {download.version === "12.8" ? "CUDA 12.8" : "CUDA"} and restart Slopus.</p>
-        <p><a className="cuda-setup-download" href={download.url} target="_blank" rel="noreferrer" onClick={(event) => { event.preventDefault(); void openDownload(); }}>Download {download.version === "12.8" ? "CUDA 12.8" : "CUDA"} from NVIDIA</a></p>
-        {error && <p role="alert">{error}</p>}
-      </div>
-      <div className="exit-guard__actions">
-        <button className="primary-button" type="button" ref={proceed} onClick={onContinue}>Continue with Vulkan</button>
-      </div>
-    </div>
-  </div>;
+  return (
+    <ContentDialog
+      title="Install CUDA for faster generation"
+      primaryText={`Download ${cuda}`}
+      onPrimary={() => void openDownload()}
+      closeText="Continue with Vulkan"
+      onClose={onContinue}
+      defaultButton="primary"
+    >
+      <p>Slopus found your {download.gpuName} but no usable CUDA installation.</p>
+      <p>Slopus can use the Vulkan fallback backend, with longer generation times. For faster generation, install {cuda} from NVIDIA and restart Slopus.</p>
+      {error && <InfoBar severity="error" title="Couldn’t open the browser" message={<>{error} Go to <span className="dialog-path">{download.url}</span></>} />}
+    </ContentDialog>
+  );
 }

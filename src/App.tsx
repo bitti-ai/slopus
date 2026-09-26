@@ -4,19 +4,20 @@ import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerat
 import { CudaSetupDialog } from "./components/CudaSetupDialog";
 import { missingCudaDownload } from "./lib/cudaSupport";
 import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { FolderOpen, Grid2X2, List, ListTodo, Plus, Search, Settings } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Brand } from "./components/Brand";
-import { DeleteProjectDialog } from "./components/DeleteProjectDialog";
-import { ExitGuardDialog, type OngoingGeneration } from "./components/ExitGuardDialog";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
+import { DeleteProjectDialog, canConfirmNatively, confirmProjectDeletionNatively } from "./components/DeleteProjectDialog";
 import { ProjectCard } from "./components/ProjectCard";
 import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
-import { UpdatePanel, UpdateProgress } from "./components/UpdatePanel";
+import { TitleBar } from "./components/TitleBar";
+import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/UpdatePanel";
+import { CommandBar, CommandBarButton, CommandBarSeparator, InfoBadge, InfoBar, TextField } from "./components/ui";
 import { AppUpdater } from "./lib/updater";
+import { useShortcut } from "./lib/commands";
+import { useGuardedShortcut } from "./lib/shellKeys";
+import { reportGenerationJobs, revealInExplorer, type GuardJob } from "./lib/nativeShell";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
 import { chooseAndOpenProject, chooseNewProjectFolder, inspectNewProjectFolder, createProject, deleteProject, isTauri, listRecentProjects, saveProject, type NewProjectFolder } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
@@ -33,6 +34,14 @@ const describe = (reason: unknown) => (reason instanceof Error ? reason.message 
 const logFailure = (event: string, reason: unknown, context: Record<string, unknown> = {}) => {
   writeDiagnostic("error", "app", event, describeDiagnosticError(reason), { ...context, ...errorContext(reason) });
 };
+
+/* ── The app frame ────────────────────────────────────────────────────────
+   The window is frameless, so every top-level screen — the library, an open
+   project, Settings — carries a <TitleBar> as its first row: it is what drags,
+   maximizes and closes the window. App-wide commands live at the trailing end
+   of it, just before the caption buttons: Settings (with a dot when an update
+   is waiting) and the Work queue (with an InfoBadge counting what is
+   running). Nothing floats in a corner of the window any more (i-frame-5). */
 
 function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
@@ -52,6 +61,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [error, setError] = useState<LibraryError | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectFolder, setNewProjectFolder] = useState<NewProjectFolder | null>(null);
@@ -84,6 +94,7 @@ function App() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<"engine" | "updates">("engine");
   const [updater] = useState(() => new AppUpdater());
   const updateState = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
+  const [updateInfoDismissed, setUpdateInfoDismissed] = useState(false);
   useEffect(() => { void updater.start(); }, [updater]);
   const updateGuard = useRef<() => string | null>(() => null);
   updateGuard.current = () => activeProject
@@ -93,10 +104,15 @@ function App() {
       : workQueue.updateBlockReason();
   const updateBlockReason = useCallback(() => updateGuard.current(), []);
   const updatePanel = <UpdatePanel updater={updater} blockReason={updateBlockReason} />;
-  const updateNotice = ["available", "restart"].includes(updateState.stage) && !settingsOpen
-    ? <button className="secondary-button update-notice" onClick={() => { setSettingsInitialTab("updates"); setSettingsOpen(true); }}>{updateState.stage === "restart" ? "Restart to finish updating Slopus" : `Slopus ${updateState.version} is available`}</button> : null;
   const [settingsRevision, setSettingsRevision] = useState(0);
   const settingsButton = useRef<HTMLButtonElement>(null);
+  const queueButton = useRef<HTMLButtonElement>(null);
+  const settingsQueueButton = useRef<HTMLButtonElement>(null);
+  const openSettings = (tab: "engine" | "updates" = "engine") => {
+    setWorkQueueOpen(false);
+    setSettingsInitialTab(tab);
+    setSettingsOpen(true);
+  };
   const closeSettings = () => {
     setSettingsOpen(false);
     setSettingsRevision((value) => value + 1);
@@ -111,42 +127,21 @@ function App() {
   const cudaDownload = !cudaNoticeDismissed && isTauri() ? missingCudaDownload(runtime?.slopfab) : null;
   const searchInput = useRef<HTMLInputElement>(null);
 
-  /* ── Exit guard: the window's close button ───────────────────────────────
+  /* ── Exit guard ─────────────────────────────────────────────────────────
      The video engine runs inside this process, so closing the window ends a
-     generation outright, and nothing partial is written on the way. The app
-     queue reports work across all projects; Rust holds the close request back
-     only for video work. Icons can be interrupted safely. This is where the question is put
-     and answered. See the fenced block in src-tauri/src/window.rs. */
-  const ongoingGenerations: OngoingGeneration[] = workItems.filter((item) => item.kind !== "reference-icons" && isWorkActive(item)).map((item) => ({ id: item.id, title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
-  const [closeRequested, setCloseRequested] = useState(false);
-
-  const answerClose = useCallback((confirmed: boolean) => {
-    setCloseRequested(false);
-    if (isTauri()) void invoke("answer_app_close", { confirmed }).catch(() => undefined);
-  }, []);
-
+     generation outright, and nothing partial is written on the way. Rust asks
+     the question itself, as a native message box, when the close button is
+     pressed (src-tauri/src/window.rs); all the page does is keep it told
+     which jobs would be lost. Icons are not on the list: they can be
+     interrupted safely. */
+  const guardJobs: GuardJob[] = workItems
+    .filter((item) => item.kind !== "reference-icons" && isWorkActive(item))
+    .map((item) => ({ title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
+  const guardKey = JSON.stringify(guardJobs);
   useEffect(() => {
-    if (!isTauri()) return;
-    void invoke("set_generation_active", { active: ongoingGenerations.length > 0 }).catch(() => undefined);
-  }, [ongoingGenerations.length]);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    let disposed = false;
-    const subscription = listen("app-close-requested", () => { if (!disposed) setCloseRequested(true); });
-    return () => { disposed = true; void subscription.then((stop) => stop()).catch(() => undefined); };
-  }, []);
-
-  /* The last shot can finish between the click on the close button and this
-     question reaching the screen. There is then nothing to warn about, and a
-     dialog listing no shots would be the app refusing to close for no reason. */
-  useEffect(() => {
-    if (closeRequested && ongoingGenerations.length === 0) answerClose(true);
-  }, [closeRequested, ongoingGenerations.length, answerClose]);
-
-  const exitGuard = closeRequested && ongoingGenerations.length > 0
-    ? <ExitGuardDialog jobs={ongoingGenerations} onConfirm={() => answerClose(true)} onCancel={() => answerClose(false)} />
-    : null;
+    void reportGenerationJobs(JSON.parse(guardKey) as GuardJob[]).catch(() => undefined);
+  }, [guardKey]);
+  const queueCount = guardJobs.length + Number(weightDownloadActive);
 
   useEffect(() => {
     void listRecentProjects()
@@ -184,18 +179,6 @@ function App() {
     return () => { live = false; };
   }, [settingsRevision]);
 
-  useEffect(() => {
-    const focusSearch = (event: KeyboardEvent) => {
-      if (settingsOpen) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        searchInput.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", focusSearch);
-    return () => window.removeEventListener("keydown", focusSearch);
-  }, [settingsOpen]);
-
   const filteredProjects = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return projects;
@@ -204,6 +187,13 @@ function App() {
     );
   }, [projects, query]);
 
+  const openProject = (project: ProjectRecord, view: ProjectView = "timeline") => {
+    setWorkQueueOpen(false);
+    setSelectedKey(projectQueueKey(project));
+    setActiveProjectInitialView(view);
+    setActiveProject(project);
+  };
+
   const openFromFolder = async () => {
     setBusy(true);
     setError(null);
@@ -211,8 +201,7 @@ function App() {
       const project = await chooseAndOpenProject();
       if (!project) return;
       setProjects((current) => [project, ...current.filter((item) => item.config.id !== project.config.id)]);
-      setActiveProjectInitialView("timeline");
-      setActiveProject(project);
+      openProject(project);
     } catch (reason) {
       logFailure("project.open_failed", reason);
       setError({ title: "Couldn’t open that folder", detail: describe(reason) });
@@ -246,10 +235,10 @@ function App() {
       if (!project) return;
       setProjects((current) => [project, ...current]);
       setNewProjectOpen(false);
-      // Creative direction now begins in the Agent page; project creation only
-      // establishes the empty workspace and its format.
-      setActiveProjectInitialView("agent");
-      setActiveProject(project);
+      // Creative direction begins with the Agent; project creation only
+      // establishes the empty workspace and its format, so the new project
+      // opens with the agent pane showing.
+      openProject(project, "agent");
     } catch (reason) {
       logFailure("project.create_failed", reason);
       setNewProjectError(describe(reason));
@@ -261,9 +250,8 @@ function App() {
     }
   };
 
-  const confirmProjectDeletion = async () => {
-    if (!projectToDelete || deletingProject) return;
-    const target = projectToDelete;
+  const deleteNow = async (target: ProjectRecord) => {
+    if (deletingProject) return;
     setDeletingProject(true);
     setError(null);
     try {
@@ -274,105 +262,209 @@ function App() {
       setProjectToDelete(null);
     } catch (reason) {
       logFailure("project.delete_failed", reason, { projectId: target.config.id });
+      setProjectToDelete(null);
       setError({ title: "Couldn’t delete that project", detail: describe(reason) });
     } finally {
       setDeletingProject(false);
     }
   };
 
-  /* Anchored bottom-left in every view, project editor included: the engine
-     paths it holds are what makes generation work at all, and finding out they
-     are wrong happens inside a project, not in the library. */
-  const settingsLauncher = (
-    <button ref={settingsButton} className="settings-launcher" type="button" onClick={() => { setSettingsInitialTab("engine"); setSettingsOpen(true); }} title="Settings" aria-label="Settings">
-      <Settings size={22} aria-hidden="true" />
+  /* A yes/no question, so the desktop app asks it with the system's message
+     box; the browser build falls back to the same question as a dialog. */
+  const requestDelete = async (project: ProjectRecord) => {
+    if (!canConfirmNatively()) { setProjectToDelete(project); return; }
+    if (await confirmProjectDeletionNatively(project)) await deleteNow(project);
+  };
+
+  const revealProject = (project: ProjectRecord) => {
+    void revealInExplorer(project.folderPath).catch((reason: unknown) => {
+      setError({ title: "Couldn’t show the project folder", detail: describe(reason) });
+    });
+  };
+
+  /* ── Accelerators (i-frame-4) ─────────────────────────────────────────── */
+  const inLibrary = !activeProject && !settingsOpen;
+  useShortcut("Ctrl+,", () => openSettings(), { enabled: !settingsOpen, allowInInput: true });
+  useShortcut("Ctrl+N", () => { if (!busy) void chooseCreationFolder(); }, { enabled: inLibrary, allowInInput: true });
+  useShortcut("Ctrl+O", () => { if (!busy) void openFromFolder(); }, { enabled: inLibrary, allowInInput: true });
+  useGuardedShortcut("Ctrl+F", () => { searchInput.current?.focus(); searchInput.current?.select(); }, { enabled: inLibrary, allowInInput: true });
+  useGuardedShortcut("Alt+ArrowLeft", closeSettings, { enabled: settingsOpen });
+
+  const queueFlyout = <WorkQueuePanel queue={workQueue} items={workItems} open={workQueueOpen} anchor={settingsOpen ? settingsQueueButton : queueButton} onClose={() => setWorkQueueOpen(false)} />;
+  const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
+    ? <CudaSetupDialog download={cudaDownload} onContinue={() => setCudaNoticeDismissed(true)} /> : null;
+  const iconConfirmation = iconConfirmationCount > 0 && !cudaNotice && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
+    ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
+
+  const queueTrigger = (ref: RefObject<HTMLButtonElement>) => (
+    <button ref={ref} type="button" className="icon-button titlebar-command" onClick={() => setWorkQueueOpen((open) => !open)}
+      aria-label="Work queue" aria-haspopup="dialog" aria-expanded={workQueueOpen} data-tooltip={queueCount ? `Work queue · ${queueCount} running or queued` : "Work queue"}>
+      <ListTodo size={16} aria-hidden="true" />
+      {queueCount > 0 && <InfoBadge className="titlebar-command__badge" value={queueCount} />}
+    </button>
+  );
+  const shellActions = <>
+    <button ref={settingsButton} type="button" className="icon-button titlebar-command" onClick={() => openSettings(updateNeedsAttention(updateState.stage) ? "updates" : "engine")}
+      aria-label="Settings" data-tooltip={updateNeedsAttention(updateState.stage) ? "Settings · update available" : "Settings"} data-tooltip-shortcut="Ctrl+," aria-keyshortcuts="Control+,">
+      <Settings size={16} aria-hidden="true" />
+      {updateNeedsAttention(updateState.stage) && <InfoBadge className="titlebar-command__badge titlebar-command__badge--dot" />}
+    </button>
+    {queueTrigger(queueButton)}
+  </>;
+
+  /* Settings is a page of its own under its own title bar, not an overlay.
+     The screen behind it stays mounted and hidden, so an open project keeps
+     its unsaved edits, the agent its draft, and the library its search. */
+  const settingsPage = settingsOpen ? (
+    <div className="app-screen app-screen--settings">
+      <TitleBar title="Settings" actions={queueTrigger(settingsQueueButton)} />
+      <div className="app-screen__content">
+        <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />
+      </div>
+    </div>
+  ) : null;
+
+  if (activeProject) {
+    return <div className="app-shell">
+      <div className="app-screen" hidden={settingsOpen}>
+        <ProjectWorkspace
+          key={projectQueueKey(activeProject)}
+          project={activeProject}
+          initialView={activeProjectInitialView}
+          runtime={runtime}
+          workQueue={workQueue}
+          active={!settingsOpen}
+          titleBarActions={shellActions}
+          onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))}
+          onBack={() => setActiveProject(null)}
+          onSave={async () => { await workQueue.project(activeProject).save(); }}
+        />
+      </div>
+      {settingsPage}
+      {queueFlyout}
+      {iconConfirmation}
+      {cudaNotice}
+    </div>;
+  }
+
+  /* Library keyboard: the tiles are one listbox with a roving tab stop.
+     Arrows move (Up/Down by a row of the grid), Home/End jump, Enter opens,
+     Delete asks to delete. */
+  const selectedIndex = filteredProjects.findIndex((project) => projectQueueKey(project) === selectedKey);
+  const focusTile = (index: number, grid: HTMLElement) => {
+    const project = filteredProjects[index];
+    if (!project) return;
+    setSelectedKey(projectQueueKey(project));
+    grid.querySelectorAll<HTMLElement>("[role=option]")[index]?.focus();
+  };
+  const onGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const tiles = [...event.currentTarget.querySelectorAll<HTMLElement>("[role=option]")];
+    const at = tiles.indexOf(document.activeElement as HTMLElement);
+    if (at < 0) return;
+    const columns = projectLayout === "list" ? 1 : Math.max(1, tiles.filter((tile) => tile.offsetTop === tiles[0].offsetTop).length);
+    let next: number | undefined;
+    if (event.key === "ArrowRight") next = Math.min(tiles.length - 1, at + 1);
+    else if (event.key === "ArrowLeft") next = Math.max(0, at - 1);
+    else if (event.key === "ArrowDown") next = Math.min(tiles.length - 1, at + columns);
+    else if (event.key === "ArrowUp") next = Math.max(0, at - columns);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tiles.length - 1;
+    else if (event.key === "Delete" && filteredProjects[at]) { event.preventDefault(); void requestDelete(filteredProjects[at]); return; }
+    if (next === undefined) return;
+    event.preventDefault();
+    focusTile(next, event.currentTarget);
+  };
+
+  const showUpdateInfo = ["downloading", "installing", "restart"].includes(updateState.stage) || (updateState.stage === "available" && !updateInfoDismissed);
+  const newProjectButton = (
+    <button type="button" className="primary-button" disabled={busy} onClick={() => void chooseCreationFolder()} data-tooltip="New project" data-tooltip-shortcut="Ctrl+N" aria-keyshortcuts="Control+N">
+      <Plus size={16} aria-hidden="true" /> New project
     </button>
   );
 
-  const queueLauncher = <button className="settings-launcher work-queue-launcher" type="button" onClick={() => setWorkQueueOpen(true)} title="Work Queue" aria-label="Work Queue" aria-haspopup="dialog" aria-expanded={workQueueOpen}>
-    <ListTodo size={22} aria-hidden="true" />{ongoingGenerations.length + Number(weightDownloadActive) > 0 && <b>{ongoingGenerations.length + Number(weightDownloadActive)}</b>}
-  </button>;
-  const queuePanel = workQueueOpen ? <WorkQueuePanel queue={workQueue} items={workItems} onClose={() => setWorkQueueOpen(false)} /> : null;
-  const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
-    ? <CudaSetupDialog download={cudaDownload} onContinue={() => setCudaNoticeDismissed(true)} /> : null;
-  const iconConfirmation = iconConfirmationCount > 0 && !cudaNotice && !settingsOpen && !workQueueOpen && !closeRequested && !projectToDelete && !newProjectOpen
-    ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
-
-  if (activeProject) {
-    return <>
-      <div hidden={settingsOpen}>
-      <ProjectWorkspace key={projectQueueKey(activeProject)} project={activeProject} initialView={activeProjectInitialView} runtime={runtime} workQueue={workQueue} onGeneratorRuntimeChange={(slopfab) => setRuntime((current) => ({ providers: current?.providers ?? CHECKING_PROVIDERS, slopfab }))} onBack={() => setActiveProject(null)} onSave={async () => { await workQueue.project(activeProject).save(); }} />
-      {settingsLauncher}
-      {queueLauncher}
-      {queuePanel}
-      </div>
-      {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
-      {updateNotice}
-      <UpdateProgress updater={updater} />
-      {iconConfirmation}
-      {cudaNotice}
-      {exitGuard}
-    </>;
-  }
-
   return (
     <div className="app-shell">
-      <div hidden={settingsOpen}>
-      <main className="library">
-        <header className="library__topbar">
-          <Brand />
-          <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
-          <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
-          <button className="primary-button" disabled={busy} onClick={() => void chooseCreationFolder()}><Plus size={17} /> New project</button>
-        </header>
-        <div className="library__content">
-          <section className="recent-projects" aria-labelledby="recent-heading">
-            <div className="section-heading">
-              <div>
-                <h2 id="recent-heading">Your projects</h2>
-                <span>{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
-              </div>
-              <div className="view-controls" aria-label="Project layout">
-                <button className={`icon-button ${projectLayout === "grid" ? "icon-button--active" : ""}`} aria-label="Grid view" aria-pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")}><Grid2X2 size={17} /></button>
-                <button className={`icon-button ${projectLayout === "list" ? "icon-button--active" : ""}`} aria-label="List view" aria-pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")}><List size={17} /></button>
-              </div>
-            </div>
+      <div className="app-screen" hidden={settingsOpen}>
+        <TitleBar title="Slopus" secondary="Preview" actions={shellActions} />
+        <main className="library" aria-labelledby="library-title">
+          <h1 id="library-title" className="library__title">Projects</h1>
+          {(error || showUpdateInfo) && <div className="library__infobars">
+            {showUpdateInfo && <UpdateInfoBar updater={updater} onOpen={() => openSettings("updates")} onDismiss={() => setUpdateInfoDismissed(true)} />}
+            {error && <InfoBar severity="error" title={error.title} message={error.detail} onClose={() => setError(null)} />}
+          </div>}
+          <CommandBar
+            aria-label="Library commands"
+            className="library__commands"
+            end={<TextField
+              className="library__search"
+              inputRef={searchInput}
+              type="search"
+              value={query}
+              onChange={setQuery}
+              placeholder="Search projects"
+              aria-label="Search projects"
+              aria-keyshortcuts="Control+F"
+              trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search size={16} /></span>}
+            />}
+          >
+            {newProjectButton}
+            <CommandBarButton icon={<FolderOpen size={16} />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
+            <CommandBarSeparator />
+            <CommandBarButton icon={<Grid2X2 size={16} />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
+            <CommandBarButton icon={<List size={16} />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
+          </CommandBar>
+
+          <section className="library__section" aria-labelledby="all-projects-heading">
+            <h2 id="all-projects-heading" className="library__subtitle">
+              {query.trim() ? "Results" : "All projects"} <span className="library__count">{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
+            </h2>
             {loading ? (
-              <div className="project-grid">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
+              <div className={`project-grid project-grid--${projectLayout}`} aria-busy="true">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
             ) : filteredProjects.length ? (
-              <div className={`project-grid project-grid--${projectLayout}`}>{filteredProjects.map((project, index) => <ProjectCard key={`${project.config.id}-${project.folderPath}`} project={project} index={index} onOpen={(selected) => { setActiveProjectInitialView("timeline"); setActiveProject(selected); }} onDelete={setProjectToDelete} />)}</div>
+              <div className={`project-grid project-grid--${projectLayout}`} role="listbox" aria-label="Projects" onKeyDown={onGridKeyDown}>
+                {filteredProjects.map((project, index) => {
+                  const key = projectQueueKey(project);
+                  const selected = key === selectedKey;
+                  return <ProjectCard
+                    key={`${project.config.id}-${project.folderPath}`}
+                    project={project}
+                    layout={projectLayout}
+                    selected={selected}
+                    tabIndex={selected || (selectedIndex < 0 && index === 0) ? 0 : -1}
+                    onSelect={(chosen) => setSelectedKey(projectQueueKey(chosen))}
+                    onOpen={(chosen) => openProject(chosen)}
+                    onDelete={(chosen) => void requestDelete(chosen)}
+                    onReveal={isTauri() ? revealProject : undefined}
+                  />;
+                })}
+              </div>
             ) : query ? (
               <div className="library-empty">
-                <FolderOpen size={28} />
-                <h3>Nothing matches “{query}”</h3>
-                <p>Search looks at project names, descriptions, and folder paths. Try a shorter word, or clear the search to see everything.</p>
-                <button className="secondary-button" onClick={() => setQuery("")}>Clear search</button>
+                <Search size={48} aria-hidden="true" />
+                <h3>No results for “{query}”</h3>
+                <p>Search looks at project names, descriptions and folders.</p>
+                <div className="library-empty__actions"><button type="button" className="secondary-button" onClick={() => setQuery("")}>Clear search</button></div>
               </div>
             ) : (
               <div className="library-empty">
-                <FolderOpen size={28} />
+                <FolderOpen size={48} aria-hidden="true" />
                 <h3>No projects yet</h3>
-                <p>Create a project, then tell the Agent what you want to make.</p>
-                <p className="library-empty__aside">Already made one on this computer?</p>
-                <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
+                <p>Create a project or open an existing project folder.</p>
+                <div className="library-empty__actions">
+                  {newProjectButton}
+                  <button type="button" className="secondary-button" disabled={busy} onClick={() => void openFromFolder()}><FolderOpen size={16} aria-hidden="true" /> Open project…</button>
+                </div>
               </div>
             )}
           </section>
-        </div>
-      </main>
-      {settingsLauncher}
-      {queueLauncher}
-      {queuePanel}
-      {newProjectOpen && <PromptComposer busy={busy} folderPath={newProjectFolder?.folderPath} folderError={newProjectFolder?.error} checkingFolder={checkingProjectFolder} onChooseFolder={chooseCreationFolder} error={newProjectError} onCreate={createFromPrompt} onClose={() => { setNewProjectOpen(false); setNewProjectFolder(null); setNewProjectError(null); }} />}
+        </main>
+        {newProjectOpen && <PromptComposer busy={busy} folderPath={newProjectFolder?.folderPath} folderError={newProjectFolder?.error} checkingFolder={checkingProjectFolder} onChooseFolder={chooseCreationFolder} error={newProjectError} onCreate={createFromPrompt} onClose={() => { setNewProjectOpen(false); setNewProjectFolder(null); setNewProjectError(null); }} />}
       </div>
-      {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
-      {updateNotice}
-      <UpdateProgress updater={updater} />
-      {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void confirmProjectDeletion()} onCancel={() => setProjectToDelete(null)} />}
+      {settingsPage}
+      {queueFlyout}
+      {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void deleteNow(projectToDelete)} onCancel={() => setProjectToDelete(null)} />}
       {iconConfirmation}
       {cudaNotice}
-      {exitGuard}
-      {error && <div className="toast" role="alert"><strong>{error.title}</strong><span>{error.detail}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
     </div>
   );
 }

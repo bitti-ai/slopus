@@ -1,252 +1,163 @@
 /* ============================================================================
-   workspace.css — the full project editor frame: topbar, view nav, content
-   region, and the Slop agent dock that sits along the bottom.
+   workspace.css — the project window (ProjectWorkspace.tsx): the title bar's
+   project half, the InfoBars under it, the active view, and the agent docked
+   on the right behind a Splitter.
+
+   The 56px topbar that sat under the OS caption is gone: the window is
+   frameless and the title bar IS the header (i-frame-1). The segmented pill
+   of view buttons is a SelectorBar of tabs in it (i-frame-6), and the agent
+   is a pane rather than a bottom row that had to leave 256px free for the
+   floating corner buttons.
+
+   --bg is transparent under Mica, so every surface below the title bar that
+   needs a plate paints --layer.
    ========================================================================== */
 
-/* --content-max is a MEASURE cap, not a floor. It used to sit here as
-   `min-width`, which forced the whole shell to 1180px while the window can be
-   as narrow as 900px (tauri.conf.json `minWidth`) — everything between those
-   two numbers scrolled sideways. The shell now takes whatever width it is
-   given; the single column is minmax(0, 1fr) so no row can widen it, and the
-   rows below fold down to 900px on their own. */
 .project-shell {
-  height: 100vh;
-  min-width: 0;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--topbar-height) minmax(0, 1fr) auto;
-  color: var(--text-secondary);
-  background: var(--bg);
-}
-
-/* --- Topbar ---------------------------------------------------------------- */
-
-/* Three columns, not a flex row: the tabs are centred on the WINDOW rather
-   than on whatever space the project name and the actions happen to leave, so
-   they do not drift sideways as the name gets longer. The outer two columns
-   are equal and elastic; the name inside the left one truncates. */
-.project-topbar {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--line-solid);
-  background: var(--panel);
-}
-
-.project-topbar__lead {
-  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-/* The title gives its width up first so the tabs and the actions never squash. */
-.project-title {
-  flex: 0 1 320px;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
-  padding-left: var(--space-1);
-}
-
-.project-title strong {
-  display: block;
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  color: var(--text-primary);
-  white-space: nowrap;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-secondary);
 }
 
-.project-title > button {
+/* --- Title bar -------------------------------------------------------------- */
+
+/* The project name is the caption text and a button: it opens Project
+   settings. Caption-sized, like any window title, with a subtle hover. */
+.project-title {
   display: block;
-  width: 100%;
+  max-width: 280px;
   min-width: 0;
-  min-height: var(--control-sm);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid transparent;
+  height: var(--control-md);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  text-align: left;
-}
-
-.project-title > button:hover,
-.project-title > button:focus-visible {
-  border-color: var(--line-strong);
-  background: var(--panel-2);
-}
-
-/* Never let the action buttons shrink — a squashed Save is worse than a
-   shortened project name. `margin-left: auto` still eats any spare width. */
-.project-topbar__actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-}
-
-.project-topbar__actions > button {
-  flex: 0 0 auto;
+  color: inherit;
+  font: inherit;
   white-space: nowrap;
-}
-
-.project-topbar__soon {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  color: var(--text-faint);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-}
-
-/* --- View navigation --------------------------------------------------------
-   The tabs used to own a 56px band under the topbar, alongside a read-out of
-   the project's aspect ratio, resolution and frame rate. Both are gone: the
-   tabs are a segmented control in the middle column of the topbar, and the
-   format numbers live in the project's settings and on the program monitor. */
-
-.project-nav {
-  justify-self: center;
-  min-width: 0;
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--wash-2);
-}
-
-.project-nav button {
-  position: relative;
-  min-height: var(--control-sm);
-  min-width: 128px;
-  padding: 0 var(--space-4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
-  background: transparent;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-snug);
-  white-space: nowrap;
+  text-overflow: ellipsis;
   transition: var(--transition-control);
 }
 
-.project-nav button > svg {
-  flex: 0 0 auto;
+.project-title:hover {
+  background: var(--fill-subtle-hover);
 }
 
-.project-nav button:hover {
-  color: var(--text-secondary);
-  background: var(--wash-2);
+.project-title:active {
+  background: var(--fill-subtle-pressed);
 }
 
-.project-nav button.active {
-  color: var(--text-primary);
-  background: var(--segment-active-bg);
-  font-weight: var(--weight-semibold);
-  box-shadow:
-    inset 0 0 0 1px var(--line-strong),
-    var(--segment-active-shadow);
+.project-titlebar .titlebar__identity {
+  gap: var(--space-2);
 }
 
-/* Running-generation count. */
-.project-nav button span {
-  flex: 0 0 auto;
-  min-width: 22px;
-  padding: 2px var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  color: var(--text-secondary);          /* 10.6:1 dark / 9.4:1 light on --panel-3 */
-  background: var(--panel-3);
-  font: var(--weight-medium) var(--text-2xs) / 1.4 var(--font-mono);
+.project-titlebar .titlebar__middle {
+  justify-content: center;
+  padding: 0 var(--space-3);
 }
 
-/* --- Content region -------------------------------------------------------- */
+/* The views. Tabs, not links: arrow keys move between them, Ctrl+1…4 jump.
+   The selected one is marked by the accent pill under it and nothing else —
+   no weight change, so the row never shifts when the selection moves. */
+.project-views {
+  min-width: 0;
+  overflow: hidden;
+}
 
-/* The chrome (topbar, nav, agent dock) stays put while the active view scrolls.
+.project-views__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.project-commands {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.project-commands > button {
+  flex: none;
+}
+
+/* --- InfoBars -------------------------------------------------------------------
+   Save and export failures, inline under the title bar at full width, where
+   the corner toasts used to be. */
+
+.project-infobars {
+  display: grid;
+  gap: var(--space-1);
+  flex: none;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+/* --- Body: the view and the agent pane --------------------------------------- */
+
+.project-body {
+  --pane-workspace-agent: 360px;       /* usePaneSize sets the real width inline */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--stroke-card);
+  background: var(--layer);
+}
+
+.project-body--agent {
+  grid-template-columns: minmax(0, 1fr) auto var(--pane-workspace-agent);
+}
+
+/* The chrome (title bar, agent pane) stays put while the active view scrolls.
    Without this the timeline clips on windows shorter than ~920px instead of
    giving the user a way to reach the rest of it. */
 .project-content {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* --- Responsive ------------------------------------------------------------ */
+.project-agent-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--layer);
+}
 
-/* The window minimum is 900px (tauri.conf.json), so the chrome has to reach
-   900px with nothing clipped and nothing scrolling sideways. Each step spends
-   the width it frees on the elements that carry the least information: the
-   project name column shortens first, then the row padding, and only at the
-   very bottom do the tabs tighten. */
+.project-agent-pane > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* --- Narrow windows ---------------------------------------------------------
+   The window minimum is 900px (tauri.conf.json). The project name gives up
+   width first, then the tab icons go, so the tabs, Save and the caption
+   buttons all stay reachable. */
 
 @media (max-width: 1180px) {
-  .project-topbar {
-    gap: var(--space-2);
-  }
-
   .project-title {
-    max-width: 240px;
-  }
-
-  .project-nav button {
-    min-width: 116px;
-    padding: 0 var(--space-3);
-  }
-
-  .agent-dock .agent-provider__trigger {
-    max-width: 168px;
+    max-width: 180px;
   }
 }
 
 @media (max-width: 1040px) {
-  .project-topbar {
-    padding-inline: var(--space-3);
-  }
-
   .project-title {
-    max-width: 176px;
+    max-width: 120px;
   }
 
-  .project-nav button {
-    min-width: 96px;
+  .project-views .ui-selector-bar__icon {
+    display: none;
   }
 
-  .project-agent-row {
-    padding-inline: var(--space-3);
+  .project-views .ui-selector-bar__item {
+    padding: 0 var(--space-2);
   }
-
-  /* The dock stops being an 880px island and takes what the row has left
-     after the settings launcher's reserve. */
-  .agent-dock-wrap {
-    width: calc(100% - 256px);
-  }
-
-}
-
-@media (max-width: 900px) {
-  .project-title {
-    max-width: 160px;
-  }
-
-  /* Tabs shed their labels before they shed their reachability: the icon and
-     the aria-current state carry the view at this width. */
-  .project-nav button {
-    min-width: var(--control-sm);
-    padding: 0 var(--space-3);
-  }
-
-  .agent-dock .agent-provider__trigger {
-    max-width: 128px;
-  }
-
 }

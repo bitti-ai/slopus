@@ -1,529 +1,161 @@
 /* ============================================================================
-   library.css — project library: topbar, hero, prompt composer, project grid.
+   library.css — the project library (App.tsx, ProjectCard.tsx) and the New
+   project / Project settings dialog (PromptComposer.tsx).
 
-   Rhythm notes for this surface:
-   - Card body height is deterministic: 16 (pad) + 40 (title row) + 4 + 16
-     (path) + 12 + 12 + 18 (meta) + 16 (pad) ≈ 134px. `.project-skeleton`
-     reproduces the same art ratio and the same body height so the grid does
-     not jump when loading finishes.
+   The library is a Windows page, not a website: it fills the window edge to
+   edge (24px 36px padding) under the title bar, with a 28px "Projects" title,
+   a command bar (New project in accent, Open…, the view toggle, the search
+   box at the trailing end) and an auto-fill grid of plain tiles. There is no
+   centred 1180px column, no frosted sticky header, and no generated cover
+   art: a tile shows the project's real first frame, or a neutral glyph.
+
+   Tile rhythm: thumbnail at 16:9 with 4px corners, then a 14px name and a
+   12px caption. `.project-skeleton` reproduces the same thumbnail ratio and
+   text height so the grid does not jump when loading finishes.
    ========================================================================== */
 
 .library {
-  min-width: 0;
-}
-
-/* The brand sits at the left of this row now that there is no rail to hold it.
-   The gap between it and the controls is where the row's spare width goes. */
-.library__topbar {
-  height: var(--topbar-height);
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-6);
-  border-bottom: 1px solid var(--line);
-  background: var(--topbar-glass);
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5) 36px var(--space-6);
+  border-top: 1px solid var(--stroke-card);
+  background: var(--layer);
 }
 
-.library__topbar .search-field {
+/* Fluent Title: 28/36 semibold in the Display cut. */
+.library__title {
+  margin: 0 0 var(--space-4);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: 36px;
+}
+
+.library__infobars {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.library__commands {
+  margin: 0 calc(-1 * var(--space-1)) var(--space-4);
+}
+
+.library__commands .ui-command-bar__primary {
+  gap: var(--space-1);
+}
+
+.library__commands .ui-command-bar__end {
+  flex: 0 1 280px;
   margin-left: auto;
 }
 
-/* With the rail gone this is the app's only identity mark, so it is sized to
-   read as one rather than as a leftover sidebar badge. */
-.library__topbar .brand {
-  height: auto;
-}
-
-.library__content {
-  width: min(var(--content-max), calc(100% - var(--space-9)));
-  margin: 0 auto;
-  /* Bottom padding clears the fixed settings launcher. */
-  padding: var(--space-5) 0 var(--space-9);
-}
-
-/* --- Prompt composer ------------------------------------------------------- */
-
-.composer-overlay {
-  position: fixed;
-  z-index: 60;
-  inset: 0;
-  overflow-y: auto;
-  display: grid;
-  align-content: center;
-  padding: var(--space-7) var(--space-5);
-  background: var(--scrim);
-}
-
-.composer-shell {
-  width: min(880px, 100%);
-  max-height: calc(100dvh - var(--space-7) * 2);
-  margin: 0 auto;
-  position: relative;
-  overflow-x: hidden;
-  overflow-y: auto;
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-  background: var(--composer-bg);
-  box-shadow: var(--shadow);
-}
-
-.composer-heading {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  cursor: default;
-}
-
-.composer-heading > div {
-  min-width: 0;
-}
-
-.composer-heading h2 {
-  margin: var(--space-3) 0 var(--space-5);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-tight);
-}
-
-.composer {
-  position: relative;
-  border: 1px solid var(--stroke-control);
-  border-bottom-color: var(--stroke-strong);
-  border-radius: var(--radius-lg);
-  background: var(--field-bg);
-}
-
-/* A composite text field: the TextBox underline, not a halo (tokens rule 12). */
-.composer:focus-within {
-  border-bottom-color: var(--field-focus-line);
-  box-shadow: inset 0 -1px 0 var(--field-focus-line);
-}
-
-/* Creation only names the project; creative direction starts on the Agent
-   page. Keep this field visually equal to the settings beneath it. */
-.composer__folder-row { display: flex; align-items: end; gap: var(--space-3); padding: var(--space-5) var(--space-5) 0; }
-.composer__folder-row label { display: grid; flex: 1; min-width: 0; gap: var(--space-2); }
-.composer__folder-row label > span { color: var(--text-muted); font-size: var(--text-xs); }
-.composer__folder-row button { flex-shrink: 0; }
-.composer__error { flex: 1; min-width: 180px; margin: 0; color: var(--danger); font-size: var(--text-sm); }
-.composer__name-row {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-5);
-}
-
-.composer__name-row > span {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.composer__name-row input, .composer__folder-row input {
+.library__search {
   width: 100%;
-  height: var(--field-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: var(--panel-2);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
 }
 
-.composer__project-type {
+.library__section {
   min-width: 0;
-  margin: var(--space-5) var(--space-5) 0;
-  padding: 0;
-  border: 0;
 }
 
-.composer__project-type legend {
-  padding: 0;
-  margin-bottom: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.composer__type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.composer__type-option { position: relative; min-width: 0; }
-.composer__type-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; clip-path: inset(50%); overflow: hidden; }
-
-.composer__type-card {
+/* "All projects" with its count in secondary text. */
+.library__subtitle {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  height: 100%;
-  padding: var(--space-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  transition: var(--transition-control);
-}
-
-.composer__type-icon { display: grid; place-items: center; flex-shrink: 0; width: var(--control-lg); height: var(--control-lg); border-radius: var(--radius-md); background: var(--wash-2); color: var(--text-secondary); }
-.composer__type-copy { display: grid; gap: var(--space-1); min-width: 0; }
-.composer__type-copy strong { color: var(--text-primary); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
-.composer__type-copy > span { color: var(--text-muted); font-size: var(--text-xs); line-height: var(--leading-normal); }
-.composer__type-indicator { display: grid; place-items: center; flex-shrink: 0; width: var(--space-4); height: var(--space-4); margin-left: auto; border: 1px solid var(--line-strong); border-radius: 50%; }
-.composer__type-indicator::after { content: ""; width: var(--space-2); height: var(--space-2); border-radius: 50%; background: var(--accent); opacity: 0; }
-.composer__type-input:checked + .composer__type-card { border-color: var(--accent); background: var(--accent-soft); }
-.composer__type-input:checked + .composer__type-card .composer__type-icon { color: var(--accent-on-soft); background: var(--accent-soft-strong); }
-.composer__type-input:checked + .composer__type-card .composer__type-indicator { border-color: var(--accent); }
-.composer__type-input:checked + .composer__type-card .composer__type-indicator::after { opacity: 1; }
-.composer__type-input:not(:disabled) + .composer__type-card:hover { border-color: var(--accent-line-strong); }
-.composer__type-input:focus-visible + .composer__type-card { outline: var(--focus-ring-width) solid var(--focus-outer); outline-offset: 1px; box-shadow: 0 0 0 1px var(--focus-inner); }
-.composer__type-input:disabled + .composer__type-card { opacity: 0.5; }
-
-@media (max-width: 600px) {
-  .composer__project-type { margin-inline: var(--space-4); }
-  .composer__type-options { grid-template-columns: 1fr; }
-}
-
-.composer__references {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-2);
-  padding: 0 var(--space-5) var(--space-4);
-}
-
-.composer__references > small {
-  color: var(--danger);
-  font-size: var(--text-xs);
+  margin: 0 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
   line-height: var(--leading-normal);
 }
 
-.composer__reference {
-  max-width: 280px;
-  min-height: var(--control-md);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-1) 0 var(--space-3);
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-sm);
-  color: var(--accent-bright);
-  background: var(--accent-soft);
-}
-
-.composer__reference b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.library__count {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-regular);
 }
 
-.composer__reference button {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  color: var(--text-muted);
-  background: transparent;
-}
-
-.composer__reference button:hover {
-  color: var(--text-primary);
-  background: var(--wash-3);
-}
-
-/* --- Optional settings (collapsed by default — the defaults are good) ------- */
-
-.composer__options {
-  border-top: 1px solid var(--line);
-}
-
-.composer__options-head {
-  min-height: var(--control-md);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-5);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.composer__options-title {
-  font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
-}
-
-.composer__options-body {
-  padding: var(--space-2) var(--space-5) var(--space-5);
-}
-
-.composer__options-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4);
-}
-
-.composer__options-grid label {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.composer__options-grid label > span {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--leading-snug);
-}
-
-.composer__options-grid select,
-.composer__options-grid input {
-  width: 100%;
-  height: var(--field-height);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  background: var(--panel-2);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-}
-
-.composer__options-grid select:hover,
-.composer__options-grid input:hover {
-  border-color: var(--accent-line-strong);
-}
-
-.composer__options-grid small {
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-}
-
-/* --- Composer action bar --------------------------------------------------- */
-
-.composer__actions {
-  border-top: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
-}
-
-.composer__attach {
-  min-height: var(--control-md);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: transparent;
-  font-size: var(--text-sm);
-}
-
-.composer__attach:hover:not(:disabled) {
-  color: var(--text-primary);
-  border-color: var(--accent-line-strong);
-  background: var(--accent-soft);
-}
-
-.composer__attach:disabled {
-  color: var(--text-faint);
-  border-color: var(--line);
-}
-
-.composer__attach b {
-  min-width: var(--space-5);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-pill);
-  color: var(--on-accent);
-  background: var(--accent-dark);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-  text-align: center;
-}
-
-/* Inherits the accent button from controls.css; only the fit is local. The
-   auto margin was the hint's job before the hint moved onto this button. */
-.composer__submit {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-size: var(--text-base);
-}
-
-/* --- Idea chips ------------------------------------------------------------ */
-
-.idea-row {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-5);
-}
-
-.idea-row__label {
-  margin-right: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-/* Offered only after a chip overwrote words the user typed. It is the recovery
-   path a controlled textarea takes away from Ctrl+Z, so it reads as an action
-   rather than another example. */
-.idea-row__undo {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin-left: auto;
-  border-color: var(--accent) !important;
-  color: var(--text-primary) !important;
-}
-
-.idea-row button {
-  min-height: var(--control-sm);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text-secondary);
-  background: var(--wash-1);
-  font-size: var(--text-sm);
-  transition: var(--transition-control);
-}
-
-.idea-row button:hover {
-  color: var(--text-primary);
-  border-color: var(--accent-line-strong);
-  background: var(--accent-soft);
-}
-
-/* --- Section heading + view controls --------------------------------------- */
-
-.recent-projects {
-  margin-top: 0;
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-.section-heading > div:first-child {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.section-heading h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.section-heading span {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.view-controls {
-  display: flex;
-  gap: var(--space-2);
-}
-
-/* --- Project grid ---------------------------------------------------------- */
+/* --- Grid ------------------------------------------------------------------ */
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3);
+  outline: none;
 }
 
 .project-grid--list {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
 }
 
-.project-grid--list .project-card {
-  display: grid;
-  grid-template-columns: minmax(240px, 26%) 1fr;
-}
-
-.project-grid--list .project-card__art,
-.project-grid--list .project-card__art-button {
-  height: 100%;
-}
-
-.project-grid--list .project-card__art {
-  aspect-ratio: auto;
-  min-height: 160px;
-}
-
-.project-grid--list .project-card__body {
-  align-self: center;
-  padding: var(--space-5);
-}
+/* --- Tile -------------------------------------------------------------------
+   A GridView item: the card fill and 1px stroke, 8px corners, the fill
+   changing on hover and press and nothing else — no lift, no glow, no accent
+   border. Selection is an inset accent edge, as in File Explorer's grid. */
 
 .project-card {
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  overflow: hidden;
-  transition: var(--transition-control);
-}
-
-/* A Fluent card has a stroke and no shadow; under the mouse only its fill
-   changes (tokens.css rule 8). */
-.project-card:hover {
-  background: var(--panel-2);
-}
-
-.project-card:focus-within {
-  border-color: var(--accent-line);
-}
-
-.project-card__art-button {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: none;
-}
-
-/* The card clips its children, so the default outset ring on this button would
-   be cut off on three sides. Draw the same ring just inside the artwork. */
-.project-card__art-button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-outer);
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 3px var(--focus-inner);
-}
-
-.project-card__art {
   position: relative;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--transition-control);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.project-card:hover {
+  background: var(--card-hover);
+}
+
+.project-card:active {
+  background: var(--card-pressed);
+}
+
+.project-card--selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.project-card:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-outer);
+  outline-offset: 1px;
+}
+
+.project-card__thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  aspect-ratio: 16 / 8.8;
+  border-radius: var(--radius-sm);
+  background-color: var(--panel-3);
   background-size: cover;
   background-position: center;
+  color: var(--text-secondary);
 }
 
-/* The first visual clip supplies the cover. Placeholders stay transparent so
-   the built-in artwork remains a useful fallback in browser preview or when a
-   source file cannot be read. */
-.project-card__art > .media-thumb {
+.project-card__glyph {
+  opacity: 0.8;
+}
+
+/* The first visual clip supplies the picture. A file that cannot be read
+   leaves MediaThumbnail's placeholder, which stays hidden so the glyph under
+   it shows instead. */
+.project-card__thumb > .media-thumb {
   position: absolute;
-  z-index: 1;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -531,561 +163,225 @@
   border-radius: 0;
 }
 
-.project-card__art > .media-thumb:not(.media-thumb--poster) {
+.project-card__thumb > .media-thumb:not(.media-thumb--poster) {
   display: none;
 }
 
-.project-card__art > .media-thumb img {
+.project-card__thumb > .media-thumb img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
 }
 
-.project-card__art::before,
-.project-card__art::after {
-  content: "";
+/* The frame shape, as a small solid chip in the corner: a palette plate, not
+   ink laid over the picture. */
+.project-card__chip {
   position: absolute;
-}
-
-/* Generated cover artwork — decorative, sizes intentionally unchanged.
-
-   THEME-INDEPENDENT ON PURPOSE. Everything from here to .project-card__body is
-   a picture, not a surface: four generated cover illustrations and the badges
-   and caption that sit ON TOP of one. A cover does not become a
-   light-theme cover any more than a photograph does, and running these through
-   --text-* would put one theme's ink on a picture that is the same in both.
-
-   The chrome over the picture is white, but NOT because the picture is dark.
-   TWO OF THE FOUR ARE PALE — --paper is #cabca3 flat, and --chrome runs up to
-   #dce7e7 in its highlight — so "white on a dark cover" was never true, and the
-   caption measured 1.64:1 at its worst pixel over --paper (1.75:1 median,
-   Chrome, identical in both themes) with a text-shadow as its only defence.
-
-   What is true, and what every rule below relies on instead: each piece of
-   chrome carries its OWN dark plate and is legible against that plate alone,
-   whatever the picture under it turns out to be. The bound that means anything
-   is the one taken over PURE WHITE, because that is the only backdrop no cover
-   can be paler than — the four that exist today, one added later, or a real
-   thumbnail set through ProjectCard's inline background-image, which this file
-   cannot see. theme.test.ts recomputes all three from the literals below.
-
-   The badges did NOT always carry that. The sentence here used to say they did,
-   and the numbers say otherwise: over a white thumbnail the badges measured
-   3.78:1 because a plate at 0.55 composites to mid-grey over white and
-   `backdrop-filter` blurs without darkening. Its alpha was raised to 0.70,
-   which makes the paragraph above true rather than aspirational. */
-.project-card__art--aurora {
-  background: linear-gradient(155deg, #101c38, #172d55 45%, #6e6d4d);
-}
-
-.project-card__art--aurora::before {
-  width: 120%;
-  height: 55%;
-  left: -10%;
-  bottom: -20%;
-  background: linear-gradient(160deg, transparent 15%, #8bb3d5 16%, #283a58 32%, #090e17 33%);
-  transform: skewY(-7deg);
-}
-
-.project-card__art--aurora::after {
-  width: 48%;
-  height: 140%;
-  left: 27%;
-  top: -25%;
-  background: radial-gradient(ellipse, rgba(112, 183, 230, 0.55), transparent 58%);
-  filter: blur(13px);
-}
-
-.project-card__art--paper {
-  background: #cabca3;
-}
-
-.project-card__art--paper::before {
-  width: 110px;
-  height: 150px;
-  left: 45%;
-  top: -25px;
-  border-radius: 50%;
-  transform: rotate(35deg);
-  background: linear-gradient(90deg, #613a26, #e6bd83 42%, #2b4d46 44%, #142724 70%);
-  box-shadow: -45px 60px 0 rgba(48, 29, 22, 0.62);
-}
-
-.project-card__art--paper::after {
-  inset: 0;
-  background:
-    linear-gradient(110deg, rgba(255, 255, 255, 0.2), transparent 45%),
-    repeating-linear-gradient(0deg, rgba(62, 47, 29, 0.05) 0 1px, transparent 1px 5px);
-}
-
-.project-card__art--chrome {
-  background:
-    radial-gradient(
-      circle at 58% 52%,
-      #cfe5f4 0 4%, #385370 5% 10%, #dce7e7 11% 18%, #273d5d 20% 28%, transparent 29%
-    ),
-    linear-gradient(135deg, #10131a, #29405f 52%, #846a51);
-}
-
-.project-card__art--chrome::before {
-  width: 100px;
-  height: 100px;
-  left: 18%;
-  top: 18%;
-  border: 12px solid rgba(205, 225, 237, 0.66);
-  border-radius: 50%;
-  filter: blur(1px);
-  transform: rotateX(60deg);
-}
-
-.project-card__art--chrome::after {
-  width: 140%;
-  height: 1px;
-  left: -20%;
-  bottom: 25%;
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 8px rgba(255, 255, 255, 0.1);
-}
-
-.project-card__art--ember {
-  background:
-    radial-gradient(circle at 65% 38%, #ef9f67 0 2%, transparent 3%),
-    linear-gradient(140deg, #101218, #4b1b2d 60%, #d36b42);
-}
-
-.project-card__format,
-.project-card__quality {
-  position: absolute;
-  z-index: 2;
-  top: var(--space-3);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(4, 6, 10, 0.7);
+  z-index: 1;
+  left: var(--space-1);
+  bottom: var(--space-1);
+  padding: 0 var(--space-1);
   border-radius: var(--radius-xs);
-  padding: var(--space-1) var(--space-2);
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-}
-
-.project-card__format {
-  left: var(--space-3);
-  display: flex;
-  gap: var(--space-1);
-  align-items: center;
-}
-
-.project-card__quality {
-  right: var(--space-3);
-}
-
-/* The user's own project brief, over artwork this file cannot predict. A strip
-   rather than a fade, because a fade's alpha under the glyphs depends on where
-   the line happens to land and no test could bound it: here every pixel behind
-   the text is the same colour, so "white ink at 14.59:1 over the worst possible
-   backdrop" is a fact about two numbers, not about the four covers that exist
-   today. */
-.project-card__art-copy {
-  position: absolute;
-  z-index: 2;
-  inset: auto 0 0;
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  color: #fff;
-  background: rgba(4, 6, 10, 0.86);
+  background: var(--layer);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: var(--leading-snug);
-  text-align: left;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Feathers the top edge of that strip into the picture instead of cutting it
-   with a hard line. Decoration only: no glyph sits on it, so nothing here has
-   to hold a contrast ratio. */
-.project-card__art-copy::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  height: var(--space-5);
-  background: linear-gradient(to top, rgba(4, 6, 10, 0.86), rgba(4, 6, 10, 0));
-  pointer-events: none;
-}
-
-.project-card__art-copy svg {
-  flex: 0 0 auto;
-}
-
-.project-card__art-copy span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-card__body {
-  min-width: 0;                        /* lets the title/path ellipsize in list layout */
-  padding: var(--space-4);
-}
-
-.project-card__title-row {
-  position: relative;
-  min-height: var(--icon-button);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* The name leads; the folder path underneath is deliberately quieter. */
-.project-card__title-row h3 {
+.project-card__text {
+  display: grid;
+  gap: 0;
   min-width: 0;
-  flex: 1;
-  margin: 0;
-  white-space: nowrap;
+  padding: 0 var(--space-6) 0 var(--space-1);
+}
+
+.project-card__name,
+.project-card__path,
+.project-card__meta {
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--text-primary);
+}
+
+.project-card__name {
   font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.project-card__menu {
-  position: absolute;
-  z-index: 5;
-  top: var(--icon-button);
-  right: 0;
-  min-width: 200px;
-  padding: var(--space-1);
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-lg);
-  background: var(--acrylic);
-  backdrop-filter: var(--acrylic-filter);
-  box-shadow: var(--shadow-sm);
-}
-
-.project-card__menu button {
-  width: 100%;
-  min-height: var(--control-sm);
-  padding: 0 var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: transparent;
-  font-size: var(--text-sm);
-  text-align: left;
-}
-
-.project-card__menu button:hover {
-  color: var(--text-primary);
-  background: var(--wash-3);
-}
-
-.project-card__menu .project-card__menu-delete {
-  color: var(--danger);
-}
-
-.project-card__menu .project-card__menu-delete:hover {
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-/* --- Permanent project deletion ------------------------------------------ */
-
-.delete-project-backdrop {
-  position: fixed;
-  z-index: 200;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: var(--space-5);
-}
-
-.delete-project-backdrop::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--scrim);
-}
-
-.delete-project-dialog {
-  position: relative;
-  width: min(520px, 100%);
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-6);
-  border: 1px solid var(--stroke-surface);
-  border-radius: var(--radius-xl);
-  background: var(--dialog-bg);
-  box-shadow: var(--shadow);
-}
-
-.delete-project-dialog__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.delete-project-dialog__head > span {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-md);
-  color: var(--danger);
-  background: var(--panel-3);
-}
-
-.delete-project-dialog h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  line-height: var(--leading-snug);
-}
-
-.delete-project-dialog__body {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-3);
-}
-
-.delete-project-dialog__body p {
-  margin: 0;
-  color: var(--text-secondary);
   line-height: var(--leading-normal);
 }
 
-.delete-project-dialog__body code {
-  overflow: hidden;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
-  background: var(--panel-3);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.delete-project-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-
-.delete-project-dialog__confirm {
-  min-height: var(--control-md);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--danger-line-strong);
-  border-radius: var(--radius-md);
-  color: var(--danger);
-  background: var(--danger-soft);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-}
-
-.delete-project-dialog__confirm:hover:not(:disabled) {
-  background: var(--danger-soft-strong);
-}
-
-.delete-project-dialog__confirm:disabled {
-  opacity: 0.6;
-}
-
-.delete-project-dialog .spin {
-  animation: spin 1.4s linear infinite;
-}
-
-@media (max-width: 560px) {
-  .delete-project-dialog__actions {
-    flex-direction: column-reverse;
-  }
-
-  .delete-project-dialog__actions > * {
-    width: 100%;
-  }
-}
-
-.project-card__path {
-  min-width: 0;
-  margin: var(--space-1) 0 var(--space-3);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-faint);
-  font: var(--weight-regular) var(--text-2xs) / var(--leading-snug) var(--font-mono);
-}
-
-.project-card__path svg {
-  flex: 0 0 auto;
-}
-
-/* text-overflow does nothing on the flex container itself, so the path has to
-   truncate on its own flex item — same pattern as the card title above. */
-.project-card__path span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
+.project-card__path,
 .project-card__meta {
-  border-top: 1px solid var(--line);
-  padding-top: var(--space-3);
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: var(--leading-snug);
+  line-height: 16px;
 }
 
-.project-card__meta span {
-  display: flex;
+/* ⋯ sits over the text row's trailing end; it is not a tab stop (Shift+F10
+   or the Menu key opens the same menu from the keyboard). */
+.project-card__more {
+  position: absolute;
+  right: var(--space-1);
+  bottom: var(--space-2);
+  opacity: 0;
+  transition: opacity var(--motion-fast) linear, background-color var(--motion-fast) linear;
+}
+
+.project-card:hover .project-card__more,
+.project-card--selected .project-card__more,
+.project-card:focus-within .project-card__more {
+  opacity: 1;
+}
+
+/* List layout: a row — small thumbnail, name over path over caption. */
+.project-card--list {
+  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-rows: auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
 }
 
-/* --- Skeleton + empty state ------------------------------------------------ */
+.project-card--list .project-card__glyph {
+  width: 20px;
+  height: 20px;
+}
 
-/* Mirrors the real card: 16:8.8 art + a ~134px body. */
+.project-card--list .project-card__chip {
+  display: none;
+}
+
+.project-card--list .project-card__more {
+  top: 50%;
+  bottom: auto;
+  margin-top: calc(-1 * var(--icon-button) / 2);
+}
+
+/* --- Loading ------------------------------------------------------------------ */
+
 .project-skeleton {
-  overflow: hidden;
-  border: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-lg);
-  background: var(--panel);
+  background: var(--card);
 }
 
 .project-skeleton i {
   display: block;
-  aspect-ratio: 16 / 8.8;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-sm);
   background: var(--panel-3);
 }
 
 .project-skeleton span,
 .project-skeleton small {
   display: block;
-  margin: var(--space-4) var(--space-4) 0;
+  height: 12px;
+  margin-left: var(--space-1);
   border-radius: var(--radius-xs);
   background: var(--panel-3);
 }
 
 .project-skeleton span {
-  height: var(--space-5);
+  width: 60%;
+  margin-top: 4px;
 }
 
 .project-skeleton small {
-  width: 55%;
-  height: var(--space-4);
-  margin-top: var(--space-3);
-  margin-bottom: var(--space-9);
+  width: 40%;
+  margin-bottom: 2px;
 }
+
+.project-grid--list .project-skeleton {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+/* --- Empty ---------------------------------------------------------------------
+   No box, no dashed border (that reads as a file drop zone): a 48px glyph, a
+   20px line, one sentence and the two ways forward side by side. */
 
 .library-empty {
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-lg);
+  display: grid;
+  justify-items: center;
+  gap: 0;
   padding: var(--space-8) var(--space-5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  color: var(--text-secondary);
   text-align: center;
-  color: var(--text-muted);
-}
-
-.library-empty > svg {
-  color: var(--text-faint);
 }
 
 .library-empty h3 {
+  margin: var(--space-4) 0 var(--space-1);
   color: var(--text-primary);
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-  margin: var(--space-4) 0 var(--space-2);
+  line-height: 28px;
 }
 
 .library-empty p {
-  max-width: 52ch;
+  margin: 0;
+  max-width: 48ch;
   font-size: var(--text-base);
   line-height: var(--leading-normal);
-  margin: 0 0 var(--space-5);
 }
 
-.library-empty p strong {
+.library-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* --- New project / Project settings (a ContentDialog) --------------------------- */
+
+.composer__form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.composer__field {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.composer__field > label {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.composer__field .text-field,
+.composer__field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.composer__folder-row {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.composer__folder-row .text-field {
+  flex: 1 1 auto;
   color: var(--text-secondary);
-  font-weight: var(--weight-semibold);
 }
 
-.library-empty__aside {
-  color: var(--text-faint);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-3);
+.composer__folder-row button {
+  flex: none;
 }
 
-/* --- Responsive ------------------------------------------------------------ */
-
-@media (max-width: 900px) {
-  .library__content {
-    width: calc(100% - var(--space-6));
-  }
-
-  .project-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .composer__options-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.composer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
 }
 
-@media (max-width: 650px) {
-  .library__topbar {
-    padding: 0 var(--space-4);
-  }
-
-  .library__content {
-    padding-top: var(--space-6);
-  }
-
-  .project-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .project-grid--list .project-card {
-    grid-template-columns: 1fr;
-  }
-
-  .composer-shell {
-    padding: var(--space-5) var(--space-4);
-  }
-
-  .composer__name-row,
-  .composer__references,
-  .composer__options > summary,
-  .composer__options-body {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
-  }
-
-  .composer__options-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .composer__actions {
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .composer__submit {
-    flex: 1 1 auto;
-  }
+/* A path quoted in a dialog: body text, not a code block, and free to wrap. */
+.dialog-path {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }

@@ -11,12 +11,15 @@ interface UpdaterState {
   downloaded: number;
   total: number | undefined;
   error: string | null;
+  /** When the last check finished (ms since the epoch), successful or not. */
+  lastChecked: number | null;
 }
 type UpdateHandle = Pick<Update, "version" | "body" | "download" | "install" | "close">;
 interface UpdaterDependencies {
   enabled: () => Promise<boolean>;
   check: () => Promise<UpdateHandle | null>;
   relaunch: () => Promise<void>;
+  now?: () => number;
 }
 const native: UpdaterDependencies = {
   enabled: async () => isTauri() && await invoke<boolean>("app_updater_enabled"),
@@ -27,12 +30,13 @@ const describe = (reason: unknown) => reason instanceof Error ? reason.message :
 
 /** App-owned state survives Settings closing and React StrictMode effects. */
 export class AppUpdater {
-  private state: UpdaterState = { stage: "disabled", version: null, notes: "", downloaded: 0, total: undefined, error: null };
+  private state: UpdaterState = { stage: "disabled", version: null, notes: "", downloaded: 0, total: undefined, error: null, lastChecked: null };
   private listeners = new Set<() => void>();
   private update: UpdateHandle | null = null;
   private started = false;
   private busy = false;
   constructor(private dependencies: UpdaterDependencies = native) {}
+  private now = () => (this.dependencies.now ?? Date.now)();
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<UpdaterState>) {
@@ -59,9 +63,9 @@ export class AppUpdater {
       this.update = null;
       this.publish({ version: null, notes: "" });
       this.update = await this.dependencies.check();
-      this.publish({ stage: this.update ? "available" : "current", version: this.update?.version ?? null, notes: this.update?.body ?? "" });
+      this.publish({ stage: this.update ? "available" : "current", version: this.update?.version ?? null, notes: this.update?.body ?? "", lastChecked: this.now() });
     } catch (reason) {
-      this.publish({ stage: this.update ? "available" : "idle", error: `Could not check for updates. ${describe(reason)}` });
+      this.publish({ stage: this.update ? "available" : "idle", error: `Couldn’t check for updates. ${describe(reason)}`, lastChecked: this.now() });
     } finally { this.busy = false; }
   };
   install = async (blockReason: () => string | null) => {

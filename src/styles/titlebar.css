@@ -151,3 +151,38 @@
   background: #c93f33;
   color: #ffffff;
 }
+
+/* --- What screens put in the bar -------------------------------------------
+   App-wide commands (Settings, Work queue) and a project's own (Undo, Redo,
+   Save, the agent pane) are 32px subtle buttons in the actions slot. A
+   count rides on the top-right corner of its button as an InfoBadge; an
+   update waiting shows as the badge's dot on the gear. */
+
+.titlebar-command {
+  position: relative;
+}
+
+.titlebar-command__badge {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  pointer-events: none;
+}
+
+.titlebar-command__badge--dot {
+  top: 5px;
+  right: 5px;
+}
+
+/* A toggle button that is on (the agent pane shown). */
+.icon-button--checked {
+  background: var(--fill-subtle-hover);
+}
+
+.titlebar-separator {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  background: var(--stroke-card);
+}

@@ -1,91 +1,38 @@
 /* ============================================================================
-   shell.css — application frame: grid shell, brand mark, settings surface.
+   shell.css — the application frame: one screen at a time, each a column of
+   title bar + content that fills the window.
+
+   There is no floating chrome any more. The settings launcher that sat fixed
+   in the bottom-left corner, the work-queue pill in the bottom-right and the
+   update notice that overlapped it are all title-bar buttons now (App.tsx,
+   titlebar.css), so nothing on any screen has to reserve room to dodge them.
+
+   Under Mica (window.css) --bg is transparent: the frame itself paints
+   nothing, and the surfaces that need a plate — the library page, a
+   project's panes — use --layer / --panel.
    ========================================================================== */
 
 .app-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  min-height: 100vh;
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
 }
 
-/* --- Brand ----------------------------------------------------------------- */
-
-.brand {
-  height: var(--control-lg);
+/* A top-level screen: its title bar, then whatever fills the rest. The
+   screen behind Settings keeps its state by being [hidden], not unmounted. */
+.app-screen {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
-/* Icon-only lockup for narrow rails, centred with no edition tag. */
-.brand--compact {
-  gap: 0;
-  padding: 0;
-  justify-content: center;
+.app-screen__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
 }
-
-.brand__edition {
-  font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-  color: var(--text-faint);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-xs);
-  padding: var(--space-1) var(--space-2);
-}
-
-.brand__wordmark {
-  color: var(--text-primary);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-  line-height: 1;
-}
-
-/* --- Application icon ----------------------------------------------------- */
-
-.slopus-logo {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  display: block;
-  object-fit: contain;
-}
-
-.slopus-logo--compact {
-  width: 30px;
-  height: 30px;
-}
-
-/* --- Settings launcher ------------------------------------------------------
-   Fixed bottom-left in every view, project editor included: the engine paths
-   behind it are what makes generation work at all, and finding out they are
-   wrong happens inside a project. It sits above the agent dock, which is why
-   the dock reserves room for it (see .agent-dock-wrap in workspace.css). */
-
-/* The gear alone — the word "Settings" told nobody anything the icon did not.
-   Round and a step larger than a normal icon button so it reads as its own
-   thing floating over the corner rather than as part of the row behind it. */
-.settings-launcher {
-  position: fixed;
-  z-index: 40;
-  left: var(--space-4);
-  bottom: var(--space-4);
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  color: var(--text-muted);
-  background: var(--glass);
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition-control);
-}
-
-.settings-launcher:hover {
-  color: var(--text-primary);
-  border-color: var(--accent-line-strong);
-  background: var(--glass-hover);
-}
-
