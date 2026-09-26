@@ -39,7 +39,7 @@ import { askNative, messageNative, revealInExplorer } from "../../lib/nativeShel
 import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
-import { ComboBox, InfoBar, ProgressBar, Slider, tooltipProps } from "../ui";
+import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
 /* The ladder a project can be created at, plus the project's own size when that
    is one of the names from before the ladder was rebuilt. Dropping the legacy
@@ -76,16 +76,18 @@ interface Destination {
 }
 
 /* A docked form, the way Clipchamp and Premiere's export page are laid out:
-   the picture on the left, a 340px settings column on the right separated by a
-   divider, and the actions at the bottom right. The run itself lives in
-   lib/exportJob.ts, so leaving this screen no longer cancels it. */
+   the picture on the stage at the left, a resizable settings pane on the right
+   that opens straight on its first section, and the actions at the pane's
+   foot. The run itself lives in lib/exportJob.ts, so leaving this screen no
+   longer cancels it. */
 export function ExportView({ config, folderPath, onClose }: {
   config: ProjectConfig;
   folderPath: string;
-  /** Leaves the Export screen (the footer's Cancel while nothing is running). */
+  /** Leaves the Export screen (the pane foot's Cancel while nothing is running). */
   onClose?: () => void;
 }) {
   const [settings, setSettings] = useState<ExportSettings>(() => defaultExportSettings(config));
+  const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const plan = useMemo(() => buildExportPlan(config, settings), [config, settings]);
   const bitrate = useMemo(
     () => bitrateFor(plan.width, plan.height, plan.frameRate, settings.quality),
@@ -328,7 +330,7 @@ export function ExportView({ config, folderPath, onClose }: {
   const empty = plan.frameCount === 0;
   const transportDisabled = empty;
 
-  return <div className="export-view">
+  return <div className="export-view" style={settingsPane.style}>
     <h1 className="sr-only">Export</h1>
     <div className="export-body">
       <section className="export-preview" aria-label="Video preview">
@@ -399,141 +401,145 @@ export function ExportView({ config, folderPath, onClose }: {
         {empty && <p className="export-stage__caption">Nothing on the timeline yet</p>}
       </section>
 
-      <section className="export-settings" aria-labelledby="export-settings-heading">
-        <h2 id="export-settings-heading" className="export-settings__heading">Settings</h2>
-        <div className="export-form">
-          <div className="export-row">
-            <span className="export-row__label" id="export-destination-label">Save to</span>
-            <div className="export-destination">
-              <span className="export-destination__path" {...tooltipProps(destination?.path)}>
-                {destination ? destination.path : support.desktop ? "Choose a file…" : "Available in the desktop app"}
-              </span>
-              <button
-                type="button"
-                className="secondary-button export-destination__browse"
-                disabled={runningHere || !support.desktop}
-                aria-describedby="export-destination-label"
-                onClick={() => void browse()}
-              >Browse…</button>
-            </div>
-          </div>
+      <Splitter {...settingsPane.splitterProps} reverse aria-label="Resize export settings" aria-controls="export-settings" />
 
-          <div className="export-row">
-            <label className="export-row__label" htmlFor="export-resolution">Resolution</label>
-            <ComboBox
-              id="export-resolution"
-              value={settings.resolution}
-              disabled={runningHere}
-              onChange={(value) => setSettings({ ...settings, resolution: value as Resolution })}
-              options={resolutionChoices(config.settings.resolution).map((resolution) => {
-                const size = outputDimensions(resolution, config.settings.aspectRatio);
-                return { value: resolution, label: `${size.width} × ${size.height}` };
-              })}
-            />
-          </div>
+      {/* No title: the pane opens on its first section, like every inspector. */}
+      <section id="export-settings" className="export-settings" aria-label="Export settings">
+        <div className="export-settings__scroll">
+          <PropSection title="Output" persistKey="export.output">
+            <PropRow label={<span id="export-destination-label">Save to</span>}>
+              <div className="export-destination">
+                <span className="export-destination__path" {...tooltipProps(destination?.path)}>
+                  {destination ? destination.path : support.desktop ? "Choose a file…" : "Available in the desktop app"}
+                </span>
+                <button
+                  type="button"
+                  className="secondary-button export-destination__browse"
+                  disabled={runningHere || !support.desktop}
+                  aria-describedby="export-destination-label"
+                  onClick={() => void browse()}
+                >Browse…</button>
+              </div>
+            </PropRow>
 
-          <div className="export-row">
-            <label className="export-row__label" htmlFor="export-frame-rate">Frame rate</label>
-            <ComboBox
-              id="export-frame-rate"
-              value={String(settings.frameRate)}
-              disabled={runningHere}
-              onChange={(value) => setSettings({ ...settings, frameRate: Number(value) as FrameRate })}
-              options={FRAME_RATES.map((rate) => ({ value: String(rate), label: `${rate} fps` }))}
-            />
-          </div>
+            <PropRow label="Resolution" htmlFor="export-resolution">
+              <ComboBox
+                id="export-resolution"
+                value={settings.resolution}
+                disabled={runningHere}
+                onChange={(value) => setSettings({ ...settings, resolution: value as Resolution })}
+                options={resolutionChoices(config.settings.resolution).map((resolution) => {
+                  const size = outputDimensions(resolution, config.settings.aspectRatio);
+                  return { value: resolution, label: `${size.width} × ${size.height}` };
+                })}
+              />
+            </PropRow>
 
-          <div className="export-row">
-            <label className="export-row__label" htmlFor="export-codec">Format</label>
-            <ComboBox
-              id="export-codec"
-              value={settings.codec}
-              disabled={runningHere}
-              onChange={(value) => setSettings({ ...settings, codec: value as OutputCodecId })}
-              options={OUTPUT_CODECS.map((codec) => {
-                const probe = probes?.find((candidate) => candidate.id === codec.id);
-                const unsupported = probe ? !probe.supported : false;
-                return { value: codec.id, label: `MP4 · ${codec.label}${unsupported ? " (not supported here)" : ""}`, disabled: unsupported };
-              })}
-            />
-          </div>
+            <PropRow label="Frame rate" htmlFor="export-frame-rate">
+              <ComboBox
+                id="export-frame-rate"
+                value={String(settings.frameRate)}
+                disabled={runningHere}
+                onChange={(value) => setSettings({ ...settings, frameRate: Number(value) as FrameRate })}
+                options={FRAME_RATES.map((rate) => ({ value: String(rate), label: `${rate} fps` }))}
+              />
+            </PropRow>
 
-          <div className="export-row">
-            <label className="export-row__label" htmlFor="export-quality">Quality</label>
-            <ComboBox
-              id="export-quality"
-              value={settings.quality}
-              disabled={runningHere}
-              onChange={(value) => setSettings({ ...settings, quality: value as QualityId })}
-              options={QUALITY_PRESETS.map((preset) => ({
-                value: preset.id,
-                label: `${preset.label} · ${(bitrateFor(plan.width, plan.height, plan.frameRate, preset.id) / 1_000_000).toFixed(1)} Mbit/s`,
-              }))}
-            />
+            <PropRow label="Format" htmlFor="export-codec">
+              <ComboBox
+                id="export-codec"
+                value={settings.codec}
+                disabled={runningHere}
+                onChange={(value) => setSettings({ ...settings, codec: value as OutputCodecId })}
+                options={OUTPUT_CODECS.map((codec) => {
+                  const probe = probes?.find((candidate) => candidate.id === codec.id);
+                  const unsupported = probe ? !probe.supported : false;
+                  return { value: codec.id, label: `MP4 · ${codec.label}${unsupported ? " (not supported here)" : ""}`, disabled: unsupported };
+                })}
+              />
+            </PropRow>
+
+            <PropRow label="Quality" htmlFor="export-quality">
+              <ComboBox
+                id="export-quality"
+                value={settings.quality}
+                disabled={runningHere}
+                onChange={(value) => setSettings({ ...settings, quality: value as QualityId })}
+                options={QUALITY_PRESETS.map((preset) => ({
+                  value: preset.id,
+                  label: `${preset.label} · ${(bitrateFor(plan.width, plan.height, plan.frameRate, preset.id) / 1_000_000).toFixed(1)} Mbit/s`,
+                }))}
+              />
+            </PropRow>
+          </PropSection>
+
+          {/* Facts on the same --prop-label column as the rows above; a dl
+              rather than PropRows because nothing here is a field. */}
+          <PropSection title="Summary" persistKey="export.summary" summary={formatBytes(estimatedBytes(bitrate, plan.durationMs))}>
+            <dl className="export-summary">
+              {summary.map(([term, value, detail]) => <div key={term}>
+                <dt>{term}</dt>
+                <dd>{value}{detail && <small>{detail}</small>}</dd>
+              </div>)}
+            </dl>
+          </PropSection>
+
+          <div className="export-messages">
+            {destinationError && <InfoBar severity="error" title="Save location" message={destinationError} onClose={() => setDestinationError(null)} />}
+            {blockers.length > 0 && <InfoBar severity="error" title="Can’t export yet">
+              <ul className="export-reasons">{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+            </InfoBar>}
+            {outcome?.kind === "saved" && outcome.audioProblems.length > 0 && <InfoBar severity="warning" title="Left out of the soundtrack">
+              <ul className="export-reasons">{outcome.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
+            </InfoBar>}
+            {/* These clips ARE in the file. Part of each one is silence because
+                the sound behind it ran out. */}
+            {outcome?.kind === "saved" && outcome.audioShortfalls.length > 0 && <InfoBar severity="warning" title="Sound ran out before the clip ended">
+              <ul className="export-reasons">{outcome.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
+            </InfoBar>}
           </div>
         </div>
 
-        <h2 className="export-settings__heading">Summary</h2>
-        <dl className="export-summary">
-          {summary.map(([term, value, detail]) => <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}{detail && <small>{detail}</small>}</dd>
-          </div>)}
-        </dl>
-
-        <div className="export-messages">
-          {destinationError && <InfoBar severity="error" title="Save location" message={destinationError} onClose={() => setDestinationError(null)} />}
-          {blockers.length > 0 && <InfoBar severity="error" title="Can’t export yet">
-            <ul className="export-reasons">{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
-          </InfoBar>}
-          {outcome?.kind === "saved" && outcome.audioProblems.length > 0 && <InfoBar severity="warning" title="Left out of the soundtrack">
-            <ul className="export-reasons">{outcome.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
-          </InfoBar>}
-          {/* These clips ARE in the file. Part of each one is silence because
-              the sound behind it ran out. */}
-          {outcome?.kind === "saved" && outcome.audioShortfalls.length > 0 && <InfoBar severity="warning" title="Sound ran out before the clip ended">
-            <ul className="export-reasons">{outcome.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
-          </InfoBar>}
+        {/* The pane's foot, pinned under the scrolling sections: the run's
+            progress or outcome, then Cancel / Export. */}
+        <div className="export-settings__foot">
+          <div className="export-settings__status" aria-live="polite">
+            {progress && <div className="export-progress" role="status">
+              <span className="export-progress__line">{progressLine}</span>
+              <ProgressBar value={percent} aria-label="Export progress" />
+            </div>}
+            {!progress && outcome?.kind === "saved" && <InfoBar
+              severity="success"
+              title="Exported"
+              message={`Exported to ${outcome.path}`}
+              action={<>
+                <button type="button" className="secondary-button" onClick={() => openFile(outcome.path)}>Open</button>
+                <button type="button" className="secondary-button" onClick={() => showInFolder(outcome.path)}>Show in folder</button>
+              </>}
+              onClose={dismissExportOutcome}
+            />}
+            {!progress && outcome?.kind === "cancelled" && <InfoBar
+              severity="informational"
+              title="Export cancelled"
+              message="Nothing was written."
+              onClose={dismissExportOutcome}
+            />}
+            {!progress && outcome?.kind === "failed" && <InfoBar severity="error" title="Export failed" message={outcome.message} onClose={dismissExportOutcome} />}
+          </div>
+          <div className="export-settings__actions">
+            {runningHere
+              ? <button type="button" className="secondary-button" onClick={cancelExportJob} {...tooltipProps("Stop encoding. Nothing has been written yet.")}>Cancel</button>
+              : onClose && <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>}
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!canExport}
+              onClick={() => void start()}
+              {...tooltipProps(canExport ? undefined : runningHere ? "Export is running" : blockers[0])}
+            >{runningHere ? "Exporting…" : "Export"}</button>
+          </div>
         </div>
       </section>
     </div>
-
-    <footer className="export-footer">
-      <div className="export-footer__status" aria-live="polite">
-        {progress && <div className="export-progress" role="status">
-          <span className="export-progress__line">{progressLine}</span>
-          <ProgressBar value={percent} aria-label="Export progress" />
-        </div>}
-        {!progress && outcome?.kind === "saved" && <InfoBar
-          severity="success"
-          title="Exported"
-          message={`Exported to ${outcome.path}`}
-          action={<>
-            <button type="button" className="secondary-button" onClick={() => openFile(outcome.path)}>Open</button>
-            <button type="button" className="secondary-button" onClick={() => showInFolder(outcome.path)}>Show in folder</button>
-          </>}
-          onClose={dismissExportOutcome}
-        />}
-        {!progress && outcome?.kind === "cancelled" && <InfoBar
-          severity="informational"
-          title="Export cancelled"
-          message="Nothing was written."
-          onClose={dismissExportOutcome}
-        />}
-        {!progress && outcome?.kind === "failed" && <InfoBar severity="error" title="Export failed" message={outcome.message} onClose={dismissExportOutcome} />}
-      </div>
-      <div className="export-footer__actions">
-        {runningHere
-          ? <button type="button" className="secondary-button" onClick={cancelExportJob} {...tooltipProps("Stop encoding. Nothing has been written yet.")}>Cancel</button>
-          : onClose && <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>}
-        <button
-          type="button"
-          className="primary-button"
-          disabled={!canExport}
-          onClick={() => void start()}
-          {...tooltipProps(canExport ? undefined : runningHere ? "Export is running" : blockers[0])}
-        >{runningHere ? "Exporting…" : "Export"}</button>
-      </div>
-    </footer>
   </div>;
 }

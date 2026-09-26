@@ -86,12 +86,19 @@ describe("the export view where nothing can encode", () => {
 });
 
 describe("the shape of the export screen", () => {
-  it("is a docked form: preview, a settings column, and a footer with the actions", () => {
+  it("is a docked form: preview, a resizable settings pane, and the actions at its foot", () => {
     const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" onClose={() => undefined} />);
     expect(screen.getByRole("region", { name: "Video preview" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
-    const footer = container.querySelector(".export-footer") as HTMLElement;
-    expect(within(footer).getAllByRole("button").map((button) => button.textContent)).toEqual(["Cancel", "Export"]);
+    const pane = screen.getByRole("region", { name: "Export settings" });
+    // No title header: the pane opens on its first section.
+    expect(within(pane).queryByRole("heading")).toBeNull();
+    expect(pane.querySelector(".ui-prop-section")).toBe(pane.querySelector(".export-settings__scroll")!.firstElementChild);
+    expect(within(pane).getByRole("button", { name: /Output/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(within(pane).getByRole("button", { name: /Summary/ })).toBeTruthy();
+    expect(screen.getByRole("separator", { name: "Resize export settings" }).getAttribute("aria-valuenow")).toBe("340");
+    expect(container.querySelector(".export-footer")).toBeNull();
+    const foot = pane.querySelector(".export-settings__foot") as HTMLElement;
+    expect(within(foot).getAllByRole("button").map((button) => button.textContent)).toEqual(["Cancel", "Export"]);
     // No hero title on the page, and labels in sentence case.
     expect(container.querySelector("h1")?.classList.contains("sr-only")).toBe(true);
     expect(screen.getByText("Save to")).toBeTruthy();
