@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
-import { imageGenerationSnapshot } from "./imageHistory";
+import { completeImageDraft, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
@@ -23,6 +23,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
 export interface WorkItem {
+  imageDraftId?: string;
   kind?: "reference-icons" | "image";
   id: string;
   projectKey: string;
@@ -41,6 +42,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  imageDraftId?: string;
   image?: boolean;
   imageGeneration?: ImageGenerationSnapshot;
   id: string;
@@ -201,6 +203,7 @@ export class WorkQueue {
   enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
     if (!isTauri()) throw new Error("Image generation requires the desktop app and MiniMax H3 weights.");
     if (template.mode === "animate") throw new Error("Choose a MiniMax H3 prompt template for images.");
+    session.update((config) => saveImageDraft(config, template.id));
     const current = session.getSnapshot().config;
     if (current.generationType !== "image") throw new Error("Open an image project to generate images.");
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
@@ -213,6 +216,7 @@ export class WorkQueue {
     const { prompt, references } = compileImagePrompt(current);
     const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
+    const imageDraftId = edit ? scene.outputAssetId ?? undefined : undefined;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
@@ -222,8 +226,8 @@ export class WorkQueue {
         ...references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))],
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
-    this.items = [...this.items, { id, kind: "image", projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
+    this.work.set(id, { id, image: true, imageDraftId, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.items = [...this.items, { id, kind: "image", imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
@@ -403,7 +407,10 @@ export class WorkQueue {
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });
     try {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(work.request.imageEdit ? { format: "png" } : {}) });
-      work.session.update((current) => ({ ...current, thumbnail: saved.relativePath,
+      work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {
+        id: work.imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
+        ...saved, imageGeneration: work.imageGeneration, mimeType: "image/png", createdAt: new Date().toISOString(),
+      }) : ({ ...current, thumbnail: saved.relativePath,
         imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
         assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }],
       }));

@@ -5,6 +5,25 @@ fn image_fixture() -> ProjectConfig {
 }
 
 #[test]
+fn image_editing_draft_survives_save_and_reopen() {
+    let mut config = image_fixture();
+    let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    snapshot["scene"]["rootType"] = serde_json::json!("image");
+    snapshot["scene"]["sourceImage"] = serde_json::json!({"name":"Source", "relativePath":"media/imported/source.png", "width":65, "height":41});
+    config.assets.push(serde_json::from_value(serde_json::json!({
+        "id":"draft", "kind":"image", "name":"Editing Source", "relativePath":"media/imported/source.png", "mimeType":"image/png",
+        "width":65, "height":41, "createdAt":config.created_at, "imageDraft":true, "imageGeneration":snapshot
+    })).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let opened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(opened.config.assets[0], config.assets[0]);
+    let mut invalid = opened.config;
+    invalid.assets[0].image_generation = None;
+    assert!(validate_and_normalize_config(invalid).is_err());
+}
+
+#[test]
 fn edited_png_preserves_exact_pixels_and_exports_to_jpeg() {
     let folder = project_folder();
     let rgba: Vec<u8> = (0..65 * 41).flat_map(|index| [(index % 256) as u8, 80, 160, 255]).collect();

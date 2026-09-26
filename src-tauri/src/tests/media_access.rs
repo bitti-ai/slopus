@@ -112,6 +112,7 @@ fn external_media_is_readable_only_because_the_project_names_it() {
         height: None,
         has_audio: None,
         image_generation: None,
+        image_draft: None,
         created_at: config.created_at.clone(),
     });
     let created = create_project_in(root.path(), &config).unwrap();
@@ -284,6 +285,7 @@ fn a_project_the_user_only_opened_reads_any_media_file_it_names() {
             height: None,
             has_audio: None,
             image_generation: None,
+            image_draft: None,
             created_at: config.created_at.clone(),
         });
     }

@@ -1,5 +1,6 @@
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import type { ProjectConfig, ProjectRecord } from "./project";
+import { saveImageDraft } from "./imageHistory";
 
 export type ProjectUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
 export type ProjectWriter = (record: ProjectRecord) => Promise<ProjectRecord | void>;
@@ -14,7 +15,8 @@ export class ProjectSession {
   private savedConfig: ProjectConfig;
   constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
     this.savedConfig = record.config;
-    this.state = { config: record.config, dirty: false, saving: false, saveError: null };
+    const config = saveImageDraft(record.config);
+    this.state = { config, dirty: config !== record.config, saving: false, saveError: null };
   }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -23,7 +25,7 @@ export class ProjectSession {
     this.listeners.forEach((listener) => listener());
   }
   update = (next: ProjectUpdate, dirty = true) => {
-    const config = typeof next === "function" ? next(this.state.config) : next;
+    const config = saveImageDraft(typeof next === "function" ? next(this.state.config) : next);
     if (config === this.state.config) return;
     if (dirty) this.revision += 1;
     this.publish({ config, dirty: this.state.dirty || dirty });

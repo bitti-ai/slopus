@@ -5,7 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { restoreGeneratedImage } from "../../lib/imageHistory";
+import { restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -23,7 +23,7 @@ import "../../styles/image-editor.css";
 const MIN_IMAGE_ZOOM = 0.1;
 const MAX_IMAGE_ZOOM = 8;
 
-export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel, work }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, work }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; work?: WorkItem;
 }) {
@@ -51,6 +51,11 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => !templateNeedsDownload(candidate)) ?? imageTemplates[0];
+  const onChange = (update: ConfigUpdate) => changeConfig((current) => {
+    const next = typeof update === "function" ? update(current) : update;
+    const selecting = next.imageScene?.outputAssetId && next.imageScene.outputAssetId !== current.imageScene?.outputAssetId;
+    return saveImageDraft(next, selecting ? undefined : template?.id);
+  });
   const [error, setError] = useState<string | null>(null);
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [debugPrompt, setDebugPrompt] = useState<string | null>(null);
@@ -191,7 +196,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
         : remaining.find((asset) => asset.id === currentScene.outputAssetId);
       const updated = { ...current,
         assets: current.assets.filter((asset) => asset.id !== id),
-        imageScene: { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
+        imageScene: removingSelected && removed.imageDraft && !next ? createImageEditScene(null, currentScene) : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
       };
@@ -346,8 +351,8 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
       { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
-      { label: "Edit", icon: <Pencil size={15} />, action: () => attempt(() => replaceScene(editGeneratedImage(config, imageMenu.id).imageScene!)) },
-      { label: "Remove", icon: <Trash2 size={15} />, danger: true, action: () => removeImage(imageMenu.id) },
+      { label: "Edit", icon: <Pencil size={15} />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id) : replaceScene(editGeneratedImage(config, imageMenu.id).imageScene!)) },
+      { label: "Remove", icon: <Trash2 size={15} />, danger: true, disabled: Boolean(active && work.imageDraftId === imageMenu.id), action: () => removeImage(imageMenu.id) },
     ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools">
@@ -399,7 +404,7 @@ export function ImageEditor({ config, folderPath, onChange, onGenerate, onCancel
             setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
           }
         }}
-        onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /></button>)}</div>}
+        onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} />{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} />Editing</span>}</button>)}</div>}
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
       {selected.kind === "root" && <label>Root type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt root</option><option value="image">Image root</option></select></label>}

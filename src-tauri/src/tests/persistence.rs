@@ -352,6 +352,7 @@ fn a_project_file_only_yields_media_a_hand_edit_cannot_widen() {
         height: None,
         has_audio: None,
         image_generation: None,
+        image_draft: None,
         created_at: config.created_at.clone(),
     });
     let created = create_project_in(root.path(), &config).unwrap();

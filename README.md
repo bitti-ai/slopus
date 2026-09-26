@@ -27,6 +27,8 @@ Image projects use **Agent**, **Editor**, and **References** tabs. In the Editor
 
 The inspector offers **Prompt root** for a new composition and **Image root** to open an existing PNG or JPEG. You can also right-click a generated thumbnail and choose **Edit** to start an image root from it. Add Object nodes with descriptions and placement boxes, then Generate. In image-root mode, SlopFab applies each edit in hierarchy order using exact bounding-box inpainting, preserving pixels outside each box. The final PNG keeps the source resolution and becomes a clean image root for further edits. In prompt-root mode, placement boxes guide the prompt rather than acting as masks.
 
+An **Editing** thumbnail holds the pending image version. Select other thumbnails to browse results, then select Editing to return to its hierarchy and prompts. Saving the project also saves this draft. Successful generation replaces the temporary thumbnail with the finished image; failed or cancelled generation keeps it available for retry.
+
 The Agent can add, edit, reorder, reparent, duplicate and remove image nodes, and adjust prompts, style, placement, palettes, references, steps and seeds. Edits are transactional and preserve generated images. See the [image command guide](src-tauri/assets/agent-image.md) for the command vocabulary and examples.
 
 > **GPU recommendation:** A GPU with **24 GB of VRAM or more** is currently recommended for local video generation. We plan to reduce VRAM usage in future updates.

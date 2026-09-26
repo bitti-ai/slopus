@@ -62,6 +62,7 @@ pub(super) fn apply(
                             height: None,
                             has_audio: None,
                             image_generation: None,
+                            image_draft: None,
                             created_at: job.created_at.clone(),
                         });
                         planned_id

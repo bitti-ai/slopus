@@ -95,6 +95,8 @@ pub(crate) struct ProjectAsset {
     pub(crate) has_audio: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_generation: Option<super::image::ImageGenerationSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image_draft: Option<bool>,
     pub(crate) created_at: String,
 }
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

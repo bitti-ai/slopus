@@ -179,9 +179,13 @@ export const projectAssetSchema = z.object({
   /** Whether the container has an audio stream. */
   hasAudio: z.boolean().nullish(),
   imageGeneration: imageGenerationSnapshotSchema.nullish(),
+  imageDraft: z.boolean().nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
+  if (asset.imageDraft && (asset.kind !== "image" || !asset.imageGeneration?.scene.sourceImage || asset.imageGeneration.scene.rootType !== "image")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Image drafts require an image-root snapshot." });
+  }
   if (asset.imageGeneration && asset.kind !== "image") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageGeneration"], message: "Only image assets can store image generation history." });
   }

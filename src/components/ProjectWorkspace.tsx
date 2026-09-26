@@ -138,7 +138,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           className="secondary-button"
           type="button"
           aria-current={!imageProject && view === "export" ? "page" : undefined}
-          disabled={imageProject && (!imageOutput?.relativePath || !isTauri() || exportingImage)}
+          disabled={imageProject && (!imageOutput?.relativePath || imageOutput.imageDraft || !isTauri() || exportingImage)}
           onClick={() => imageProject ? void exportImage() : setView("export")}
           title={imageProject ? "Save the selected image as JPG or PNG" : "Render the timeline to a video file"}
         >

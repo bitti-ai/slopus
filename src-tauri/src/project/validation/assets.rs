@@ -3,6 +3,9 @@ use crate::project::paths::*;
 use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
+        if asset.image_draft == Some(true) && (asset.kind != "image" || !asset.image_generation.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() == Some("image") && snapshot.scene.source_image.is_some())) {
+            return Err("Image drafts require an image-root snapshot.".into());
+        }
         if let Some(snapshot) = &mut asset.image_generation {
             snapshot.scene.validate()?;
             if asset.kind != "image"

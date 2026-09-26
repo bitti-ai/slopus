@@ -1,5 +1,5 @@
 import { createImageEditScene, createImageScene } from "./imageScene";
-import type { ImageGenerationSnapshot, ProjectConfig } from "./project";
+import type { ImageGenerationSnapshot, ProjectAsset, ProjectConfig } from "./project";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
@@ -15,6 +15,37 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
   });
 }
 
+/** Keep the editable version in history without creating another image file. */
+export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
+  const scene = config.imageScene;
+  if (config.generationType !== "image" || scene?.rootType !== "image" || !scene.sourceImage) return config;
+  const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
+  if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1) return config;
+  const existing = selected?.imageDraft ? selected : undefined;
+  const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
+  const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
+  if (existing && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
+  const source = scene.sourceImage;
+  const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? `Editing ${source.name}`,
+    imageDraft: true, mimeType: /\.png$/i.test(source.relativePath) ? "image/png" : "image/jpeg",
+    imageGeneration: snapshot, createdAt: existing?.createdAt ?? new Date().toISOString() };
+  return { ...config, imageScene: { ...scene, outputAssetId: id }, assets: existing ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset] };
+}
+
+export function completeImageDraft(config: ProjectConfig, id: string, result: ProjectAsset): ProjectConfig {
+  const draft = config.assets.find((asset) => asset.id === id && asset.imageDraft);
+  const selected = config.imageScene?.outputAssetId === id;
+  const changed = draft && JSON.stringify({ ...draft.imageGeneration, prompt: "" }) !== JSON.stringify({ ...result.imageGeneration, prompt: "" });
+  // Edits made during generation remain a separate draft on the original source.
+  const pending = changed ? { ...draft, id: `image-draft-${crypto.randomUUID()}` } : null;
+  const asset = { ...result, id, imageDraft: false };
+  const assets = config.assets.some((item) => item.id === id) ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset];
+  const next = { ...config, assets: pending ? [...assets, pending] : assets };
+  if (!selected) return next;
+  if (pending) return { ...next, imageScene: { ...config.imageScene!, outputAssetId: pending.id } };
+  return restoreGeneratedImage(next, id);
+}
+
 /** Restore authored inputs without replacing other results or unrelated references. */
 export function restoreGeneratedImage(config: ProjectConfig, id: string): ProjectConfig {
   const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
@@ -23,7 +54,7 @@ export function restoreGeneratedImage(config: ProjectConfig, id: string): Projec
   if (!snapshot) return { ...config, thumbnail: asset.relativePath ?? null,
     imageScene: { ...(config.imageScene?.rootType === "image" ? createImageScene() : config.imageScene ?? createImageScene(config.brief.prompt)), outputAssetId: id } };
   const restored = structuredClone(snapshot);
-  const scene = restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
+  const scene = !asset.imageDraft && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
     ? createImageEditScene({ relativePath: asset.relativePath, name: asset.name, width: asset.width, height: asset.height }, restored.scene)
     : restored.scene;
   const references = new Map(restored.references.map((reference) => [reference.id, reference]));
