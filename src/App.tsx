@@ -407,32 +407,32 @@ function App() {
         </TitleBar>
         <main className="library" aria-labelledby="library-title">
           <div className="library__head">
-            <h1 id="library-title" className="library__title">Projects</h1>
+            {/* The title and the library's commands share one line. */}
+            <div className="library__title-row">
+              <h1 id="library-title" className="library__title">Projects</h1>
+              <CommandBar aria-label="Library commands" className="library__commands">
+                {newProjectButton}
+                <CommandBarButton icon={<FolderOpen16 />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
+              </CommandBar>
+            </div>
             {(error || showUpdateInfo) && <div className="library__infobars">
               {showUpdateInfo && <UpdateInfoBar updater={updater} onOpen={() => openSettings("updates")} onDismiss={() => setUpdateInfoDismissed(true)} />}
               {error && <InfoBar severity="error" title={error.title} message={error.detail} onClose={() => setError(null)} />}
             </div>}
           </div>
-          {/* The command bar and the list's heading row share one chrome strip;
-              the tiles scroll on the pane under it. */}
-          <div className="library__bar">
-            <CommandBar
-              aria-label="Library commands"
-              className="library__commands"
-              end={<>
-                <CommandBarButton icon={projectLayout === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
-                <CommandBarButton icon={projectLayout === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
-              </>}
-            >
-              {newProjectButton}
-              <CommandBarButton icon={<FolderOpen16 />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
-            </CommandBar>
-            {/* An empty library says so in its empty state; a heading counting
-                "0 projects" above it would only repeat that. */}
-            {showLibraryHeading && <h2 id="all-projects-heading" className="library__subtitle">
+          {/* The list's heading row is a chrome strip with the layout toggle at
+              its end; the tiles scroll on the pane under it. An empty library
+              says so in its empty state, so it has no strip: a heading counting
+              "0 projects" would only repeat that. */}
+          {showLibraryHeading && <div className="library__bar">
+            <h2 id="all-projects-heading" className="library__subtitle">
               {query.trim() ? "Results" : "All projects"} <span className="library__count">{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
-            </h2>}
-          </div>
+            </h2>
+            <div className="library__layout" role="group" aria-label="Project layout">
+              <CommandBarButton icon={projectLayout === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
+              <CommandBarButton icon={projectLayout === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
+            </div>
+          </div>}
 
           <section className="library__section" {...(showLibraryHeading ? { "aria-labelledby": "all-projects-heading" } : { "aria-label": "All projects" })}>
             {loading ? (

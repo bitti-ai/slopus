@@ -47,27 +47,45 @@
   margin-top: var(--space-3);
 }
 
-/* --- Command strip ------------------------------------------------------------
-   Chrome, like every toolbar: the command bar row and, when there are
-   projects, the "All projects" row, with the divider edge under both. */
-
-.library__bar {
-  flex: none;
-  padding: 0 var(--space-6);
-  border-top: 1px solid var(--stroke-divider);
-  border-bottom: 1px solid var(--stroke-divider);
-  background: var(--surface-chrome);
+.library__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
 }
 
+/* The commands sit at the end of the title's line. */
 .library__commands {
-  min-height: var(--chrome-row);
-  margin: 0 calc(-1 * var(--space-1));
+  min-height: var(--command-row);
+  margin: 0 calc(-1 * var(--space-1)) 0 auto;
+  padding: 0;
 }
 
 .library__commands .ui-command-bar__primary {
   gap: var(--space-1);
 }
 
+/* --- List strip ---------------------------------------------------------------
+   Chrome, like every toolbar: the "All projects" heading and, at its end, the
+   grid/list toggle, with divider edges above and below. */
+
+.library__bar {
+  flex: none;
+  min-height: var(--command-row);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-5) 0 var(--space-6);
+  border-top: 1px solid var(--stroke-divider);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
+}
+
+.library__layout {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
 
 /* The tiles scroll here, under the strip. A flex column so the compact empty
    state can centre itself in what is left. */
@@ -83,14 +101,11 @@
 
 /* "All projects" with its count in secondary text: the strip's second row. */
 .library__subtitle {
-  min-height: var(--chrome-row);
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
   margin: 0;
-  padding-block: var(--space-2);        /* 20px line + 16 = the 36px row */
-  box-sizing: border-box;
-  border-top: 1px solid var(--line);
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
