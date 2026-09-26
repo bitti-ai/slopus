@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type PointerEvent } from "react";
 import { Box, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderOpen, FolderPlus, Image, Pencil, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
@@ -112,6 +112,12 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
+  const previousImageCount = useRef(images.length);
+  useLayoutEffect(() => {
+    const bar = imageResults.current;
+    if (bar && images.length > previousImageCount.current) bar.scrollLeft = bar.scrollWidth;
+    previousImageCount.current = images.length;
+  }, [images.length]);
   useEffect(() => {
     const element = imageResults.current;
     if (!element) return;
