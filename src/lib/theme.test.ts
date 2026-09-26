@@ -374,8 +374,8 @@ const NAMED_COLOURS = new Set(`
    are not even ours to reason about. They went through untouched.
 
    These are also the reason `--custom-property` names are blanked out of a
-   value below: `var(--field-bg)` is a token this repo really uses, and `Field`
-   is a system colour, so scanning the raw value would fire on the palette
+   value below: `var(--field-bg)` is a perfectly good token name (this repo
+   had one), and `Field` is a system colour, so scanning the raw value would fire on the palette
    itself. A property NAME is never a colour value; only what follows it is. */
 const SYSTEM_COLOURS = new Set(`
   accentcolor accentcolortext activetext buttonborder buttonface buttontext canvas canvastext
@@ -557,8 +557,8 @@ describe("no stylesheet outside tokens.css names a colour", () => {
        guard that fires on the palette's own idioms is a guard that gets
        deleted. These are those neighbours. */
 
-    /* `Field` is a system colour; `--field-bg` is a token this repo paints
-       with. Blanking property NAMES out of a value is what separates them. */
+    /* `Field` is a system colour; `--field-bg` is a token name (the palette
+       had one until the Fluent pass). Blanking property NAMES out of a value is what separates them. */
     expect(colourLiterals("a { background: var(--field-bg); color: var(--text-primary); }")).toEqual([]);
     expect(colourLiterals("a { box-shadow: inset 0 1px var(--hairline-hi); }")).toEqual([]);
 
