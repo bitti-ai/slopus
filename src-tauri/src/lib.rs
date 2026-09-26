@@ -9,6 +9,7 @@ mod diagnostics;
 mod export;
 mod generation;
 mod media;
+mod native_shell;
 mod project;
 mod reference_icons;
 mod rendered;

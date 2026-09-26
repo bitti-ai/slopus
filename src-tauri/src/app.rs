@@ -1,7 +1,7 @@
 use crate::window::{CloseDecision, ExitGuard};
 use crate::{
-    agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, slopfab, weights,
-    window,
+    agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, native_shell,
+    slopfab, weights, window,
 };
 use std::io;
 /// Portable distributions carry a marker because Windows updates launch an
@@ -31,9 +31,51 @@ pub fn run() {
                 .windows
                 .first()
                 .ok_or_else(|| io::Error::other("Missing main window configuration"))?;
-            tauri::WebviewWindowBuilder::from_config(app, window_config)?
+            /* Built hidden and shown at the end of setup, so the restore of the
+               remembered size/position (tauri-plugin-window-state, which runs as
+               the window is created) never shows as a jump. */
+            let mut builder = tauri::WebviewWindowBuilder::from_config(app, window_config)?
                 .data_directory(data_directory)
-                .build()?;
+                .visible(false)
+                /* Needs WebView2 125+; older runtimes keep the classic bars. */
+                .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
+                .general_autofill_enabled(false);
+            if native_shell::window_state_missing(app.handle()) {
+                if let Ok(Some(monitor)) = app.primary_monitor() {
+                    let area = monitor.work_area();
+                    let (width, height) = native_shell::first_launch_size(
+                        area.size.width,
+                        area.size.height,
+                        monitor.scale_factor(),
+                        (
+                            window_config.min_width.unwrap_or(900.0),
+                            window_config.min_height.unwrap_or(650.0),
+                        ),
+                    );
+                    builder = builder.inner_size(width, height).center();
+                }
+            }
+            /* Mica on Windows 11: the window and the webview go transparent and
+               the page is told before its first script runs (theme-boot.js
+               reads the global). Windows 10 keeps the opaque ground. */
+            let mica = native_shell::mica_supported();
+            if mica {
+                builder = builder
+                    .transparent(true)
+                    .background_color(tauri::window::Color(0, 0, 0, 0))
+                    .effects(tauri::utils::config::WindowEffectsConfig {
+                        effects: vec![tauri::window::Effect::Mica],
+                        ..Default::default()
+                    })
+                    .initialization_script(native_shell::backdrop_script());
+            }
+            app.state::<native_shell::Backdrop>()
+                .mica
+                .store(mica, std::sync::atomic::Ordering::Release);
+            let window = builder.build()?;
+            native_shell::round_corners(&window);
+            native_shell::disable_browser_behaviour(&window);
+            native_shell::watch_accent(app.handle());
             match diagnostics::initialize(app.handle()) {
                 Ok(info) => diagnostics::info(
                     "app",
@@ -48,9 +90,9 @@ pub fn run() {
                 ),
                 Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
             }
-            if let Some(window) = app.get_webview_window("main") {
-                window::apply_theme(&window);
-            }
+            window::apply_theme(&window);
+            window.show()?;
+            let _ = window.set_focus();
             Ok(())
         })
         .manage(crate::media::access::MediaAccess::default())
@@ -59,28 +101,73 @@ pub fn run() {
         .manage(slopfab::SlopfabRuntime::default())
         .manage(weights::WeightDownloads::default())
         .manage(ExitGuard::default())
+        .manage(native_shell::Backdrop::default())
+        .manage(native_shell::SystemAccent::default())
+        .on_menu_event(|_app, event| {
+            native_shell::handle_menu_event(event.id().as_ref());
+        })
         .on_window_event(|window, event| {
-            use tauri::{Emitter as _, Manager as _};
-            let tauri::WindowEvent::CloseRequested { api, .. } = event else {
-                return;
-            };
-            let guard = window.state::<ExitGuard>();
-            match guard.on_close_requested() {
-                CloseDecision::Close => {}
-                CloseDecision::Waiting => api.prevent_close(),
-                CloseDecision::Ask => {
-                    api.prevent_close();
-                    // If the question cannot even be delivered there is nobody
-                    // to answer it, and refusing to close would be worse than
-                    // closing unasked.
-                    if window.emit("app-close-requested", ()).is_err() {
-                        guard.answered(true);
-                        let _ = window.destroy();
+            use tauri::Manager as _;
+            use tauri_plugin_dialog::{DialogExt as _, MessageDialogButtons, MessageDialogKind};
+            match event {
+                /* The OS theme flipped: repaint the opaque ground (a no-op under
+                   Mica, whose tint follows the window theme by itself). */
+                tauri::WindowEvent::ThemeChanged(_) => {
+                    if let Some(webview_window) = window.get_webview_window(window.label()) {
+                        window::apply_theme(&webview_window);
                     }
                 }
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    let guard = window.state::<ExitGuard>();
+                    match guard.on_close_requested() {
+                        CloseDecision::Close => {}
+                        CloseDecision::Waiting => api.prevent_close(),
+                        CloseDecision::Ask => {
+                            api.prevent_close();
+                            let jobs = guard
+                                .jobs
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .clone();
+                            let answering = window.clone();
+                            /* Non-blocking: the box runs its own modal loop,
+                               owned by (and disabling) this window, and the
+                               answer arrives on the callback. Esc and the box's
+                               own close button answer "Keep generating". */
+                            window
+                                .dialog()
+                                .message(window::exit_guard_message(&jobs))
+                                .title(window::EXIT_GUARD_TITLE)
+                                .kind(MessageDialogKind::Warning)
+                                .buttons(MessageDialogButtons::OkCancelCustom(
+                                    window::EXIT_GUARD_CONFIRM.to_string(),
+                                    window::EXIT_GUARD_CANCEL.to_string(),
+                                ))
+                                .parent(window)
+                                .show(move |confirmed| {
+                                    answering.state::<ExitGuard>().answered(confirmed);
+                                    if confirmed {
+                                        let _ = answering.destroy();
+                                    }
+                                });
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .plugin(tauri_plugin_dialog::init())
+        /* Size, position and maximized only: decorations are always off and
+           visibility is ours (the window is shown at the end of setup). */
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
@@ -130,6 +217,10 @@ pub fn run() {
             commands::generation::cancel_slopfab_generation,
             window::set_generation_active,
             window::answer_app_close,
+            native_shell::system_accent_colors,
+            native_shell::show_text_context_menu,
+            native_shell::reveal_in_explorer,
+            native_shell::pick_file,
             commands::artifacts::write_generated_video,
             commands::artifacts::write_scene_last_frame,
             commands::artifacts::write_timeline_thumbnail,

@@ -13,13 +13,14 @@
     "windows": [
       {
         "create": false,
-        "title": "Slopus - 0.1.1",
-        "width": 1440,
-        "height": 920,
+        "title": "Slopus",
+        "width": 1280,
+        "height": 800,
         "minWidth": 900,
         "minHeight": 650,
         "center": true,
-        "decorations": true,
+        "decorations": false,
+        "shadow": true,
         "resizable": true,
         "backgroundColor": "#080a0f",
         "dragDropEnabled": false

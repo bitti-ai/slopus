@@ -1,9 +1,14 @@
 use std::sync::atomic::Ordering;
+use tauri::Manager as _;
 /* ── Exit guard ──────────────────────────────────────────────────────────────
 The video engine runs inside this process, so closing the window ends a
 generation outright — and slopfab writes no file of its own, so an unfinished
-run leaves nothing behind. The webview therefore has to be able to answer the
-close request before the window goes away.
+run leaves nothing behind. The user therefore has to be able to answer the
+close request before the window goes away: app.rs puts the question in a native
+Windows message box (see `exit_guard_message`), naming the jobs the webview
+reported through `set_generation_active`. `answer_app_close` and the
+`app-close-requested` event belonged to the old in-page dialog; the command stays
+registered so an old frontend build cannot fail on it.
 
 The window is held open ONLY while the frontend has said something is
 generating (`set_generation_active`). A webview that never loaded, or one
@@ -16,9 +21,22 @@ pub(crate) struct ExitGuard {
     /// Set by the frontend whenever the number of running or queued generations
     /// changes. False means "close without asking".
     pub(crate) generation_active: std::sync::atomic::AtomicBool,
-    /// True between putting the question to the webview and its answer, so a
+    /// True between putting the question on screen and its answer, so a
     /// second click on the close button does not stack a second dialog.
     pub(crate) asking: std::sync::atomic::AtomicBool,
+    /// What the webview last said is running, so the native message box can
+    /// name it. Empty when the webview only sent the flag.
+    pub(crate) jobs: std::sync::Mutex<Vec<GuardJob>>,
+}
+
+/// One generation as the exit question names it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GuardJob {
+    pub(crate) title: String,
+    /// Rendering right now, as opposed to waiting in the queue.
+    #[serde(default)]
+    pub(crate) running: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -53,9 +71,61 @@ impl ExitGuard {
     }
 }
 
+/// `jobs` is optional so a caller that only reports the flag keeps working;
+/// the question then says "generating" without naming anything.
 #[tauri::command]
-pub(crate) fn set_generation_active(state: tauri::State<'_, ExitGuard>, active: bool) {
+pub(crate) fn set_generation_active(
+    state: tauri::State<'_, ExitGuard>,
+    active: bool,
+    jobs: Option<Vec<GuardJob>>,
+) {
     state.generation_active.store(active, Ordering::Release);
+    *state.jobs.lock().unwrap_or_else(|p| p.into_inner()) = if active {
+        jobs.unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+}
+
+pub(crate) const EXIT_GUARD_TITLE: &str = "Close Slopus and stop generating?";
+pub(crate) const EXIT_GUARD_CONFIRM: &str = "Stop and close";
+pub(crate) const EXIT_GUARD_CANCEL: &str = "Keep generating";
+
+/// The body of the native exit question. Same claims, in the same words, as
+/// src/components/ExitGuardDialog.tsx, which it replaces: a message box is
+/// what Windows apps show for a yes/no question like this one.
+pub(crate) fn exit_guard_message(jobs: &[GuardJob]) -> String {
+    let rendering = jobs.iter().filter(|job| job.running).count();
+    let queued = jobs.len() - rendering;
+    let count = |n: usize| if n == 1 { "1 shot is".to_string() } else { format!("{n} shots are") };
+    let mut parts = Vec::new();
+    if rendering > 0 {
+        parts.push(format!("{} rendering now", count(rendering)));
+    }
+    if queued > 0 {
+        parts.push(format!("{} waiting in the queue", count(queued)));
+    }
+    let mut message = if parts.is_empty() {
+        "A video is still generating.".to_string()
+    } else {
+        format!("{}.", parts.join(" and "))
+    };
+    message.push_str(
+        "\n\nThe video engine runs inside Slopus, so closing the window stops it. \
+         No video file is written until a shot finishes, and Slopus can't pick an \
+         unfinished one back up: it would have to run again from the beginning.",
+    );
+    if !jobs.is_empty() {
+        message.push('\n');
+        for job in jobs.iter().take(4) {
+            let state = if job.running { "rendering now" } else { "waiting" };
+            message.push_str(&format!("\n\u{2022} {} ({state})", job.title));
+        }
+        if jobs.len() > 4 {
+            message.push_str(&format!("\n\u{2022} and {} more", jobs.len() - 4));
+        }
+    }
+    message
 }
 
 #[tauri::command]
@@ -85,11 +155,22 @@ pub(crate) fn answer_app_close(
  * wrong is an explicit choice that opposes the OS, and no value obtainable in
  * this process fixes that: it would need the preference duplicated into a
  * second store, which is precisely the drift this comment exists to record.
- * theme-boot.js corrects it on the first frame the webview draws either way. */
+ * theme-boot.js corrects it on the first frame the webview draws either way.
+ *
+ * On Windows 11 none of this runs: the window is transparent with Mica behind
+ * it (native_shell.rs), and the backdrop takes its tint from the window's
+ * theme, which the page keeps in step with the preference via setTheme — so
+ * the opposed-choice frame above does not happen there at all. */
 pub(crate) const GROUND_DARK: tauri::window::Color = tauri::window::Color(0x08, 0x0a, 0x0f, 0xff);
 pub(crate) const GROUND_LIGHT: tauri::window::Color = tauri::window::Color(0xee, 0xf1, 0xf6, 0xff);
 
 pub(crate) fn apply_theme(window: &tauri::WebviewWindow) {
+    /* With Mica behind the window there is no ground to paint: an opaque
+       colour here would sit on top of the backdrop and hide it. The backdrop
+       follows the window's own theme, which the page sets with setTheme. */
+    if window.state::<crate::native_shell::Backdrop>().is_mica() {
+        return;
+    }
     let ground = if matches!(window.theme(), Ok(tauri::Theme::Light)) {
         GROUND_LIGHT
     } else {
@@ -99,7 +180,7 @@ pub(crate) fn apply_theme(window: &tauri::WebviewWindow) {
 }
 #[cfg(test)]
 mod tests {
-    use super::{CloseDecision, ExitGuard};
+    use super::{exit_guard_message, CloseDecision, ExitGuard, GuardJob};
     use std::sync::atomic::Ordering;
 
     fn generating() -> ExitGuard {
@@ -143,6 +224,35 @@ mod tests {
         // destroy() can itself raise a close request; if the flag were still
         // set the guard would ask again and the window would never shut.
         assert_eq!(guard.on_close_requested(), CloseDecision::Close);
+    }
+
+    #[test]
+    fn the_question_counts_and_names_what_would_be_lost() {
+        let jobs = vec![
+            GuardJob { title: "Opening shot".into(), running: true },
+            GuardJob { title: "Close-up".into(), running: false },
+            GuardJob { title: "Wide".into(), running: false },
+        ];
+        let message = exit_guard_message(&jobs);
+        assert!(message.starts_with("1 shot is rendering now and 2 shots are waiting in the queue."));
+        assert!(message.contains("\u{2022} Opening shot (rendering now)"));
+        assert!(message.contains("\u{2022} Close-up (waiting)"));
+    }
+
+    #[test]
+    fn the_question_still_reads_when_only_the_flag_arrived() {
+        assert!(exit_guard_message(&[]).starts_with("A video is still generating."));
+    }
+
+    #[test]
+    fn a_long_queue_is_cut_to_four_and_a_count() {
+        let jobs: Vec<GuardJob> = (0..6)
+            .map(|index| GuardJob { title: format!("Shot {index}"), running: false })
+            .collect();
+        let message = exit_guard_message(&jobs);
+        assert!(message.contains("Shot 3"));
+        assert!(!message.contains("Shot 4"));
+        assert!(message.ends_with("\u{2022} and 2 more"));
     }
 
     #[test]

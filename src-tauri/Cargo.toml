@@ -30,9 +30,26 @@ jpeg-encoder = "0.6"
 # Keep image decoding compatible with the package's Rust 1.87 minimum.
 image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }
 tokio = { version = "1", features = ["rt", "time", "net", "macros"] }
+tauri-plugin-window-state = "2"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Graphics_Dxgi"] }
+# Must stay on the same major as wry's, or with_webview hands back a controller
+# of a different crate's type. Used for the browser-accelerator switch (app.rs).
+webview2-com = "0.38"
+# The native shell (native_shell.rs): UI_ViewManagement reads the Windows
+# accent colours, the Wdk / SystemInformation pair reads the real OS build to
+# decide whether Mica exists, Dwm asks for rounded corners on the frameless
+# window, and KeyboardAndMouse replays Ctrl+X/C/V/A for the text context menu.
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dwm",
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Foundation",
+    "UI_ViewManagement",
+    "Wdk_System_SystemServices",
+    "Win32_System_SystemInformation",
+] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell"] }
 
 [dev-dependencies]
