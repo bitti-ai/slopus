@@ -451,6 +451,13 @@ describe("the clip inspector", () => {
     const heading = screen.getByRole("heading", { name: "Macro footage" });
     const name = within(heading).getByRole("textbox", { name: "Clip name" });
     expect((name as HTMLInputElement).value).toBe("Macro footage");
+    // The clip heads the pane: no "Inspector" title, a kind chip and a meta line.
+    const header = container.querySelector(".clip-inspector .ui-item-header") as HTMLElement;
+    expect(header.contains(name)).toBe(true);
+    expect(header.querySelector(".ui-item-header__chip")).not.toBeNull();
+    expect(header.querySelector(".ui-item-header__meta")!.textContent).toBe("Video · V1 · 40.0 s");
+    expect(within(container.querySelector(".clip-inspector") as HTMLElement).queryByText("Inspector")).toBeNull();
+    expect(screen.getByRole("button", { name: /Timing/ }).textContent).toContain("00:00 → 40:00");
     // "Starts at" is text, not a read-only field.
     const starts = screen.getByText("Starts at").closest(".ui-prop-row")!;
     expect(starts.querySelector("input")).toBeNull();
@@ -468,6 +475,7 @@ describe("the clip inspector", () => {
   it("resets a transform value from its row", () => {
     const config = withClip(measuredVideo(projectWithMedia(), 40_000), { transform: { scale: 150, rotation: 0, positionX: 0, positionY: 0 } });
     const { onChange } = render_(config);
+    expect(screen.getByRole("button", { name: /Transform/ }).textContent).toContain("1 changed");
     fireEvent.click(screen.getByRole("button", { name: "Reset Scale" }));
     expect(wrote(onChange.mock.calls[0][0], config).timeline.tracks.flatMap((track) => track.clips)[0].transform?.scale).toBe(100);
   });

@@ -1,4 +1,4 @@
-import { ChevronRight, Ellipsis, FolderOpen, Plus, RotateCcw } from "lucide-react";
+import { ChevronDown, Ellipsis, FolderOpen, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
 import { isEffectOn, parseCube } from "../../lib/effectSettings";
@@ -174,6 +174,20 @@ const EFFECTS: readonly EffectDefinition[] = [
   },
 ];
 
+/** How many effects a clip carries, and how many of them are switched on —
+ *  the inspector's section summary and the fx badge on the timeline clip. */
+export function clipEffectCount(clip: TimelineClip): { total: number; on: number } {
+  let total = 0;
+  let on = 0;
+  for (const effect of EFFECTS) {
+    const settings = clip[effect.id] as { enabled?: boolean | null } | null | undefined;
+    if (!settings) continue;
+    total += 1;
+    if (isEffectOn(settings)) on += 1;
+  }
+  return { total, on };
+}
+
 /* Each effect is an Expander-style block with a 32px header — the bypass
    checkbox, chevron and name, Reset, and a ⋯ menu — the way Premiere's
    Effect Controls and Clipchamp's effect panel stack them. Unticking the
@@ -204,7 +218,7 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
       <Checkbox className="clip-effect__bypass" checked={on} disabled={disabled} aria-label={`${effect.name} on`}
         {...tooltipProps(on ? "Turn off (bypass)" : "Turn on")} onChange={bypass} />
       <button type="button" className="clip-effect__toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <ChevronRight size={12} aria-hidden="true" className="clip-effect__chevron" />
+        <ChevronDown size={12} aria-hidden="true" className="clip-effect__chevron" />
         <h3 className="clip-effect__name">{effect.name}</h3>
       </button>
       <button type="button" className="clip-effect__action" aria-label={`Reset ${effect.name}`} {...tooltipProps("Reset")} disabled={disabled} onClick={reset}>

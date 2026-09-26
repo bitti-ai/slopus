@@ -1,7 +1,7 @@
-import { ClipEffects } from "./ClipEffects";
+import { clipEffectCount, ClipEffects } from "./ClipEffects";
 import {
-  ChevronFirst, ChevronLast, Clapperboard, Copy, Film, LayoutGrid, List, Lock, LockOpen,
-  PanelLeft, PanelRight, Pause, Play, Plus, Scan, Scissors, StepBack, StepForward, Trash2, Upload,
+  AudioLines, ChevronFirst, ChevronLast, Clapperboard, Copy, Ellipsis, Film, Image as ImageIcon, LayoutGrid, List, Lock, LockOpen,
+  MousePointerClick, PanelLeft, PanelRight, Pause, Play, Plus, Scan, Scissors, Sparkles, StepBack, StepForward, Trash2, Type, Upload,
   Volume2, VolumeX, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
@@ -26,7 +26,7 @@ import {
 } from "../../lib/timeline";
 import { useShortcut } from "../../lib/commands";
 import {
-  ComboBox, EmptyState, PaneHeader, PropRow, PropSection, SelectorBar, Slider, Splitter, tooltipProps, useContextMenu, usePaneSize,
+  ComboBox, EmptyState, ItemHeader, PaneHeader, PropRow, PropSection, SelectorBar, Slider, Splitter, tooltipProps, useContextMenu, usePaneSize,
   type MenuEntry,
 } from "../ui";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
@@ -72,6 +72,27 @@ const SNAP_PX = 8;
 const DRAG_THRESHOLD_PX = 3;
 /* J/L shuttle speeds: each further press doubles, up to 4×. */
 const SHUTTLE_SPEEDS = [1, 2, 4];
+
+/* --- Clip kinds ---------------------------------------------------------------
+   Five kinds, each with one colour and one glyph wherever it appears: the
+   clip's title strip, the track chip, the inspector's kind chip. The kind is
+   the MEDIA's; a clip whose file is missing takes its track's. */
+type ClipKind = "video" | "generated" | "image" | "audio" | "caption";
+const CLIP_KINDS: Record<ClipKind, { label: string; color: string; icon: React.ReactNode; glyph: React.ReactNode }> = {
+  video: { label: "Video", color: "var(--clip-video)", icon: <Film size={16} />, glyph: <Film size={12} aria-hidden="true" /> },
+  generated: { label: "Generated video", color: "var(--clip-generated)", icon: <Sparkles size={16} />, glyph: <Sparkles size={12} aria-hidden="true" /> },
+  image: { label: "Still image", color: "var(--clip-image)", icon: <ImageIcon size={16} />, glyph: <ImageIcon size={12} aria-hidden="true" /> },
+  audio: { label: "Audio", color: "var(--clip-audio)", icon: <AudioLines size={16} />, glyph: <AudioLines size={12} aria-hidden="true" /> },
+  caption: { label: "Caption", color: "var(--clip-caption)", icon: <Type size={16} />, glyph: <Type size={12} aria-hidden="true" /> },
+};
+const trackKindOf = (track: TimelineTrack): ClipKind => track.kind === "audio" ? "audio" : track.kind === "caption" ? "caption" : "video";
+const clipKindOf = (asset: ProjectAsset | undefined, track: TimelineTrack): ClipKind => asset?.kind ?? trackKindOf(track);
+
+/** A timecode without its empty leading groups — "12:08" for 00:00:12:08 —
+ *  for a summary that has to fit beside a section title. */
+const shortTimecode = (ms: number, fps: number) => formatTimecode(ms, fps).replace(/^(00:){1,2}/, "");
+
+const TRANSFORM_DEFAULTS = { scale: 100, rotation: 0, positionX: 0, positionY: 0 } as const;
 
 type DragMode = "move" | "trim-start" | "trim-end";
 type MonitorZoom = "fit" | "50" | "100";
@@ -255,6 +276,13 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
   const selectedMediaAsset = config.assets.find((asset) => asset.id === selected?.assetId);
   const selectedTransform = selected ? clipTransform(selected) : null;
+  const selectedKind = selected && selectedTrack ? clipKindOf(selectedMediaAsset, selectedTrack) : null;
+  /* Section summaries: how many transform values are off their defaults, and
+     how many effects the clip carries. */
+  const transformChanges = selectedTransform
+    ? (Object.keys(TRANSFORM_DEFAULTS) as (keyof typeof TRANSFORM_DEFAULTS)[]).filter((key) => selectedTransform[key] !== TRANSFORM_DEFAULTS[key]).length
+    : 0;
+  const selectedEffects = selected ? clipEffectCount(selected) : { total: 0, on: 0 };
   const visualControlsDisabled = selectedMediaAsset?.kind === "audio" || selectedTrack?.kind !== "video" || selectedTrack.locked;
   const clipCount = tracks.reduce((total, track) => total + track.clips.length, 0);
   /** Where the last clip ends — where playback stops, which is not the same as
@@ -1298,18 +1326,33 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
         {inspectorOpen && <Splitter {...inspectorPane.splitterProps} reverse className="edit-panels__splitter" aria-label="Resize inspector" />}
         {inspectorOpen && <aside className="clip-inspector" aria-label="Clip inspector">
-          {selected ? <>
-            <div className="inspector-title">
-              <h3 aria-label={selected.label}><input
+          {selected && selectedKind ? <>
+            {/* The selected clip heads the pane: its kind, its name (editable
+                in place, and still the pane's heading for a screen reader),
+                and where it sits. */}
+            <ItemHeader
+              className="clip-inspector__header"
+              color={CLIP_KINDS[selectedKind].color}
+              icon={CLIP_KINDS[selectedKind].icon}
+              name={<h2 className="clip-inspector__heading" aria-label={selected.label}><input
                 ref={clipNameRef}
-                className="clip-title__name"
+                className="ui-item-header__input"
                 value={selected.label}
                 aria-label="Clip name"
                 {...tooltipProps("Rename", "F2")}
                 onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" }, `label:${selected.id}`)}
-              /></h3>
-            </div>
-            <PropSection title="Timing" persistKey="timeline.clip.timing">
+              /></h2>}
+              meta={`${CLIP_KINDS[selectedKind].label} · ${trackLabels.get(selected.trackId) ?? ""} · ${(selected.durationMs / 1000).toFixed(1)} s`}
+              actions={<button
+                type="button"
+                className="icon-button clip-inspector__more"
+                aria-label={`${selected.label} actions`}
+                aria-haspopup="menu"
+                {...tooltipProps("More options")}
+                onClick={(event) => menu.open(event.currentTarget, clipMenuItems(selected), { "aria-label": `${selected.label} actions`, placement: "bottom-end", focusFirst: true })}
+              ><Ellipsis size={16} aria-hidden="true" /></button>}
+            />
+            <PropSection title="Timing" persistKey="timeline.clip.timing" summary={`${shortTimecode(selected.startMs, fps)} → ${shortTimecode(clipEndMs(selected), fps)}`}>
               <PropRow label="Starts at"><span className="inspector-value">{formatTimecode(selected.startMs, fps)}</span></PropRow>
               <PropRow label="Duration" htmlFor="clip-duration">
                 <input
@@ -1323,7 +1366,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 />
               </PropRow>
             </PropSection>
-            <PropSection title="Transform" persistKey="timeline.clip.transform">
+            <PropSection title="Transform" persistKey="timeline.clip.transform" summary={transformChanges > 0 ? `${transformChanges} changed` : undefined}>
               {([
                 ["scale", "Scale", "%", 100],
                 ["rotation", "Rotation", "°", 0],
@@ -1346,12 +1389,17 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 </PropRow>;
               })}
             </PropSection>
-            <PropSection title="Effects" persistKey="timeline.clip.effects">
+            <PropSection title="Effects" persistKey="timeline.clip.effects" summary={selectedEffects.total > 0 ? selectedEffects.on < selectedEffects.total ? `${selectedEffects.total} · ${selectedEffects.total - selectedEffects.on} off` : String(selectedEffects.total) : undefined}>
               <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch, key) => updateClip(selected.id, patch, key && `effect:${selected.id}:${key}`)} />
             </PropSection>
-          </> : <div className="inspector-empty">
-            <span>{clipCount === 0 ? "Nothing on the timeline yet" : "No clip selected"}</span>
-          </div>}
+          </> : <EmptyState
+            className="inspector-empty"
+            icon={<MousePointerClick />}
+            title={clipCount === 0 ? "Nothing on the timeline yet" : "No clip selected"}
+            description={clipCount === 0
+              ? "Drag media or a scene onto a track, then select the clip to edit it here."
+              : "Select a clip on the timeline, or click the picture, to edit its timing, transform and effects."}
+          />}
         </aside>}
       </div>
 
