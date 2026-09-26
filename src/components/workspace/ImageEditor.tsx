@@ -442,7 +442,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
-      <PaneHeader actions={<>
+      <PaneHeader title="Scene" actions={<>
         <button className="icon-button image-pane-button" aria-label="Undo image edit" aria-keyshortcuts="Control+Z" {...tooltipProps("Undo", "Ctrl+Z")} disabled={!undo.current.length} onClick={() => history(true)}><Undo16 aria-hidden="true" /></button>
         <button className="icon-button image-pane-button" aria-label="Redo image edit" aria-keyshortcuts="Control+Y" {...tooltipProps("Redo", "Ctrl+Y")} disabled={!redo.current.length} onClick={() => history(false)}><Redo16 aria-hidden="true" /></button>
       </>} />

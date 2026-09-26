@@ -399,5 +399,6 @@ it("heads the inspector with the selected node rather than an Inspector title", 
   const inspector = screen.getByRole("complementary", { name: "Image node inspector" });
   expect(within(inspector).getByRole("heading", { name: "Image" })).toBeInTheDocument();
   expect(within(inspector).getByText("Root")).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: /^(Scene|Inspector)/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /^Inspector/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Scene" })).toBeInTheDocument();
 });
