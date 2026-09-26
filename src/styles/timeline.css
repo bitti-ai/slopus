@@ -402,9 +402,10 @@
 .program-panel {
   min-width: 0;
   min-height: 0;
+  container: program-panel / inline-size;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 24px;
-  background: var(--stage-bg);
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--surface-stage);
 }
 
 /* A flat stage, no dot grid. At 50% / 100% the stage has a fixed size and
@@ -477,7 +478,8 @@
   background: var(--accent-bright);
 }
 
-.program-transform button {
+.program-transform__rotate,
+.program-transform__scale {
   position: absolute;
   z-index: 1;
   width: 12px;
@@ -487,21 +489,27 @@
   border-radius: 2px;
   background: var(--panel);
   touch-action: none;
+  transition: background-color var(--motion-fast) linear;
+}
+
+/* Hover fills the handle, so it is clear which one the press will take. */
+.program-transform__rotate:hover,
+.program-transform__scale:hover {
+  background: var(--accent-bright);
 }
 
 .program-transform__rotate {
   left: 50%;
   top: -24px;
   translate: -50% 0;
-  border-radius: var(--radius-pill) !important;
+  border-radius: var(--radius-pill);
   cursor: grab;
 }
 
-.program-transform__scale {
-  right: -7px;
-  bottom: -7px;
-  cursor: nwse-resize;
-}
+.program-transform__scale--tl { left: -7px; top: -7px; cursor: nwse-resize; }
+.program-transform__scale--tr { right: -7px; top: -7px; cursor: nesw-resize; }
+.program-transform__scale--bl { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.program-transform__scale--br { right: -7px; bottom: -7px; cursor: nwse-resize; }
 
 .program-transform:active,
 .program-transform__rotate:active {
@@ -529,17 +537,19 @@
   background: var(--stage-alert-bg);
 }
 
-/* An empty timeline: one muted line on the black stage. */
-.program-empty {
-  width: 100%;
+/* An empty timeline: the shared empty state, in stage ink — the stage is
+   dark in both themes. */
+.program-empty.ui-empty-state {
   height: 100%;
-  display: grid;
-  place-items: center;
-  padding: var(--space-4);
-  text-align: center;
+}
+
+.program-empty .ui-empty-state__icon,
+.program-empty .ui-empty-state__description {
   color: color-mix(in srgb, var(--on-stage) 62%, transparent);
-  font-size: var(--text-xs);
-  line-height: var(--leading-snug);
+}
+
+.program-empty .ui-empty-state__title {
+  color: var(--on-stage);
 }
 
 /* Title-safe (80%) and action-safe (90%) guides, drawn over the project's
@@ -569,12 +579,15 @@
 .program-safe__action { inset: 5%; }
 .program-safe__title { inset: 10%; }
 
+/* The monitor's control strip: labelled mono values leading, the zoom and
+   the safe-area toggle trailing, all at the 24px compact size. */
 .program-footer {
   min-width: 0;
+  min-height: var(--chrome-row-sm);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-1) 0 var(--space-2);
+  gap: var(--space-4);
+  padding: 0 0 0 var(--space-2);
   border-top: 1px solid var(--stroke-divider);
   color: var(--text-secondary);
   background: var(--surface-chrome);
@@ -584,11 +597,24 @@
   white-space: nowrap;
 }
 
+.program-footer__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+}
+
+.program-footer__label {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
 .program-footer__time { color: var(--text-primary); }
 .program-footer__spacer { flex: 1; }
 
 .program-footer .ui-combo {
-  height: 20px;
+  height: var(--control-sm);
+  min-height: 0;
   min-width: 72px;
   padding: 0 var(--space-1) 0 var(--space-2);
   border-radius: var(--radius-sm);
@@ -596,8 +622,9 @@
 }
 
 .program-footer__toggle {
-  width: 20px;
-  height: 20px;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  flex: none;
   display: grid;
   place-items: center;
   padding: 0;
@@ -610,9 +637,9 @@
 
 .program-footer__toggle:hover { background: var(--fill-subtle-hover); }
 
-.program-footer__toggle.active {
-  color: var(--text-primary);
-  background: var(--fill-subtle-pressed);
+/* A narrow monitor keeps the values and drops their labels first. */
+@container program-panel (max-width: 360px) {
+  .program-footer__label { display: none; }
 }
 
 /* --- Clip inspector ----------------------------------------------------------

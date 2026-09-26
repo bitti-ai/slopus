@@ -1,7 +1,7 @@
 import { ClipEffects } from "./ClipEffects";
 import {
-  ChevronFirst, ChevronLast, Copy, Film, LayoutGrid, List, Lock, LockOpen,
-  PanelLeft, PanelRight, Pause, Play, Plus, Scissors, StepBack, StepForward, Trash2, Upload,
+  ChevronFirst, ChevronLast, Clapperboard, Copy, Film, LayoutGrid, List, Lock, LockOpen,
+  PanelLeft, PanelRight, Pause, Play, Plus, Scan, Scissors, StepBack, StepForward, Trash2, Upload,
   Volume2, VolumeX, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
@@ -1246,13 +1246,37 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   onSelectClip={setSelectedId}
                   onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) }, `transform:${clipId}:gesture`)}
                 />
-                : <div className="program-empty"><span>Drop media on a track, or generate a scene.</span></div>}
+                : <EmptyState
+                  className="program-empty"
+                  icon={<Clapperboard />}
+                  title="Nothing on the timeline yet"
+                  description="Drop media on a track, or generate a scene."
+                  action={<button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void importMedia()}
+                    disabled={importing || !isTauri()}
+                    {...tooltipProps(isTauri() ? undefined : "Importing files is available in the desktop app")}
+                  ><Upload size={16} aria-hidden="true" /> Import media</button>}
+                />}
               {safeArea && <div className="program-safe" aria-hidden="true"><i className="program-safe__frame"><b className="program-safe__action" /><b className="program-safe__title" /></i></div>}
             </div>
           </div>
+          {/* No header: the stage is the pane. The footer is its control strip —
+              labelled values on the leading edge, view controls trailing. */}
           <footer className="program-footer">
-            <span className="program-footer__time" aria-label="Playhead">{formatTimecode(playhead, fps)}</span>
-            <span className="program-footer__duration" aria-label="Timeline duration">{formatTimecode(contentEndMs, fps)}</span>
+            <span className="program-footer__value">
+              <span className="program-footer__label" aria-hidden="true">Playhead</span>
+              <span className="program-footer__time" aria-label="Playhead">{formatTimecode(playhead, fps)}</span>
+            </span>
+            <span className="program-footer__value">
+              <span className="program-footer__label" aria-hidden="true">Duration</span>
+              <span className="program-footer__duration" aria-label="Timeline duration">{formatTimecode(contentEndMs, fps)}</span>
+            </span>
+            {(inMs !== null || outMs !== null) && <span className="program-footer__value">
+              <span className="program-footer__label" aria-hidden="true">In–out</span>
+              <span className="program-footer__range" aria-label="In to out">{formatTimecode(Math.max(0, (outMs ?? duration) - (inMs ?? 0)), fps)}</span>
+            </span>}
             <span className="program-footer__spacer" />
             <ComboBox
               className="program-footer__zoom"
@@ -1263,12 +1287,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             />
             <button
               type="button"
-              className={`program-footer__toggle${safeArea ? " active" : ""}`}
+              className="ui-toggle-button program-footer__toggle"
               aria-pressed={safeArea}
               aria-label="Safe areas"
               {...tooltipProps("Title and action safe areas")}
               onClick={() => setSafeArea((value) => !value)}
-            ><LayoutGrid size={14} aria-hidden="true" /></button>
+            ><Scan size={16} aria-hidden="true" /></button>
           </footer>
         </main>
 

@@ -262,9 +262,9 @@ describe("the media and scene panels", () => {
     expect(cardFor(config.assets[1]).classList.contains("is-selected")).toBe(true);
     expect(cardFor(config.assets[0]).classList.contains("is-selected")).toBe(false);
     cleanup();
-    mediaPanel(parseProjectConfig({ ...config, assets: [] }));
-    expect(screen.getByText("No media yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Import media" })).toBeTruthy();
+    const empty = mediaPanel(parseProjectConfig({ ...config, assets: [] })).container.querySelector(".media-grid") as HTMLElement;
+    expect(within(empty).getByText("No media yet")).toBeTruthy();
+    expect(within(empty).getByRole("button", { name: "Import media" })).toBeTruthy();
   });
 
   it("offers Add scene as a plain button that opens the unstarted draft", () => {
@@ -678,6 +678,7 @@ describe("the transport and the playhead", () => {
     const range = container.querySelector(".time-ruler__range") as HTMLElement;
     expect(range.style.left).toBe(`${(1000 / 40_000) * 100}%`);
     expect(range.style.width).toBe(`${(2000 / 40_000) * 100}%`);
+    expect(screen.getByLabelText("In to out").textContent).toBe("00:00:02:00");
     fireEvent.contextMenu(container.querySelector(".time-ruler")!);
     fireEvent.click(screen.getByRole("menuitem", { name: /Clear in and out/ }));
     expect(container.querySelector(".time-ruler__range")).toBeNull();
@@ -752,9 +753,16 @@ describe("zoom and the wheel", () => {
 describe("the program monitor", () => {
   it("shows a muted line on an empty timeline and a footer with time, duration, zoom and safe areas", () => {
     const { container } = render_(projectWithMedia());
-    expect(container.querySelector(".program-empty")!.textContent).toBe("Drop media on a track, or generate a scene.");
+    const empty = container.querySelector(".program-empty") as HTMLElement;
+    expect(within(empty).getByText("Nothing on the timeline yet")).toBeTruthy();
+    expect(within(empty).getByText("Drop media on a track, or generate a scene.")).toBeTruthy();
+    expect(within(empty).getByRole("button", { name: "Import media" })).toBeTruthy();
+    expect(container.querySelector(".program-panel h2:not(.sr-only), .program-panel header")).toBeNull();
     const footer = container.querySelector(".program-footer") as HTMLElement;
     expect(within(footer).getByLabelText("Playhead").textContent).toBe("00:00:00:00");
+    expect(within(footer).getByText("Playhead")).toBeTruthy();
+    expect(within(footer).getByText("Duration")).toBeTruthy();
+    expect(within(footer).queryByText("In–out")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Monitor zoom" }).textContent).toContain("Fit");
     fireEvent.click(screen.getByRole("button", { name: "Safe areas" }));
     expect(container.querySelector(".program-safe")).not.toBeNull();

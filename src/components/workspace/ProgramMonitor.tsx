@@ -353,7 +353,17 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
       onPointerCancel={endTransform}
     >
       <button className="program-transform__rotate" type="button" aria-label="Rotate clip" data-tooltip="Drag to rotate" onPointerDown={(event) => beginTransform("rotate", event)} />
-      <button className="program-transform__scale" type="button" aria-label="Scale clip" data-tooltip="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />
+      <button className="program-transform__scale program-transform__scale--br" type="button" aria-label="Scale clip" data-tooltip="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />
+      {/* Scale is uniform and measured from the centre, so every corner is the
+          same gesture: the other three are pointer targets for the one named
+          above, not further controls. There are no edge handles because
+          there is no one-axis stretch to give them. */}
+      {(["tl", "tr", "bl"] as const).map((corner) => <span
+        key={corner}
+        className={`program-transform__scale program-transform__scale--${corner}`}
+        aria-hidden="true"
+        onPointerDown={(event) => beginTransform("scale", event)}
+      />)}
       <span className="sr-only">Drag inside the frame to move the clip.</span>
     </div>}
     {audioClips.map((audioClip) => {
