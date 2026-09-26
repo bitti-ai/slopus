@@ -1,12 +1,13 @@
-import { ArrowDown, ArrowUp, Download, FolderSearch, Layers, LoaderCircle, Plus, Trash2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Layers, LoaderCircle, Plus, Trash2, Wrench } from "lucide-react";
 import "../styles/loras.css";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { highestLoraStepOverride, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
-import { SettingsEditorDialog } from "./SettingsEditorDialog";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath } from "../lib/runtime";
 import { downloadLora, getWeightDownloadState, prepareLora, refreshDownloadedLoras, removeLora, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
+import { Checkbox, ComboBox, ContentDialog, InfoBar, ProgressBar, SettingsCard, SettingsGroup, ToggleSwitch } from "./ui";
+import { OpenableCard } from "./OpenableCard";
 
 function useLoras() {
   const [loras, setLoras] = useState(loadLoras);
@@ -26,20 +27,29 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
     const timer = window.setInterval(refresh, 5000);
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, []);
-  return <section className="generator-templates" aria-labelledby="loras-heading">
-    <header><div><h2 id="loras-heading">LoRAs</h2><p>Download adapters or add local files, then activate them in a generator template.</p></div>
-      <button className="secondary-button" type="button" onClick={onAdd}><Plus size={16} /> Add Lora</button></header>
-    <div className="generator-template-list" role="list" aria-label="LoRAs">
-      {loras.map((lora) => <div className="generator-template-item lora-library-item" role="listitem" key={lora.id}>
-        {download?.active && download.loraId === lora.id && download.phase !== "preparing" && <span className="generator-template-item__progress" role="progressbar" aria-label={`Downloading ${lora.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(weightDownloadProgress(download))} style={{ width: `${weightDownloadProgress(download)}%` }} />}
-        <button type="button" className="generator-template-item__open" aria-label={`Edit ${lora.name} LoRA`} onClick={() => onEdit(lora.id)}><Layers size={16} /><b>{lora.name}</b><small title={lora.path}>{download?.active && download.loraId === lora.id ? download.phase === "preparing" ? "Preparing…" : `Downloading · ${Math.floor(weightDownloadProgress(download))}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</small></button>
-        {lora.path ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Prepare LoRA ${lora.name}`} title="Prepare missing timestep grid" onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{download?.active && download.loraId === lora.id && download.phase === "preparing" ? <LoaderCircle size={15} className="spin" /> : <Wrench size={15} />}</button> : <span />}
-        {lora.url && !lora.path ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} onClick={() => void downloadLora(lora.id)}><Download size={15} /></button>
-          : <button className="icon-button" type="button" disabled={Boolean(download?.active)} aria-label={`Remove LoRA ${lora.name}`} onClick={() => void removeLora(lora.id).catch((reason) => setError(String(reason)))}><Trash2 size={15} /></button>}
-      </div>)}
+  return <SettingsGroup heading="LoRAs">
+    <SettingsCard icon={<Plus size={20} />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
+      <button className="secondary-button" type="button" onClick={onAdd}>Add LoRA</button>
+    </SettingsCard>
+    <div className="settings-card-list" role="list" aria-label="LoRAs">
+      {loras.map((lora) => {
+        const active = download?.active && download.loraId === lora.id;
+        const preparing = active && download?.phase === "preparing";
+        const percent = download ? Math.floor(weightDownloadProgress(download)) : 0;
+        return <OpenableCard key={lora.id} icon={<Layers size={20} />} header={lora.name} openLabel={`Edit ${lora.name} LoRA`} onOpen={() => onEdit(lora.id)}
+          description={<span data-tooltip={lora.path || undefined}>{active ? preparing ? "Preparing…" : `Downloading · ${percent}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</span>}
+          progress={active && !preparing && <ProgressBar className="settings-progress" value={weightDownloadProgress(download!)} aria-label={`Downloading ${lora.name}`} />}
+          actions={<>
+            {lora.path && <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Prepare LoRA ${lora.name}`} data-tooltip="Prepare missing timestep grid"
+              onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{preparing ? <LoaderCircle size={16} className="spin" /> : <Wrench size={16} />}</button>}
+            {lora.url && !lora.path
+              ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} data-tooltip="Download" onClick={() => void downloadLora(lora.id)}><Download size={16} /></button>
+              : <button className="icon-button" type="button" disabled={Boolean(download?.active)} aria-label={`Remove LoRA ${lora.name}`} data-tooltip="Remove" onClick={() => void removeLora(lora.id).catch((reason) => setError(String(reason)))}><Trash2 size={16} /></button>}
+          </>} />;
+      })}
     </div>
-    {error && <p role="alert">{error}</p>}
-  </section>;
+    {error && <InfoBar severity="error" message={error} onClose={() => setError(null)} />}
+  </SettingsGroup>;
 }
 
 export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => void }) {
@@ -62,8 +72,9 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
       if (!name.trim()) setName(picked.split(/[\\/]/).pop()!.replace(/\.safetensors$/i, ""));
     } catch (reason) { setError(String(reason)); }
   };
+  const invalid = !name.trim() || (!path.trim() && !existing?.url) || (override && !isLoraStepOverride(Number(steps)));
   const save = async () => {
-    if (!name.trim() || (!path.trim() && !existing?.url) || (override && !isLoraStepOverride(Number(steps)))) return;
+    if (invalid) return;
     if (path.trim() && (!/^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path.trim()) || path.includes("\0"))) {
       setError("Choose a local LoRA file using its absolute path."); return;
     }
@@ -80,20 +91,21 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
     } catch (reason) { setError(String(reason)); }
     finally { setSaving(false); }
   };
-  return <SettingsEditorDialog title={existing ? "Edit Lora" : "Add Lora"} headingId="lora-editor-heading" initialFocusLabel="LoRA name" closeLabel="Close LoRA settings" onClose={onDone}>
+  return <ContentDialog title={existing ? "Edit LoRA" : "Add LoRA"} className="lora-dialog" width={560}
+    primaryText={saving ? "Preparing LoRA…" : existing ? "Save" : "Add"} onPrimary={() => void save()} primaryDisabled={saving || Boolean(download?.active) || invalid}
+    closeText="Cancel" onClose={onDone} defaultButton="primary" disableEscape={saving}>
     <fieldset className="lora-manual" disabled={saving}>
       <label>Name<input aria-label="LoRA name" value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>Local file<div className="settings-path__row"><input aria-label="LoRA path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
-        <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}><FolderSearch size={16} /> Browse</button></div></label>
-      <label className="lora-toggle"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /> Override step count</label>
+      <label>Local file<span className="lora-manual__path"><input aria-label="LoRA path" value={path} spellCheck={false} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
+        <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}>Browse…</button></span></label>
+      <Checkbox aria-label="Override step count" checked={override} onChange={setOverride} label="Override step count"
+        description="The highest override among active LoRAs replaces the scene's step count." />
       {override && <label>Step count<input aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
-      <p>The highest override among active LoRAs replaces the scene's step count. Without an override, the scene's steps are used.</p>
-      <label className="lora-toggle"><input type="checkbox" checked={allowDownload} onChange={(event) => setAllowDownload(event.target.checked)} /> Download missing timestep grid</label>
-      <p>Newly selected files are prepared in place before use. Preparation may embed a timestep grid in the adapter.</p>
-      <button className="primary-button" type="button" disabled={Boolean(download?.active) || !name.trim() || (!path.trim() && !existing?.url) || (override && !isLoraStepOverride(Number(steps)))} onClick={() => void save()}>{saving ? "Preparing LoRA…" : existing ? "Save Lora" : "Add Lora"}</button>
-      {error && <p role="alert">{error}</p>}
+      <Checkbox aria-label="Download missing timestep grid" checked={allowDownload} onChange={setAllowDownload} label="Download missing timestep grid"
+        description="New files are prepared in place before use, which may embed a timestep grid." />
+      {error && <InfoBar severity="error" message={error} />}
     </fieldset>
-  </SettingsEditorDialog>;
+  </ContentDialog>;
 }
 
 export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
@@ -108,26 +120,25 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
     [next[index], next[index + delta]] = [next[index + delta], next[index]];
     onChange(next);
   };
-  return <section className="template-loras" aria-labelledby="template-loras-heading">
-    <h3 id="template-loras-heading">LoRAs <small>{active.length} active</small></h3>
-    <p>Enable adapters, set their strength, and arrange their order. A strength of 0 disables the adapter.</p>
-    <p>Missing active LoRAs with download links are downloaded with the generator.</p>
+  return <SettingsGroup heading={<>LoRAs <span className="settings-group__count">{active.length} active</span></>} className="template-loras">
     {value.map((entry, index) => {
       const lora = library.find(({ id }) => id === entry.loraId);
       const name = lora?.name ?? "Missing LoRA";
-      return <div className="template-lora-row" key={entry.loraId}>
-        <span>{index + 1}.</span>
-        <label className="lora-toggle"><input type="checkbox" checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(event) => update(index, { enabled: event.target.checked })} /> {name}{!lora?.path && (lora?.url ? " (download required)" : " (file unavailable)")}</label>
-        <label>Strength<input type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength} onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
-        <button className="icon-button" type="button" aria-label={`Move ${name} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={15} /></button>
-        <button className="icon-button" type="button" aria-label={`Move ${name} down`} disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={15} /></button>
-        <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} onClick={() => onChange(value.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
-      </div>;
+      return <SettingsCard key={entry.loraId} className="template-lora" icon={<Layers size={20} />} header={`${index + 1}. ${name}`}
+        description={!lora?.path ? (lora?.url ? "Download required" : "File unavailable") : undefined}>
+        <label className="template-lora__strength">Strength<input className="settings-field settings-field--number" type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength}
+          onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
+        <button className="icon-button" type="button" aria-label={`Move ${name} up`} data-tooltip="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={16} /></button>
+        <button className="icon-button" type="button" aria-label={`Move ${name} down`} data-tooltip="Move down" disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={16} /></button>
+        <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} data-tooltip="Remove" onClick={() => onChange(value.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
+        <ToggleSwitch checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(enabled) => update(index, { enabled })} />
+      </SettingsCard>;
     })}
-    <select aria-label="Add LoRA to generator" value="" disabled={!available.length} onChange={(event) => { if (event.target.value) onChange([...value, { loraId: event.target.value, enabled: true, strength: 1 }]); }}>
-      <option value="">{available.length ? "Add an available LoRA…" : "Download or add a LoRA in Generators settings"}</option>
-      {available.map((lora) => <option value={lora.id} key={lora.id}>{lora.name}</option>)}
-    </select>
-    {stepOverride !== undefined && <p>Active LoRAs override the scene's step count to {stepOverride}, the highest selected override.</p>}
-  </section>;
+    <SettingsCard icon={<Plus size={20} />} header="Add a LoRA" description="A strength of 0 turns an adapter off. Missing active LoRAs download with the generator.">
+      <ComboBox aria-label="Add LoRA to generator" value="" disabled={!available.length} placeholder={available.length ? "Choose a LoRA" : "None available"}
+        onChange={(loraId) => { if (loraId) onChange([...value, { loraId, enabled: true, strength: 1 }]); }}
+        options={available.map((lora) => ({ value: lora.id, label: lora.name }))} />
+    </SettingsCard>
+    {stepOverride !== undefined && <InfoBar severity="informational" message={`Active LoRAs set the scene's step count to ${stepOverride}, the highest selected override.`} />}
+  </SettingsGroup>;
 }

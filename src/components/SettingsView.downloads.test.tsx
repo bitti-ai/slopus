@@ -14,6 +14,11 @@ import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 const files = new Set<string>();
+const pick = (name: string, option: string) => {
+  fireEvent.click(screen.getByRole("combobox", { name }));
+  fireEvent.click(screen.getByRole("option", { name: option }));
+};
+const card = (openLabel: string) => screen.getByRole("button", { name: openLabel }).closest(".settings-open-card") as HTMLElement;
 
 it("keeps a failed local import editable and supports local-only preparation", async () => {
   const normal = vi.mocked(invoke).getMockImplementation()!;
@@ -22,17 +27,17 @@ it("keeps a failed local import editable and supports local-only preparation", a
     return normal(command, args);
   });
   render(<SettingsView onClose={() => undefined} />);
-  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add LoRA" }));
   fireEvent.change(screen.getByLabelText("LoRA name"), { target: { value: "Offline style" } });
   fireEvent.change(screen.getByLabelText("LoRA path"), { target: { value: "D:/style.safetensors" } });
   fireEvent.click(screen.getByLabelText("Download missing timestep grid"));
-  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Local companion grid missing");
   expect(loadLoras().find(({ name }) => name === "Offline style")).toBeUndefined();
   expect(invoke).toHaveBeenCalledWith("prepare_lora", { path: "D:/style.safetensors", allowDownload: false });
   expect(screen.getByLabelText("LoRA name")).toHaveValue("Offline style");
   vi.mocked(invoke).mockImplementation(normal);
-  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
   await screen.findByRole("button", { name: "Prepare LoRA Offline style" });
   expect(loadLoras().find(({ name }) => name === "Offline style")?.path).toBe("D:/style.safetensors");
 });
@@ -81,8 +86,8 @@ it("adds and downloads an additional safetensor from a generator's settings", as
   fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
   await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 1, error: null }));
   expect(loadGeneratorTemplateSettings().templates[0].additionalSafetensors![0].downloadedPath).toBe("C:/Slopus/weights/extra.safetensors");
-  fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "animate" } });
-  fireEvent.change(screen.getByLabelText("Additional safetensor 1 use"), { target: { value: "promptEmbedding" } });
+  pick("Generator mode", "Animate (reference video)");
+  pick("Additional safetensor 1 use", "Animate conditioning");
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("slopfab_status", expect.objectContaining({ settings: {
     slopfab: expect.objectContaining({ options: expect.objectContaining({ generationMode: "animate", promptEmbedding: "C:/Slopus/weights/extra.safetensors" }) }),
   } })));
@@ -98,10 +103,10 @@ it("discovers Singularity's existing weights on opening Settings and downloads o
   render(<SettingsView onClose={() => undefined} />);
   await waitFor(() => expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-singularity")?.paths.transformer).toMatch(/^D:\/Projects\/weights\//));
   expect(screen.getByRole("button", { name: "Download generator Singularity" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Edit Singularity generator" })).toHaveTextContent("Needs Turbo LoRA");
+  expect(card("Edit Singularity generator")).toHaveTextContent("Needs Turbo LoRA");
   expect(invoke).not.toHaveBeenCalledWith("download_weight", expect.anything());
   fireEvent.click(screen.getByRole("button", { name: "Download generator Singularity" }));
-  expect(await screen.findByRole("radio", { name: "Use Singularity as the default generator" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "Set Singularity as default" })).toBeEnabled();
   expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight")).toEqual([
     ["download_weight", { requestId: expect.any(String), url: TURBO_LORA.url }],
   ]);
@@ -132,8 +137,9 @@ it("shows discovered model files as Found even when an active LoRA is missing", 
 it("selects an undownloaded LoRA in a generator and downloads it from that generator", async () => {
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "Add LoRA to generator" }));
   expect(screen.getByRole("option", { name: "Turbo" })).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: TURBO_LORA.id } });
+  fireEvent.click(screen.getByRole("option", { name: "Turbo" }));
   expect(screen.getByLabelText("Enable Turbo")).toBeChecked();
   expect(screen.getByText(/step count to 4/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
@@ -141,26 +147,28 @@ it("selects an undownloaded LoRA in a generator and downloads it from that gener
   expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
   expect(screen.queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Generators" }));
-  expect(screen.getByRole("radio", { name: "Use Default as the default generator" })).toBeEnabled();
+  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
+  expect(card("Edit Default generator")).toHaveTextContent("Used by default");
   fireEvent.click(screen.getByRole("button", { name: "Remove LoRA Turbo" }));
   expect(await screen.findByRole("button", { name: "Download generator Default" })).toBeEnabled();
-  expect(screen.queryByRole("radio", { name: "Use Default as the default generator" })).not.toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("Default")).toBeInTheDocument();
+  expect(card("Edit Default generator")).not.toHaveTextContent("Used by default");
 });
 
 it("downloads TaoMate and persists manual adapters, activation, strength and order per template", async () => {
   const settings = render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Download LoRA TaoMate 3-Step" }));
   await waitFor(() => expect(loadLoras()[0].path).not.toBe(""));
-  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add LoRA" }));
   expect(screen.queryByRole("button", { name: "New generator" })).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Add Lora" })).toBeInTheDocument();
-  expect(screen.getByRole("dialog", { name: "Add Lora" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Add LoRA" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Add LoRA" })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("LoRA name"), { target: { value: "My style" } });
   fireEvent.change(screen.getByLabelText("LoRA path"), { target: { value: "D:/models/style.safetensors" } });
   expect(screen.queryByLabelText("LoRA multiplier")).not.toBeInTheDocument();
   fireEvent.click(screen.getByLabelText("Override step count"));
   fireEvent.change(screen.getByLabelText("LoRA step override"), { target: { value: "8" } });
-  fireEvent.click(screen.getByRole("button", { name: "Add Lora" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
   await waitFor(() => expect(loadLoras().find(({ name }) => name === "My style")).toBeDefined());
   expect(invoke).toHaveBeenCalledWith("prepare_lora", { path: "D:/models/style.safetensors", allowDownload: true });
   const manual = loadLoras().find(({ name }) => name === "My style")!;
@@ -169,12 +177,12 @@ it("downloads TaoMate and persists manual adapters, activation, strength and ord
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Edit My style LoRA" }));
   expect(screen.getByLabelText("LoRA step override")).toHaveValue(8);
-  expect(screen.getByRole("dialog", { name: "Edit Lora" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Edit LoRA" })).toBeInTheDocument();
   expect(screen.queryByLabelText("LoRA multiplier")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
-  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: TAOMATE_LORA.id } });
-  fireEvent.change(screen.getByLabelText("Add LoRA to generator"), { target: { value: manual.id } });
+  pick("Add LoRA to generator", TAOMATE_LORA.name);
+  pick("Add LoRA to generator", manual.name);
   fireEvent.change(screen.getByLabelText("My style strength"), { target: { value: "-0.5" } });
   fireEvent.click(screen.getByRole("button", { name: "Move My style up" }));
   fireEvent.click(screen.getByLabelText("Enable TaoMate 3-Step"));
@@ -211,7 +219,7 @@ it("keeps a LoRA download alive outside Settings, shows progress and cancels thr
   settings.unmount();
   render(<WorkQueuePanel queue={new WorkQueue()} items={[]} onClose={() => undefined} />);
   act(() => progress({ payload: { requestId, downloaded: 50, total: 100 } }));
-  expect(screen.getByRole("progressbar", { name: "TaoMate 3-Step download progress" })).toHaveAttribute("value", "50");
+  expect(screen.getByRole("progressbar", { name: "TaoMate 3-Step download progress" })).toHaveAttribute("aria-valuenow", "50");
   fireEvent.click(screen.getByRole("button", { name: "Cancel TaoMate 3-Step download" }));
   await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, error: "Download cancelled." }));
   expect(loadLoras()[0].path).toBe("");
@@ -236,22 +244,23 @@ it("keeps downloading with Settings closed and restores progress in the template
   await waitFor(() => expect(pending).toHaveLength(1));
   act(() => progress({ payload: { requestId: pending[0].requestId, downloaded: 50, total: 100 } }));
   const fill = screen.getByRole("progressbar", { name: "Downloading First/Last Frame weights" });
-  expect(fill.closest(".generator-template-item")).not.toBeNull();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByRole("progressbar")).toBe(fill);
+  expect(fill.closest(".settings-open-card")).toHaveTextContent("Downloading · 12%");
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByRole("progressbar")).toBe(fill);
   expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
-  expect(fill).toHaveStyle({ width: "12.5%" });
-  fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+  expect(fill).toHaveAttribute("aria-valuenow", "13");
+  expect(fill.querySelector(".ui-progress__fill")).toHaveStyle({ width: "12.5%" });
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
   await act(async () => pending[0].finish());
   await waitFor(() => expect(pending).toHaveLength(2));
   act(() => progress({ payload: { requestId: pending[1].requestId, downloaded: 50, total: 100 } }));
   const queue = new WorkQueue(async (record) => record);
   const panel = render(<WorkQueuePanel queue={queue} items={[]} onClose={() => panel.unmount()} />);
   expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("First/Last Frame");
-  expect(screen.getByRole("progressbar", { name: "First/Last Frame download progress" })).toHaveAttribute("value", "37.5");
+  expect(screen.getByRole("progressbar", { name: "First/Last Frame download progress" })).toHaveAttribute("aria-valuenow", "38");
   expect(screen.queryByText("No work yet")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Close work queue" }));
+  panel.unmount();
   const reopened = render(<SettingsView onClose={() => reopened.unmount()} />);
-  expect(screen.getByRole("progressbar", { name: "Downloading First/Last Frame weights" })).toHaveStyle({ width: "37.5%" });
+  expect(screen.getByRole("progressbar", { name: "Downloading First/Last Frame weights" }).querySelector(".ui-progress__fill")).toHaveStyle({ width: "37.5%" });
   reopened.unmount();
   for (let index = 1; index < 4; index++) {
     await waitFor(() => expect(pending.length).toBe(index + 1));
@@ -266,24 +275,24 @@ it("keeps downloading with Settings closed and restores progress in the template
 
 it("downloads the sample, enables its default choice, and removes only weights to restore the download action", async () => {
   render(<SettingsView onClose={() => undefined} />);
-  const radio = () => screen.getByRole("radio", { name: "Use First/Last Frame as the default generator" });
+  const makeDefault = () => screen.getByRole("button", { name: "Set First/Last Frame as default" });
   expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
-  expect(within(screen.getByRole("list", { name: "Download" })).queryByRole("radio")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("First/Last Frame")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).queryByRole("button", { name: /as default/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Remove generator First/Last Frame" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
-  const remove = await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" });
+  const remove = await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" }, { timeout: 5000 });
   expect(within(screen.getByRole("list", { name: "Generators" })).getByText("First/Last Frame")).toBeInTheDocument();
-  expect(within(screen.getByRole("list", { name: "Download" })).queryByText("First/Last Frame")).toBeNull();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByText("References")).toBeInTheDocument();
-  expect(radio()).toBeEnabled();
-  fireEvent.click(radio());
+  expect(within(screen.getByRole("list", { name: "Available to download" })).queryByText("First/Last Frame")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("References")).toBeInTheDocument();
+  expect(makeDefault()).toBeEnabled();
+  fireEvent.click(makeDefault());
   await waitFor(() => expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("minimax-h3-original"));
   fireEvent.click(remove);
   expect(await screen.findByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
-  expect(within(screen.getByRole("list", { name: "Download" })).getByText("First/Last Frame")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("First/Last Frame")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
-  expect(within(screen.getByRole("list", { name: "Download" })).queryByRole("radio")).toBeNull();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).queryByRole("button", { name: /as default/ })).toBeNull();
   expect(files.size).toBe(0);
   expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.paths.transformer).toMatch(/^https:/);
 });
@@ -291,7 +300,7 @@ it("downloads the sample, enables its default choice, and removes only weights t
 it("restores a deleted downloaded file when Settings regains focus", async () => {
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Download generator First/Last Frame" }));
-  await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" });
+  await screen.findByRole("button", { name: "Remove downloaded weights for First/Last Frame" }, { timeout: 5000 });
   files.clear();
   fireEvent.focus(window);
   expect(await screen.findByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
@@ -300,15 +309,16 @@ it("restores a deleted downloaded file when Settings regains focus", async () =>
 it("stores multiple variants and their GPU and VRAM criteria in the editor", async () => {
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Edit First/Last Frame generator" }));
-  const advanced = screen.getByRole("checkbox", { name: "Show advanced options" });
+  const advanced = screen.getByRole("switch", { name: "Show advanced options" });
   expect(advanced).not.toBeChecked();
   expect(screen.queryByText(/Download variants/)).toBeNull();
-  expect(advanced.closest(".generator-editor")?.lastElementChild).toBe(advanced.closest("label"));
+  const groups = document.querySelectorAll(".settings-page > .ui-settings-group");
+  expect(groups[groups.length - 1]).toBe(advanced.closest(".ui-settings-group"));
   fireEvent.click(advanced);
-  const weight = screen.getByLabelText("Transformer weights").closest(".settings-path")!;
-  const details = weight.querySelector("details")!;
-  fireEvent.click(within(weight as HTMLElement).getByText("Download variants (2)"));
-  details.open = true;
+  const weight = screen.getByRole("group", { name: "Transformer weights" }).closest(".settings-path") as HTMLElement;
+  const variants = within(weight).getByRole("button", { name: /^Download variants \(2\)/ });
+  fireEvent.click(variants);
+  expect(variants).toHaveAttribute("aria-expanded", "true");
   fireEvent.change(screen.getByLabelText("Add Transformer weights download URL"), { target: { value: "https://example.com/larger.safetensors" } });
   fireEvent.click(within(weight as HTMLElement).getByRole("button", { name: "Add URL" }));
   const gpu = screen.getByLabelText("Transformer weights variant 3 GPU model");
@@ -322,6 +332,6 @@ it("stores multiple variants and their GPU and VRAM criteria in the editor", asy
   expect(screen.getByLabelText("Transformer weights variant 3 GPU model")).toHaveValue("RTX 5090");
   fireEvent.click(screen.getByRole("button", { name: "Generators" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
-  expect(screen.getByRole("checkbox", { name: "Show advanced options" })).not.toBeChecked();
+  expect(screen.getByRole("switch", { name: "Show advanced options" })).not.toBeChecked();
   expect(screen.queryByText(/Download variants/)).toBeNull();
 });

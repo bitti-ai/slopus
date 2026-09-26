@@ -1,14 +1,17 @@
-import { SettingsEditorDialog } from "./SettingsEditorDialog";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
-import { AlertCircle, ArrowLeft, Check, Download, FolderOpen, FolderSearch, LoaderCircle, Monitor, Moon, Plus, RefreshCw, RotateCcw, Sun, Trash2, Video } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  Activity, AlertCircle, ArrowLeft, Bot, Check, ChevronRight, Cpu, Download, FileBox, FileText, Folder, Gauge, Image, ListOrdered,
+  LoaderCircle, MoreHorizontal, Palette, Plus, RefreshCw, RotateCcw, Settings2, Sparkles, SquarePen, Trash2, Video, Zap,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
 import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
+import { OpenableCard } from "./OpenableCard";
 import { downloadableTemplateLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
-import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress } from "../lib/weightDownloads";
+import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, generatorPathFields,
@@ -23,10 +26,11 @@ import {
 } from "../lib/settings";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { availableReferenceIconGenerators, loadReferenceIconAutomation, loadReferenceIconGeneratorId, referenceIconGenerator, saveReferenceIconAutomation, saveReferenceIconGeneratorId, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
+import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "../lib/theme";
 import {
-  applyTheme, loadTheme, saveTheme, systemTheme, watchSystemTheme,
-  type ResolvedTheme, type ThemeChoice,
-} from "../lib/theme";
+  ComboBox, ContextMenu, InfoBadge, InfoBar, NavItem, NavPane, ProgressBar, SettingsCard, SettingsExpander, SettingsGroup, SettingsRow,
+  TextField, ToggleSwitch, type InfoBarSeverity,
+} from "./ui";
 
 type PathState = "unset" | "checking" | "found" | "missing" | "download";
 
@@ -46,9 +50,17 @@ const stateLabel: Record<PathState, string> = {
   unset: "Not set",
   checking: "Checking…",
   found: "Found",
-  missing: "Not found on disk",
+  missing: "Not found",
   download: "Download required",
 };
+
+/* Paths are long and the file name is the part that tells them apart, so the
+   middle goes, not the end (Explorer does the same in narrow columns). */
+export function middleEllipsis(text: string, max = 64): string {
+  if (text.length <= max) return text;
+  const tail = Math.ceil(max * 0.6);
+  return `${text.slice(0, max - tail - 1)}…${text.slice(-tail)}`;
+}
 
 function templateSummary(template: GeneratorTemplate): string {
   const loras = downloadableTemplateLoras(template.loras);
@@ -57,91 +69,77 @@ function templateSummary(template: GeneratorTemplate): string {
   return `${template.defaultSteps} steps${loras.length && !pendingModels ? ` · Needs ${loras.map(({ name }) => name).join(", ")} LoRA${loras.length > 1 ? "s" : ""}` : ""}`;
 }
 
-/* The system option has to say what the computer is currently set to, or
-   "Match this computer" is a promise the user cannot check. */
-const themeOptions: { id: ThemeChoice; label: string; icon: typeof Sun; detail: (system: ResolvedTheme) => string }[] = [
-  {
-    id: "system",
-    label: "Match this computer",
-    icon: Monitor,
-    detail: (system) => `Currently ${system}. Follows along when you change it.`,
-  },
-  { id: "light", label: "Light", icon: Sun, detail: () => "Always light, whatever this computer is set to." },
-  { id: "dark", label: "Dark", icon: Moon, detail: () => "Always dark, whatever this computer is set to." },
-];
+const hasDownloadedWeights = (template: GeneratorTemplate) =>
+  Object.values(template.sources ?? {}).some((sources) => sources.length > 0) || Boolean(template.additionalSafetensors?.length);
+
+/* --- Shared pieces ---------------------------------------------------------- */
+
+/* The one line that says what the weight downloader is doing, with its
+   Cancel / Retry. It sits at the top of the page it concerns. */
+function DownloadStatus({ state, templateName, onError }: { state: DownloadState; templateName?: string; onError: (message: string) => void }) {
+  const text = state.error ?? (state.active
+    ? state.phase === "preparing" ? "Preparing LoRA…"
+      : `${state.completed}/${state.files} files · ${(state.downloaded / 1024 ** 3).toFixed(2)} GB${state.total ? ` / ${(state.total / 1024 ** 3).toFixed(2)} GB` : ""}`
+    : state.preparePath ? "LoRA prepared" : "Download complete");
+  return <div className="ui-settings-card settings-download-status" role="status">
+    <span className="ui-settings-card__icon" aria-hidden="true">{state.error ? <AlertCircle size={20} /> : state.active ? <Download size={20} /> : <Check size={20} />}</span>
+    <span className="ui-settings-card__text">
+      <span className="ui-settings-card__header">{state.name ?? templateName}</span>
+      <span className="ui-settings-card__description">{text}</span>
+    </span>
+    <span className="ui-settings-card__control">
+      {state.active && state.phase !== "preparing" && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => onError(String(reason)))}>Cancel download</button>}
+      {state.error && <button type="button" className="secondary-button" onClick={() => void retryWeightDownload()}>{state.phase === "preparing" ? "Retry preparation" : "Retry download"}</button>}
+    </span>
+  </div>;
+}
+
+/* --- Generator page: reference icons ------------------------------------------ */
 
 function ReferenceIconSetting({ templates }: { templates: GeneratorTemplateSettings }) {
   const automation = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconAutomation);
   const chosenId = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconGeneratorId);
   const available = availableReferenceIconGenerators(templates);
   const selected = referenceIconGenerator(templates, chosenId);
-  return (
-    <div className="reference-icon-settings">
-    <label className="reference-icon-option">
-      <input type="checkbox" checked={automation !== "disabled"} onChange={(event) => saveReferenceIconAutomation(event.target.checked ? "ask" : "disabled")} aria-labelledby="automatic-reference-icons-label" />
-      <span><b id="automatic-reference-icons-label">Automatic reference icon generation</b></span>
-    </label>
-    <div className="generator-template-fields">
-      <label><span>Reference icon generator</span>
-        <select aria-label="Reference icon generator" disabled={!available.length} value={selected?.id ?? ""} onChange={(event) => saveReferenceIconGeneratorId(event.target.value)}>
-          {!available.length && <option value="">No available generators</option>}
-          {available.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-        </select>
-      </label>
-    </div>
-    </div>
-  );
+  return <SettingsGroup heading="Reference icons">
+    <SettingsCard icon={<Sparkles size={20} />} header="Automatic reference icon generation">
+      <ToggleSwitch checked={automation !== "disabled"} aria-label="Automatic reference icon generation" onChange={(on) => saveReferenceIconAutomation(on ? "ask" : "disabled")} />
+    </SettingsCard>
+    <SettingsCard icon={<Image size={20} />} header="Reference icon generator">
+      <ComboBox aria-label="Reference icon generator" disabled={!available.length} value={selected?.id ?? ""} placeholder="No available generators"
+        onChange={saveReferenceIconGeneratorId} options={available.map((template) => ({ value: template.id, label: template.name }))} />
+    </SettingsCard>
+  </SettingsGroup>;
 }
+
+/* --- Appearance ------------------------------------------------------------------- */
+
+const themeOptions: { value: ThemeChoice; label: string }[] = [
+  { value: "system", label: "Use system setting" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 function AppearanceSetting() {
   const [choice, setChoice] = useState<ThemeChoice>(loadTheme);
-  const [system, setSystem] = useState<ResolvedTheme>(systemTheme);
-
-  /* The app repaints itself through prefers-color-scheme; this listener only
-     keeps the "Currently dark/light" line honest while the screen is open. */
-  useEffect(() => watchSystemTheme(setSystem), []);
-
   const pick = (next: ThemeChoice) => {
     setChoice(next);
     saveTheme(next);
     applyTheme(next);
   };
-
-  return (
-    /* Named here rather than by a heading: the tab above IS the heading now,
-       and a group pointed at an element that no longer exists announces
-       nothing at all. */
-    <div className="theme-choice" role="radiogroup" aria-label="Appearance">
-      {themeOptions.map((option) => {
-        const Icon = option.icon;
-        const selected = choice === option.id;
-        return (
-          <label
-            key={option.id}
-            className={`theme-choice__option${selected ? " theme-choice__option--selected" : ""}`}
-          >
-            <input
-              type="radio"
-              name="slopus-theme"
-              value={option.id}
-              checked={selected}
-              onChange={() => pick(option.id)}
-            />
-            <Icon size={18} aria-hidden="true" />
-            <b>{option.label}</b>
-            <small>{option.detail(system)}</small>
-          </label>
-        );
-      })}
-    </div>
-  );
+  return <SettingsCard icon={<Palette size={20} />} header="App theme" description="Select which app theme to display">
+    <ComboBox aria-label="App theme" value={choice} onChange={pick} options={themeOptions} />
+  </SettingsCard>;
 }
 
-const endpointProviders: { id: EndpointProviderId; label: string; detail: string; endpointPlaceholder: string; keyRequired: boolean }[] = [
+/* --- Agents ------------------------------------------------------------------------ */
+
+const endpointProviders: { id: EndpointProviderId; label: string; detail: string; icon: ReactNode; endpointPlaceholder: string; keyRequired: boolean }[] = [
   {
     id: "openrouter",
     label: "OpenRouter",
     detail: "Use models from openrouter.ai through its OpenAI-compatible API.",
+    icon: <Bot size={20} />,
     endpointPlaceholder: "https://openrouter.ai/api/v1",
     keyRequired: true,
   },
@@ -149,6 +147,7 @@ const endpointProviders: { id: EndpointProviderId; label: string; detail: string
     id: "local",
     label: "Local OpenAI-compatible",
     detail: "Use a server on this computer or network that implements /models and /chat/completions.",
+    icon: <Cpu size={20} />,
     endpointPlaceholder: "http://localhost:1234/v1",
     keyRequired: false,
   },
@@ -174,7 +173,7 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
     try {
       const found = await getAgentModels(id, settings[id]);
       setModels((current) => ({ ...current, [id]: found }));
-      if (found.length === 0) setErrors((current) => ({ ...current, [id]: "The endpoint returned no models. You can still enter a model ID manually." }));
+      if (found.length === 0) setErrors((current) => ({ ...current, [id]: "The endpoint returned no models. You can still enter a model ID." }));
     } catch (reason) {
       setErrors((current) => ({ ...current, [id]: reason instanceof Error ? reason.message : String(reason) }));
     } finally {
@@ -182,42 +181,34 @@ function PromptLlmSetting({ desktop }: { desktop: boolean }) {
     }
   };
 
-  return <div className="llm-settings">
-    <p className="llm-settings__intro">Configured providers appear in Slop’s agent list. Endpoints and API keys stay on this computer and are never saved in a project.</p>
+  return <SettingsGroup heading="Providers">
+    <p className="settings-caption">Configured providers appear in Slop’s agent list. Endpoints and API keys stay on this computer.</p>
     {endpointProviders.map((provider) => {
       const value = settings[provider.id];
       const configured = isEndpointProviderConfigured(provider.id, value);
       const listId = `llm-models-${provider.id}`;
-      return <section className={`llm-provider${configured ? " llm-provider--configured" : ""}`} key={provider.id} aria-labelledby={`llm-${provider.id}-heading`}>
-        <header>
-          <div><h2 id={`llm-${provider.id}-heading`}>{provider.label}</h2><p>{provider.detail}</p></div>
-          <span>{configured ? <><Check size={14} /> Configured</> : "Not configured"}</span>
-        </header>
-        <div className="llm-provider__fields">
-          <label>
-            <span>Endpoint</span>
-            <input aria-label={`${provider.label} endpoint`} value={value.endpoint} spellCheck={false} placeholder={provider.endpointPlaceholder} onChange={(event) => update(provider.id, "endpoint", event.target.value)} />
-          </label>
-          <label>
-            <span>API key{!provider.keyRequired && <em>Optional</em>}</span>
-            <input type="password" aria-label={`${provider.label} API key`} value={value.apiKey} autoComplete="off" spellCheck={false} placeholder={provider.keyRequired ? "Required" : "Leave blank if the server does not require one"} onChange={(event) => update(provider.id, "apiKey", event.target.value)} />
-          </label>
-          <label className="llm-provider__model">
-            <span>Model</span>
-            <div>
-              <input list={listId} aria-label={`${provider.label} model`} value={value.model} spellCheck={false} placeholder="Select or enter a model ID" onChange={(event) => update(provider.id, "model", event.target.value)} />
-              <datalist id={listId}>{models[provider.id].map((model) => <option value={model} key={model} />)}</datalist>
-              <button type="button" className="secondary-button" disabled={!desktop || !value.endpoint.trim() || loading === provider.id} onClick={() => void discover(provider.id)} title={desktop ? "Load models from this endpoint" : "Model discovery is available in the desktop app"}>
-                {loading === provider.id ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />} Load models
-              </button>
-            </div>
-          </label>
-        </div>
-        {errors[provider.id] && <p className="llm-provider__error" role="alert">{errors[provider.id]}</p>}
-      </section>;
+      return <SettingsExpander key={provider.id} className="llm-provider" icon={provider.icon} header={provider.label} description={provider.detail}
+        control={<span className="llm-provider__status">{configured ? <><Check size={14} aria-hidden="true" /> Configured</> : "Not configured"}</span>}>
+        <SettingsRow header="Endpoint">
+          <TextField className="settings-field" aria-label={`${provider.label} endpoint`} value={value.endpoint} spellCheck={false} placeholder={provider.endpointPlaceholder} onChange={(next) => update(provider.id, "endpoint", next)} />
+        </SettingsRow>
+        <SettingsRow header="API key" description={provider.keyRequired ? undefined : "Optional"}>
+          <TextField className="settings-field" type="password" aria-label={`${provider.label} API key`} value={value.apiKey} autoComplete="off" spellCheck={false} placeholder={provider.keyRequired ? "Required" : "Leave blank if not required"} onChange={(next) => update(provider.id, "apiKey", next)} />
+        </SettingsRow>
+        <SettingsRow header="Model">
+          <TextField className="settings-field" list={listId} aria-label={`${provider.label} model`} value={value.model} spellCheck={false} placeholder="Select or enter a model ID" onChange={(next) => update(provider.id, "model", next)} />
+          <datalist id={listId}>{models[provider.id].map((model) => <option value={model} key={model} />)}</datalist>
+          <button type="button" className="secondary-button" disabled={!desktop || !value.endpoint.trim() || loading === provider.id} onClick={() => void discover(provider.id)} data-tooltip={desktop ? "Load models from this endpoint" : "Model discovery is available in the desktop app"}>
+            {loading === provider.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />} Load models
+          </button>
+        </SettingsRow>
+        {errors[provider.id] && <div className="settings-expander-message"><InfoBar severity="error" message={errors[provider.id]} /></div>}
+      </SettingsExpander>;
     })}
-  </div>;
+  </SettingsGroup>;
 }
+
+/* --- Diagnostics ------------------------------------------------------------------- */
 
 function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boolean; status: SlopfabStatus | null; onBackendChange: () => void }) {
   const [backend, setBackend] = useState(loadInferenceBackend);
@@ -238,75 +229,81 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
     }
   };
 
-  return <>
-    <div className="generator-template-fields diagnostics-backend">
-      <label>
-        <span>GPU backend</span>
-        <select aria-label="GPU backend" value={cudaAvailable ? backend : "vulkan"} disabled={!desktop || !cudaAvailable} onChange={(event) => {
-          const next = event.target.value as InferenceBackend;
-          saveInferenceBackend(next);
-          setBackend(next);
-          onBackendChange();
-        }}>
-          {cudaAvailable && <option value="cuda">CUDA</option>}
-          <option value="vulkan">Vulkan</option>
-        </select>
-      </label>
-    </div>
-    <label className="diagnostics-debug-option">
-      <input type="checkbox" checked={debugEnabled} onChange={(event) => saveDebugOptionsEnabled(event.target.checked)} aria-labelledby="debug-options-label" aria-describedby="debug-options-description" />
-      <span><b id="debug-options-label">Enable debug options</b><small id="debug-options-description">Show Debug Prompt in scene settings and the image inspector, and Debug Icon Prompt in reference details.</small></span>
-    </label>
-    <button type="button" className="secondary-button" disabled={!desktop || opening} onClick={() => void reveal()} title={error ?? undefined}>
-      {opening ? <LoaderCircle className="spin" size={16} /> : <FolderOpen size={16} />} Show log file
-    </button>
-  </>;
+  return <SettingsGroup heading="Diagnostics">
+    <SettingsCard icon={<Cpu size={20} />} header="GPU backend">
+      <ComboBox aria-label="GPU backend" value={cudaAvailable ? backend : "vulkan"} disabled={!desktop || !cudaAvailable} onChange={(value) => {
+        const next = value as InferenceBackend;
+        saveInferenceBackend(next);
+        setBackend(next);
+        onBackendChange();
+      }} options={[...(cudaAvailable ? [{ value: "cuda", label: "CUDA" }] : []), { value: "vulkan", label: "Vulkan" }]} />
+    </SettingsCard>
+    <SettingsCard icon={<Settings2 size={20} />} header="Enable debug options" description="Show Debug Prompt in scene settings and the image inspector, and Debug Icon Prompt in reference details">
+      <ToggleSwitch checked={debugEnabled} aria-label="Enable debug options" onChange={saveDebugOptionsEnabled} />
+    </SettingsCard>
+    <SettingsCard icon={opening ? <LoaderCircle className="spin" size={20} /> : <FileText size={20} />} header="Show log file" actionIcon="external" disabled={!desktop || opening} onClick={() => void reveal()} />
+    {error && <InfoBar severity="error" title="Couldn’t show the log file" message={error} onClose={() => setError(null)} />}
+  </SettingsGroup>;
 }
 
-/* The settings page keeps its section navigation behind the generator popup. */
+/* --- The page ------------------------------------------------------------------------ */
+
 const TABS = [
-  { id: "engine", label: "Generator" },
-  { id: "llms", label: "Agents" },
-  { id: "appearance", label: "Appearance" },
-  { id: "diagnostics", label: "Diagnostics" },
-  { id: "updates", label: "Updates" },
+  { id: "engine", label: "Generator", icon: Video },
+  { id: "llms", label: "Agents", icon: Bot },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "diagnostics", label: "Diagnostics", icon: Activity },
+  { id: "updates", label: "Updates", icon: RefreshCw },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
+const engineSeverity = (status: SlopfabStatus | null, desktop: boolean): InfoBarSeverity => {
+  if (!desktop || !status || status.state === "demo") return "informational";
+  if (status.state === "ready") return "success";
+  if (status.state === "runtimeMissing") return "error";
+  return "warning";
+};
+
+/* Settings is a page of the app window, below the title bar the shell draws:
+   a 280px navigation pane with Back at its top, and a content column that
+   reads like Windows Settings — a 28px title (a breadcrumb on sub-pages) over
+   groups of one-setting-per-row cards. */
 export function SettingsView({ onClose, updates, initialTab = "engine" }: { onClose: () => void; updates?: ReactNode; initialTab?: TabId }) {
   /* The engine first: this screen exists because those paths have to be set
-     before anything can be rendered, and its status line answers "is Slopus
-     ready?" without a click. */
+     before anything can be rendered. */
   const [tab, setTab] = useState<TabId>(initialTab);
   const page = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const subpageHeading = useRef<HTMLHeadingElement>(null);
+  const nameField = useRef<HTMLInputElement>(null);
+  const returnFocus = useRef<string | null>(null);
+  const focusName = useRef(false);
   useEffect(() => { page.current?.focus(); }, []);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  useEffect(() => {
-    if (page.current) page.current.inert = Boolean(editingTemplateId);
-  }, [editingTemplateId]);
   const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [editingPath, setEditingPath] = useState<EnginePathId | null>(null);
+  const [pathMenu, setPathMenu] = useState<{ field: EnginePathField; anchor: HTMLElement } | null>(null);
   const [status, setStatus] = useState<SlopfabStatus | null>(null);
   const probeRevision = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
 
   const defaultTemplate = defaultGeneratorTemplate(templateSettings);
-  const selectedTemplate = templateSettings.templates.find((template) => template.id === editingTemplateId)
-    ?? defaultTemplate;
+  const editingTemplate = templateSettings.templates.find((template) => template.id === editingTemplateId);
+  const selectedTemplate = editingTemplate ?? defaultTemplate;
   const settings = selectedTemplate.paths;
   const downloadedPathsKey = JSON.stringify(Object.values(selectedTemplate.sources ?? {}).flatMap((sources) => sources.map(({ downloadedPath }) => downloadedPath)));
   const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
   const generatorSections = [
     { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => !templateNeedsDownload(template)) },
-    { id: "downloadable-generators", title: "Download", templates: templateSettings.templates.filter(templateNeedsDownload) },
+    { id: "downloadable-generators", title: "Available to download", templates: templateSettings.templates.filter(templateNeedsDownload) },
   ];
 
-  useEffect(() => setShowAdvancedOptions(false), [editingTemplateId]);
+  useEffect(() => { setShowAdvancedOptions(false); setEditingPath(null); setPathMenu(null); }, [editingTemplateId]);
 
   useEffect(() => subscribeGeneratorTemplates(() => setTemplateSettings(loadGeneratorTemplateSettings())), []);
   useEffect(() => {
@@ -357,7 +354,23 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     setTemplateSettings(next);
   };
 
-  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId, editingLoraId]);
+  /* A new page opens at its top; a sub-page takes focus on its title (or on
+     the name of a generator that was just created), and going back returns
+     focus to the card that opened it. */
+  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId]);
+  useEffect(() => {
+    if (editingTemplateId) {
+      if (focusName.current) { focusName.current = false; nameField.current?.focus(); nameField.current?.select(); }
+      else subpageHeading.current?.focus();
+      return;
+    }
+    const ref = returnFocus.current;
+    returnFocus.current = null;
+    if (ref) [...(body.current?.querySelectorAll<HTMLElement>("[data-open-ref]") ?? [])].find((element) => element.dataset.openRef === ref)?.focus();
+  }, [editingTemplateId]);
+
+  const openTemplate = (id: string) => { returnFocus.current = `template:${id}`; setEditingTemplateId(id); };
+  const leaveTemplate = () => setEditingTemplateId(null);
 
   const browse = async (field: EnginePathField) => {
     setError(null);
@@ -403,12 +416,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       saveGeneratorTemplateSettings(next);
       return next;
     });
+    focusName.current = true;
+    returnFocus.current = `template:${created.id}`;
     setEditingTemplateId(created.id);
   };
 
   const removeTemplate = (id: string) => {
     const template = templateSettings.templates.find((template) => template.id === id);
-    if (template && (Object.values(template.sources ?? {}).some((sources) => sources.length > 0) || Boolean(template.additionalSafetensors?.length))) {
+    if (template && hasDownloadedWeights(template)) {
       void removeTemplateWeights(id).catch((reason) => setError(String(reason)));
       return;
     }
@@ -437,234 +452,210 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     setEditingTemplateId(null);
     setEditingLoraId(null);
   };
+  const back = () => { if (editingTemplateId) leaveTemplate(); else onClose(); };
 
-  const generatorEditor = <div className="generator-editor">
-              {error && <p role="alert">{error}</p>}
-              <div className="generator-template-fields">
-                <label>
-                  <span>Mode</span>
-                  <select aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"}
-                    onChange={(event) => updateTemplate({ mode: event.target.value === "animate" ? "animate" : "prompt" })}>
-                    <option value="prompt">Text prompt</option>
-                    <option value="animate">Animate (reference video)</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Name</span>
-                  <input aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
-                </label>
-                <label>
-                  <span>Default steps</span>
-                  <input aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
-                  }} />
-                </label>
-                <label>
-                  <span>Attention</span>
-                  <select aria-label="Generator attention" value={selectedTemplate.attention} onChange={(event) => updateTemplate({ attention: event.target.value as AttentionMode })}>
-                    <option value="exact">Exact attention</option>
-                    <option value="flash2">Flash attention</option>
-                    <option value="sage2">Sage attention</option>
-                  </select>
-                </label>
-              </div>
-              <label className="lora-toggle">
-                <input type="checkbox" aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
-                  checked={selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={selectedTemplate.mode === "animate"}
-                  onChange={(event) => updateTemplate({ motionCache: event.target.checked })} />
-                Enable MotionCache
-              </label>
-              <p id="motion-cache-help">{selectedTemplate.mode === "animate" ? "MotionCache is unavailable in Animate mode." : "Reuses similar denoising results to reduce computation. May affect detail and motion; short generations may not reuse any steps."}</p>
-              <div className={`settings-status settings-status--${status?.state ?? "checking"}`} role="status">
-                <span><i />{engineHeadline(status, desktop)}</span>
-                <p>{engineDetail(status, desktop, missing.length)}</p>
-                {status?.platform && <small className="settings-status__platform"><b>Platform</b>{status.platform}</small>}
-              </div>
-              {generatorPathFields(selectedTemplate).map((field) => {
-                const value = settings[field.id];
-                const state = pathState(field, value, status);
-                return (
-                  <div className={`settings-path settings-path--${state}`} key={field.id}>
-                    <label htmlFor={`engine-${field.id}`}>
-                      <b>{field.label}{!field.required && <em>Optional</em>}</b>
-                    </label>
-                    <div className="settings-path__row">
-                      <input
-                        id={`engine-${field.id}`}
-                        value={value}
-                        spellCheck={false}
-                        placeholder={field.directory ? "Folder on this computer or download URL" : "Local path or download URL"}
-                        disabled={Boolean(downloading)}
-                        onChange={(event) => update(field.id, event.target.value)}
-                        onBlur={() => probe(settings)}
-                      />
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => void browse(field)}
-                        disabled={!desktop || Boolean(downloading)}
-                        title={desktop ? `Browse for ${field.label}` : "Browsing for files is available in the desktop app"}
-                      >
-                        <FolderSearch size={16} /> Browse
-                      </button>
-                      <span className="settings-path__state">
-                        {state === "found" ? <Check size={14} aria-hidden="true" /> : state === "missing" ? <AlertCircle size={14} aria-hidden="true" /> : null}
-                        {stateLabel[state]}
-                      </span>
-                    </div>
-                    {showAdvancedOptions && <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />}
-                  </div>
-                );
-              })}
-              <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
-              <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
-              <label className="generator-editor__advanced">
-                <input type="checkbox" checked={showAdvancedOptions} onChange={(event) => setShowAdvancedOptions(event.target.checked)} />
-                <span>Show advanced options</span>
-              </label>
-            </div>;
-  const downloadStatus = downloadState && <div className="weight-download-status" role="status">
-          <span>{downloadState.name ?? templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name}: {downloadState.error ?? (downloadState.active ? downloadState.phase === "preparing" ? "Preparing LoRA…" : `${downloadState.completed}/${downloadState.files} files · ${(downloadState.downloaded / 1024 ** 3).toFixed(2)} GB${downloadState.total ? ` / ${(downloadState.total / 1024 ** 3).toFixed(2)} GB` : ""}` : downloadState.preparePath ? "LoRA prepared" : "Download complete")}</span>
-          {downloadState.active && downloadState.phase !== "preparing" && <button type="button" className="secondary-button" onClick={() => void cancelWeightDownload().catch((reason) => setError(String(reason)))}>Cancel download</button>}
-          {downloadState.error && <button type="button" className="secondary-button" onClick={() => void retryWeightDownload()}>{downloadState.phase === "preparing" ? "Retry preparation" : "Retry download"}</button>}
-        </div>;
-  const generatorFooter = <>{downloadStatus}<footer className="settings-view__foot">
-          {/* Clearing the paths is an engine action, so it is only offered
-              beside them. */}
-          <button className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>
-          {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download size={16} /> Download weights</button>}
-        </footer></>;
+  const downloadStatus = downloadState && <DownloadStatus state={downloadState} onError={setError}
+    templateName={templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name} />;
+
+  const pathCard = (field: EnginePathField) => {
+    const value = settings[field.id];
+    const state = pathState(field, value, status);
+    const fieldDownload = downloading && downloadState?.field === field.id ? downloadState : null;
+    const filePercent = fieldDownload?.total ? Math.floor(100 * fieldDownload.downloaded / fieldDownload.total) : undefined;
+    const editing = editingPath === field.id;
+    const description = editing
+      ? <input
+          id={`engine-${field.id}`}
+          className="settings-path__input"
+          aria-label={field.label}
+          value={value}
+          spellCheck={false}
+          autoFocus
+          placeholder={field.directory ? "Folder on this computer or download URL" : "Local path or download URL"}
+          onChange={(event) => update(field.id, event.target.value)}
+          onBlur={() => { probe(settings); setEditingPath(null); }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== "Escape") return;
+            event.preventDefault();
+            event.currentTarget.blur();
+          }}
+        />
+      : fieldDownload
+        ? <>{filePercent === undefined ? "Downloading…" : `Downloading · ${filePercent}%`}<ProgressBar className="settings-progress" value={filePercent} aria-label={`Downloading ${field.label}`} /></>
+        : value.trim() ? <span className="settings-path__value" data-tooltip={value}>{middleEllipsis(value)}</span> : "Not set";
+    return <div className={`settings-path settings-path--${state}`} key={field.id}>
+      <SettingsCard
+        icon={field.directory ? <Folder size={20} /> : <FileBox size={20} />}
+        header={<>{field.label}{!field.required && <span className="settings-path__optional"> (optional)</span>}</>}
+        description={description}
+      >
+        {state !== "unset" && <span className="settings-path__state" data-tooltip={state === "found" ? "Found" : undefined}>
+          {state === "found" ? <Check size={16} aria-hidden="true" /> : state === "missing" ? <AlertCircle size={16} aria-hidden="true" /> : null}
+          <span className={state === "found" ? "sr-only" : undefined}>{stateLabel[state]}</span>
+        </span>}
+        <button type="button" className="secondary-button" onClick={() => void browse(field)} disabled={!desktop || Boolean(downloading)}
+          aria-label={`Browse for ${field.label}`} data-tooltip={desktop ? undefined : "Browsing for files is available in the desktop app"}>
+          Browse…
+        </button>
+        <button type="button" className="icon-button" aria-label={`More options for ${field.label}`} data-tooltip="More options" aria-haspopup="menu"
+          disabled={Boolean(downloading)} onClick={(event) => setPathMenu({ field, anchor: event.currentTarget })}>
+          <MoreHorizontal size={16} />
+        </button>
+      </SettingsCard>
+      {showAdvancedOptions && <WeightSourcesEditor label={field.label} sources={selectedTemplate.sources?.[field.id] ?? []} disabled={Boolean(downloading)} onChange={(sources) => updateSources(field.id, sources)} />}
+    </div>;
+  };
+
+  const generatorEditor = editingTemplate && <>
+    <div className="settings-page__actions">
+      {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download size={16} /> Download weights</button>}
+      <button type="button" className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><RotateCcw size={16} /> Clear generator paths</button>
+    </div>
+    {downloadStatus}
+    <InfoBar severity={engineSeverity(status, desktop)} title={engineHeadline(status, desktop)} message={<>
+      {engineDetail(status, desktop, missing.length)}
+      {status?.platform && <span className="settings-status__platform"> <b>Platform</b> <span>{status.platform}</span></span>}
+    </>} />
+
+    <SettingsGroup heading="General">
+      <SettingsCard icon={<SquarePen size={20} />} header="Name">
+        <input ref={nameField} className="settings-field" aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
+      </SettingsCard>
+      <SettingsCard icon={<Video size={20} />} header="Mode">
+        <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
+          options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
+      </SettingsCard>
+      <SettingsCard icon={<ListOrdered size={20} />} header="Default steps" description={`2 to ${MAX_GENERATION_STEPS}`}>
+        <input className="settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
+          const value = Number(event.target.value);
+          if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
+        }} />
+      </SettingsCard>
+    </SettingsGroup>
+
+    <SettingsGroup heading="Performance">
+      <SettingsCard icon={<Gauge size={20} />} header="Attention">
+        <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
+          options={[{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }]} />
+      </SettingsCard>
+      <SettingsCard icon={<Zap size={20} />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
+        <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
+          checked={selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={selectedTemplate.mode === "animate"}
+          onChange={(on) => updateTemplate({ motionCache: on })} />
+      </SettingsCard>
+    </SettingsGroup>
+
+    <SettingsGroup heading="Model files">
+      {generatorPathFields(selectedTemplate).map(pathCard)}
+    </SettingsGroup>
+
+    <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
+    <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
+
+    <SettingsGroup heading="Advanced" className="generator-editor__advanced">
+      <SettingsCard icon={<Settings2 size={20} />} header="Show advanced options" description="Per-GPU download sources for each model file">
+        <ToggleSwitch aria-label="Show advanced options" checked={showAdvancedOptions} onChange={setShowAdvancedOptions} />
+      </SettingsCard>
+    </SettingsGroup>
+    {pathMenu && <ContextMenu aria-label={`${pathMenu.field.label} options`} position={{ anchor: pathMenu.anchor, placement: "bottom-end" }} onClose={() => setPathMenu(null)} items={[
+      { id: "enter", label: "Enter path or URL…", onSelect: () => setEditingPath(pathMenu.field.id) },
+      { id: "clear", label: "Clear", disabled: !settings[pathMenu.field.id], onSelect: () => { update(pathMenu.field.id, ""); probe({ ...settings, [pathMenu.field.id]: "" }); } },
+    ]} />}
+  </>;
+
+  const generatorList = <>
+    {downloadStatus}
+    <ReferenceIconSetting templates={templateSettings} />
+    {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
+      {section.id === "generators" && <SettingsCard icon={<Plus size={20} />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
+        <button type="button" className="secondary-button" onClick={addTemplate}>New generator</button>
+      </SettingsCard>}
+      <div className="settings-card-list" role="list" aria-label={section.title}>
+        {section.templates.map((template) => {
+          const needsDownload = templateNeedsDownload(template);
+          const isDefault = template.id === templateSettings.defaultTemplateId;
+          const active = downloadState?.active && downloadState.templateId === template.id;
+          const weights = hasDownloadedWeights(template);
+          return <OpenableCard key={template.id} icon={<Video size={20} />} header={template.name} openRef={`template:${template.id}`}
+            openLabel={`Edit ${template.name} generator`} onOpen={() => openTemplate(template.id)}
+            description={active ? downloadState?.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%`
+              : `${!needsDownload && isDefault ? "Used by default · " : ""}${templateSummary(template)}`}
+            progress={active && downloadState?.phase !== "preparing" && <ProgressBar className="settings-progress" value={downloadPercent} aria-label={`Downloading ${template.name} weights`} />}
+            actions={needsDownload
+              ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} data-tooltip={`Download ${template.name} weights`}>
+                {active ? <LoaderCircle size={16} className="spin" /> : <Download size={16} />}
+              </button>
+              : <>
+                {!isDefault && <button type="button" className="secondary-button" onClick={() => makeDefault(template.id)} aria-label={`Set ${template.name} as default`}>Set as default</button>}
+                <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || (weights ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)}
+                  aria-label={weights ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`}
+                  data-tooltip={weights ? "Remove weights and keep the template" : "Remove generator"}><Trash2 size={16} /></button>
+              </>} />;
+        })}
+      </div>
+    </SettingsGroup>)}
+    <LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
+  </>;
+
+  const current = TABS.find((item) => item.id === tab)!;
 
   return (
     <>
-    <main aria-hidden={editingTemplateId || editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-labelledby="settings-heading" onKeyDown={(event) => {
+    <main aria-hidden={editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-label="Settings" onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
       // The mounted editor must not receive shortcuts while Settings has focus.
       event.stopPropagation();
-      if (event.key === "Escape" && !event.defaultPrevented) onClose();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      back();
     }}>
-        <header className="settings-view__head">
-          <button type="button" className="icon-button icon-button--strong" onClick={onClose} aria-label="Close settings" title="Back"><ArrowLeft size={18} /></button>
-          <h1 id="settings-heading">Settings</h1>
-        </header>
+      <NavPane aria-label="Settings sections" className="settings-nav" header={
+        <button type="button" className="icon-button settings-nav__back" onClick={back} aria-label="Back" data-tooltip="Back"><ArrowLeft size={16} /></button>
+      }>
+        {TABS.map((item, index) => {
+          const Icon = item.icon;
+          const count = item.id === "engine" ? missing.length : 0;
+          return <NavItem
+            key={item.id}
+            id={`settings-tab-${item.id}`}
+            icon={<Icon size={16} />}
+            label={item.label}
+            selected={tab === item.id}
+            badge={count > 0 ? count : undefined}
+            badgeSeverity="caution"
+            aria-label={count > 0 ? `${item.label}, ${count} model ${count === 1 ? "path" : "paths"} to set` : undefined}
+            data-tooltip={count > 0 ? `${count} model ${count === 1 ? "path" : "paths"} still to set` : undefined}
+            onClick={() => selectTab(item.id)}
+            onKeyDown={(event) => {
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              const next = TABS[event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1
+                : (index + (event.key === "ArrowDown" ? 1 : TABS.length - 1)) % TABS.length];
+              selectTab(next.id);
+              document.getElementById(`settings-tab-${next.id}`)?.focus();
+            }}
+          />;
+        })}
+      </NavPane>
 
-        <aside className="settings-sidebar" aria-label="Settings navigation">
-        <div className="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
-          {TABS.map((item, index) => (
-            <button
-              key={item.id}
-              id={`settings-tab-${item.id}`}
-              role="tab"
-              type="button"
-              aria-selected={tab === item.id}
-              aria-controls={`settings-panel-${item.id}`}
-              tabIndex={tab === item.id ? 0 : -1}
-              className={tab === item.id ? "active" : ""}
-              onClick={() => selectTab(item.id)}
-              onKeyDown={(event) => {
-                if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-                event.preventDefault();
-                const next = TABS[event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1
-                  : (index + (event.key === "ArrowDown" ? 1 : TABS.length - 1)) % TABS.length];
-                selectTab(next.id);
-                document.getElementById(`settings-tab-${next.id}`)?.focus();
-              }}
-            >
-              {item.label}
-              {/* What is wrong stays visible from the other tab: a count here
-                  is the whole reason someone opens this screen. */}
-              {item.id === "engine" && missing.length > 0 && <em title={`${missing.length} model ${missing.length === 1 ? "path" : "paths"} still to set`}>{missing.length}</em>}
-            </button>
-          ))}
+      <div className="settings-view__body" ref={body}>
+        <div className="settings-page" id={`settings-panel-${tab}`} aria-labelledby={editingTemplate ? "settings-subpage-heading" : "settings-page-heading"}>
+          {editingTemplate
+            ? <nav className="settings-breadcrumb" aria-label="Breadcrumb">
+                <button type="button" className="settings-breadcrumb__link" onClick={leaveTemplate}>Generators</button>
+                <ChevronRight size={20} aria-hidden="true" className="settings-breadcrumb__separator" />
+                <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{editingTemplate.name || "Untitled generator"}</h1>
+              </nav>
+            : <h1 id="settings-page-heading" className="settings-page__title">{current.label}</h1>}
+
+          {error && <InfoBar severity="error" title="Couldn’t update generator settings" message={error} onClose={() => setError(null)} closeLabel="Dismiss" />}
+
+          {tab === "engine" && (editingTemplate ? generatorEditor : generatorList)}
+          {tab === "llms" && <PromptLlmSetting desktop={desktop} />}
+          {tab === "appearance" && <AppearanceSetting />}
+          {tab === "diagnostics" && <DiagnosticsSetting desktop={desktop} status={status} onBackendChange={() => probe(settings)} />}
+          {tab === "updates" && (updates ?? <p className="settings-caption">Updates are available in the desktop app.</p>)}
         </div>
-        </aside>
-
-        <div className="settings-view__content">
-        <div className="settings-view__body" ref={body}>
-          {tab === "updates" && <section className="settings-section" id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates">
-            {updates ?? <p>Updates are available in the desktop app.</p>}
-          </section>}
-          {tab === "llms" && <section
-            className="settings-section"
-            id="settings-panel-llms"
-            role="tabpanel"
-            aria-labelledby="settings-tab-llms"
-          >
-            <PromptLlmSetting desktop={desktop} />
-          </section>}
-
-          {tab === "appearance" && <section
-            className="settings-section"
-            id="settings-panel-appearance"
-            role="tabpanel"
-            aria-labelledby="settings-tab-appearance"
-          >
-            <AppearanceSetting />
-          </section>}
-
-          {tab === "diagnostics" && <section
-            className="settings-section"
-            id="settings-panel-diagnostics"
-            role="tabpanel"
-            aria-labelledby="settings-tab-diagnostics"
-          >
-            <DiagnosticsSetting desktop={desktop} status={status} onBackendChange={() => probe(settings)} />
-          </section>}
-
-          {tab === "engine" && <section
-            className="settings-section"
-            id="settings-panel-engine"
-            role="tabpanel"
-            aria-labelledby="settings-tab-engine"
-          >
-            <ReferenceIconSetting templates={templateSettings} />
-            {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <section key={section.id} className="generator-templates" aria-labelledby={`${section.id}-heading`}>
-              <header>
-                <div>
-                  <h2 id={`${section.id}-heading`}>{section.title}</h2>
-                  {section.id === "generators" && <p>Choose the generator used by default, or open one to edit its model setup.</p>}
-                </div>
-                {section.id === "generators" && <button type="button" className="secondary-button" onClick={addTemplate}><Plus size={16} /> New generator</button>}
-              </header>
-              <div className="generator-template-list" role="list" aria-label={section.title}>
-                {section.templates.map((template) => (
-                  <div className={`generator-template-item${templateNeedsDownload(template) ? " generator-template-item--download" : template.id === templateSettings.defaultTemplateId ? " generator-template-item--selected" : ""}`} role="listitem" key={template.id}>
-                    {downloadState?.active && downloadState.templateId === template.id && downloadState.phase !== "preparing" && <span
-                      className="generator-template-item__progress"
-                      role="progressbar"
-                      aria-label={`Downloading ${template.name} weights`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.floor(downloadPercent)}
-                      aria-valuetext={`${downloadState.completed} of ${downloadState.files} files complete${downloadState.total ? `; current file ${Math.floor(100 * downloadState.downloaded / downloadState.total)}%` : "; downloading"}`}
-                      style={{ width: `${downloadPercent}%` }}
-                    />}
-                    {!templateNeedsDownload(template) && <label className="generator-template-item__default" title="Use this generator for generation by default">
-                      <input type="radio" name="default-generator-template" checked={template.id === templateSettings.defaultTemplateId} onChange={() => makeDefault(template.id)} aria-label={`Use ${template.name} as the default generator`} />
-                    </label>}
-                    <button type="button" className="generator-template-item__open" onClick={() => setEditingTemplateId(template.id)} aria-label={`Edit ${template.name} generator`}>
-                      <Video size={16} aria-hidden="true" />
-                      <b>{template.name}</b><small>{downloadState?.active && downloadState.templateId === template.id ? downloadState.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%` : templateSummary(template)}</small>
-                    </button>
-                    {templateNeedsDownload(template)
-                      ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} title={`Download ${template.name} weights`}>
-                        {downloadState?.active && downloadState.templateId === template.id ? <LoaderCircle size={15} className="spin" /> : <Download size={15} />}
-                      </button>
-                      : <button type="button" className="icon-button" disabled={Boolean(downloadState?.active) || ((Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? !desktop : templateSettings.templates.length === 1)} onClick={() => removeTemplate(template.id)} aria-label={(Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`} title={(Object.values(template.sources ?? {}).some((sources) => sources.length) || Boolean(template.additionalSafetensors?.length)) ? `Remove ${template.name} weights and keep the template` : `Remove ${template.name}`}><Trash2 size={15} /></button>}
-                  </div>
-                ))}
-              </div>
-            </section>)}<LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
-          </section>}
-        </div>
-
-        {tab === "engine" && downloadStatus}
-
-
-        {error && <div className="toast" role="alert"><strong>Couldn’t update generator settings</strong><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
       </div>
     </main>
-    {editingTemplateId && <SettingsEditorDialog title="Edit generator" headingId="generator-editor-heading" initialFocusLabel="Generator name" closeLabel="Close generator settings" onClose={() => setEditingTemplateId(null)} footer={generatorFooter}>{generatorEditor}</SettingsEditorDialog>}
     {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} />}
     </>
   );
@@ -672,21 +663,21 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
 const engineHeadline = (status: SlopfabStatus | null, desktop: boolean) => {
   if (!desktop) return "Browser preview";
-  if (!status) return "Checking this computer…";
+  if (!status) return "Checking…";
   switch (status.state) {
-    case "ready": return "Engine ready";
+    case "ready": return "Ready";
     case "modelsMissing": return "Model files missing";
-    case "runtimeMissing": return "Engine missing from this install";
+    case "runtimeMissing": return "Engine missing";
     case "incompatible": return "Engine version not supported";
     case "demo": return "Browser preview";
   }
 };
 
 const engineDetail = (status: SlopfabStatus | null, desktop: boolean, missing: number) => {
-  if (!desktop) return "Paths are saved here, but only the desktop app can check them or render with them.";
-  if (!status) return "Looking for the engine and the model files.";
-  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should sit next to Slopus.exe.`;
-  if (status.state === "ready") return "Everything Slopus needs to render a shot is in place.";
-  if (missing > 0) return `${status.detail} ${missing === 1 ? "One path" : `${missing} paths`} still need setting below.`;
+  if (!desktop) return "Only the desktop app can check paths and render.";
+  if (!status) return "Looking for the engine and model files.";
+  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should be next to Slopus.exe.`;
+  if (status.state === "ready") return "All required model files found.";
+  if (missing > 0) return `${status.detail} ${missing === 1 ? "1 path" : `${missing} paths`} still to set.`;
   return status.detail;
 };

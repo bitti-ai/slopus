@@ -1,16 +1,31 @@
-.generator-template-item.lora-library-item { grid-template-columns: minmax(0, 1fr) var(--control-sm) var(--control-sm); }
-.lora-manual { min-width: 0; padding: 0; border: 0; }
-.lora-manual, .template-loras { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
-.lora-manual > label { display: grid; gap: var(--space-2); }
-.lora-manual input:not([type="checkbox"]), .template-loras select, .template-loras input[type="number"] {
-  min-width: 0; min-height: var(--field-height); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-sm);
-  color: inherit; background: var(--panel); font: inherit;
+/* LoRA editor (a ContentDialog) and the generator's LoRA cards. The library
+   and the per-generator list are SettingsGroups of cards (settings.css). */
+
+.lora-manual {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.lora-manual .lora-toggle, .lora-toggle { display: flex; align-items: center; gap: var(--space-2); }
-.lora-manual p, .template-loras p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
-.template-loras h3 { margin: 0; }
-.template-loras h3 small { margin-left: var(--space-2); font-weight: normal; font-size: var(--text-sm); }
-.template-lora-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.template-lora-row .lora-toggle { flex: 1; min-width: 140px; }
-.template-lora-row > label:not(.lora-toggle) { display: grid; gap: var(--space-1); font-size: var(--text-2xs); }
-.template-lora-row input[type="number"] { width: 78px; }
+
+.lora-manual > label {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.lora-manual__path {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.lora-manual__path input { flex: 1; min-width: 0; }
+
+.template-lora__strength {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}

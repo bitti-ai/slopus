@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsView } from "./SettingsView";
+import { middleEllipsis, SettingsView } from "./SettingsView";
 import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
 import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
 import { loadLoras } from "../lib/loras";
@@ -21,18 +21,50 @@ afterEach(() => {
 });
 
 const open = () => render(<SettingsView onClose={() => undefined} />);
-const tab = (name: string) => screen.getByRole("tab", { name: new RegExp(`^${name}`) });
+const tab = (name: string) => within(screen.getByRole("navigation", { name: "Settings sections" })).getByRole("button", { name: new RegExp(`^${name}`) });
 const editDefaultGenerator = () => fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+const combo = (name: string) => screen.getByRole("combobox", { name });
+const pick = (name: string, option: string) => { fireEvent.click(combo(name)); fireEvent.click(screen.getByRole("option", { name: option })); };
+const optionsOf = (name: string) => {
+  fireEvent.click(combo(name));
+  const labels = screen.getAllByRole("option").map((option) => option.textContent);
+  fireEvent.keyDown(combo(name), { key: "Escape" });
+  return labels;
+};
+const toggle = (name: string) => screen.getByRole("switch", { name });
+const enterPath = (label: string, value: string) => {
+  fireEvent.click(screen.getByRole("button", { name: `More options for ${label}` }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Enter path or URL…" }));
+  const input = screen.getByRole("textbox", { name: label });
+  fireEvent.change(input, { target: { value } });
+  fireEvent.blur(input);
+};
 
 describe("the settings page", () => {
-  it("opens a focused page with vertical navigation and a Back action", () => {
+  it("opens a focused page with a navigation pane and a Back action", () => {
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
     expect(document.activeElement).toBe(screen.getByRole("main", { name: "Settings" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("tablist").getAttribute("aria-orientation")).toBe("vertical");
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Generator" })).toBeTruthy();
+    expect(tab("Generator").getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes on Escape from the top level", () => {
+    const onClose = vi.fn();
+    render(<SettingsView onClose={onClose} />);
+    fireEvent.keyDown(screen.getByRole("main", { name: "Settings" }), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("middle-ellipsises long paths and keeps the file name", () => {
+    expect(middleEllipsis("C:\\short.safetensors")).toBe("C:\\short.safetensors");
+    const long = `D:\\${"folder\\".repeat(20)}model.safetensors`;
+    const shown = middleEllipsis(long);
+    expect(shown.length).toBe(64);
+    expect(shown).toMatch(/^D:\\folder.*….*model\.safetensors$/);
   });
 });
 
@@ -40,39 +72,39 @@ describe("the settings screen", () => {
   it("remembers MotionCache per generator and disables it in Animate mode", () => {
     const view = open();
     editDefaultGenerator();
-    const toggle = () => screen.getByRole("checkbox", { name: "Enable MotionCache" }) as HTMLInputElement;
-    expect(toggle().checked).toBe(false);
-    fireEvent.click(toggle());
+    const motion = () => toggle("Enable MotionCache");
+    expect(motion().getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(motion());
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.motionCache).toBe(true);
-    fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "animate" } });
-    expect(toggle().checked).toBe(false);
-    expect(toggle().disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Generator mode"), { target: { value: "prompt" } });
-    expect(toggle().checked).toBe(true);
+    pick("Generator mode", "Animate (reference video)");
+    expect(motion().getAttribute("aria-checked")).toBe("false");
+    expect((motion() as HTMLButtonElement).disabled).toBe(true);
+    pick("Generator mode", "Text prompt");
+    expect(motion().getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
-    expect(toggle().checked).toBe(false);
+    expect(motion().getAttribute("aria-checked")).toBe("false");
     view.unmount();
     open();
     editDefaultGenerator();
-    expect(toggle().checked).toBe(true);
-    fireEvent.click(toggle());
+    expect(motion().getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(motion());
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.motionCache).toBe(false);
   });
 
   it("defaults to Sage and remembers each generator's attention", () => {
     const view = open();
     editDefaultGenerator();
-    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("sage2");
-    expect(within(screen.getByLabelText("Generator attention")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Exact attention", "Flash attention", "Sage attention"]);
-    fireEvent.change(screen.getByLabelText("Generator attention"), { target: { value: "flash2" } });
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("sage2");
+    expect(optionsOf("Generator attention")).toEqual(["Exact attention", "Flash attention", "Sage attention"]);
+    pick("Generator attention", "Flash attention");
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
-    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("sage2");
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("sage2");
     view.unmount();
     open();
     editDefaultGenerator();
-    expect((screen.getByLabelText("Generator attention") as HTMLSelectElement).value).toBe("flash2");
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("flash2");
   });
 
   it("switches NVIDIA between CUDA and Vulkan and keeps both choices after switching", async () => {
@@ -84,20 +116,20 @@ describe("the settings screen", () => {
     } : null);
     const view = open();
     fireEvent.click(tab("Diagnostics"));
-    const backend = () => screen.getByLabelText("GPU backend") as HTMLSelectElement;
+    const backend = () => combo("GPU backend") as HTMLButtonElement;
     await waitFor(() => expect(backend().disabled).toBe(false));
-    expect(backend().value).toBe("cuda");
-    fireEvent.change(backend(), { target: { value: "vulkan" } });
+    expect(backend().getAttribute("data-value")).toBe("cuda");
+    expect(optionsOf("GPU backend")).toEqual(["CUDA", "Vulkan"]);
+    pick("GPU backend", "Vulkan");
     await waitFor(() => expect(backend().disabled).toBe(false));
-    expect(backend().value).toBe("vulkan");
-    expect(within(backend()).getAllByRole("option")).toHaveLength(2);
+    expect(backend().getAttribute("data-value")).toBe("vulkan");
     view.unmount();
     open();
     fireEvent.click(tab("Diagnostics"));
     await waitFor(() => expect(backend().disabled).toBe(false));
-    expect(backend().value).toBe("vulkan");
-    fireEvent.change(backend(), { target: { value: "cuda" } });
-    await waitFor(() => expect(backend().value).toBe("cuda"));
+    expect(backend().getAttribute("data-value")).toBe("vulkan");
+    pick("GPU backend", "CUDA");
+    await waitFor(() => expect(backend().getAttribute("data-value")).toBe("cuda"));
     expect(localStorage.getItem("slopus.inference-backend.v1")).toBe("cuda");
   });
 
@@ -108,55 +140,63 @@ describe("the settings screen", () => {
     open();
     fireEvent.click(tab("Diagnostics"));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("slopfab_status", expect.anything()));
-    const backend = screen.getByLabelText("GPU backend") as HTMLSelectElement;
+    const backend = combo("GPU backend") as HTMLButtonElement;
     expect(backend.disabled).toBe(true);
-    expect(backend.value).toBe("vulkan");
-    expect(within(backend).getAllByRole("option")).toHaveLength(1);
+    expect(backend.getAttribute("data-value")).toBe("vulkan");
+    expect(backend.textContent).toBe("Vulkan");
   });
 
   it("keeps the popup's saved icon choice without exposing confirmation in settings", () => {
     localStorage.setItem("slopus.reference-icon-automation.v1", "enabled");
     const view = open();
-    const automatic = () => screen.getByRole("checkbox", { name: "Automatic reference icon generation" }) as HTMLInputElement;
-    expect(automatic().checked).toBe(true);
-    expect(screen.queryByRole("checkbox", { name: "Ask before automatic icon generation" })).toBeNull();
+    const automatic = () => toggle("Automatic reference icon generation");
+    expect(automatic().getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("switch", { name: "Ask before automatic icon generation" })).toBeNull();
     view.unmount();
     open();
-    expect(automatic().checked).toBe(true);
+    expect(automatic().getAttribute("aria-checked")).toBe("true");
     expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("enabled");
     fireEvent.click(automatic());
-    expect(automatic().checked).toBe(false);
+    expect(automatic().getAttribute("aria-checked")).toBe("false");
     expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("disabled");
     fireEvent.click(automatic());
-    expect(automatic().checked).toBe(true);
+    expect(automatic().getAttribute("aria-checked")).toBe("true");
     expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("ask");
   });
 
   it("keeps debug options off by default and remembers the Diagnostics choice", () => {
     const view = open();
     fireEvent.click(tab("Diagnostics"));
-    const toggle = screen.getByRole("checkbox", { name: "Enable debug options" }) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
-    fireEvent.click(toggle);
+    expect(toggle("Enable debug options").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle("Enable debug options"));
     view.unmount();
     open();
     fireEvent.click(tab("Diagnostics"));
-    const restored = screen.getByRole("checkbox", { name: "Enable debug options" }) as HTMLInputElement;
-    expect(restored.checked).toBe(true);
-    fireEvent.click(restored);
-    expect(restored.checked).toBe(false);
+    expect(toggle("Enable debug options").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle("Enable debug options"));
+    expect(toggle("Enable debug options").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("picks the app theme from one combo box and saves it", () => {
+    open();
+    fireEvent.click(tab("Appearance"));
+    expect(screen.getByRole("heading", { level: 1, name: "Appearance" })).toBeTruthy();
+    expect(combo("App theme").textContent).toBe("Use system setting");
+    expect(optionsOf("App theme")).toEqual(["Use system setting", "Light", "Dark"]);
+    pick("App theme", "Light");
+    expect(localStorage.getItem("slopus.theme.v1")).toBe("light");
+    expect(combo("App theme").textContent).toBe("Light");
   });
 
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
     open();
-    expect(tab("Generator").getAttribute("aria-selected")).toBe("true");
+    expect(tab("Generator").getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { name: "Generators" })).toBeTruthy();
-    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
     editDefaultGenerator();
-    expect(screen.getByLabelText("Transformer weights")).toBeTruthy();
-    // The other tab's contents are not merely hidden, they are not rendered:
-    // a settings screen that draws both panels is the tall screen tabs replaced.
-    expect(screen.queryByLabelText("Appearance")).toBeNull();
+    expect(screen.getByRole("group", { name: "Transformer weights" })).toBeTruthy();
+    // The other sections are not merely hidden, they are not rendered.
+    expect(screen.queryByRole("combobox", { name: "App theme" })).toBeNull();
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Browser preview"));
   });
 
@@ -176,58 +216,73 @@ describe("the settings screen", () => {
     expect(screen.getByText("Platform")).toBeTruthy();
   });
 
-  it("swaps panels when a tab is chosen, and follows the arrow keys", () => {
+  it("swaps sections from the navigation pane, and follows the arrow keys", () => {
     open();
-    expect(screen.getAllByRole("tab").map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
+    const items = within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("button").filter((item) => item.id.startsWith("settings-tab-"));
+    expect(items.map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
       "Generator", "Agents", "Appearance", "Diagnostics", "Updates",
     ]);
     fireEvent.click(tab("Appearance"));
-    expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
-    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
-    // Each panel is named by the tab that opened it, so a screen reader lands
-    // somewhere that says what it is.
-    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe("settings-tab-appearance");
+    expect(combo("App theme")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
 
     fireEvent.keyDown(tab("Appearance"), { key: "ArrowDown" });
-    expect(tab("Diagnostics").getAttribute("aria-selected")).toBe("true");
+    expect(tab("Diagnostics").getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(tab("Diagnostics"), { key: "ArrowUp" });
-    expect(tab("Appearance").getAttribute("aria-selected")).toBe("true");
+    expect(tab("Appearance").getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(tab("Appearance"), { key: "Home" });
     expect(document.activeElement).toBe(tab("Generator"));
     fireEvent.keyDown(tab("Generator"), { key: "End" });
     expect(document.activeElement).toBe(tab("Updates"));
   });
 
-  it("counts the paths still to set on the engine tab, from either tab", () => {
+  it("counts the paths still to set on the Generator item, from any section", () => {
     open();
     // Four of the five fields are required and none is set yet.
     expect(within(tab("Generator")).getByText("4")).toBeTruthy();
+    expect(tab("Generator").getAttribute("aria-label")).toBe("Generator, 4 model paths to set");
     fireEvent.click(tab("Appearance"));
-    // Still legible from the other side: what is unfinished is the reason the
-    // screen was opened, and hiding it behind a tab would bury it.
     expect(within(tab("Generator")).getByText("4")).toBeTruthy();
   });
 
-  it("keeps the settings header short", () => {
+  it("keeps the settings copy short", () => {
     const { container } = open();
-    for (const gone of ["belongs to this computer", "stays behind when", "needs the model files", "ships with the app"]) {
+    for (const gone of ["belongs to this computer", "stays behind when", "needs the model files", "ships with the app", "Match this computer", "whatever this computer"]) {
       expect(container.textContent, gone).not.toContain(gone);
     }
     expect(screen.queryByText("This computer")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     editDefaultGenerator();
     expect(screen.queryByText("Reads your prompt so the transformer can act on it.")).toBeNull();
     expect(screen.queryByText("Set its name, generation steps, attention, and model locations on this computer.")).toBeNull();
   });
 
-  it("puts the optional tokenizer setting last", () => {
+  it("puts the optional tokenizer setting last, marked (optional) in plain text", () => {
     const { container } = open();
     editDefaultGenerator();
-    const labels = Array.from(container.querySelectorAll(".settings-path label b")).map((label) => label.textContent);
-    expect(labels.at(-1)).toContain("Tokenizer");
+    const labels = Array.from(container.querySelectorAll(".settings-path .ui-settings-card__header")).map((label) => label.textContent);
+    expect(labels.at(-1)).toBe("Tokenizer (optional)");
   });
 
-  it("offers Clear generator paths only on the generator editor page", () => {
+  it("shows paths in cards and edits them through the More menu", () => {
+    open();
+    editDefaultGenerator();
+    const card = screen.getByRole("group", { name: "Transformer weights" });
+    expect(card.textContent).toContain("Not set");
+    expect(within(card).getByRole("button", { name: "Browse for Transformer weights" })).toBeTruthy();
+    const long = "D:\\Models\\a-very-long-folder-name\\another-nested-folder\\wan2.2\\transformer-weights.safetensors";
+    enterPath("Transformer weights", long);
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.paths.transformer).toBe(long);
+    const shown = card.querySelector(".settings-path__value")!;
+    expect(shown.textContent).toContain("…");
+    expect(shown.textContent).toMatch(/transformer-weights\.safetensors$/);
+    expect(shown.getAttribute("data-tooltip")).toBe(long);
+    fireEvent.click(screen.getByRole("button", { name: "More options for Transformer weights" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear" }));
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "default")?.paths.transformer).toBe("");
+  });
+
+  it("offers Clear generator paths only on the generator sub-page", () => {
     open();
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
     editDefaultGenerator();
@@ -238,45 +293,46 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
   });
 
-  it("edits generators in a focused popup and returns to Settings on Escape", async () => {
-    open();
-    expect(screen.queryByText("Changes are saved as you type.")).toBeNull();
+  it("edits generators on a sub-page with a breadcrumb and returns on Escape or Back", async () => {
+    const onClose = vi.fn();
+    render(<SettingsView onClose={onClose} />);
     const opener = screen.getByRole("button", { name: "Edit Default generator" });
     opener.focus(); fireEvent.click(opener);
-    const dialog = screen.getByRole("dialog", { name: "Edit generator" });
-    const back = screen.getByRole("button", { name: "Generators" });
-    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
-    expect(document.activeElement).toBe(within(dialog).getByLabelText("Generator name"));
-    const last = within(dialog).getByRole("button", { name: /Clear generator paths/ });
-    last.focus(); fireEvent.keyDown(last, { key: "Tab" });
-    expect(document.activeElement).toBe(back);
-
-    fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("tab", { name: "Appearance" })).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(opener));
-    fireEvent.click(tab("Appearance"));
-    expect(screen.getByRole("radiogroup", { name: "Appearance" })).toBeTruthy();
-    fireEvent.click(tab("Generator"));
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(breadcrumb.textContent).toBe("GeneratorsDefault");
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Default" }));
+    // The navigation pane stays usable while a sub-page is open.
+    expect(tab("Appearance")).toBeTruthy();
+    for (const group of ["General", "Performance", "Model files", /^Additional safetensors/, /^LoRAs/]) {
+      expect(screen.getByRole("heading", { name: group })).toBeTruthy();
+    }
+
+    fireEvent.keyDown(screen.getByLabelText("Generator name"), { key: "Escape" });
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit Default generator" })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.queryByLabelText("Generator name")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("edits LoRAs in a focused popup and discards unsaved changes on close", async () => {
+  it("edits LoRAs in a content dialog and discards unsaved changes on Cancel or Escape", async () => {
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
     const opener = screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" });
     opener.focus(); fireEvent.click(opener);
-    const dialog = screen.getByRole("dialog", { name: "Edit Lora" });
+    const dialog = screen.getByRole("dialog", { name: "Edit LoRA" });
     const name = within(dialog).getByLabelText("LoRA name");
     expect(document.activeElement).toBe(name);
-    expect(screen.queryByRole("tab", { name: "Appearance" })).toBeNull();
+    // The page behind is hidden from assistive technology while it is open.
+    expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
     expect(within(dialog).queryByLabelText("LoRA multiplier")).toBeNull();
-    const first = within(dialog).getByRole("button", { name: "Generators" });
-    const last = within(dialog).getByRole("button", { name: "Save Lora" });
-    last.focus(); fireEvent.keyDown(last, { key: "Tab" });
-    expect(document.activeElement).toBe(first);
-    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
-    expect(document.activeElement).toBe(last);
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeTruthy();
     fireEvent.change(name, { target: { value: "Unsaved name" } });
     fireEvent.keyDown(name, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -284,7 +340,7 @@ describe("the settings screen", () => {
     expect(loadLoras()[0].name).toBe("TaoMate 3-Step");
     await waitFor(() => expect(document.activeElement).toBe(opener));
     fireEvent.click(opener);
-    fireEvent.click(screen.getByRole("button", { name: "Close LoRA settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -293,47 +349,51 @@ describe("the settings screen", () => {
     const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 9 };
     saveGeneratorTemplateSettings(templates);
     const view = open();
-    expect((screen.getByLabelText("Reference icon generator") as HTMLSelectElement).value).toBe(first.id);
+    expect(combo("Reference icon generator").getAttribute("data-value")).toBe(first.id);
     view.unmount();
     saveGeneratorTemplateSettings({ ...templates, templates: [first, second] });
     const reopened = open();
-    fireEvent.change(screen.getByLabelText("Reference icon generator"), { target: { value: second.id } });
+    pick("Reference icon generator", "Icons");
     expect(loadReferenceIconGeneratorId()).toBe(second.id);
     expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(first.id);
     reopened.unmount();
     open();
-    expect((screen.getByLabelText("Reference icon generator") as HTMLSelectElement).value).toBe(second.id);
+    expect(combo("Reference icon generator").getAttribute("data-value")).toBe(second.id);
   });
 
   it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {
     open();
-    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
     const nextGeneratorName = `Generator ${loadGeneratorTemplateSettings().templates.length + 1}`;
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
     expect((screen.getByLabelText("Generator name") as HTMLInputElement).value).toBe(nextGeneratorName);
+    expect(document.activeElement).toBe(screen.getByLabelText("Generator name"));
     expect((screen.getByLabelText("Generator default steps") as HTMLInputElement).value).toBe("20");
 
     fireEvent.change(screen.getByLabelText("Generator name"), { target: { value: "Fast draft" } });
     fireEvent.change(screen.getByLabelText("Generator default steps"), { target: { value: "12" } });
-    fireEvent.change(screen.getByLabelText("Transformer weights"), { target: { value: "D:\\Models\\draft.safetensors" } });
+    expect(screen.getByRole("heading", { level: 1, name: "Fast draft" })).toBeTruthy();
+    enterPath("Transformer weights", "D:\\Models\\draft.safetensors");
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));
-    expect(screen.queryByLabelText(/Transformer weights/)).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "Use Fast draft as the default generator" }));
+    expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Set Fast draft as default" }));
 
     const stored = JSON.parse(localStorage.getItem("slopus.generator-templates.v1") ?? "null");
     const selected = stored.templates.find((template: { id: string }) => template.id === stored.defaultTemplateId);
     expect(selected).toMatchObject({ name: "Fast draft", defaultSteps: 12, paths: { transformer: "D:\\Models\\draft.safetensors" } });
+    expect(screen.queryByRole("button", { name: "Set Fast draft as default" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Set Default as default" })).toBeTruthy();
   });
 
-  it("puts each generator's radio first without a visible Default label", () => {
+  it("marks the default generator in its card description instead of a radio", () => {
     open();
-    const radio = screen.getByRole("radio", { name: "Use Default as the default generator" });
-    const row = radio.closest(".generator-template-item");
-    expect(row?.firstElementChild).toBe(radio.closest("label"));
-    expect(radio.closest("label")?.textContent).toBe("");
+    expect(screen.queryByRole("radio")).toBeNull();
+    const card = screen.getByRole("button", { name: "Edit Default generator" }).closest(".settings-open-card") as HTMLElement;
+    expect(card.textContent).toContain("Used by default");
+    expect(within(card).queryByRole("button", { name: /as default/ })).toBeNull();
   });
 
-  it("offers only a button to reveal the log without fetching log details", async () => {
+  it("offers only a row to reveal the log without fetching log details", async () => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: {} });
     const info = {
       path: "C:\\Users\\Editor\\AppData\\Local\\Slopus\\logs\\slopus.log",
@@ -358,14 +418,17 @@ describe("the settings screen", () => {
   it("configures OpenRouter and local OpenAI-compatible models without requiring a local API key", () => {
     open();
     fireEvent.click(tab("Agents"));
+    const provider = (name: string) => screen.getByRole("button", { name }).closest(".ui-settings-expander") as HTMLElement;
 
-    const openrouter = screen.getByRole("heading", { name: "OpenRouter" }).closest("section")!;
+    const openrouter = provider("OpenRouter");
+    fireEvent.click(screen.getByRole("button", { name: "OpenRouter" }));
+    expect(screen.getByRole("button", { name: "OpenRouter" }).getAttribute("aria-expanded")).toBe("true");
     expect((within(openrouter).getByLabelText("OpenRouter endpoint") as HTMLInputElement).value).toBe("https://openrouter.ai/api/v1");
     fireEvent.change(within(openrouter).getByLabelText("OpenRouter API key"), { target: { value: "sk-or-test" } });
     fireEvent.change(within(openrouter).getByLabelText("OpenRouter model"), { target: { value: "openai/gpt-test" } });
     expect(openrouter.textContent).toContain("Configured");
 
-    const local = screen.getByRole("heading", { name: "Local OpenAI-compatible" }).closest("section")!;
+    const local = provider("Local OpenAI-compatible");
     fireEvent.change(within(local).getByLabelText("Local OpenAI-compatible endpoint"), { target: { value: "http://localhost:1234/v1" } });
     fireEvent.change(within(local).getByLabelText("Local OpenAI-compatible model"), { target: { value: "local-model" } });
     expect(local.textContent).toContain("Configured");
