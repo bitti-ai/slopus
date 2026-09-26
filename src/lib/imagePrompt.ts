@@ -12,7 +12,10 @@ export function compileImagePrompt(config: ProjectConfig) {
     if (reference.kind === "video" || reference.kind === "audio") throw new Error("Still images accept image and text references.");
     return reference;
   });
-  let picture = 0;
+  // An inpainting source is also an explicit composition anchor. The caller
+  // submits it before the selected reference pictures, even with no subjects.
+  const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
+  let picture = editing ? 1 : 0;
   const subjects = references.flatMap((reference) => {
     const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
     const definition = referenceDefinition(reference);
@@ -29,15 +32,25 @@ export function compileImagePrompt(config: ProjectConfig) {
   const visual = imageScenePromptParts(scene, look);
   if (!visual) return { prompt: "", references };
   const audio = ["overall_soundscape: N/A", "non_diegetic_music: N/A"];
-  if (!subjects.length) return {
+  if (!subjects.length && !editing) return {
     prompt: [`integrated_multimodal_description: [Shot 1] ${visual.style}\n${visual.composition}`, ...audio].join("\n\n"), references,
   };
   const label = (index: number) => `<Subject ${index + 1}>`;
+  const definitions = subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`);
+  const retention = subjects.map((subject, index) => `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`);
+  if (editing) {
+    definitions.unshift("<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
+    retention.unshift("<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics while changing the requested region. Preserve all pixels outside the edit box, including any previously completed edits.");
+  }
+  const summary = editing
+    ? `[keyframe completion${subjects.length ? " + reference generation" : ""}] The target is a single edited still keyframe based on <Picture 1>. Apply the described change only inside the edit box.${subjects.length ? ` Use ${subjects.map((_, index) => label(index)).join(", ")} for the specified reference attributes.` : ""}`
+    : `[reference generation] A single still image uses ${subjects.map((_, index) => label(index)).join(", ")} in the requested composition.`;
+  const style = editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;
   return { prompt: [
-    `subject_definitions:\n${subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`).join("\n")}`,
-    `summary:\n[reference generation] A single still image uses ${subjects.map((_, index) => label(index)).join(", ")} in the requested composition.`,
-    `retention_analysis:\n${subjects.map((subject, index) => `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`).join("\n")}`,
-    `detailed_description:\n${visual.style}\n[Shot 1] ${visual.composition}\n${subjects.map((subject, index) => `Use ${label(index)} for ${subject.name}'s ${subject.role}${subject.source}. ${subject.description}`).join("\n")}`,
+    `subject_definitions:\n${definitions.join("\n")}`,
+    `summary:\n${summary}`,
+    `retention_analysis:\n${retention.join("\n")}`,
+    `detailed_description:\n${style}\n[Shot 1] ${visual.composition}\n${subjects.map((subject, index) => `Use ${label(index)} for ${subject.name}'s ${subject.role}${subject.source}. ${subject.description}`).join("\n")}`,
     ...audio,
   ].join("\n\n"), references };
 }

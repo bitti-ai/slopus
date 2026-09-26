@@ -67,11 +67,19 @@ describe("image generation work", () => {
       scene.nodes.at(-1)!.description = description;
     }
     record.config.imageScene = scene;
+    record.config.references = [{ id: "balloon", kind: "image", name: "Balloon", description: "Red satin", relativePath: "references/balloon.png", intendedUse: [], createdAt: record.config.createdAt }];
+    scene.referenceIds = ["balloon"];
     const session = queue.project(record);
     vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/edited.png", width: 101, height: 77 });
     queue.enqueueImage(session, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.referencePaths).toEqual(["C:/Image/media/generated/source.jpg", "C:/Image/references/balloon.png"]);
+    expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].referencePaths).toEqual(request.referencePaths);
+    for (const edit of request.imageEdit!.edits) {
+      expect(edit.prompt).toContain("<Picture 1> is the original source image");
+      expect(edit.prompt).toContain("<Subject 1> is Balloon, providing appearance from <Picture 2>");
+    }
     expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 101, canvasHeight: 77, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
       { prompt: expect.stringContaining("A red balloon"), x: 25, y: 19, width: 51, height: 39 },
       { prompt: expect.stringContaining("A blue boat"), x: 25, y: 19, width: 51, height: 39 },

@@ -218,7 +218,8 @@ export class WorkQueue {
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
       ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits } } : {}),
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
-      referencePaths: references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
+      referencePaths: [...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
+        ...references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))],
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
     this.work.set(id, { id, image: true, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
