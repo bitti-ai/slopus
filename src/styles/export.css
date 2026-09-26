@@ -101,6 +101,46 @@
   pointer-events: none;
 }
 
+/* The image project's Export tab: the image itself, contained in the screen
+   with the stage colour around it. The file is the export, so there is no
+   frame box — just the picture at its own shape. */
+.export-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+img.export-image {
+  display: block;
+}
+
+.export-image.reference-image-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--on-stage);
+  font-size: var(--text-xs);
+}
+
+/* Nothing to show: the shared empty state, in stage ink — the stage is dark
+   in both themes. */
+.export-empty.ui-empty-state {
+  height: 100%;
+}
+
+.export-empty .ui-empty-state__icon,
+.export-empty .ui-empty-state__description {
+  color: color-mix(in srgb, var(--on-stage) 62%, transparent);
+}
+
+.export-empty .ui-empty-state__title {
+  color: var(--on-stage);
+}
+
 /* --- Transport ----------------------------------------------------------------
    Windowed: a static 36px chrome bar under the picture — flat 24px buttons
    like the timeline's, a Fluent slider, and "00:00:12:05 / 00:01:30:00". No
