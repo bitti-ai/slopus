@@ -16,13 +16,15 @@
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto var(--pane-references-inspector);
+  /* Floors on both sides so a narrow view (agent pane open) keeps the list. */
+  grid-template-columns: minmax(240px, 1fr) auto minmax(260px, var(--pane-references-inspector));
   background: var(--layer);
 }
 
 .references-main {
   min-width: 0;
   min-height: 0;
+  container: references-main / inline-size;
   display: flex;
   flex-direction: column;
 }
@@ -857,4 +859,20 @@
 
 .reference-preset-grid > p {
   color: var(--text-muted);
+}
+
+/* A narrow list (agent pane open in a small window): the command bar keeps
+   its icons and drops the labels; the tooltips still name each command. */
+@container references-main (max-width: 400px) {
+  /* Visually hidden, not display:none — the label is the button's
+     accessible name. */
+  .references-command .ui-cmd--labelled .ui-cmd__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .references-command .ui-cmd--labelled { padding-inline: var(--space-2); }
 }

@@ -6,7 +6,7 @@
    ========================================================================== */
 
 .project-content--editor { padding: 0; overflow: hidden; }
-.image-editor { --pane-image-tree: 240px; --pane-image-inspector: 300px; display: grid; grid-template-columns: var(--pane-image-tree) auto minmax(0, 1fr) auto var(--pane-image-inspector); height: 100%; min-height: 0; background: var(--layer); }
+.image-editor { --pane-image-tree: 240px; --pane-image-inspector: 300px; display: grid; grid-template-columns: minmax(140px, var(--pane-image-tree)) auto minmax(160px, 1fr) auto minmax(220px, var(--pane-image-inspector)); height: 100%; min-height: 0; background: var(--layer); }
 .image-tree, .image-inspector { min-width: 0; min-height: 0; overflow: auto; background: var(--panel); }
 .image-tree { display: flex; flex-direction: column; }
 .image-tree > .ui-pane-header, .image-inspector > .ui-pane-header { flex-shrink: 0; border-bottom: 1px solid var(--line); }

@@ -17,7 +17,9 @@
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto var(--pane-generator-inspector);
+  /* Floors on both sides: with the agent pane open in a 900px window the view
+     is ~540px wide, and a fixed inspector squeezed the scene list to nothing. */
+  grid-template-columns: minmax(280px, 1fr) auto minmax(260px, var(--pane-generator-inspector));
   background: var(--layer);
 }
 
@@ -31,6 +33,7 @@
 .generator-main {
   min-width: 0;
   min-height: 0;
+  container: generator-main / inline-size;
   display: flex;
   flex-direction: column;
 }
@@ -89,6 +92,7 @@
    ========================================================================== */
 
 .generator-runtime {
+  flex: none;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -237,6 +241,7 @@
 .scene-rule__summary {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   min-height: var(--control-sm);
   display: flex;
   align-items: center;
@@ -1080,4 +1085,26 @@
 .prompt-part--tag {
   color: var(--accent-bright);
   font-weight: var(--weight-medium);
+}
+
+/* --- A narrow board ---------------------------------------------------------
+   The agent pane open in a small window leaves the board ~280px. The command
+   bar drops its labels (the tooltips still name the commands), the template
+   picker narrows, and the scene rows keep the title by dropping the caption
+   and the status chip — the status glyph beside the title still carries it. */
+@container generator-main (max-width: 440px) {
+  /* Visually hidden, not display:none — the label is the button's
+     accessible name. */
+  .generator-command .ui-cmd--labelled .ui-cmd__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .generator-command .ui-cmd--labelled { padding-inline: var(--space-2); }
+  .generator-template { min-width: 96px; }
+  .scene-rule__caption,
+  .scene-rule__badge { display: none; }
 }
