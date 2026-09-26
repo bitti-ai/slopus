@@ -393,3 +393,11 @@ it("picks canvas tools from a radio group or their letter keys and zooms from th
   fireEvent.keyDown(canvas, { key: "0", ctrlKey: true });
   expect(zoom).toHaveValue("Fit");
 });
+
+it("heads the inspector with the selected node rather than an Inspector title", () => {
+  setup();
+  const inspector = screen.getByRole("complementary", { name: "Image node inspector" });
+  expect(within(inspector).getByRole("heading", { name: "Image" })).toBeInTheDocument();
+  expect(within(inspector).getByText("Root")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /^(Scene|Inspector)/ })).not.toBeInTheDocument();
+});

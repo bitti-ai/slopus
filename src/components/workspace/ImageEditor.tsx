@@ -19,7 +19,7 @@ import { applyImageCommand } from "../../lib/imageCommands";
 import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
 import { useShortcut } from "../../lib/commands";
-import { ComboBox, InfoBar, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
+import { ComboBox, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
 import "../../styles/image-editor.css";
 
 const MIN_IMAGE_ZOOM = 0.1;
@@ -442,7 +442,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
-      <PaneHeader title="Scene" actions={<>
+      <PaneHeader actions={<>
         <button className="icon-button image-pane-button" aria-label="Undo image edit" aria-keyshortcuts="Control+Z" {...tooltipProps("Undo", "Ctrl+Z")} disabled={!undo.current.length} onClick={() => history(true)}><Undo2 size={16} aria-hidden="true" /></button>
         <button className="icon-button image-pane-button" aria-label="Redo image edit" aria-keyshortcuts="Control+Y" {...tooltipProps("Redo", "Ctrl+Y")} disabled={!redo.current.length} onClick={() => history(false)}><Redo2 size={16} aria-hidden="true" /></button>
       </>} />
@@ -567,7 +567,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     <aside className="image-inspector" aria-label="Image node inspector">
-      <PaneHeader title={<>Inspector <span className="image-inspector__kind">{selected.kind}</span></>} />
+      {/* The selected node heads the inspector, not an "Inspector" title. */}
+      <ItemHeader name={selected.name} meta={selected.kind[0].toUpperCase() + selected.kind.slice(1)} />
       <div className="image-inspector__fields">
         {selected.kind === "root" && <PropRow label="Type" htmlFor={rootField("type")}>
           <ComboBox id={rootField("type")} aria-label="Type" value={imageRoot ? "image" : "prompt"} options={[{ value: "prompt", label: "Prompt" }, { value: "image", label: "Image" }]}
