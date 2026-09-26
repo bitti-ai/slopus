@@ -1,14 +1,15 @@
 import { WorkQueue } from "../lib/workQueue";
 // @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
 
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { createElement, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, STORY_TRACK_ID, UNTITLED_SCENE, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
+import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, STORY_TRACK_ID, UNTITLED_SCENE, type GenerationJob, type ProjectAsset, type ProjectConfig, type ProjectRecord, type TimelineClip } from "../lib/project";
 import { saveGeneratedScene } from "../lib/generatedVideo";
-import { formatDurationTimecode } from "./ProjectWorkspace";
+import { formatDurationTimecode, isGenerationOngoing } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
@@ -158,6 +159,16 @@ async function withStagedDecoder(file: { seconds: number; width: number; height:
   }
 }
 
+describe("the one definition of an ongoing generation", () => {
+  it("is every status with something still to lose, and nothing else", () => {
+    const statuses: GenerationJob["status"][] = ["draft", "queued", "generating", "ready", "completed", "failed", "cancelled"];
+    /* "ready" is in the list because it does not mean finished: the pictures
+       exist and the file does not yet — the app is encoding them into the
+       project folder. "completed" is the one that means there is a file. */
+    expect(statuses.filter((status) => isGenerationOngoing({ status } as GenerationJob))).toEqual(["queued", "generating", "ready"]);
+  });
+});
+
 describe("project workspace timecode", () => {
   it("formats project duration as valid hours, minutes, and seconds", () => {
     expect(formatDurationTimecode(0)).toBe("00:00:00");
@@ -166,7 +177,8 @@ describe("project workspace timecode", () => {
     expect(formatDurationTimecode(600)).toBe("00:10:00");
   });
 
-  it("opens a centered two-line Agent page from its first tab and moves the prompt down after submit", async () => {
+  it("docks the agent in a pane beside the view, and hides and shows it from the title bar", async () => {
+    localStorage.removeItem("slopus.workspace.agentPane");
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     render(createElement(ProjectWorkspace, {
       project: { folderPath: "C:\\Ceramic Lamp", config },
@@ -179,48 +191,111 @@ describe("project workspace timecode", () => {
       onSave: async () => undefined,
     }));
 
-    const navigation = screen.getByRole("navigation", { name: "Project views" });
-    expect(within(navigation).getAllByRole("button").map((button) => button.textContent?.trim())).toEqual([
-      "Agent", "Timeline", "Generator", "References",
-    ]);
-    const field = screen.getByRole("textbox", { name: "Ask Slop about the edit" });
-    expect(field.getAttribute("rows")).toBe("1");
-    expect(screen.queryByRole("combobox", { name: "Agent provider" })).toBeNull();
-    expect(screen.getByRole("img", { name: "Codex status: Ready" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: /Slop output/ })).toBeNull();
+    // The views are tabs in the title bar; the agent is not one of them.
+    const tabs = screen.getByRole("tablist", { name: "Project views" });
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Timeline", "Generator", "References", "Export"]);
+    expect(within(tabs).getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+    const panel = document.getElementById(within(tabs).getByRole("tab", { name: "Timeline" }).getAttribute("aria-controls")!);
+    expect(panel).toHaveAttribute("role", "tabpanel");
 
-    fireEvent.click(within(navigation).getByRole("button", { name: "Agent" }));
-    expect(within(navigation).getByRole("button", { name: "Agent" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("heading", { name: "What should we create today?" })).not.toBeNull();
-    expect(screen.queryByText("No activity yet. Send a prompt to start.")).toBeNull();
-    expect(document.querySelector(".agent-dock-wrap--welcome")).not.toBeNull();
-    expect(screen.getByRole("textbox", { name: "Ask Slop about this project" }).getAttribute("rows")).toBe("2");
-    expect(screen.getByRole("combobox", { name: "Agent provider" }).textContent).toBe("Codex");
-    expect(screen.getByRole("combobox", { name: "Agent provider" }).closest(".agent-dock__actions")).not.toBeNull();
-    expect(document.querySelector(".project-agent-row--page")).not.toBeNull();
+    const toggle = screen.getByRole("button", { name: "Agent" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    const pane = screen.getByRole("complementary", { name: "Agent" });
+    expect(within(pane).getByRole("textbox", { name: "Ask Slop about the edit" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Resize agent pane" })).toBeInTheDocument();
 
-    fireEvent.click(within(navigation).getByRole("button", { name: "Timeline" }));
-    const compactField = screen.getByRole("textbox", { name: "Ask Slop about the edit" });
-    fireEvent.change(compactField, { target: { value: "Review this project" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
-    await waitFor(() => expect(within(navigation).getByRole("button", { name: "Agent" }).getAttribute("aria-current")).toBe("page"));
-    expect(document.querySelector(".agent-dock-wrap--welcome")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("complementary", { name: "Agent" })).toBeNull();
+    expect(screen.queryByRole("separator", { name: "Resize agent pane" })).toBeNull();
+    expect(localStorage.getItem("slopus.workspace.agentPane")).toBe("closed");
+
+    // Ctrl+Shift+A brings it back — the same pane, still mounted.
+    fireEvent.keyDown(document.body, { key: "A", code: "KeyA", ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole("complementary", { name: "Agent" })).toBe(pane);
+    expect(localStorage.getItem("slopus.workspace.agentPane")).toBe("open");
+
+    // Ctrl+2 switches to the second view.
+    fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true });
+    expect(within(tabs).getByRole("tab", { name: "Generator" })).toHaveAttribute("aria-selected", "true");
+    expect(within(pane).getByRole("textbox", { name: "Ask Slop about this generation queue" })).toBeInTheDocument();
   });
 
-  it("surfaces native save failures in the workspace", async () => {
-    render(createElement(ProjectWorkspace, {
-      project: { folderPath: "C:\\Portable Launch Film", config: parseProjectConfig(completeFixture) },
-      onBack: () => undefined,
-      onSave: async () => { throw new Error("The original project file is locked."); },
-    }));
-    // Save is the only save state left in the topbar — the standing "All
-    // changes saved" pill is gone — so it is off until there is something to
-    // write. Make an edit first, or the click lands on a disabled button.
-    fireEvent.change(screen.getAllByTitle("Rename this track")[0], { target: { value: "Opening shots" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    const alert = await screen.findByRole("alert");
+  it("surfaces native save failures in the workspace, inline under the title bar", async () => {
+    const record = { folderPath: "C:\\Portable Launch Film", config: parseProjectConfig(completeFixture) };
+    const queue = new WorkQueue(async () => { throw new Error("The original project file is locked."); });
+    render(createElement(ProjectWorkspace, { project: record, workQueue: queue, initialView: "export", onBack: () => undefined, onSave: async () => undefined }));
+    // Save is the only save state in the title bar, so it is off until there
+    // is something to write.
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    act(() => queue.project(record).edit((current) => ({ ...current, name: "Renamed" })));
+    expect(save).toBeEnabled();
+    fireEvent.keyDown(document.body, { key: "s", code: "KeyS", ctrlKey: true });
+    const alert = await waitFor(() => within(document.querySelector<HTMLElement>(".project-infobars")!).getByRole("alert"));
+    expect(alert).toHaveClass("ui-infobar");
     expect(alert.textContent).toContain("Couldn’t save project");
     expect(alert.textContent).toContain("The original project file is locked.");
+    fireEvent.click(within(alert).getByRole("button", { name: "Close" }));
+    expect(document.querySelector(".project-infobars")).toBeNull();
+  });
+
+  it("undoes and redoes project edits from the title bar and the keyboard, but not inside a text field", () => {
+    const record = { folderPath: "C:\\Undo", config: createProjectConfig({ name: "Before", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 }) };
+    const queue = new WorkQueue(async (saved) => saved);
+    render(createElement(ProjectWorkspace, { project: record, workQueue: queue, initialView: "export", onBack: () => undefined, onSave: async () => undefined }));
+    const session = queue.project(record);
+    const title = () => screen.getByRole("button", { name: /^Edit project settings for / }).textContent;
+    const undo = screen.getByRole("button", { name: "Undo" });
+    const redo = screen.getByRole("button", { name: "Redo" });
+    expect(undo).toBeDisabled();
+    expect(undo).toHaveAttribute("data-tooltip-shortcut", "Ctrl+Z");
+    act(() => session.edit((current) => ({ ...current, name: "After" }), "name"));
+    expect(title()).toBe("After");
+    fireEvent.click(undo);
+    expect(title()).toBe("Before");
+    expect(redo).toBeEnabled();
+    fireEvent.keyDown(document.body, { key: "y", code: "KeyY", ctrlKey: true });
+    expect(title()).toBe("After");
+    fireEvent.keyDown(document.body, { key: "z", code: "KeyZ", ctrlKey: true });
+    expect(title()).toBe("Before");
+    fireEvent.keyDown(document.body, { key: "Z", code: "KeyZ", ctrlKey: true, shiftKey: true });
+    expect(title()).toBe("After");
+    // A text field keeps its own undo.
+    const field = document.createElement("input");
+    document.body.append(field);
+    fireEvent.keyDown(field, { key: "z", code: "KeyZ", ctrlKey: true });
+    expect(title()).toBe("After");
+    field.remove();
+  });
+
+  it("goes back to the library with Alt+Left, asking first when there are unsaved edits", () => {
+    const record = { folderPath: "C:\\Back", config: createProjectConfig({ name: "Back", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 }) };
+    const queue = new WorkQueue(async (saved) => saved);
+    const onBack = vi.fn();
+    render(createElement(ProjectWorkspace, { project: record, workQueue: queue, initialView: "export", onBack, onSave: async () => undefined }));
+    fireEvent.keyDown(document.body, { key: "ArrowLeft", altKey: true });
+    expect(onBack).toHaveBeenCalledOnce();
+    act(() => queue.project(record).edit((current) => ({ ...current, name: "Edited" })));
+    fireEvent.keyDown(document.body, { key: "ArrowLeft", altKey: true });
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog", { name: "Save changes to “Edited”?" })).toBeInTheDocument();
+  });
+
+  it("counts running generations on the Generator tab, and returns to the library without a generation warning", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const now = new Date().toISOString();
+    config.generationJobs = [
+      ...(["generating", "queued", "ready"] as const).map((status, index) => ({ ...config.generationJobs[0], id: `job-${index}`, title: `Shot ${index + 1}`, status, updatedAt: now })),
+      ...config.generationJobs,
+    ];
+    const onBack = vi.fn();
+    render(createElement(ProjectWorkspace, { project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "export", onBack, onSave: async () => undefined }));
+    const generator = screen.getByRole("tab", { name: "Generator" });
+    expect(generator.querySelector(".ui-badge")?.textContent).toBe("3");
+    fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("persists a completed generation without waiting for the Save button", async () => {
@@ -954,14 +1029,14 @@ describe("project workspace timecode", () => {
       render(createElement(ProjectWorkspace, { project, onBack: () => undefined, onSave }));
       const save = () => screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
       expect(save().disabled).toBe(true);
-      expect(save().title).toBe("Everything is already saved");
+      expect(save().getAttribute("data-tooltip")).toBe("Everything is saved");
 
       fireEvent.click(screen.getByRole("button", { name: "Media" }));
       // The panel prints the length it read, so this waits on the measurement
       // itself rather than on a guess at how long a decode takes.
       await waitFor(() => expect(screen.getAllByText(/40\.0s/).length).toBe(2), { timeout: 8_000 });
       expect(save().disabled).toBe(true);
-      expect(save().title).toBe("Everything is already saved");
+      expect(save().getAttribute("data-tooltip")).toBe("Everything is saved");
 
       // An actual edit still turns it on, and carries the measurement with it.
       fireEvent.change(screen.getAllByLabelText(/^Rename /)[0], { target: { value: "Opening layer" } });
@@ -1157,9 +1232,9 @@ describe("project workspace timecode", () => {
     const line = () => screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement;
     openShot(1);
     fireEvent.change(line(), { target: { value: "a slow push across the launch pad" } });
-    fireEvent.click(screen.getByRole("button", { name: "Timeline" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Timeline" }));
     await screen.findByRole("heading", { name: "Timeline", level: 2 });
-    fireEvent.click(screen.getByRole("button", { name: "Generator" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
     await screen.findByRole("heading", { name: "Generator" });
     /* The trip unmounted the generator, so the panel is back on the scene and
        the card is where the words have to have survived. */
