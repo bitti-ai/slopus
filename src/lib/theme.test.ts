@@ -557,7 +557,7 @@ describe("no stylesheet outside tokens.css names a colour", () => {
        not, and `font-family: Silver, Tan, sans-serif` tripped the guard. */
     expect(colourLiterals("a { font-family: Silver, Tan, sans-serif; }")).toEqual([]);
     expect(colourLiterals("a { font: var(--weight-medium) 12px / 1 Silver, monospace; }")).toEqual([]);
-    expect(colourLiterals(':root { --font-sans: "Manrope", Inter, system-ui, sans-serif; }')).toEqual([]);
+    expect(colourLiterals(':root { --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }')).toEqual([]);
 
     /* But skipping the font properties must not blind the REST of the rule. */
     expect(colourLiterals("a { font-family: Silver; color: white; }")).toEqual(["white"]);

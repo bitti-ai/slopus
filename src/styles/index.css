@@ -2,13 +2,11 @@
    Slopus — stylesheet entry point.
 
    This is the ONLY file imported by the app (src/main.tsx). Everything else is
-   pulled in from here, in cascade order. Keep the font @import first: CSS
-   requires all @import rules to precede any other rule. The fonts are
-   self-hosted (see fonts.css) — a local-first desktop app must not need a CDN
-   to paint its own type, and offline it silently fell back to system metrics.
+   pulled in from here, in cascade order. No web fonts are loaded: the app
+   uses the Windows system faces (Segoe UI Variable, Cascadia Mono), named in
+   tokens.css, so there is nothing to self-host and nothing to fall back from
+   when offline. CSS requires every @import to precede any other rule.
    ========================================================================== */
-
-@import "./fonts.css";
 
 /* Foundation */
 @import "./tokens.css";
