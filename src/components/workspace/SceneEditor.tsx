@@ -371,6 +371,10 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
               onChange={(value) => onChange({ poseVideoReferenceId: value || null })} />
           </PropRow>
           <p className="prop-caption">Uses the saved clip range for pose and motion. Describe the subject and setting below.</p>
+          {shots.map((shot, index) => <ShotInspector key={shot.id} job={job} shots={shots} shot={shot} index={index}
+            endsAt={shots[index + 1]?.startSeconds ?? sceneDurationSeconds(job)} duration={sceneDurationSeconds(job)}
+            references={references} disabled={disabled} promptOnly
+            onChange={(updates) => onShots(shots.map((item) => item.id === shot.id ? { ...item, ...updates } : item))} />)}
         </>}
         {characterReplace && <p className="prop-caption">Open a shot to choose its source video and new character.</p>}
         {transition && <>

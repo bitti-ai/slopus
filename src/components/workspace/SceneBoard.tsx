@@ -346,6 +346,7 @@ export function SceneBoard({
             className="scene-rule__summary"
             aria-label={`Select scene ${job.title}`}
             aria-pressed={sceneOpen}
+            onClick={() => onSelect({ jobId: job.id, shotId: null })}
             onKeyDown={(event) => {
               if (!isMenuKey(event)) return;
               event.preventDefault();

@@ -6,8 +6,15 @@ import { useState } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, type ProjectConfig } from "../../lib/project";
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
+import { askNative } from "../../lib/nativeShell";
 import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
+import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
 import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
+
+vi.mock("../../lib/nativeShell", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../lib/nativeShell")>(),
+  askNative: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock("../../lib/runtime", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/runtime")>(),
@@ -57,23 +64,23 @@ it("animates a blank scene only with a video and repainted frame", () => {
   render(<Harness />);
   const generate = within(screen.getByRole("region", { name: "Blank scene" })).getByRole("button", { name: "Generate" });
   expect(generate).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
   expect(submitted.mock.calls.flatMap(([items]) => items)).toHaveLength(0);
   expect(screen.queryByLabelText("The sound of this scene")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "motion" } });
+  choose("Reference video for this scene", "Motion");
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "repainted" } });
+  choose("Start frame for this scene", "Repainted frame");
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
   expect(submitted).toHaveBeenLastCalledWith([expect.objectContaining({ request: expect.objectContaining({
     prompt: "", referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
     referencePaths: ["C:/project/references/repainted.png"],
   }) })]);
-  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "" } });
+  choose("Start frame for this scene", "None");
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Start frame for this scene"), { target: { value: "repainted" } });
+  choose("Start frame for this scene", "Repainted frame");
   expect(generate).toBeEnabled();
-  fireEvent.change(screen.getByLabelText("Reference video for this scene"), { target: { value: "" } });
+  choose("Reference video for this scene", "None");
   expect(generate).toBeDisabled();
 });
 
@@ -103,17 +110,17 @@ it("saves scene types and submits Character Replace with the exact selected refe
       onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
   }
   render(<Harness />);
-  expect(screen.getByLabelText("Scene type")).toHaveValue("first-last-frame");
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "character-replace" } });
+  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("first-last-frame");
+  choose("Scene type", "Character replace");
   expect(latest.generationJobs[0].sceneType).toBe("character-replace");
   expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
   const generate = within(screen.getByRole("region", { name: "Replace scene" })).getByRole("button", { name: "Generate" });
   expect(generate).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Replace scene" }));
   expect(screen.queryByLabelText("Describe shot 1")).toBeNull();
-  fireEvent.change(screen.getByLabelText("Video reference for this shot"), { target: { value: "motion" } });
+  choose("Video reference for this shot", "Motion");
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("New character reference for this shot"), { target: { value: "hero" } });
+  choose("New character reference for this shot", "New hero");
   fireEvent.change(screen.getByLabelText("Character to replace in this shot"), { target: { value: "the person on the left" } });
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
@@ -124,13 +131,13 @@ it("saves scene types and submits Character Replace with the exact selected refe
   }) })]);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0].shots![0]).toMatchObject({ videoReferenceId: "motion", characterReferenceId: "hero" });
   fireEvent.click(screen.getByRole("button", { name: "Select scene Replace scene" }));
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "first-last-frame" } });
+  choose("Scene type", "First & last frame");
   expect(screen.getByLabelText("Start frame for this scene")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "character-replace" } });
+  choose("Scene type", "Character replace");
   expect(generate).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Replace scene" }));
-  expect(screen.getByLabelText("New character reference for this shot")).toHaveValue("hero");
-  fireEvent.change(screen.getByLabelText("New character reference for this shot"), { target: { value: "" } });
+  expect(comboValue(screen.getByRole("combobox", { name: "New character reference for this shot" }))).toBe("hero");
+  choose("New character reference for this shot", "None");
   expect(generate).toBeDisabled();
 });
 
@@ -151,11 +158,11 @@ it("submits Pose from the scene panel with its video and optional prompt referen
       onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
   }
   render(<Harness />);
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "pose" } });
+  choose("Scene type", "Pose");
   expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
   const generate = within(screen.getByRole("region", { name: "Pose scene" })).getByRole("button", { name: "Generate" });
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Pose video reference for this scene"), { target: { value: "motion" } });
+  choose("Pose video reference for this scene", "Motion");
   expect(generate).toBeDisabled();
   fireEvent.change(screen.getByLabelText("Describe shot 1"), { target: { value: "A dancer on a rainy street." } });
   expect(generate).toBeEnabled();
@@ -170,10 +177,10 @@ it("submits Pose from the scene panel with its video and optional prompt referen
   fireEvent.click(generate);
   expect(submitted.mock.calls.at(-1)![0][0].request.referencePaths).toEqual(["C:/project/references/hero.png"]);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0]).toMatchObject({ sceneType: "pose", poseVideoReferenceId: "motion" });
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "first-last-frame" } });
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: "pose" } });
-  expect(screen.getByLabelText("Pose video reference for this scene")).toHaveValue("motion");
-  fireEvent.change(screen.getByLabelText("Pose video reference for this scene"), { target: { value: "" } });
+  choose("Scene type", "First & last frame");
+  choose("Scene type", "Pose");
+  expect(comboValue(screen.getByRole("combobox", { name: "Pose video reference for this scene" }))).toBe("motion");
+  choose("Pose video reference for this scene", "None");
   expect(generate).toBeDisabled();
   expect(templateSceneBlocker("pose", minimaxOriginalTemplate())).toContain("References or Singularity");
   expect(templateSceneBlocker("pose", viggleAnimateTemplate())).toContain("MiniMax prompt");
@@ -183,11 +190,11 @@ it("keeps an explicitly selected scene type independent of the global generator"
   const initial = project();
   initial.generationJobs[0].sceneType = "animate";
   const state = setup(initial);
-  expect(screen.getByLabelText("Scene type")).toHaveValue("animate");
+  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("animate");
   expect(screen.getByLabelText("Reference video for this scene")).toBeInTheDocument();
   const first = within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" });
-  expect(first).toHaveAttribute("title", "Select an Animate generator for this scene.");
-  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  expect(first).toHaveAttribute("data-tooltip", "Select an Animate generator for this scene.");
+  fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
   expect(state.latest().generationJobs[0].status).toBe("draft");
   expect(state.latest().generationJobs[1].status).toBe("queued");
 });
@@ -211,14 +218,14 @@ it.each(["extend", "bridge"] as const)("submits %s with ordered video anchors an
       onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
   }
   render(<Harness />);
-  fireEvent.change(screen.getByLabelText("Scene type"), { target: { value: type } });
+  choose("Scene type", type === "extend" ? "Extend" : "Bridge");
   expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
   const generate = within(screen.getByRole("region", { name: "Transition" })).getByRole("button", { name: "Generate" });
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Start video reference for this scene"), { target: { value: "start" } });
+  choose("Start video reference for this scene", "start");
   if (type === "bridge") {
     expect(generate).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("End video reference for this scene"), { target: { value: "end" } });
+    choose("End video reference for this scene", "end");
   } else expect(screen.queryByLabelText("End video reference for this scene")).toBeNull();
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
@@ -309,7 +316,7 @@ function setup(initial = project()) {
 }
 
 async function finishFirst(state: ReturnType<typeof setup>) {
-  fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
   await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
   state.replace({
     ...state.latest(),
@@ -328,43 +335,38 @@ describe("Generator scene controls", () => {
     initial.settings.defaultLook = "watercolor";
     const state = setup(initial);
     const selector = screen.getByRole("combobox", { name: "The look of this scene" });
-    expect(selector).toHaveValue("");
+    expect(comboValue(selector)).toBe("");
     expect(screen.getByText("Using project Look: Watercolor.")).toBeInTheDocument();
-    if (sceneLook) fireEvent.change(selector, { target: { value: sceneLook } });
+    if (sceneLook) chooseOption(selector, expected);
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).prompt).toContain(expected);
     if (!sceneLook) expect(sceneShots(state.latest().generationJobs[0])[0].settings?.visualStyle).toBeUndefined();
   });
 
-  it("only shows debug prompts when enabled, in a closable popup outside the inspector", () => {
+  it("only shows debug prompts when enabled, in a dialog outside the inspector", () => {
     setup();
-    expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug prompt" })).not.toBeInTheDocument();
     act(() => saveDebugOptionsEnabled(true));
-    const button = screen.getByRole("button", { name: "Debug Prompt" });
+    const button = screen.getByRole("button", { name: "Debug prompt" });
     button.focus();
     fireEvent.click(button);
-    const dialog = screen.getByRole("dialog", { name: "Debug Prompt" });
+    const dialog = screen.getByRole("dialog", { name: "Debug prompt" });
     expect(dialog.closest("aside")).toBeNull();
-    expect(within(dialog).getByLabelText("The compiled MiniMax H3 prompt")).toHaveTextContent("Opening action");
-    expect(within(dialog).getByRole("button", { name: "Close debug prompt" })).toHaveFocus();
-    fireEvent.keyDown(window, { key: "Tab" });
-    expect(within(dialog).getByLabelText("The compiled MiniMax H3 prompt")).toHaveFocus();
-    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
-    expect(window.getSelection()?.toString()).toBe(within(dialog).getByLabelText("The compiled MiniMax H3 prompt").textContent);
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
-    expect(button).toHaveFocus();
+    const prompt = within(dialog).getByLabelText("The compiled MiniMax H3 prompt");
+    expect(prompt).toHaveTextContent("Opening action");
+    expect(prompt).toHaveFocus();
+    fireEvent.keyDown(prompt, { key: "a", ctrlKey: true });
+    expect(window.getSelection()?.toString()).toBe(prompt.textContent);
+    fireEvent.keyDown(prompt, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Debug prompt" })).not.toBeInTheDocument();
     fireEvent.click(button);
-    fireEvent.click(screen.getByRole("button", { name: "Close debug prompt" }));
-    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
-    fireEvent.click(button);
-    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Debug Prompt" }).parentElement!);
-    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Debug prompt" })).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Debug prompt" })).not.toBeInTheDocument();
     fireEvent.click(button);
     act(() => saveDebugOptionsEnabled(false));
-    expect(screen.queryByRole("button", { name: "Debug Prompt" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Debug Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Debug prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Debug prompt" })).not.toBeInTheDocument();
   });
 
   it("sends a cited video with its trim and soundtrack choice in the generation snapshot", async () => {
@@ -395,8 +397,8 @@ describe("Generator scene controls", () => {
     }];
     const state = setup(parseProjectConfig(initial));
 
-    expect(within(screen.getByRole("combobox", { name: "The look of this scene" })).getByRole("option", { name: "None" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Start frame for this scene" }), { target: { value: "ref-opening" } });
+    expect(optionNames(screen.getByRole("combobox", { name: "The look of this scene" }))).toContain("None");
+    chooseOption(screen.getByRole("combobox", { name: "Start frame for this scene" }), "Opening still");
     expect(state.latest().generationJobs[0].startFrameReferenceId).toBe("ref-opening");
 
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
@@ -410,13 +412,13 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.references = [{ id: "closing", kind: "image", name: "Closing still", description: "", relativePath: "references/closing.png", intendedUse: [], createdAt: initial.createdAt }];
     const state = setup(initial);
-    fireEvent.change(screen.getByRole("combobox", { name: "Last frame for this scene" }), { target: { value: "closing" } });
+    chooseOption(screen.getByRole("combobox", { name: "Last frame for this scene" }), "Closing still");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBe("closing");
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
     expect(snapshot.prompt).toContain("<Picture 1> is the last frame of the video.");
     expect(snapshot.referencePaths[0]).toContain("closing.png");
-    fireEvent.change(screen.getByRole("combobox", { name: "Last frame for this scene" }), { target: { value: "" } });
+    chooseOption(screen.getByRole("combobox", { name: "Last frame for this scene" }), "None");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();
   });
 
@@ -424,9 +426,11 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
-    expect(screen.getByRole("option", { name: "Previous scene" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
+    expect(screen.getByRole("option", { name: "Previous scene" })).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
     fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Start frame for this scene" }), { target: { value: "previous-scene" } });
+    chooseOption(screen.getByRole("combobox", { name: "Start frame for this scene" }), "Previous scene");
     expect(state.latest().generationJobs[1].usePreviousSceneLastFrame).toBe(true);
     const generateSecond = () => fireEvent.click(within(screen.getByRole("region", { name: "Second scene" })).getByRole("button", { name: "Generate" }));
     const finishSecond = () => state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 1 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-second.mp4" } : job) });
@@ -436,30 +440,30 @@ describe("Generator scene controls", () => {
     expect(snapshot.continuationRelativePath).toBe("latents/work-original.safetensors");
     finishSecond();
     const second = () => screen.getByRole("region", { name: "Second scene" });
-    expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
+    expect(within(second()).getByText("Finished")).toBeInTheDocument();
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "generating" } : job) });
-    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    expect(within(second()).getByText("Changed")).toBeInTheDocument();
     expect(second().querySelector(".scene-rule__status--changed")).not.toBeNull();
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 0 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-new.mp4", latentRelativePath: "latents/work-new.safetensors" } : job) });
-    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    expect(within(second()).getByText("Changed")).toBeInTheDocument();
     // Opening a saved project retains the dependency's recorded renderer inputs.
     state.replace(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))));
-    expect(within(second()).getByText("CHANGED")).toBeInTheDocument();
+    expect(within(second()).getByText("Changed")).toBeInTheDocument();
     generateSecond();
     expect(JSON.parse(state.latest().generationJobs[1].generationSnapshot!).continuationRelativePath).toBe("latents/work-new.safetensors");
     finishSecond();
-    expect(within(second()).getByText("FINISHED")).toBeInTheDocument();
+    expect(within(second()).getByText("Finished")).toBeInTheDocument();
   });
 
   it("includes fixed-seed linked scenes when Generate All regenerates their source", () => {
     const initial = project();
     initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42, outputRelativePath: `media/generated/work-${index}.mp4`, latentRelativePath: `latents/work-${index}.safetensors`, usePreviousSceneLastFrame: index === 1 }));
     const state = setup(initial);
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
-    expect(screen.getByRole("button", { name: "Generate All" })).toHaveAttribute("title", "Every fixed-seed scene is already up to date.");
+    expect(screen.getByRole("button", { name: "Generate all" })).toHaveAttribute("data-tooltip", "Every fixed-seed scene is already up to date.");
     fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Rain" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });
 
@@ -468,10 +472,10 @@ describe("Generator scene controls", () => {
     initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42,
       outputRelativePath: `media/generated/work-${index}.mp4`, usePreviousSceneLastFrame: index === 1 }));
     const state = setup(initial);
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     // Simulate an older completed project: matching snapshots, but no archives.
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });
 
@@ -505,9 +509,9 @@ describe("Generator scene controls", () => {
     const speech = screen.getByRole("textbox", { name: "Speech for shot 1" });
     const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
     expect(speech).toHaveValue("");
-    expect(language).toHaveValue("English");
+    expect(comboValue(language)).toBe("English");
 
-    fireEvent.change(language, { target: { value: "Korean" } });
+    chooseOption(language, "Korean");
     fireEvent.change(speech, { target: { value: "문을 열어 주세요." } });
     expect(sceneShots(state.latest().generationJobs[0])[0]).toEqual(expect.objectContaining({
       speech: "문을 열어 주세요.",
@@ -527,15 +531,15 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
 
     const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
-    expect(language).toHaveValue("Klingon");
-    expect(within(language).getByRole("option", { name: "Klingon" })).toBeInTheDocument();
+    expect(comboValue(language)).toBe("Klingon");
+    expect(optionNames(language)).toContain("Klingon");
   });
 
   it("reorders shots inside a scene while keeping its cut slots", () => {
     const state = setup();
     const shotTransfer = transfer();
     fireEvent.dragStart(screen.getByRole("button", { name: "Shot 1 of First scene" }), { dataTransfer: shotTransfer });
-    fireEvent.drop(screen.getByRole("button", { name: "Add a shot to First scene" }).parentElement!, { dataTransfer: shotTransfer });
+    fireEvent.drop(screen.getByRole("list", { name: "Shots in First scene" }), { dataTransfer: shotTransfer });
 
     const first = state.latest().generationJobs.find((job) => job.id === "scene-first")!;
     expect(sceneShots(first).map((shot) => shot.id)).toEqual(["shot-first-b", "shot-first-a"]);
@@ -561,32 +565,34 @@ describe("Generator scene controls", () => {
     expect(sceneShots(target).map((shot) => shot.startSeconds)).toEqual([0, 4]);
   });
 
-  it("selects a scene from its header and keeps confirmed removal in the inspector", () => {
+  it("selects a scene from its header and keeps confirmed removal in the inspector", async () => {
     const state = setup();
-    expect(screen.queryByText("DRAFT")).not.toBeInTheDocument();
+    expect(screen.queryByText("Draft")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Draft/)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("slider", { name: "First scene length in seconds" }), { target: { value: "10" } });
     expect(state.latest().generationJobs[0].durationSeconds).toBe(10);
-    expect(screen.queryByText("CHANGED")).not.toBeInTheDocument();
+    expect(screen.queryByText("Changed")).not.toBeInTheDocument();
 
     const scene = screen.getByRole("region", { name: "First scene" });
-    expect(within(scene).queryByRole("button", { name: "Remove scene First scene" })).not.toBeInTheDocument();
+    expect(within(scene).queryByRole("button", { name: "Delete scene First scene" })).not.toBeInTheDocument();
     expect(within(scene).queryByRole("button", { name: "Settings for First scene" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
     fireEvent.click(scene.querySelector(".scene-rule")!);
     expect(screen.getByRole("textbox", { name: "Rename First scene" })).toBeInTheDocument();
 
-    fireEvent.click(within(screen.getByRole("complementary", { name: "Scene: First scene" })).getByRole("button", { name: "Remove scene First scene" }));
-    expect(screen.getByRole("alertdialog", { name: "Remove scene?" })).toBeInTheDocument();
+    vi.mocked(askNative).mockResolvedValueOnce(false);
+    fireEvent.click(within(screen.getByRole("complementary", { name: "Scene: First scene" })).getByRole("button", { name: "Delete scene First scene" }));
+    await waitFor(() => expect(askNative).toHaveBeenCalledWith(expect.objectContaining({ title: "Delete scene", okLabel: "Delete" })));
     expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
-    fireEvent.click(screen.getByRole("button", { name: "Remove scene" }));
-    expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-second"]);
+    vi.mocked(askNative).mockResolvedValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "Delete scene First scene" }));
+    await waitFor(() => expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-second"]));
   });
 
   it("adds new scenes at the bottom", () => {
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
     expect(state.latest().generationJobs.slice(0, 2).map((job) => job.id)).toEqual(["scene-first", "scene-second"]);
     expect(state.latest().generationJobs.at(-1)?.title).toBe("Untitled scene");
   });
@@ -602,7 +608,7 @@ describe("Generator scene controls", () => {
       }],
     }));
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Add a scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
     expect(state.latest().generationJobs.at(-1)?.steps).toBe(9);
   });
 
@@ -636,8 +642,7 @@ describe("Generator scene controls", () => {
     setup();
 
     expect(document.querySelector(".generator-runtime--ready > i")).not.toBeNull();
-    expect(screen.getByText("Generator:")).toBeInTheDocument();
-    expect(screen.queryByText("Video generator ready")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Video generator ready" })).toBeInTheDocument();
     const template = screen.getByRole("combobox", { name: /Video generator template/ });
     expect(template).toHaveTextContent("Quality");
     fireEvent.click(template);
@@ -646,7 +651,7 @@ describe("Generator scene controls", () => {
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
     expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true);
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
-    expect(screen.queryByText("Video model files missing")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Generator status" })).getByText("Video model files missing")).toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();
   });
 
@@ -654,11 +659,11 @@ describe("Generator scene controls", () => {
     const state = setup();
     await finishFirst(state);
     const scene = screen.getByRole("region", { name: "First scene" });
-    expect(within(scene).getByText("FINISHED")).toBeInTheDocument();
+    expect(within(scene).getByText("Finished")).toBeInTheDocument();
     expect(scene.querySelector(".scene-rule__status--completed")).not.toBeNull();
 
     fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Soft rain." } });
-    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
+    expect(within(scene).getByText("Changed")).toBeInTheDocument();
     expect(scene.querySelector(".scene-rule__status--changed")).not.toBeNull();
   });
 
@@ -682,8 +687,8 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
     const addSetting = screen.getByRole("combobox", { name: "Add a setting to shot 1" });
     expect(addSetting).toBeEnabled();
-    fireEvent.change(addSetting, { target: { value: "shotSize" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Value for Shot size on shot 1" }), { target: { value: "close-up" } });
+    chooseOption(addSetting, "Shot size");
+    choose("Value for Shot size on shot 1", "Close-up");
     expect(state.latest().generationJobs[0].generationSnapshot).toBe(sent);
 
     state.replace({
@@ -693,7 +698,7 @@ describe("Generator scene controls", () => {
         : job),
     });
     const finished = screen.getByRole("region", { name: "First scene" });
-    expect(within(finished).getByText("CHANGED")).toBeInTheDocument();
+    expect(within(finished).getByText("Changed")).toBeInTheDocument();
     expect(finished.querySelector(".scene-rule__status--changed")).not.toBeNull();
   });
 
@@ -703,10 +708,10 @@ describe("Generator scene controls", () => {
     const scene = screen.getByRole("region", { name: "First scene" });
 
     fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
-    expect(screen.getByText("Describe the shot")).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Add a setting to shot 1" }), { target: { value: "shotSize" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Value for Shot size on shot 1" }), { target: { value: "close-up" } });
-    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
+    expect(screen.getByText("Description")).toBeInTheDocument();
+    choose("Add a setting to shot 1", "Shot size");
+    choose("Value for Shot size on shot 1", "Close-up");
+    expect(within(scene).getByText("Changed")).toBeInTheDocument();
 
     fireEvent.click(within(scene).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].status).toBe("queued"));
@@ -717,39 +722,39 @@ describe("Generator scene controls", () => {
         ? { ...regenerated, status: "completed", stage: "completed", progress: 1 }
         : job),
     });
-    expect(within(scene).getByText("FINISHED")).toBeInTheDocument();
+    expect(within(scene).getByText("Finished")).toBeInTheDocument();
 
     const shotTransfer = transfer();
     fireEvent.dragStart(screen.getByRole("button", { name: "Shot 1 of First scene" }), { dataTransfer: shotTransfer });
-    fireEvent.drop(screen.getByRole("button", { name: "Add a shot to First scene" }).parentElement!, { dataTransfer: shotTransfer });
-    expect(within(scene).getByText("CHANGED")).toBeInTheDocument();
+    fireEvent.drop(screen.getByRole("list", { name: "Shots in First scene" }), { dataTransfer: shotTransfer });
+    expect(within(scene).getByText("Changed")).toBeInTheDocument();
   });
 
-  it("renames a shot and confirms before removing it", () => {
+  it("renames a shot and confirms before removing it", async () => {
     const state = setup();
     fireEvent.click(screen.getByRole("button", { name: "Shot 2 of First scene" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Rename shot 2" }), { target: { value: "Doorway reveal" } });
     const shotHeader = screen.getByRole("textbox", { name: "Rename shot 2" }).closest("header");
-    const removeButton = within(shotHeader!).getByRole("button", { name: "Remove shot 2" });
-    expect(removeButton).toHaveClass("inspector-remove-button");
+    const removeButton = within(shotHeader!).getByRole("button", { name: "Delete shot 2" });
+    expect(removeButton).toHaveClass("icon-button");
     expect(removeButton).toHaveTextContent("");
     expect(sceneShots(state.latest().generationJobs[0])[1].name).toBe("Doorway reveal");
     expect(parseProjectConfig(state.latest()).generationJobs[0].shots?.[1].name).toBe("Doorway reveal");
     expect(screen.getByRole("button", { name: "Doorway reveal of First scene" })).toBeInTheDocument();
 
+    vi.mocked(askNative).mockResolvedValueOnce(false);
     fireEvent.click(removeButton);
-    expect(screen.getByRole("alertdialog", { name: "Remove shot?" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(askNative).toHaveBeenCalledWith(expect.objectContaining({ title: "Delete shot", message: "Delete “Doorway reveal” from “First scene”?" })));
     expect(sceneShots(state.latest().generationJobs[0])).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove shot 2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Remove shot" }));
-    expect(sceneShots(state.latest().generationJobs[0])).toHaveLength(1);
+    vi.mocked(askNative).mockResolvedValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "Delete shot 2" }));
+    await waitFor(() => expect(sceneShots(state.latest().generationJobs[0])).toHaveLength(1));
   });
 
   it("queues every valid draft from Generate All", async () => {
     const state = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]));
     expect(state.latest().generationJobs.every((job) => Boolean(job.generationSnapshot))).toBe(true);
     expect(parseProjectConfig(state.latest())).toBeTruthy();
@@ -760,7 +765,7 @@ describe("Generator scene controls", () => {
     initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 100 + index }));
     const state = setup(initial);
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     await waitFor(() => expect(state.latest().generationJobs.every((job) => job.status === "queued")).toBe(true));
     state.replace({
       ...state.latest(),
@@ -773,7 +778,7 @@ describe("Generator scene controls", () => {
       })),
     });
 
-    const generateAll = screen.getByRole("button", { name: "Generate All" });
+    const generateAll = screen.getByRole("button", { name: "Generate all" });
     expect(generateAll).toBeEnabled();
     fireEvent.click(generateAll);
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["completed", "completed"]);
@@ -785,7 +790,7 @@ describe("Generator scene controls", () => {
         ? { ...job, shots: sceneShots(job).map((shot, index) => index === 0 ? { ...shot, action: `${shot.action} Changed.` } : shot) }
         : job),
     });
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "completed"]));
   });
 
@@ -794,7 +799,7 @@ describe("Generator scene controls", () => {
     initial.generationJobs[1].seed = 417;
     const state = setup(initial);
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     await waitFor(() => expect(state.latest().generationJobs.every((job) => job.status === "queued")).toBe(true));
     state.replace({
       ...state.latest(),
@@ -807,7 +812,7 @@ describe("Generator scene controls", () => {
       })),
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     await waitFor(() => expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "completed"]));
   });
 
@@ -825,12 +830,12 @@ describe("Generator scene controls", () => {
     const second = screen.getByRole("region", { name: "Second scene" });
     expect(within(first).getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(within(second).getByRole("button", { name: "Cancel" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Cancel All" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Cancel all" })).toBeEnabled();
     expect(within(first).getAllByText("Rendering 42%")).toHaveLength(2);
     const progressBars = first.querySelectorAll(".shot-thumb__progress > i");
     expect(progressBars).toHaveLength(2);
     expect([...progressBars].every((bar) => (bar as HTMLElement).style.width === "42%")).toBe(true);
-    expect(within(first).queryByText("RENDERING")).not.toBeInTheDocument();
+    expect(within(first).queryByText("Rendering")).not.toBeInTheDocument();
 
     fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(cancelSlopfabGeneration).toHaveBeenCalledWith("scene-first"));
@@ -840,10 +845,86 @@ describe("Generator scene controls", () => {
     expect(within(first).queryByText("Rendering 42%")).not.toBeInTheDocument();
 
     vi.mocked(cancelSlopfabGeneration).mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel all" }));
     await waitFor(() => {
       expect(cancelSlopfabGeneration).toHaveBeenCalledTimes(1);
       expect(cancelSlopfabGeneration).toHaveBeenCalledWith("scene-second");
     });
+  });
+});
+
+describe("Generator board as a native list", () => {
+  it("summarises the board in the status bar and switches density", () => {
+    const initial = project();
+    initial.generationJobs[0] = { ...initial.generationJobs[0], status: "generating", stage: "generating", progress: 0.1 };
+    setup(initial);
+    expect(within(screen.getByRole("region", { name: "Generator status" })).getByRole("status")).toHaveTextContent("2 scenes · 1 rendering");
+    expect(screen.queryByRole("heading", { name: "Generator" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    expect(document.querySelector(".scene-board--list")).not.toBeNull();
+    expect(localStorage.getItem("slopus.generator.density")).toBe("list");
+  });
+
+  it("collapses a scene group from its header", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse First scene" }));
+    expect(screen.queryByRole("list", { name: "Shots in First scene" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand First scene" }));
+    expect(screen.getByRole("list", { name: "Shots in First scene" })).toBeInTheDocument();
+  });
+
+  it("opens scene and shot menus by right-click and Shift+F10 and runs their commands", () => {
+    const state = setup();
+    fireEvent.contextMenu(screen.getByRole("region", { name: "Second scene" }).querySelector(".scene-rule")!);
+    const menu = screen.getByRole("menu", { name: "Second scene actions" });
+    expect(within(menu).getByRole("menuitem", { name: /Move down/ })).toBeDisabled();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /Move up/ }));
+    expect(state.latest().generationJobs.map((job) => job.id)).toEqual(["scene-second", "scene-first"]);
+
+    const shot = screen.getByRole("button", { name: "Shot 2 of First scene" });
+    fireEvent.keyDown(shot, { key: "F10", shiftKey: true });
+    fireEvent.click(within(screen.getByRole("menu", { name: "Shot 2 actions" })).getByRole("menuitem", { name: /Move to Second scene/ }));
+    expect(sceneShots(state.latest().generationJobs.find((job) => job.id === "scene-second")!).map((item) => item.id)).toEqual(["shot-second-a", "shot-first-b"]);
+  });
+
+  it("renames with F2 and deletes with Delete after a native confirmation", async () => {
+    const state = setup();
+    const shot = screen.getByRole("button", { name: "Shot 2 of First scene" });
+    fireEvent.click(shot);
+    shot.focus();
+    fireEvent.keyDown(shot, { key: "F2" });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Rename shot 2" })).toHaveFocus());
+
+    shot.focus();
+    fireEvent.keyDown(shot, { key: "Delete" });
+    await waitFor(() => expect(sceneShots(state.latest().generationJobs[0])).toHaveLength(1));
+    expect(askNative).toHaveBeenCalledWith(expect.objectContaining({ title: "Delete shot" }));
+  });
+
+  it("moves between shot tiles with the arrow keys as one tab stop", () => {
+    setup();
+    const first = screen.getByRole("button", { name: "Shot 1 of First scene" });
+    const second = screen.getByRole("button", { name: "Shot 2 of First scene" });
+    expect(first).toHaveAttribute("tabindex", "0");
+    expect(second).toHaveAttribute("tabindex", "-1");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(second).toHaveFocus();
+    expect(second).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows where a dragged shot will land and dims the source", () => {
+    setup();
+    const shotTransfer = transfer();
+    const source = screen.getByRole("button", { name: "Shot 1 of First scene" });
+    fireEvent.dragStart(source, { dataTransfer: shotTransfer });
+    expect(source.closest(".shot-card")).toHaveClass("shot-card--dragging");
+    const target = screen.getByRole("button", { name: "Shot 1 of Second scene" }).closest("li")!;
+    fireEvent.dragOver(target, { dataTransfer: shotTransfer });
+    expect(target).toHaveClass("shot-slot--drop-before");
+    fireEvent.dragEnd(source, { dataTransfer: shotTransfer });
+    expect(target).not.toHaveClass("shot-slot--drop-before");
+    expect(source.closest(".shot-card")).not.toHaveClass("shot-card--dragging");
   });
 });
