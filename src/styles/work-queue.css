@@ -11,12 +11,9 @@
    button and its InfoBadge.
    ========================================================================== */
 
-/* The width is also set here, not only through Flyout's `width` prop: the
-   flyout measures itself BEFORE that inline width lands, so without it the
-   placement was computed for a narrower panel and the right edge ran off the
-   window. */
+/* The 360px width comes from Flyout's `width` prop, which the flyout now
+   places itself by (it used to measure before the width landed). */
 .work-queue.ui-flyout {
-  width: 360px;
   max-width: calc(100vw - 16px);
   display: flex;
   flex-direction: column;

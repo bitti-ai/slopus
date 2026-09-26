@@ -157,6 +157,8 @@ describe("CommandBar", () => {
     expect(saveButton).toHaveAttribute("aria-keyshortcuts", "Control+S");
     expect(screen.getByRole("button", { name: "Snap" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Export" })).toHaveTextContent("Export");
+    // Labelled buttons keep a tooltip too: the label is hidden when the bar is narrow.
+    expect(screen.getByRole("button", { name: "Export" })).toHaveAttribute("data-tooltip", "Export");
     fireEvent.click(saveButton);
     expect(save).toHaveBeenCalled();
     saveButton.focus();
@@ -220,6 +222,16 @@ describe("Flyout", () => {
       </>
     );
   }
+
+  it("places a fixed-width flyout by its real width, so it stays inside the window", () => {
+    // jsdom lays nothing out: offsetWidth is 0, like content measured before
+    // the width applies. The anchor sits near the right edge.
+    const anchor = { left: window.innerWidth - 60, right: window.innerWidth - 28, top: 10, bottom: 42, width: 32, height: 32 };
+    render(<Flyout open anchor={anchor} onClose={() => undefined} aria-label="Queue" width={360}><button>Row</button></Flyout>);
+    const panel = screen.getByRole("dialog", { name: "Queue" });
+    expect(panel.style.width).toBe("360px");
+    expect(parseFloat(panel.style.left) + 360).toBeLessThanOrEqual(window.innerWidth - 8);
+  });
 
   it("opens anchored, focuses inside, and light-dismisses", () => {
     render(<Anchored />);

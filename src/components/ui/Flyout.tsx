@@ -44,13 +44,16 @@ const resolveAnchor = (anchor: FlyoutProps["anchor"]): { element: HTMLElement | 
 
 export function Flyout({ open, anchor, onClose, children, placement = "bottom", className, initialFocus, width, role = "dialog", ...aria }: FlyoutProps) {
   const panel = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
+  /* The width is on the panel from the first frame, so what is measured below
+     is the size it will have: measured at its content width, a wide flyout
+     was placed as if it were narrow and ran off the right edge. */
+  const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden", width });
   const anchorElement = resolveAnchor(anchor).element;
 
   useLayoutEffect(() => {
     if (!open || !panel.current) return;
     const { rect } = resolveAnchor(anchor);
-    const size = { width: panel.current.offsetWidth, height: panel.current.offsetHeight };
+    const size = { width: width ?? panel.current.offsetWidth, height: panel.current.offsetHeight };
     const placed = rect ? placeAnchored(rect, size, placement, 4) : { left: 8, top: 8 };
     setStyle({ left: placed.left, top: placed.top, width });
     focusSafely(initialFocus?.current ?? focusables(panel.current)[0] ?? panel.current);

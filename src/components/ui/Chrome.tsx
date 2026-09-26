@@ -69,7 +69,10 @@ export const CommandBarButton = forwardRef(function CommandBarButton(
       aria-label={withText ? undefined : label}
       aria-pressed={pressed}
       aria-keyshortcuts={ariaKeyShortcuts(shortcut)}
-      data-tooltip={tooltip ?? (withText && !shortcut ? undefined : label)}
+      /* Always: a labelled button loses its text when the bar is narrow
+         (the stylesheet hides .ui-cmd__label), and then the tooltip is all
+         that names it. */
+      data-tooltip={tooltip ?? label}
       data-tooltip-shortcut={shortcut ? formatShortcut(shortcut) : undefined}
       {...rest}
     >

@@ -1371,6 +1371,17 @@
   margin-left: auto;
 }
 
+/* No overflow menu yet: when the bar is too narrow the primary commands are
+   clipped at the end group rather than sliding underneath it. The padding
+   (taken back by the negative margin) keeps the 2px focus ring of the first,
+   last and every button inside the clip. */
+.ui-command-bar__primary {
+  flex: 0 1 auto;
+  overflow: hidden;
+  padding: 3px;
+  margin: -3px;
+}
+
 .ui-command-bar__separator {
   width: 1px;
   height: 20px;
@@ -1694,22 +1705,4 @@
 
 .ui-statusbar__items--end {
   margin-left: auto;
-}
-
-/* ============================================================================
-   Effect bypass (ClipEffects). Parked here by the integration pass because
-   timeline.css belonged to another agent at the time; it can move there.
-   The checkbox sits in the effect's 32px header ahead of the chevron, and a
-   bypassed effect's name reads secondary, the way Premiere dims an fx that
-   is switched off.
-   ========================================================================== */
-
-.clip-effect__bypass {
-  flex: none;
-  margin-left: var(--space-2);
-  padding-block: 0;
-}
-
-.clip-effect--bypassed .clip-effect__name {
-  color: var(--text-secondary);
 }
