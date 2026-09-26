@@ -1,0 +1,1628 @@
+/* ============================================================================
+   ui.css — the shared Fluent component library (src/components/ui).
+
+   Every class here is prefixed `ui-` and belongs to one component in
+   src/components/ui; the component file is the documentation for its markup.
+   Nothing in this sheet is a screen's layout: a screen positions a component,
+   the component paints itself.
+
+   The same rules as the rest of the app apply, and are worth restating
+   because a component library is where they get broken first:
+   - colours come only from tokens.css, in both themes;
+   - the cursor is the arrow (the splitter and the scrub label use the resize
+     arrows, which mean "drag this");
+   - hover and press change a fill over --motion-fast and nothing else;
+   - blur (acrylic) only on the popups: menu, ComboBox list, flyout;
+   - cards have a stroke and no shadow; popups use --shadow-sm, the dialog
+     --shadow, the tooltip --shadow-tooltip.
+
+   Stacking, from the bottom: dialog scrim 900, flyout and ComboBox list 950,
+   menu 960, tooltip 1100. A ComboBox or menu opened from inside a dialog has
+   to sit above it, and a tooltip above everything.
+   ========================================================================== */
+
+/* --- Motion shared by the popups -------------------------------------------- */
+
+@keyframes ui-popup-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: scale(1.05); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ============================================================================
+   ContentDialog
+   ========================================================================== */
+
+.ui-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+  animation: ui-fade-in var(--motion-normal) linear;
+}
+
+.ui-dialog {
+  width: 100%;
+  max-width: min(548px, 100%);
+  min-width: min(320px, 100%);
+  max-height: calc(100vh - 2 * var(--space-5));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  color: var(--text-primary);
+  background: var(--dialog-bg);
+  box-shadow: var(--shadow);
+  animation: ui-dialog-in var(--motion-panel) var(--ease-decelerate);
+}
+
+.ui-dialog:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow);
+}
+
+.ui-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+/* Fluent Subtitle: 20/28 semibold, in the Display cut. */
+.ui-dialog__title {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: 1.4;
+}
+
+.ui-dialog__content {
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.ui-dialog__content > p {
+  margin: 0 0 var(--space-3);
+}
+
+.ui-dialog__content > p:last-child {
+  margin-bottom: 0;
+}
+
+/* The button band: one layer darker, a hairline above it, and buttons that
+   share the width equally (the column count is set inline). */
+.ui-dialog__footer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border-top: 1px solid var(--stroke-card);
+  background: var(--dialog-footer-bg);
+}
+
+.ui-dialog__button {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================================================
+   InfoBar
+   ========================================================================== */
+
+.ui-infobar {
+  width: 100%;
+  min-height: var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--card);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.ui-infobar--success { background: var(--success-soft); }
+.ui-infobar--warning { background: var(--warning-soft); }
+.ui-infobar--error { background: var(--danger-soft); }
+
+.ui-infobar__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-3);
+  padding-block: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.ui-infobar__title {
+  font-weight: var(--weight-semibold);
+}
+
+.ui-infobar__action {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ui-infobar__close {
+  flex: none;
+}
+
+/* The 16px filled severity disc. The glyph is cut in the panel colour, which
+   is dark on the pastel dark-theme hues and white on the deeper light ones. */
+.ui-severity-glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--panel);
+  background: var(--text-secondary);
+}
+
+.ui-severity-glyph--informational {
+  color: var(--on-accent);
+  background: var(--accent-fill);
+}
+
+.ui-severity-glyph--success { background: var(--success); }
+.ui-severity-glyph--warning { background: var(--warning); }
+.ui-severity-glyph--error { background: var(--danger); }
+
+.ui-severity-glyph__mark {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+/* ============================================================================
+   ComboBox
+   ========================================================================== */
+
+.ui-combo {
+  height: var(--control-md);
+  min-width: 120px;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-bottom);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--fill-control);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: left;
+  transition: var(--transition-control);
+}
+
+.ui-combo:hover:not(:disabled) { background: var(--fill-control-hover); }
+
+.ui-combo:active:not(:disabled),
+.ui-combo[aria-expanded="true"] {
+  background: var(--fill-control-pressed);
+}
+
+.ui-combo:disabled {
+  color: var(--text-disabled);
+  background: var(--fill-control-disabled);
+}
+
+.ui-combo__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-combo__value--placeholder {
+  color: var(--text-secondary);
+}
+
+.ui-combo__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ui-combo__chevron {
+  flex: none;
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+
+.ui-combo:disabled .ui-combo__chevron {
+  color: var(--text-disabled);
+}
+
+.ui-combo__list {
+  position: fixed;
+  z-index: 950;
+  max-width: calc(100vw - 2 * var(--space-2));
+  max-height: min(360px, calc(100vh - 2 * var(--space-2)));
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: var(--acrylic);
+  backdrop-filter: var(--acrylic-filter);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  animation: ui-fade-in var(--motion-fast) linear;
+}
+
+.ui-combo__group {
+  padding: var(--space-2) calc(var(--space-3) - 1px) var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.ui-combo__group:not(:first-child) {
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--line);
+}
+
+.ui-combo__option {
+  position: relative;
+  min-height: var(--control-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: 2px;
+  padding: 0 calc(var(--space-3) - 1px);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+
+.ui-combo__option--active,
+.ui-combo__option--selected {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-combo__option--active.ui-combo__option--selected {
+  background: var(--fill-control-hover);
+}
+
+.ui-combo__option:active:not([aria-disabled="true"]) {
+  color: var(--text-secondary);
+  background: var(--fill-subtle-pressed);
+}
+
+/* The selected item's 3×16px accent pill, on the leading edge. */
+.ui-combo__option--selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.ui-combo__option[aria-disabled="true"] {
+  color: var(--text-disabled);
+  background: transparent;
+}
+
+.ui-combo__option-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-block: calc(var(--space-1) + 1px);
+}
+
+.ui-combo__option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-combo__option-description {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  white-space: normal;
+}
+
+/* ============================================================================
+   Splitter
+   A 4px hit area centred on a 1px line. It lays out as a 4px track of its
+   own; a grid that wants the line flush with a pane border gives the track
+   `auto` and pulls it over the border with a negative margin.
+   ========================================================================== */
+
+.ui-splitter {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  touch-action: none;
+  outline-offset: -2px;
+}
+
+.ui-splitter--vertical {
+  width: 4px;
+  align-self: stretch;
+  cursor: col-resize;
+}
+
+.ui-splitter--horizontal {
+  height: 4px;
+  justify-self: stretch;
+  cursor: row-resize;
+}
+
+.ui-splitter::before {
+  content: "";
+  position: absolute;
+  background: var(--line);
+  transition: background-color var(--motion-fast) linear;
+}
+
+.ui-splitter--vertical::before {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+
+.ui-splitter--horizontal::before {
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
+}
+
+.ui-splitter:hover::before,
+.ui-splitter--dragging::before,
+.ui-splitter:focus-visible::before {
+  background: var(--accent);
+}
+
+.ui-splitter--vertical:hover::before,
+.ui-splitter--vertical.ui-splitter--dragging::before {
+  left: calc(50% - 1px);
+  width: 2px;
+}
+
+.ui-splitter--horizontal:hover::before,
+.ui-splitter--horizontal.ui-splitter--dragging::before {
+  top: calc(50% - 1px);
+  height: 2px;
+}
+
+.ui-splitter[aria-disabled="true"] {
+  cursor: default;
+}
+
+/* ============================================================================
+   SettingsCard, SettingsGroup, SettingsExpander, SettingsRow
+   ========================================================================== */
+
+.ui-settings-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-settings-group__heading {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal);
+}
+
+.ui-settings-group__cards {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.ui-settings-card {
+  width: 100%;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--card);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: left;
+  text-decoration: none;
+  transition: var(--transition-control);
+}
+
+.ui-settings-card--no-icon {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ui-settings-card--clickable:hover:not(:disabled, [aria-disabled="true"]) { background: var(--card-hover); }
+.ui-settings-card--clickable:active:not(:disabled, [aria-disabled="true"]) { background: var(--card-pressed); }
+
+.ui-settings-card--disabled,
+.ui-settings-card--disabled .ui-settings-card__description,
+.ui-settings-card--disabled .ui-settings-card__glyph {
+  color: var(--text-disabled);
+}
+
+.ui-settings-card__icon {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.ui-settings-card__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-settings-card__description {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-settings-card__control {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-primary);
+}
+
+.ui-settings-card__glyph {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* The expander's header is a card whose whole surface is one toggle button,
+   laid UNDER the content; the text passes presses through to it and the
+   control does not, so a switch in the header works on its own. */
+.ui-settings-expander {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-settings-expander__header {
+  position: relative;
+  min-height: var(--space-8);
+}
+
+.ui-settings-expander--open .ui-settings-expander__header {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ui-settings-expander__toggle {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.ui-settings-expander__toggle:hover { background: var(--fill-subtle-hover); }
+.ui-settings-expander__toggle:active { background: var(--fill-subtle-pressed); }
+
+.ui-settings-expander__header > :not(.ui-settings-expander__toggle) {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ui-settings-expander__control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: auto;
+}
+
+.ui-settings-expander__chevron {
+  color: var(--text-primary);
+  transition: transform var(--motion-normal) var(--ease-decelerate);
+}
+
+.ui-settings-expander--open .ui-settings-expander__chevron {
+  transform: rotate(180deg);
+}
+
+.ui-settings-expander__content {
+  border: 1px solid var(--stroke-card);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--card);
+}
+
+.ui-settings-expander__content > * + * {
+  border-top: 1px solid var(--stroke-card);
+}
+
+/* A row inside an expander, indented past the header's icon column
+   (16px padding + 20px icon + 16px gap). */
+.ui-settings-row {
+  min-height: var(--space-8);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-2) calc(2 * var(--space-4) + 20px);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* ============================================================================
+   PropRow + PropSection — dense inspector rows
+   ========================================================================== */
+
+.ui-prop-section__header {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.ui-prop-section__toggle {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: left;
+  transition: var(--transition-control);
+}
+
+.ui-prop-section__toggle:hover { background: var(--fill-subtle-hover); }
+.ui-prop-section__toggle:active { background: var(--fill-subtle-pressed); }
+
+.ui-prop-section__chevron {
+  flex: none;
+  color: var(--text-secondary);
+  transform: rotate(-90deg);
+  transition: transform var(--motion-normal) var(--ease-decelerate);
+}
+
+.ui-prop-section--open .ui-prop-section__chevron {
+  transform: none;
+}
+
+.ui-prop-section__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: var(--space-1);
+}
+
+.ui-prop-section__content {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-1) var(--space-2) var(--space-2) var(--space-3);
+}
+
+.ui-prop-row {
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 20px;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+
+.ui-prop-row__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--motion-fast) linear;
+}
+
+/* Drag-to-scrub: the resize arrows say "drag me sideways". */
+.ui-prop-row__label--scrub {
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.ui-prop-row__label--scrub:hover,
+.ui-prop-row--scrubbing .ui-prop-row__label {
+  color: var(--text-primary);
+}
+
+.ui-prop-row--scrubbing,
+.ui-prop-row--scrubbing * {
+  cursor: ew-resize;
+}
+
+.ui-prop-row__value {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.ui-prop-row__value > input:not([type="checkbox"], [type="radio"], [type="range"]),
+.ui-prop-row__value > .ui-combo,
+.ui-prop-row__value > .ui-textfield {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-sm);
+}
+
+/* Numbers read right-aligned in tabular figures, without Chromium's spin
+   arrows; the label scrubs and the arrow keys still step. */
+.ui-prop-row__value input[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+}
+
+.ui-prop-row__value input[type="number"]::-webkit-inner-spin-button,
+.ui-prop-row__value input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.ui-prop-row__reset,
+.ui-prop-row__reset-spacer {
+  width: 20px;
+  height: 20px;
+}
+
+.ui-prop-row__reset {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.ui-prop-row__reset:hover {
+  color: var(--text-primary);
+  background: var(--fill-subtle-hover);
+}
+
+.ui-prop-row__reset:active {
+  background: var(--fill-subtle-pressed);
+}
+
+/* ============================================================================
+   ContextMenu (MenuFlyout)
+   ========================================================================== */
+
+.ui-menu {
+  position: fixed;
+  z-index: 960;
+  display: flex;
+  flex-direction: column;
+  max-width: min(360px, calc(100vw - 2 * var(--space-2)));
+  max-height: calc(100vh - 2 * var(--space-2));
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: var(--acrylic);
+  backdrop-filter: var(--acrylic-filter);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  animation: ui-popup-in var(--motion-normal) var(--ease-decelerate);
+}
+
+/* The menu itself takes focus when opened with the mouse; that is not a
+   keyboard focus and draws no ring. */
+.ui-menu:focus,
+.ui-menu:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.ui-menu__item {
+  min-height: var(--control-md);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 var(--space-1);
+  padding: 0 calc(var(--space-3) - 1px);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: left;
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+
+.ui-menu__item:hover:not(:disabled),
+.ui-menu__item:focus:not(:disabled) {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-menu__item:active:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--fill-subtle-pressed);
+}
+
+.ui-menu__item:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Disabled by colour, never by opacity: a faded row reads as a rendering
+   fault on acrylic. */
+.ui-menu__item:disabled,
+.ui-menu__item:disabled .ui-menu__shortcut {
+  color: var(--text-disabled);
+}
+
+.ui-menu__glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ui-menu__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-menu__shortcut {
+  margin-left: var(--space-5);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-menu__separator {
+  height: 1px;
+  flex: none;
+  margin: var(--space-1) 0;
+  background: var(--line);
+}
+
+/* ============================================================================
+   Flyout
+   ========================================================================== */
+
+.ui-flyout {
+  position: fixed;
+  z-index: 950;
+  max-width: calc(100vw - 2 * var(--space-2));
+  max-height: calc(100vh - 2 * var(--space-2));
+  overflow: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  background: var(--acrylic);
+  backdrop-filter: var(--acrylic-filter);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  animation: ui-popup-in var(--motion-normal) var(--ease-decelerate);
+}
+
+.ui-flyout:focus,
+.ui-flyout:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   Tooltip
+   ========================================================================== */
+
+.ui-tooltip {
+  position: fixed;
+  z-index: 1100;
+  max-width: 320px;
+  padding: calc(var(--space-1) + 1px) var(--space-2) calc(var(--space-2) - 1px);
+  border: 1px solid var(--tooltip-stroke);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--tooltip-bg);
+  box-shadow: var(--shadow-tooltip);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: ui-fade-in var(--motion-fast) linear;
+}
+
+.ui-tooltip__shortcut {
+  margin-left: var(--space-2);
+  color: var(--text-secondary);
+}
+
+/* ============================================================================
+   ToggleSwitch
+   ========================================================================== */
+
+.ui-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-md);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.ui-toggle__state {
+  min-width: 24px;
+  text-align: right;
+}
+
+.ui-toggle__track {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-pill);
+  background: var(--fill-control-alt);
+  transition: var(--transition-control);
+}
+
+.ui-toggle__track:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+.ui-toggle__track:active:not(:disabled) { background: var(--fill-subtle-pressed); }
+
+.ui-toggle__knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform var(--motion-normal) var(--ease-decelerate);
+}
+
+.ui-toggle--on .ui-toggle__track {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+}
+
+.ui-toggle--on .ui-toggle__track:hover:not(:disabled) {
+  border-color: var(--button-primary-hover);
+  background: var(--button-primary-hover);
+}
+
+.ui-toggle--on .ui-toggle__track:active:not(:disabled) {
+  border-color: var(--button-primary-active);
+  background: var(--button-primary-active);
+}
+
+.ui-toggle--on .ui-toggle__knob {
+  background: var(--on-accent);
+  transform: translateX(20px);
+}
+
+.ui-toggle--disabled {
+  color: var(--text-disabled);
+}
+
+.ui-toggle--disabled .ui-toggle__track {
+  border-color: var(--text-disabled);
+  background: transparent;
+}
+
+.ui-toggle--disabled .ui-toggle__knob {
+  background: var(--text-disabled);
+}
+
+.ui-toggle--disabled.ui-toggle--on .ui-toggle__track {
+  border-color: transparent;
+  background: var(--accent-disabled);
+}
+
+.ui-toggle--disabled.ui-toggle--on .ui-toggle__knob {
+  background: var(--on-accent-disabled);
+}
+
+/* ============================================================================
+   Checkbox and Radio (label layout; the box itself is controls.css)
+   ========================================================================== */
+
+.ui-check {
+  display: inline-grid;
+  grid-template-columns: var(--check-size) auto;
+  align-items: start;
+  column-gap: var(--space-2);
+  padding-block: calc((var(--control-md) - var(--check-size)) / 2);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--check-size);
+}
+
+.ui-check__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ui-check__description {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-check--disabled,
+.ui-check--disabled .ui-check__description {
+  color: var(--text-disabled);
+}
+
+.ui-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ui-radio-group__label {
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.ui-radio-group__items {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-radio-group--horizontal .ui-radio-group__items {
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: var(--space-5);
+}
+
+/* ============================================================================
+   Slider (the look is controls.css; this only sizes it)
+   ========================================================================== */
+
+.ui-slider {
+  min-width: 0;
+}
+
+/* ============================================================================
+   ProgressBar and ProgressRing
+   ========================================================================== */
+
+.ui-progress {
+  position: relative;
+  height: var(--progress-height);
+  overflow: hidden;
+  border-radius: var(--radius-progress);
+  background: var(--track);
+}
+
+.ui-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-progress);
+  background: var(--accent-fill);
+  transition: width var(--motion-normal) linear;
+}
+
+.ui-progress--paused .ui-progress__fill { background: var(--warning); }
+.ui-progress--error .ui-progress__fill { background: var(--danger); }
+
+.ui-progress--indeterminate .ui-progress__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  animation: ui-progress-indeterminate 2s var(--ease-decelerate) infinite;
+}
+
+/* An indeterminate bar that is paused or failed stops and fills: there is no
+   progress to show, only the state. */
+.ui-progress--indeterminate.ui-progress--paused .ui-progress__fill,
+.ui-progress--indeterminate.ui-progress--error .ui-progress__fill {
+  width: 100%;
+  animation: none;
+}
+
+@keyframes ui-progress-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+.ui-ring {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.ui-ring svg {
+  display: block;
+}
+
+.ui-ring__track {
+  stroke: var(--track);
+}
+
+.ui-ring__arc {
+  stroke: currentColor;
+  transition: stroke-dasharray var(--motion-normal) linear;
+}
+
+.ui-ring--indeterminate svg {
+  animation: spin 0.9s linear infinite;
+}
+
+/* ============================================================================
+   InfoBadge
+   ========================================================================== */
+
+.ui-badge {
+  min-width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  color: var(--on-accent);
+  background: var(--accent-fill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ui-badge--informational { color: var(--panel); background: var(--text-secondary); }
+.ui-badge--success { color: var(--panel); background: var(--success); }
+.ui-badge--caution { color: var(--panel); background: var(--warning); }
+.ui-badge--critical { color: var(--panel); background: var(--danger); }
+
+.ui-badge--dot {
+  width: 8px;
+  min-width: 8px;
+  height: 8px;
+  padding: 0;
+}
+
+/* ============================================================================
+   Expander (generic)
+   ========================================================================== */
+
+.ui-expander {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-expander__header {
+  width: 100%;
+  min-height: var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: var(--card);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: left;
+  transition: var(--transition-control);
+}
+
+.ui-expander__header:hover { background: var(--card-hover); }
+.ui-expander__header:active { background: var(--card-pressed); }
+
+.ui-expander--open .ui-expander__header {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.ui-expander__icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.ui-expander__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-expander__description {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-expander__chevron {
+  flex: none;
+  transition: transform var(--motion-normal) var(--ease-decelerate);
+}
+
+.ui-expander--open .ui-expander__chevron {
+  transform: rotate(180deg);
+}
+
+.ui-expander__content {
+  padding: var(--space-4);
+  border: 1px solid var(--stroke-card);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--card);
+}
+
+/* ============================================================================
+   SelectorBar
+   ========================================================================== */
+
+.ui-selector-bar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
+.ui-selector-bar__item {
+  position: relative;
+  min-height: var(--space-7);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+
+.ui-selector-bar__item:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--fill-subtle-hover);
+}
+
+.ui-selector-bar__item:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+}
+
+.ui-selector-bar__item--selected {
+  color: var(--text-primary);
+}
+
+.ui-selector-bar__item--selected::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.ui-selector-bar__item:disabled {
+  color: var(--text-disabled);
+}
+
+.ui-selector-bar__icon {
+  display: inline-grid;
+  place-items: center;
+}
+
+/* ============================================================================
+   CommandBar
+   ========================================================================== */
+
+.ui-command-bar {
+  min-height: var(--space-7);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+}
+
+.ui-command-bar__primary,
+.ui-command-bar__end {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-command-bar__end {
+  margin-left: auto;
+}
+
+.ui-command-bar__separator {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  margin: 0 var(--space-1);
+  background: var(--line);
+}
+
+.ui-cmd {
+  min-width: var(--icon-button);
+  height: var(--control-md);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: transparent;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: nowrap;
+  transition: var(--transition-control);
+}
+
+.ui-cmd--labelled {
+  padding: 0 var(--space-3) 0 var(--space-2);
+}
+
+.ui-cmd:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+
+.ui-cmd:active:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--fill-subtle-pressed);
+}
+
+.ui-cmd:disabled {
+  color: var(--text-disabled);
+}
+
+.ui-cmd--pressed {
+  border-color: var(--accent-line);
+  color: var(--accent-on-soft);
+  background: var(--accent-soft);
+}
+
+.ui-cmd--pressed:hover:not(:disabled) {
+  background: var(--accent-soft-strong);
+}
+
+.ui-cmd__icon {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* ============================================================================
+   PaneHeader
+   ========================================================================== */
+
+.ui-pane-header {
+  min-height: var(--control-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-1) 0 var(--space-3);
+}
+
+.ui-pane-header__title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-pane-header__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ============================================================================
+   NavigationView: NavPane + NavItem
+   ========================================================================== */
+
+.ui-nav {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+}
+
+.ui-nav__items {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.ui-nav__footer,
+.ui-nav__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ui-nav-item {
+  position: relative;
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  background: transparent;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  text-align: left;
+  transition: var(--transition-control);
+}
+
+.ui-nav-item:hover:not(:disabled),
+.ui-nav-item--selected {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-nav-item:active:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--fill-subtle-pressed);
+}
+
+.ui-nav-item:disabled {
+  color: var(--text-disabled);
+}
+
+.ui-nav-item--selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+.ui-nav-item__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ui-nav-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-nav-item__badge {
+  margin-left: auto;
+}
+
+/* The 48px icon rail: labels stay in the accessibility tree, off screen. */
+.ui-nav--compact .ui-nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.ui-nav--compact .ui-nav-item__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.ui-nav--compact .ui-nav-item__badge {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+}
+
+/* ============================================================================
+   TextField — the TextBox as a composite (see .search-field in controls.css)
+   ========================================================================== */
+
+.ui-textfield {
+  height: var(--field-height);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--fill-control);
+  transition: var(--transition-control);
+}
+
+.ui-textfield:hover:not(:focus-within, .ui-textfield--disabled) {
+  background: var(--fill-control-hover);
+}
+
+.ui-textfield:focus-within {
+  border-bottom-color: var(--field-focus-line);
+  background: var(--fill-input-focus);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
+}
+
+.ui-textfield--disabled {
+  border-bottom-color: var(--stroke-control);
+  color: var(--text-disabled);
+  background: var(--fill-control-disabled);
+}
+
+.ui-textfield__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ui-textfield__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: var(--text-primary);
+  background: transparent;
+  box-shadow: none;                    /* .ui-textfield:focus-within draws it */
+  font-size: var(--text-base);
+}
+
+.ui-textfield__input:disabled {
+  color: var(--text-disabled);
+}
+
+.ui-textfield__trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-textfield__button {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.ui-textfield__button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--fill-subtle-hover);
+}
+
+.ui-textfield__button:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+}
+
+/* ============================================================================
+   StatusBar
+   ========================================================================== */
+
+.ui-statusbar {
+  min-height: var(--control-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--line);
+  color: var(--text-secondary);
+  background: var(--layer);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+.ui-statusbar__items {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  white-space: nowrap;
+}
+
+.ui-statusbar__items--end {
+  margin-left: auto;
+}
