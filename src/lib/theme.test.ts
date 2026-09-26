@@ -598,6 +598,37 @@ describe("no stylesheet outside tokens.css names a colour", () => {
   }
 });
 
+/* --- Two native-app rules that are easy to undo by habit ------------------- *
+
+   On Windows the hand cursor means "hyperlink" and nothing else, and blur is
+   reserved for menus and flyouts (acrylic). Both crept back one rule at a
+   time before; a web stylesheet reaches for `cursor: pointer` and a
+   `backdrop-filter` by reflex. These stand in for a lint rule. */
+
+describe("the stylesheets behave like a Windows app", () => {
+  const sheets = readdirSync("src/styles").filter((file) => file.endsWith(".css")).sort();
+
+  for (const sheet of sheets) {
+    const blocks = ruleBlocks(readCss(`src/styles/${sheet}`));
+
+    it(`${sheet} shows the hand cursor only on a real link`, () => {
+      const offenders = blocks
+        .filter(({ body }) => /cursor\s*:\s*pointer/.test(body))
+        .map(({ selector }) => selector)
+        .filter((selector) => selector !== "a[href]");
+      expect(offenders).toEqual([]);
+    });
+
+    it(`${sheet} blurs only acrylic surfaces`, () => {
+      const offenders = blocks
+        .filter(({ body }) => /backdrop-filter\s*:/.test(body))
+        .filter(({ body }) => !/backdrop-filter\s*:\s*var\(--acrylic-filter\)/.test(body) || !/var\(--acrylic\)/.test(body))
+        .map(({ selector }) => selector);
+      expect(offenders).toEqual([]);
+    });
+  }
+});
+
 /* --- The two rules that land on a picture instead of a palette ------------- *
 
    Everywhere else, legibility is a property of two tokens and can be argued
