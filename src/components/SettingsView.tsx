@@ -229,7 +229,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
     }
   };
 
-  return <SettingsGroup heading="Diagnostics">
+  return <SettingsGroup>
     <SettingsCard icon={<Cpu size={20} />} header="GPU backend">
       <ComboBox aria-label="GPU backend" value={cudaAvailable ? backend : "vulkan"} disabled={!desktop || !cudaAvailable} onChange={(value) => {
         const next = value as InferenceBackend;
@@ -466,7 +466,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     const description = editing
       ? <input
           id={`engine-${field.id}`}
-          className="settings-path__input"
+          className="text-field settings-path__input"
           aria-label={field.label}
           value={value}
           spellCheck={false}
@@ -519,14 +519,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
     <SettingsGroup heading="General">
       <SettingsCard icon={<SquarePen size={20} />} header="Name">
-        <input ref={nameField} className="settings-field" aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
+        <input ref={nameField} className="text-field settings-field" aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
       </SettingsCard>
       <SettingsCard icon={<Video size={20} />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
       </SettingsCard>
-      <SettingsCard icon={<ListOrdered size={20} />} header="Default steps" description={`2 to ${MAX_GENERATION_STEPS}`}>
-        <input className="settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
+      <SettingsCard icon={<ListOrdered size={20} />} header="Default steps">
+        <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
           const value = Number(event.target.value);
           if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
         }} />

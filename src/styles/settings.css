@@ -86,6 +86,15 @@
   padding: var(--space-3) 0 var(--space-4);
 }
 
+/* The sub-page title takes focus so a screen reader announces the page; it
+   is not a control, so it never shows a focus visual. */
+.settings-page__title:focus,
+.settings-breadcrumb h1:focus,
+.settings-breadcrumb h1:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .settings-breadcrumb h1 {
   min-width: 0;
   overflow: hidden;

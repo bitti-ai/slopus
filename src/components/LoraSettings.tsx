@@ -95,12 +95,12 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
     primaryText={saving ? "Preparing LoRA…" : existing ? "Save" : "Add"} onPrimary={() => void save()} primaryDisabled={saving || Boolean(download?.active) || invalid}
     closeText="Cancel" onClose={onDone} defaultButton="primary" disableEscape={saving}>
     <fieldset className="lora-manual" disabled={saving}>
-      <label>Name<input aria-label="LoRA name" value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>Local file<span className="lora-manual__path"><input aria-label="LoRA path" value={path} spellCheck={false} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
+      <label>Name<input className="text-field" aria-label="LoRA name" value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label>Local file<span className="lora-manual__path"><input className="text-field" aria-label="LoRA path" value={path} spellCheck={false} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
         <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}>Browse…</button></span></label>
       <Checkbox aria-label="Override step count" checked={override} onChange={setOverride} label="Override step count"
         description="The highest override among active LoRAs replaces the scene's step count." />
-      {override && <label>Step count<input aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
+      {override && <label>Step count<input className="text-field" aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
       <Checkbox aria-label="Download missing timestep grid" checked={allowDownload} onChange={setAllowDownload} label="Download missing timestep grid"
         description="New files are prepared in place before use, which may embed a timestep grid." />
       {error && <InfoBar severity="error" message={error} />}
@@ -126,7 +126,7 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
       const name = lora?.name ?? "Missing LoRA";
       return <SettingsCard key={entry.loraId} className="template-lora" icon={<Layers size={20} />} header={`${index + 1}. ${name}`}
         description={!lora?.path ? (lora?.url ? "Download required" : "File unavailable") : undefined}>
-        <label className="template-lora__strength">Strength<input className="settings-field settings-field--number" type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength}
+        <label className="template-lora__strength">Strength<input className="text-field settings-field settings-field--number" type="number" step="0.1" aria-label={`${name} strength`} value={entry.strength}
           onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength)) update(index, { strength }); }} /></label>
         <button className="icon-button" type="button" aria-label={`Move ${name} up`} data-tooltip="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={16} /></button>
         <button className="icon-button" type="button" aria-label={`Move ${name} down`} data-tooltip="Move down" disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown size={16} /></button>
