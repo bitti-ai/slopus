@@ -1329,11 +1329,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           </div>
           {/* No header: the stage is the pane. The footer is its control strip —
               labelled values on the leading edge, view controls trailing. */}
+          {/* The playhead's time is the timeline toolbar's timecode; the
+              monitor does not repeat it. */}
           <footer className="program-footer">
-            <span className="program-footer__value">
-              <span className="program-footer__label" aria-hidden="true">Playhead</span>
-              <span className="program-footer__time" aria-label="Playhead">{formatTimecode(playhead, fps)}</span>
-            </span>
             <span className="program-footer__value">
               <span className="program-footer__label" aria-hidden="true">Duration</span>
               <span className="program-footer__duration" aria-label="Timeline duration">{formatTimecode(contentEndMs, fps)}</span>

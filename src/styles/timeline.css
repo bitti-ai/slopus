@@ -634,7 +634,6 @@
   font-family: var(--font-sans);
 }
 
-.program-footer__time { color: var(--text-primary); }
 .program-footer__spacer { flex: 1; }
 
 .program-footer .ui-combo {

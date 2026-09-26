@@ -724,7 +724,6 @@ describe("the transport and the playhead", () => {
     fireEvent.change(field, { target: { value: "00:00:12:05" } });
     fireEvent.keyDown(field, { key: "Enter" });
     expect(toolbarTime(container)).toBe("00:00:12:05");
-    expect(container.querySelector(".program-footer__time")!.textContent).toBe("00:00:12:05");
   });
 
   it("marks in and out points and shades the range on the ruler", () => {
@@ -819,8 +818,7 @@ describe("the program monitor", () => {
     expect(within(empty).getByRole("button", { name: "Import media" })).toBeTruthy();
     expect(container.querySelector(".program-panel h2:not(.sr-only), .program-panel header")).toBeNull();
     const footer = container.querySelector(".program-footer") as HTMLElement;
-    expect(within(footer).getByLabelText("Playhead").textContent).toBe("00:00:00:00");
-    expect(within(footer).getByText("Playhead")).toBeTruthy();
+    expect(within(footer).queryByText("Playhead")).toBeNull();
     expect(within(footer).getByText("Duration")).toBeTruthy();
     expect(within(footer).queryByText("In–out")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Monitor zoom" }).textContent).toContain("Fit");
