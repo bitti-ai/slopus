@@ -10,7 +10,9 @@
 
    Timing is WinUI's: shown after 500ms of hover or on keyboard focus, 100ms
    when moving straight from one tooltip to another; hidden on pointer press,
-   scroll, Esc, blur and when the pointer leaves. Placed below the pointer
+   right-click, scroll, Esc, blur and when the pointer leaves. While a menu,
+   list or flyout is open only elements inside it get tooltips, so nothing
+   behind a context menu pops up over it. Placed below the pointer
    (below the element for keyboard focus), flipped above near the bottom of
    the window and kept inside it horizontally.
 
@@ -21,7 +23,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatShortcut } from "../../lib/commands";
 import { installRangeFill } from "../../lib/rangeFill";
-import { VIEWPORT_MARGIN, lastInputWasKeyboard, viewport } from "./internal";
+import { LAYER_ATTR, VIEWPORT_MARGIN, lastInputWasKeyboard, viewport } from "./internal";
 
 export const TOOLTIP_DELAY = 500;
 export const TOOLTIP_BETWEEN_DELAY = 100;
@@ -44,6 +46,16 @@ interface Shown {
 
 const findTarget = (node: EventTarget | null): HTMLElement | null =>
   node instanceof Element ? (node.closest<HTMLElement>("[data-tooltip]")) : null;
+
+const POPUP_LAYERS = ["menu", "listbox", "flyout"].map((kind) => `[${LAYER_ATTR}="${kind}"]`).join(",");
+
+/** False while a popup is open and `target` is not inside one: the element is
+ *  behind the popup (or is what opened it) and its tooltip would cover it. */
+const reachable = (target: HTMLElement) => {
+  const layers = document.querySelectorAll(POPUP_LAYERS);
+  if (!layers.length) return true;
+  return [...layers].some((layer) => layer.contains(target));
+};
 
 export function TooltipLayer() {
   const [shown, setShown] = useState<Shown | null>(null);
@@ -70,12 +82,13 @@ export function TooltipLayer() {
       setShown(next);
     };
     const schedule = (target: HTMLElement, viaFocus: boolean) => {
+      if (!reachable(target)) { if (current.current || pending.current) hide(); return; }
       if (current.current?.target === target || pending.current === target) return;
       const between = current.current !== null || Date.now() - lastHidden.current < BETWEEN_WINDOW;
       clear();
       if (current.current) { current.current = null; setShown(null); lastHidden.current = Date.now(); }
       pending.current = target;
-      timer.current = window.setTimeout(() => { pending.current = null; if (target.isConnected) show(target, viaFocus); }, between ? TOOLTIP_BETWEEN_DELAY : TOOLTIP_DELAY);
+      timer.current = window.setTimeout(() => { pending.current = null; if (target.isConnected && reachable(target)) show(target, viaFocus); }, between ? TOOLTIP_BETWEEN_DELAY : TOOLTIP_DELAY);
     };
 
     const onOver = (event: MouseEvent) => {
@@ -106,6 +119,7 @@ export function TooltipLayer() {
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("pointerdown", hide, true);
     document.addEventListener("mousedown", hide, true);
+    document.addEventListener("contextmenu", hide, true);
     document.addEventListener("scroll", hide, true);
     document.addEventListener("wheel", hide, { capture: true, passive: true });
     window.addEventListener("keydown", onKey, true);
@@ -119,6 +133,7 @@ export function TooltipLayer() {
       document.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("pointerdown", hide, true);
       document.removeEventListener("mousedown", hide, true);
+      document.removeEventListener("contextmenu", hide, true);
       document.removeEventListener("scroll", hide, true);
       document.removeEventListener("wheel", hide, { capture: true });
       window.removeEventListener("keydown", onKey, true);

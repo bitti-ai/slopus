@@ -100,6 +100,38 @@ describe("TooltipLayer", () => {
   });
 });
 
+describe("TooltipLayer and popups", () => {
+  it("hides on right-click and shows nothing behind an open menu, only inside it", () => {
+    render(<><TooltipLayer />
+      <button data-tooltip="Open project">card</button>
+      <div data-ui-layer="menu" role="menu" aria-label="Card actions"><button data-tooltip="Delete for good">Delete</button></div>
+    </>);
+    // A menu is open: the card behind it gets no tooltip, even after the delay.
+    fireEvent.mouseOver(screen.getByText("card"));
+    advance(TOOLTIP_DELAY * 2);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    // An item inside the menu still does.
+    fireEvent.mouseOver(screen.getByText("Delete"));
+    advance(TOOLTIP_DELAY);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Delete for good");
+  });
+
+  it("drops a pending tooltip when a menu opens before it shows, and on contextmenu", () => {
+    const { rerender } = render(<><TooltipLayer /><button data-tooltip="Open project">card</button></>);
+    fireEvent.mouseOver(screen.getByText("card"));
+    advance(TOOLTIP_DELAY);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("card"));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    // Pointer rests on the card again, and a menu appears before the delay runs out.
+    fireEvent.mouseOut(screen.getByText("card"));
+    fireEvent.mouseOver(screen.getByText("card"));
+    rerender(<><TooltipLayer /><button data-tooltip="Open project">card</button><div data-ui-layer="menu" role="menu" /></>);
+    advance(TOOLTIP_DELAY);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+});
+
 describe("FluentRuntime", () => {
   it("mounts the tooltip layer and fills every slider", () => {
     render(<><FluentRuntime /><input type="range" aria-label="Volume" defaultValue="25" /></>);
