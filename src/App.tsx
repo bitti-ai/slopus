@@ -18,7 +18,7 @@ import { SettingsView } from "./components/SettingsView";
 import { UpdatePanel, UpdateProgress } from "./components/UpdatePanel";
 import { AppUpdater } from "./lib/updater";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
-import { chooseAndOpenProject, createProject, deleteProject, isTauri, listRecentProjects, saveProject } from "./lib/persistence";
+import { chooseAndOpenProject, chooseNewProjectFolder, inspectNewProjectFolder, createProject, deleteProject, isTauri, listRecentProjects, saveProject, type NewProjectFolder } from "./lib/persistence";
 import type { CreateProjectInput, ProjectRecord } from "./lib/project";
 import { CHECKING_PROVIDERS, getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
@@ -54,6 +54,25 @@ function App() {
   const [projectLayout, setProjectLayout] = useState<"grid" | "list">("grid");
   const [error, setError] = useState<LibraryError | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectFolder, setNewProjectFolder] = useState<NewProjectFolder | null>(null);
+  const [newProjectError, setNewProjectError] = useState<string | null>(null);
+  const [checkingProjectFolder, setCheckingProjectFolder] = useState(false);
+  useEffect(() => {
+    if (!newProjectOpen || !newProjectFolder) return;
+    let live = true;
+    const folderPath = newProjectFolder.folderPath;
+    const check = async () => {
+      setCheckingProjectFolder(true);
+      try {
+        const folder = await inspectNewProjectFolder(folderPath);
+        if (live) setNewProjectFolder(folder);
+      } catch (reason) {
+        if (live) setNewProjectFolder({ folderPath, error: describe(reason) });
+      } finally { if (live) setCheckingProjectFolder(false); }
+    };
+    window.addEventListener("focus", check);
+    return () => { live = false; window.removeEventListener("focus", check); };
+  }, [newProjectOpen, newProjectFolder?.folderPath]);
   const [projectToDelete, setProjectToDelete] = useState<ProjectRecord | null>(null);
   const [deletingProject, setDeletingProject] = useState(false);
   /* Settings hides the workspace without unmounting the editor, preserving edits.
@@ -202,11 +221,28 @@ function App() {
     }
   };
 
+  const chooseCreationFolder = async () => {
+    if (!isTauri()) { setNewProjectOpen(true); return; }
+    setBusy(true); setError(null); setNewProjectError(null);
+    try {
+      const folder = await chooseNewProjectFolder();
+      if (folder) { setNewProjectFolder(folder); setNewProjectOpen(true); }
+    } catch (reason) {
+      if (newProjectOpen) setNewProjectError(describe(reason));
+      else setError({ title: "Couldn’t select a project folder", detail: describe(reason) });
+    } finally { setBusy(false); setCheckingProjectFolder(false); }
+  };
+
   const createFromPrompt = async (input: CreateProjectInput) => {
     setBusy(true);
-    setError(null);
+    setNewProjectError(null);
     try {
-      const project = await createProject(input);
+      if (newProjectFolder) {
+        const checked = await inspectNewProjectFolder(newProjectFolder.folderPath);
+        setNewProjectFolder(checked);
+        if (checked.error) return;
+      }
+      const project = await createProject({ ...input, ...(newProjectFolder ? { projectDirectory: newProjectFolder.folderPath } : {}) });
       if (!project) return;
       setProjects((current) => [project, ...current]);
       setNewProjectOpen(false);
@@ -216,7 +252,10 @@ function App() {
       setActiveProject(project);
     } catch (reason) {
       logFailure("project.create_failed", reason);
-      setError({ title: "Couldn’t create that project", detail: describe(reason) });
+      setNewProjectError(describe(reason));
+      if (newProjectFolder) {
+        try { setNewProjectFolder(await inspectNewProjectFolder(newProjectFolder.folderPath)); } catch { /* Keep the creation error visible. */ }
+      }
     } finally {
       setBusy(false);
     }
@@ -284,7 +323,7 @@ function App() {
           <Brand />
           <div className="search-field"><Search size={17} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" aria-label="Search projects" /><kbd>Ctrl K</kbd></div>
           <button className="secondary-button" onClick={() => void openFromFolder()}><FolderOpen size={17} /> Open project</button>
-          <button className="primary-button" onClick={() => setNewProjectOpen(true)}><Plus size={17} /> New project</button>
+          <button className="primary-button" disabled={busy} onClick={() => void chooseCreationFolder()}><Plus size={17} /> New project</button>
         </header>
         <div className="library__content">
           <section className="recent-projects" aria-labelledby="recent-heading">
@@ -324,7 +363,7 @@ function App() {
       {settingsLauncher}
       {queueLauncher}
       {queuePanel}
-      {newProjectOpen && <PromptComposer busy={busy} onCreate={createFromPrompt} onClose={() => setNewProjectOpen(false)} />}
+      {newProjectOpen && <PromptComposer busy={busy} folderPath={newProjectFolder?.folderPath} folderError={newProjectFolder?.error} checkingFolder={checkingProjectFolder} onChooseFolder={chooseCreationFolder} error={newProjectError} onCreate={createFromPrompt} onClose={() => { setNewProjectOpen(false); setNewProjectFolder(null); setNewProjectError(null); }} />}
       </div>
       {settingsOpen && <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />}
       {updateNotice}

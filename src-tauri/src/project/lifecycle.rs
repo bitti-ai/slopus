@@ -89,12 +89,7 @@ pub(crate) fn create_project_in_with_references(
     create_project_at_with_references(&project_folder, config, reference_paths)
 }
 
-pub(crate) fn create_project_at_with_references(
-    project_folder: &Path,
-    config: &ProjectConfig,
-    reference_paths: &[PathBuf],
-) -> Result<ProjectRecord, String> {
-    let mut config = validate_and_normalize_config(config.clone())?;
+pub(crate) fn validate_empty_project_folder(project_folder: &Path) -> Result<(), String> {
     if !project_folder.is_dir() {
         return Err("The selected project folder does not exist.".into());
     }
@@ -114,6 +109,16 @@ pub(crate) fn create_project_at_with_references(
         }
         None => {}
     }
+    Ok(())
+}
+
+pub(crate) fn create_project_at_with_references(
+    project_folder: &Path,
+    config: &ProjectConfig,
+    reference_paths: &[PathBuf],
+) -> Result<ProjectRecord, String> {
+    let mut config = validate_and_normalize_config(config.clone())?;
+    validate_empty_project_folder(project_folder)?;
     let prepare_result = (|| -> Result<(), String> {
         for child in PROJECT_DIRECTORIES {
             fs::create_dir_all(project_folder.join(child))

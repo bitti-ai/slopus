@@ -290,6 +290,8 @@ fn replacement_failure_preserves_original_project_json() {
 fn new_project_uses_the_selected_empty_folder_itself() {
     let selected = tempfile::tempdir().unwrap();
     let expected_root = selected.path().canonicalize().unwrap();
+    assert!(validate_empty_project_folder(selected.path()).is_ok());
+    assert_eq!(fs::read_dir(selected.path()).unwrap().count(), 0);
 
     let created = create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap();
 
@@ -309,6 +311,7 @@ fn new_project_rejects_a_nonempty_selected_folder_without_changing_it() {
     let selected = tempfile::tempdir().unwrap();
     let existing = selected.path().join("keep.txt");
     fs::write(&existing, b"user data").unwrap();
+    assert!(validate_empty_project_folder(selected.path()).unwrap_err().contains("not empty"));
 
     let error = create_project_at_with_references(selected.path(), &fixture(), &[]).unwrap_err();
 

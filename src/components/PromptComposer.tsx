@@ -1,4 +1,4 @@
-import { Clapperboard, Image, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
+import { Clapperboard, FolderOpen, Image, Monitor, Palette, Save, WandSparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { outputDimensions } from "../lib/export";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
@@ -11,6 +11,10 @@ interface PromptComposerProps {
   onClose: () => void;
   project?: ProjectConfig;
   error?: string | null;
+  folderPath?: string;
+  folderError?: string | null;
+  checkingFolder?: boolean;
+  onChooseFolder?: () => Promise<void>;
 }
 
 /* Chosen because it is the closest rung to the canvas slopfab actually plans a
@@ -19,9 +23,18 @@ interface PromptComposerProps {
 const DEFAULT_RESOLUTION: Resolution = "768p";
 const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.options;
 
-export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error }: PromptComposerProps) {
+const folderName = (path?: string) => path?.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || "Untitled video";
+
+export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error, folderPath, folderError, checkingFolder, onChooseFolder }: PromptComposerProps) {
   const [generationType, setGenerationType] = useState<"video" | "image">(project?.generationType === "image" ? "image" : "video");
-  const [name, setName] = useState(project?.name ?? "Untitled video");
+  const [name, setName] = useState(project?.name ?? folderName(folderPath));
+  const previousFolderName = useRef(folderName(folderPath));
+  useEffect(() => {
+    const next = folderName(folderPath);
+    const previous = previousFolderName.current;
+    if (!project) setName((current) => current === previous ? next : current);
+    previousFolderName.current = next;
+  }, [folderPath, project]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(project?.settings.aspectRatio ?? "16:9");
   const [resolution, setResolution] = useState<Resolution>(project?.settings.resolution ?? DEFAULT_RESOLUTION);
   const [defaultLook, setDefaultLook] = useState(project?.settings.defaultLook ?? "");
@@ -54,7 +67,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   }, [busy, onClose]);
 
   const submit = async () => {
-    if (busy || !name.trim()) return;
+    if (busy || checkingFolder || folderError || !name.trim()) return;
     await onSubmit({
       generationType,
       name: name.trim(),
@@ -83,7 +96,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
             ] as const).map(([type, Icon, title, description]) => <label className="composer__type-option" key={type}>
               <input className="composer__type-input" type="radio" name="project-type" value={type} checked={generationType === type} aria-labelledby={`project-type-${type}-label`} aria-describedby={`project-type-${type}-description`} onChange={() => {
                 setGenerationType(type);
-                if (name === "Untitled video" || name === "Untitled image") setName(`Untitled ${type}`);
+                if (!folderPath && (name === "Untitled video" || name === "Untitled image")) setName(`Untitled ${type}`);
               }} />
               <span className="composer__type-card">
                 <span className="composer__type-icon"><Icon size={24} aria-hidden="true" /></span>
@@ -93,6 +106,10 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
             </label>)}
           </div>
         </fieldset>}
+        {!project && folderPath && <div className="composer__folder-row">
+          <label><span>Project folder</span><input aria-label="Project folder" readOnly value={folderPath} title={folderPath} /></label>
+          <button className="secondary-button" type="button" disabled={busy || checkingFolder} onClick={() => void onChooseFolder?.()}><FolderOpen size={16} />Change folder</button>
+        </div>}
         <label className="composer__name-row">
           <span>Project name</span>
           <input ref={nameInput} disabled={busy} value={name} onChange={(event) => setName(event.target.value)} aria-label="Project name" />
@@ -137,9 +154,9 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
           </div>
         </section>
 
-        {error && <p role="alert">{error}</p>}
         <div className="composer__actions">
-          <button className="primary-button composer__submit" disabled={busy || !name.trim()} aria-busy={busy} onClick={() => void submit()}>
+          {(folderError || error) && <p className="composer__error" id="create-error" role="alert">{folderError || error}</p>}
+          <button className="primary-button composer__submit" disabled={busy || checkingFolder || Boolean(folderError) || !name.trim()} aria-describedby={folderError || error ? "create-error" : undefined} aria-busy={busy || checkingFolder} onClick={() => void submit()}>
             {busy ? <span className="spinner" /> : project ? <Save size={18} /> : <WandSparkles size={18} />}
             {project ? "Save changes" : "Create project"}
           </button>

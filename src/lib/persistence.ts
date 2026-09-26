@@ -270,6 +270,10 @@ export async function saveProject(record: ProjectRecord): Promise<ProjectRecord>
   return next;
 }
 
+export interface NewProjectFolder { folderPath: string; error: string | null }
+export const chooseNewProjectFolder = () => invoke<NewProjectFolder | null>("choose_new_project_folder");
+export const inspectNewProjectFolder = (folderPath: string) => invoke<NewProjectFolder>("inspect_new_project_folder", { folderPath });
+
 /** Permanently removes one confirmed project. The desktop command repeats the
  * identity and folder checks at the filesystem boundary before deleting; the
  * browser preview removes only its localStorage-backed stand-in. */

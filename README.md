@@ -21,7 +21,7 @@
 
 Slopus brings an AI assistant, a scene generator, reusable visual references, and a timeline editor together. Describe what you want to make, generate clips locally with SlopFab, and shape the result into a video you can export and share.
 
-New projects can be **Image projects** or **Video projects**. Existing projects open as Video projects. Both live in folders with a `slopus.json` document.
+New projects can be **Image projects** or **Video projects**. Choose an empty project folder first; the New project popup shows its path and defaults the project name to the folder name. Changing the project name does not rename the folder. Existing projects open as Video projects. Both live in folders with a `slopus.json` document.
 
 Image projects use **Agent**, **Editor**, and **References** tabs. In the Editor, build a hierarchy of objects, text and groups on the left, arrange their placement boxes in the center, and edit descriptions, style, colors and generation settings in the right inspector. Choose a MiniMax H3 generator above the canvas and press **Generate**. Generation uses the native SlopFab runtime without Python. Full-resolution images are saved in `media/generated/`, remain available in the image history, and can be exported as JPEG or PNG using **Export** beside **Save**.
 

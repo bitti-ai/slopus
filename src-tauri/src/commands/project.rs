@@ -2,6 +2,28 @@ use crate::project::{lifecycle::*, storage::*, validation::validate_and_normaliz
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NewProjectFolder {
+    folder_path: String,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) fn inspect_new_project_folder(folder_path: String) -> NewProjectFolder {
+    let path = Path::new(&folder_path);
+    NewProjectFolder { folder_path: crate::project::paths::display_path(path), error: validate_empty_project_folder(path).err() }
+}
+
+#[tauri::command]
+pub(crate) async fn choose_new_project_folder(app: AppHandle) -> Result<Option<NewProjectFolder>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(selected) = app.dialog().file().set_title("Choose an empty folder for the new project").blocking_pick_folder() else { return Ok(None); };
+        let path = selected.into_path().map_err(|error| format!("Could not access selected folder: {error}"))?;
+        Ok(Some(inspect_new_project_folder(crate::project::paths::display_path(&path))))
+    }).await.map_err(|error| error.to_string())?
+}
 #[tauri::command]
 pub(crate) fn open_project(folder_path: String) -> Result<ProjectRecord, String> {
     read_project(Path::new(&folder_path))

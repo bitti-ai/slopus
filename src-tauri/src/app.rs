@@ -102,6 +102,8 @@ pub fn run() {
             commands::project::open_project,
             commands::project::delete_project,
             commands::project::choose_project_folder,
+            commands::project::choose_new_project_folder,
+            commands::project::inspect_new_project_folder,
             commands::media::choose_initial_reference_images,
             commands::media::choose_reference_image,
             commands::media::choose_reference_images,
