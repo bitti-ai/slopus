@@ -236,6 +236,12 @@ describe("project library controls", () => {
     expect(screen.getByRole("textbox", { name: /Ask Slop about/ })).toBe(draft);
     expect(draft).toHaveValue("Keep this unfinished idea");
     await waitFor(() => expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus());
+    // The pane header's close button hides the pane and hands focus back to
+    // the title-bar toggle.
+    fireEvent.click(within(pane).getByRole("button", { name: "Close agent" }));
+    expect(pane).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "Agent" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Agent" })).toHaveFocus();
   });
 
   it("creates an empty project when the new-project form is left blank", async () => {

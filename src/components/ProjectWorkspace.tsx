@@ -249,7 +249,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         {view === "timeline" && <TimelineView config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView(imageProject ? "editor" : "generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-        {view === "export" && <ExportView config={config} folderPath={project.folderPath} />}
+        {view === "export" && <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />}
       </div>
       {agentOpen && <Splitter {...agentPane.splitterProps} reverse aria-label="Resize agent pane" aria-controls={`${panelId}-agent`} />}
       {/* Kept mounted while hidden, so a running turn and the conversation
@@ -259,7 +259,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           context={view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : "this export"}
           record={{ ...project, config }}
           providers={runtime?.providers ?? CHECKING_PROVIDERS}
-          expanded
+          onClose={() => { setAgentOpen(false); agentToggle.current?.focus(); }}
           onPromptStart={() => { if (!agentOpen) setAgentOpen(true); }}
           /* The provider only proposes typed commands. Apply them to the session's
              latest state—edits can continue while it thinks—as one undo step, then

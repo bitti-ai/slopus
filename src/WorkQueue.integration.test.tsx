@@ -10,6 +10,7 @@ import { createProjectConfig, type ProjectRecord } from "./lib/project";
 import { enqueueSlopfabGeneration, type SlopfabStatus } from "./lib/runtime";
 import { loadReferenceIconAutomation } from "./lib/referenceIconSettings";
 import { reportGenerationJobs } from "./lib/nativeShell";
+import { getExportJob, resetExportJobForTests, setExportJobForTests } from "./lib/exportJob";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -31,7 +32,7 @@ beforeEach(() => {
   vi.mocked(saveProject).mockImplementation(async (record) => record);
   vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/queued-result.mp4", bytes: 42, note: null });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); resetExportJobForTests(); });
 
 it("keeps icon confirmation available after returning to the library", async () => {
   const config = createProjectConfig({ name: "Icon project", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
@@ -114,4 +115,29 @@ it("opens an empty queue from the library and closes it with Escape", async () =
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Work queue" })).toBeNull();
   expect(document.activeElement).toBe(trigger);
+});
+
+it("guards the window for a running export and lists it in the queue with a Cancel action", async () => {
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [], unreadable: [] });
+  render(<App />);
+  expect(vi.mocked(reportGenerationJobs).mock.calls.every(([jobs]) => jobs.length === 0)).toBe(true);
+  act(() => setExportJobForTests({
+    folderPath: "C:/Film", projectName: "Film", destination: "C:/out/film.mp4",
+    progress: { phase: "rendering", framesDone: 18, frameCount: 72, detail: "Rendering frame 18 of 72." },
+  }));
+  await waitFor(() => expect(reportGenerationJobs).toHaveBeenLastCalledWith([{ title: "Export Film", running: true }]));
+  const trigger = screen.getByRole("button", { name: /^Work queue/ });
+  fireEvent.click(trigger);
+  const flyout = screen.getByRole("dialog", { name: "Work queue" });
+  const region = within(flyout).getByRole("region", { name: "Export" });
+  expect(region).toHaveTextContent("Export Film");
+  expect(region).toHaveTextContent("25%");
+  expect(within(region).getByRole("progressbar", { name: "Export Film progress" })).toBeInTheDocument();
+  const cancel = within(region).getByRole("button", { name: "Cancel Export Film" });
+  fireEvent.click(cancel);
+  expect(getExportJob().cancelling).toBe(true);
+  expect(cancel).toBeDisabled();
+  act(() => setExportJobForTests({ progress: null, cancelling: false, outcome: { kind: "cancelled" } }));
+  expect(within(flyout).queryByRole("region", { name: "Export" })).toBeNull();
+  await waitFor(() => expect(reportGenerationJobs).toHaveBeenLastCalledWith([]));
 });

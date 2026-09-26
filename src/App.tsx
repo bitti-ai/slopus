@@ -17,6 +17,7 @@ import { CommandBar, CommandBarButton, CommandBarSeparator, InfoBadge, InfoBar, 
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
 import { useGuardedShortcut } from "./lib/shellKeys";
+import { useRunningExportName } from "./lib/exportJob";
 import { reportGenerationJobs, revealInExplorer, type GuardJob } from "./lib/nativeShell";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
 import { chooseAndOpenProject, chooseNewProjectFolder, inspectNewProjectFolder, createProject, deleteProject, isTauri, listRecentProjects, saveProject, type NewProjectFolder } from "./lib/persistence";
@@ -137,6 +138,10 @@ function App() {
   const guardJobs: GuardJob[] = workItems
     .filter((item) => item.kind !== "reference-icons" && isWorkActive(item))
     .map((item) => ({ title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
+  /* An export keeps running when its tab (or its project) is left, and
+     closing the window ends it just the same, so it is on the list too. */
+  const exportingName = useRunningExportName();
+  if (exportingName !== null) guardJobs.push({ title: exportingName ? `Export ${exportingName}` : "Export", running: true });
   const guardKey = JSON.stringify(guardJobs);
   useEffect(() => {
     void reportGenerationJobs(JSON.parse(guardKey) as GuardJob[]).catch(() => undefined);

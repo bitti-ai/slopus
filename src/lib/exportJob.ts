@@ -25,15 +25,19 @@ export type ExportOutcome =
 export interface ExportJobState {
   /** The project folder the run (or its outcome) belongs to. */
   folderPath: string | null;
+  /** The project's name, for the work queue and the exit guard. */
+  projectName: string | null;
   destination: string | null;
   progress: ExportProgress | null;
   /** Milliseconds left, estimated from the frame rate so far. Null until
    *  enough frames have been rendered to say. */
   remainingMs: number | null;
   outcome: ExportOutcome | null;
+  /** Cancel was asked for and the run has not stopped yet. */
+  cancelling: boolean;
 }
 
-const IDLE: ExportJobState = { folderPath: null, destination: null, progress: null, remainingMs: null, outcome: null };
+const IDLE: ExportJobState = { folderPath: null, projectName: null, destination: null, progress: null, remainingMs: null, outcome: null, cancelling: false };
 
 let state: ExportJobState = IDLE;
 let cancelRequested = false;
@@ -59,6 +63,15 @@ export function useExportJob(): ExportJobState {
 
 export const isExportRunning = () => state.progress !== null;
 
+const runningName = () => state.progress ? state.projectName ?? "" : null;
+
+/** The running export's project name ("" when it has none), or null when
+ *  nothing is exporting. Unlike useExportJob it does not re-render on every
+ *  progress tick, so App can hold it for the exit guard and the badge. */
+export function useRunningExportName(): string | null {
+  return useSyncExternalStore(subscribeExportJob, runningName, runningName);
+}
+
 /** Fraction done, 0…1, for the bar and the taskbar. */
 export const exportFraction = (progress: ExportProgress | null) =>
   !progress || progress.frameCount === 0 ? 0 : Math.min(1, progress.framesDone / progress.frameCount);
@@ -67,6 +80,7 @@ export const exportFraction = (progress: ExportProgress | null) =>
  *  at any point before the end, so there is nothing to clean up. */
 export function cancelExportJob() {
   cancelRequested = true;
+  if (state.progress && !state.cancelling) set({ cancelling: true });
 }
 
 /** Forgets a finished run's outcome (and clears a red taskbar button). */
@@ -112,9 +126,11 @@ export async function startExportJob(options: StartExportOptions): Promise<void>
   };
   set({
     folderPath,
+    projectName: config.name,
     destination,
     outcome: null,
     remainingMs: null,
+    cancelling: false,
     progress: { phase: "preparing", framesDone: 0, frameCount: plan.frameCount, detail: "Starting…" },
   });
   void setTaskbarProgress(0).catch(() => undefined);
@@ -137,6 +153,7 @@ export async function startExportJob(options: StartExportOptions): Promise<void>
     }
   } finally {
     cancelRequested = false;
+    if (state.cancelling) set({ cancelling: false });
   }
 }
 
