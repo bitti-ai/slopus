@@ -322,7 +322,8 @@ export function parseTimecode(value: string, fps: number): number | null {
   else if (numbers.length === 3) { seconds = numbers[0] * 60 + numbers[1]; frames = numbers[2]; }
   else { seconds = numbers[0] * 3600 + numbers[1] * 60 + numbers[2]; frames = numbers[3]; }
   if (frames >= Math.max(1, Math.round(fps))) return null;
-  return Math.round(seconds * 1000 + frames * (1000 / fps));
+  // The first whole millisecond of that frame, as frameStartMs does.
+  return Math.max(0, Math.ceil(seconds * 1000 + frames * (1000 / fps) - 1e-9));
 }
 
 /* --- Cuts ------------------------------------------------------------------ */

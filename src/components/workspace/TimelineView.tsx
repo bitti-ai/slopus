@@ -284,7 +284,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const minPps = Math.min(fitPps, maxPps);
   const defaultPps = laneViewportPx > 0 ? laneViewportPx / (Math.min(duration, DEFAULT_VISIBLE_MS) / 1000) : 0;
   const pxPerSecond = laneViewportPx > 0 ? Math.min(maxPps, Math.max(minPps, zoom ?? defaultPps)) : 0;
-  const lanePx = pxPerSecond > 0 ? (duration / 1000) * pxPerSecond : null;
+  const lanePx = pxPerSecond > 0 ? Math.round((duration / 1000) * pxPerSecond) : null;
   /* The ruler's density at this zoom, from frames up to minutes. Unmeasured,
      it assumes a 1000px lane so the labels are still readable. */
   const scale = useMemo(() => rulerScale(lanePx ? pxPerSecond : 1000 / (duration / 1000), fps), [lanePx, pxPerSecond, duration, fps]);
@@ -294,10 +294,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
   useEffect(() => {
     const element = scrollRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
+    if (!element) return;
+    setViewportPx(element.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => setViewportPx(element.clientWidth));
     observer.observe(element);
-    setViewportPx(element.clientWidth);
     return () => observer.disconnect();
   }, []);
 
@@ -1213,7 +1214,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           </div>
           <footer className="program-footer">
             <span className="program-footer__time" aria-label="Playhead">{formatTimecode(playhead, fps)}</span>
-            <span className="program-footer__duration" aria-label="Duration">{formatTimecode(contentEndMs, fps)}</span>
+            <span className="program-footer__duration" aria-label="Timeline duration">{formatTimecode(contentEndMs, fps)}</span>
             <span className="program-footer__spacer" />
             <ComboBox
               className="program-footer__zoom"
