@@ -1,4 +1,4 @@
-import { CircleCheck, Download, Maximize, Minimize, Pause, Play, SkipBack, SkipForward, TriangleAlert, X } from "lucide-react";
+import { ChevronFirst, ChevronLast, Maximize, Minimize, Pause, Play, StepBack, StepForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   audioMixBytes,
@@ -19,22 +19,31 @@ import {
 } from "../../lib/export";
 import {
   chooseExportDestination,
+  defaultExportDestination,
   detectExportSupport,
-  ExportCancelled,
+  exportDestinationExists,
+  openExportFile,
   probeAllCodecs,
   probeCompositor,
-  runExport,
-  writeExportFile,
   type CodecProbe,
   type CompositorProbe,
-  type ExportProgress,
 } from "../../lib/exportPipeline";
+import {
+  cancelExportJob,
+  dismissExportOutcome,
+  exportFraction,
+  startExportJob,
+  useExportJob,
+} from "../../lib/exportJob";
+import { askNative, messageNative, revealInExplorer } from "../../lib/nativeShell";
+import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
+import { ComboBox, InfoBar, ProgressBar, Slider, tooltipProps } from "../ui";
 
 /* The ladder a project can be created at, plus the project's own size when that
    is one of the names from before the ladder was rebuilt. Dropping the legacy
-   rung outright would leave a 1080p project looking at a select that does not
+   rung outright would leave a 1080p project looking at a list that does not
    contain what the project IS, and the first touch of any other field would
    have quietly resized the export. */
 const resolutionChoices = (current: Resolution): Resolution[] =>
@@ -44,23 +53,38 @@ const resolutionChoices = (current: Resolution): Resolution[] =>
 const FRAME_RATES: FrameRate[] = [24, 25, 30, 60];
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
-/** How long the Saved notification stays up before it takes itself away. */
-const SAVED_NOTICE_MS = 4_000;
-/** A moving pointer reveals the transport; once it rests, the picture gets the
- * full frame again. Long enough to cross the controls without racing them. */
+/** In fullscreen a moving pointer reveals the transport; once it rests, the
+ *  picture gets the whole screen again. Windowed, the bar is always there. */
 const PLAYER_CONTROLS_IDLE_MS = 1_800;
 
-/* What the finished run left OUT of the soundtrack. Everything else an export
-   used to report on the page — path, size, codec, compositor — is gone: the
-   confirmation is a notification that says Saved and then leaves. These two
-   lists are not a confirmation, they are the failure worth shouting about, so
-   they stay until the next run replaces them. */
-interface LeftOut {
-  audioProblems: string[];
-  audioShortfalls: string[];
+/** "1:12" or "1:02:05" — how long is left, for the progress line. */
+const clock = (ms: number) => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
+};
+
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+const folderOf = (path: string) => path.slice(0, Math.max(0, path.length - fileName(path).length - 1));
+
+interface Destination {
+  path: string;
+  /** Chosen in the Save dialog, which already asked about replacing a file. */
+  fromDialog: boolean;
 }
 
-export function ExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
+/* A docked form, the way Clipchamp and Premiere's export page are laid out:
+   the picture on the left, a 340px settings column on the right separated by a
+   divider, and the actions at the bottom right. The run itself lives in
+   lib/exportJob.ts, so leaving this screen no longer cancels it. */
+export function ExportView({ config, folderPath, onClose }: {
+  config: ProjectConfig;
+  folderPath: string;
+  /** Leaves the Export screen (the footer's Cancel while nothing is running). */
+  onClose?: () => void;
+}) {
   const [settings, setSettings] = useState<ExportSettings>(() => defaultExportSettings(config));
   const plan = useMemo(() => buildExportPlan(config, settings), [config, settings]);
   const bitrate = useMemo(
@@ -83,16 +107,12 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   const stageRef = useRef<HTMLDivElement>(null);
   const controlsTimerRef = useRef<number | null>(null);
 
-  const [progress, setProgress] = useState<ExportProgress | null>(null);
-  /* The finished run says one word, in the middle of the header, and stops
-     saying it. A panel that sat in the corner until the next export could not
-     tell "just saved" from "saved twenty minutes ago". */
-  const [saved, setSaved] = useState(false);
-  const [leftOut, setLeftOut] = useState<LeftOut | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [cancelled, setCancelled] = useState(false);
-  const cancelRef = useRef(false);
-  const running = progress !== null;
+  const [destination, setDestination] = useState<Destination | null>(null);
+  const [destinationError, setDestinationError] = useState<string | null>(null);
+  const job = useExportJob();
+  const ours = job.folderPath === folderPath;
+  const running = job.progress !== null;
+  const runningHere = running && ours;
 
   /* The playhead is the view's, and the monitor drives it while it plays —
      these are handed down rather than declared inline because the monitor's
@@ -118,13 +138,6 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     hideControlsAfterIdle();
   }, [hideControlsAfterIdle]);
 
-  /* Switching tabs unmounts this view, and an export that kept running would
-     finish and write a file with nothing on screen to say so. Leaving stops it
-     instead — nothing has been written yet at any point before the end. */
-  useEffect(() => () => {
-    cancelRef.current = true;
-  }, []);
-
   useEffect(() => () => clearControlsTimer(), [clearControlsTimer]);
 
   useEffect(() => {
@@ -136,6 +149,18 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
       live = false;
     };
   }, []);
+
+  /* Where the file goes, before anything is pressed: the project's name in the
+     folder the last export went to (or Videos). Rust builds that path itself;
+     Browse… replaces it with whatever the Save dialog returns. */
+  useEffect(() => {
+    let live = true;
+    void defaultExportDestination(suggestedFileName(config.name)).then(
+      (found) => { if (live && found) setDestination((current) => current ?? { path: found.path, fromDialog: false }); },
+      (reason) => { if (live) setDestinationError(describe(reason)); },
+    );
+    return () => { live = false; };
+  }, [config.name]);
 
   // A scrub past the end of a shortened timeline would ask for a frame nothing
   // renders, so the playhead follows the content.
@@ -170,21 +195,14 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
      button reads the document rather than remembering what it did. */
   useEffect(() => {
     const sync = () => {
-      setFullscreen(document.fullscreenElement === stageRef.current);
-      revealControls();
+      const now = document.fullscreenElement === stageRef.current;
+      setFullscreen(now);
+      if (now) revealControls();
+      else { clearControlsTimer(); setControlsVisible(false); }
     };
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
-  }, [revealControls]);
-
-  /* The notification takes itself away. Re-armed on every run, and cleared on
-     the way out so a saved export that is left behind does not fire into an
-     unmounted view. */
-  useEffect(() => {
-    if (!saved) return;
-    const timer = window.setTimeout(() => setSaved(false), SAVED_NOTICE_MS);
-    return () => window.clearTimeout(timer);
-  }, [saved]);
+  }, [revealControls, clearControlsTimer]);
 
   const toggleFullscreen = () => {
     const stage = stageRef.current;
@@ -193,10 +211,15 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     else void stage.requestFullscreen?.().catch(() => undefined);
   };
 
-  const step = (deltaMs: number) => {
+  const frameMs = 1000 / plan.frameRate;
+  const lastFrame = Math.max(0, plan.frameCount - 1);
+  /* Every transport step lands on the first millisecond of a frame, so the
+     clock under the picture names the frame the encoder will write there. */
+  const seekToFrame = (frame: number) => {
     setPlaying(false);
-    setPreviewTimeMs((current) => Math.round(Math.max(0, Math.min(Math.max(0, plan.durationMs - 1), current + deltaMs))));
+    setPreviewTimeMs(frameStartMs(Math.max(0, Math.min(lastFrame, frame)), plan.frameRate));
   };
+  const currentFrame = frameAt(previewTimeMs, plan.frameRate);
 
   const codecProbe = probes?.find((probe) => probe.id === settings.codec) ?? null;
   const blockers = [...plan.blockers];
@@ -211,49 +234,51 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
   if (codecProbe && !codecProbe.supported) {
     blockers.push(`This computer will not encode ${settings.codec.toUpperCase()} at ${plan.width}×${plan.height}: ${codecProbe.detail}`);
   }
+  if (running && !ours) blockers.push("Another project is exporting. Wait for it to finish.");
   const canExport = blockers.length === 0 && !running;
 
+  const browse = async (): Promise<Destination | null> => {
+    setDestinationError(null);
+    try {
+      const chosen = await chooseExportDestination(suggestedFileName(config.name));
+      if (!chosen) return null;
+      const next = { path: chosen, fromDialog: true };
+      setDestination(next);
+      return next;
+    } catch (reason) {
+      setDestinationError(describe(reason));
+      return null;
+    }
+  };
+
   const start = async () => {
-    setError(null);
-    setSaved(false);
-    setLeftOut(null);
-    setCancelled(false);
-    let destination: string | null = null;
-    try {
-      destination = await chooseExportDestination(suggestedFileName(config.name));
-    } catch (reason) {
-      setError(describe(reason));
-      return;
+    if (!canExport) return;
+    dismissExportOutcome();
+    const target = destination ?? await browse();
+    if (!target) return; // The user closed the save dialog. Nothing to say.
+    if (!target.fromDialog) {
+      let exists = false;
+      try { exists = await exportDestinationExists(target.path); } catch (reason) { setDestinationError(describe(reason)); return; }
+      if (exists && !await askNative({
+        title: "Replace file?",
+        message: `${fileName(target.path)} already exists in ${folderOf(target.path)}. Replace it?`,
+        kind: "warning",
+        okLabel: "Replace",
+        cancelLabel: "Cancel",
+      })) return;
     }
-    if (!destination) return; // The user closed the save dialog. Nothing to say.
+    /* The dialog's own replace question covers one export; the next export to
+       the same path is asked again, because by then the file is this one. */
+    setDestination({ path: target.path, fromDialog: false });
     setPlaying(false);
-    cancelRef.current = false;
-    setProgress({ phase: "preparing", framesDone: 0, frameCount: plan.frameCount, detail: "Starting…" });
-    try {
-      const outcome = await runExport({
-        folderPath,
-        config,
-        settings,
-        plan,
-        bitrate,
-        onProgress: setProgress,
-        cancelled: () => cancelRef.current,
-      });
-      setProgress({
-        phase: "writing",
-        framesDone: plan.frameCount,
-        frameCount: plan.frameCount,
-        detail: `Writing ${formatBytes(outcome.bytes.byteLength)} to ${destination}…`,
-      });
-      await writeExportFile(destination, outcome.bytes);
-      setLeftOut({ audioProblems: outcome.audioProblems, audioShortfalls: outcome.audioShortfalls });
-      setSaved(true);
-    } catch (reason) {
-      if (reason instanceof ExportCancelled) setCancelled(true);
-      else setError(describe(reason));
-    } finally {
-      setProgress(null);
-    }
+    await startExportJob({ folderPath, config, settings, plan, bitrate, destination: target.path });
+  };
+
+  const openFile = (path: string) => {
+    void openExportFile(path).catch((reason) => messageNative({ title: "Could not open the video", message: describe(reason), kind: "error" }));
+  };
+  const showInFolder = (path: string) => {
+    void revealInExplorer(path).catch((reason) => messageNative({ title: "Could not show the file", message: describe(reason), kind: "error" }));
   };
 
   const summary: Array<[string, string, string?]> = [
@@ -279,7 +304,7 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     ],
     [
       "Compositor",
-      compositor ? (compositor.kind === "webgpu" ? "WebGPU" : "2D canvas") : "asking this computer…",
+      compositor ? (compositor.kind === "webgpu" ? "WebGPU" : "2D canvas") : "Checking…",
       compositor
         ? compositor.kind === "webgpu"
           ? "frames scaled without leaving the GPU"
@@ -288,198 +313,167 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
     ],
   ];
 
-  return <div className="export-view">
-    {/* The action lives beside the title, where every other screen in
-        Slopus puts its main button (see the References header). It used to
-        sit at the bottom of the right-hand column, below everything the page
-        had to say — which is a long way to scroll to press the one control the
-        screen exists for. */}
-    <header className="export-heading">
-      <h1>Export</h1>
-      {/* A notification, not a panel: it appears between the title and the
-          button that produced it, says the one thing there is to say, and goes.
-          The middle column is always there whether or not it holds anything, so
-          nothing on either side of it moves when it arrives or leaves. */}
-      <div className="export-toast-slot" aria-live="polite">
-        {saved && <p className="export-toast">
-          <CircleCheck size={16} aria-hidden="true" /> Saved
-        </p>}
-      </div>
-      <div className="export-heading__actions">
-        {running && <button
-          className="secondary-button"
-          type="button"
-          onClick={() => { cancelRef.current = true; }}
-          title="Stop encoding. Nothing has been written to disk yet."
-        ><X size={16} aria-hidden="true" /> Cancel</button>}
-        <button
-          className="primary-button"
-          type="button"
-          disabled={!canExport}
-          onClick={() => void start()}
-          title={canExport ? "Choose where to save, then render the timeline" : blockers[0] ?? "Export is running"}
-        >
-          <Download size={16} aria-hidden="true" /> {running ? "Exporting…" : "Export video"}
-        </button>
-      </div>
-    </header>
+  const progress = runningHere ? job.progress : null;
+  const percent = Math.round(exportFraction(progress) * 100);
+  const progressLine = progress
+    ? [
+      `${percent}%`,
+      job.remainingMs !== null ? `${clock(job.remainingMs)} remaining` : null,
+      progress.phase === "rendering" && progress.framesDone > 0
+        ? `Encoding frame ${progress.framesDone} of ${progress.frameCount}`
+        : progress.detail.replace(/\.$/, ""),
+    ].filter(Boolean).join(" · ")
+    : null;
+  const outcome = ours ? job.outcome : null;
+  const empty = plan.frameCount === 0;
+  const transportDisabled = empty;
 
-    <div className="export-layout">
+  return <div className="export-view">
+    <h1 className="sr-only">Export</h1>
+    <div className="export-body">
       <section className="export-preview" aria-label="Video preview">
         {/* The same player the timeline uses, on the same cut: it decodes the
-            real files and plays them with their sound, rather than decoding one
-            still frame per scrub. What the export will contain is what this
-            plays — the picture is fitted inside the project's frame and the
-            rest is the project's background, exactly as the encoder does it. */}
-        {/* The stage IS the project's frame. Sized from the plan rather than
-            from whatever is under the playhead, or a portrait still on the
-            timeline would make the preview tall and the next video clip would
-            shrink it back — the export writes one frame size for the whole
-            file, and this shows that size the whole time. */}
+            real files and plays them with their sound. What the export will
+            contain is what this plays — the picture is fitted inside the
+            project's frame and the rest is the project's background. */}
         <div
-          className={`export-stage${controlsVisible ? " export-stage--controls-visible" : ""}`}
+          className={`export-stage${fullscreen ? " export-stage--fullscreen" : ""}${controlsVisible ? " export-stage--controls-visible" : ""}`}
           ref={stageRef}
-          style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}
-          onPointerEnter={revealControls}
-          onPointerMove={revealControls}
-          onPointerDown={revealControls}
-          onPointerLeave={() => {
-            clearControlsTimer();
-            if (!stageRef.current?.contains(document.activeElement)) setControlsVisible(false);
-          }}
-          onFocusCapture={() => {
-            clearControlsTimer();
-            setControlsVisible(true);
-          }}
-          onBlurCapture={(event) => {
+          onPointerMove={fullscreen ? revealControls : undefined}
+          onPointerDown={fullscreen ? revealControls : undefined}
+          onFocusCapture={fullscreen ? () => { clearControlsTimer(); setControlsVisible(true); } : undefined}
+          onBlurCapture={fullscreen ? (event) => {
             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hideControlsAfterIdle();
-          }}
+          } : undefined}
         >
-          <ProgramMonitor
-            config={config}
-            folderPath={folderPath}
-            playheadMs={previewTimeMs}
-            playing={playing}
-            onSeek={seek}
-            onPlayingChange={changePlaying}
-          />
+          {/* The frame IS the project's frame. Sized from the plan rather than
+              from whatever is under the playhead: the export writes one frame
+              size for the whole file, and this shows that size the whole time. */}
+          <div className="export-picture" style={{ aspectRatio: `${plan.width} / ${plan.height}`, "--frame-aspect": plan.width / plan.height } as React.CSSProperties}>
+            <ProgramMonitor
+              config={config}
+              folderPath={folderPath}
+              playheadMs={previewTimeMs}
+              playing={playing}
+              onSeek={seek}
+              onPlayingChange={changePlaying}
+            />
+          </div>
+          {/* Windowed: a plain 36px bar under the picture. Fullscreen: the
+              same bar over the picture's foot, hiding when the pointer rests. */}
           <div className="export-transport" role="group" aria-label="Video playback controls">
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(0)} disabled={transportDisabled} aria-label="Go to start" {...tooltipProps("Go to start", "Home")}><ChevronFirst size={16} aria-hidden="true" /></button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame - 1)} disabled={transportDisabled} aria-label="Previous frame" {...tooltipProps("Previous frame", "Left")}><StepBack size={16} aria-hidden="true" /></button>
             <button
               type="button"
-              onClick={() => step(-1000)}
-              disabled={plan.frameCount === 0}
-              aria-label="Back one second"
-              title="Back one second"
-            ><SkipBack size={18} aria-hidden="true" /></button>
-            <button
-              type="button"
-              className="export-transport__play"
+              className="export-transport__button"
               onClick={() => setPlaying((value) => !value)}
-              disabled={running || plan.frameCount === 0}
+              disabled={runningHere || transportDisabled}
               aria-label={playing ? "Pause" : "Play"}
-              title={plan.frameCount === 0 ? "There is nothing on the timeline to play" : playing ? "Pause" : "Play"}
-            >{playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" aria-hidden="true" />}</button>
-            <button
-              type="button"
-              onClick={() => step(1000)}
-              disabled={plan.frameCount === 0}
-              aria-label="Forward one second"
-              title="Forward one second"
-            ><SkipForward size={18} aria-hidden="true" /></button>
-            <input
-              id="export-scrub"
-              type="range"
+              {...tooltipProps(empty ? "Nothing on the timeline to play" : playing ? "Pause" : "Play", empty ? undefined : "Space")}
+            >{playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(currentFrame + 1)} disabled={transportDisabled} aria-label="Next frame" {...tooltipProps("Next frame", "Right")}><StepForward size={16} aria-hidden="true" /></button>
+            <button type="button" className="export-transport__button" onClick={() => seekToFrame(lastFrame)} disabled={transportDisabled} aria-label="Go to end" {...tooltipProps("Go to end", "End")}><ChevronLast size={16} aria-hidden="true" /></button>
+            <Slider
+              className="export-transport__scrub"
               min={0}
               max={Math.max(0, plan.durationMs - 1)}
-              step={Math.max(1, Math.round(1000 / plan.frameRate))}
+              step={Math.max(1, Math.round(frameMs))}
               value={previewTimeMs}
-              style={{ "--scrub-progress": `${plan.durationMs > 1 ? previewTimeMs / (plan.durationMs - 1) * 100 : 0}%` } as React.CSSProperties}
-              disabled={plan.frameCount === 0}
+              disabled={transportDisabled}
               aria-label="Playhead"
-              onChange={(event) => { setPlaying(false); setPreviewTimeMs(Number(event.target.value)); }}
+              onChange={(value) => { setPlaying(false); setPreviewTimeMs(value); }}
             />
-            <output htmlFor="export-scrub"><span>{formatDuration(previewTimeMs)}</span><i aria-hidden="true">/</i><span>{formatDuration(plan.durationMs)}</span></output>
+            <span className="export-transport__time">
+              <span>{formatTimecode(previewTimeMs, plan.frameRate)}</span> / <span>{formatTimecode(plan.durationMs, plan.frameRate)}</span>
+            </span>
             <button
               type="button"
+              className="export-transport__button"
               onClick={toggleFullscreen}
-              aria-label={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
-              title={fullscreen ? "Leave fullscreen" : "Watch fullscreen"}
-            >{fullscreen ? <Minimize size={19} aria-hidden="true" /> : <Maximize size={19} aria-hidden="true" />}</button>
+              aria-label={fullscreen ? "Exit full screen" : "Full screen"}
+              {...tooltipProps(fullscreen ? "Exit full screen" : "Full screen", fullscreen ? "Esc" : undefined)}
+            >{fullscreen ? <Minimize size={16} aria-hidden="true" /> : <Maximize size={16} aria-hidden="true" />}</button>
           </div>
         </div>
-        {/* The one thing left to say under the picture: that there is no
-            picture. The frame-by-frame caption that used to live here named a
-            clip and an offset nobody was reading. */}
-        {plan.frameCount === 0 && <p className="export-stage__caption">There is nothing on the timeline yet.</p>}
+        {empty && <p className="export-stage__caption">Nothing on the timeline yet</p>}
       </section>
 
       <section className="export-settings" aria-labelledby="export-settings-heading">
-        <h2 id="export-settings-heading">Settings</h2>
+        <h2 id="export-settings-heading" className="export-settings__heading">Settings</h2>
+        <div className="export-form">
+          <div className="export-row">
+            <span className="export-row__label" id="export-destination-label">Save to</span>
+            <div className="export-destination">
+              <span className="export-destination__path" {...tooltipProps(destination?.path)}>
+                {destination ? destination.path : support.desktop ? "Choose a file…" : "Available in the desktop app"}
+              </span>
+              <button
+                type="button"
+                className="secondary-button export-destination__browse"
+                disabled={runningHere || !support.desktop}
+                aria-describedby="export-destination-label"
+                onClick={() => void browse()}
+              >Browse…</button>
+            </div>
+          </div>
 
-        <div className="export-fields">
-          <label htmlFor="export-resolution">
-            <span>Resolution</span>
-            <select
+          <div className="export-row">
+            <label className="export-row__label" htmlFor="export-resolution">Resolution</label>
+            <ComboBox
               id="export-resolution"
               value={settings.resolution}
-              disabled={running}
-              onChange={(event) => setSettings({ ...settings, resolution: event.target.value as Resolution })}
-            >
-              {resolutionChoices(config.settings.resolution).map((resolution) => {
+              disabled={runningHere}
+              onChange={(value) => setSettings({ ...settings, resolution: value as Resolution })}
+              options={resolutionChoices(config.settings.resolution).map((resolution) => {
                 const size = outputDimensions(resolution, config.settings.aspectRatio);
-                return <option key={resolution} value={resolution}>{size.width} × {size.height}</option>;
+                return { value: resolution, label: `${size.width} × ${size.height}` };
               })}
-            </select>
-          </label>
+            />
+          </div>
 
-          <label htmlFor="export-frame-rate">
-            <span>Frame rate</span>
-            <select
+          <div className="export-row">
+            <label className="export-row__label" htmlFor="export-frame-rate">Frame rate</label>
+            <ComboBox
               id="export-frame-rate"
-              value={settings.frameRate}
-              disabled={running}
-              onChange={(event) => setSettings({ ...settings, frameRate: Number(event.target.value) as FrameRate })}
-            >
-              {FRAME_RATES.map((rate) => <option key={rate} value={rate}>{rate} fps</option>)}
-            </select>
-          </label>
+              value={String(settings.frameRate)}
+              disabled={runningHere}
+              onChange={(value) => setSettings({ ...settings, frameRate: Number(value) as FrameRate })}
+              options={FRAME_RATES.map((rate) => ({ value: String(rate), label: `${rate} fps` }))}
+            />
+          </div>
 
-          <label htmlFor="export-codec">
-            <span>Container &amp; codec</span>
-            <select
+          <div className="export-row">
+            <label className="export-row__label" htmlFor="export-codec">Format</label>
+            <ComboBox
               id="export-codec"
               value={settings.codec}
-              disabled={running}
-              onChange={(event) => setSettings({ ...settings, codec: event.target.value as OutputCodecId })}
-            >
-              {OUTPUT_CODECS.map((codec) => {
+              disabled={runningHere}
+              onChange={(value) => setSettings({ ...settings, codec: value as OutputCodecId })}
+              options={OUTPUT_CODECS.map((codec) => {
                 const probe = probes?.find((candidate) => candidate.id === codec.id);
                 const unsupported = probe ? !probe.supported : false;
-                return <option key={codec.id} value={codec.id} disabled={unsupported} title={probe?.detail ?? codec.detail}>
-                  .mp4 · {codec.label}{unsupported ? " — not supported here" : ""}
-                </option>;
+                return { value: codec.id, label: `MP4 · ${codec.label}${unsupported ? " (not supported here)" : ""}`, disabled: unsupported };
               })}
-            </select>
-          </label>
+            />
+          </div>
 
-          <label htmlFor="export-quality">
-            <span>Quality</span>
-            <select
+          <div className="export-row">
+            <label className="export-row__label" htmlFor="export-quality">Quality</label>
+            <ComboBox
               id="export-quality"
               value={settings.quality}
-              disabled={running}
-              onChange={(event) => setSettings({ ...settings, quality: event.target.value as QualityId })}
-            >
-              {QUALITY_PRESETS.map((preset) => <option key={preset.id} value={preset.id} title={preset.detail}>
-                {preset.label} · {(bitrateFor(plan.width, plan.height, plan.frameRate, preset.id) / 1_000_000).toFixed(1)} Mbit/s
-              </option>)}
-            </select>
-          </label>
-
+              disabled={runningHere}
+              onChange={(value) => setSettings({ ...settings, quality: value as QualityId })}
+              options={QUALITY_PRESETS.map((preset) => ({
+                value: preset.id,
+                label: `${preset.label} · ${(bitrateFor(plan.width, plan.height, plan.frameRate, preset.id) / 1_000_000).toFixed(1)} Mbit/s`,
+              }))}
+            />
+          </div>
         </div>
-      </section>
 
-      <section className="export-details" aria-label="Export details">
+        <h2 className="export-settings__heading">Summary</h2>
         <dl className="export-summary">
           {summary.map(([term, value, detail]) => <div key={term}>
             <dt>{term}</dt>
@@ -487,46 +481,59 @@ export function ExportView({ config, folderPath }: { config: ProjectConfig; fold
           </div>)}
         </dl>
 
-        {blockers.length > 0 && <div className="export-notice export-notice--bad" role="alert">
-          <h3><TriangleAlert size={16} aria-hidden="true" /> Not possible yet</h3>
-          <ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
-        </div>}
-
-        {progress && <div className="export-progress" role="status">
-          <div className="progress-track">
-            <i style={{ width: `${progress.frameCount === 0 ? 0 : Math.round((progress.framesDone / progress.frameCount) * 100)}%` }} />
-          </div>
-          <p>{progress.detail} <small>{progress.framesDone} / {progress.frameCount} frames</small></p>
-          <p><small>Nothing is written until the encode finishes. Leaving this tab cancels the run.</small></p>
-        </div>}
-
-        {cancelled && <p className="export-outcome" role="status">
-          Export cancelled. Nothing was written — the file is only saved once the whole encode finishes.
-        </p>}
-
-        {error && <div className="export-notice export-notice--bad" role="alert">
-          <h3><TriangleAlert size={16} aria-hidden="true" /> The export failed</h3>
-          {/* Verbatim. A rewritten error is an error nobody can act on. */}
-          <p>{error}</p>
-        </div>}
-
-        {/* The export itself is confirmed by the notification in the header and
-            nowhere else. What stays on the page is only what went WRONG with the
-            sound — a soundtrack that vanished without a word is not something to
-            fade out after four seconds. */}
-        {leftOut && leftOut.audioProblems.length > 0 && <div className="export-notice" role="alert">
-          <h3><TriangleAlert size={16} aria-hidden="true" /> Left out of the soundtrack</h3>
-          <ul>{leftOut.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
-        </div>}
-
-        {/* These clips ARE in the file. Part of each one is silence because the
-            sound behind it ran out, which is exactly as inaudible as a missing
-            clip and was previously reported nowhere. */}
-        {leftOut && leftOut.audioShortfalls.length > 0 && <div className="export-notice" role="alert">
-          <h3><TriangleAlert size={16} aria-hidden="true" /> Ran out of sound before the clip ended</h3>
-          <ul>{leftOut.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
-        </div>}
+        <div className="export-messages">
+          {destinationError && <InfoBar severity="error" title="Save location" message={destinationError} onClose={() => setDestinationError(null)} />}
+          {blockers.length > 0 && <InfoBar severity="error" title="Can’t export yet">
+            <ul className="export-reasons">{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
+          </InfoBar>}
+          {outcome?.kind === "saved" && outcome.audioProblems.length > 0 && <InfoBar severity="warning" title="Left out of the soundtrack">
+            <ul className="export-reasons">{outcome.audioProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul>
+          </InfoBar>}
+          {/* These clips ARE in the file. Part of each one is silence because
+              the sound behind it ran out. */}
+          {outcome?.kind === "saved" && outcome.audioShortfalls.length > 0 && <InfoBar severity="warning" title="Sound ran out before the clip ended">
+            <ul className="export-reasons">{outcome.audioShortfalls.map((shortfall) => <li key={shortfall}>{shortfall}</li>)}</ul>
+          </InfoBar>}
+        </div>
       </section>
     </div>
+
+    <footer className="export-footer">
+      <div className="export-footer__status" aria-live="polite">
+        {progress && <div className="export-progress" role="status">
+          <span className="export-progress__line">{progressLine}</span>
+          <ProgressBar value={percent} aria-label="Export progress" />
+        </div>}
+        {!progress && outcome?.kind === "saved" && <InfoBar
+          severity="success"
+          title="Exported"
+          message={`Exported to ${outcome.path}`}
+          action={<>
+            <button type="button" className="secondary-button" onClick={() => openFile(outcome.path)}>Open</button>
+            <button type="button" className="secondary-button" onClick={() => showInFolder(outcome.path)}>Show in folder</button>
+          </>}
+          onClose={dismissExportOutcome}
+        />}
+        {!progress && outcome?.kind === "cancelled" && <InfoBar
+          severity="informational"
+          title="Export cancelled"
+          message="Nothing was written."
+          onClose={dismissExportOutcome}
+        />}
+        {!progress && outcome?.kind === "failed" && <InfoBar severity="error" title="Export failed" message={outcome.message} onClose={dismissExportOutcome} />}
+      </div>
+      <div className="export-footer__actions">
+        {runningHere
+          ? <button type="button" className="secondary-button" onClick={cancelExportJob} {...tooltipProps("Stop encoding. Nothing has been written yet.")}>Cancel</button>
+          : onClose && <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>}
+        <button
+          type="button"
+          className="primary-button"
+          disabled={!canExport}
+          onClick={() => void start()}
+          {...tooltipProps(canExport ? undefined : runningHere ? "Export is running" : blockers[0])}
+        >{runningHere ? "Exporting…" : "Export"}</button>
+      </div>
+    </footer>
   </div>;
 }

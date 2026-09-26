@@ -1,174 +1,141 @@
 /* ============================================================================
-   export.css — the Export screen: settings, preview, and the run itself.
+   export.css — the Export screen: a docked form, not a page.
 
-   Sizing contract (see tokens.css): no literal px type sizes, nothing below
-   --text-2xs (12px), standard controls --control-md (32px), compact ones
-   --control-sm (24px).
+   The layout every Windows editor uses for its export step (Clipchamp's export
+   page, Premiere's Export tab): the picture on the left, a 340px settings
+   column on the right separated from it by a divider, and a footer with the
+   run's status on the left and Cancel / Export on the right. No hero title, no
+   cards, no stat tiles — labels in sentence case, values beside them.
+
+   Dense scale, shared with the timeline (see timeline.css): controls 24–32px,
+   the transport bar 36px, 12px captions.
    ========================================================================== */
 
 .export-view {
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-6) var(--space-7) var(--space-7);
-  background: var(--bg);
-}
-
-/* Title, notification, action. The middle column holds its place whether or
-   not there is anything to say, so the Saved notice can arrive and leave
-   without the title or the button moving a pixel. */
-.export-heading {
-  max-width: var(--content-max);
-  margin: 0 auto var(--space-5);
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: flex-end;
-  gap: var(--space-5);
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--layer);
 }
 
-.export-heading h1 {
-  margin: 0;
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-tight);
-}
-
-/* Export, and Cancel while it runs — the same place the References screen puts
-   Add image. */
-.export-heading__actions {
-  justify-self: end;
-  display: flex;
-  gap: var(--space-2);
-}
-
-.export-toast-slot {
-  justify-self: center;
-  align-self: center;
-}
-
-/* Says one word. No path, no size, no codec — the file was just chosen in a
-   save dialog, and everything else the panel used to list is either already
-   known or a warning, and warnings do not fade out (see .export-notice). */
-.export-toast {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--success-line);
-  border-radius: var(--radius-md);
-  color: var(--success);
-  background: var(--success-soft);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  animation: export-toast-in var(--motion-normal) var(--ease-decelerate);
-}
-
-.export-toast svg {
-  flex: 0 0 auto;
-}
-
-@keyframes export-toast-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: none; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .export-toast {
-    animation: none;
-  }
-}
-
-/* --- Layout ---------------------------------------------------------------- */
-
-/* Video gets the wider working area on the left. Settings fill the full height
-   of the matching right-hand panel, and export facts span both below them. */
-.export-layout {
-  max-width: var(--content-max);
-  margin: 0 auto;
+.export-body {
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.65fr);
-  grid-template-areas:
-    "preview settings"
-    "details details";
-  gap: var(--space-5);
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) 340px;
 }
 
-@media (max-width: 900px) {
-  .export-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "preview"
-      "settings"
-      "details";
-  }
-}
+/* --- Preview ----------------------------------------------------------------- */
 
-.export-preview,
-.export-settings,
-.export-details {
+.export-preview {
   min-width: 0;
-  padding: var(--space-5);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
   background: var(--panel);
 }
 
-.export-preview { grid-area: preview; }
-.export-settings { grid-area: settings; }
-.export-details { grid-area: details; }
-
-.export-preview h2,
-.export-settings h2 {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-md);
-  font-weight: var(--weight-semibold);
-}
-
-.export-settings h2:not(:first-of-type) {
-  margin-top: var(--space-5);
-}
-
-/* --- Preview --------------------------------------------------------------- */
-
-/* The project's frame, at the project's shape: `aspect-ratio` and
-   `--frame-aspect` are set inline from the export plan (see ExportView). The
-   max-width is what keeps the box on its aspect while obeying the height cap —
-   clamping the HEIGHT alone would leave a full-width box with the wrong shape.
-   Before this the stage had no height of its own and took the intrinsic shape
-   of whatever was under the playhead, so a portrait still made the preview tall
-   and the next video clip shrank it back. */
+/* The stage is the frame plus its transport bar. It is also the element that
+   goes fullscreen, so the bar comes along. */
 .export-stage {
   position: relative;
   width: 100%;
-  max-width: calc(68vh * var(--frame-aspect, 1.7778));
-  margin: 0 auto;
-  display: grid;
-  place-items: center;
+  max-width: calc((100vh - 220px) * var(--frame-aspect, 1.7778));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  /* Deliberately not the project background: the frame paints its own, and a
-     matching surround would hide where the picture actually ends. Because it
-     is black in BOTH themes, everything painted on it uses the --stage-*
-     tokens rather than the palette — see tokens.css. */
+  border-radius: var(--radius-sm);
+  /* Black in both themes: the frame paints the project's own background, and
+     a matching surround would hide where the picture ends. Everything painted
+     on it uses the --stage-* tokens. */
   background: var(--stage-bg);
 }
 
-.export-stage:not(.export-stage--controls-visible):not(:focus-within) {
-  cursor: none;
+/* The project's frame, at the project's shape: `aspect-ratio` and
+   `--frame-aspect` are set inline from the export plan (see ExportView). It
+   never takes the shape of whatever is under the playhead — the export writes
+   ONE frame size for the whole file. */
+.export-picture {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
-/* The player fills the stage; the letterboxing inside it is the project's own
-   frame shape, painted in the project's own background colour. */
-.export-stage .program-picture {
+.export-picture .program-picture {
   width: 100%;
   height: 100%;
 }
 
-/* Fullscreen paints the stage's own background behind the picture, so the
-   black bars stay black rather than showing the page through them. */
+.export-stage__caption {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+}
+
+/* --- Transport ----------------------------------------------------------------
+   Windowed: a static 36px bar under the picture — flat 28px buttons, a Fluent
+   slider, and "00:00:12:05 / 00:01:30:00". No scrim, no shadows, no scale. */
+
+.export-transport {
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-2);
+  border-top: 1px solid var(--line);
+  color: var(--text-primary);
+  background: var(--layer);
+}
+
+.export-transport__button {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.export-transport__button:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+.export-transport__button:active:not(:disabled) { background: var(--fill-subtle-pressed); }
+.export-transport__button:disabled { color: var(--text-disabled); }
+
+.export-transport__scrub {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 var(--space-2);
+}
+
+.export-transport__time {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.export-transport__time span:first-child {
+  color: var(--text-primary);
+}
+
+/* Fullscreen: the picture takes the screen and the same bar floats over its
+   foot, revealed by a moving pointer and hidden again when it rests — the one
+   place an auto-hiding overlay belongs. */
 .export-stage:fullscreen {
   max-width: none;
   border: 0;
@@ -176,371 +143,219 @@
   background: var(--stage-bg);
 }
 
+.export-stage:fullscreen .export-picture {
+  flex: 1 1 auto;
+  aspect-ratio: auto !important;
+  height: 100%;
+}
+
 .export-stage:fullscreen .export-transport {
-  padding: 56px max(var(--space-5), env(safe-area-inset-right)) max(var(--space-5), env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
-}
-
-.export-stage__note {
-  max-width: 46ch;
-  margin: 0;
-  padding: var(--space-4);
-  color: var(--on-stage);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-  text-align: center;
-}
-
-.export-stage__note--bad {
   position: absolute;
-  inset: auto var(--space-3) var(--space-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  border: 1px solid var(--stage-alert-line);
-  border-radius: var(--radius-sm);
-  color: var(--stage-alert-ink);
-  background: var(--stage-alert-bg);
-  text-align: left;
-}
-
-.export-stage__note--bad svg {
-  flex: 0 0 auto;
-}
-
-.export-stage__caption {
-  margin: var(--space-3) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
-/* A translucent playback surface over the picture. Pointer movement reveals
-   it; keyboard focus keeps it present independently of the idle timer. */
-.export-transport {
-  position: absolute;
-  z-index: 5;
   inset: auto 0 0;
-  min-height: 76px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 30px var(--space-3) var(--space-3);
+  border-top: 0;
   color: var(--on-stage);
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--stage-bg) 82%, transparent));
+  background: color-mix(in srgb, var(--stage-bg) 72%, transparent);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(12px);
-  pointer-events: none;
-  transition:
-    opacity var(--motion-normal) linear,
-    transform var(--motion-panel) var(--ease-decelerate),
-    visibility 0s linear var(--motion-panel);
+  transition: opacity var(--motion-normal) linear, visibility 0s linear var(--motion-normal);
 }
 
-.export-stage--controls-visible .export-transport,
-.export-stage:focus-within .export-transport {
+.export-stage:fullscreen .export-transport__button,
+.export-stage:fullscreen .export-transport__time,
+.export-stage:fullscreen .export-transport__time span:first-child {
+  color: var(--on-stage);
+}
+
+.export-stage--fullscreen.export-stage--controls-visible .export-transport,
+.export-stage:fullscreen:focus-within .export-transport {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
-  pointer-events: auto;
   transition-delay: 0s;
 }
 
-.export-transport button {
-  flex: 0 0 auto;
-  width: var(--icon-button);
-  height: var(--icon-button);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--on-stage);
-  background: transparent;
-  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--stage-bg) 55%, transparent));
-  transition: var(--transition-control);
-}
-
-.export-transport button:hover:not(:disabled) {
-  color: var(--on-stage);
-  background: color-mix(in srgb, var(--on-stage) 16%, transparent);
-}
-
-.export-transport button:focus-visible {
-  outline: 2px solid var(--on-stage);
-  outline-offset: 1px;
-}
-
-.export-transport button:disabled {
-  opacity: 0.42;
-}
-
-.export-transport__play:not(:disabled) {
-  color: var(--on-stage);
-}
-
-.export-transport__play:hover:not(:disabled) {
-  color: var(--on-stage);
-  background: color-mix(in srgb, var(--on-stage) 20%, transparent);
-}
-
-.export-transport input[type="range"] {
-  --scrub-progress: 0%;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 24px;
-  margin: 0 var(--space-2);
-  appearance: none;
-  border: 0;
-  outline: 0;
-  background: transparent;
-}
-
-.export-transport input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(to right, var(--accent-bright) 0 var(--scrub-progress), color-mix(in srgb, var(--on-stage) 38%, transparent) var(--scrub-progress) 100%);
-}
-
-.export-transport input[type="range"]::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
-  appearance: none;
-  border: 2px solid var(--on-stage);
-  border-radius: 50%;
-  background: var(--accent-bright);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
-}
-
-.export-transport input[type="range"]::-moz-range-track {
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--on-stage) 38%, transparent);
-}
-
-.export-transport input[type="range"]::-moz-range-progress {
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-bright);
-}
-
-.export-transport input[type="range"]::-moz-range-thumb {
-  width: 11px;
-  height: 11px;
-  border: 2px solid var(--on-stage);
-  border-radius: 50%;
-  background: var(--accent-bright);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
-}
-
-.export-transport input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 1px var(--stage-bg), 0 0 0 3px var(--on-stage);
-}
-
-.export-transport output {
-  flex: 0 0 auto;
-  min-width: 17ch;
-  display: flex;
-  justify-content: center;
-  gap: var(--space-1);
-  color: var(--on-stage);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  text-align: center;
-  text-shadow: 0 1px 2px var(--stage-bg);
-}
-
-.export-transport output i {
-  color: color-mix(in srgb, var(--on-stage) 55%, transparent);
-  font-style: normal;
+.export-stage--fullscreen:not(.export-stage--controls-visible):not(:focus-within) {
+  cursor: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .export-transport,
-  .export-transport button {
+  .export-stage:fullscreen .export-transport {
     transition: none;
   }
 }
 
-/* --- Settings -------------------------------------------------------------- */
+/* --- Settings column ------------------------------------------------------------ */
 
-.export-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: var(--space-3);
+.export-settings {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-left: 1px solid var(--line);
+  background: var(--layer);
 }
 
-.export-fields label,
-.export-field-note {
+.export-settings__heading {
+  margin: var(--space-2) 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+
+.export-settings__heading:not(:first-child) {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.export-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Label above the field, in sentence case: the Fluent form layout at 340px. */
+.export-row {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--space-1);
 }
 
-.export-field-note {
-  grid-column: 1 / -1;
-}
-
-.export-fields label > span,
-.export-field-note > span {
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-}
-
-.export-fields select {
-  width: 100%;
-  height: var(--field-height);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-}
-
-.export-fields select:disabled {
-  color: var(--text-faint);
-}
-
-.export-field-note p {
-  margin: 0;
+.export-row__label {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
 }
 
-.export-field-note code {
+.export-row .ui-combo {
+  width: 100%;
+}
+
+.export-destination {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.export-destination__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-primary);
-  font-size: var(--text-2xs);
-  word-break: break-all;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
 }
 
-/* --- Summary --------------------------------------------------------------- */
+.export-destination__browse {
+  flex: none;
+}
 
+/* The summary as a label/value list, one line per fact. */
 .export-summary {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--line);
+  gap: var(--space-2);
 }
 
 .export-summary > div {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--panel-2);
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
 .export-summary dt {
-  flex: 0 0 auto;
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
 }
 
 .export-summary dd {
   min-width: 0;
   margin: 0;
   color: var(--text-primary);
-  font-size: var(--text-sm);
-  text-align: left;
-}
-
-@media (max-width: 760px) {
-  .export-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 480px) {
-  .export-summary {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  font-variant-numeric: tabular-nums;
 }
 
 .export-summary dd small {
   display: block;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
   line-height: var(--leading-snug);
 }
 
-/* --- Notices --------------------------------------------------------------- */
-
-.export-notice {
-  margin-top: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--warning-line);
-  border-radius: var(--radius-md);
-  background: var(--warning-soft);
-}
-
-.export-notice--bad {
-  border-color: var(--danger-line);
-  background: var(--danger-soft);
-}
-
-.export-notice h3 {
-  margin: 0 0 var(--space-2);
-  display: flex;
-  align-items: center;
+.export-messages {
+  display: grid;
   gap: var(--space-2);
-  color: var(--warning);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
+  margin-top: var(--space-3);
 }
 
-.export-notice--bad h3 {
-  color: var(--danger);
-}
-
-.export-notice ul {
-  margin: 0;
+.export-reasons {
+  margin: var(--space-1) 0 0;
   padding-left: var(--space-4);
-}
-
-.export-notice li,
-.export-notice p {
-  margin: 0;
-  color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
 }
 
-.export-notice li + li {
+.export-reasons li + li {
   margin-top: var(--space-1);
 }
 
-/* --- Running and finishing ------------------------------------------------- */
+/* --- Footer ---------------------------------------------------------------------- */
 
-.export-progress p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
-.export-progress small {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-}
-
-.export-outcome {
-  margin-top: var(--space-4);
+.export-footer {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  background: var(--panel-2);
+  border-top: 1px solid var(--line);
+  background: var(--layer-alt);
+}
+
+.export-footer__status {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.export-footer__actions {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.export-footer__actions .primary-button,
+.export-footer__actions .secondary-button {
+  min-width: 96px;
+}
+
+.export-progress {
+  max-width: 560px;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.export-progress__line {
+  color: var(--text-primary);
   font-size: var(--text-xs);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-snug);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .export-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .export-settings {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
 }

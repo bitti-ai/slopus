@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import audioFixture from "../../../fixtures/project-v1-audio-mix.json";
 import externalFixture from "../../../fixtures/project-v1-external-media.json";
 import { createProjectConfig, parseProjectConfig, type ProjectConfig, type TimelineClip } from "../../lib/project";
+import { resetExportJobForTests, setExportJobForTests } from "../../lib/exportJob";
 import { ExportView } from "./ExportView";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  act(() => resetExportJobForTests());
+});
 
 const clip = (id: string, startMs: number, durationMs: number): TimelineClip => ({
   id, assetId: `asset-${id}`, trackId: "track-story", startMs, durationMs,
@@ -33,13 +37,14 @@ function project(clips: TimelineClip[]): ProjectConfig {
   };
 }
 
+const exportButton = () => screen.getByRole("button", { name: "Export" }) as HTMLButtonElement;
+
 /* These run in jsdom, which has neither WebCodecs nor a Tauri shell — the exact
    conditions the view has to be honest about rather than paper over. */
 describe("the export view where nothing can encode", () => {
   it("refuses to offer an export it cannot perform, and says why", () => {
     render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    const button = screen.getByRole("button", { name: /export video/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    expect(exportButton().disabled).toBe(true);
     const reasons = screen.getByRole("alert").textContent ?? "";
     expect(reasons).toContain("browser preview");
     expect(reasons).toContain("WebCodecs");
@@ -47,23 +52,17 @@ describe("the export view where nothing can encode", () => {
 
   it("says why there is no picture rather than showing an empty stage as though it were one", () => {
     render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    // The preview is the same player the timeline uses, and in a browser there
-    // is no project folder for it to read the footage from.
     expect(screen.getByText(/Playback needs the desktop app/i)).toBeTruthy();
     expect(document.querySelector("canvas")?.style.visibility).toBe("hidden");
-    // The controls are there and are honest about what they can do: there IS
-    // something on this timeline, so play is offered.
     expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByRole("button", { name: "Watch fullscreen" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Full screen" })).toBeTruthy();
   });
 
   it("states the real duration of the planned file", () => {
     render(<ExportView config={project([clip("a", 0, 2_000), clip("b", 2_000, 1_000)])} folderPath="/tmp/project" />);
     expect(within(screen.getByText("Duration").parentElement!).getByText("00:03.000")).toBeTruthy();
     expect(screen.getByText("72 frames at 24 fps")).toBeTruthy();
-    /* The frame size is named where it is CHOSEN — in the resolution select —
-       rather than repeated in a summary row beside it. */
-    expect((screen.getByLabelText("Resolution") as HTMLSelectElement).selectedOptions[0].textContent).toBe("1920 × 1080");
+    expect(screen.getByRole("combobox", { name: "Resolution" }).textContent).toContain("1920 × 1080");
   });
 
   it("says outright that a timeline with no audio clips produces no sound", () => {
@@ -74,96 +73,132 @@ describe("the export view where nothing can encode", () => {
   it("blocks on an empty timeline rather than offering to render nothing", () => {
     render(<ExportView config={project([])} folderPath="/tmp/project" />);
     expect(screen.getByRole("alert").textContent).toContain("no video clips");
-    expect(screen.getByText(/nothing on the timeline yet/i)).toBeTruthy();
-    // Nothing to play, and the transport says so instead of sitting live.
+    expect(screen.getByText("Nothing on the timeline yet")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Play" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("puts the one control the screen exists for beside its title", () => {
-    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    const heading = container.querySelector(".export-heading")!;
-    expect(within(heading as HTMLElement).getByRole("button", { name: /export video/i })).toBeTruthy();
-  });
-
-  it("says none of the prose it used to carry about how exporting works", () => {
-    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    for (const gone of ["True of this export", "opens your computer", "this project’s original size"]) {
-      expect(container.textContent, gone).not.toContain(gone);
-    }
-    // And none of the summary rows that repeated a setting back at the user.
-    for (const row of ["Clips", "Frame", "Bitrate"]) {
-      expect(within(container.querySelector(".export-summary") as HTMLElement).queryByText(row)).toBeNull();
-    }
+  it("changes a setting through its combo box", () => {
+    render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Frame rate" }));
+    fireEvent.click(screen.getByRole("option", { name: "30 fps" }));
+    expect(screen.getByText("60 frames at 30 fps")).toBeTruthy();
   });
 });
 
-/* The screen used to size its own preview from whatever was under the playhead
-   and to confirm a finished export with a panel in the bottom corner naming the
-   path, the size, the codec and the compositor. */
 describe("the shape of the export screen", () => {
-  it("names its two panels after what they hold", () => {
-    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    expect(screen.queryByRole("heading", { name: "Video" })).toBeNull();
+  it("is a docked form: preview, a settings column, and a footer with the actions", () => {
+    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" onClose={() => undefined} />);
     expect(screen.getByRole("region", { name: "Video preview" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Preview" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Export Settings" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "What this export will be" })).toBeNull();
-    expect(container.querySelector(".export-details > .export-summary")).toBeTruthy();
+    const footer = container.querySelector(".export-footer") as HTMLElement;
+    expect(within(footer).getAllByRole("button").map((button) => button.textContent)).toEqual(["Cancel", "Export"]);
+    // No hero title on the page, and labels in sentence case.
+    expect(container.querySelector("h1")?.classList.contains("sr-only")).toBe(true);
+    expect(screen.getByText("Save to")).toBeTruthy();
+    expect(screen.queryByText("Container & codec")).toBeNull();
   });
 
   it("gives the estimated size as a size and nothing else", () => {
     const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    const row = within(container.querySelector(".export-summary") as HTMLElement)
-      .getByText("Estimated size").parentElement!;
+    const row = within(container.querySelector(".export-summary") as HTMLElement).getByText("Estimated size").parentElement!;
     expect(row.querySelector("dd")!.textContent).toMatch(/^[\d.]+ [KMG]?B$/);
     expect(row.querySelector("dd small")).toBeNull();
   });
 
-  /* A portrait still on the timeline used to make this box tall and the next
-     video clip shrank it back, because the stage had no size of its own and
-     took the intrinsic shape of whatever was playing. The export writes ONE
-     frame size for the whole file. */
-  it("sizes the stage from the export plan rather than from the media under the playhead", () => {
+  it("sizes the picture from the export plan rather than from the media under the playhead", () => {
     const portrait = project([clip("a", 0, 2_000)]);
     portrait.assets[0] = { ...portrait.assets[0], kind: "image", mimeType: "image/png", width: 1080, height: 1920 };
     const { container } = render(<ExportView config={portrait} folderPath="/tmp/project" />);
-    const stage = container.querySelector(".export-stage") as HTMLElement;
-    // The project is 16:9 at 1080p; the picture inside it is not.
-    expect(stage.style.aspectRatio).toBe("1920 / 1080");
+    expect((container.querySelector(".export-picture") as HTMLElement).style.aspectRatio).toBe("1920 / 1080");
   });
 
-  it("embeds playback controls over the video and hides them when the pointer rests", () => {
+  it("puts a fixed transport bar under the picture while windowed", () => {
     vi.useFakeTimers();
     try {
       const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
       const stage = container.querySelector(".export-stage") as HTMLElement;
       const controls = screen.getByRole("group", { name: "Video playback controls" });
-      expect(stage.contains(controls)).toBe(true);
-      expect(stage.classList.contains("export-stage--controls-visible")).toBe(false);
-
+      expect(controls.previousElementSibling?.classList.contains("export-picture")).toBe(true);
+      expect(Array.from(controls.querySelectorAll("button")).map((button) => button.getAttribute("aria-label")))
+        .toEqual(["Go to start", "Previous frame", "Play", "Next frame", "Go to end", "Full screen"]);
+      // Windowed, nothing hides: the pointer resting changes nothing.
       fireEvent.pointerMove(stage);
-      expect(stage.classList.contains("export-stage--controls-visible")).toBe(true);
-      act(() => vi.advanceTimersByTime(1_800));
+      act(() => vi.advanceTimersByTime(2_000));
       expect(stage.classList.contains("export-stage--controls-visible")).toBe(false);
+      expect(controls.textContent).toContain("00:00:00:00 / 00:00:02:00");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("says nothing about a finished export until there is one", () => {
-    const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    expect(container.querySelector(".export-toast")).toBeNull();
-    // And the notification lives in the header, not at the foot of the settings
-    // column where the old panel sat.
-    expect(container.querySelector(".export-heading .export-toast-slot")).toBeTruthy();
+  it("steps one frame at a time and prints the frame it landed on", () => {
+    render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+    fireEvent.click(screen.getByRole("button", { name: "Next frame" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next frame" }));
+    expect(screen.getByRole("group", { name: "Video playback controls" }).textContent).toContain("00:00:00:02 /");
+    fireEvent.click(screen.getByRole("button", { name: "Go to end" }));
+    expect(screen.getByRole("group", { name: "Video playback controls" }).textContent).toContain("00:00:01:23 /");
   });
 });
 
-/* The other half of the media policy: video is NOT copied into the project, so
-   a real timeline's clips carry an absolute source path and no relative one.
-   The page has to plan such a project exactly as it plans any other — the
-   previous build did, and then the run died on the first read. */
+describe("a run in progress and a finished one", () => {
+  it("shows percent, time remaining and the frame being encoded", () => {
+    act(() => setExportJobForTests({
+      folderPath: "/tmp/project",
+      destination: "C:\\Videos\\Northern Light.mp4",
+      progress: { phase: "rendering", framesDone: 30, frameCount: 72, detail: "Rendering frame 30 of 72." },
+      remainingMs: 72_000,
+    }));
+    render(<ExportView config={project([clip("a", 0, 3_000)])} folderPath="/tmp/project" />);
+    expect(screen.getByRole("status").textContent).toContain("42% · 1:12 remaining · Encoding frame 30 of 72");
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Exporting…" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  it("keeps saying where the file went until it is dismissed", () => {
+    act(() => setExportJobForTests({
+      folderPath: "/tmp/project",
+      outcome: { kind: "saved", path: "C:\\Videos\\Northern Light.mp4", bytes: 1_000, audioProblems: [], audioShortfalls: [] },
+    }));
+    render(<ExportView config={project([clip("a", 0, 3_000)])} folderPath="/tmp/project" />);
+    expect(screen.getByText("Exported to C:\\Videos\\Northern Light.mp4")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show in folder" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(/Exported to/)).toBeNull();
+  });
+
+  it("does not claim another project's run", () => {
+    act(() => setExportJobForTests({
+      folderPath: "/tmp/other",
+      progress: { phase: "rendering", framesDone: 1, frameCount: 10, detail: "" },
+    }));
+    render(<ExportView config={project([clip("a", 0, 3_000)])} folderPath="/tmp/project" />);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Another project is exporting");
+  });
+});
+
+describe("where the file goes", () => {
+  it("shows the default destination Rust proposes before any dialog", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    vi.mocked(invoke).mockImplementation(async (command: string) => (
+      command === "default_export_destination" ? { path: "C:\\Users\\NN\\Videos\\Northern Light.mp4", exists: false } : null
+    ) as never);
+    try {
+      render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
+      await waitFor(() => expect(screen.getByText("C:\\Users\\NN\\Videos\\Northern Light.mp4")).toBeTruthy());
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("default_export_destination", { suggestedName: "Northern Light.mp4" });
+      expect(screen.getByRole("button", { name: "Browse…" })).toBeTruthy();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      vi.mocked(invoke).mockReset();
+    }
+  });
+});
+
 describe("the export view on media the project does not contain", () => {
   const external = () => parseProjectConfig(externalFixture);
 
@@ -177,14 +212,10 @@ describe("the export view on media the project does not contain", () => {
   });
 });
 
-/* The mix is built whole in memory before the file is opened and held until the
-   last frame — 23 MB a minute, 1.4 GB for an hour — and the panel that states
-   bitrate, size estimate, compositor and codec said nothing at all about it. */
 describe("what the page says the soundtrack will cost", () => {
   const withAudioSupport = (body: () => void) => {
     const scope = globalThis as unknown as Record<string, unknown>;
     const saved = { AudioEncoder: scope.AudioEncoder, AudioData: scope.AudioData, OfflineAudioContext: scope.OfflineAudioContext };
-    // detectExportSupport asks for exactly these three; nothing here calls them.
     scope.AudioEncoder = class {};
     scope.AudioData = class {};
     scope.OfflineAudioContext = class {};
@@ -201,15 +232,12 @@ describe("what the page says the soundtrack will cost", () => {
   it("states the memory the mix holds, next to the bitrate and the size estimate", () => {
     withAudioSupport(() => {
       render(<ExportView config={parseProjectConfig(audioFixture)} folderPath="D:\\tmp\\harbour" />);
-      // Two clips on an unmuted audio track; the third is on a muted one.
       expect(screen.getByText("AAC · 2 clips mixed")).toBeTruthy();
       expect(screen.getByText(/1\.5 MB of memory held while it renders/)).toBeTruthy();
     });
   });
 
   it("says nothing about a mix it is not going to make", () => {
-    // No AudioEncoder here, so there is no mix and no memory to disclose —
-    // stating a cost that will not be paid would be its own kind of lie.
     render(<ExportView config={parseProjectConfig(audioFixture)} folderPath="D:\\tmp\\harbour" />);
     expect(screen.getByText("this webview has no AudioEncoder")).toBeTruthy();
     expect(screen.queryByText(/of memory held while it renders/)).toBeNull();
@@ -219,12 +247,8 @@ describe("what the page says the soundtrack will cost", () => {
 describe("what the page claims about the compositor", () => {
   it("does not promise WebGPU before anything has asked for an adapter", async () => {
     render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
-    // jsdom has no navigator.gpu, so the settled answer is the 2D canvas with a
-    // stated reason. What must never appear is a bare WebGPU promise.
     expect(await screen.findByText(/no navigator\.gpu/i)).toBeTruthy();
     expect(screen.queryByText("WebGPU")).toBeNull();
-    // The heading no longer carries a prose paragraph; the compositor row is
-    // where the settled answer is stated now.
     expect(document.body.textContent).toContain("2D canvas");
   });
 });

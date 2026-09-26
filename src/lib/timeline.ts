@@ -295,8 +295,9 @@ export function insertClip(
  *  (1000/30 × 3) is not read as the frame before. */
 export const frameAt = (ms: number, fps: number) => Math.floor(Math.max(0, ms) * fps / 1000 + 1e-6);
 
-/** Milliseconds at the START of frame `frame`. */
-export const frameStartMs = (frame: number, fps: number) => Math.round(frame * 1000 / fps);
+/** The first whole millisecond inside frame `frame`, so that
+ *  `frameAt(frameStartMs(n)) === n` however the division rounds. */
+export const frameStartMs = (frame: number, fps: number) => Math.max(0, Math.ceil(frame * 1000 / fps - 1e-9));
 
 const two = (value: number) => String(value).padStart(2, "0");
 

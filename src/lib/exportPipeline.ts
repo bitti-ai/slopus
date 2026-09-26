@@ -1389,6 +1389,33 @@ export async function writeExportFile(path: string, bytes: Uint8Array): Promise<
   return invoke<number>("write_export_file", bytes, { headers: { "x-export-path": encodeURIComponent(path) } });
 }
 
+/** The destination the Export screen shows before any dialog: the suggested
+ *  name in the last export folder, or in Videos. Rust builds the path itself
+ *  and allows the write to it. Null outside the desktop app. */
+export async function defaultExportDestination(suggestedName: string): Promise<{ path: string; exists: boolean } | null> {
+  if (!isTauri()) return null;
+  return (await invoke<{ path: string; exists: boolean } | null>("default_export_destination", { suggestedName })) ?? null;
+}
+
+/** Whether the chosen destination already holds a file (so the page can ask
+ *  before replacing it). */
+export async function exportDestinationExists(path: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("export_destination_exists", { path });
+}
+
+/** Opens a finished export in the default video player. */
+export async function openExportFile(path: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("open_export_file", { path });
+}
+
+/** Reads a `.cube` LUT the user picked in the Open dialog (Rust checks the
+ *  extension and the 16 MB limit). */
+export async function readLutFile(path: string): Promise<string> {
+  return invoke<string>("read_lut_file", { path });
+}
+
 /* ---------------------------------------------------------------------------
    Preview
    --------------------------------------------------------------------------- */
