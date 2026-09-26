@@ -27,7 +27,8 @@ interface GeneratorViewProps {
   folderPath: string;
   runtime?: SlopfabStatus | null;
   generationCompletionTimes?: Readonly<Record<string, number>>;
-  onChange: (next: ProjectConfig) => void;
+  /** `key` groups rapid edits of one thing into one undo step (the workspace's session.edit). */
+  onChange: (next: ProjectConfig, key?: string) => void;
   onGenerate?: (submissions: GenerationSubmission[]) => void;
   onCancelGeneration?: (sceneIds: string[]) => Promise<void>;
   cancellingJobIds?: ReadonlySet<string>;
@@ -147,7 +148,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
-    onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) });
+    // Typing in one scene's fields (or dragging its length) is one undo step.
+    onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) }, `scene:${id}`);
   };
 
   /* An edit from the panel. Writing a reference into a line BINDS it to the

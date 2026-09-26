@@ -72,7 +72,8 @@ const readView = (): LibraryView => {
 export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
-  onChange: (next: ProjectConfig) => void;
+  /** `key` groups rapid edits of one reference into one undo step. */
+  onChange: (next: ProjectConfig, key?: string) => void;
   onRegenerateIcon?: (referenceId: string) => void;
   onGenerateBuiltinIcons?: () => void;
   onRegenerateBuiltinIcon?: (presetId: string) => void;
@@ -155,7 +156,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
 
   const update = (id: string, patch: Partial<ProjectReference>) => {
     const current = configRef.current;
-    onChange({ ...current, references: current.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) });
+    onChange({ ...current, references: current.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) }, `reference:${id}`);
   };
   const selectOnly = (id: string | undefined) => {
     setSelectedId(id);
