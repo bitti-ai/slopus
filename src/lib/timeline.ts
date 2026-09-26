@@ -283,3 +283,120 @@ export function insertClip(
   if (startMs === null) return null;
   return withClips(tracks, track.id, byStart([...track.clips, { ...clip, trackId, startMs }]));
 }
+
+/* --- Time, as the editor prints it -----------------------------------------
+
+   Every clock in the edit and export views reads HH:MM:SS:FF at the PROJECT'S
+   frame rate — the way Premiere, Resolve and Clipchamp print it — so a number
+   read off the toolbar can be typed back into it and land on the same frame. */
+
+/** Which frame `ms` falls in. A hair of tolerance so 4.9s at 24 fps (117.6
+ *  frames) is frame 117 and a value that is a whole frame in floating point
+ *  (1000/30 × 3) is not read as the frame before. */
+export const frameAt = (ms: number, fps: number) => Math.floor(Math.max(0, ms) * fps / 1000 + 1e-6);
+
+/** Milliseconds at the START of frame `frame`. */
+export const frameStartMs = (frame: number, fps: number) => Math.round(frame * 1000 / fps);
+
+const two = (value: number) => String(value).padStart(2, "0");
+
+/** `HH:MM:SS:FF` at `fps`. 4.9 s at 24 fps → 00:00:04:21. */
+export function formatTimecode(ms: number, fps: number): string {
+  const rate = Math.max(1, Math.round(fps));
+  const frames = frameAt(ms, rate);
+  const totalSeconds = Math.floor(frames / rate);
+  return `${two(Math.floor(totalSeconds / 3600))}:${two(Math.floor(totalSeconds / 60) % 60)}:${two(totalSeconds % 60)}:${two(frames % rate)}`;
+}
+
+/** Reads what a user types into a timecode field: `HH:MM:SS:FF`, `MM:SS:FF`,
+ *  `MM:SS`, or plain seconds (`12.5`). Null for anything else. */
+export function parseTimecode(value: string, fps: number): number | null {
+  const parts = value.trim().split(":").map((part) => part.trim());
+  if (parts.length === 0 || parts.length > 4 || parts.some((part) => !/^\d+(\.\d+)?$/.test(part))) return null;
+  const numbers = parts.map(Number);
+  let seconds = 0;
+  let frames = 0;
+  if (numbers.length === 1) seconds = numbers[0];
+  else if (numbers.length === 2) seconds = numbers[0] * 60 + numbers[1];
+  else if (numbers.length === 3) { seconds = numbers[0] * 60 + numbers[1]; frames = numbers[2]; }
+  else { seconds = numbers[0] * 3600 + numbers[1] * 60 + numbers[2]; frames = numbers[3]; }
+  if (frames >= Math.max(1, Math.round(fps))) return null;
+  return Math.round(seconds * 1000 + frames * (1000 / fps));
+}
+
+/* --- Cuts ------------------------------------------------------------------ */
+
+/** Every edit point on the timeline — each clip's head and tail — sorted and
+ *  without repeats. What Up/Down step between. */
+export function cutPoints(tracks: TimelineTrack[]): number[] {
+  const points = new Set<number>([0]);
+  for (const track of tracks) for (const clip of track.clips) { points.add(clip.startMs); points.add(clipEndMs(clip)); }
+  return [...points].sort((a, b) => a - b);
+}
+
+/** The nearest cut strictly before (`-1`) or after (`1`) `ms`, or null. */
+export function adjacentCut(tracks: TimelineTrack[], ms: number, direction: -1 | 1): number | null {
+  const points = cutPoints(tracks);
+  if (direction > 0) return points.find((point) => point > ms + 0.5) ?? null;
+  for (let index = points.length - 1; index >= 0; index -= 1) if (points[index] < ms - 0.5) return points[index];
+  return null;
+}
+
+/* --- Zoom and the ruler ------------------------------------------------------ */
+
+/** Candidate label intervals, in frames (below a second) and seconds. */
+const FRAME_STEPS = [1, 2, 5, 10];
+const SECOND_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+
+export interface RulerScale {
+  /** Milliseconds between labelled ticks. */
+  majorMs: number;
+  /** Milliseconds between the unlabelled ticks inside each interval. */
+  minorMs: number;
+  /** True when the labels have to name frames. */
+  frames: boolean;
+}
+
+/** How densely to label a ruler drawn at `pxPerSecond`: the smallest readable
+ *  interval with at least `minLabelPx` between labels. Frames at high zoom,
+ *  then seconds, then minutes. */
+export function rulerScale(pxPerSecond: number, fps: number, minLabelPx = 72): RulerScale {
+  const rate = Math.max(1, Math.round(fps));
+  const pxPerMs = Math.max(1e-9, pxPerSecond / 1000);
+  for (const frames of FRAME_STEPS) {
+    if (frames >= rate) break;
+    const majorMs = frames * 1000 / rate;
+    if (majorMs * pxPerMs >= minLabelPx) return { majorMs, minorMs: 1000 / rate, frames: true };
+  }
+  for (const seconds of SECOND_STEPS) {
+    const majorMs = seconds * 1000;
+    if (majorMs * pxPerMs >= minLabelPx) {
+      const divisions = seconds === 1 ? Math.min(rate, 5) : seconds % 5 === 0 ? 5 : seconds % 2 === 0 ? 2 : 1;
+      return { majorMs, minorMs: majorMs / divisions, frames: false };
+    }
+  }
+  return { majorMs: 7_200_000, minorMs: 1_800_000, frames: false };
+}
+
+/** A ruler label: `MM:SS` (or `H:MM:SS` past an hour), or the full timecode
+ *  when the ruler is counting frames. */
+export function rulerLabel(ms: number, fps: number, frames: boolean): string {
+  if (frames) return formatTimecode(ms, fps);
+  const total = Math.round(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  return hours > 0 ? `${hours}:${two(minutes)}:${two(total % 60)}` : `${two(minutes)}:${two(total % 60)}`;
+}
+
+/** Where to scroll after a zoom so the moment under the pointer stays under it.
+ *  `pointerPx` is measured from the left of the lanes' visible area. */
+export function scrollAfterZoom(scrollLeft: number, pointerPx: number, fromPxPerSecond: number, toPxPerSecond: number): number {
+  if (fromPxPerSecond <= 0) return scrollLeft;
+  return Math.max(0, (scrollLeft + pointerPx) * (toPxPerSecond / fromPxPerSecond) - pointerPx);
+}
+
+/** A copy of `clip` for Paste: a new id, placed on `trackId` at (or as near as
+ *  the lane allows to) `atMs`. Null when the lane is locked or has no room. */
+export function pasteClip(tracks: TimelineTrack[], clip: TimelineClip, trackId: string, atMs: number, id: string): TimelineTrack[] | null {
+  return insertClip(tracks, trackId, { ...clip, id, trackId }, Math.max(0, Math.round(atMs)));
+}

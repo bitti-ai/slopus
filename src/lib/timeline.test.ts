@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { parseProjectConfig, type TimelineClip, type TimelineTrack } from "./project";
 import {
+  adjacentCut,
+  cutPoints,
+  formatTimecode,
+  parseTimecode,
+  pasteClip,
+  rulerLabel,
+  rulerScale,
+  scrollAfterZoom,
   clipEndMs,
   freeStart,
   insertClip,
@@ -282,5 +290,64 @@ describe("what comes out still parses as a project", () => {
     const deleted = removeClip(trimmed, "music")!;
     expect(parseProjectConfig({ ...base, timeline: { tracks: deleted } })).toBeTruthy();
     expect(noOverlaps(deleted)).toBe(true);
+  });
+});
+
+describe("timecode at the project frame rate", () => {
+  it("prints HH:MM:SS:FF", () => {
+    expect(formatTimecode(4_900, 24)).toBe("00:00:04:21");
+    expect(formatTimecode(0, 30)).toBe("00:00:00:00");
+    expect(formatTimecode((1000 / 30) * 3, 30)).toBe("00:00:00:03");
+    expect(formatTimecode(3_723_500, 25)).toBe("01:02:03:12");
+    expect(formatTimecode(59_999, 60)).toBe("00:00:59:59");
+  });
+
+  it("reads back what it prints, and the shorter forms people type", () => {
+    expect(parseTimecode("00:00:04:21", 24)).toBe(4_875);
+    expect(formatTimecode(parseTimecode("00:00:04:21", 24)!, 24)).toBe("00:00:04:21");
+    expect(parseTimecode("01:30", 30)).toBe(90_000);
+    expect(parseTimecode("12.5", 30)).toBe(12_500);
+    expect(parseTimecode("00:02:15", 30)).toBe(2_500);
+    expect(parseTimecode("00:00:01:30", 30)).toBeNull();
+    expect(parseTimecode("soon", 30)).toBeNull();
+  });
+});
+
+describe("cuts", () => {
+  it("steps to the previous and next edit point on any track", () => {
+    const tracks = stage();
+    expect(cutPoints(tracks)).toEqual([0, 4_000, 6_000, 8_000, 10_000]);
+    expect(adjacentCut(tracks, 4_000, 1)).toBe(6_000);
+    expect(adjacentCut(tracks, 4_000, -1)).toBe(0);
+    expect(adjacentCut(tracks, 10_000, 1)).toBeNull();
+    expect(adjacentCut(tracks, 0, -1)).toBeNull();
+  });
+});
+
+describe("ruler density", () => {
+  it("labels frames when zoomed in and minutes when zoomed out", () => {
+    expect(rulerScale(2_400, 24)).toMatchObject({ frames: true, majorMs: 1000 / 24 });
+    expect(rulerScale(100, 30)).toMatchObject({ frames: false, majorMs: 1_000 });
+    expect(rulerScale(10, 30).majorMs).toBe(10_000);
+    expect(rulerScale(0.5, 30).majorMs).toBeGreaterThanOrEqual(120_000);
+    expect(rulerLabel(65_000, 30, false)).toBe("01:05");
+    expect(rulerLabel(3_725_000, 30, false)).toBe("1:02:05");
+    expect(rulerLabel(1_500, 30, true)).toBe("00:00:01:15");
+  });
+
+  it("keeps the moment under the pointer in place when zooming", () => {
+    // 100px/s, scrolled 500px, pointer 200px in: 7s is under the pointer, and
+    // at 200px/s that moment sits at 1400px, so the scroll becomes 1200.
+    expect(scrollAfterZoom(500, 200, 100, 200)).toBe(1_200);
+    expect(scrollAfterZoom(0, 50, 100, 50)).toBe(0);
+  });
+});
+
+describe("pasting a clip", () => {
+  it("lands a copy with a new id where the lane has room", () => {
+    const tracks = stage();
+    const next = pasteClip(tracks, tracks[0].clips[0], "v2", 1_000, "copy")!;
+    expect(next[1].clips).toMatchObject([{ id: "copy", trackId: "v2", startMs: 1_000, durationMs: 4_000 }]);
+    expect(pasteClip(tracks, tracks[0].clips[0], "v1", 1_000, "copy")![0].clips.map((item) => item.startMs)).toEqual([0, 6_000, 8_000]);
   });
 });
