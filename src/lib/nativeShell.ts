@@ -14,6 +14,7 @@
  * module against half a mock.
  */
 
+import { matchesCombo, registerShortcut } from "./commands";
 import type { ResolvedTheme, ThemeChoice } from "./theme";
 
 /** True inside the desktop app. Same test as `isTauri` in persistence.ts, kept
@@ -396,6 +397,18 @@ export function isBrowserShortcut(event: KeyboardEvent): boolean {
   return false;
 }
 
+/** Browser keys that are ALSO Slopus commands: find (Ctrl+F, F3 — the Edge
+ *  find bar) and history (Alt+Left / Alt+Right — Back to the library, out of
+ *  Settings). installBrowserGuards blocks the browser's action on them only
+ *  after the app has had its chance to handle them. */
+export const APP_CLAIMABLE_KEYS: readonly string[] = [
+  "Ctrl+F", "Ctrl+Shift+F", "F3", "Shift+F3", "Alt+ArrowLeft", "Alt+ArrowRight",
+];
+
+export function isAppClaimableKey(event: KeyboardEvent): boolean {
+  return APP_CLAIMABLE_KEYS.some((combo) => matchesCombo(event, combo));
+}
+
 const EDITABLE_INPUT = /^(text|search|url|email|password|number|tel)$/i;
 const SELECTABLE_TEXT = ".compiled-prompt__text";
 
@@ -425,8 +438,11 @@ export function textTarget(target: EventTarget | null): { editable: boolean; has
 /** Installs the page-wide guards once, for the lifetime of the window:
  *
  *   • browser shortcuts (F5, Ctrl+R, Ctrl+P, …) do nothing;
- *   • Ctrl+F only reaches the Edge find bar when no app handler took it —
- *     checked after every other listener has run, never before;
+ *   • the browser keys Slopus also uses (Ctrl+F, F3, Alt+Left/Right; see
+ *     APP_CLAIMABLE_KEYS) are left for the app first: the guard is a
+ *     `fallback` registration in the commands.ts dispatcher, so it only runs
+ *     — and only then cancels the find bar or history navigation — when no
+ *     useShortcut handler took the key;
  *   • a file dropped where nothing accepts it is refused instead of the
  *     webview navigating to it (drop targets that call preventDefault on
  *     dragover, or sit inside [data-dropzone], are untouched);
@@ -436,17 +452,33 @@ export function textTarget(target: EventTarget | null): { editable: boolean; has
  *  Returns an uninstall, for tests. */
 export function installBrowserGuards(target: Window = window): () => void {
   const doc = target.document;
+  /* Capture phase: keys that are only ever the browser's are cancelled before
+     anything else sees them. The claimable ones are not touched here — a
+     prevented default would make the dispatcher skip them (its rule 1), and
+     app shortcuts on them could never fire. */
   const onKeyDownCapture = (event: KeyboardEvent) => {
-    if (isBrowserShortcut(event)) event.preventDefault();
+    if (!isAppClaimableKey(event)) {
+      if (isBrowserShortcut(event)) event.preventDefault();
+      return;
+    }
+    /* A component that stops the press on its way up (Settings keeps keys
+       from the editor mounted under it) keeps it from the dispatcher, and so
+       from the fallback below too. Nothing in the app can claim it then, so
+       stopping it also cancels the browser's action. */
+    for (const method of ["stopPropagation", "stopImmediatePropagation"] as const) {
+      const original = event[method];
+      event[method] = function (this: KeyboardEvent) {
+        event.preventDefault();
+        original.call(this);
+      };
+    }
   };
-  /* Bubble phase on the window: every React and document handler has had its
-     turn, so one that claimed Ctrl+F has already called preventDefault. */
-  const onKeyDownLate = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return;
-    const ctrl = event.ctrlKey || event.metaKey;
-    const find = (ctrl && !event.altKey && event.key.toLowerCase() === "f") || event.key === "F3";
-    if (find) event.preventDefault();
-  };
+  /* The claimable keys go through the dispatcher as its last resort. A
+     handler that takes the key prevents its default itself; a component that
+     handles it with its own listener (a menu, a field) does too, and then the
+     dispatcher leaves the press alone. Only an unclaimed press reaches this
+     one, whose whole job is the default preventDefault. */
+  const unregisterFallback = registerShortcut(APP_CLAIMABLE_KEYS, () => undefined, { fallback: true, allowInInput: true, allowInModal: true });
   const inDropzone = (event: Event) => event.target instanceof Element && !!event.target.closest("[data-dropzone]");
   const onDragOver = (event: DragEvent) => {
     if (event.defaultPrevented || inDropzone(event)) return;
@@ -469,13 +501,12 @@ export function installBrowserGuards(target: Window = window): () => void {
       .catch(() => undefined);
   };
   target.addEventListener("keydown", onKeyDownCapture, true);
-  target.addEventListener("keydown", onKeyDownLate);
   doc.addEventListener("dragover", onDragOver);
   doc.addEventListener("drop", onDrop);
   doc.addEventListener("contextmenu", onContextMenu);
   return () => {
     target.removeEventListener("keydown", onKeyDownCapture, true);
-    target.removeEventListener("keydown", onKeyDownLate);
+    unregisterFallback();
     doc.removeEventListener("dragover", onDragOver);
     doc.removeEventListener("drop", onDrop);
     doc.removeEventListener("contextmenu", onContextMenu);

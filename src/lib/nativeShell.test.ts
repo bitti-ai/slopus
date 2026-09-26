@@ -42,6 +42,7 @@ import {
   minimizeWindow, onMaximizedChange, pickFile, reportGenerationJobs, revealInExplorer, setTaskbarProgress,
   setWindowTheme, textTarget, toggleMaximizeWindow, type SystemAccent,
 } from "./nativeShell";
+import { registerShortcut } from "./commands";
 
 /* Windows' default blue (#0078d4) and the ramp UISettings reports for it. */
 const BLUE: SystemAccent = {
@@ -247,6 +248,68 @@ describe("browser guards", () => {
     expect(key({ key: "f", ctrlKey: true }).defaultPrevented).toBe(true);
     expect(seenPrevented).toBe(false);
     document.removeEventListener("keydown", handler);
+  });
+
+  it("blocks the browser's find and history keys when nothing in the app claims them", () => {
+    for (const init of [{ key: "f", ctrlKey: true }, { key: "F", ctrlKey: true, shiftKey: true }, { key: "F3" }, { key: "F3", shiftKey: true },
+      { key: "ArrowLeft", altKey: true }, { key: "ArrowRight", altKey: true }]) {
+      expect(key(init).defaultPrevented, JSON.stringify(init)).toBe(true);
+    }
+    // Also from inside a text field and while a dialog is open.
+    document.body.innerHTML = `<div aria-modal="true"><input id="field" /></div>`;
+    expect(key({ key: "f", ctrlKey: true }, document.getElementById("field")!).defaultPrevented).toBe(true);
+    expect(key({ key: "ArrowLeft", altKey: true }, document.getElementById("field")!).defaultPrevented).toBe(true);
+  });
+
+  it("lets useShortcut handlers take Ctrl+F, F3 and Alt+Left", () => {
+    const calls: string[] = [];
+    const off = [
+      registerShortcut("Ctrl+F", () => { calls.push("find"); }),
+      registerShortcut("F3", () => { calls.push("next"); }),
+      registerShortcut("Alt+ArrowLeft", () => { calls.push("back"); }),
+    ];
+    expect(key({ key: "f", ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(key({ key: "F3" }).defaultPrevented).toBe(true);
+    expect(key({ key: "ArrowLeft", altKey: true }).defaultPrevented).toBe(true);
+    expect(calls).toEqual(["find", "next", "back"]);
+    off.forEach((unregister) => unregister());
+  });
+
+  it("still blocks the browser when an app handler declines the key", () => {
+    const off = registerShortcut("Alt+ArrowLeft", () => false);
+    expect(key({ key: "ArrowLeft", altKey: true }).defaultPrevented).toBe(true);
+    off();
+  });
+
+  it("leaves a key another listener already handled alone", () => {
+    const back = vi.fn();
+    const off = registerShortcut("Alt+ArrowLeft", back);
+    document.body.innerHTML = `<div id="menu"></div>`;
+    const menu = document.getElementById("menu")!;
+    menu.addEventListener("keydown", (event) => event.preventDefault());
+    expect(key({ key: "ArrowLeft", altKey: true }, menu).defaultPrevented).toBe(true);
+    expect(back).not.toHaveBeenCalled();
+    off();
+  });
+
+  it("blocks the browser when a component stops the key before the dispatcher sees it", () => {
+    const back = vi.fn();
+    const off = registerShortcut("Alt+ArrowLeft", back);
+    document.body.innerHTML = `<div id="island"></div>`;
+    const island = document.getElementById("island")!;
+    island.addEventListener("keydown", (event) => event.stopPropagation());
+    expect(key({ key: "ArrowLeft", altKey: true }, island).defaultPrevented).toBe(true);
+    expect(key({ key: "f", ctrlKey: true }, island).defaultPrevented).toBe(true);
+    expect(key({ key: "k", ctrlKey: true }, island).defaultPrevented).toBe(false);
+    expect(back).not.toHaveBeenCalled();
+    off();
+  });
+
+  it("stops handling the claimable keys once uninstalled", () => {
+    uninstall();
+    expect(key({ key: "f", ctrlKey: true }).defaultPrevented).toBe(false);
+    expect(key({ key: "ArrowLeft", altKey: true }).defaultPrevented).toBe(false);
+    uninstall = installBrowserGuards();
   });
 
   it("refuses a drop nothing accepted, and leaves drop targets and dropzones alone", () => {

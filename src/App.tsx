@@ -16,7 +16,6 @@ import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/U
 import { CommandBar, CommandBarButton, CommandBarSeparator, InfoBadge, InfoBar, TextField } from "./components/ui";
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
-import { useGuardedShortcut } from "./lib/shellKeys";
 import { useRunningExportName } from "./lib/exportJob";
 import { reportGenerationJobs, revealInExplorer, type GuardJob } from "./lib/nativeShell";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
@@ -292,8 +291,8 @@ function App() {
   useShortcut("Ctrl+,", () => openSettings(), { enabled: !settingsOpen, allowInInput: true });
   useShortcut("Ctrl+N", () => { if (!busy) void chooseCreationFolder(); }, { enabled: inLibrary, allowInInput: true });
   useShortcut("Ctrl+O", () => { if (!busy) void openFromFolder(); }, { enabled: inLibrary, allowInInput: true });
-  useGuardedShortcut("Ctrl+F", () => { searchInput.current?.focus(); searchInput.current?.select(); }, { enabled: inLibrary, allowInInput: true });
-  useGuardedShortcut("Alt+ArrowLeft", closeSettings, { enabled: settingsOpen });
+  useShortcut("Ctrl+F", () => { searchInput.current?.focus(); searchInput.current?.select(); }, { enabled: inLibrary, allowInInput: true });
+  useShortcut("Alt+ArrowLeft", closeSettings, { enabled: settingsOpen });
 
   const queueFlyout = <WorkQueuePanel queue={workQueue} items={workItems} open={workQueueOpen} anchor={settingsOpen ? settingsQueueButton : queueButton} onClose={() => setWorkQueueOpen(false)} />;
   const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen

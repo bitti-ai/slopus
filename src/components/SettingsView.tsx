@@ -603,7 +603,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
     <>
     <main aria-hidden={editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-label="Settings" onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
       // The mounted editor must not receive shortcuts while Settings has focus.
-      event.stopPropagation();
+      // Alt+Left is Settings' own Back (App binds it while Settings is open),
+      // so that one press is let through to the dispatcher.
+      if (!(event.altKey && event.key === "ArrowLeft")) event.stopPropagation();
       if (event.key !== "Escape" || event.defaultPrevented) return;
       back();
     }}>

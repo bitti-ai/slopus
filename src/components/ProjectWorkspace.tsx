@@ -6,7 +6,6 @@ import { CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type Slop
 import { purgeTimelineThumbnails } from "../lib/timelineThumbnails";
 import { WorkQueue, projectQueueKey } from "../lib/workQueue";
 import { useShortcut } from "../lib/commands";
-import { useGuardedShortcut } from "../lib/shellKeys";
 import { AgentDock } from "./workspace/AgentDock";
 import { ExportView } from "./workspace/ExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -175,7 +174,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   }, { enabled: idle, allowInInput: true });
   useShortcut("Ctrl+E", () => { if (imageProject) { if (!imageExportDisabled) void exportImage(); } else setView("export"); }, { enabled: idle, allowInInput: true });
   useShortcut("Ctrl+Shift+A", toggleAgent, { enabled: idle, allowInInput: true });
-  useGuardedShortcut("Alt+ArrowLeft", goBack, { enabled: idle });
+  useShortcut("Alt+ArrowLeft", goBack, { enabled: idle });
 
   const viewIcon = (id: ShownView) => id === "timeline" ? <Film size={16} /> : id === "generator" ? <Sparkles size={16} /> : id === "references" ? <BookOpen size={16} /> : id === "export" ? <Download size={16} /> : <Image size={16} />;
   const shortcutOf = (index: number) => `Ctrl+${index + 1}`;

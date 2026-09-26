@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
 import { chooseOption, comboValue, optionNames } from "./components/workspace/comboTestUtils";
+import { installBrowserGuards } from "./lib/nativeShell";
 import { createProjectConfig, STORY_TRACK_ID } from "./lib/project";
 
 describe("how long ago a project was edited", () => {
@@ -124,6 +125,29 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "More options for Northern Light — Brand Film" }));
     const menu = await screen.findByRole("menu");
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Open", "Delete project…"]);
+  });
+
+  it("answers Ctrl+F and Alt+Left through the browser guard, which only blocks what the app left alone", async () => {
+    const uninstall = installBrowserGuards();
+    try {
+      render(<App />);
+      await screen.findByText("Northern Light — Brand Film");
+      const search = screen.getByRole("searchbox", { name: "Search projects" });
+      const find = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
+      act(() => { document.body.dispatchEvent(find); });
+      expect(document.activeElement).toBe(search);
+      expect(find.defaultPrevented).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+      const settings = screen.getByRole("main", { name: "Settings" });
+      const back = new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, bubbles: true, cancelable: true });
+      act(() => { settings.dispatchEvent(back); });
+      expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
+      expect(back.defaultPrevented).toBe(true);
+      // Nothing claims Alt+Left in the library: still no browser Back.
+      const idle = new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(idle);
+      expect(idle.defaultPrevented).toBe(true);
+    } finally { uninstall(); }
   });
 
   it("opens the tile menu with a right-click and moves the selection with the arrow keys", async () => {

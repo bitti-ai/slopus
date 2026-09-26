@@ -19,7 +19,8 @@
       scoped INSIDE that dialog, or that pass `allowInModal`, can fire.
    4. Of the handlers that remain, the one whose `scope` element is the
       innermost ancestor of the focused element wins; unscoped handlers are
-      the outermost. Ties go to the most recently registered handler.
+      the outermost, and `fallback` handlers come after all of them. Ties go
+      to the most recently registered handler.
    5. A handler may return `false` to decline, and the next candidate runs.
 
    Combos are written the way Windows displays them: "Ctrl+Shift+Z", "F2",
@@ -194,6 +195,10 @@ export interface ShortcutOptions {
   preventDefault?: boolean;
   /** Fire even while a modal dialog is open (unscoped handlers are otherwise muted). */
   allowInModal?: boolean;
+  /** Last resort: runs only when no other handler took the key. The browser
+   *  guard (nativeShell.ts) uses it to cancel Ctrl+F / Alt+Left's browser
+   *  action without keeping them from app shortcuts. */
+  fallback?: boolean;
 }
 
 /** Return `false` to decline; the next matching handler then runs. */
@@ -241,7 +246,7 @@ function dispatch(event: KeyboardEvent) {
     if (scope === null) continue;                       // a scoped handler whose element is gone
     if (scope && !scope.contains(target)) continue;
     if (modal && !options.allowInModal && !(scope && modal.contains(scope))) continue;
-    candidates.push({ registration, rank: scope ? depth(scope) : 0 });
+    candidates.push({ registration, rank: options.fallback ? -1 : scope ? depth(scope) : 0 });
   }
   candidates.sort((a, b) => b.rank - a.rank || b.registration.order - a.registration.order);
   for (const { registration } of candidates) {
