@@ -116,8 +116,19 @@ interface DragSession {
   grabOffsetMs: number;
   startXPx: number;
   snap: SnapOptions;
+  /** The same targets as a set, to tell whether an edge landed on one. */
+  snapSet: ReadonlySet<number>;
+  /** Where the playhead was, so a snap to it can be named. */
+  playheadMs: number;
   room: SourceRoom;
   moved: boolean;
+}
+
+/** An edge of the dragged clip sitting on a snap target, drawn as a dashed
+ *  line through the lanes with what it snapped to. */
+interface SnapMark {
+  ms: number;
+  label: string;
 }
 
 /** Which lane the pointer is over, for a drag that has left the lane it started
@@ -265,6 +276,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const dragRef = useRef<DragSession | null>(null);
   const previewRef = useRef<TimelineTrack[] | null>(null);
   const [preview, setPreview] = useState<TimelineTrack[] | null>(null);
+  const [snapMark, setSnapMark] = useState<SnapMark | null>(null);
   const [dragging, setDragging] = useState(false);
   /* Whether the pointer is dragging the playhead (on the ruler or by its
      head). A press alone moves it once; this is what makes the moves keep
@@ -908,6 +920,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     if (!rect || rect.width <= 0) { setSelectedId(clip.id); return; }
     dropSelection();
     const msPerPx = duration / rect.width;
+    const snap = snapFor(rect.width, clip.id);
     dragRef.current = {
       clipId: clip.id,
       mode,
@@ -919,7 +932,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       /* Every lane in the grid shares one column, so a lane's left edge and
          width are the whole timeline's — which is why a drag that crosses into
          another lane can keep using the geometry it measured on this one. */
-      snap: snapFor(rect.width, clip.id),
+      snap,
+      snapSet: new Set(snap.toleranceMs > 0 ? snap.targets : []),
+      playheadMs: Math.round(playhead),
       room: roomFor(clip),
       moved: false,
     };
@@ -932,12 +947,29 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     dragRef.current = null;
     previewRef.current = null;
     setPreview(null);
+    setSnapMark(null);
     setDragging(false);
   };
 
   useEffect(() => {
     if (!dragging) return;
-    const show = (next: TimelineTrack[] | null) => { previewRef.current = next; setPreview(next); };
+    /* The preview, and whether the edge being placed landed on a snap target.
+       Both are set in the same handler, so it is still one render per move. */
+    const show = (next: TimelineTrack[] | null) => {
+      previewRef.current = next;
+      setPreview(next);
+      const session = dragRef.current;
+      const placed = next && session ? findClip(next, session.clipId)?.clip : undefined;
+      if (!session || !placed || session.snapSet.size === 0) { setSnapMark(null); return; }
+      const edges = session.mode === "trim-start" ? [placed.startMs]
+        : session.mode === "trim-end" ? [clipEndMs(placed)]
+          : [placed.startMs, clipEndMs(placed)];
+      const ms = edges.find((edge) => session.snapSet.has(edge));
+      setSnapMark(ms === undefined ? null : {
+        ms,
+        label: ms === 0 ? "timeline start" : ms === session.playheadMs ? "playhead" : "clip edge",
+      });
+    };
     const onMove = (event: PointerEvent) => {
       const session = dragRef.current;
       if (!session) return;
@@ -1104,6 +1136,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const onRulerMenu = useCallback((event: React.MouseEvent<HTMLElement>) => rulerHandlers.current.rulerMenu(event), []);
 
   const playheadRatio = Math.max(0, Math.min(1, playhead / duration));
+  const playheadTimecode = formatTimecode(playhead, fps);
+  const framesAt = playheadTimecode.lastIndexOf(":");
   const panelsClass = `edit-panels${sourcesOpen ? "" : " edit-panels--no-sources"}${inspectorOpen ? "" : " edit-panels--no-inspector"}`;
 
   return (
@@ -1416,7 +1450,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 aria-label={`Playhead ${formatTimecode(playhead, fps)}. Select to type a time.`}
                 {...tooltipProps("Go to time")}
                 onClick={() => setTimecodeDraft(formatTimecode(playhead, fps))}
-              >{formatTimecode(playhead, fps)}</button>
+              >{/* Frames a step dimmer than the time they count within. */}
+                {playheadTimecode.slice(0, framesAt)}<span className="transport-time__frames">{playheadTimecode.slice(framesAt)}</span>
+              </button>
               : <input
                 className="text-field transport-time transport-time--editing"
                 aria-label="Go to time"
@@ -1451,8 +1487,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             <Slider className="timeline-zoom" aria-label="Timeline zoom" min={0} max={100} step={1} value={zoomSliderValue} disabled={!lanePx} onChange={zoomFromSlider} />
             <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond * ZOOM_STEP)} disabled={!lanePx || pxPerSecond >= maxPps - 1e-6} aria-label="Zoom in" {...tooltipProps("Zoom in", "=")}><ZoomIn size={16} /></button>
             <span className="timeline-tools__separator" aria-hidden="true" />
-            <button className={`timeline-tools__icon${sourcesOpen ? " active" : ""}`} onClick={toggleSources} aria-pressed={sourcesOpen} aria-label="Media panel" {...tooltipProps(sourcesOpen ? "Hide media panel" : "Show media panel")}><PanelLeft size={16} /></button>
-            <button className={`timeline-tools__icon${inspectorOpen ? " active" : ""}`} onClick={toggleInspector} aria-pressed={inspectorOpen} aria-label="Inspector" {...tooltipProps(inspectorOpen ? "Hide inspector" : "Show inspector")}><PanelRight size={16} /></button>
+            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleSources} aria-pressed={sourcesOpen} aria-label="Media panel" {...tooltipProps(sourcesOpen ? "Hide media panel" : "Show media panel")}><PanelLeft size={16} /></button>
+            <button className="timeline-tools__icon ui-toggle-button" onClick={toggleInspector} aria-pressed={inspectorOpen} aria-label="Inspector" {...tooltipProps(inspectorOpen ? "Hide inspector" : "Show inspector")}><PanelRight size={16} /></button>
           </div>
         </header>
         <div className="timeline-body">
@@ -1498,10 +1534,27 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   || (draggedScene !== undefined && !acceptsScene(track, draggedScene))}
                 actions={actions}
               />)}
+              {/* The in/out range, carried down through the lanes from the
+                  ruler so what it covers can be read against the clips. */}
+              {(inMs !== null || outMs !== null) && <div
+                className="timeline-range"
+                aria-hidden="true"
+                style={{
+                  left: `calc(var(--track-column) + (100% - var(--track-column)) * ${(inMs ?? 0) / duration})`,
+                  width: `calc((100% - var(--track-column)) * ${((outMs ?? duration) - (inMs ?? 0)) / duration})`,
+                }}
+              />}
+              {snapMark && <div
+                className="timeline-snap"
+                aria-hidden="true"
+                style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${snapMark.ms / duration})` }}
+              ><span>snap · {snapMark.label}</span></div>}
               {/* The playhead: a pentagon head in the ruler that can be dragged,
-                  and a line through every track. */}
+                  and a line through every track. While it is being dragged it
+                  carries a flag with the time it is at. */}
               <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playheadRatio})` }}>
                 <span className="timeline-playhead__head" onPointerDown={beginScrub} aria-hidden="true" />
+                {scrubbing && <span className="timeline-playhead__flag" aria-hidden="true">{formatTimecode(playhead, fps)}</span>}
               </div>
             </div>
           </div>
@@ -1596,10 +1649,11 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
   actions: MutableRefObject<TrackActions>;
 }) {
   const named = track.name;
-  const kind = track.kind === "audio" ? "audio" : "video";
+  /* A caption track is its own kind (and height), not a video track. */
+  const kind = trackKindOf(track);
   return <>
     <div className={`track-head track-head--${kind}`} onContextMenu={(event) => actions.current.laneMenu(event, track)}>
-      <b className="track-label">{label}</b>
+      <b className="track-label" style={{ "--track-kind": CLIP_KINDS[kind].color } as React.CSSProperties}>{label}</b>
       {/* The name is an editable field, not a label: a project with three video
           layers needs the user's own words on them, and an always-live input
           needs no discovery. Blanking it falls back the way a clip name does,
@@ -1615,7 +1669,7 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
       <button className={track.locked ? "active" : ""} onClick={() => actions.current.toggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} aria-pressed={track.locked} {...tooltipProps(track.locked ? "Unlock" : "Lock")}>{track.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
     </div>
     <div
-      className={`track-lane track-lane--${kind}${alt ? " track-lane--alt" : ""} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
+      className={`track-lane track-lane--${kind}${alt ? " track-lane--alt" : ""}${track.locked ? " track-lane--locked" : ""} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
       /* Which track this lane IS, readable from the DOM: a clip dragged across
          lanes is hit-tested against the document, and the id is how the answer
          gets back to the model. */
@@ -1640,26 +1694,40 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
           && !generation.error?.startsWith("Saved without sound"),
         );
         const isSelected = selectedId === clip.id;
+        const clipKind = clipKindOf(asset, track);
+        const effects = clipEffectCount(clip);
+        /* The colour is the clip's own when it has one, and otherwise its
+           kind's (--clip-kind, from the class) — never a blanket video blue. */
         return <div
           key={clip.id}
           className={`clip-slot ${isSelected ? "selected" : ""} ${draggingId === clip.id ? "clip-slot--dragging" : ""}`}
-          style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties}
+          style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color || undefined } as React.CSSProperties}
         >
           {/* The clip is a div with a button's role rather than a <button>: it
               carries two trim handles of its own, and a button inside a button
               is not a thing a browser or a screen reader can make sense of. */}
           <div
-            className={`timeline-clip ${audioOnly ? "timeline-clip--audio-only" : ""} ${hasAudio ? "timeline-clip--has-audio" : ""} ${isSelected ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
+            className={`timeline-clip timeline-clip--${clipKind} ${audioOnly ? "timeline-clip--audio-only" : ""} ${hasAudio ? "timeline-clip--has-audio" : ""} ${isSelected ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
             role="button"
             tabIndex={0}
             aria-pressed={isSelected}
-            aria-label={`${clip.label}, ${(clip.durationMs / 1000).toFixed(1)} seconds, on ${track.name}`}
+            aria-label={`${clip.label}, ${(clip.durationMs / 1000).toFixed(1)} seconds, on ${track.name}${effects.total === 0 ? "" : effects.on === 0 ? `, ${effects.total} effects all off` : `, ${effects.total} effects`}`}
             onClick={() => actions.current.select(clip.id)}
             onKeyDown={(event) => { if (event.key === "Enter") actions.current.select(clip.id); }}
             onPointerDown={(event) => actions.current.clipPointerDown(event, clip, "move")}
             onContextMenu={(event) => actions.current.clipMenu(event, clip)}
           >
-            <b className="timeline-clip__title">{clip.label}</b>
+            {/* The title strip: the kind's glyph, the name, and an fx badge
+                counting the clip's effects (struck through when every one of
+                them is bypassed). */}
+            <span className="timeline-clip__strip">
+              {CLIP_KINDS[clipKind].glyph}
+              <b className="timeline-clip__title">{clip.label}</b>
+              {effects.total > 0 && <span
+                className={`timeline-clip__fx${effects.on === 0 ? " timeline-clip__fx--off" : ""}`}
+                aria-hidden="true"
+              >fx {effects.total}</span>}
+            </span>
             {!audioOnly && generation && <TimelineClipThumbnails
               folderPath={folderPath}
               job={generation}

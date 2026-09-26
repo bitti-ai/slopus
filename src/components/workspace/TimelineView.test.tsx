@@ -346,6 +346,39 @@ describe("waveforms and thumbnails on clips", () => {
     expect(wrote(onChange.mock.calls[0][0], config).timeline.tracks[0].muted).toBe(true);
   });
 
+  it("colours clips by kind, with a glyph, an fx badge, and their own colour when they have one", () => {
+    const config = withClips(projectWithMedia(), [
+      { assetId: "asset-macro", sharpen: { amount: 50 } },
+      { assetId: "asset-room", startMs: 5_000, color: "#123456", blur: { radius: 4, enabled: false } },
+    ]);
+    const { container } = render_(config);
+    const [video, audio] = Array.from(container.querySelectorAll(".timeline-clip"));
+    expect(video.classList.contains("timeline-clip--video")).toBe(true);
+    expect(audio.classList.contains("timeline-clip--audio")).toBe(true);
+    // A clip with no colour of its own takes its kind's rather than a blanket blue.
+    expect((video.parentElement as HTMLElement).style.getPropertyValue("--clip-color")).toBe("");
+    expect((audio.parentElement as HTMLElement).style.getPropertyValue("--clip-color")).toBe("#123456");
+    expect(video.querySelector(".timeline-clip__strip svg")).not.toBeNull();
+    expect(video.querySelector(".timeline-clip__fx")!.textContent).toBe("fx 1");
+    expect(video.querySelector(".timeline-clip__fx--off")).toBeNull();
+    expect(audio.querySelector(".timeline-clip__fx--off")).not.toBeNull();
+    expect(audio.getAttribute("aria-label")).toContain("1 effects all off");
+  });
+
+  it("gives caption tracks their own kind and hatches locked lanes", () => {
+    const base = projectWithMedia();
+    const config: ProjectConfig = { ...base, timeline: { tracks: [
+      { ...base.timeline.tracks[0], locked: true },
+      { id: "track-c1", kind: "caption", name: "Captions", locked: false, muted: false, clips: [] },
+    ] } };
+    const { container } = render_(config);
+    expect(Array.from(container.querySelectorAll(".track-label")).map((label) => label.textContent)).toEqual(["V1", "C1"]);
+    expect(container.querySelector(".track-head--caption")).not.toBeNull();
+    expect(container.querySelector(".track-lane--caption")).not.toBeNull();
+    expect(container.querySelector(".track-lane--video")!.classList.contains("track-lane--locked")).toBe(true);
+    expect((container.querySelector(".track-label") as HTMLElement).style.getPropertyValue("--track-kind")).toBe("var(--clip-video)");
+  });
+
   it("labels tracks V1, V2… with 20px toggles beside an editable name", () => {
     const { container } = render_(projectWithMedia());
     expect(Array.from(container.querySelectorAll(".track-label")).map((label) => label.textContent)).toEqual(["V1", "V2", "V3"]);
@@ -501,6 +534,24 @@ describe("dragging clips on the timeline", () => {
     const view = timeline(withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 4_000 }, { startMs: 12_000, durationMs: 4_000 }]));
     drag(view.container.querySelectorAll(".timeline-clip")[1], 400, 33);
     expect(view.clipsOn(STORY_TRACK_ID).map((clip) => [clip.startMs, clip.durationMs])).toEqual([[0, 4_000], [4_000, 4_000]]);
+  });
+
+  it("draws a snap line while an edge sits on a target, and clears it on release", () => {
+    const view = timeline(withClips(measuredVideo(projectWithMedia(), 40_000), [{ startMs: 0, durationMs: 4_000 }, { startMs: 12_000, durationMs: 4_000 }]));
+    fireEvent(view.container.querySelectorAll(".timeline-clip")[1], pointerEvent("pointerdown", 400));
+    fireEvent(window, pointerEvent("pointermove", 135));
+    expect(view.container.querySelector(".timeline-snap")!.textContent).toBe("snap · clip edge");
+    fireEvent(window, pointerEvent("pointerup", 135));
+    expect(view.container.querySelector(".timeline-snap")).toBeNull();
+  });
+
+  it("flags the playhead with its time while it is being scrubbed", () => {
+    const { container } = render_(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+    expect(container.querySelector(".timeline-playhead__flag")).toBeNull();
+    fireEvent(container.querySelector(".timeline-playhead__head")!, pointerEvent("pointerdown", 0));
+    expect(container.querySelector(".timeline-playhead__flag")!.textContent).toBe("00:00:00:00");
+    fireEvent(window, pointerEvent("pointerup", 0));
+    expect(container.querySelector(".timeline-playhead__flag")).toBeNull();
   });
 
   it("trims both ends, and never past the footage", () => {
@@ -687,6 +738,7 @@ describe("the transport and the playhead", () => {
     expect(range.style.left).toBe(`${(1000 / 40_000) * 100}%`);
     expect(range.style.width).toBe(`${(2000 / 40_000) * 100}%`);
     expect(screen.getByLabelText("In to out").textContent).toBe("00:00:02:00");
+    expect(container.querySelector(".timeline-range")).not.toBeNull();
     fireEvent.contextMenu(container.querySelector(".time-ruler")!);
     fireEvent.click(screen.getByRole("menuitem", { name: /Clear in and out/ }));
     expect(container.querySelector(".time-ruler__range")).toBeNull();

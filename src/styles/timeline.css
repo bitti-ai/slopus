@@ -23,6 +23,7 @@
   --ruler-height: 28px;
   --track-video-height: 56px;
   --track-audio-height: 40px;
+  --track-caption-height: 32px;
 
   height: 100%;
   min-height: 0;
@@ -1029,28 +1030,35 @@
   line-height: var(--leading-snug);
 }
 
-/* The playhead clock: tabular figures so the row does not twitch under
-   playback. Click it to type a time; Enter seeks. */
+/* The playhead clock, the anchor of the row: mono at 18px so it does not
+   twitch under playback, the frames a step dimmer. Click it to type a time;
+   Enter seeks. */
 .transport-time {
   flex: none;
-  height: 28px;
-  padding: 0 var(--space-2);
+  height: var(--control-sm);
+  padding: 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   background: transparent;
-  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
   white-space: nowrap;
   transition: var(--transition-control);
 }
 
+.transport-time__frames { color: var(--text-muted); }
+
 button.transport-time:hover { background: var(--fill-subtle-hover); }
 
 .transport-time--editing.text-field {
-  width: 112px;
+  width: 148px;
   min-height: 0;
   height: var(--control-sm);
+  font-size: var(--text-sm);
 }
 
 .transport-format {
@@ -1061,9 +1069,9 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 }
 
 /* --- Transport -------------------------------------------------------------
-   Go to start · Frame back · Play/Pause · Frame forward · Go to end. Flat 28px
-   squares with 4px corners and a fill-only hover; Play carries no accent — it
-   is one control of five. */
+   Go to start · Frame back · Play/Pause · Frame forward · Go to end. Flat 24px
+   (--control-sm) squares with 4px corners and a fill-only hover; Play carries
+   no accent — it is one control of five. */
 
 .timeline-transport {
   display: flex;
@@ -1073,8 +1081,8 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 }
 
 .timeline-transport button {
-  width: 28px;
-  height: 28px;
+  width: var(--control-sm);
+  height: var(--control-sm);
   flex: 0 0 auto;
   display: grid;
   place-items: center;
@@ -1110,8 +1118,8 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 }
 
 .timeline-tools button {
-  height: 28px;
-  min-width: 28px;
+  height: var(--control-sm);
+  min-width: var(--control-sm);
   flex: none;
   display: flex;
   align-items: center;
@@ -1127,10 +1135,11 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   transition: var(--transition-control);
 }
 
+/* The pane toggles are .ui-toggle-button: their on state is the shared
+   accent tint, so nothing here restates it. */
 .timeline-tools button.timeline-tools__icon { padding: 0; }
 .timeline-tools button:hover:not(:disabled) { background: var(--fill-subtle-hover); }
-.timeline-tools button:active:not(:disabled),
-.timeline-tools button.active { background: var(--fill-subtle-pressed); }
+.timeline-tools button:active:not(:disabled) { background: var(--fill-subtle-pressed); }
 .timeline-tools button:disabled { color: var(--text-disabled); }
 
 .timeline-tools__separator {
@@ -1154,7 +1163,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   .timeline-toolbar h2,
   .transport-format { display: none; }
   .timeline-tools button:not(.timeline-tools__icon) {
-    width: 28px;
+    width: var(--control-sm);
     gap: 0;
     padding: 0;
     font-size: 0;
@@ -1231,9 +1240,10 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   position: absolute;
   top: 0;
   height: 100%;
-  padding: 3px 0 0 var(--space-1);
+  padding: 5px 0 0 var(--space-1);
   border-left: 1px solid var(--text-muted);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1273,12 +1283,27 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   height: var(--track-audio-height);
 }
 
-/* "V1", "A1": the track's kind and number, the way every NLE labels a track. */
+.track-head--caption,
+.track-lane--caption {
+  height: var(--track-caption-height);
+}
+
+/* "V1", "A1", "C1": the track's kind and number, the way every NLE labels a
+   track — a chip filled in the kind's colour (--track-kind, set inline). */
 .track-label {
-  min-width: 20px;
-  color: var(--text-primary);
+  --track-kind: var(--clip-video);
+  min-width: 26px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--on-accent);
+  background: var(--track-kind);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
+  line-height: 1;
 }
 
 /* An editable field that reads as a label until it is used — a border around
@@ -1291,10 +1316,11 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: none;
   font-family: inherit;
   font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1363,10 +1389,27 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   opacity: 0.45;
 }
 
+/* A locked track: hatched over its clips, and the clips themselves drained
+   of most of their colour, so "nothing here moves" reads at a glance. */
+.track-lane--locked::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-primary) 9%, transparent) 0 6px, transparent 6px 12px);
+  pointer-events: none;
+}
+
+.track-lane--locked .timeline-clip {
+  filter: saturate(0.45);
+}
+
 /* --- Clips -----------------------------------------------------------------
-   Flat: the clip colour mixed into the panel, a 1px darker border, 4px
-   corners, and an 18px title strip carrying the clip's name. Selected is a
-   crisp inner outline. No gradients, sheen, stripes or brightness filters. */
+   Flat: an 18px title strip in the clip's solid colour with white ink (the
+   kind's glyph, the name, an fx badge), over a body of that colour mixed 62%
+   into the well. The colour is the clip's own (--clip-color, inline) and
+   otherwise its kind's (--clip-kind, from the class). Hover changes the fill
+   only; selected is a 2px accent ring with the trim handles drawn in. */
 
 /* The clip and the two trim handles that ride on it share one box, positioned
    on the ruler. They are siblings rather than children of the clip because the
@@ -1385,42 +1428,76 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .clip-slot--dragging { z-index: 5; }
 
 .timeline-clip {
+  --clip-kind: var(--clip-video);
+  --clip-fill: var(--clip-color, var(--clip-kind));
   position: absolute;
   inset: 0;
   overflow: hidden;
   padding: 0;
   cursor: grab;
-  border: 1px solid color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 40%, var(--stage-bg));
+  border: 1px solid color-mix(in srgb, var(--clip-fill) 75%, var(--stage-bg));
   border-radius: var(--radius-sm);
   text-align: left;
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--clip-color, var(--clip-video-default)) 55%, var(--panel));
+  background: color-mix(in srgb, var(--clip-fill) 62%, var(--surface-well));
+  transition: background-color var(--motion-fast) linear;
 }
 
-.timeline-clip--audio-only {
-  border-color: color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 40%, var(--stage-bg));
-  background: color-mix(in srgb, var(--clip-color, var(--clip-audio-default)) 55%, var(--panel));
+.timeline-clip--generated { --clip-kind: var(--clip-generated); }
+.timeline-clip--image { --clip-kind: var(--clip-image); }
+.timeline-clip--audio { --clip-kind: var(--clip-audio); }
+.timeline-clip--caption { --clip-kind: var(--clip-caption); }
+
+.timeline-clip:hover {
+  background: color-mix(in srgb, var(--clip-fill) 74%, var(--surface-well));
 }
 
 .timeline-clip.selected {
-  box-shadow: inset 0 0 0 1px var(--text-primary);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
-.timeline-clip__title {
+.timeline-clip__strip {
   position: relative;
   z-index: 3;
-  display: block;
   height: 18px;
-  padding: 0 var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1) 0 var(--space-2);
   overflow: hidden;
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--stage-bg) 22%, transparent);
+  color: var(--on-accent);
+  background: var(--clip-fill);
+  pointer-events: none;
+}
+
+.timeline-clip__strip > svg { flex: none; }
+
+.timeline-clip__title {
+  min-width: 0;
+  overflow: hidden;
   font-size: var(--text-xs);
-  font-weight: var(--weight-regular);
+  font-weight: var(--weight-medium);
   line-height: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  pointer-events: none;
+}
+
+/* "fx 2": how many effects the clip carries. Struck through when every one
+   of them is bypassed. */
+.timeline-clip__fx {
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--space-1);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--stage-bg) 28%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 14px;
+}
+
+.timeline-clip__fx--off {
+  text-decoration: line-through;
+  opacity: 0.75;
 }
 
 .timeline-clip__thumbnails {
@@ -1428,6 +1505,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   z-index: 0;
   inset: 18px 0 0;
   overflow: hidden;
+  opacity: 0.7;
   pointer-events: none;
 }
 
@@ -1454,7 +1532,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   padding: 1px var(--space-1);
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--stage-bg) 30%, transparent);
-  background: color-mix(in srgb, var(--panel) 34%, transparent);
+  background: color-mix(in srgb, var(--surface-well) 34%, transparent);
   transition: opacity var(--motion-fast) linear;
   pointer-events: none;
 }
@@ -1475,7 +1553,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 
 .clip-audio-visualization__samples {
   fill: none;
-  stroke: color-mix(in srgb, var(--text-primary) 82%, var(--clip-color, var(--audio)));
+  stroke: color-mix(in srgb, var(--on-accent) 70%, var(--clip-fill, var(--clip-audio)));
   stroke-width: 1px;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
@@ -1512,6 +1590,13 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .clip-handle--start:hover { box-shadow: inset 2px 0 0 var(--text-primary); }
 .clip-handle--end:hover { box-shadow: inset -2px 0 0 var(--text-primary); }
 
+/* A selected clip shows its handles: accent bars on both ends, inside the
+   ring, wider under the pointer. */
+.clip-slot.selected .clip-handle--start { box-shadow: inset 4px 0 0 var(--accent); }
+.clip-slot.selected .clip-handle--end { box-shadow: inset -4px 0 0 var(--accent); }
+.clip-slot.selected .clip-handle--start:hover { box-shadow: inset 6px 0 0 var(--accent-bright); }
+.clip-slot.selected .clip-handle--end:hover { box-shadow: inset -6px 0 0 var(--accent-bright); }
+
 /* Selection is off everywhere outside a text field (see base.css), so a drag
    only has to say what it IS. */
 .timeline-view--dragging,
@@ -1532,6 +1617,59 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   margin-left: -0.5px;
   background: var(--danger);
   pointer-events: none;
+}
+
+/* While scrubbing, the time the playhead is at rides beside its head. */
+.timeline-playhead__flag {
+  position: absolute;
+  top: 1px;
+  left: 8px;
+  padding: 0 var(--space-1);
+  border-radius: 2px;
+  color: var(--on-accent);
+  background: var(--danger);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* --- Edit feedback ------------------------------------------------------------
+   The in/out range carried down through the lanes, and the dashed snap line
+   with what it snapped to while a clip edge is sitting on a target. */
+
+.timeline-range {
+  position: absolute;
+  z-index: 7;
+  top: var(--ruler-height);
+  bottom: 0;
+  border-left: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  background: var(--accent-soft);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.timeline-snap {
+  position: absolute;
+  z-index: 9;
+  top: var(--ruler-height);
+  bottom: 0;
+  border-left: 1px dashed var(--snap);
+  pointer-events: none;
+}
+
+.timeline-snap span {
+  position: absolute;
+  bottom: var(--space-1);
+  left: var(--space-1);
+  color: var(--snap);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .timeline-playhead__head {
