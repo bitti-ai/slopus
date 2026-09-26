@@ -78,22 +78,39 @@
 }
 
 /* --- Sources toolbar ---------------------------------------------------------
-   One PaneHeader for both views: Scenes / Media as a compact segmented
-   control, Import and (on Media) the grid/list toggle on the trailing edge. */
+   One PaneHeader for both views: Scenes / Media as a segmented control,
+   Import and (on Media) the grid/list toggle on the trailing edge. It is the
+   page's top bar, so it has the Generator and References command bars'
+   height (--command-row) and their 32px, 14px controls. */
+
+.scene-panel__toolbar {
+  height: var(--command-row);
+}
+
+.scene-panel__toolbar .ui-selector-bar--compact {
+  height: var(--control-md);
+}
+
+.scene-panel__toolbar .ui-selector-bar--compact .ui-selector-bar__item {
+  padding: 0 var(--space-3);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
 
 .scene-panel__import {
-  height: var(--control-sm);
+  height: var(--control-md);
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   background: transparent;
-  font-size: var(--text-xs);
-  line-height: var(--leading-snug);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   transition: var(--transition-control);
 }
 
@@ -109,8 +126,8 @@
 /* Icon-only, so each button carries its name in an .sr-only span. The on
    state is the shared accent tint (.ui-toggle-button[aria-pressed]). */
 .scene-panel__toggle {
-  width: var(--control-sm);
-  height: var(--control-sm);
+  width: var(--control-md);
+  height: var(--control-md);
   display: grid;
   place-items: center;
   padding: 0;

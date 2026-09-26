@@ -139,7 +139,8 @@
      The fixed heights a pane is assembled from. A pane is headed by the
      selected item (--item-header) or by its toolbar (--chrome-row), never by
      a title bar; sections inside it start with a --section-row header. */
-  --chrome-row: 36px;                  /* pane toolbars, command bars */
+  --chrome-row: 36px;                  /* pane toolbars */
+  --command-row: 40px;                 /* a page's top bar: CommandBar, the Timeline sources toolbar */
   --chrome-row-sm: 24px;               /* pane footers, the status bar */
   --item-header: 48px;                 /* the selected-item header */
   --section-row: 28px;                 /* PropSection header, property rows */

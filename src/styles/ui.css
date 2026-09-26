@@ -1432,7 +1432,7 @@
    ========================================================================== */
 
 .ui-command-bar {
-  min-height: var(--space-7);
+  min-height: var(--command-row);
   display: flex;
   align-items: center;
   gap: var(--space-1);

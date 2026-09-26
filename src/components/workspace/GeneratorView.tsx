@@ -520,6 +520,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             beside the name; the words for a state that needs attention are
             in the tooltip and the status bar. */}
         <span className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}>
+          {/* The combo carries its own full name for assistive tech. */}
+          <span className="generator-runtime__label" aria-hidden="true">Generator:</span>
           <i role="img" aria-label={runtimeLabel} data-tooltip={runtimeError ?? generatorRuntime?.detail ?? runtimeLabel} />
           <ComboBox
             className="generator-template"
