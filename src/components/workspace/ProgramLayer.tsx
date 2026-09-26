@@ -20,12 +20,14 @@ export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
 }
 
 /** Prepared clips keep their decoder and effect renderer when made visible. */
-export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active, foreground, muted, externalSeek, depth, media, composited }: {
+export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate = 1, active, foreground, muted, externalSeek, depth, media, composited }: {
   clip: TimelineClip;
   asset: ProjectAsset | undefined;
   sources: PreviewSources;
   playheadMs: number;
   playing: boolean;
+  /** Forward playback speed (J/K/L shuttle). */
+  rate?: number;
   active: boolean;
   foreground: boolean;
   muted: boolean;
@@ -82,9 +84,10 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, active
     // Explicit jumps still seek precisely, including during playback.
     const tolerance = run && !state.externalSeek ? 0.25 : 0.033;
     if (!element.seeking && Math.abs(element.currentTime - target) > tolerance) element.currentTime = target;
+    if (run && element.playbackRate !== rate) element.playbackRate = rate;
     if (run && element.paused) void element.play().catch(() => undefined);
   };
-  useLayoutEffect(sync, [playheadMs, playing, active, externalSeek, clip, url]);
+  useLayoutEffect(sync, [playheadMs, playing, rate, active, externalSeek, clip, url]);
   const loaded = () => {
     sync();
     if (video.current) setReady(video.current.readyState >= 2 && !video.current.seeking);

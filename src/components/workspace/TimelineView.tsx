@@ -1,11 +1,11 @@
 import { ClipEffects } from "./ClipEffects";
 import {
-  Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen,
-  Pause, Play, Plus, Scissors, SkipBack, SkipForward, Trash2, Upload,
-  Volume2, VolumeX, X,
+  ChevronFirst, ChevronLast, Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen,
+  PanelLeft, PanelRight, Pause, Play, Plus, Scissors, StepBack, StepForward, Trash2, Upload,
+  Volume2, VolumeX, ZoomIn, ZoomOut,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { resolutionLabel } from "../../lib/export";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { outputDimensions, resolutionLabel } from "../../lib/export";
 import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import {
@@ -20,9 +20,15 @@ import {
   type TimelineTrack,
 } from "../../lib/project";
 import {
-  clipEndMs, findClip, insertClip, moveClip, removeClip, snapTargets, sourceRoom, trimClip, withTimelineTracks,
+  adjacentCut, clipEndMs, findClip, formatTimecode, frameAt, frameStartMs, insertClip, moveClip, parseTimecode, pasteClip,
+  removeClip, rulerLabel, rulerScale, scrollAfterZoom, snapTargets, sourceRoom, trimClip, withTimelineTracks,
   type SnapOptions, type SourceRoom,
 } from "../../lib/timeline";
+import { useShortcut } from "../../lib/commands";
+import {
+  ComboBox, PropRow, PropSection, SelectorBar, Slider, Splitter, tooltipProps, useContextMenu, usePaneSize,
+  type MenuEntry,
+} from "../ui";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { sceneShape, STATUS_WORD } from "./sceneStatus";
@@ -32,10 +38,15 @@ import { TimelineClipThumbnails } from "./TimelineClipThumbnails";
 import { TimelineClipWaveform } from "./TimelineClipWaveform";
 
 const MIN_DURATION = 10_000;
-/* One minute fills the visible ruler. Longer films keep that readable scale
-   and extend sideways inside a scrollable canvas instead of squeezing every
-   cut into the same width. */
-const VISIBLE_TIMELINE_MS = 60_000;
+/* The scale a timeline opens at: one minute fills the visible lanes, and a
+   shorter film fills them exactly. Ctrl+wheel, the −/= keys and the zoom
+   slider change it from there; zooming out stops where the whole canvas fits. */
+const DEFAULT_VISIBLE_MS = 60_000;
+/* The closest zoom: this many pixels per frame, where the ruler labels every
+   frame and a trim can be placed on one. */
+const MAX_PX_PER_FRAME = 60;
+/* Each −/= press or wheel notch zooms by this factor. */
+const ZOOM_STEP = 1.25;
 /* How long a dropped clip is when the file itself cannot say.
    A drop normally lasts as long as the footage: the media panel decodes each
    file to draw its thumbnail and records the duration it read there (see
@@ -51,16 +62,19 @@ const SCENE_DRAG_TYPE = "application/x-slopus-generator-scene";
 
 /* How close two edges have to be ON SCREEN before they snap together. In
    pixels, not milliseconds, because that is how close they LOOK — the same
-   8px feels the same on a 20-second timeline and a 10-minute one, where a fixed
-   number of milliseconds would be unusable at one end and invisible at the
-   other. Converted against the lane's real width at the moment a drag starts. */
+   8px feels the same at every zoom, where a fixed number of milliseconds would
+   be unusable at one end and invisible at the other. Converted against the
+   lane's real width at the moment a drag starts. */
 const SNAP_PX = 8;
 /* Below this, a press is a click. Without it the smallest tremor between
    pointerdown and pointerup would be read as a drag and a clip that was only
    being selected would be nudged off its cut. */
 const DRAG_THRESHOLD_PX = 3;
+/* J/L shuttle speeds: each further press doubles, up to 4×. */
+const SHUTTLE_SPEEDS = [1, 2, 4];
 
 type DragMode = "move" | "trim-start" | "trim-end";
+type MonitorZoom = "fit" | "50" | "100";
 
 /** One drag, from the press that began it. Everything the pointer needs is
  *  measured ONCE, here: the lane's geometry, what may be snapped to, and how
@@ -111,35 +125,44 @@ const canvasDuration = (config: ProjectConfig) => {
   return Math.max(lastClipEnd, config.brief.targetDurationSeconds * 1000, MIN_DURATION);
 };
 
-/* Roughly seven labels regardless of length, snapped to a readable interval. */
-const rulerTicks = (durationMs: number) => {
-  const totalSeconds = Math.ceil(durationMs / 1000);
-  const step = [1, 2, 5, 10, 15, 30, 60, 120].find((candidate) => totalSeconds / candidate <= 7) ?? 300;
-  return Array.from({ length: Math.floor(totalSeconds / step) + 1 }, (_, index) => index * step);
+const readFlag = (key: string, fallback: boolean) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : raw === "1";
+  } catch {
+    return fallback;
+  }
+};
+const writeFlag = (key: string, value: boolean) => {
+  try { localStorage.setItem(key, value ? "1" : "0"); } catch { /* storage unavailable */ }
 };
 
-const rulerLabel = (seconds: number) =>
-  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-const timecode = (ms: number) => {
-  const seconds = Math.floor(ms / 1000);
-  const frames = Math.floor((ms % 1000) / (1000 / 30));
-  return `00:${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}:${String(frames).padStart(2, "0")}`;
-};
-
-const parseDuration = (value: string, frameRate: number): number | null => {
-  const parts = value.trim().split(":");
-  if (parts.length > 3 || parts.some((part) => !/^\d+(\.\d+)?$/.test(part.trim()))) return null;
-  const numbers = parts.map((part) => Number(part));
-  const frames = parts.length === 3 ? numbers[2] * (1000 / frameRate) : 0;
-  const seconds = parts.length === 1 ? numbers[0] : numbers[0] * 60 + numbers[1];
-  return Math.round(seconds * 1000 + frames);
-};
+/** Arrow keys, Home and End belong to the control that has focus when it is a
+ *  slider, a splitter, a tab strip or a list — the timeline only takes them
+ *  from everywhere else. */
+const ownsArrowKeys = (target: EventTarget | null) =>
+  target instanceof Element && Boolean(target.closest('input, select, textarea, [role="slider"], [role="separator"], [role="tablist"], [role="listbox"], [role="menu"], [role="combobox"]'));
 
 /** How a view hands a project back. An updater rather than a plain value is
  *  the only safe form for a write built from something asynchronous: the
  *  holder applies it to its LATEST config, so a write does not depend on the
  *  previous one having already come back down as a prop. */
 export type ConfigUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
+
+/** What a track row needs to call back into the view. Held in a ref so the
+ *  rows can be memoised: the playhead re-renders the view every frame of
+ *  playback, and the lanes have no reason to re-render with it. */
+interface TrackActions {
+  select: (id: string) => void;
+  toggle: (id: string, key: "muted" | "locked") => void;
+  rename: (id: string, name: string) => void;
+  clipPointerDown: (event: React.PointerEvent<HTMLElement>, clip: TimelineClip, mode: DragMode) => void;
+  clipMenu: (event: React.MouseEvent<HTMLElement>, clip: TimelineClip) => void;
+  laneMenu: (event: React.MouseEvent<HTMLElement>, track: TimelineTrack) => void;
+  dragOverLane: (event: React.DragEvent<HTMLDivElement>, track: TimelineTrack) => void;
+  dragLeaveLane: (track: TimelineTrack) => void;
+  dropLane: (event: React.DragEvent<HTMLDivElement>, track: TimelineTrack) => void;
+}
 
 export function TimelineView({ config, folderPath, generationCompletionTimes = {}, onChange, onMeasured, onOpenGenerator }: {
   config: ProjectConfig;
@@ -154,15 +177,21 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   onOpenGenerator: (jobId?: string) => void;
 }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
+  const fps = config.settings.frameRate;
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
+  /* Shuttle speed: 1, 2, 4 forward or −1, −2, −4 in reverse (J/K/L). */
+  const [rate, setRate] = useState(1);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
   /* Grid reads a folder of footage by its pictures, list reads it by its
      names. Which one a cutter wants is a habit, not a per-project choice, so
      it is remembered on this machine rather than written into the project. */
   const [mediaLayout, setMediaLayout] = useState<MediaLayout>(loadMediaLayout);
-  const timelineGrid = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const clipNameRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   /* Which track the pointer is currently over with a compatible asset, so the
@@ -175,11 +204,31 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      put there is the only way to know whether this lane can take it. */
   const [draggedAsset, setDraggedAsset] = useState<ProjectAsset | undefined>(undefined);
   const [draggedScene, setDraggedScene] = useState<GenerationJob | undefined>(undefined);
-  const [durationDraft, setDurationDraft] = useState<string | null>(null);
-  /* What the user is typing into Lasts, while they are typing it. The field
+  /* What the user is typing into Duration, while they are typing it. The field
      otherwise shows the clip's own length, and "00:0" on the way to "00:08"
      must not be snapped back to a formatted timecode mid-keystroke. Null means
      nothing is being typed and the clip speaks for itself. */
+  const [durationDraft, setDurationDraft] = useState<string | null>(null);
+  /* The toolbar clock, while it is being typed into. */
+  const [timecodeDraft, setTimecodeDraft] = useState<string | null>(null);
+  /* In and out points (I / O), drawn as a shaded range on the ruler. */
+  const [inMs, setInMs] = useState<number | null>(null);
+  const [outMs, setOutMs] = useState<number | null>(null);
+  /* Clips copied with Ctrl+C / Ctrl+X, pasted with Ctrl+V. Local to the
+     editor: a clip only means something inside this project. */
+  const clipboard = useRef<TimelineClip | null>(null);
+  const [hasClipboard, setHasClipboard] = useState(false);
+  /* Program monitor: Fit / 50% / 100%, and the title/action-safe guides. */
+  const [monitorZoom, setMonitorZoom] = useState<MonitorZoom>("fit");
+  const [safeArea, setSafeArea] = useState(false);
+  /* The side panes collapse from the toolbar instead of disappearing at a
+     window width — a narrow window keeps whatever the user chose to see. */
+  const [sourcesOpen, setSourcesOpen] = useState(() => readFlag("slopus.timeline.sources", true));
+  const [inspectorOpen, setInspectorOpen] = useState(() => readFlag("slopus.timeline.inspector", true));
+  const sourcesPane = usePaneSize("timeline.sources", 296, { min: 200, max: 480 });
+  const inspectorPane = usePaneSize("timeline.inspector", 340, { min: 260, max: 560 });
+  const timelinePane = usePaneSize("timeline.height", 300, { min: 150, max: 800 });
+  const trackPane = usePaneSize("timeline.tracks", 180, { min: 120, max: 320 });
   /* A drag in flight, and the timeline as it would be if the pointer were
      released right now. The lanes draw the preview, and the release commits
      exactly it — the drag and the edit are the same calculation, run twice
@@ -189,9 +238,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const previewRef = useRef<TimelineTrack[] | null>(null);
   const [preview, setPreview] = useState<TimelineTrack[] | null>(null);
   const [dragging, setDragging] = useState(false);
-  /* Whether the pointer is currently dragging the playhead along the ruler.
-     A press alone moves it once; this is what makes the moves keep coming. */
+  /* Whether the pointer is dragging the playhead (on the ruler or by its
+     head). A press alone moves it once; this is what makes the moves keep
+     coming. */
   const [scrubbing, setScrubbing] = useState(false);
+  const menu = useContextMenu();
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
   const selectedTrack = tracks.find((track) => track.id === selected?.trackId);
@@ -204,18 +255,81 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
    *  asked for, however little of it is cut yet). */
   const contentEndMs = tracks.reduce((end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clipEndMs(clip)), end), 0);
   const duration = useMemo(() => canvasDuration(config), [config]);
-  const timelineWidth = `${Math.max(100, duration / VISIBLE_TIMELINE_MS * 100)}%`;
   const mediaAssets = useMemo(() => config.assets.filter((asset) => asset.kind !== "generated"), [config.assets]);
   const assetsById = useMemo(() => new Map(config.assets.map((asset) => [asset.id, asset])), [config.assets]);
   const generatedJobsByAssetId = useMemo(() => new Map(
     config.generationJobs.map((job) => [generationAssetId(job.id), job]),
   ), [config.generationJobs]);
-  const ticks = useMemo(() => rulerTicks(duration), [duration]);
-  /* The lanes are ruled at the SAME interval as the ruler above them, so a line
-     under a clip is a line under a number. They used to be a fixed 14.7% of the
-     width — a spacing that meant nothing at any duration, and drifted further
-     from the labels the longer the project got. */
-  const tickStepMs = (ticks.length > 1 ? ticks[1] - ticks[0] : Math.max(1, Math.ceil(duration / 1000))) * 1000;
+  /* V1, V2… and A1, A2… — the track's kind and its place among its kind, the
+     label every NLE puts on a track header. */
+  const trackLabels = useMemo(() => {
+    const counts: Record<string, number> = {};
+    return new Map(tracks.map((track) => {
+      counts[track.kind] = (counts[track.kind] ?? 0) + 1;
+      return [track.id, `${track.kind === "audio" ? "A" : track.kind === "caption" ? "C" : "V"}${counts[track.kind]}`];
+    }));
+  }, [tracks]);
+
+  /* --- Zoom -----------------------------------------------------------------
+     pxPerSecond is the zoom. The lanes are `duration × pxPerSecond` wide and
+     every clip is still positioned in percent of that, so a zoom is one width
+     change rather than a re-layout of every clip. Until the scroll area has
+     been measured (and in jsdom, which lays nothing out) the lanes are simply
+     100% wide. */
+  const [viewportPx, setViewportPx] = useState(0);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const laneViewportPx = Math.max(0, viewportPx - trackPane.size);
+  const fitPps = laneViewportPx > 0 ? laneViewportPx / (duration / 1000) : 0;
+  const maxPps = fps * MAX_PX_PER_FRAME;
+  const minPps = Math.min(fitPps, maxPps);
+  const defaultPps = laneViewportPx > 0 ? laneViewportPx / (Math.min(duration, DEFAULT_VISIBLE_MS) / 1000) : 0;
+  const pxPerSecond = laneViewportPx > 0 ? Math.min(maxPps, Math.max(minPps, zoom ?? defaultPps)) : 0;
+  const lanePx = pxPerSecond > 0 ? (duration / 1000) * pxPerSecond : null;
+  /* The ruler's density at this zoom, from frames up to minutes. Unmeasured,
+     it assumes a 1000px lane so the labels are still readable. */
+  const scale = useMemo(() => rulerScale(lanePx ? pxPerSecond : 1000 / (duration / 1000), fps), [lanePx, pxPerSecond, duration, fps]);
+  const pendingScroll = useRef<number | null>(null);
+  const zoomState = useRef({ pxPerSecond, minPps, maxPps, trackPx: trackPane.size });
+  zoomState.current = { pxPerSecond, minPps, maxPps, trackPx: trackPane.size };
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setViewportPx(element.clientWidth));
+    observer.observe(element);
+    setViewportPx(element.clientWidth);
+    return () => observer.disconnect();
+  }, []);
+
+  /** Zoom to `nextPps`, keeping the moment `anchorPx` pixels into the visible
+   *  lanes where it is. Without an anchor, the playhead if it is on screen,
+   *  and otherwise the middle of the view. */
+  const zoomTo = useCallback((nextPps: number, anchorPx?: number) => {
+    const { pxPerSecond: current, minPps: low, maxPps: high } = zoomState.current;
+    const element = scrollRef.current;
+    if (!element || current <= 0) return;
+    const clamped = Math.min(high, Math.max(low, nextPps));
+    if (Math.abs(clamped - current) < 1e-6) return;
+    const visible = element.clientWidth - zoomState.current.trackPx;
+    const playheadPx = (playheadRef.current / 1000) * current - element.scrollLeft;
+    const anchor = anchorPx ?? (playheadPx >= 0 && playheadPx <= visible ? playheadPx : visible / 2);
+    pendingScroll.current = scrollAfterZoom(element.scrollLeft, anchor, current, clamped);
+    setZoom(clamped);
+  }, []);
+  useLayoutEffect(() => {
+    if (pendingScroll.current === null || !scrollRef.current) return;
+    scrollRef.current.scrollLeft = pendingScroll.current;
+    pendingScroll.current = null;
+  }, [pxPerSecond]);
+  /* The slider is logarithmic: every notch is the same RATIO of zoom. */
+  const zoomSliderValue = lanePx && maxPps > minPps ? Math.round(Math.log(pxPerSecond / minPps) / Math.log(maxPps / minPps) * 100) : 0;
+  const zoomFromSlider = (value: number) => {
+    if (maxPps <= minPps) return;
+    zoomTo(minPps * (maxPps / minPps) ** (value / 100));
+  };
+
+  const playheadRef = useRef(playhead);
+  playheadRef.current = playhead;
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
 
@@ -224,80 +338,121 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      because the monitor's animation loop depends on their identity: a new
      closure per render would tear its clock down sixty times a second. */
   const seek = useCallback((ms: number) => setPlayhead(ms), []);
-  const setPlayingFromMonitor = useCallback((value: boolean) => setPlaying(value), []);
-
-  useEffect(() => { setDurationDraft(null); }, [selectedId]);
+  const setPlayingFromMonitor = useCallback((value: boolean) => { setPlaying(value); if (!value) setRate(1); }, []);
 
   // Another clip, another length: what was being typed belonged to the old one.
+  useEffect(() => { setDurationDraft(null); }, [selectedId]);
 
-  /* Wheel over the timeline scrubs it. Registered by hand rather than with
-     React's onWheel because React attaches wheel listeners passively, and a
-     passive listener cannot preventDefault — without that the project content
-     scrolls away under the pointer while the playhead moves.
-
-     A notch is one second; hold Shift for one frame. deltaMode says what the
-     browser's numbers mean (pixels, lines, or pages), so normalise to notches
-     instead of treating a trackpad's pixel deltas as a thousand of them. */
+  /* The wheel does what it does everywhere else in Windows: scrolls the tracks.
+     Shift+wheel scrolls sideways and Ctrl+wheel zooms around the pointer.
+     Registered by hand rather than with React's onWheel because React attaches
+     wheel listeners passively, and a passive listener cannot preventDefault —
+     without that, Ctrl+wheel would zoom the whole page. */
   useEffect(() => {
-    const grid = timelineGrid.current;
-    if (!grid) return;
+    const element = scrollRef.current;
+    if (!element) return;
     const onWheel = (event: WheelEvent) => {
-      // Preserve a trackpad's horizontal gesture for the long timeline's
-      // native scroll container. Vertical wheel movement remains scrubbing.
-      if (duration > VISIBLE_TIMELINE_MS && Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-      const raw = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-      if (raw === 0) return;
-      event.preventDefault();
-      const notches = event.deltaMode === 0 ? raw / 100 : event.deltaMode === 1 ? raw / 3 : raw;
-      const stepMs = event.shiftKey ? 1000 / config.settings.frameRate : 1000;
-      setPlaying(false);
-      setPlayhead((current) => Math.round(Math.max(0, Math.min(duration, current + notches * stepMs))));
+      const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? element.clientHeight : 1;
+      if (event.ctrlKey) {
+        event.preventDefault();
+        const rect = element.getBoundingClientRect();
+        const anchor = Math.max(0, event.clientX - rect.left - zoomState.current.trackPx);
+        const delta = (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX) * unit;
+        zoomTo(zoomState.current.pxPerSecond * Math.exp(-delta * 0.0025), anchor);
+        return;
+      }
+      if (event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+        event.preventDefault();
+        element.scrollLeft += event.deltaY * unit;
+      }
     };
-    grid.addEventListener("wheel", onWheel, { passive: false });
-    return () => grid.removeEventListener("wheel", onWheel);
-  }, [duration, config.settings.frameRate]);
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [zoomTo]);
+
+  /* During playback the view follows the playhead a page at a time, the way
+     Premiere's "page scroll" does, so the playhead never runs off the edge. */
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!playing || !element || !lanePx) return;
+    const x = (playhead / duration) * lanePx;
+    const visible = element.clientWidth - trackPane.size;
+    if (x < element.scrollLeft || x > element.scrollLeft + visible - 16) element.scrollLeft = Math.max(0, x - 32);
+  }, [playing, playhead, duration, lanePx, trackPane.size]);
 
   /** Any highlight the press just painted, undone. The chrome down here is not
    *  selectable at all (see .pro-timeline), but a gesture can begin on a clip
    *  and travel over the panels above, and a selection that was already in
-   *  progress goes on extending under the pointer. Clearing it at the start of
-   *  a gesture is the difference between dragging a clip and dragging a clip
-   *  through a blue smear. */
+   *  progress goes on extending under the pointer. */
   const dropSelection = () => window.getSelection?.()?.removeAllRanges();
 
   /** Turn a pointer position on the ruler into a playhead position. A ruler
    *  nothing has laid out has no scale, so it is left alone rather than
    *  sending the playhead to NaN. */
-  const scrubTo = (ruler: HTMLElement, clientX: number) => {
-    const rect = ruler.getBoundingClientRect();
-    if (rect.width <= 0) return;
-    setPlayhead(Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration));
+  const timeAtRuler = (clientX: number): number | null => {
+    const rect = rulerRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return null;
+    return Math.round(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration);
   };
+  const scrubTo = (clientX: number) => {
+    const time = timeAtRuler(clientX);
+    if (time !== null) setPlayhead(time);
+  };
+  /* Press to jump, hold and drag to scrub — on the ruler or by the playhead's
+     own head. The monitor seeks to wherever this lands, so dragging runs the
+     picture past under the pointer. Playback stops first: scrubbing while
+     playing would be two things driving one playhead. */
+  const beginScrub = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    dropSelection();
+    setPlaying(false);
+    setRate(1);
+    setScrubbing(true);
+    scrubTo(event.clientX);
+  };
+  useEffect(() => {
+    if (!scrubbing) return;
+    const onMove = (event: PointerEvent) => scrubTo(event.clientX);
+    const onUp = () => setScrubbing(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrubbing, duration]);
 
   const chooseMediaLayout = (layout: MediaLayout) => { setMediaLayout(layout); saveMediaLayout(layout); };
+  const toggleSources = () => setSourcesOpen((open) => { writeFlag("slopus.timeline.sources", !open); return !open; });
+  const toggleInspector = () => setInspectorOpen((open) => { writeFlag("slopus.timeline.inspector", !open); return !open; });
   /* Every timeline write hands up an UPDATER rather than a finished config,
      for the same reason measurements do (see recordMeasured, and ConfigUpdate).
      A finished config is built from the props THIS render closed over, and the
      timeline is not always the most recent thing written: the media panel is
      recording what its decodes measured the whole time a folder is being
      imported, and a drag holds the timeline as it stood when the press began.
-     Handing up `{ ...config, timeline }` from either would take those
-     measurements back out again — a rush that had just learned it was 40
-     seconds long would go back to being an unmeasured file, and the next drop
-     of it would be a 5-second stand-in. */
+
+     Every edit — drag, trim, split, paste, a typed length — comes through here
+     and so through the project's own onChange, which is what the project-level
+     undo stack (Ctrl+Z / Ctrl+Y, in ProjectWorkspace) records. The timeline
+     keeps no undo of its own. */
   const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) =>
     onChange((current) => withTimelineTracks(current, nextTracks));
   const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
   const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
+  const TRANSFORM_LIMITS = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
   const updateTransform = (key: keyof NonNullable<TimelineClip["transform"]>, value: number) => {
     if (!selected || !selectedTransform || !Number.isFinite(value)) return;
-    const limits = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
-    const [minimum, maximum] = limits[key];
+    const [minimum, maximum] = TRANSFORM_LIMITS[key];
     updateClip(selected.id, { transform: roundClipTransform({ ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) }) });
   };
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
-  /* Every removal — the toolbar, the key, the × on the clip itself — goes
-     through one function, so a locked track refuses all three. */
+  /* Every removal — the toolbar, the key, the context menu — goes through one
+     function, so a locked track refuses all three. */
   const deleteClip = (clipId: string) => {
     const next = removeClip(tracks, clipId);
     if (!next) return;
@@ -305,40 +460,73 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     setSelectedId((current) => (current === clipId ? "" : current));
   };
   const removeSelected = () => { if (selected) deleteClip(selected.id); };
-  const duplicateSelected = () => {
-    if (!selected || !selectedTrack || selectedTrack.locked) return;
+  const duplicateClip = (clip: TimelineClip | undefined) => {
+    const track = tracks.find((item) => item.id === clip?.trackId);
+    if (!clip || !track || track.locked) return;
     /* The spread carries sourceStartMs with everything else, so duplicating a
        clip that was split off the middle of a rush copies THAT range of the
        footage, not the head of the file. Only the id, the position on the
        ruler, and the name are new. */
-    const copy = { ...selected, id: `${selected.id}-copy-${Date.now()}`, label: `${selected.label} copy` };
+    const copy = { ...clip, id: `${clip.id}-copy-${Date.now()}`, label: `${clip.label} copy` };
     // Straight after the original if that is free, and otherwise wherever the
     // lane has room: a copy laid on top of another clip is not a copy of the
     // cut, it is two clips claiming one moment.
-    const next = insertClip(tracks, selected.trackId, copy, selected.startMs + selected.durationMs);
+    const next = insertClip(tracks, clip.trackId, copy, clip.startMs + clip.durationMs);
     if (!next) return;
     updateTracks(next);
     setSelectedId(copy.id);
   };
-  const splitSelected = () => {
-    if (!selected || !selectedTrack || selectedTrack.locked || playhead <= selected.startMs || playhead >= selected.startMs + selected.durationMs) return;
-    const leftDuration = playhead - selected.startMs;
-    const right: TimelineClip = { ...selected, id: `${selected.id}-split-${Date.now()}`, startMs: playhead, durationMs: selected.durationMs - leftDuration, sourceStartMs: selected.sourceStartMs + leftDuration, label: `${selected.label} · B`, transition: undefined };
-    updateTracks(tracks.map((track) => track.id === selected.trackId ? { ...track, clips: track.clips.flatMap((clip) => clip.id === selected.id ? [{ ...clip, durationMs: leftDuration, label: `${clip.label} · A` }, right] : [clip]) } : track));
+  const duplicateSelected = () => duplicateClip(selected);
+  const canSplit = (clip: TimelineClip | undefined) => {
+    const track = tracks.find((item) => item.id === clip?.trackId);
+    return Boolean(clip && track && !track.locked && playhead > clip.startMs && playhead < clipEndMs(clip));
+  };
+  const splitClip = (clip: TimelineClip | undefined) => {
+    if (!clip || !canSplit(clip)) return;
+    const leftDuration = playhead - clip.startMs;
+    const right: TimelineClip = { ...clip, id: `${clip.id}-split-${Date.now()}`, startMs: playhead, durationMs: clip.durationMs - leftDuration, sourceStartMs: clip.sourceStartMs + leftDuration, label: `${clip.label} · B`, transition: undefined };
+    updateTracks(tracks.map((track) => track.id === clip.trackId ? { ...track, clips: track.clips.flatMap((item) => item.id === clip.id ? [{ ...item, durationMs: leftDuration, label: `${item.label} · A` }, right] : [item]) } : track));
     setSelectedId(right.id);
   };
-  /* Mirrors splitSelected's own guard, one condition for one condition. The
-     button used to stay live with the playhead outside the clip, so pressing it
-     silently did nothing. Null means Split will actually cut. */
+  const splitSelected = () => splitClip(selected);
+  /* Clipboard. Copy holds the clip as it is; Cut is Copy then Delete; Paste
+     lays a copy at the playhead (or where the lane was right-clicked) on the
+     selected clip's track, falling back to the track it was copied from. */
+  const copyClip = (clip: TimelineClip | undefined) => {
+    if (!clip) return;
+    clipboard.current = clip;
+    setHasClipboard(true);
+  };
+  const cutClip = (clip: TimelineClip | undefined) => {
+    if (!clip) return;
+    const track = tracks.find((item) => item.id === clip.trackId);
+    if (!track || track.locked) return;
+    copyClip(clip);
+    deleteClip(clip.id);
+  };
+  const paste = (trackId?: string, atMs = playhead) => {
+    const source = clipboard.current;
+    if (!source) return;
+    const candidates = [trackId, selectedTrack?.id, source.trackId, ...tracks.filter((track) => track.kind === "video").map((track) => track.id)];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const id = `${source.id.replace(/-paste-\d+$/, "")}-paste-${Date.now()}`;
+      const next = pasteClip(tracks, source, candidate, atMs, id);
+      if (!next) continue;
+      updateTracks(next);
+      setSelectedId(id);
+      return;
+    }
+  };
+  /* Same rule as Split: a disabled control says why it is disabled, and the
+     predicate is the handler's own guard rather than a looser approximation. */
   const splitBlockedBy = !selected
     ? "Select a clip to split it"
     : !selectedTrack || selectedTrack.locked
       ? "This clip’s track is locked"
-      : playhead <= selected.startMs || playhead >= selected.startMs + selected.durationMs
+      : !canSplit(selected)
         ? "Move the playhead inside the selected clip to split it"
         : null;
-  /* Same rule as Split: a disabled control says why it is disabled, and the
-     predicate is the handler's own guard rather than a looser approximation. */
   const duplicateBlockedBy = !selected
     ? "Select a clip to duplicate it"
     : !selectedTrack || selectedTrack.locked ? "This clip’s track is locked" : null;
@@ -348,7 +536,99 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   /* Same rule again for the transport: every one of its controls is off for the
      same reason, and saying that reason is the difference between a disabled
      button and a broken one. */
-  const transportBlockedBy = clipCount === 0 ? "Nothing to play yet — add or generate a scene first." : null;
+  const transportBlockedBy = clipCount === 0 ? "Nothing to play yet" : null;
+
+  /* --- Transport ------------------------------------------------------------ */
+
+  const frameOf = (ms: number) => frameAt(ms, fps);
+  const goTo = (ms: number) => {
+    setPlaying(false);
+    setRate(1);
+    setPlayhead(Math.round(Math.max(0, Math.min(duration, ms))));
+  };
+  const stepFrames = (frames: number) => goTo(frameStartMs(Math.max(0, frameOf(playhead) + frames), fps));
+  const togglePlay = () => {
+    if (clipCount === 0) return;
+    if (playing) { setPlaying(false); setRate(1); return; }
+    // Pressing Play with the playhead already past the last frame used to
+    // start playback that immediately stopped, which reads as a broken
+    // button. From the end, Play means play it again.
+    if (playhead >= contentEndMs) setPlayhead(0);
+    setRate(1);
+    setPlaying(true);
+  };
+  /* J / K / L: reverse, stop, forward. Pressing J or L again while it is
+     already shuttling that way doubles the speed, up to 4×. */
+  const shuttle = (direction: -1 | 1) => {
+    if (clipCount === 0) return;
+    const current = playing ? rate : 0;
+    const speed = Math.sign(current) === direction
+      ? SHUTTLE_SPEEDS[Math.min(SHUTTLE_SPEEDS.length - 1, SHUTTLE_SPEEDS.indexOf(Math.abs(current)) + 1)]
+      : 1;
+    if (direction > 0 && !playing && playhead >= contentEndMs) setPlayhead(0);
+    setRate(direction * speed);
+    setPlaying(true);
+  };
+  const markIn = (ms = playhead) => { setInMs(ms); if (outMs !== null && outMs <= ms) setOutMs(null); };
+  const markOut = (ms = playhead) => { setOutMs(ms); if (inMs !== null && inMs >= ms) setInMs(null); };
+  const clearInOut = () => { setInMs(null); setOutMs(null); };
+  const commitTimecode = () => {
+    if (timecodeDraft === null) return;
+    const parsed = parseTimecode(timecodeDraft, fps);
+    setTimecodeDraft(null);
+    if (parsed !== null) goTo(parsed);
+  };
+  const renameSelected = () => {
+    if (!selected) return;
+    if (!inspectorOpen) toggleInspector();
+    requestAnimationFrame(() => { clipNameRef.current?.focus(); clipNameRef.current?.select(); });
+  };
+
+  /* --- Keyboard ----------------------------------------------------------------
+     Scoped to this view: they fire while focus is anywhere inside it (the
+     view itself is focusable, so a click on any empty part of it counts) and
+     never from a text field. Ctrl+Z / Ctrl+Y are NOT here: undo is the
+     project's, bound once in ProjectWorkspace, and every edit below goes
+     through onChange so it lands on that stack. */
+  const scope = { scope: viewRef };
+  const arrows = (run: () => void) => (event: KeyboardEvent) => { if (ownsArrowKeys(event.target)) return false; run(); };
+  useShortcut("Space", (event) => {
+    const target = event.target as Element | null;
+    if (target instanceof HTMLButtonElement || target?.closest?.('[role="tab"], [role="slider"]')) return false;
+    if (clipCount === 0) return false;
+    togglePlay();
+  }, scope);
+  useShortcut("J", () => shuttle(-1), scope);
+  useShortcut("K", () => { setPlaying(false); setRate(1); }, scope);
+  useShortcut("L", () => shuttle(1), scope);
+  useShortcut("ArrowLeft", arrows(() => stepFrames(-1)), scope);
+  useShortcut("ArrowRight", arrows(() => stepFrames(1)), scope);
+  useShortcut("Shift+ArrowLeft", arrows(() => goTo(playhead - 1000)), scope);
+  useShortcut("Shift+ArrowRight", arrows(() => goTo(playhead + 1000)), scope);
+  useShortcut("Home", arrows(() => goTo(0)), scope);
+  useShortcut("End", arrows(() => goTo(contentEndMs)), scope);
+  useShortcut("ArrowUp", arrows(() => { const cut = adjacentCut(tracks, playhead, -1); if (cut !== null) goTo(cut); }), scope);
+  useShortcut("ArrowDown", arrows(() => { const cut = adjacentCut(tracks, playhead, 1); if (cut !== null) goTo(cut); }), scope);
+  useShortcut("I", () => markIn(), scope);
+  useShortcut("O", () => markOut(), scope);
+  useShortcut("Ctrl+Shift+X", clearInOut, scope);
+  useShortcut("Ctrl+K", splitSelected, scope);
+  useShortcut("Ctrl+D", duplicateSelected, scope);
+  useShortcut("Ctrl+C", () => { if (!selected) return false; copyClip(selected); }, scope);
+  useShortcut("Ctrl+X", () => { if (!selected) return false; cutClip(selected); }, scope);
+  useShortcut("Ctrl+V", () => { if (!clipboard.current) return false; paste(); }, scope);
+  useShortcut("F2", () => { if (!selected) return false; renameSelected(); }, scope);
+  useShortcut(["-", "_"], () => zoomTo(pxPerSecond / ZOOM_STEP), scope);
+  useShortcut(["=", "+"], () => zoomTo(pxPerSecond * ZOOM_STEP), scope);
+  useShortcut(["Delete", "Backspace"], (event) => {
+    /* A focused media card is what Delete means: take the file out of the
+       project (and its clips off the timeline). Anywhere else, the clip. */
+    const card = (event.target as Element | null)?.closest?.("[data-asset-id]") as HTMLElement | null;
+    if (card?.dataset.assetId) { removeMediaAsset(card.dataset.assetId); return; }
+    if (!selected) return false;
+    removeSelected();
+  }, scope);
+
   const importMedia = async () => {
     setImportError(null);
     setImporting(true);
@@ -409,21 +689,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     hasAudio: asset.hasAudio ?? value.hasAudio,
   });
   /* Measurements arrive from asynchronous decodes, and two of them can land
-     between one render and the next. They queue here so that two arriving in
-     the same render are not written one over the other — but the queue alone
-     never fixed the real race, which is between two FLUSHES rather than two
-     measurements. `{ ...config, assets }` is built from the config THIS render
-     closed over, and the second flush can run before the first write has come
-     back down as a new prop: it then rebuilds the whole config from the stale
-     one and the first measurement is gone. With five files decoding at their
-     own speeds that lost most of them, non-deterministically, and the only cure
-     was leaving the panel and re-reading every file from disk.
-
-     So nothing here writes a config. It hands up an UPDATER, which the holder
-     applies to whatever its latest config is — a flush can no longer be stale,
-     because it no longer carries a config of its own. The queue is drained into
-     a local BEFORE the updater is built, so the updater stays pure and can be
-     called twice (StrictMode, a replayed render) without eating the queue. */
+     between one render and the next. They queue here, and nothing here writes a
+     config: it hands up an UPDATER, which the holder applies to whatever its
+     latest config is — a flush can no longer be stale, because it no longer
+     carries a config of its own. The queue is drained into a local BEFORE the
+     updater is built, so the updater stays pure and can be called twice
+     (StrictMode, a replayed render) without eating the queue. */
   const measurements = useRef(new Map<string, MeasuredMedia>());
   const [measureTick, setMeasureTick] = useState(0);
   const recordMeasured = (assetId: string, value: MeasuredMedia) => {
@@ -461,7 +732,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const sourceLimitMs = selected && selectedAsset?.kind !== "image" && selectedAsset?.durationMs
     ? Math.max(1, selectedAsset.durationMs - selected.sourceStartMs)
     : null;
-  const minClipMs = Math.max(1, Math.round(1000 / config.settings.frameRate));
+  const minClipMs = Math.max(1, Math.round(1000 / fps));
   /** What the FILE has left at each end of a clip. A still image and a file
    *  nothing has measured have no source timeline to run out of, and get no
    *  limit rather than a guessed one. */
@@ -469,16 +740,16 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const asset = assetById(clip.assetId);
     return sourceRoom(clip, asset && asset.kind !== "image" ? asset.durationMs ?? null : null);
   };
+  /* Typing a length is trimming the tail, so it is the same operation the
+     right-hand handle performs — same floor of one frame, same ceiling in the
+     footage, and the same refusal to grow over the next clip on the track. */
   const typeDuration = (value: string) => {
     setDurationDraft(value);
-    const parsed = selected ? parseDuration(value, config.settings.frameRate) : null;
+    const parsed = selected ? parseTimecode(value, fps) : null;
     if (parsed === null || !selected) return;
     const next = trimClip(tracks, selected.id, "end", selected.startMs + parsed, { minClipMs, room: roomFor(selected) });
     if (next) updateTracks(next);
   };
-  /* Typing a length is trimming the tail, so it is the same operation the
-     right-hand handle performs — same floor of one frame, same ceiling in the
-     footage, and the same refusal to grow over the next clip on the track. */
   /* Snapping, measured against a lane that is `widthPx` wide. A lane nothing
      has laid out yet — jsdom, a panel that has never been painted — gives a
      tolerance of 0, which turns the magnet off instead of inventing a scale. */
@@ -588,11 +859,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      ======================================================================= */
 
   const beginDrag = (event: React.PointerEvent<HTMLElement>, clip: TimelineClip, mode: DragMode) => {
-    // Left button only: a right-click is a context menu, and a middle-click is
-    // a scroll gesture in most shells.
+    // Left button only: a right-click opens the clip's context menu, and a
+    // middle-click is a scroll gesture in most shells.
     if (event.button !== 0) return;
     const track = tracks.find((item) => item.id === clip.trackId);
-    if (!track || track.locked) return;
+    if (!track || track.locked) { setSelectedId(clip.id); return; }
     const lane = (event.currentTarget as HTMLElement).closest(".track-lane") as HTMLElement | null;
     const rect = lane?.getBoundingClientRect();
     // Nothing has been laid out: there is no scale to turn pixels into time
@@ -665,6 +936,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     /* Registered once per drag rather than per render: the handlers read the
        session out of a ref, so a preview landing mid-drag must not tear the
        listeners down and put them back. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragging, minClipMs]);
 
   /* What the lanes draw: the drag if there is one, and the project otherwise.
@@ -693,62 +965,157 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
-    // With none left, go to an empty composer.
-    //
-    // createProjectConfig does seed that FIRST draft from config.brief.prompt,
-    // and this is not a disagreement with it. The brief describes the whole
-    // video, which is a fair opening for the one shot a project starts with —
-    // there is nothing else to go on, and it is there to be rewritten. Every
-    // later shot has that same paragraph already spent on the shot before it,
-    // so repeating it would describe the whole video a second time and call it
-    // shot two.
+    // With none left, go to an empty composer. Every later shot has the brief
+    // already spent on the shot before it, so repeating it would describe the
+    // whole video a second time and call it shot two.
     onOpenGenerator(config.generationJobs.find((job) => job.status === "draft")?.id);
   };
 
+  /* --- Context menus ----------------------------------------------------------- */
+
+  const clipMenuItems = (clip: TimelineClip): MenuEntry[] => {
+    const track = tracks.find((item) => item.id === clip.trackId);
+    const locked = !track || track.locked;
+    return [
+      { label: "Cut", shortcut: "Ctrl+X", disabled: locked, onSelect: () => cutClip(clip) },
+      { label: "Copy", icon: <Copy size={16} />, shortcut: "Ctrl+C", onSelect: () => copyClip(clip) },
+      { label: "Paste", shortcut: "Ctrl+V", disabled: !hasClipboard, onSelect: () => paste(clip.trackId) },
+      { separator: true },
+      { label: "Split at playhead", icon: <Scissors size={16} />, shortcut: "Ctrl+K", disabled: !canSplit(clip), onSelect: () => splitClip(clip) },
+      { label: "Duplicate", shortcut: "Ctrl+D", disabled: locked, onSelect: () => duplicateClip(clip) },
+      { label: "Rename", shortcut: "F2", onSelect: () => { setSelectedId(clip.id); renameSelected(); } },
+      { separator: true },
+      { label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, disabled: locked, onSelect: () => deleteClip(clip.id) },
+    ];
+  };
+  const laneTimeAt = (event: React.MouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return rect.width > 0 ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration : playhead;
+  };
+
+  /* The rows call back through a ref so they can be memoised (see
+     TrackActions): nothing in a lane changes when only the playhead moves. */
+  const actions = useRef<TrackActions>(null as unknown as TrackActions);
+  actions.current = {
+    select: setSelectedId,
+    toggle: toggleTrack,
+    rename: renameTrack,
+    clipPointerDown: beginDrag,
+    clipMenu: (event, clip) => {
+      setSelectedId(clip.id);
+      menu.open(event, clipMenuItems(clip), { "aria-label": `${clip.label} actions` });
+    },
+    laneMenu: (event, track) => {
+      const at = laneTimeAt(event);
+      menu.open(event, [
+        { label: "Paste here", shortcut: "Ctrl+V", disabled: !hasClipboard || track.locked, onSelect: () => paste(track.id, at) },
+        { separator: true },
+        { label: track.muted ? "Unmute track" : "Mute track", onSelect: () => toggleTrack(track.id, "muted") },
+        { label: track.locked ? "Unlock track" : "Lock track", onSelect: () => toggleTrack(track.id, "locked") },
+      ], { "aria-label": `${track.name} actions` });
+    },
+    dragOverLane: (event, track) => {
+      const hasAsset = event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
+      const hasScene = event.dataTransfer.types.includes(SCENE_DRAG_TYPE);
+      if ((!hasAsset || !acceptsAsset(track, draggedAsset)) && (!hasScene || !acceptsScene(track, draggedScene))) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setDropTrackId(track.id);
+    },
+    dragLeaveLane: (track) => setDropTrackId((current) => current === track.id ? null : current),
+    dropLane: (event, track) => {
+      event.preventDefault();
+      setDropTrackId(null);
+      const jobId = event.dataTransfer.getData(SCENE_DRAG_TYPE);
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
+      if (jobId) {
+        dropScene(track.id, jobId, ratio, rect.width);
+        return;
+      }
+      const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
+      if (!assetId) return;
+      // A zero-width lane would make the ratio NaN and the clip's start
+      // time with it, which zod then refuses to save.
+      dropAsset(track.id, assetId, ratio, rect.width);
+    },
+  };
+
+  const rulerMenu = (event: React.MouseEvent<HTMLElement>) => {
+    const at = timeAtRuler(event.clientX) ?? playhead;
+    menu.open(event, [
+      { label: "Set in point", shortcut: "I", onSelect: () => markIn(at) },
+      { label: "Set out point", shortcut: "O", onSelect: () => markOut(at) },
+      { separator: true },
+      { label: "Clear in and out", shortcut: "Ctrl+Shift+X", disabled: inMs === null && outMs === null, onSelect: clearInOut },
+    ], { "aria-label": "Ruler actions" });
+  };
+
+  /* --- Program monitor ------------------------------------------------------ */
+
+  const frameSize = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const monitorScale = monitorZoom === "fit" ? null : Number(monitorZoom) / 100;
+  const stageStyle = {
+    "--frame-aspect": frameSize.width / frameSize.height,
+    ...(monitorScale ? { width: frameSize.width * monitorScale, height: frameSize.height * monitorScale, flex: "none" } : {}),
+  } as React.CSSProperties;
+
+  /* The ruler is memoised (it must not re-render with every playhead frame),
+     so it gets handlers whose identity never changes. */
+  const rulerHandlers = useRef({ beginScrub, rulerMenu });
+  rulerHandlers.current = { beginScrub, rulerMenu };
+  const onRulerPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => rulerHandlers.current.beginScrub(event), []);
+  const onRulerMenu = useCallback((event: React.MouseEvent<HTMLElement>) => rulerHandlers.current.rulerMenu(event), []);
+
+  const playheadRatio = Math.max(0, Math.min(1, playhead / duration));
+  const panelsClass = `edit-panels${sourcesOpen ? "" : " edit-panels--no-sources"}${inspectorOpen ? "" : " edit-panels--no-inspector"}`;
+
   return (
-    <div className={`timeline-view ${dragging ? "timeline-view--dragging" : ""}`} tabIndex={0} onKeyDown={(event) => {
-      /* Delete works from the view itself and from a focused clip — the clip IS
-         the thing being deleted, and having to leave it first to press the key
-         is the kind of rule only the code knows. It deliberately does NOT fire
-         from a text field: a Backspace in the clip's name is an edit. */
-      const target = event.target as HTMLElement;
-      const fromClip = target.classList?.contains("timeline-clip");
-      if ((event.key === "Delete" || event.key === "Backspace") && (event.target === event.currentTarget || fromClip)) removeSelected();
-      if (event.code === "Space" && (event.target === event.currentTarget || fromClip) && clipCount > 0) { event.preventDefault(); setPlaying((value) => !value); }
-    }}>
+    <div
+      ref={viewRef}
+      className={`timeline-view ${dragging ? "timeline-view--dragging" : ""}`}
+      tabIndex={0}
+      style={{ ...sourcesPane.style, ...inspectorPane.style, ...timelinePane.style, ...trackPane.style }}
+    >
       {/* The view had no top-level heading at all, so screen-reader users had
-          no landmark for it. Sighted users already see the project topbar. */}
+          no landmark for it. Sighted users already see the title bar. */}
       <h1 className="sr-only">Timeline editor</h1>
-      <div className="edit-panels">
-        <aside className="scene-panel">
-          <div className="panel-tabs">
-            <button className={panelTab === "scenes" ? "active" : ""} onClick={() => setPanelTab("scenes")}><Layers3 size={16} /> Scenes</button>
-            <button className={panelTab === "media" ? "active" : ""} onClick={() => setPanelTab("media")}><Film size={16} /> Media</button>
-          </div>
+      <div className={panelsClass}>
+        {sourcesOpen && <aside className="scene-panel" aria-label="Scenes and media">
+          <SelectorBar
+            className="panel-tabs"
+            aria-label="Scenes and media"
+            value={panelTab}
+            onChange={setPanelTab}
+            items={[
+              { value: "scenes", label: "Scenes", icon: <Layers3 size={16} /> },
+              { value: "media", label: "Media", icon: <Film size={16} /> },
+            ]}
+          />
           {panelTab === "media" && <div className="scene-panel__head">
             <button
-              className="media-import-button"
+              className="secondary-button media-import-button"
               onClick={() => void importMedia()}
               disabled={importing || !isTauri()}
-              title={isTauri() ? "Add video, sound, or image files — video and sound stay where they are, images are copied in" : "Importing files is available in the desktop app"}
+              {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
             ><Upload size={16} /> Import</button>
             <div className="layout-toggle" role="group" aria-label="Media layout">
-                <button
-                  className={mediaLayout === "grid" ? "active" : ""}
-                  aria-pressed={mediaLayout === "grid"}
-                  onClick={() => chooseMediaLayout("grid")}
-                  title="Show media as a grid of pictures"
-                ><LayoutGrid size={16} /><span className="sr-only">Grid</span></button>
-                <button
-                  className={mediaLayout === "list" ? "active" : ""}
-                  aria-pressed={mediaLayout === "list"}
-                  onClick={() => chooseMediaLayout("list")}
-                  title="Show media as a list"
-                ><List size={16} /><span className="sr-only">List</span></button>
-              </div>
+              <button
+                className={mediaLayout === "grid" ? "active" : ""}
+                aria-pressed={mediaLayout === "grid"}
+                onClick={() => chooseMediaLayout("grid")}
+                {...tooltipProps("Grid")}
+              ><LayoutGrid size={16} /><span className="sr-only">Grid</span></button>
+              <button
+                className={mediaLayout === "list" ? "active" : ""}
+                aria-pressed={mediaLayout === "list"}
+                onClick={() => chooseMediaLayout("list")}
+                {...tooltipProps("List")}
+              ><List size={16} /><span className="sr-only">List</span></button>
+            </div>
           </div>}
           {panelTab === "scenes" ? (
-            <div className="scene-list">
+            <div className="scene-list" role="tabpanel" aria-label="Scenes">
               {config.generationJobs.map((job, index) => {
                 const assetIds = new Set([
                   generationAssetId(job.id),
@@ -759,7 +1126,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   key={job.id}
                   className="scene-card"
                   draggable
+                  data-scene-id={job.id}
                   onClick={() => onOpenGenerator(job.id)}
+                  onContextMenu={(event) => menu.open(event, [
+                    { label: "Open in Generator", onSelect: () => onOpenGenerator(job.id) },
+                  ], { "aria-label": `${job.title} actions` })}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(SCENE_DRAG_TYPE, job.id);
                     event.dataTransfer.effectAllowed = "copy";
@@ -767,26 +1138,30 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     setDraggedAsset(undefined);
                   }}
                   onDragEnd={() => { setDraggedScene(undefined); setDropTrackId(null); }}
-                  title={`${job.title} — drag onto a track below`}
+                  {...tooltipProps(`${job.title}. Drag onto a track to use it.`)}
                 >
                   <span className="scene-card__thumb">
-                    {job.status !== "draft" && <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />}
+                    {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
+                      : <Film size={20} className="scene-card__glyph" aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
                   <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>
                 </button>;
               })}
-              <button className="scene-add" onClick={addScene}><Plus size={18} /> Add or generate a scene</button>
+              <button className="secondary-button scene-add" onClick={addScene}><Plus size={16} /> Add scene</button>
             </div>
           ) : (
-            <div className={`media-grid media-grid--${mediaLayout}`}>
+            <div className={`media-grid media-grid--${mediaLayout}`} role="tabpanel" aria-label="Media">
               {/* Draggable onto the timeline. `draggable` on a <button> is the
                   whole mechanism — the button still clicks and still takes
-                  focus, so keyboard users are not shut out of selecting it. */}
+                  focus, so keyboard users are not shut out of selecting it.
+                  Removing a file is Delete on the focused card, or its context
+                  menu: no × on every card. */}
               {mediaAssets.map((asset) => <div className="media-card" key={asset.id}>
                 <button
                   className="media-card__source"
                   draggable
+                  data-asset-id={asset.id}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
                     event.dataTransfer.effectAllowed = "copy";
@@ -794,211 +1169,306 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     setDraggedScene(undefined);
                   }}
                   onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
-                  title={`${asset.name} — drag onto a ${asset.kind === "audio" ? "sound" : "video"} track below`}
+                  onContextMenu={(event) => menu.open(event, [
+                    { label: "Remove from project", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, onSelect: () => removeMediaAsset(asset.id) },
+                  ], { "aria-label": `${asset.name} actions` })}
+                  {...tooltipProps(`${asset.name}. Drag onto a track to use it.`)}
                 >
                   <MediaThumbnail folderPath={folderPath} asset={asset} onMeasured={(measured) => recordMeasured(asset.id, measured)} />
                   <b>{asset.name}</b>
                   {/* Duration is only claimed when something actually measured it. */}
                   <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
                 </button>
-                <button
-                  className="media-card__remove"
-                  aria-label={`Remove ${asset.name} from project`}
-                  title={`Remove ${asset.name} from the project and timeline`}
-                  onClick={() => removeMediaAsset(asset.id)}
-                ><X size={14} /></button>
               </div>)}
               {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
           )}
-        </aside>
+        </aside>}
+        {sourcesOpen && <Splitter {...sourcesPane.splitterProps} className="edit-panels__splitter" aria-label="Resize media panel" />}
 
         <main className="program-panel">
           <h2 className="sr-only">Program monitor</h2>
-          <div className="program-canvas">
-            {/* The real picture now: the clip under the playhead, decoded from
-                its own file. What used to stand here was a panel explaining
-                that Slopus could not play footage back — true when it was
-                written, and no longer. An empty timeline still shows an empty
-                monitor, which says by itself that nothing is cut yet. */}
-            {clipCount > 0
-              ? <ProgramMonitor
-                config={config}
-                folderPath={folderPath}
-                playheadMs={playhead}
-                playing={playing}
-                onSeek={seek}
-                onPlayingChange={setPlayingFromMonitor}
-                selectedClipId={selectedId}
-                transformEditingDisabled={selectedTrack?.locked ?? false}
-                onSelectClip={setSelectedId}
-                onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) })}
-              />
-              : <div className="program-empty">
-                <span>Drop a file from Media onto a track below, or generate a scene, and it plays here.</span>
-              </div>}
+          <div className={`program-canvas${monitorScale ? " program-canvas--zoomed" : ""}`}>
+            <div className="program-stage" style={stageStyle}>
+              {/* The real picture: the clip under the playhead, decoded from
+                  its own file. An empty timeline still shows an empty monitor
+                  with one muted line saying why. */}
+              {clipCount > 0
+                ? <ProgramMonitor
+                  config={config}
+                  folderPath={folderPath}
+                  playheadMs={playhead}
+                  playing={playing}
+                  rate={rate}
+                  onSeek={seek}
+                  onPlayingChange={setPlayingFromMonitor}
+                  selectedClipId={selectedId}
+                  transformEditingDisabled={selectedTrack?.locked ?? false}
+                  onSelectClip={setSelectedId}
+                  onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) })}
+                />
+                : <div className="program-empty"><span>Drop media on a track, or generate a scene.</span></div>}
+              {safeArea && <div className="program-safe" aria-hidden="true"><i className="program-safe__frame"><b className="program-safe__action" /><b className="program-safe__title" /></i></div>}
+            </div>
           </div>
+          <footer className="program-footer">
+            <span className="program-footer__time" aria-label="Playhead">{formatTimecode(playhead, fps)}</span>
+            <span className="program-footer__duration" aria-label="Duration">{formatTimecode(contentEndMs, fps)}</span>
+            <span className="program-footer__spacer" />
+            <ComboBox
+              className="program-footer__zoom"
+              aria-label="Monitor zoom"
+              value={monitorZoom}
+              onChange={(value) => setMonitorZoom(value as MonitorZoom)}
+              options={[{ value: "fit", label: "Fit" }, { value: "50", label: "50%" }, { value: "100", label: "100%" }]}
+            />
+            <button
+              type="button"
+              className={`program-footer__toggle${safeArea ? " active" : ""}`}
+              aria-pressed={safeArea}
+              aria-label="Safe areas"
+              {...tooltipProps("Title and action safe areas")}
+              onClick={() => setSafeArea((value) => !value)}
+            ><LayoutGrid size={14} aria-hidden="true" /></button>
+          </footer>
         </main>
 
-        <aside className="clip-inspector" aria-label="Clip inspector">
+        {inspectorOpen && <Splitter {...inspectorPane.splitterProps} reverse className="edit-panels__splitter" aria-label="Resize inspector" />}
+        {inspectorOpen && <aside className="clip-inspector" aria-label="Clip inspector">
           {selected ? <>
-            <section className="inspector-section">
+            <div className="inspector-title">
               <h3 aria-label={selected.label}><input
+                ref={clipNameRef}
                 className="clip-title__name"
                 value={selected.label}
                 aria-label="Clip name"
-                title="Rename this clip"
+                {...tooltipProps("Rename", "F2")}
                 onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })}
               /></h3>
-              <div className="field-pair">
-                <label><span>Starts at</span><input value={timecode(selected.startMs).slice(3)} readOnly /></label>
-                <label><span>Lasts</span><input
-                  value={durationDraft ?? timecode(selected.durationMs).slice(3)}
+            </div>
+            <PropSection title="Timing" persistKey="timeline.clip.timing">
+              <PropRow label="Starts at"><span className="inspector-value">{formatTimecode(selected.startMs, fps)}</span></PropRow>
+              <PropRow label="Duration" htmlFor="clip-duration">
+                <input
+                  id="clip-duration"
+                  className="text-field inspector-timecode"
+                  value={durationDraft ?? formatTimecode(selected.durationMs, fps)}
                   onChange={(event) => typeDuration(event.target.value)}
                   onBlur={() => setDurationDraft(null)}
-                  title={`How long this clip lasts — minutes:seconds:frames, or just seconds.${sourceLimitMs === null ? "" : ` This footage has ${(sourceLimitMs / 1000).toFixed(1)}s left from where the clip starts in it.`}`}
+                  {...tooltipProps(`HH:MM:SS:FF, MM:SS or seconds.${sourceLimitMs === null ? "" : ` ${(sourceLimitMs / 1000).toFixed(1)}s of footage left.`}`)}
                   inputMode="decimal"
-                /></label>
-              </div>
-            </section>
-            <section className="inspector-section">
-              <h3>Transform</h3>
-              <div className="field-pair">
-                <label><span>Scale (%)</span><CommittedNumberInput minimum={10} maximum={400} step="1" value={selectedTransform?.scale ?? 100} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("scale", value)} /></label>
-                <label><span>Rotation (°)</span><CommittedNumberInput minimum={-180} maximum={180} step="1" value={selectedTransform?.rotation ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("rotation", value)} /></label>
-              </div>
-              <div className="field-pair">
-                <label><span>Position X (%)</span><CommittedNumberInput minimum={-100} maximum={100} step="1" value={selectedTransform?.positionX ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("positionX", value)} /></label>
-                <label><span>Position Y (%)</span><CommittedNumberInput minimum={-100} maximum={100} step="1" value={selectedTransform?.positionY ?? 0} disabled={visualControlsDisabled} onCommit={(value) => updateTransform("positionY", value)} /></label>
-              </div>
-            </section>
-            <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch) => updateClip(selected.id, patch)} />
-          </> : clipCount === 0
-            ? <div className="inspector-empty"><MouseSelection /><b>Nothing to edit yet</b><span>Once a scene lands on the timeline, select it here to rename it and check its timing.</span></div>
-            : <div className="inspector-empty"><MouseSelection /><b>Select a clip to edit it</b><span>Pick any clip on the timeline below to rename it, check its timing, and see how it was made.</span></div>}
-        </aside>
+                />
+              </PropRow>
+            </PropSection>
+            <PropSection title="Transform" persistKey="timeline.clip.transform">
+              {([
+                ["scale", "Scale", "%", 100],
+                ["rotation", "Rotation", "°", 0],
+                ["positionX", "Position X", "%", 0],
+                ["positionY", "Position Y", "%", 0],
+              ] as const).map(([key, label, unit, fallback]) => {
+                const value = selectedTransform?.[key] ?? fallback;
+                const [minimum, maximum] = TRANSFORM_LIMITS[key];
+                return <PropRow
+                  key={key}
+                  label={label}
+                  htmlFor={`clip-${key}`}
+                  value={value}
+                  defaultValue={fallback}
+                  onReset={visualControlsDisabled ? undefined : () => updateTransform(key, fallback)}
+                  scrub={visualControlsDisabled ? undefined : { value, onChange: (next) => updateTransform(key, next), min: minimum, max: maximum, step: 1 }}
+                >
+                  <CommittedNumberInput id={`clip-${key}`} className="text-field" aria-label={label} minimum={minimum} maximum={maximum} step="1" value={value} disabled={visualControlsDisabled} onCommit={(next) => updateTransform(key, next)} />
+                  <span className="inspector-unit">{unit}</span>
+                </PropRow>;
+              })}
+            </PropSection>
+            <PropSection title="Effects" persistKey="timeline.clip.effects">
+              <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch) => updateClip(selected.id, patch)} />
+            </PropSection>
+          </> : <div className="inspector-empty">
+            <span>{clipCount === 0 ? "Nothing on the timeline yet" : "No clip selected"}</span>
+          </div>}
+        </aside>}
       </div>
+
+      <Splitter {...timelinePane.splitterProps} orientation="horizontal" reverse className="timeline-view__splitter" aria-label="Resize timeline" />
 
       <section className="pro-timeline">
         <header className="timeline-toolbar">
-          {/* What the timeline IS and where it currently stands, reading left to
-              right from the panel's own heading: name, clock, format. The clock
-              used to sit inside the transport cluster, which pushed the buttons
-              off-centre and put a number nobody is aiming at in the middle of
-              the row. It is still the only timecode on the screen. */}
           <div className="timeline-toolbar__lead">
             <h2>Timeline</h2>
-            <strong className="transport-time" title="Playhead position">{timecode(playhead)}</strong>
-            <span className="transport-format">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)} · {config.settings.frameRate} fps</span>
+            {timecodeDraft === null
+              ? <button
+                type="button"
+                className="transport-time"
+                aria-label={`Playhead ${formatTimecode(playhead, fps)}. Select to type a time.`}
+                {...tooltipProps("Go to time")}
+                onClick={() => setTimecodeDraft(formatTimecode(playhead, fps))}
+              >{formatTimecode(playhead, fps)}</button>
+              : <input
+                className="text-field transport-time transport-time--editing"
+                aria-label="Go to time"
+                autoFocus
+                value={timecodeDraft}
+                onChange={(event) => setTimecodeDraft(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onBlur={() => setTimecodeDraft(null)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") { event.preventDefault(); commitTimecode(); }
+                  if (event.key === "Escape") { event.preventDefault(); setTimecodeDraft(null); }
+                }}
+              />}
+            <span className="transport-format">{resolutionLabel(config.settings.resolution, config.settings.aspectRatio)} · {fps} fps</span>
           </div>
-          {/* The transport belongs to the timeline, not to the picture: it drives
-              the playhead, and the playhead is drawn a few pixels below this row.
-              Under the monitor it also printed the same timecode this toolbar was
-              already printing, so one clock was shown twice and could be read as
-              two. One transport, one timecode, beside the ruler they refer to.
-
-              It is centred on the PICTURE rather than on this row, which are not
-              the same point: the toolbar runs the full width while the monitor
-              sits between two side panels of unequal width. See
-              --video-centre-shift in timeline.css. */}
-          <div className="timeline-transport">
-            <button onClick={() => setPlayhead(0)} aria-label="Go to beginning" title={transportBlockedBy ?? "Go to beginning"} disabled={transportBlockedBy !== null}><SkipBack size={18} /></button>
-            {/* Nothing to play means nothing to play: running the clock over an
-                empty timeline reads as playback of footage that isn't there. */}
-            {/* Pressing Play with the playhead already past the last frame used
-                to start playback that immediately stopped, which reads as a
-                broken button. From the end, Play means play it again. */}
-            <button className="play-button" onClick={() => { if (!playing && playhead >= contentEndMs) setPlayhead(0); setPlaying((value) => !value); }} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} title={transportBlockedBy ?? (playing ? "Pause" : "Play")}>{playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</button>
-            <button onClick={() => setPlayhead(Math.min(duration, playhead + 1000))} aria-label="Step forward one second" title={transportBlockedBy ?? "Step forward one second"} disabled={transportBlockedBy !== null}><SkipForward size={18} /></button>
+          {/* Go to start · Frame back · Play/Pause · Frame forward · Go to end —
+              the order every NLE uses, flat 28px buttons, no accent fill. */}
+          <div className="timeline-transport" role="group" aria-label="Transport">
+            <button onClick={() => goTo(0)} aria-label="Go to start" {...tooltipProps(transportBlockedBy ?? "Go to start", transportBlockedBy ? undefined : "Home")} disabled={transportBlockedBy !== null}><ChevronFirst size={16} /></button>
+            <button onClick={() => stepFrames(-1)} aria-label="Previous frame" {...tooltipProps(transportBlockedBy ?? "Previous frame", transportBlockedBy ? undefined : "Left")} disabled={transportBlockedBy !== null}><StepBack size={16} /></button>
+            <button className="play-button" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={transportBlockedBy !== null} {...tooltipProps(transportBlockedBy ?? (playing ? "Pause" : "Play"), transportBlockedBy ? undefined : "Space")}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
+            <button onClick={() => stepFrames(1)} aria-label="Next frame" {...tooltipProps(transportBlockedBy ?? "Next frame", transportBlockedBy ? undefined : "Right")} disabled={transportBlockedBy !== null}><StepForward size={16} /></button>
+            <button onClick={() => goTo(contentEndMs)} aria-label="Go to end" {...tooltipProps(transportBlockedBy ?? "Go to end", transportBlockedBy ? undefined : "End")} disabled={transportBlockedBy !== null}><ChevronLast size={16} /></button>
+            {playing && rate !== 1 && <span className="transport-rate" aria-live="polite">{rate > 0 ? `${rate}×` : `−${-rate}×`}</span>}
           </div>
           <div className="timeline-tools">
-            <button onClick={splitSelected} disabled={splitBlockedBy !== null} title={splitBlockedBy ?? "Split at playhead"}><Scissors size={16} /> Split</button>
-            <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} title={duplicateBlockedBy ?? "Duplicate clip"}><Copy size={16} /> Duplicate</button>
-            <button onClick={removeSelected} disabled={deleteBlockedBy !== null} title={deleteBlockedBy ?? "Delete selected clip"}><Trash2 size={16} /> Delete</button>
+            <button onClick={splitSelected} disabled={splitBlockedBy !== null} {...tooltipProps(splitBlockedBy ?? "Split at playhead", splitBlockedBy ? undefined : "Ctrl+K")}><Scissors size={16} /> Split</button>
+            <button onClick={duplicateSelected} disabled={duplicateBlockedBy !== null} {...tooltipProps(duplicateBlockedBy ?? "Duplicate clip", duplicateBlockedBy ? undefined : "Ctrl+D")}><Copy size={16} /> Duplicate</button>
+            <button onClick={removeSelected} disabled={deleteBlockedBy !== null} {...tooltipProps(deleteBlockedBy ?? "Delete clip", deleteBlockedBy ? undefined : "Delete")}><Trash2 size={16} /> Delete</button>
+            <span className="timeline-tools__separator" aria-hidden="true" />
+            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond / ZOOM_STEP)} disabled={!lanePx || pxPerSecond <= minPps + 1e-6} aria-label="Zoom out" {...tooltipProps("Zoom out", "-")}><ZoomOut size={16} /></button>
+            <Slider className="timeline-zoom" aria-label="Timeline zoom" min={0} max={100} step={1} value={zoomSliderValue} disabled={!lanePx} onChange={zoomFromSlider} />
+            <button className="timeline-tools__icon" onClick={() => zoomTo(pxPerSecond * ZOOM_STEP)} disabled={!lanePx || pxPerSecond >= maxPps - 1e-6} aria-label="Zoom in" {...tooltipProps("Zoom in", "=")}><ZoomIn size={16} /></button>
+            <span className="timeline-tools__separator" aria-hidden="true" />
+            <button className={`timeline-tools__icon${sourcesOpen ? " active" : ""}`} onClick={toggleSources} aria-pressed={sourcesOpen} aria-label="Media panel" {...tooltipProps(sourcesOpen ? "Hide media panel" : "Show media panel")}><PanelLeft size={16} /></button>
+            <button className={`timeline-tools__icon${inspectorOpen ? " active" : ""}`} onClick={toggleInspector} aria-pressed={inspectorOpen} aria-label="Inspector" {...tooltipProps(inspectorOpen ? "Hide inspector" : "Show inspector")}><PanelRight size={16} /></button>
           </div>
         </header>
-        <div className={`timeline-grid-scroll${duration > VISIBLE_TIMELINE_MS ? " timeline-grid-scroll--wide" : ""}`}>
-          <div
-            className="timeline-grid"
-            ref={timelineGrid}
-            style={{ "--lane-grid": `${(tickStepMs / duration) * 100}%`, width: timelineWidth } as React.CSSProperties}
-            title="Scroll to scrub, or drag along the ruler. Hold Shift to scrub one frame at a time. Clips snap to the cuts around them; Escape abandons a drag.">
-          <div className="track-corner"><span>Tracks</span></div>
-          {/* Press to jump, hold and drag to scrub. The monitor seeks to wherever
-              this lands, so dragging along the ruler runs the picture past under
-              the pointer — which is what scrubbing IS. Playback stops first:
-              scrubbing while playing would be two things driving one playhead. */}
-          <div
-            className="time-ruler"
-            onPointerDown={(event) => {
-              event.currentTarget.setPointerCapture?.(event.pointerId);
-              dropSelection();
-              setPlaying(false);
-              setScrubbing(true);
-              scrubTo(event.currentTarget, event.clientX);
-            }}
-            onPointerMove={(event) => { if (scrubbing) scrubTo(event.currentTarget, event.clientX); }}
-            onPointerUp={(event) => { event.currentTarget.releasePointerCapture?.(event.pointerId); setScrubbing(false); }}
-            onPointerCancel={() => setScrubbing(false)}
-          >
-            {ticks.map((second) => <span key={second} style={{ left: `${second * 1000 / duration * 100}%` }}><i />{rulerLabel(second)}</span>)}
+        <div className="timeline-body">
+          <div className="timeline-grid-scroll" ref={scrollRef}>
+            <div
+              className="timeline-grid"
+              style={{
+                "--lane-grid": `${(scale.majorMs / duration) * 100}%`,
+                width: lanePx ? `calc(var(--track-column) + ${lanePx}px)` : "100%",
+              } as React.CSSProperties}
+            >
+              <div className="track-corner" />
+              <TimeRuler
+                rulerRef={rulerRef}
+                scrollRef={scrollRef}
+                durationMs={duration}
+                lanePx={lanePx}
+                majorMs={scale.majorMs}
+                minorMs={scale.minorMs}
+                frames={scale.frames}
+                fps={fps}
+                inMs={inMs}
+                outMs={outMs}
+                onPointerDown={onRulerPointerDown}
+                onContextMenu={onRulerMenu}
+              />
+              {drawnTracks.map((track) => <TrackRow
+                key={track.id}
+                track={track}
+                label={trackLabels.get(track.id) ?? ""}
+                duration={duration}
+                folderPath={folderPath}
+                generatedJobsByAssetId={generatedJobsByAssetId}
+                assetsById={assetsById}
+                selectedId={selectedId}
+                draggingId={dragging ? dragRef.current?.clipId : undefined}
+                dropActive={dropTrackId === track.id}
+                /* A lane that stays dark is indistinguishable from a lane the
+                   pointer simply is not over. Mark incompatible or locked lanes
+                   for the whole drag, not just on hover. */
+                dropBlocked={(draggedAsset !== undefined && !acceptsAsset(track, draggedAsset))
+                  || (draggedScene !== undefined && !acceptsScene(track, draggedScene))}
+                actions={actions}
+              />)}
+              {/* The playhead: a pentagon head in the ruler that can be dragged,
+                  and a line through every track. */}
+              <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playheadRatio})` }}>
+                <span className="timeline-playhead__head" onPointerDown={beginScrub} aria-hidden="true" />
+              </div>
+            </div>
           </div>
-          {drawnTracks.map((track) => <TrackRow
-            key={track.id}
-            track={track}
-            duration={duration}
-            folderPath={folderPath}
-            generatedJobsByAssetId={generatedJobsByAssetId}
-            assetsById={assetsById}
-            selectedId={selectedId}
-            draggingId={dragging ? dragRef.current?.clipId : undefined}
-            onClipPointerDown={beginDrag}
-            onDeleteClip={deleteClip}
-            dropActive={dropTrackId === track.id}
-            /* A lane that stays dark is indistinguishable from a lane the
-               pointer simply is not over. Mark incompatible or locked lanes
-               for the whole drag, not just on hover. */
-            dropBlocked={(draggedAsset !== undefined && !acceptsAsset(track, draggedAsset))
-              || (draggedScene !== undefined && !acceptsScene(track, draggedScene))}
-            onSelect={setSelectedId}
-            onToggle={toggleTrack}
-            onRename={renameTrack}
-            onDragOverLane={(event) => {
-              const hasAsset = event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
-              const hasScene = event.dataTransfer.types.includes(SCENE_DRAG_TYPE);
-              if ((!hasAsset || !acceptsAsset(track, draggedAsset)) && (!hasScene || !acceptsScene(track, draggedScene))) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "copy";
-              setDropTrackId(track.id);
-            }}
-            onDragLeaveLane={() => setDropTrackId((current) => current === track.id ? null : current)}
-            onDropLane={(event) => {
-              event.preventDefault();
-              setDropTrackId(null);
-              const jobId = event.dataTransfer.getData(SCENE_DRAG_TYPE);
-              const rect = event.currentTarget.getBoundingClientRect();
-              const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0;
-              if (jobId) {
-                dropScene(track.id, jobId, ratio, rect.width);
-                return;
-              }
-              const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
-              if (!assetId) return;
-              // A zero-width lane would make the ratio NaN and the clip's start
-              // time with it, which zod then refuses to save.
-              dropAsset(track.id, assetId, ratio, rect.width);
-            }}
-          />)}
-            <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playhead / duration})` }}><span /><i /></div>
-          </div>
+          <Splitter {...trackPane.splitterProps} className="timeline-track-splitter" aria-label="Resize track headers" />
         </div>
       </section>
+      {menu.element}
     </div>
   );
 }
 
-function TrackRow({ track, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, onSelect, onToggle, onRename, onClipPointerDown, onDeleteClip, onDragOverLane, onDragLeaveLane, onDropLane }: {
+/** The time ruler: labels at a density that follows the zoom (frames when
+ *  zoomed in), minor ticks painted as a background, the in/out range shaded.
+ *  Only the labels inside the visible stretch are rendered, and it re-renders
+ *  on scroll by itself — never because the playhead moved. */
+const TimeRuler = memo(function TimeRuler({ rulerRef, scrollRef, durationMs, lanePx, majorMs, minorMs, frames, fps, inMs, outMs, onPointerDown, onContextMenu }: {
+  rulerRef: MutableRefObject<HTMLDivElement | null>;
+  scrollRef: MutableRefObject<HTMLDivElement | null>;
+  durationMs: number;
+  lanePx: number | null;
+  majorMs: number;
+  minorMs: number;
+  frames: boolean;
+  fps: number;
+  inMs: number | null;
+  outMs: number | null;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onContextMenu: (event: React.MouseEvent<HTMLElement>) => void;
+}) {
+  const [view, setView] = useState({ left: 0, width: 0 });
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    let frame = 0;
+    const read = () => { frame = 0; setView({ left: element.scrollLeft, width: element.clientWidth }); };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(read); };
+    read();
+    element.addEventListener("scroll", onScroll, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onScroll);
+    observer?.observe(element);
+    return () => {
+      element.removeEventListener("scroll", onScroll);
+      observer?.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [scrollRef]);
+  const ticks = useMemo(() => {
+    let first = 0;
+    let last = durationMs;
+    if (lanePx && view.width > 0) {
+      const msPerPx = durationMs / lanePx;
+      first = Math.max(0, (view.left - 200) * msPerPx);
+      last = Math.min(durationMs, (view.left + view.width + 200) * msPerPx);
+    }
+    const result: number[] = [];
+    for (let index = Math.floor(first / majorMs); index * majorMs <= last && result.length < 2000; index += 1) result.push(index * majorMs);
+    return result;
+  }, [durationMs, lanePx, majorMs, view.left, view.width]);
+  const percent = (ms: number) => `${(ms / durationMs) * 100}%`;
+  return <div
+    ref={rulerRef}
+    className="time-ruler"
+    style={{ backgroundSize: `${(minorMs / durationMs) * 100}% 5px` }}
+    onPointerDown={onPointerDown}
+    onContextMenu={onContextMenu}
+  >
+    {(inMs !== null || outMs !== null) && <span
+      className="time-ruler__range"
+      aria-label="In and out range"
+      style={{ left: percent(inMs ?? 0), width: percent((outMs ?? durationMs) - (inMs ?? 0)) }}
+    />}
+    {ticks.map((ms) => <span key={ms} className="time-ruler__tick" style={{ left: percent(ms) }}>{rulerLabel(ms, fps, frames)}</span>)}
+  </div>;
+});
+
+const TrackRow = memo(function TrackRow({ track, label, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, actions }: {
   track: ProjectConfig["timeline"]["tracks"][number];
+  /** "V1", "A1"… */
+  label: string;
   duration: number;
   folderPath: string;
   generatedJobsByAssetId: ReadonlyMap<string, GenerationJob>;
@@ -1009,43 +1479,38 @@ function TrackRow({ track, duration, folderPath, generatedJobsByAssetId, assetsB
   draggingId?: string;
   dropActive: boolean;
   dropBlocked: boolean;
-  onSelect: (id: string) => void;
-  onToggle: (id: string, key: "muted" | "locked") => void;
-  onRename: (id: string, name: string) => void;
-  onClipPointerDown: (event: React.PointerEvent<HTMLElement>, clip: TimelineClip, mode: DragMode) => void;
-  onDeleteClip: (id: string) => void;
-  onDragOverLane: (event: React.DragEvent<HTMLDivElement>) => void;
-  onDragLeaveLane: () => void;
-  onDropLane: (event: React.DragEvent<HTMLDivElement>) => void;
+  actions: MutableRefObject<TrackActions>;
 }) {
   const named = track.name;
+  const kind = track.kind === "audio" ? "audio" : "video";
   return <>
-    <div className="track-head">
-      <span className="track-kind"><Film size={16} /></span>
+    <div className={`track-head track-head--${kind}`} onContextMenu={(event) => actions.current.laneMenu(event, track)}>
+      <b className="track-label">{label}</b>
       {/* The name is an editable field, not a label: a project with three video
           layers needs the user's own words on them, and an always-live input
           needs no discovery. Blanking it falls back the way a clip name does,
           because the schema has no room for a nameless track. */}
-      <div><input
+      <input
         className="track-name"
         value={track.name}
         aria-label={`Rename ${named}`}
-        title="Rename this track"
-        onChange={(event) => onRename(track.id, event.target.value || "Untitled track")}
-      /></div>
-      <button className={track.muted ? "active" : ""} onClick={() => onToggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`} title={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`}>{track.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
-      <button className={track.locked ? "active" : ""} onClick={() => onToggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} title={`${track.locked ? "Unlock" : "Lock"} ${named}`}>{track.locked ? <Lock size={16} /> : <LockOpen size={16} />}</button>
+        {...tooltipProps("Rename track")}
+        onChange={(event) => actions.current.rename(track.id, event.target.value || "Untitled track")}
+      />
+      <button className={track.muted ? "active" : ""} onClick={() => actions.current.toggle(track.id, "muted")} aria-label={`${track.muted ? "Unmute" : "Mute"} audio on ${named}`} aria-pressed={track.muted} {...tooltipProps(track.muted ? "Unmute" : "Mute")}>{track.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
+      <button className={track.locked ? "active" : ""} onClick={() => actions.current.toggle(track.id, "locked")} aria-label={`${track.locked ? "Unlock" : "Lock"} ${named}`} aria-pressed={track.locked} {...tooltipProps(track.locked ? "Unlock" : "Lock")}>{track.locked ? <Lock size={14} /> : <LockOpen size={14} />}</button>
     </div>
     <div
-      className={`track-lane ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
+      className={`track-lane track-lane--${kind} ${track.muted ? "muted" : ""} ${dropActive ? "track-lane--drop" : ""} ${dropBlocked ? "track-lane--reject" : ""}`}
       /* Which track this lane IS, readable from the DOM: a clip dragged across
          lanes is hit-tested against the document, and the id is how the answer
          gets back to the model. */
       data-track-id={track.id}
-      title={dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} cannot take this item`) : undefined}
-      onDragOver={onDragOverLane}
-      onDragLeave={onDragLeaveLane}
-      onDrop={onDropLane}
+      {...tooltipProps(dropBlocked ? (track.locked ? `${track.name} is locked` : `${track.name} cannot take this item`) : undefined)}
+      onDragOver={(event) => actions.current.dragOverLane(event, track)}
+      onDragLeave={() => actions.current.dragLeaveLane(track)}
+      onDrop={(event) => actions.current.dropLane(event, track)}
+      onContextMenu={(event) => { if (event.target === event.currentTarget) actions.current.laneMenu(event, track); }}
     >
       {track.clips.map((clip) => {
         const asset = assetsById.get(clip.assetId);
@@ -1060,67 +1525,56 @@ function TrackRow({ track, duration, folderPath, generatedJobsByAssetId, assetsB
           && generation?.outputRelativePath
           && !generation.error?.startsWith("Saved without sound"),
         );
+        const isSelected = selectedId === clip.id;
         return <div
-        key={clip.id}
-        className={`clip-slot ${selectedId === clip.id ? "selected" : ""} ${draggingId === clip.id ? "clip-slot--dragging" : ""}`}
-        style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties}
-      >
-        {/* The clip is a div with a button's role rather than a <button>: it
-            carries two trim handles and a delete control of its own, and a
-            button inside a button is not a thing a browser or a screen reader
-            can make sense of. Everything a button gave it is still here —
-            focus, Enter, the pressed state, a name. */}
-        <div
-          className={`timeline-clip ${audioOnly ? "timeline-clip--audio-only" : ""} ${hasAudio ? "timeline-clip--has-audio" : ""} ${selectedId === clip.id ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
-          role="button"
-          tabIndex={0}
-          aria-pressed={selectedId === clip.id}
-          aria-label={`${clip.label}, ${(clip.durationMs / 1000).toFixed(1)} seconds, on ${track.name}`}
-          title={track.locked
-            ? `${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds — ${track.name} is locked`
-            : `${clip.label} · ${(clip.durationMs / 1000).toFixed(1)} seconds — drag to move it, drag either end to trim it`}
-          onClick={() => onSelect(clip.id)}
-          onKeyDown={(event) => { if (event.key === "Enter") onSelect(clip.id); }}
-          onPointerDown={(event) => onClipPointerDown(event, clip, "move")}
+          key={clip.id}
+          className={`clip-slot ${isSelected ? "selected" : ""} ${draggingId === clip.id ? "clip-slot--dragging" : ""}`}
+          style={{ left: `${clip.startMs / duration * 100}%`, width: `${clip.durationMs / duration * 100}%`, "--clip-color": clip.color } as React.CSSProperties}
         >
-          {!audioOnly && generation && <TimelineClipThumbnails
-            folderPath={folderPath}
-            job={generation}
-            clip={clip}
-          />}
-          {hasAudio && asset && <TimelineClipWaveform
-            folderPath={folderPath}
-            asset={asset}
-            clip={clip}
-            cacheVersion={generation?.updatedAt}
-          />}
-        </div>
-        {/* The two ends, which cut rather than move. They stop the press from
-            reaching the clip body, or every trim would also be a move. A locked
-            track gets none of them: nothing on it can be changed. */}
-        {!track.locked && <>
-          <span
-            className="clip-handle clip-handle--start"
-            title={`Trim the start of ${clip.label}`}
-            onPointerDown={(event) => { event.stopPropagation(); onClipPointerDown(event, clip, "trim-start"); }}
-          />
-          <span
-            className="clip-handle clip-handle--end"
-            title={`Trim the end of ${clip.label}`}
-            onPointerDown={(event) => { event.stopPropagation(); onClipPointerDown(event, clip, "trim-end"); }}
-          />
-          <button
-            className="clip-delete"
-            aria-label={`Delete ${clip.label}`}
-            title={`Delete ${clip.label}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => { event.stopPropagation(); onDeleteClip(clip.id); }}
-          ><X size={12} /></button>
-        </>}
-      </div>;
+          {/* The clip is a div with a button's role rather than a <button>: it
+              carries two trim handles of its own, and a button inside a button
+              is not a thing a browser or a screen reader can make sense of. */}
+          <div
+            className={`timeline-clip ${audioOnly ? "timeline-clip--audio-only" : ""} ${hasAudio ? "timeline-clip--has-audio" : ""} ${isSelected ? "selected" : ""} ${track.locked ? "timeline-clip--locked" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isSelected}
+            aria-label={`${clip.label}, ${(clip.durationMs / 1000).toFixed(1)} seconds, on ${track.name}`}
+            onClick={() => actions.current.select(clip.id)}
+            onKeyDown={(event) => { if (event.key === "Enter") actions.current.select(clip.id); }}
+            onPointerDown={(event) => actions.current.clipPointerDown(event, clip, "move")}
+            onContextMenu={(event) => actions.current.clipMenu(event, clip)}
+          >
+            <b className="timeline-clip__title">{clip.label}</b>
+            {!audioOnly && generation && <TimelineClipThumbnails
+              folderPath={folderPath}
+              job={generation}
+              clip={clip}
+            />}
+            {hasAudio && asset && <TimelineClipWaveform
+              folderPath={folderPath}
+              asset={asset}
+              clip={clip}
+              cacheVersion={generation?.updatedAt}
+            />}
+          </div>
+          {/* The two ends, which cut rather than move. They stop the press from
+              reaching the clip body, or every trim would also be a move. A
+              locked track gets neither: nothing on it can be changed. */}
+          {!track.locked && <>
+            <span
+              className="clip-handle clip-handle--start"
+              aria-hidden="true"
+              onPointerDown={(event) => { event.stopPropagation(); actions.current.clipPointerDown(event, clip, "trim-start"); }}
+            />
+            <span
+              className="clip-handle clip-handle--end"
+              aria-hidden="true"
+              onPointerDown={(event) => { event.stopPropagation(); actions.current.clipPointerDown(event, clip, "trim-end"); }}
+            />
+          </>}
+        </div>;
       })}
     </div>
   </>;
-}
-
-function MouseSelection() { return <div className="selection-glyph"><span /><i /></div>; }
+});

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineClipSchema, type TimelineClip } from "../../lib/project";
 import { ClipEffects } from "./ClipEffects";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 afterEach(cleanup);
 const original: TimelineClip = {
@@ -14,96 +16,144 @@ function Harness() {
   const [clip, setClip] = useState(original);
   return <><ClipEffects clip={clip} disabled={false} onChange={(patch) => setClip((current) => timelineClipSchema.parse({ ...current, ...patch }))} /><output data-testid="saved">{JSON.stringify(clip)}</output></>;
 }
+const saved = () => JSON.parse(screen.getByTestId("saved").textContent!);
+const add = (name: string) => {
+  fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Available effects" })).getByRole("button", { name }));
+};
+const remove = (name: string) => {
+  fireEvent.click(screen.getByRole("button", { name: `${name} options` }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Remove/ }));
+};
+
+/* pickFile and readLutFile both go through invoke once the page believes it is
+   inside Tauri: pick_file answers with a path, read_lut_file with its text. */
+async function inTauri(answers: Record<string, (args: unknown) => unknown>, body: () => Promise<void>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => answers[command]?.(args) as never);
+  try { await body(); } finally {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.mocked(invoke).mockReset();
+  }
+}
+
+const CUBE = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
 
 describe("clip effects", () => {
-  it("adds, edits and removes the new effects independently", () => {
+  it("adds, edits and removes effects independently", () => {
     render(<Harness />);
-    for (const name of [/Sharpen Enhance/, /Gaussian Blur Soften/, /Color Correction Adjust/, /Vignette Darken/]) {
-      fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
-      fireEvent.click(screen.getByRole("button", { name }));
-    }
+    for (const name of ["Sharpen", "Gaussian blur", "Colour correction", "Vignette"]) add(name);
     fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
     fireEvent.change(screen.getByLabelText("Blur radius"), { target: { value: "6.5" } });
     fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "-1.2" } });
     fireEvent.change(screen.getByLabelText("Saturation"), { target: { value: "0" } });
     fireEvent.change(screen.getByLabelText("Vignette amount"), { target: { value: "75" } });
-    expect(JSON.parse(screen.getByTestId("saved").textContent!)).toMatchObject({
+    expect(saved()).toMatchObject({
       sharpen: { amount: 120 }, blur: { radius: 6.5 }, colorCorrection: { exposure: -1.2, saturation: 0 }, vignette: { amount: 75 },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Remove Gaussian Blur effect" }));
-    expect(JSON.parse(screen.getByTestId("saved").textContent!).blur).toBeUndefined();
+    remove("Gaussian blur");
+    expect(saved().blur).toBeUndefined();
     expect(screen.getByLabelText("Sharpen amount")).toBeTruthy();
   });
 
-  it("imports a LUT, adjusts its strength, and preserves it after an invalid replacement", async () => {
+  it("gives each effect a collapsible header with Reset", () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
-    fireEvent.click(screen.getByRole("button", { name: /3D LUT Apply/ }));
-    const cube = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
-    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "identity.cube", size: cube.length, text: async () => cube }] } });
-    await screen.findByText("identity.cube · 2³");
-    fireEvent.change(screen.getByLabelText("LUT intensity"), { target: { value: "45" } });
-    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "bad.cube", size: 4, text: async () => "oops" }] } });
-    await screen.findByRole("alert");
-    expect(JSON.parse(screen.getByTestId("saved").textContent!).lut).toMatchObject({ intensity: 45, table: { name: "identity.cube", size: 2 } });
+    add("Vignette");
+    fireEvent.change(screen.getByLabelText("Vignette amount"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset Vignette" }));
+    expect(saved().vignette).toEqual({ amount: 35 });
+    const toggle = screen.getByRole("button", { name: "Vignette" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(toggle);
+    expect(screen.queryByLabelText("Vignette amount")).toBeNull();
+  });
+
+  it("describes each effect in a tooltip rather than a second line", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+    const item = within(screen.getByRole("group", { name: "Available effects" })).getByRole("button", { name: "Sharpen" });
+    expect(item.getAttribute("data-tooltip")).toBe("Enhance fine edges and detail");
+  });
+
+  it("imports a LUT through the native Open dialog, and keeps it after a bad replacement", async () => {
+    await inTauri({
+      pick_file: () => "C:\\Looks\\identity.cube",
+      read_lut_file: (args) => ((args as { path: string }).path.endsWith("identity.cube") ? CUBE : "oops"),
+    }, async () => {
+      render(<Harness />);
+      add("3D LUT");
+      fireEvent.click(screen.getByRole("button", { name: "Import LUT" }));
+      await screen.findByText("identity.cube · 2³");
+      const { invoke } = await import("@tauri-apps/api/core");
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("pick_file", { title: "Import LUT", filters: [{ name: "Cube LUT", extensions: ["cube"] }] });
+      fireEvent.change(screen.getByLabelText("LUT intensity"), { target: { value: "45" } });
+      vi.mocked(invoke).mockImplementation(async (command: string) => (command === "pick_file" ? "C:\\Looks\\bad.cube" : "oops") as never);
+      fireEvent.click(screen.getByRole("button", { name: "Replace LUT" }));
+      await screen.findByRole("alert");
+      expect(saved().lut).toMatchObject({ intensity: 45, table: { name: "identity.cube", size: 2 } });
+    });
   });
 
   it("does not apply an outstanding LUT import to a different clip", async () => {
     let resolve!: (text: string) => void;
     const pending = new Promise<string>((done) => { resolve = done; });
-    const onChange = vi.fn();
-    const view = render(<ClipEffects clip={{ ...original, lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
-    fireEvent.change(screen.getByLabelText("Import cube LUT"), { target: { files: [{ name: "identity.cube", size: 50, text: () => pending }] } });
-    view.rerender(<ClipEffects clip={{ ...original, id: "other", lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
-    resolve("LUT_3D_SIZE 2\n" + "0 0 0\n".repeat(8));
-    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
-    expect(onChange).not.toHaveBeenCalled();
+    await inTauri({ pick_file: () => "C:\\Looks\\identity.cube", read_lut_file: () => pending }, async () => {
+      const onChange = vi.fn();
+      const view = render(<ClipEffects clip={{ ...original, lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
+      fireEvent.click(screen.getByRole("button", { name: "Import LUT" }));
+      await screen.findByRole("status");
+      view.rerender(<ClipEffects clip={{ ...original, id: "other", lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
+      await act(async () => { resolve("LUT_3D_SIZE 2\n" + "0 0 0\n".repeat(8)); });
+      await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 
-  it("adds only chosen effects, persists edits, and removes them without changing other effects", () => {
+  it("picks a chroma key colour from a swatch and a hex field", () => {
+    render(<Harness />);
+    add("Chroma key");
+    fireEvent.click(screen.getByRole("button", { name: "Chroma key colour" }));
+    fireEvent.change(screen.getByLabelText("Hex"), { target: { value: "#123456" } });
+    fireEvent.change(screen.getByLabelText("Chroma key tolerance"), { target: { value: "43" } });
+    expect(saved()).toMatchObject({ chromaKey: { color: "#123456", tolerance: 43 } });
+    expect(screen.getByLabelText("Hue")).toBeTruthy();
+    expect(screen.getByRole("slider", { name: "Saturation and brightness" })).toBeTruthy();
+  });
+
+  it("adds only chosen effects, and removes them without changing other effects", () => {
     render(<Harness />);
     expect(screen.queryByRole("heading", { name: "Look" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Transition" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
-    fireEvent.click(screen.getByRole("button", { name: /Chroma Key Make/ }));
-    fireEvent.change(screen.getByLabelText("Chroma Key color"), { target: { value: "#123456" } });
-    fireEvent.change(screen.getByLabelText("Chroma Key tolerance"), { target: { value: "43" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
+    add("Chroma key");
+    fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
     const picker = screen.getByRole("group", { name: "Available effects" });
-    expect(within(picker).queryByText("Chroma Key")).toBeNull();
-    fireEvent.click(within(picker).getByRole("button", { name: /Look Opacity/ }));
+    expect(within(picker).queryByRole("button", { name: "Chroma key" })).toBeNull();
+    fireEvent.click(within(picker).getByRole("button", { name: "Look" }));
     fireEvent.change(screen.getByLabelText("Clip opacity"), { target: { value: "65" } });
-    expect(JSON.parse(screen.getByTestId("saved").textContent!)).toMatchObject({ chromaKey: { color: "#123456", tolerance: 43 }, look: { opacity: 65 } });
-    fireEvent.click(screen.getByRole("button", { name: "Remove Chroma Key effect" }));
-    const saved = JSON.parse(screen.getByTestId("saved").textContent!);
-    expect(saved.chromaKey).toBeUndefined();
-    expect(saved.look.opacity).toBe(65);
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
-    expect(screen.getByRole("button", { name: /Chroma Key Make/ })).toBeTruthy();
+    remove("Chroma key");
+    expect(saved().chromaKey).toBeUndefined();
+    expect(saved().look.opacity).toBe(65);
   });
 
-  it("keeps existing effects editable and closes the keyboard picker with Escape", () => {
+  it("keeps existing effects editable and moves through the picker with the arrow keys", () => {
     render(<ClipEffects clip={{ ...original, transition: { type: "wipe-left", durationMs: 800 } }} disabled={false} onChange={vi.fn()} />);
-    expect((screen.getByLabelText("Clip transition") as HTMLSelectElement).value).toBe("wipe-left");
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
-    expect(document.activeElement?.textContent).toContain("Look");
+    expect(screen.getByRole("combobox", { name: "Clip transition" }).textContent).toContain("Wipe from left");
+    fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+    expect(document.activeElement?.textContent).toBe("Look");
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toContain("Chroma Key");
-    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-    expect(screen.queryByRole("group", { name: "Available effects" })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add Effect" }));
+    expect(document.activeElement?.textContent).toBe("Chroma key");
   });
 
   it("disables effects for locked or nonvisual clips and closes the picker when selection changes", () => {
     const props = { onChange: vi.fn(), clip: original, disabled: false };
     const view = render(<ClipEffects {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add Effect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
     view.rerender(<ClipEffects {...props} clip={{ ...original, id: "next" }} />);
     expect(screen.queryByRole("group", { name: "Available effects" })).toBeNull();
     view.rerender(<ClipEffects {...props} disabled clip={{ ...original, chromaKey: { color: "#00ff00", tolerance: 20 } }} />);
-    expect((screen.getByRole("button", { name: "Add Effect" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Remove Chroma Key effect" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Chroma Key tolerance"), { target: { value: "40" } });
+    expect((screen.getByRole("button", { name: "Add effect" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Chroma key options" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Chroma key tolerance"), { target: { value: "40" } });
     expect(props.onChange).not.toHaveBeenCalled();
   });
 });

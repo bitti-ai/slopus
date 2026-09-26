@@ -47,11 +47,16 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const angleAt = (x: number, y: number, centerX: number, centerY: number) => Math.atan2(y - centerY, x - centerX) * 180 / Math.PI;
 const normalizedAngle = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
 
-export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange }: {
+export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate = 1, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange }: {
   config: ProjectConfig;
   folderPath: string;
   playheadMs: number;
   playing: boolean;
+  /** Shuttle speed while playing (J/K/L): 1, 2 or 4 forward, negative for
+   *  reverse. Forward runs the media elements at that playbackRate; reverse
+   *  runs the clock backwards and seeks the paused elements frame by frame,
+   *  since a media element cannot play backwards. */
+  rate?: number;
   /** Where playback has reached. The view owns the playhead; this reports the
    *  monitor's monotonic playback clock. */
   onSeek: (ms: number) => void;
@@ -186,11 +191,17 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       /* Media currentTime can be exposed in coarse jumps while Chromium is
          handling pointer/hover work. A monotonic local clock keeps the ruler
          smooth; media is still sought at cuts and explicit user jumps. */
-      const next = positionRef.current + elapsed;
+      const next = positionRef.current + elapsed * rate;
       // Past the end of everything there is nothing left to show, so playback
-      // stops there instead of running the clock over an empty ruler.
+      // stops there instead of running the clock over an empty ruler. Reverse
+      // stops at the head of the timeline.
       if (next >= contentEndMs) {
         report(contentEndMs);
+        callbacks.current.onPlayingChange(false);
+        return;
+      }
+      if (next <= 0) {
+        report(0);
         callbacks.current.onPlayingChange(false);
         return;
       }
@@ -201,7 +212,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [playing, contentEndMs, report]);
+  }, [playing, rate, contentEndMs, report]);
+  /* Media plays forward only. In reverse the elements stay paused and follow
+     the clock by seeking, which ProgramLayer does for any paused layer. */
+  const mediaPlaying = playing && rate > 0;
 
   /* Sound, kept in step with the cut. Each element is put where the playhead
      says it should be, and corrected only once it has drifted audibly — a
@@ -211,13 +225,15 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
       const element = audioRefs.current.get(audioClip.id);
       if (!element || element.readyState === 0) continue;
       const target = sourceTimeMs(audioClip, playheadMs) / 1000;
-      if (Math.abs(element.currentTime - target) > (playing ? AUDIO_DRIFT_LIMIT_S : SEEK_EPSILON_S)) {
+      if (Math.abs(element.currentTime - target) > (mediaPlaying ? AUDIO_DRIFT_LIMIT_S : SEEK_EPSILON_S)) {
         element.currentTime = Math.max(0, target);
       }
-      if (playing) void element.play().catch(() => undefined);
-      else element.pause();
+      if (mediaPlaying) {
+        if (element.playbackRate !== rate) element.playbackRate = rate;
+        void element.play().catch(() => undefined);
+      } else element.pause();
     }
-  }, [audioClips, playheadMs, playing]);
+  }, [audioClips, playheadMs, mediaPlaying, rate]);
 
   const hasClips = tracks.some((track) => track.clips.length > 0);
 
@@ -317,7 +333,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, onSeek
         media={media}
         composited={composited}
         playheadMs={depth >= 0 ? playheadMs : prepareAtMs}
-        playing={playing}
+        playing={mediaPlaying}
+        rate={rate}
         active={depth >= 0}
         foreground={depth === 0}
         muted={depth !== 0 || (tracks.find((track) => track.id === layer.trackId)?.muted ?? false)}
