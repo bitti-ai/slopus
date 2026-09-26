@@ -125,7 +125,11 @@ describe("the shape of the export screen", () => {
       const { container } = render(<ExportView config={project([clip("a", 0, 2_000)])} folderPath="/tmp/project" />);
       const stage = container.querySelector(".export-stage") as HTMLElement;
       const controls = screen.getByRole("group", { name: "Video playback controls" });
-      expect(controls.previousElementSibling?.classList.contains("export-picture")).toBe(true);
+      // Under the screen that holds the picture, not inset in a padded frame.
+      expect(controls.previousElementSibling?.classList.contains("export-screen")).toBe(true);
+      expect(controls.previousElementSibling?.firstElementChild?.classList.contains("export-picture")).toBe(true);
+      expect(stage.parentElement?.classList.contains("export-preview")).toBe(true);
+      expect(stage.parentElement?.children).toHaveLength(1);
       expect(Array.from(controls.querySelectorAll("button")).map((button) => button.getAttribute("aria-label")))
         .toEqual(["Go to start", "Previous frame", "Play", "Next frame", "Go to end", "Full screen"]);
       // Windowed, nothing hides: the pointer resting changes nothing.
