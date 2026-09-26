@@ -69,7 +69,7 @@ export function usePaneSize(key: string, defaultSize: number, options: PaneSizeO
   const persist = options.persist !== false;
   const cssVar = options.cssVar ?? `--pane-${key.replace(/[^a-zA-Z0-9-]+/g, "-")}`;
   const clampSize = useCallback((value: number) => Math.round(Math.min(max, Math.max(min, value))), [min, max]);
-  const [size, setRaw] = useState(() => clampSize((persist ? readStored(key) : undefined) ?? defaultSize));
+  const [size, setRaw] = useState(() => Math.round((persist ? readStored(key) : undefined) ?? defaultSize));
 
   useEffect(() => {
     if (!persist) return;
@@ -78,17 +78,22 @@ export function usePaneSize(key: string, defaultSize: number, options: PaneSizeO
 
   const setSize = useCallback((value: number) => setRaw(clampSize(value)), [clampSize]);
   const reset = useCallback(() => setRaw(clampSize(defaultSize)), [clampSize, defaultSize]);
+  /* The limits may move (a max that follows the window width). What is shown
+     is clamped to the limits of the moment; the stored preference is not
+     touched, so a pane squeezed by a narrow window comes back to its size
+     when the window grows again. */
+  const shown = clampSize(size);
 
   return useMemo(() => ({
-    size,
+    size: shown,
     setSize,
     reset,
     min,
     max,
     cssVar,
-    style: { [cssVar]: `${size}px` } as CSSProperties,
-    splitterProps: { value: size, min, max, onChange: setSize, onReset: reset },
-  }), [size, setSize, reset, min, max, cssVar]);
+    style: { [cssVar]: `${shown}px` } as CSSProperties,
+    splitterProps: { value: shown, min, max, onChange: setSize, onReset: reset },
+  }), [shown, setSize, reset, min, max, cssVar]);
 }
 
 export interface SplitterProps extends SplitterValueProps {

@@ -7,6 +7,7 @@ import App from "./App";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
 import { chooseOption, comboValue, optionNames } from "./components/workspace/comboTestUtils";
 import { installBrowserGuards } from "./lib/nativeShell";
+import { agentPaneMax } from "./components/ProjectWorkspace";
 import { createProjectConfig, STORY_TRACK_ID } from "./lib/project";
 
 describe("how long ago a project was edited", () => {
@@ -267,6 +268,14 @@ describe("project library controls", () => {
     expect(pane).not.toBeVisible();
     expect(screen.getByRole("button", { name: "Agent" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: "Agent" })).toHaveFocus();
+  });
+
+  it("keeps the agent pane to about a third of the window", () => {
+    // At the 900px window minimum the 360px default would take 40% of it.
+    expect(agentPaneMax(900)).toBe(315);
+    expect(agentPaneMax(1600)).toBe(560);
+    expect(agentPaneMax(2560)).toBe(640);
+    expect(agentPaneMax(600)).toBe(280);
   });
 
   it("creates an empty project when the new-project form is left blank", async () => {

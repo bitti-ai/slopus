@@ -191,6 +191,8 @@ function App() {
     );
   }, [projects, query]);
 
+  const showLibraryHeading = projects.length > 0;
+
   const openProject = (project: ProjectRecord, view: ProjectView = "timeline") => {
     setWorkQueueOpen(false);
     setSelectedKey(projectQueueKey(project));
@@ -320,7 +322,7 @@ function App() {
      The screen behind it stays mounted and hidden, so an open project keeps
      its unsaved edits, the agent its draft, and the library its search. */
   const settingsPage = settingsOpen ? (
-    <div className="app-screen app-screen--settings">
+    <div className="app-screen">
       <TitleBar title="Settings" actions={queueTrigger(settingsQueueButton)} />
       <div className="app-screen__content">
         <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />
@@ -418,10 +420,12 @@ function App() {
             <CommandBarButton icon={<List size={16} />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
           </CommandBar>
 
-          <section className="library__section" aria-labelledby="all-projects-heading">
-            <h2 id="all-projects-heading" className="library__subtitle">
+          {/* An empty library says so in its empty state; a heading counting
+              "0 projects" above it would only repeat that. */}
+          <section className="library__section" {...(showLibraryHeading ? { "aria-labelledby": "all-projects-heading" } : { "aria-label": "All projects" })}>
+            {showLibraryHeading && <h2 id="all-projects-heading" className="library__subtitle">
               {query.trim() ? "Results" : "All projects"} <span className="library__count">{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
-            </h2>
+            </h2>}
             {loading ? (
               <div className={`project-grid project-grid--${projectLayout}`} aria-busy="true">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
             ) : filteredProjects.length ? (

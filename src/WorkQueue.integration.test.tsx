@@ -106,6 +106,10 @@ it("keeps the application queue alive while switching projects and saves results
 it("opens an empty queue from the library and closes it with Escape", async () => {
   vi.mocked(listRecentProjects).mockResolvedValue({ projects: [], unreadable: [] });
   render(<App />);
+  // An empty library shows its empty state without a "0 projects" heading over it.
+  expect(await screen.findByRole("heading", { name: "No projects yet" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /All projects/ })).toBeNull();
+  expect(screen.getByRole("region", { name: "All projects" })).toBeInTheDocument();
   const trigger = screen.getByRole("button", { name: "Work queue" });
   trigger.focus(); fireEvent.click(trigger);
   const flyout = screen.getByRole("dialog", { name: "Work queue" });

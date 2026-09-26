@@ -47,6 +47,22 @@ const VIEW_LABELS: Record<ShownView, string> = {
   timeline: "Timeline", generator: "Generator", references: "References", export: "Export", editor: "Editor",
 };
 
+const AGENT_PANE_MIN = 280;
+const AGENT_PANE_MAX = 640;
+/** The widest the agent pane may be in a window this wide: 35% of it. */
+export const agentPaneMax = (windowWidth: number) =>
+  Math.max(AGENT_PANE_MIN, Math.min(AGENT_PANE_MAX, Math.round(windowWidth * 0.35)));
+
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
+}
+
 /* The project window.
 
      [←] [icon] Project name   Timeline Generator References Export   [↶][↷] [Save] [Agent][Queue][⚙] [– □ ×]
@@ -103,7 +119,13 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   });
   const [agentOpen, setAgentOpenState] = useState(() => initialView === "agent" || readAgentPane());
   const setAgentOpen = (open: boolean) => { setAgentOpenState(open); writeAgentPane(open); };
-  const agentPane = usePaneSize("workspace.agent", 360, { min: 280, max: 640 });
+  /* 360px is a comfortable conversation column, but at the 900px window
+     minimum it would take 40% of the width from the editor. The pane gives
+     way instead: never more than about a third of the window (and never
+     under 280px). A wider size the user dragged to comes back as the window
+     grows. */
+  const windowWidth = useWindowWidth();
+  const agentPane = usePaneSize("workspace.agent", 360, { min: AGENT_PANE_MIN, max: agentPaneMax(windowWidth) });
   const agentPaneRef = useRef<HTMLElement>(null);
   const agentToggle = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);

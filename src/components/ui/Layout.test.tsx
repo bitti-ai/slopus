@@ -79,6 +79,21 @@ describe("Splitter + usePaneSize", () => {
     expect(separator).toHaveAttribute("aria-valuenow", "358");
   });
 
+  it("follows a moving maximum without forgetting the size the user chose", () => {
+    function Squeezed({ max }: { max: number }) {
+      const pane = usePaneSize("test.agent", 360, { min: 280, max });
+      return <div data-testid="grid" style={pane.style}><Splitter {...pane.splitterProps} aria-label="Resize agent" /></div>;
+    }
+    localStorage.setItem("slopus.pane.test.agent", "500");
+    const view = render(<Squeezed max={315} />);
+    expect(screen.getByTestId("grid").style.getPropertyValue("--pane-test-agent")).toBe("315px");
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuemax", "315");
+    // The preference is kept: widen the window and the pane is 500 again.
+    expect(localStorage.getItem("slopus.pane.test.agent")).toBe("500");
+    view.rerender(<Squeezed max={640} />);
+    expect(screen.getByTestId("grid").style.getPropertyValue("--pane-test-agent")).toBe("500px");
+  });
+
   it("survives unusable storage", () => {
     const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
     const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
