@@ -1,62 +1,38 @@
-import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useRef } from "react";
 import type { PromptSegment } from "../../lib/project";
+import { ContentDialog } from "../ui";
 
-export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debug Prompt", promptLabel = "The compiled MiniMax H3 prompt" }: {
+/** The exact prompt the engine is sent, in a ContentDialog. Ctrl+A inside the
+ *  prompt selects the prompt alone (not the whole window), so it can be
+ *  copied in one go. */
+export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debug prompt", promptLabel = "The compiled MiniMax H3 prompt" }: {
   sceneTitle: string;
   segments: PromptSegment[];
   onClose: () => void;
   title?: string;
   promptLabel?: string;
 }) {
-  const closeButton = useRef<HTMLButtonElement>(null);
   const prompt = useRef<HTMLPreElement>(null);
 
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    closeButton.current?.focus();
-    return () => { if (opener?.isConnected) opener.focus(); };
-  }, []);
-
-  useEffect(() => {
-    const keyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+  return <ContentDialog title={title} closeText="Close" onClose={onClose} width={880} className="debug-prompt-dialog" initialFocus={prompt}>
+    <p className="debug-prompt-dialog__scene">{sceneTitle}</p>
+    {/* Render compiler segments directly to preserve the exact engine prompt. */}
+    <pre
+      ref={prompt}
+      tabIndex={0}
+      className="compiled-prompt__text"
+      aria-label={promptLabel}
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
         event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        event.stopPropagation();
-        const element = prompt.current;
         const selection = window.getSelection();
-        if (element && selection) {
-          element.focus();
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          selection.removeAllRanges();
-          selection.addRange(range);
-        }
-      } else if (event.key === "Tab") {
-        event.preventDefault();
-        (document.activeElement === closeButton.current ? prompt.current : closeButton.current)?.focus();
-      }
-    };
-    window.addEventListener("keydown", keyDown, true);
-    return () => window.removeEventListener("keydown", keyDown, true);
-  }, [onClose]);
-
-  return createPortal(<div className="debug-prompt-backdrop" onMouseDown={(event) => {
-    if (event.target === event.currentTarget) onClose();
-  }}>
-    <section className="debug-prompt-dialog" role="dialog" aria-modal="true" aria-labelledby="debug-prompt-title" aria-describedby="debug-prompt-scene">
-      <header className="debug-prompt-dialog__header">
-        <div><h2 id="debug-prompt-title">{title}</h2><p id="debug-prompt-scene">{sceneTitle}</p></div>
-        <button ref={closeButton} type="button" className="icon-button icon-button--strong" aria-label={`Close ${title.toLowerCase()}`} onClick={onClose}><X size={18} /></button>
-      </header>
-      {/* Render compiler segments directly to preserve the exact engine prompt. */}
-      <pre ref={prompt} tabIndex={0} className="compiled-prompt__text" aria-label={promptLabel}>{segments.map((segment, index) =>
-        <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
-    </section>
-  </div>, document.body);
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(event.currentTarget);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }}
+    >{segments.map((segment, index) =>
+      <span key={index} className={`prompt-part prompt-part--${segment.kind}`}>{segment.value}</span>)}</pre>
+  </ContentDialog>;
 }

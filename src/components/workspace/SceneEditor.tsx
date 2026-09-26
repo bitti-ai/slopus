@@ -1,5 +1,6 @@
 import { ImagePlus, X } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
   actionReferenceIds,
   danglingReferenceTokens,
@@ -167,27 +168,26 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   };
 
   return <section className="shot-inspector" aria-label={`Shot ${shotNumber}`}>
-    {!promptOnly && <div className="shot-inspector__timing">
-      <label className="shot-card__start">
-        <span>Starts at</span>
-        <input
-          type="number"
-          min={SCENE_MIN_SECONDS}
-          max={duration}
-          step={STEP_SECONDS}
-          value={shot.startSeconds}
-          disabled={disabled || index === 0}
-          aria-label={`Shot ${shotNumber} starts at, in seconds`}
-          title={index === 0 ? "The first shot always opens the scene." : undefined}
-          onChange={(event) => onChange({ startSeconds: Math.min(duration, Math.max(0, Number(event.target.value) || 0)) })}
-        />
-        <em>to {seconds(endsAt)}</em>
-      </label>
-    </div>}
+    {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`} className="shot-inspector__timing">
+      <input
+        id={`shot-start-${shot.id}`}
+        className="text-field"
+        type="number"
+        min={SCENE_MIN_SECONDS}
+        max={duration}
+        step={STEP_SECONDS}
+        value={shot.startSeconds}
+        disabled={disabled || index === 0}
+        aria-label={`Shot ${shotNumber} starts at, in seconds`}
+        data-tooltip={index === 0 ? "The first shot always opens the scene." : undefined}
+        onChange={(event) => onChange({ startSeconds: Math.min(duration, Math.max(0, Number(event.target.value) || 0)) })}
+      />
+      <span className="prop-unit">to {seconds(endsAt)}</span>
+    </PropRow>}
 
     {job.sceneType === "character-replace" ? <CharacterReplaceInputs shot={shot} references={references} disabled={disabled} onChange={onChange} /> : <>
     <div className="shot-card__action">
-      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>{job.sceneType === "pose" ? "Describe where the pose should be used" : "Describe the shot"}</label>
+      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>{job.sceneType === "pose" ? "Where the pose is used" : "Description"}</label>
       <div className="shot-action-editor">
         <textarea
           id={`shot-action-${shot.id}`}
@@ -225,29 +225,27 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
     </div>
 
     {!promptOnly && <div className="shot-speech">
-      <div className="shot-speech__heading">
-        <label className="shot-card__sublabel" htmlFor={`shot-speech-${shot.id}`}>Speech</label>
-        <label className="shot-speech__language">
-          <span>Language</span>
-          <select
-            value={speechLanguage}
-            disabled={disabled}
-            aria-label={`Speech language for shot ${shotNumber}`}
-            onChange={(event) => onChange({ speechLanguage: event.target.value })}
-          >
-            {speechLanguages.map((language) => <option key={language} value={language}>{language}</option>)}
-          </select>
-        </label>
-      </div>
+      <label className="shot-card__sublabel" htmlFor={`shot-speech-${shot.id}`}>Speech</label>
       <textarea
         id={`shot-speech-${shot.id}`}
+        className="text-field"
         value={shot.speech ?? ""}
         disabled={disabled}
         aria-label={`Speech for shot ${shotNumber}`}
-        placeholder="Enter the words spoken in this shot."
+        placeholder="Words spoken in this shot"
+        data-tooltip="Added to the prompt as MiniMax dialogue"
         onChange={(event) => onChange({ speech: event.target.value || null })}
       />
-      <p className="shot-speech__hint">Added to the final prompt as MiniMax dialogue.</p>
+      <PropRow label="Language" htmlFor={`shot-language-${shot.id}`}>
+        <ComboBox
+          id={`shot-language-${shot.id}`}
+          value={speechLanguage}
+          disabled={disabled}
+          aria-label={`Speech language for shot ${shotNumber}`}
+          options={speechLanguages.map((language) => ({ value: language, label: language }))}
+          onChange={(language) => onChange({ speechLanguage: language })}
+        />
+      </PropRow>
     </div>}
 
     <ReferencePalette
@@ -269,6 +267,14 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   </section>;
 }
 
+/** A reference picker's options: an "unavailable" entry for an id the list no
+ *  longer has, so the control can still show what is stored. */
+const referenceOptions = (list: readonly ProjectReference[], current: string | null | undefined, empty: string, unavailable: string) => [
+  { value: "", label: empty },
+  ...(current && !list.some((reference) => reference.id === current) ? [{ value: current, label: unavailable }] : []),
+  ...list.map((reference) => ({ value: reference.id, label: reference.name })),
+];
+
 function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
   shot: SceneShot; references: ProjectReference[]; disabled: boolean;
   onChange: (updates: Partial<SceneShot>) => void;
@@ -277,40 +283,40 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
   const characters = references.filter((reference) => reference.kind !== "video" && isVisualReference(reference)
     && isReferenceUsable(reference) && referenceImages(reference).length > 0);
   return <div className="scene-settings">
-    <label className="scene-settings__field">
-      <span>Video reference</span>
-      <select aria-label="Video reference for this shot" value={shot.videoReferenceId ?? ""} disabled={disabled}
-        onChange={(event) => onChange({ videoReferenceId: event.target.value || null })}>
-        <option value="">Select a video</option>
-        {shot.videoReferenceId && !videos.some((reference) => reference.id === shot.videoReferenceId) && <option value={shot.videoReferenceId}>Unavailable video reference</option>}
-        {videos.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-      </select>
-      <small>Uses the clip range and soundtrack setting saved under References.</small>
-    </label>
-    <label className="scene-settings__field">
-      <span>New character reference</span>
-      <select aria-label="New character reference for this shot" value={shot.characterReferenceId ?? ""} disabled={disabled}
-        onChange={(event) => onChange({ characterReferenceId: event.target.value || null })}>
-        <option value="">Select a character</option>
-        {shot.characterReferenceId && !characters.some((reference) => reference.id === shot.characterReferenceId) && <option value={shot.characterReferenceId}>Unavailable character reference</option>}
-        {characters.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-      </select>
-    </label>
-    <label className="scene-settings__field">
-      <span>Character to replace</span>
-      <input aria-label="Character to replace in this shot" value={shot.characterTarget ?? ""} disabled={disabled}
+    <PropRow label="Video" htmlFor={`replace-video-${shot.id}`}>
+      <ComboBox id={`replace-video-${shot.id}`} aria-label="Video reference for this shot" value={shot.videoReferenceId ?? ""} disabled={disabled}
+        options={referenceOptions(videos, shot.videoReferenceId, "None", "Unavailable video reference")}
+        onChange={(value) => onChange({ videoReferenceId: value || null })} />
+    </PropRow>
+    <p className="prop-caption">Uses the clip range and soundtrack setting saved under References.</p>
+    <PropRow label="New character" htmlFor={`replace-character-${shot.id}`}>
+      <ComboBox id={`replace-character-${shot.id}`} aria-label="New character reference for this shot" value={shot.characterReferenceId ?? ""} disabled={disabled}
+        options={referenceOptions(characters, shot.characterReferenceId, "None", "Unavailable character reference")}
+        onChange={(value) => onChange({ characterReferenceId: value || null })} />
+    </PropRow>
+    <PropRow label="Replace" htmlFor={`replace-target-${shot.id}`}>
+      <input id={`replace-target-${shot.id}`} className="text-field" aria-label="Character to replace in this shot" value={shot.characterTarget ?? ""} disabled={disabled}
         placeholder="The main character" onChange={(event) => onChange({ characterTarget: event.target.value || null })} />
-      <small>If several characters appear, identify one, for example “the person in the red jacket”.</small>
-    </label>
-    <p>The replacement follows the original performance. Camera movement, background, lighting and other characters are preserved.</p>
+    </PropRow>
+    <p className="prop-caption">With several characters, name one, for example “the person in the red jacket”. Camera, background, lighting and other characters are kept.</p>
   </div>;
 }
 
-/* --- The scene, opened from its own line ---------------------------------- */
+/* --- The scene, opened from its own header -------------------------------- */
+
+const SCENE_TYPES: { value: SceneType; label: string }[] = [
+  { value: "first-last-frame", label: "First & last frame" },
+  { value: "animate", label: "Animate" },
+  { value: "pose", label: "Pose" },
+  { value: "character-replace", label: "Character replace" },
+  { value: "extend", label: "Extend" },
+  { value: "bridge", label: "Bridge" },
+];
 
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
- *  lives in the scene header where it stays visible. */
+ *  lives in the scene header where it stays visible. Simple label + control
+ *  pairs are inspector rows; the free-text fields stay full width. */
 export function SceneInspector({ job, shots, references, previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
@@ -332,6 +338,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   const characterReplace = sceneType === "character-replace";
   const transition = isVideoTransition({ sceneType });
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!;
+  const id = useId();
   // The style is read off the first shot that carries one, so that is where it
   // is written. One place, never a second field that could disagree with it.
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
@@ -339,174 +346,147 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
     () => references.filter((reference) => referenceImages(reference).length > 0 && isReferenceUsable(reference)),
     [references],
   );
+  const videos = usableVideoReferences(references);
+  const addImageButton = (label: string, onClick: () => void) => <button
+    type="button"
+    className="icon-button prop-row__button"
+    aria-label={label}
+    disabled={disabled || !importAvailable}
+    data-tooltip={importAvailable ? label : "Image import is available in the desktop app"}
+    onClick={onClick}
+  ><ImagePlus size={16} aria-hidden="true" /></button>;
 
   return <section className="scene-inspector" aria-label="This scene">
-    <section className="scene-settings" aria-labelledby={`${job.id}-scene-settings`}>
-      <h3 id={`${job.id}-scene-settings`}>Scene</h3>
-      <label className="scene-settings__field">
-        <span>Scene type</span>
-        <select aria-label="Scene type" value={sceneType} disabled={disabled}
-          onChange={(event) => onChange({ sceneType: event.target.value as SceneType, usePreviousSceneLastFrame: undefined,
-            ...(event.target.value === "animate" ? { endFrameReferenceId: undefined } : {}) })}>
-          <option value="first-last-frame">First &amp; Last Frame</option>
-          <option value="animate">Animate</option>
-          <option value="pose">Pose</option>
-          <option value="character-replace">Character Replace</option>
-          <option value="extend">Extend</option>
-          <option value="bridge">Bridge</option>
-        </select>
-      </label>
-      {pose && <>
-        <label className="scene-settings__field">
-          <span>Pose video reference</span>
-          <select aria-label="Pose video reference for this scene" value={job.poseVideoReferenceId ?? ""} disabled={disabled}
-            onChange={(event) => onChange({ poseVideoReferenceId: event.target.value || null })}>
-            <option value="">Select a video</option>
-            {job.poseVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.poseVideoReferenceId) && <option value={job.poseVideoReferenceId}>Unavailable video reference</option>}
-            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-          </select>
-          <small>Uses the saved clip range for pose and motion. Describe the subject and setting below, with optional references.</small>
-        </label>
-        {shots.map((shot, index) => <ShotInspector key={shot.id} job={job} shots={shots} shot={shot} index={index}
-          endsAt={shots[index + 1]?.startSeconds ?? sceneDurationSeconds(job)} duration={sceneDurationSeconds(job)}
-          references={references} disabled={disabled} promptOnly
-          onChange={(updates) => onShots(shots.map((item) => item.id === shot.id ? { ...item, ...updates } : item))} />)}
-      </>}
-      {characterReplace && <p>Open a shot to select its source video and new character reference.</p>}
-      {transition && <>
-        <label className="scene-settings__field">
-          <span>{sceneType === "bridge" ? "Start video reference" : "Video reference"}</span>
-          <select aria-label="Start video reference for this scene" value={job.startVideoReferenceId ?? ""} disabled={disabled}
-            onChange={(event) => onChange({ startVideoReferenceId: event.target.value || null })}>
-            <option value="">Select a video</option>
-            {job.startVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.startVideoReferenceId) && <option value={job.startVideoReferenceId}>Unavailable video reference</option>}
-            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-          </select>
-        </label>
-        {sceneType === "bridge" && <label className="scene-settings__field">
-          <span>End video reference</span>
-          <select aria-label="End video reference for this scene" value={job.endVideoReferenceId ?? ""} disabled={disabled}
-            onChange={(event) => onChange({ endVideoReferenceId: event.target.value || null })}>
-            <option value="">Select a video</option>
-            {job.endVideoReferenceId && !usableVideoReferences(references).some((reference) => reference.id === job.endVideoReferenceId) && <option value={job.endVideoReferenceId}>Unavailable video reference</option>}
-            {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-          </select>
-        </label>}
-        <p>{sceneType === "bridge" ? "Connect the end of the start video to the beginning of the end video." : "Continue from the end of the selected video."} Open a shot to describe the new action. Scene length controls only the new segment.</p>
-      </>}
-      {!characterReplace && <>
-      {animate && <label className="scene-settings__field">
-        <span>Reference video</span>
-        <select aria-label="Reference video for this scene" disabled={disabled}
-          value={usableVideoReferences(references).find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
-          onChange={(event) => onChange({ referenceIds: [
-            ...job.referenceIds.filter((id) => !references.some((reference) => reference.id === id && reference.kind === "video")),
-            ...(event.target.value ? [event.target.value] : []),
-          ] })}>
-          <option value="">Select a video</option>
-          {usableVideoReferences(references).map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-        </select>
-        <small>Choose one driving video and one repainted frame of its scene. Enable the video's soundtrack under References to preserve it. No text prompt is needed.</small>
-      </label>}
-      {!animate && <label className="scene-settings__field">
-        <span>Look</span>
-        <select
-          value={chosen}
-          disabled={disabled}
-          aria-label="The look of this scene"
-          onChange={(event) => {
-            const value = event.target.value;
-            onShots(shots.map((shot, index) => {
-              const settings = { ...(shot.settings ?? {}) };
-              if (index === 0 && value) settings[look.id] = [value];
-              else delete settings[look.id];
-              return { ...shot, settings: normalizeShotTagSelection(settings) };
-            }));
-          }}
-        >
-          <option value="">None</option>
-          {look.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-        </select>
-        {!chosen && defaultLook && <small>Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</small>}
-      </label>}
-      {!transition && !pose && <div className="scene-settings__field">
-        <span>{animate ? "Repainted scene frame" : "Start frame"}</span>
-        <div className="scene-settings__start-frame">
-          <select
-            value={animate
-              ? job.startFrameReferenceId ?? imageReferences.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""
-              : job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
-            disabled={disabled}
-            aria-label="Start frame for this scene"
-            onChange={(event) => onChange({
-              usePreviousSceneLastFrame: event.target.value === "previous-scene" || undefined,
-              startFrameReferenceId: event.target.value === "previous-scene" ? undefined : event.target.value || undefined,
-              ...(animate ? {
-                endFrameReferenceId: undefined,
-                referenceIds: job.referenceIds.filter((id) => !imageReferences.some((reference) => reference.id === id)),
-              } : {}),
-            })}
-          >
-            <option value="">None</option>
-            {!animate && <option value="previous-scene" disabled={!previousScene}>Previous scene</option>}
-            {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-          </select>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={disabled || !importAvailable}
-            title={importAvailable ? "Import an image and use it as this scene's first frame" : "Image import is available in the desktop app"}
-            onClick={onAddStartFrame}
-          ><ImagePlus size={15} /> Add image</button>
-        </div>
-        <small>{animate ? "Use a frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : job.usePreviousSceneLastFrame
-          ? previousScene ? `Continues “${previousScene.title}” using its saved latents with 22 overlapping frames. Generate that scene first, or use Generate All.` : "Move this scene after another scene to continue it."
-          : "The selected image anchors the opening frame."}</small>
-      </div>}
-      {!animate && !transition && !pose && <div className="scene-settings__field">
-        <span>Last frame</span>
-        <div className="scene-settings__start-frame">
-          <select value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
-            onChange={(event) => onChange({ endFrameReferenceId: event.target.value || undefined })}>
-            <option value="">None</option>
-            {imageReferences.map((reference) => <option key={reference.id} value={reference.id}>{reference.name}</option>)}
-          </select>
-          <button type="button" className="secondary-button" disabled={disabled || !importAvailable}
-            title={importAvailable ? "Import an image and use it as this scene's last frame" : "Image import is available in the desktop app"}
-            onClick={onAddEndFrame}><ImagePlus size={15} /> Add image</button>
-        </div>
-        <small>The selected image anchors the closing frame.</small>
-      </div>}
-      {importError && <small className="scene-settings__error" role="alert">{importError}</small>}
-      {!animate && <><label className="scene-settings__field">
-        <span>Sound</span>
-        <textarea
-          value={job.soundscape ?? ""}
-          disabled={disabled}
-          aria-label="The sound of this scene"
-          placeholder="Ambience, and the sounds the action itself makes."
-          onChange={(event) => onChange({ soundscape: event.target.value })}
-        />
-      </label>
-      <label className="scene-settings__field">
-        <span>Music</span>
-        <textarea
-          value={job.music ?? ""}
-          disabled={disabled}
-          aria-label="The music of this scene"
-          placeholder="Instrumentation, tempo and dynamics — not a mood."
-          onChange={(event) => onChange({ music: event.target.value })}
-        />
-      </label></>}
-      </>}
-    </section>
-    <section className="scene-settings" aria-labelledby={`${job.id}-generation-settings`}>
-      <h3 id={`${job.id}-generation-settings`}>Generation</h3>
-      {animate && <p>Animate output is limited to 14.375 seconds. Longer scene lengths are shortened to fit.</p>}
-      <div className="scene-settings__numbers">
-        <label className="scene-settings__field">
-          <span>Steps</span>
+    <div role="region" aria-label="Scene" className="scene-settings">
+      <PropSection title="Scene" persistKey="generator.scene">
+        <PropRow label="Scene type" htmlFor={`${id}-type`}>
+          <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES}
+            onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
+              ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
+        </PropRow>
+        {pose && <>
+          <PropRow label="Pose video" htmlFor={`${id}-pose`}>
+            <ComboBox id={`${id}-pose`} aria-label="Pose video reference for this scene" value={job.poseVideoReferenceId ?? ""} disabled={disabled}
+              options={referenceOptions(videos, job.poseVideoReferenceId, "None", "Unavailable video reference")}
+              onChange={(value) => onChange({ poseVideoReferenceId: value || null })} />
+          </PropRow>
+          <p className="prop-caption">Uses the saved clip range for pose and motion. Describe the subject and setting below.</p>
+        </>}
+        {characterReplace && <p className="prop-caption">Open a shot to choose its source video and new character.</p>}
+        {transition && <>
+          <PropRow label={sceneType === "bridge" ? "Start video" : "Video"} htmlFor={`${id}-start-video`}>
+            <ComboBox id={`${id}-start-video`} aria-label="Start video reference for this scene" value={job.startVideoReferenceId ?? ""} disabled={disabled}
+              options={referenceOptions(videos, job.startVideoReferenceId, "None", "Unavailable video reference")}
+              onChange={(value) => onChange({ startVideoReferenceId: value || null })} />
+          </PropRow>
+          {sceneType === "bridge" && <PropRow label="End video" htmlFor={`${id}-end-video`}>
+            <ComboBox id={`${id}-end-video`} aria-label="End video reference for this scene" value={job.endVideoReferenceId ?? ""} disabled={disabled}
+              options={referenceOptions(videos, job.endVideoReferenceId, "None", "Unavailable video reference")}
+              onChange={(value) => onChange({ endVideoReferenceId: value || null })} />
+          </PropRow>}
+          <p className="prop-caption">{sceneType === "bridge" ? "Connects the end of the start video to the beginning of the end video." : "Continues from the end of the selected video."} Open a shot to describe the new action; the scene length sets only the new segment.</p>
+        </>}
+        {!characterReplace && <>
+          {animate && <>
+            <PropRow label="Video" htmlFor={`${id}-animate-video`}>
+              <ComboBox id={`${id}-animate-video`} aria-label="Reference video for this scene" disabled={disabled}
+                value={videos.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
+                options={referenceOptions(videos, null, "None", "")}
+                onChange={(value) => onChange({ referenceIds: [
+                  ...job.referenceIds.filter((referenceId) => !references.some((reference) => reference.id === referenceId && reference.kind === "video")),
+                  ...(value ? [value] : []),
+                ] })} />
+            </PropRow>
+            <p className="prop-caption">One driving video and one repainted frame of its scene. Turn on the video’s soundtrack under References to keep it.</p>
+          </>}
+          {!animate && <PropRow label="Look" htmlFor={`${id}-look`}>
+            <ComboBox
+              id={`${id}-look`}
+              value={chosen}
+              disabled={disabled}
+              aria-label="The look of this scene"
+              options={[{ value: "", label: "None" }, ...look.options.map((option) => ({ value: option.id, label: option.label }))]}
+              onChange={(value) => {
+                onShots(shots.map((shot, index) => {
+                  const settings = { ...(shot.settings ?? {}) };
+                  if (index === 0 && value) settings[look.id] = [value];
+                  else delete settings[look.id];
+                  return { ...shot, settings: normalizeShotTagSelection(settings) };
+                }));
+              }}
+            />
+          </PropRow>}
+          {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
+          {!transition && !pose && <>
+            <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`}>
+              <ComboBox
+                id={`${id}-start`}
+                value={animate
+                  ? job.startFrameReferenceId ?? imageReferences.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""
+                  : job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
+                disabled={disabled}
+                aria-label="Start frame for this scene"
+                options={[
+                  { value: "", label: "None" },
+                  ...(!animate ? [{ value: "previous-scene", label: "Previous scene", disabled: !previousScene }] : []),
+                  ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name })),
+                ]}
+                onChange={(value) => onChange({
+                  usePreviousSceneLastFrame: value === "previous-scene" || undefined,
+                  startFrameReferenceId: value === "previous-scene" ? undefined : value || undefined,
+                  ...(animate ? {
+                    endFrameReferenceId: undefined,
+                    referenceIds: job.referenceIds.filter((referenceId) => !imageReferences.some((reference) => reference.id === referenceId)),
+                  } : {}),
+                })}
+              />
+              {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
+            </PropRow>
+            <p className="prop-caption">{animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : job.usePreviousSceneLastFrame
+              ? previousScene ? `Continues “${previousScene.title}” from its saved latents with 22 overlapping frames. Generate that scene first, or use Generate all.` : "Move this scene after another scene to continue it."
+              : "Anchors the opening frame."}</p>
+          </>}
+          {!animate && !transition && !pose && <PropRow label="Last frame" htmlFor={`${id}-end`}>
+            <ComboBox id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
+              options={[{ value: "", label: "None" }, ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name }))]}
+              onChange={(value) => onChange({ endFrameReferenceId: value || undefined })} />
+            {addImageButton("Add last frame", onAddEndFrame)}
+          </PropRow>}
+          {importError && <InfoBar severity="error" title="Couldn’t add image" message={importError} />}
+          {!animate && <>
+            <label className="scene-settings__field">
+              <span>Sound</span>
+              <textarea
+                className="text-field"
+                value={job.soundscape ?? ""}
+                disabled={disabled}
+                aria-label="The sound of this scene"
+                placeholder="Ambience, and the sounds the action itself makes."
+                onChange={(event) => onChange({ soundscape: event.target.value })}
+              />
+            </label>
+            <label className="scene-settings__field">
+              <span>Music</span>
+              <textarea
+                className="text-field"
+                value={job.music ?? ""}
+                disabled={disabled}
+                aria-label="The music of this scene"
+                placeholder="Instrumentation, tempo and dynamics — not a mood."
+                onChange={(event) => onChange({ music: event.target.value })}
+              />
+            </label>
+          </>}
+        </>}
+      </PropSection>
+    </div>
+    <div role="region" aria-label="Generation" className="scene-settings">
+      <PropSection title="Generation" persistKey="generator.generation">
+        {animate && <p className="prop-caption">Animate output is limited to 14.375 seconds; longer scenes are shortened to fit.</p>}
+        <PropRow label="Steps" htmlFor={`${id}-steps`}>
           <CommittedNumberInput
+            id={`${id}-steps`}
+            className="text-field"
             minimum={2}
             maximum={MAX_GENERATION_STEPS}
             step={1}
@@ -516,10 +496,11 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             aria-label="Generation step count"
             onCommit={(value) => onChange({ steps: value })}
           />
-        </label>
-        <label className="scene-settings__field">
-          <span>Seed</span>
+        </PropRow>
+        <PropRow label="Seed" htmlFor={`${id}-seed`}>
           <CommittedNumberInput
+            id={`${id}-seed`}
+            className="text-field"
             minimum={-1}
             maximum={Number.MAX_SAFE_INTEGER}
             step={1}
@@ -527,12 +508,12 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
             integer
             disabled={disabled}
             aria-label="Generation seed"
+            data-tooltip="-1 picks a random seed"
             onCommit={(value) => onChange({ seed: value })}
           />
-          <small>Use -1 for a random seed.</small>
-        </label>
-      </div>
-    </section>
+        </PropRow>
+      </PropSection>
+    </div>
   </section>;
 }
 
@@ -556,28 +537,27 @@ function ReferenceSmartChips({ action, tokenOrder, referenceById, citable, numbe
     return `Reference ${number > 0 ? number : "?"}${name ? ` · ${name}` : ""}`;
   };
   return <div className="shot-action-editor__chips">
-    {parts.map((part, index) => part.kind === "reference" && <select
+    {parts.map((part, index) => part.kind === "reference" && <ComboBox
         key={index}
         className={`reference-smart-chip ${citable.some((reference) => reference.id === part.value) ? "" : "reference-smart-chip--broken"}`}
         value={part.value}
         disabled={disabled}
         aria-label={`${label(part.value)} — choose another reference`}
-        onChange={(event) => {
-          if (event.target.value === "") onChange(index, null);
-          else if (event.target.value !== part.value) onChange(index, event.target.value);
+        options={[
+          // A reference that can no longer be cited still has to be listed,
+          // or the control could not show what the line currently says.
+          ...(!citable.some((reference) => reference.id === part.value) ? [{ value: part.value, label: `${label(part.value)} — can’t be used` }] : []),
+          ...citable.map((reference) => {
+            const number = numbered.findIndex((item) => item.id === reference.id) + 1;
+            return { value: reference.id, label: number > 0 ? `Reference ${number} · ${reference.name}` : `${reference.name} — not in this scene yet` };
+          }),
+          { value: "", label: "Remove from the line" },
+        ]}
+        onChange={(value) => {
+          if (value === "") onChange(index, null);
+          else if (value !== part.value) onChange(index, value);
         }}
-      >
-        {/* A reference that can no longer be cited still has to be selectable,
-            or the control could not show what the line currently says. */}
-        {!citable.some((reference) => reference.id === part.value) && <option value={part.value}>{label(part.value)} — can’t be used</option>}
-        {citable.map((reference) => {
-          const number = numbered.findIndex((item) => item.id === reference.id) + 1;
-          return <option key={reference.id} value={reference.id}>
-            {number > 0 ? `Reference ${number} · ${reference.name}` : `${reference.name} — not in this scene yet`}
-          </option>;
-        })}
-        <option value="">Take it out of the line</option>
-      </select>)}
+      />)}
   </div>;
 }
 
@@ -602,53 +582,49 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
   const group = pending ? shotTagGroup(pending) : undefined;
 
   return <div className="shot-settings">
+    <span className="shot-card__sublabel">Settings</span>
     <ul className="shot-settings__chips">
       {chosen.map(({ group: owner, option }) => <li key={`${owner.id}-${option.id}`}>
-        <span className="setting-tag">
+        <span className="setting-tag" data-tooltip={`Adds “${option.term}” to the prompt`}>
           <em>{owner.label}</em>
           <b>{option.label}</b>
           <button
             type="button"
             disabled={disabled}
             aria-label={`Remove ${owner.label}: ${option.label} from shot ${shotNumber}`}
-            title={`Puts “${option.term}” in the prompt`}
             onClick={() => onChange(toggleShotTag(settings, owner.id, option.id))}
-          ><X size={13} /></button>
+          ><X size={12} aria-hidden="true" /></button>
         </span>
       </li>)}
-      {chosen.length === 0 && <li className="shot-settings__none">No settings on this shot, which is a finished shot.</li>}
+      {chosen.length === 0 && <li className="shot-settings__none">None</li>}
     </ul>
     <div className="shot-settings__add">
-      <select
-        value={pending ?? ""}
+      <ComboBox
+        value={pending}
         disabled={disabled}
+        placeholder="Add a setting…"
         aria-label={`Add a setting to shot ${shotNumber}`}
-        onChange={(event) => setPending(event.target.value || null)}
-      >
-        <option value="">Add a setting…</option>
-        {groups.map((option) => {
+        options={groups.map((option) => {
           // Speed and amplitude qualify a movement. With none chosen the
           // compiler leaves them out, so offering them would promise something
           // the prompt does not do.
           const blocked = Boolean(option.requiresMovement) && !movement;
-          return <option key={option.id} value={option.id} disabled={blocked}>
-            {option.label}{blocked ? " — needs a camera movement first" : ""}
-          </option>;
+          return { value: option.id, label: option.label, disabled: blocked, description: blocked ? "Needs a camera movement first" : undefined };
         })}
-      </select>
-      {group && <select
-        value=""
+        onChange={(value) => setPending(value || null)}
+      />
+      {group && <ComboBox
+        value={null}
         disabled={disabled}
+        placeholder="Choose a value…"
         aria-label={`Value for ${group.label} on shot ${shotNumber}`}
-        onChange={(event) => {
-          if (!event.target.value) return;
-          onChange(toggleShotTag(settings, group.id, event.target.value));
+        options={group.options.map((option) => ({ value: option.id, label: option.label }))}
+        onChange={(value) => {
+          if (!value) return;
+          onChange(toggleShotTag(settings, group.id, value));
           setPending(null);
         }}
-      >
-        <option value="">Choose a value…</option>
-        {group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>}
+      />}
       {group && <span className="shot-settings__help">{group.help}</span>}
     </div>
   </div>;
@@ -665,11 +641,8 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
   onInsert: (referenceId: string) => void;
 }) {
   return <div className="reference-palette">
-    <span className="reference-palette__lead">
-      {citable.length === 0
-        ? "This project has no references the prompt can use yet. Add one under References and it can be dropped into a line."
-        : "Drag one into the line, or click it to write it where the caret is."}
-    </span>
+    <span className="shot-card__sublabel">References</span>
+    {citable.length === 0 && <span className="reference-palette__lead">None yet — add one under References.</span>}
     <ul>
       {citable.map((reference) => {
         const number = numbered.findIndex((item) => item.id === reference.id) + 1;
@@ -679,9 +652,9 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
             className="reference-chip"
             draggable={!disabled}
             disabled={disabled}
-            title={number > 0
-              ? `Writes “Reference ${number}” into the line, and <Subject ${number}> into the prompt`
-              : "Dropping it into a line adds it to this scene, and it takes the next Reference number"}
+            data-tooltip={number > 0
+              ? `Writes “Reference ${number}” into the line, and <Subject ${number}> into the prompt. Drag it, or click to insert at the caret.`
+              : "Dropping it into a line adds it to this scene with the next Reference number"}
             onDragStart={(event) => {
               event.dataTransfer.setData(REFERENCE_DRAG_TYPE, reference.id);
               event.dataTransfer.effectAllowed = "copy";
@@ -694,11 +667,10 @@ function ReferencePalette({ citable, numbered, dangling, referenceById, disabled
         </li>;
       })}
     </ul>
-    {dangling.length > 0 && <p className="reference-palette__broken">
-      {dangling.length === 1 ? "One reference named in this scene" : `${dangling.length} references named in this scene`} can no
-      longer be used — {dangling.map((id) => referenceById.get(id)?.name ?? "one that was deleted").join(", ")}. Those names are
-      left out of the compiled prompt, and the scene cannot be sent until each one is swapped for another reference or taken
-      out of the line.
-    </p>}
+    {dangling.length > 0 && <InfoBar
+      severity="error"
+      title={dangling.length === 1 ? "A reference can’t be used" : `${dangling.length} references can’t be used`}
+      message={`${dangling.map((id) => referenceById.get(id)?.name ?? "A deleted reference").join(", ")} ${dangling.length === 1 ? "is" : "are"} left out of the prompt. Swap ${dangling.length === 1 ? "it" : "each one"} for another reference or remove ${dangling.length === 1 ? "it" : "them"} from the line before generating.`}
+    />}
   </div>;
 }

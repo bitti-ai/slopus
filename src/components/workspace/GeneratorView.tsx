@@ -3,14 +3,17 @@ import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
 import { characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
-import { ChevronDown, Plus, Square, Trash2, WandSparkles } from "lucide-react";
+import { LayoutGrid, List, Plus, Square, Trash2, WandSparkles } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useShortcut } from "../../lib/commands";
+import { askNative } from "../../lib/nativeShell";
+import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, Splitter, StatusBar, tooltipProps, usePaneSize } from "../ui";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
-import { SceneBoard, type GeneratorSelection } from "./SceneBoard";
+import { SceneBoard, type BoardDensity, type GeneratorSelection } from "./SceneBoard";
 import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./SceneEditor";
 import { statusIcon } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
@@ -33,9 +36,10 @@ interface GeneratorViewProps {
   onRuntimeChange?: (runtime: SlopfabStatus) => void;
 }
 
-type RemovalTarget =
-  | { kind: "scene"; job: GenerationJob }
-  | { kind: "shot"; job: GenerationJob; shotId: string; shotName: string };
+const DENSITY_KEY = "slopus.generator.density";
+const readDensity = (): BoardDensity => {
+  try { return localStorage.getItem(DENSITY_KEY) === "list" ? "list" : "tiles"; } catch { return "tiles"; }
+};
 
 /* The Generator is a BOARD and a PANEL.
  *
@@ -67,7 +71,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      Opening the Generator, or arriving from a clip in the timeline, opens the
      SCENE — the thing that has a state, a prompt and a Generate button. */
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
-  const [removalTarget, setRemovalTarget] = useState<RemovalTarget | null>(null);
+  const [density, setDensity] = useState<BoardDensity>(readDensity);
+  const chooseDensity = (next: BoardDensity) => {
+    setDensity(next);
+    try { localStorage.setItem(DENSITY_KEY, next); } catch { /* storage unavailable */ }
+  };
+  const inspectorPane = usePaneSize("generator.inspector", 380, { min: 280, max: 640 });
+  const root = useRef<HTMLDivElement>(null);
+  const titleInput = useRef<HTMLInputElement>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [startFrameError, setStartFrameError] = useState<string | null>(null);
@@ -387,6 +398,22 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     }
   };
 
+  /* Deleting asks first, in a native Windows message box. */
+  const confirmRemoveScene = async (job: GenerationJob) => {
+    const confirmed = await askNative({ title: "Delete scene", message: `Delete “${job.title}” and all of its shots?`, kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" });
+    if (confirmed) removeScene(job);
+  };
+  const confirmRemoveShot = async (job: GenerationJob, shotId: string) => {
+    const shots = sceneShots(job);
+    const index = shots.findIndex((shot) => shot.id === shotId);
+    if (index < 0 || shots.length <= 1) return;
+    const name = shots[index].name ?? `Shot ${index + 1}`;
+    const confirmed = await askNative({ title: "Delete shot", message: `Delete “${name}” from “${job.title}”?`, kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" });
+    if (!confirmed) return;
+    const current = configRef.current.generationJobs.find((candidate) => candidate.id === job.id);
+    if (current) removeShot(current, shotId);
+  };
+
   const cancelScenes = (scenes: GenerationJob[]) => onCancelGeneration?.(scenes.map((job) => job.id));
   const generateScene = (job: GenerationJob) => {
     if (job.status === "queued" || job.status === "generating") void cancelScenes([job]);
@@ -428,100 +455,153 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
 
-  return <div className={`generator-view ${selected ? "" : "generator-view--empty"}`}>
+  /* --- Keyboard ------------------------------------------------------------
+     Scoped to the Generator, so the same keys can mean something else on the
+     timeline. F2 puts the caret in the open scene's or shot's name; Delete
+     asks first, the way the inspector's delete button always has. Undo is the
+     project's (bound once by the workspace), not this screen's. */
+  const rename = (target: GeneratorSelection) => {
+    setSelection(target);
+    requestAnimationFrame(() => {
+      const field = titleInput.current;
+      if (!field) return;
+      field.focus();
+      field.select();
+    });
+  };
+  useShortcut("F2", () => { if (!selected) return false; rename({ jobId: selected.id, shotId: openShot?.id ?? null }); }, { scope: root, enabled: Boolean(selected) });
+  useShortcut("Delete", () => {
+    if (!selected) return false;
+    if (openShot) {
+      if (selectedShots.length <= 1) return false;
+      void confirmRemoveShot(selected, openShot.id);
+    } else void confirmRemoveScene(selected);
+  }, { scope: root, enabled: Boolean(selected) });
+
+  const generateAllTooltip = cancellable.length > 0
+    ? `Cancel ${cancellable.length} ${cancellable.length === 1 ? "generation" : "generations"}`
+    : !runtimeReady
+      ? runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready."
+      : active.length > 0
+        ? "Generation is still being saved."
+        : batchScenesReady.length === 0
+          ? "Every fixed-seed scene is already up to date."
+          : `Generate ${batchScenesReady.length} ${batchScenesReady.length === 1 ? "scene" : "scenes"}`;
+  const runtimeLabel = runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime);
+  const availableTemplates = templateSettings.templates.filter((template) => !templateNeedsDownload(template));
+
+  return <div ref={root} className={`generator-view ${selected ? "" : "generator-view--empty"}`} style={inspectorPane.style}>
     <main className="generator-main">
-      <header className="generator-heading">
-        <div className="generator-heading__title">
-          <h1>Generator</h1>
-          <p>{boardSummary(active.length, queued.length, jobs.length)}</p>
-        </div>
-        <div className="generator-heading__actions">
-          {/* One line: the headline already IS the status. */}
-          <div
-            className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}
-            title={runtimeError ?? generatorRuntime?.detail ?? runtimeHeadline(generatorRuntime)}
-          >
-            <i role="img" aria-label={runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime)} />
-            <span className="generator-runtime__label">Generator:</span>
-            <GeneratorTemplateCombobox templates={templateSettings.templates.filter((template) => !templateNeedsDownload(template))} selected={selectedTemplate} onChange={chooseGeneratorTemplate} />
-            {(runtimeError || (generatorRuntime?.state !== "ready" && generatorRuntime?.state !== "modelsMissing")) && <span className="generator-runtime__status" aria-hidden="true">{runtimeError ? "Unavailable" : runtimeHeadline(generatorRuntime)}</span>}
-          </div>
-          <button
-            className={cancellable.length > 0 ? "danger-button generator-heading__cancel" : "primary-button"}
-            disabled={cancellable.length === 0 && active.length > 0}
-            title={cancellable.length > 0
-              ? `Cancel ${cancellable.length} ${cancellable.length === 1 ? "generation" : "generations"}`
-              : !runtimeReady
-                ? runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready."
-                : active.length > 0
-                  ? "Generation is still being saved."
-                  : batchScenesReady.length === 0
-                    ? "Every fixed-seed scene is already up to date."
-                    : `Generate ${batchScenesReady.length} ${batchScenesReady.length === 1 ? "scene" : "scenes"}`}
-            onClick={() => cancellable.length > 0 ? void cancelScenes(cancellable) : void generateAll()}
-          >
-            {cancellable.length > 0
-              ? <><Square size={15} aria-hidden="true" /> Cancel All</>
-              : <><WandSparkles size={16} aria-hidden="true" /> Generate All</>}
-          </button>
-        </div>
-      </header>
-
-      {jobs.length > 0 && <SceneBoard
-        jobs={jobs}
-        folderPath={folderPath}
-        generationCompletionTimes={generationCompletionTimes}
-        references={config.references}
-        selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
-        onSelect={setSelection}
-        onAddScene={newScene}
-        onAddShot={addShot}
-        onDuration={setDuration}
-        onGenerate={generateScene}
-        generationBlocker={generationBlocker}
-        changedJobIds={changedJobIds}
-        cancellingJobIds={cancellingJobIds}
-        onMoveScene={moveScene}
-        onMoveShot={moveShot}
-      />}
-
-      {jobs.length === 0 && <button
-        type="button"
-        className="shot-card shot-card--add scene-card--add"
-        onClick={newScene}
-        title="Add an empty scene — you write the shots"
+      <CommandBar
+        aria-label="Generator"
+        className="generator-command"
+        end={<>
+          <CommandBarButton icon={<LayoutGrid size={16} />} label="Tiles" pressed={density === "tiles"} onClick={() => chooseDensity("tiles")} />
+          <CommandBarButton icon={<List size={16} />} label="List" pressed={density === "list"} onClick={() => chooseDensity("list")} />
+        </>}
       >
-        <Plus size={18} aria-hidden="true" />
-        <span>Add a scene</span>
-      </button>}
+        {/* The generator the next render uses, with its readiness as a glyph
+            beside the name; the words for a state that needs attention are
+            in the tooltip and the status bar. */}
+        <span className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}>
+          <i role="img" aria-label={runtimeLabel} data-tooltip={runtimeError ?? generatorRuntime?.detail ?? runtimeLabel} />
+          <ComboBox
+            className="generator-template"
+            aria-label={`Video generator template: ${selectedTemplate.name}`}
+            data-tooltip={selectedTemplate.name}
+            value={selectedTemplate.id}
+            disabled={availableTemplates.length === 0}
+            options={availableTemplates.map((template) => ({ value: template.id, label: template.name }))}
+            onChange={chooseGeneratorTemplate}
+          />
+        </span>
+        <CommandBarSeparator />
+        {cancellable.length > 0
+          ? <CommandBarButton
+            className="generator-command__cancel"
+            icon={<Square size={14} />}
+            label="Cancel all"
+            showLabel
+            tooltip={generateAllTooltip}
+            onClick={() => void cancelScenes(cancellable)}
+          />
+          : <CommandBarButton
+            className="generator-command__generate"
+            icon={<WandSparkles size={16} />}
+            label="Generate all"
+            showLabel
+            tooltip={generateAllTooltip}
+            disabled={active.length > 0}
+            onClick={() => void generateAll()}
+          />}
+        <CommandBarButton icon={<Plus size={16} />} label="Add scene" showLabel onClick={newScene} />
+      </CommandBar>
+
+      <div className="generator-board">
+        {jobs.length > 0
+          ? <SceneBoard
+            jobs={jobs}
+            folderPath={folderPath}
+            generationCompletionTimes={generationCompletionTimes}
+            references={config.references}
+            selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}
+            density={density}
+            onSelect={setSelection}
+            onAddShot={addShot}
+            onDuration={setDuration}
+            onGenerate={generateScene}
+            generationBlocker={generationBlocker}
+            changedJobIds={changedJobIds}
+            cancellingJobIds={cancellingJobIds}
+            onMoveScene={moveScene}
+            onMoveShot={moveShot}
+            onRename={rename}
+            onRemoveScene={(job) => void confirmRemoveScene(job)}
+            onRemoveShot={(job, shotId) => void confirmRemoveShot(job, shotId)}
+          />
+          : <p className="generator-board__empty">No scenes yet.</p>}
+      </div>
+
+      <StatusBar
+        aria-label="Generator status"
+        className="generator-status"
+        end={runtimeError || (generatorRuntime && generatorRuntime.state !== "ready")
+          ? <span className="generator-status__runtime">{runtimeError ? "Generator unavailable" : runtimeHeadline(generatorRuntime)}</span>
+          : undefined}
+      >
+        <span role="status">{boardSummary(active.length, queued.length, jobs.length)}</span>
+      </StatusBar>
     </main>
 
-    {selected && <aside className="generator-panel" aria-label={openShot ? `${openShot.name ?? `Shot ${shotIndex + 1}`} of ${selected.title}` : `Scene: ${selected.title}`}>
+    {selected && <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" aria-controls="generator-inspector" />}
+
+    {selected && <aside id="generator-inspector" className="generator-panel" aria-label={openShot ? `${openShot.name ?? `Shot ${shotIndex + 1}`} of ${selected.title}` : `Scene: ${selected.title}`}>
       {openShot
         ? <>
           <header className="panel-head">
             {/* The way back up: the scene this shot belongs to, which is the
-                same thing its line on the board opens. */}
-            <button type="button" className="panel-head__up" onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
+                same thing its header on the board opens. */}
+            <button type="button" className="panel-head__up" data-tooltip={`Back to ${selected.title}`} onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
               {selected.title}
             </button>
-            <div className="panel-head__shot-title">
-              <h2><input
-                className="shot-title__name"
-                value={openShot.name ?? ""}
-                placeholder={`Shot ${shotIndex + 1}`}
-                aria-label={`Rename shot ${shotIndex + 1}`}
-                title="Rename this shot"
-                onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
-              /></h2>
-              {selectedShots.length > 1 && <button
-                type="button"
-                className="inspector-remove-button"
-                aria-label={`Remove shot ${shotIndex + 1}`}
-                title="Remove this shot"
-                onClick={() => setRemovalTarget({ kind: "shot", job: selected, shotId: openShot.id, shotName: openShot.name ?? `Shot ${shotIndex + 1}` })}
-              ><Trash2 size={16} aria-hidden="true" /></button>}
-            </div>
+            <span className="panel-head__sep" aria-hidden="true">›</span>
+            <h2 className="panel-head__title"><input
+              ref={titleInput}
+              className="panel-title__name shot-title__name"
+              value={openShot.name ?? ""}
+              placeholder={`Shot ${shotIndex + 1}`}
+              aria-label={`Rename shot ${shotIndex + 1}`}
+              aria-keyshortcuts="F2"
+              onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
+            /></h2>
+            {selectedShots.length > 1 && <button
+              type="button"
+              className="icon-button panel-head__delete"
+              aria-label={`Delete shot ${shotIndex + 1}`}
+              aria-keyshortcuts="Delete"
+              {...tooltipProps("Delete shot", "Delete")}
+              onClick={() => void confirmRemoveShot(selected, openShot.id)}
+            ><Trash2 size={16} aria-hidden="true" /></button>}
           </header>
           <div className="panel-scroll">
             <ShotInspector
@@ -540,34 +620,26 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         </>
         : <>
           <header className="panel-head">
-            <div className="panel-head__scene-title">
-              <div className="job-title">
-                {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
-                <div>
-                  {/* The badge is on the scene's own line on the board, where the
-                      eye compares one scene against the next. A second copy of it
-                      an inch away from the first says nothing new. */}
-                  {/* The title is the one part of a scene Slopus writes for the
-                      user — taken from their first words — so it has to be theirs
-                      to change. Blanking it falls back rather than saving a
-                      nameless scene the schema would reject. */}
-                  <h2><input
-                    className="job-title__name"
-                    value={selected.title}
-                    aria-label={`Rename ${selected.title}`}
-                    title="Rename this scene"
-                    onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
-                  /></h2>
-                </div>
-              </div>
-              <button
-                type="button"
-                className="inspector-remove-button"
-                aria-label={`Remove scene ${selected.title}`}
-                title="Remove this scene"
-                onClick={() => setRemovalTarget({ kind: "scene", job: selected })}
-              ><Trash2 size={16} aria-hidden="true" /></button>
-            </div>
+            {selected.status !== "draft" && selectedIndicator && <span className={`status-icon status-icon--${selectedIndicator}`}>{statusIcon(selectedIndicator)}</span>}
+            {/* The title is the one part of a scene Slopus writes for the
+                user, so it has to be theirs to change. Blanking it falls back
+                rather than saving a nameless scene the schema would reject. */}
+            <h2 className="panel-head__title"><input
+              ref={titleInput}
+              className="panel-title__name job-title__name"
+              value={selected.title}
+              aria-label={`Rename ${selected.title}`}
+              aria-keyshortcuts="F2"
+              onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
+            /></h2>
+            <button
+              type="button"
+              className="icon-button panel-head__delete"
+              aria-label={`Delete scene ${selected.title}`}
+              aria-keyshortcuts="Delete"
+              {...tooltipProps("Delete scene", "Delete")}
+              onClick={() => void confirmRemoveScene(selected)}
+            ><Trash2 size={16} aria-hidden="true" /></button>
           </header>
 
           <div className="panel-scroll">
@@ -597,7 +669,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               aria-expanded={showDebugPrompt}
               aria-haspopup="dialog"
               onClick={() => setShowDebugPrompt(true)}
-            >Debug Prompt</button>
+            >Debug prompt</button>
           </div>}
         </>}
     </aside>}
@@ -607,23 +679,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs, config.settings.defaultLook)}
       onClose={() => setShowDebugPrompt(false)}
     />}
-
-    {removalTarget && <div className="remove-dialog-backdrop">
-      <div className="remove-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-dialog-title">
-        <h2 id="remove-dialog-title">Remove {removalTarget.kind}?</h2>
-        <p>{removalTarget.kind === "scene"
-          ? `Remove “${removalTarget.job.title}” and all of its shots?`
-          : `Remove “${removalTarget.shotName}” from “${removalTarget.job.title}”?`}</p>
-        <div>
-          <button type="button" className="secondary-button" onClick={() => setRemovalTarget(null)}>Cancel</button>
-          <button type="button" className="danger-button" onClick={() => {
-            if (removalTarget.kind === "scene") removeScene(removalTarget.job);
-            else removeShot(removalTarget.job, removalTarget.shotId);
-            setRemovalTarget(null);
-          }}>Remove {removalTarget.kind}</button>
-        </div>
-      </div>
-    </div>}
   </div>;
 }
 
@@ -672,15 +727,17 @@ export function templateSceneBlocker(type: SceneType, template: GeneratorTemplat
   return null;
 }
 
+/** The status bar's one line: "3 scenes · 1 rendering · 2 waiting". */
 const boardSummary = (active: number, waiting: number, total: number) => {
-  if (total === 0) return "Nothing here yet";
-  if (active > 0) return `${active} rendering · ${waiting} waiting`;
-  if (waiting > 0) return `${waiting} waiting to render`;
-  return total === 1 ? "1 scene" : `${total} scenes`;
+  if (total === 0) return "No scenes";
+  const parts = [total === 1 ? "1 scene" : `${total} scenes`];
+  if (active > 0) parts.push(`${active} rendering`);
+  if (waiting > 0) parts.push(`${waiting} waiting`);
+  return parts.join(" · ");
 };
 
 const runtimeHeadline = (runtime: SlopfabStatus | null) => {
-  if (!runtime) return "Checking for the video engine…";
+  if (!runtime) return "Checking video engine…";
   switch (runtime.state) {
     case "ready": return "Video generator ready";
     case "demo": return "Preview mode";
@@ -689,111 +746,3 @@ const runtimeHeadline = (runtime: SlopfabStatus | null) => {
     case "incompatible": return "Video engine doesn’t match";
   }
 };
-
-function GeneratorTemplateCombobox({ templates, selected, onChange }: {
-  templates: GeneratorTemplate[];
-  selected: GeneratorTemplate;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [scrollDistance, setScrollDistance] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const valueRef = useRef<HTMLSpanElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  useEffect(() => {
-    const measure = () => {
-      const value = valueRef.current;
-      setScrollDistance(value ? Math.max(0, value.scrollWidth - value.clientWidth) : 0);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [selected.id, selected.name]);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    optionRefs.current[templates.findIndex((template) => template.id === selected.id)]?.focus();
-    return () => document.removeEventListener("pointerdown", close);
-  }, [open, selected.id, templates]);
-
-  const closeAndFocus = () => {
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  const pick = (id: string) => {
-    onChange(id);
-    closeAndFocus();
-  };
-
-  const moveOptionFocus = (index: number, direction: number) => {
-    const next = (index + direction + templates.length) % templates.length;
-    optionRefs.current[next]?.focus();
-  };
-
-  return <div className={`generator-runtime__select${open ? " generator-runtime__select--open" : ""}`} ref={rootRef}>
-    <button
-      ref={triggerRef}
-      type="button"
-      className="generator-runtime__trigger"
-      role="combobox"
-      disabled={templates.length === 0}
-      aria-label={`Video generator template: ${selected.name}`}
-      aria-expanded={open}
-      aria-haspopup="listbox"
-      aria-controls="generator-template-options"
-      onClick={() => setOpen((value) => !value)}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          setOpen(true);
-        } else if (event.key === "Escape" && open) {
-          event.preventDefault();
-          setOpen(false);
-        }
-      }}
-    >
-      <span
-        ref={valueRef}
-        className={`generator-runtime__value${scrollDistance > 0 ? " generator-runtime__value--overflow" : ""}`}
-        style={{ "--template-scroll-distance": `-${scrollDistance}px` } as React.CSSProperties}
-        title={selected.name}
-      ><span>{selected.name}</span></span>
-      <ChevronDown size={15} aria-hidden="true" />
-    </button>
-    {open && <div className="generator-runtime__options" id="generator-template-options" role="listbox" aria-label="Generator templates">
-      {templates.map((template, index) => <button
-        ref={(element) => { optionRefs.current[index] = element; }}
-        type="button"
-        role="option"
-        aria-selected={template.id === selected.id}
-        title={template.name}
-        key={template.id}
-        onClick={() => pick(template.id)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            moveOptionFocus(index, 1);
-          } else if (event.key === "ArrowUp") {
-            event.preventDefault();
-            moveOptionFocus(index, -1);
-          } else if (event.key === "Home" || event.key === "End") {
-            event.preventDefault();
-            optionRefs.current[event.key === "Home" ? 0 : templates.length - 1]?.focus();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            closeAndFocus();
-          } else if (event.key === "Tab") {
-            setOpen(false);
-          }
-        }}
-      ><span>{template.name}</span>{template.id === selected.id && <i aria-hidden="true" />}</button>)}
-    </div>}
-  </div>;
-}

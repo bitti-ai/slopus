@@ -11,15 +11,17 @@ import { sceneDurationSeconds, sceneShots, type GenerationJob } from "../../lib/
 export type JobStatus = GenerationJob["status"];
 export type SceneIndicatorStatus = JobStatus | "changed";
 
+/* Sentence case, like every other Windows status word — the old tracked
+   mono capitals read as a shout beside a 14px scene name. */
 export const STATUS_BADGE: Record<SceneIndicatorStatus, string> = {
-  draft: "DRAFT",
-  queued: "IN QUEUE",
-  generating: "RENDERING",
-  ready: "SAVING",
-  completed: "FINISHED",
-  failed: "FAILED",
-  cancelled: "CANCELLED",
-  changed: "CHANGED",
+  draft: "Draft",
+  queued: "In queue",
+  generating: "Rendering",
+  ready: "Saving",
+  completed: "Finished",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  changed: "Changed",
 };
 
 export const STATUS_WORD: Record<JobStatus, string> = {
