@@ -69,9 +69,9 @@ export const CommandBarButton = forwardRef(function CommandBarButton(
       aria-label={withText ? undefined : label}
       aria-pressed={pressed}
       aria-keyshortcuts={ariaKeyShortcuts(shortcut)}
-      /* Always: a labelled button loses its text when the bar is narrow
-         (the stylesheet hides .ui-cmd__label), and then the tooltip is all
-         that names it. */
+      /* Always: a page may visually hide .ui-cmd__label when its bar gets
+         narrow (generator.css and references.css do, in a container query),
+         and then the tooltip is all that names it on screen. */
       data-tooltip={tooltip ?? label}
       data-tooltip-shortcut={shortcut ? formatShortcut(shortcut) : undefined}
       {...rest}

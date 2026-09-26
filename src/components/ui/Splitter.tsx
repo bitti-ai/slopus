@@ -5,13 +5,14 @@
    move it 8px (Shift: 32px), Home/End jump to the limits, double-click
    resets. Sizes persist in localStorage under "slopus.pane.<key>".
 
-     const inspector = usePaneSize("generator.inspector", 340, { min: 260, max: 560 });
-     <div className="generator" style={inspector.style}>          // sets --pane-generator-inspector
+     // GeneratorView: a side pane at --pane-side-default (340px), 280-560px
+     const inspectorPane = usePaneSize("generator.inspector", 340, { min: 280, max: 560 });
+     <div className="generator-view" style={inspectorPane.style}>  // sets --pane-generator-inspector
        <main />
-       <Splitter {...inspector.splitterProps} reverse aria-label="Resize inspector" />
-       <aside />
+       <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" aria-controls="generator-inspector" />
+       <aside id="generator-inspector" />
      </div>
-     .generator { grid-template-columns: 1fr auto var(--pane-generator-inspector); }
+     .generator-view { grid-template-columns: minmax(280px, 1fr) auto minmax(280px, var(--pane-generator-inspector)); }
 
    `reverse` is for a pane on the right (or bottom) of the splitter: dragging
    towards it makes it smaller. Orientation "vertical" (default) is a vertical
