@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
+import { chooseOption, comboValue, optionNames } from "./components/workspace/comboTestUtils";
 import { createProjectConfig, STORY_TRACK_ID } from "./lib/project";
 
 describe("how long ago a project was edited", () => {
@@ -95,9 +96,9 @@ describe("project library controls", () => {
     expect(screen.queryByLabelText("Length in seconds")).toBeNull();
     expect(screen.queryByLabelText("Length slider")).toBeNull();
     const look = screen.getByRole("combobox", { name: "Look" });
-    expect(look).toHaveValue("");
-    fireEvent.change(look, { target: { value: "watercolor" } });
-    expect(look).toHaveValue("watercolor");
+    expect(comboValue(look)).toBe("");
+    chooseOption(look, /^watercolor$/i);
+    expect(comboValue(look)).toBe("watercolor");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();
   });
 
@@ -188,29 +189,29 @@ describe("project library controls", () => {
     render(<App />);
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    const shape = screen.getByRole("combobox", { name: /Aspect Ratio/ }) as HTMLSelectElement;
-    const size = screen.getByRole("combobox", { name: /Resolution/ }) as HTMLSelectElement;
+    const shape = screen.getByRole("combobox", { name: "Aspect ratio" });
+    const size = screen.getByRole("combobox", { name: "Resolution" });
 
     // The ladder the user asked for, in pixels rather than a name for them.
-    expect([...size.options].map((option) => option.textContent)).toEqual([
+    expect(optionNames(size)).toEqual([
       "736 × 416", "960 × 544", "1152 × 640", "1376 × 768 (default)", "1920 × 1088", "2432 × 1344",
     ]);
     // Every edge a multiple of 32 — the whole reason the old 720p/1080p/4K
     // ladder was replaced.
-    for (const option of [...size.options]) {
-      const [width, height] = option.textContent!.split(" (")[0].split(" × ").map(Number);
+    for (const option of optionNames(size)) {
+      const [width, height] = option.split(" (")[0].split(" × ").map(Number);
       expect([width % 32, height % 32]).toEqual([0, 0]);
     }
 
     /* A frame size is two numbers, and one of them changes with the shape. The
        old labels ("1080p HD") could sit above either and say nothing. */
-    fireEvent.change(shape, { target: { value: "9:16" } });
-    expect([...size.options].map((option) => option.textContent)).toEqual([
+    chooseOption(shape, "Vertical 9:16");
+    expect(optionNames(size)).toEqual([
       "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
     ]);
 
-    fireEvent.change(size, { target: { value: "544p" } });
-    expect(size).toHaveValue("544p");
+    chooseOption(size, "544 × 960");
+    expect(comboValue(size)).toBe("544p");
   });
 
   it("opens a newly named empty project with the agent pane showing", async () => {

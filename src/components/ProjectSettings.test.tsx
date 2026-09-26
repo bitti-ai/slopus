@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createProjectConfig, type CreateProjectInput, type ProjectRecord } from "../lib/project";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
+import { chooseOption, comboValue } from "./workspace/comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -22,14 +23,14 @@ it("opens settings from the project name, saves both settings mirrors, and resto
   opener.focus(); fireEvent.click(opener);
   const dialog = within(screen.getByRole("dialog", { name: "Project settings" }));
   expect(dialog.getByLabelText("Project name")).toHaveValue("Original");
-  expect(dialog.getByLabelText("Aspect Ratio")).toHaveValue("16:9");
-  expect(dialog.getByLabelText("Resolution")).toHaveValue("768p");
+  expect(comboValue(dialog.getByLabelText("Aspect ratio"))).toBe("16:9");
+  expect(comboValue(dialog.getByLabelText("Resolution"))).toBe("768p");
   expect(dialog.queryByLabelText("Length in seconds")).not.toBeInTheDocument();
   fireEvent.change(dialog.getByLabelText("Project name"), { target: { value: "Updated" } });
-  fireEvent.change(dialog.getByLabelText("Aspect Ratio"), { target: { value: "9:16" } });
-  fireEvent.change(dialog.getByLabelText("Resolution"), { target: { value: "544p" } });
-  fireEvent.change(dialog.getByLabelText("Look"), { target: { value: "watercolor" } });
-  fireEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+  chooseOption(dialog.getByLabelText("Aspect ratio"), "Vertical 9:16");
+  chooseOption(dialog.getByLabelText("Resolution"), /^544 × 960/);
+  chooseOption(dialog.getByLabelText("Look"), /^watercolor$/i);
+  fireEvent.click(dialog.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).not.toBeInTheDocument());
   const saved = onSave.mock.calls[0][0].config;
   expect(saved).toMatchObject({ name: "Updated", id: record.config.id,
@@ -40,33 +41,33 @@ it("opens settings from the project name, saves both settings mirrors, and resto
   expect(saved.generationJobs).toEqual(record.config.generationJobs);
   expect(opener).toHaveFocus();
   fireEvent.click(screen.getByRole("button", { name: "Edit project settings for Updated" }));
-  expect(screen.getByLabelText("Resolution")).toHaveValue("544p");
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("544p");
   expect(screen.queryByLabelText("Length in seconds")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Look")).toHaveValue("watercolor");
+  expect(comboValue(screen.getByLabelText("Look"))).toBe("watercolor");
 });
 
 it("cancels pending edits with Escape without saving", () => {
   const onSave = vi.fn();
   render(<ProjectWorkspace project={project()} initialView="references" onBack={vi.fn()} onSave={onSave} />);
   fireEvent.click(screen.getByRole("button", { name: "Edit project settings for Original" }));
-  fireEvent.change(screen.getByLabelText("Aspect Ratio"), { target: { value: "1:1" } });
+  chooseOption(screen.getByLabelText("Aspect ratio"), "Square 1:1");
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Project settings" })).not.toBeInTheDocument();
   expect(onSave).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Edit project settings for Original" }));
-  expect(screen.getByLabelText("Aspect Ratio")).toHaveValue("16:9");
+  expect(comboValue(screen.getByLabelText("Aspect ratio"))).toBe("16:9");
 });
 
 it("keeps failed saves open for retry", async () => {
   const onSave = vi.fn().mockRejectedValueOnce(new Error("Disk unavailable")).mockResolvedValue(undefined);
   render(<ProjectWorkspace project={project()} initialView="references" onBack={vi.fn()} onSave={onSave} />);
   fireEvent.click(screen.getByRole("button", { name: "Edit project settings for Original" }));
-  fireEvent.change(screen.getByLabelText("Look"), { target: { value: "watercolor" } });
+  chooseOption(screen.getByLabelText("Look"), /^watercolor$/i);
   const dialog = within(screen.getByRole("dialog", { name: "Project settings" }));
-  fireEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(dialog.getByRole("alert")).toHaveTextContent("Disk unavailable"));
-  expect(dialog.getByLabelText("Look")).toHaveValue("watercolor");
-  fireEvent.click(dialog.getByRole("button", { name: "Save changes" }));
+  expect(comboValue(dialog.getByLabelText("Look"))).toBe("watercolor");
+  fireEvent.click(dialog.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).not.toBeInTheDocument());
   expect(onSave).toHaveBeenCalledTimes(2);
 });
@@ -77,8 +78,8 @@ it("preserves legacy resolution and short project length when opening settings",
   config.brief.targetDurationSeconds = 5;
   const onSubmit = vi.fn(async () => undefined);
   render(<PromptComposer project={config} busy={false} onClose={vi.fn()} onCreate={onSubmit} />);
-  expect(screen.getByLabelText("Resolution")).toHaveValue("1080p");
-  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("1080p");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ resolution: "1080p", targetDurationSeconds: 5 }));
 });
 
@@ -88,7 +89,7 @@ it.each(["", "claymation"])("creates a project with Look %s and a 60-second time
   expect(screen.queryByLabelText("Length in seconds")).not.toBeInTheDocument();
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   expect(screen.queryByText("Used by scenes whose Look is set to None.")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Look"), { target: { value: look } });
+  chooseOption(screen.getByLabelText("Look"), look ? new RegExp(`^${look}$`, "i") : "None");
   fireEvent.click(screen.getByRole("button", { name: "Create project" }));
   expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ defaultLook: look || null, targetDurationSeconds: 60 }));
   expect(createProjectConfig(onCreate.mock.calls[0][0]).settings.defaultLook ?? null).toBe(look || null);
@@ -102,7 +103,7 @@ it("preserves an automatically extended project and allows clearing its default 
   render(<PromptComposer project={config} busy={false} onClose={vi.fn()} onCreate={onSubmit} />);
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Length in seconds")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Look"), { target: { value: "" } });
-  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  chooseOption(screen.getByLabelText("Look"), "None");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ targetDurationSeconds: 730, defaultLook: null }));
 });

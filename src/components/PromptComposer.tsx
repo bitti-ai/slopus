@@ -4,7 +4,7 @@ import { useShortcut } from "../lib/commands";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
 import { PROJECT_RESOLUTIONS } from "../lib/project";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
-import { ContentDialog, InfoBar, RadioGroup } from "./ui";
+import { ComboBox, ContentDialog, InfoBar, RadioGroup } from "./ui";
 
 interface PromptComposerProps {
   busy: boolean;
@@ -77,7 +77,7 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   return (
     <ContentDialog
       title={project ? "Project settings" : "New project"}
-      primaryText={project ? (busy ? "Saving…" : "Save changes") : (busy ? "Creating…" : "Create project")}
+      primaryText={project ? (busy ? "Saving…" : "Save") : (busy ? "Creating…" : "Create project")}
       onPrimary={() => void submit()}
       primaryDisabled={blocked}
       closeText="Cancel"
@@ -119,13 +119,13 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
         </div>
         <div className="composer__grid">
           <div className="composer__field">
-            <label htmlFor={`${id}-aspect`}>Aspect Ratio</label>
-            <select id={`${id}-aspect`} disabled={busy} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as AspectRatio)}>
-              <option value="16:9">Widescreen 16:9</option>
-              <option value="9:16">Vertical 9:16</option>
-              <option value="1:1">Square 1:1</option>
-              <option value="4:5">Portrait 4:5</option>
-            </select>
+            <label htmlFor={`${id}-aspect`}>Aspect ratio</label>
+            <ComboBox<AspectRatio> id={`${id}-aspect`} disabled={busy} value={aspectRatio} onChange={setAspectRatio} options={[
+              { value: "16:9", label: "Widescreen 16:9" },
+              { value: "9:16", label: "Vertical 9:16" },
+              { value: "1:1", label: "Square 1:1" },
+              { value: "4:5", label: "Portrait 4:5" },
+            ]} />
           </div>
           {/* The real pixels, not a name for them. Every rung is a multiple
               of 32 on both edges — what MiniMax H3 generates at — and they
@@ -133,19 +133,17 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
               1376×768 widescreen and 768×1376 vertical. */}
           <div className="composer__field">
             <label htmlFor={`${id}-resolution`}>Resolution</label>
-            <select id={`${id}-resolution`} disabled={busy} value={resolution} onChange={(event) => setResolution(event.target.value as Resolution)}>
-              {resolutions.map((option) => {
-                const { width, height } = outputDimensions(option, aspectRatio);
-                return <option key={option} value={option}>{width} × {height}{option === DEFAULT_RESOLUTION ? " (default)" : ""}</option>;
-              })}
-            </select>
+            <ComboBox<Resolution> id={`${id}-resolution`} disabled={busy} value={resolution} onChange={setResolution} options={resolutions.map((option) => {
+              const { width, height } = outputDimensions(option, aspectRatio);
+              return { value: option, label: `${width} × ${height}${option === DEFAULT_RESOLUTION ? " (default)" : ""}` };
+            })} />
           </div>
           <div className="composer__field">
             <label htmlFor={`${id}-look`}>Look</label>
-            <select id={`${id}-look`} aria-label="Look" disabled={busy} value={defaultLook} onChange={(event) => setDefaultLook(event.target.value)}>
-              <option value="">None</option>
-              {LOOKS.map((look) => <option key={look.id} value={look.id}>{look.label}</option>)}
-            </select>
+            <ComboBox id={`${id}-look`} disabled={busy} value={defaultLook} onChange={setDefaultLook} options={[
+              { value: "", label: "None" },
+              ...LOOKS.map((look) => ({ value: look.id, label: look.label })),
+            ]} />
           </div>
         </div>
         {message && <InfoBar severity="error" title={folderError ? "Choose another folder" : project ? "Couldn’t save" : "Couldn’t create the project"} message={message} />}
