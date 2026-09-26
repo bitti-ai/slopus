@@ -14,6 +14,7 @@
 .export-view {
   height: 100%;
   min-height: 0;
+  container: export-view / inline-size;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   background: var(--layer);
@@ -348,10 +349,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 900px) {
+/* Stacked only when the VIEW is narrow (agent pane open in a small window) —
+   a 900px window without the agent still has room for both columns. The
+   picture gets at most 45% of the height so the settings stay reachable. */
+@container export-view (max-width: 620px) {
   .export-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 45%) minmax(0, 1fr);
   }
 
   .export-settings {
