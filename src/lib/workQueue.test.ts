@@ -14,7 +14,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { restoreGeneratedImage } from "./imageHistory";
+import { createEmptyImage, restoreGeneratedImage } from "./imageHistory";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -135,6 +135,25 @@ describe("image generation work", () => {
       expect(config.imageScene!.nodes[1].description).toBe("A blue balloon");
     }
     expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).assets).toEqual(config.assets);
+  });
+  it("replaces an empty-image draft with its generated JPEG", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config = createEmptyImage(record.config, template.id);
+    record.config.imageScene!.nodes[0].description = "A forest";
+    const draftId = record.config.imageScene!.outputAssetId;
+    const session = queue.project(record);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/forest.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.imageEdit).toBeUndefined();
+    await finish(queue, request.jobId);
+    const config = session.getSnapshot().config;
+    expect(config.assets).toHaveLength(1);
+    expect(config.assets[0]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/forest.jpg", mimeType: "image/jpeg" });
+    expect(config.imageScene!.nodes[0].description).toBe("A forest");
+    expect(config.imageScene!.outputAssetId).toBe(draftId);
   });
   it("forwards selected refmods to still-image planning and generation with their strength and copies", async () => {
     const { queue } = setup();

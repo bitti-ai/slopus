@@ -29,6 +29,8 @@ The inspector offers **Prompt root** for a new composition and **Image root** to
 
 An **Editing** thumbnail holds the pending image version. Select other thumbnails to browse results, then select Editing to return to its hierarchy and prompts. Saving the project also saves this draft. Successful generation replaces the temporary thumbnail with the finished image; failed or cancelled generation keeps it available for retry.
 
+Right-click the image bar or a thumbnail and choose **New empty image** to add a blank Prompt draft. Its thumbnail keeps the new composition available while browsing and is replaced by the generated image when finished.
+
 The Agent can add, edit, reorder, reparent, duplicate and remove image nodes, and adjust prompts, style, placement, palettes, references, steps and seeds. Edits are transactional and preserve generated images. See the [image command guide](src-tauri/assets/agent-image.md) for the command vocabulary and examples.
 
 > **GPU recommendation:** A GPU with **24 GB of VRAM or more** is currently recommended for local video generation. We plan to reduce VRAM usage in future updates.

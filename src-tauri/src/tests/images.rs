@@ -14,10 +14,18 @@ fn image_editing_draft_survives_save_and_reopen() {
         "id":"draft", "kind":"image", "name":"Editing Source", "relativePath":"media/imported/source.png", "mimeType":"image/png",
         "width":65, "height":41, "createdAt":config.created_at, "imageDraft":true, "imageGeneration":snapshot
     })).unwrap());
+    snapshot["scene"]["rootType"] = serde_json::json!("prompt");
+    snapshot["scene"]["sourceImage"] = serde_json::Value::Null;
+    snapshot["scene"]["nodes"].as_array_mut().unwrap().truncate(1);
+    snapshot["scene"]["nodes"][0]["description"] = serde_json::json!("");
+    config.assets.push(serde_json::from_value(serde_json::json!({
+        "id":"empty-draft", "kind":"image", "name":"New image", "mimeType":"image/jpeg",
+        "createdAt":config.created_at, "imageDraft":true, "imageGeneration":snapshot
+    })).unwrap());
     let root = tempfile::tempdir().unwrap();
     let created = create_project_in(root.path(), &config).unwrap();
     let opened = read_project(Path::new(&created.folder_path)).unwrap();
-    assert_eq!(opened.config.assets[0], config.assets[0]);
+    assert_eq!(opened.config.assets, config.assets);
     let mut invalid = opened.config;
     invalid.assets[0].image_generation = None;
     assert!(validate_and_normalize_config(invalid).is_err());

@@ -18,18 +18,29 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
 /** Keep the editable version in history without creating another image file. */
 export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
   const scene = config.imageScene;
-  if (config.generationType !== "image" || scene?.rootType !== "image" || !scene.sourceImage) return config;
+  if (config.generationType !== "image" || !scene) return config;
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
+  const source = scene.rootType === "image" ? scene.sourceImage : null;
+  if (!source && !selected?.imageDraft) return config;
   if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1) return config;
   const existing = selected?.imageDraft ? selected : undefined;
   const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
   const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
   if (existing && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
-  const source = scene.sourceImage;
-  const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? `Editing ${source.name}`,
-    imageDraft: true, mimeType: /\.png$/i.test(source.relativePath) ? "image/png" : "image/jpeg",
+  const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? (source ? `Editing ${source.name}` : "New image"),
+    imageDraft: true, mimeType: /\.png$/i.test(source?.relativePath ?? "") ? "image/png" : "image/jpeg",
     imageGeneration: snapshot, createdAt: existing?.createdAt ?? new Date().toISOString() };
   return { ...config, imageScene: { ...scene, outputAssetId: id }, assets: existing ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset] };
+}
+
+export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
+  config = saveImageDraft(config);
+  const id = `image-draft-${crypto.randomUUID()}`;
+  const scene = { ...createImageScene(), steps: config.imageScene?.steps ?? 20, outputAssetId: id };
+  const next = { ...config, imageScene: scene };
+  const asset: ProjectAsset = { id, kind: "image", name: "New image", mimeType: "image/jpeg", imageDraft: true,
+    imageGeneration: imageGenerationSnapshot(next, "", generatorTemplateId || "image-draft"), createdAt: new Date().toISOString() };
+  return { ...next, assets: [...config.assets, asset] };
 }
 
 export function completeImageDraft(config: ProjectConfig, id: string, result: ProjectAsset): ProjectConfig {

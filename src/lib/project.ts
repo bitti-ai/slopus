@@ -183,16 +183,15 @@ export const projectAssetSchema = z.object({
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
-  if (asset.imageDraft && (asset.kind !== "image" || !asset.imageGeneration?.scene.sourceImage || asset.imageGeneration.scene.rootType !== "image")) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "Image drafts require an image-root snapshot." });
+  if (asset.imageDraft && (asset.kind !== "image" || !asset.imageGeneration || (asset.imageGeneration.scene.rootType === "image" && !asset.imageGeneration.scene.sourceImage))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Image drafts require a scene snapshot and image roots require a source." });
   }
   if (asset.imageGeneration && asset.kind !== "image") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageGeneration"], message: "Only image assets can store image generation history." });
   }
-  /* A scene may be arranged on the timeline before it has been rendered. Its
-   * generated asset is the stable thing the clip points at while the file is
-   * still absent; WorkQueue fills the path in when rendering ends. */
-  if (asset.kind !== "generated" && !asset.relativePath && !asset.sourcePath) {
+  /* Generated scenes and blank image drafts can exist before rendering.
+   * WorkQueue fills their file paths in when generation ends. */
+  if (asset.kind !== "generated" && !asset.imageDraft && !asset.relativePath && !asset.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],
       message: `Asset '${asset.id}' must have either a project-relative path or an external source path.`,

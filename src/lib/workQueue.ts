@@ -216,7 +216,7 @@ export class WorkQueue {
     const { prompt, references } = compileImagePrompt(current);
     const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
-    const imageDraftId = edit ? scene.outputAssetId ?? undefined : undefined;
+    const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
@@ -409,7 +409,7 @@ export class WorkQueue {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(work.request.imageEdit ? { format: "png" } : {}) });
       work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {
         id: work.imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
-        ...saved, imageGeneration: work.imageGeneration, mimeType: "image/png", createdAt: new Date().toISOString(),
+        ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString(),
       }) : ({ ...current, thumbnail: saved.relativePath,
         imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
         assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }],

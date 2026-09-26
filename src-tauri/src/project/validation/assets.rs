@@ -3,8 +3,8 @@ use crate::project::paths::*;
 use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
-        if asset.image_draft == Some(true) && (asset.kind != "image" || !asset.image_generation.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() == Some("image") && snapshot.scene.source_image.is_some())) {
-            return Err("Image drafts require an image-root snapshot.".into());
+        if asset.image_draft == Some(true) && (asset.kind != "image" || !asset.image_generation.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() != Some("image") || snapshot.scene.source_image.is_some())) {
+            return Err("Image drafts require a scene snapshot and image roots require a source.".into());
         }
         if let Some(snapshot) = &mut asset.image_generation {
             snapshot.scene.validate()?;
@@ -55,10 +55,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             .as_deref()
             .map(normalize_external_path)
             .transpose()?;
-        // A Generator scene can be cut before it is rendered. Its generated
-        // asset deliberately has no file until the render completes, while
-        // every imported asset still has exactly one stored location.
-        if asset.kind != "generated" || asset.relative_path.is_some() || asset.source_path.is_some()
+        // Generated scenes and blank image drafts have no file until generation
+        // completes. Imported assets still have exactly one stored location.
+        if (asset.kind != "generated" && asset.image_draft != Some(true)) || asset.relative_path.is_some() || asset.source_path.is_some()
         {
             check_one_location(
                 &format!("Asset '{}'", asset.id),

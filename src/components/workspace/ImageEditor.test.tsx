@@ -130,9 +130,39 @@ it("removes generated images through their context menu and keeps the preview an
   expect(current().assets).toHaveLength(0);
   expect(current().imageScene!.outputAssetId).toBeNull();
   expect(current().thumbnail).toBeNull();
-  expect(screen.queryByLabelText("Generated images")).not.toBeInTheDocument();
+  expect(within(screen.getByLabelText("Generated images")).queryByRole("button")).not.toBeInTheDocument();
   expect(screen.getByText("Compose your image")).toBeInTheDocument();
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+});
+
+it("creates a blank draft from the image bar and preserves it while browsing", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "saved", name: "Saved", kind: "image", relativePath: "media/generated/saved.jpg", mimeType: "image/jpeg", width: 101, height: 77, createdAt: initial.createdAt }];
+  const current = setup(initial);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Saved" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  expect(screen.getByLabelText("Type")).toHaveValue("prompt");
+  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("");
+  expect(current().imageScene!.nodes).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "View New image" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "A green forest" } });
+  fireEvent.click(screen.getByRole("button", { name: "View Saved" }));
+  fireEvent.click(screen.getByRole("button", { name: "View New image" }));
+  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("A green forest");
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).assets).toEqual(current().assets);
+  fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  expect(screen.queryByRole("menuitem", { name: "Remove" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  expect(current().assets).toHaveLength(3);
+  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("");
+});
+
+it("creates an image from the empty bar's keyboard context menu", () => {
+  const current = setup();
+  fireEvent.keyDown(screen.getByLabelText("Generated images"), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  expect(current().assets).toHaveLength(1);
+  expect(current().assets[0]).toMatchObject({ name: "New image", imageDraft: true });
 });
 
 it("edits ordered style chips with suggestions, custom tags, removal, undo, and mode-specific choices", () => {

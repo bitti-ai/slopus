@@ -5,7 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -41,7 +41,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [imageMenu, setImageMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number } | null>(null);
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -166,7 +166,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const closeContextMenu = () => { setContextMenu(null); focusNode(selected.id); };
   const closeImageMenu = () => {
     const button = [...(imageResults.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((element) => element.dataset.imageAsset === imageMenu?.id);
-    setImageMenu(null); button?.focus();
+    setImageMenu(null); (button ?? imageResults.current)?.focus();
   };
   const resetImageEditing = (id: string) => {
     const snapshot = config.assets.find((asset) => asset.id === id)?.imageGeneration;
@@ -202,7 +202,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         : remaining.find((asset) => asset.id === currentScene.outputAssetId);
       const updated = { ...current,
         assets: current.assets.filter((asset) => asset.id !== id),
-        imageScene: removingSelected && removed.imageDraft && !next ? createImageEditScene(null, currentScene) : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
+        imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : createImageScene() : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
       };
@@ -357,8 +357,14 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { label: "Delete", icon: <Trash2 size={15} />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
-      { label: "Edit", icon: <Pencil size={15} />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id) : replaceScene(editGeneratedImage(config, imageMenu.id).imageScene!)) },
-      { label: "Remove", icon: <Trash2 size={15} />, danger: true, disabled: Boolean(active && work.imageDraftId === imageMenu.id), action: () => removeImage(imageMenu.id) },
+      { label: "New empty image", icon: <Plus size={15} />, action: () => attempt(() => {
+        undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
+        onChange((current) => createEmptyImage(current, template?.id));
+      }) },
+      ...(imageMenu.id ? [
+        { label: "Edit", icon: <Pencil size={15} />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
+        { label: "Remove", icon: <Trash2 size={15} />, danger: true, disabled: Boolean(active && work.imageDraftId === imageMenu.id), action: () => removeImage(imageMenu.id!) },
+      ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools">
@@ -389,7 +395,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>{imageRoot ? "Open an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Open image in the inspector, then add Object nodes for edits." : "Add objects, text, and groups, then describe them in the inspector."}</span></div>}
+        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image size={42} /><strong>{imageRoot ? "Open an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Open image in the inspector, then add Object nodes for edits." : "Add objects, text, and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
@@ -401,8 +407,12 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       </div></div>
       <div className="image-status" role="status">{active && <progress value={work.progress} max="1" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt.`}</span></div>
       {(error || work?.error) && <p className="image-error" role="alert">{error ?? work?.error}</p>}
-      {images.length > 0 && <div ref={imageResults} className="image-results" aria-label="Generated images">{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
-        onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
+      <div ref={imageResults} tabIndex={0} className="image-results" aria-label="Generated images" onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: null, x: event.clientX, y: event.clientY }); }} onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) {
+          event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); setContextMenu(null); setImageMenu({ id: null, x: bounds.left, y: bounds.top });
+        }
+      }}>{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} title={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
         onKeyDown={(event) => {
           if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
             event.preventDefault();
@@ -410,7 +420,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
           }
         }}
-        onClick={() => selectImage(asset.id)}><ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} />{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} />Editing</span>}</button>)}</div>}
+        onClick={() => selectImage(asset.id)}>{asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image size={24} aria-hidden="true" />}{asset.imageDraft && <span className="image-draft-badge"><Pencil size={11} />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}</button>)}</div>
     </section>
     <aside className="image-inspector" aria-label="Image node inspector"><header><strong>Inspector</strong><span>{selected.kind}</span></header><div className="image-inspector__fields">
       {selected.kind === "root" && <label>Type<select value={imageRoot ? "image" : "prompt"} onChange={(event) => replaceScene(event.target.value === "image" ? createImageEditScene(null, scene) : { ...createImageScene(), steps: scene.steps, seed: scene.seed })}><option value="prompt">Prompt</option><option value="image">Image</option></select></label>}
