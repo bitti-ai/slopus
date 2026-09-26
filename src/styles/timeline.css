@@ -3,7 +3,8 @@
    inspector, and the multi-track timeline.
 
    Sizing contract (see tokens.css): no literal px type sizes, nothing below
-   --text-2xs (12px), every interactive control at least --control-sm (36px).
+   --text-2xs (12px), standard controls --control-md (32px), compact ones
+   --control-sm (24px).
    ========================================================================== */
 
 .timeline-view {
@@ -21,8 +22,9 @@
    editor. It has to SHOW that focus, or the shortcuts are invisible: there is
    no inner control that stands in for it. Inset so the ring is not clipped. */
 .timeline-view:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline: var(--focus-ring-width) solid var(--focus-outer);
   outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px var(--focus-inner);
 }
 
 .edit-panels {
@@ -217,7 +219,6 @@
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
   background: var(--glass);
-  backdrop-filter: blur(6px);
   font: var(--weight-medium) var(--text-2xs) / 1.1 var(--font-mono);
   font-style: normal;
 }
@@ -883,17 +884,17 @@
   margin-right: max(0px, calc(var(--video-centre-shift) * -2));
 }
 
-/* 36px is the floor for a hit target and these are round, so the width is the
-   height. Play is a --control-md, the size of a default control. */
+/* Subtle icon buttons, the Fluent media-transport size: 32px square with
+   4px corners. Play is the same size and carries the accent fill. */
 .timeline-transport button {
-  width: var(--control-sm);
-  height: var(--control-sm);
+  width: var(--icon-button);
+  height: var(--icon-button);
   flex: 0 0 auto;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: none;
 }
@@ -904,8 +905,8 @@
 }
 
 .timeline-transport .play-button {
-  width: var(--control-md);
-  height: var(--control-md);
+  width: var(--icon-button);
+  height: var(--icon-button);
   color: var(--on-accent);
   background: var(--accent);
 }
@@ -1290,7 +1291,7 @@
   overflow: hidden;
   border-top: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
   background: color-mix(in srgb, var(--panel) 34%, transparent);
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-fast) linear;
   pointer-events: none;
 }
 
@@ -1352,7 +1353,7 @@
   cursor: ew-resize;
   border-radius: var(--radius-sm);
   background: transparent;
-  transition: background 120ms ease;
+  transition: var(--transition-control);
 }
 
 .clip-handle--start { left: 0; }
@@ -1529,7 +1530,7 @@
 .clip-effects__add { display: flex; align-items: center; justify-content: center; gap: var(--space-2); width: 100%; padding: var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--text-primary); font-size: var(--text-sm); }
 .clip-effects__add:hover:not(:disabled) { border-color: var(--accent); background: var(--panel-3); }
 .clip-effects__add:disabled, .clip-effect__remove:disabled { opacity: .45; }
-.clip-effects__picker { position: absolute; z-index: 5; bottom: calc(100% - var(--space-2)); left: var(--space-4); right: var(--space-4); padding: 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel-2); box-shadow: var(--shadow-sm); max-height: min(280px, 40vh); overflow-y: auto; }
+.clip-effects__picker { position: absolute; z-index: 5; bottom: calc(100% - var(--space-2)); left: var(--space-4); right: var(--space-4); padding: 4px; border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); box-shadow: var(--shadow-sm); max-height: min(280px, 40vh); overflow-y: auto; }
 .clip-effects__picker button { display: flex; flex-direction: column; gap: 3px; width: 100%; border: 0; border-radius: var(--radius-sm); padding: var(--space-2); background: transparent; color: var(--text-primary); text-align: left; }
 .clip-effects__picker button:hover, .clip-effects__picker button:focus-visible { outline: none; background: var(--panel-3); }
 .clip-effects__picker strong { font-size: var(--text-sm); font-weight: var(--weight-medium); }

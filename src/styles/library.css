@@ -22,7 +22,6 @@
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--line);
   background: var(--topbar-glass);
-  backdrop-filter: blur(16px);
 }
 
 .library__topbar .search-field {
@@ -53,7 +52,6 @@
   align-content: center;
   padding: var(--space-7) var(--space-5);
   background: var(--scrim);
-  backdrop-filter: blur(10px);
 }
 
 .composer-shell {
@@ -63,7 +61,7 @@
   position: relative;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--stroke-surface);
   border-radius: var(--radius-xl);
   padding: var(--space-6);
   background: var(--composer-bg);
@@ -89,7 +87,6 @@
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-tight);
 }
 
 .composer {
@@ -163,7 +160,7 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--panel-2);
-  transition: border-color var(--motion-fast), background-color var(--motion-fast);
+  transition: var(--transition-control);
 }
 
 .composer__type-icon { display: grid; place-items: center; flex-shrink: 0; width: var(--control-lg); height: var(--control-lg); border-radius: var(--radius-md); background: var(--wash-2); color: var(--text-secondary); }
@@ -177,7 +174,7 @@
 .composer__type-input:checked + .composer__type-card .composer__type-indicator { border-color: var(--accent); }
 .composer__type-input:checked + .composer__type-card .composer__type-indicator::after { opacity: 1; }
 .composer__type-input:not(:disabled) + .composer__type-card:hover { border-color: var(--accent-line-strong); }
-.composer__type-input:focus-visible + .composer__type-card { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--space-1); }
+.composer__type-input:focus-visible + .composer__type-card { outline: var(--focus-ring-width) solid var(--focus-outer); outline-offset: 1px; box-shadow: 0 0 0 1px var(--focus-inner); }
 .composer__type-input:disabled + .composer__type-card { opacity: 0.5; }
 
 @media (max-width: 600px) {
@@ -399,7 +396,7 @@
   color: var(--text-secondary);
   background: var(--wash-1);
   font-size: var(--text-sm);
-  transition: 0.16s ease;
+  transition: var(--transition-control);
 }
 
 .idea-row button:hover {
@@ -483,13 +480,17 @@
   border-radius: var(--radius-lg);
   background: var(--panel);
   overflow: hidden;
-  transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+  transition: var(--transition-control);
 }
 
-.project-card:hover,
+/* A Fluent card has a stroke and no shadow; under the mouse only its fill
+   changes (tokens.css rule 8). */
+.project-card:hover {
+  background: var(--panel-2);
+}
+
 .project-card:focus-within {
   border-color: var(--accent-line);
-  box-shadow: var(--shadow-sm);
 }
 
 .project-card__art-button {
@@ -504,8 +505,9 @@
 /* The card clips its children, so the default outset ring on this button would
    be cut off on three sides. Draw the same ring just inside the artwork. */
 .project-card__art-button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: -4px;
+  outline: var(--focus-ring-width) solid var(--focus-outer);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px var(--focus-inner);
 }
 
 .project-card__art {
@@ -660,7 +662,6 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.85);
   background: rgba(4, 6, 10, 0.7);
-  backdrop-filter: blur(8px);
   border-radius: var(--radius-xs);
   padding: var(--space-1) var(--space-2);
   font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
@@ -756,9 +757,10 @@
   right: 0;
   min-width: 200px;
   padding: var(--space-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-3);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-lg);
+  background: var(--acrylic);
+  backdrop-filter: var(--acrylic-filter);
   box-shadow: var(--shadow-sm);
 }
 
@@ -806,9 +808,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--bg);
-  opacity: 0.82;
-  backdrop-filter: blur(5px);
+  background: var(--scrim);
 }
 
 .delete-project-dialog {
@@ -817,9 +817,9 @@
   display: grid;
   gap: var(--space-4);
   padding: var(--space-6);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -879,12 +879,12 @@
 }
 
 .delete-project-dialog__confirm {
-  min-height: var(--control-lg);
+  min-height: var(--control-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-3);
   border: 1px solid var(--danger-line-strong);
   border-radius: var(--radius-md);
   color: var(--danger);

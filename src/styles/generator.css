@@ -3,8 +3,8 @@
    that edits whatever is open on it.
 
    Legibility contract: body copy is --text-base, the smallest text anywhere is
-   --text-2xs (12px) and only for mono micro-labels, every interactive element
-   clears --control-sm (36px). No raw px type, no hand-written greys.
+   --text-2xs (12px), standard controls are --control-md (32px) and compact
+   ones --control-sm (24px). No raw px type, no hand-written greys.
    ========================================================================== */
 
 .generator-view {
@@ -80,7 +80,7 @@
   background: color-mix(in srgb, var(--success) 10%, var(--panel-2));
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
-  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  transition: var(--transition-control);
 }
 
 .generator-runtime__trigger:hover,
@@ -91,12 +91,11 @@
 
 .generator-runtime__trigger:focus-visible {
   border-color: var(--success);
-  box-shadow: 0 0 0 2px var(--success-line);
 }
 
 .generator-runtime__trigger > svg {
   flex: 0 0 auto;
-  transition: transform 0.15s ease;
+  transition: transform var(--motion-normal) var(--ease-decelerate);
 }
 
 .generator-runtime__select--open .generator-runtime__trigger > svg {
@@ -136,7 +135,7 @@
   overflow-y: auto;
   padding: var(--space-1);
   border: 1px solid var(--success-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--success) 9%, var(--panel-2));
   box-shadow: var(--shadow-sm);
   scrollbar-color: var(--success-line) transparent;
@@ -201,7 +200,6 @@
 
 .generator-runtime--modelsMissing .generator-runtime__trigger:focus-visible {
   border-color: var(--danger);
-  box-shadow: 0 0 0 2px var(--danger-line);
 }
 
 .generator-runtime--modelsMissing .generator-runtime__options {
@@ -222,7 +220,6 @@
 
 .generator-runtime--modelsMissing .generator-runtime__options button i {
   background: var(--danger);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -282,7 +279,6 @@
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-hero);
 }
 
 .generator-heading__title p {
@@ -344,8 +340,8 @@
 
 .generator-heading__cancel {
   width: auto;
-  min-height: var(--control-lg);
-  padding: 0 var(--space-5);
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
   font-size: var(--text-base);
 }
 
@@ -438,7 +434,6 @@
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -447,7 +442,6 @@
   flex: 0 0 auto;
   color: var(--text-muted);
   font: var(--weight-semibold) var(--text-2xs) / var(--leading-snug) var(--font-mono);
-  letter-spacing: var(--tracking-label);
 }
 
 .scene-rule__length {
@@ -661,11 +655,6 @@
   color: inherit;
   background: var(--panel);
   text-align: left;
-  cursor: grab;
-}
-
-.shot-card:active:not(:disabled) {
-  cursor: grabbing;
 }
 
 .shot-card:hover {
@@ -850,17 +839,16 @@
 .shot-thumb__play {
   position: absolute;
   inset: 50% auto auto 50%;
-  width: 38px;
-  height: 38px;
+  width: var(--icon-button);
+  height: var(--icon-button);
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
   border-radius: var(--radius-pill);
   color: var(--on-accent);
   background: var(--scrim);
-  box-shadow: var(--shadow-sm);
   opacity: 0;
-  transition: opacity 120ms ease, transform 120ms ease;
+  transition: opacity var(--motion-fast) linear;
 }
 
 .shot-thumb--playable:hover .shot-thumb__play,
@@ -869,11 +857,6 @@
 .shot-thumb--playable[aria-label^="Pause"] .shot-thumb__play,
 .shot-thumb--playable[aria-label^="Playback unavailable"] .shot-thumb__play {
   opacity: 1;
-}
-
-.shot-thumb--playable:hover .shot-thumb__play,
-.shot-thumb--playable:focus-visible .shot-thumb__play {
-  transform: translate(-50%, -50%) scale(1.06);
 }
 
 .shot-thumb em {
@@ -918,7 +901,7 @@
   height: 100%;
   display: block;
   background: var(--accent-bright);
-  transition: width 180ms ease;
+  transition: width var(--motion-normal) linear;
 }
 
 /* --- The controls a shot's panel is made of -------------------------------- */
@@ -986,9 +969,10 @@
   border-color: var(--accent);
 }
 
+/* A composite text field: the TextBox underline, not a ring. */
 .shot-action-editor:has(textarea:focus-visible) {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
+  border-bottom-color: var(--field-focus-line);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
 }
 
 .shot-card__action textarea {
@@ -1060,11 +1044,9 @@
   resize: vertical;
 }
 
-.shot-speech > textarea:focus-visible,
-.shot-speech__language select:focus-visible {
-  border-color: var(--accent);
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
+.shot-speech > textarea:focus-visible {
+  border-bottom-color: var(--field-focus-line);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
 }
 
 .shot-speech__hint {
@@ -1140,8 +1122,6 @@
   color: var(--text-faint);
   font-size: var(--text-2xs);
   font-style: normal;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
 }
 
 .setting-tag b {
@@ -1368,8 +1348,6 @@
   color: var(--text-faint);
   font-size: var(--text-2xs);
   font-style: normal;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
 }
 
 .reference-chip b {
@@ -1518,7 +1496,6 @@
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
 }
 
 .panel-head h2 small {
@@ -1651,7 +1628,6 @@
   place-items: center;
   padding: var(--space-5);
   background: var(--scrim);
-  backdrop-filter: blur(5px);
 }
 
 .debug-prompt-dialog {
@@ -1661,9 +1637,9 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-5);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -1702,15 +1678,14 @@
   place-items: center;
   padding: var(--space-4);
   background: var(--scrim);
-  backdrop-filter: blur(5px);
 }
 
 .remove-dialog {
   width: min(440px, 100%);
   padding: var(--space-6);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -1799,7 +1774,6 @@
   display: inline-block;
   color: var(--text-muted);
   font: var(--weight-semibold) var(--text-2xs) / var(--leading-snug) var(--font-mono);
-  letter-spacing: var(--tracking-label);
 }
 
 .job-title h2 {
@@ -1808,7 +1782,6 @@
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
 }
 
 /* Reads as the heading it sits in until it is hovered or focused — the same

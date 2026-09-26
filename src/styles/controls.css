@@ -215,8 +215,6 @@
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
   line-height: var(--leading-snug);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
 }
 
 /* --- Back link ------------------------------------------------------------- */
@@ -272,7 +270,6 @@
   color: var(--text-muted);
   background: none;
   font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
 }
 
 .panel-chrome button:hover {
@@ -334,7 +331,7 @@
   border: 1px solid var(--danger-line);
   border-radius: var(--radius-lg);
   background: var(--danger-soft);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
   display: grid;
   grid-template-columns: 1fr auto;
   gap: var(--space-1) var(--space-4);

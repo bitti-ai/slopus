@@ -2,7 +2,8 @@
    references.css — reference library, reference inspector, add-reference dialog.
 
    Sizing contract (see tokens.css): no literal px type sizes, nothing below
-   --text-2xs (12px), every interactive control at least --control-sm (36px).
+   --text-2xs (12px), standard controls --control-md (32px), compact ones
+   --control-sm (24px).
    ========================================================================== */
 
 .references-view {
@@ -41,7 +42,6 @@
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-hero);
 }
 
 .references-heading__title p {
@@ -81,7 +81,6 @@
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
-  letter-spacing: var(--tracking-tight);
 }
 
 .reference-title__name {
@@ -133,7 +132,6 @@
 
 .reference-grid > button.selected {
   border-color: var(--accent-bright);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 /* The plate a reference sits on: a hatched panel with its kind lettered on it.
@@ -622,7 +620,6 @@
   place-items: center;
   padding: var(--space-5);
   background: var(--scrim);
-  backdrop-filter: blur(5px);
 }
 
 .reference-video-dialog {
@@ -632,9 +629,9 @@
   min-width: 0;
   max-height: calc(100dvh - var(--space-5) * 2);
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -865,15 +862,14 @@
   display: grid;
   place-items: center;
   background: var(--scrim);
-  backdrop-filter: blur(5px);
 }
 
 .reference-dialog {
   width: min(560px, calc(100vw - var(--space-6)));
   padding: var(--space-6);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -950,9 +946,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
+  border: 1px solid var(--stroke-surface);
+  border-radius: var(--radius-xl);
+  background: var(--dialog-bg);
   box-shadow: var(--shadow);
 }
 
@@ -1236,8 +1232,6 @@
   color: var(--accent-bright);
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .reference-preset-grid b {

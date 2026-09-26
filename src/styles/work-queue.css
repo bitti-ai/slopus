@@ -33,11 +33,11 @@
   flex-direction: column;
   width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 108px);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--stroke-surface);
   border-radius: var(--radius-lg);
   background: var(--panel);
   color: var(--text-primary);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 .work-queue__header {

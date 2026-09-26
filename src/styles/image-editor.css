@@ -21,7 +21,7 @@
 .image-tree__select span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .image-tree__spacer { width: var(--control-sm); flex-shrink: 0; }
 .image-editor .image-tree__rename { flex: 1; min-width: 0; width: 100%; margin: var(--space-1); padding: var(--space-1); min-height: var(--control-sm); }
-.image-hierarchy-menu { position: fixed; z-index: 115; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: var(--space-1); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--panel); box-shadow: var(--shadow); }
+.image-hierarchy-menu { position: fixed; z-index: 115; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: var(--space-1); border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); box-shadow: var(--shadow-sm); }
 .image-hierarchy-menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); text-align: left; font-size: var(--text-sm); }
 .image-hierarchy-menu button:hover:not(:disabled), .image-hierarchy-menu button:focus-visible { background: var(--panel-3); }
 .image-hierarchy-menu button:disabled { opacity: 0.4; }
@@ -52,7 +52,7 @@
 .image-error { margin: 0; padding: var(--space-2) var(--space-3); color: var(--danger); }
 .image-results { display: flex; min-height: 82px; gap: var(--space-2); overflow-x: auto; padding: var(--space-2); border-top: 1px solid var(--line-solid); }
 .image-results button { position: relative; flex: 0 0 72px; height: 64px; padding: 0; overflow: hidden; border: 2px solid transparent; background: var(--panel); }
-.image-draft-badge { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 2px; background: var(--glass); color: var(--text); font-size: 10px; }
+.image-draft-badge { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 2px; background: var(--glass); color: var(--text-primary); font-size: var(--text-2xs); }
 .image-results button[aria-pressed="true"] { border-color: var(--accent); }
 .image-results img { width: 100%; height: 100%; object-fit: cover; }
 .image-inspector__fields { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }

@@ -28,7 +28,6 @@
 
 .brand__edition {
   font: var(--weight-medium) var(--text-2xs) / 1 var(--font-mono);
-  letter-spacing: var(--tracking-label);
   color: var(--text-faint);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-xs);
@@ -40,7 +39,6 @@
   font-size: var(--text-xl);
   font-weight: var(--weight-bold);
   line-height: 1;
-  letter-spacing: -0.7px;
 }
 
 /* --- Application icon ----------------------------------------------------- */
@@ -81,9 +79,8 @@
   border-radius: 50%;
   color: var(--text-muted);
   background: var(--glass);
-  backdrop-filter: blur(12px);
   box-shadow: var(--shadow-sm);
-  transition: 0.16s ease;
+  transition: var(--transition-control);
 }
 
 .settings-launcher:hover {

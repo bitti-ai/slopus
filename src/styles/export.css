@@ -2,7 +2,8 @@
    export.css — the Export screen: settings, preview, and the run itself.
 
    Sizing contract (see tokens.css): no literal px type sizes, nothing below
-   --text-2xs (12px), every interactive control at least --control-sm (36px).
+   --text-2xs (12px), standard controls --control-md (32px), compact ones
+   --control-sm (24px).
    ========================================================================== */
 
 .export-view {
@@ -30,7 +31,6 @@
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-hero);
 }
 
 /* Export, and Cancel while it runs — the same place the References screen puts
@@ -61,9 +61,7 @@
   background: var(--success-soft);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  animation: export-toast-in 0.18s ease-out;
+  animation: export-toast-in var(--motion-normal) var(--ease-decelerate);
 }
 
 .export-toast svg {
@@ -126,7 +124,6 @@
   margin: 0 0 var(--space-3);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
 }
 
 .export-settings h2:not(:first-of-type) {
@@ -235,7 +232,10 @@
   visibility: hidden;
   transform: translateY(12px);
   pointer-events: none;
-  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.22s;
+  transition:
+    opacity var(--motion-normal) linear,
+    transform var(--motion-panel) var(--ease-decelerate),
+    visibility 0s linear var(--motion-panel);
 }
 
 .export-stage--controls-visible .export-transport,
@@ -249,23 +249,22 @@
 
 .export-transport button {
   flex: 0 0 auto;
-  width: var(--control-sm);
-  height: var(--control-sm);
+  width: var(--icon-button);
+  height: var(--icon-button);
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   color: var(--on-stage);
   background: transparent;
   filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--stage-bg) 55%, transparent));
-  transition: color 0.14s ease, background-color 0.14s ease, transform 0.14s ease;
+  transition: var(--transition-control);
 }
 
 .export-transport button:hover:not(:disabled) {
   color: var(--on-stage);
   background: color-mix(in srgb, var(--on-stage) 16%, transparent);
-  transform: scale(1.06);
 }
 
 .export-transport button:focus-visible {
@@ -337,7 +336,7 @@
 }
 
 .export-transport input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--on-stage) 35%, transparent), 0 1px 4px color-mix(in srgb, var(--stage-bg) 55%, transparent);
+  box-shadow: 0 0 0 1px var(--stage-bg), 0 0 0 3px var(--on-stage);
 }
 
 .export-transport output {
@@ -390,8 +389,6 @@
   color: var(--text-muted);
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .export-fields select {
@@ -447,8 +444,6 @@
   color: var(--text-muted);
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .export-summary dd {
@@ -501,8 +496,6 @@
   color: var(--warning);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .export-notice--bad h3 {
