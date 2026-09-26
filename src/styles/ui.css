@@ -462,6 +462,7 @@
   position: absolute;
   background: var(--line);
   transition: background-color var(--motion-fast) linear;
+  transition-property: background-color, left, width, top, height;
 }
 
 .ui-splitter--vertical::before {
@@ -494,6 +495,21 @@
 .ui-splitter--horizontal.ui-splitter--dragging::before {
   top: calc(50% - 1px);
   height: 2px;
+}
+
+/* Passing over the line should not light it: the hover accent waits 400ms,
+   so it only shows when the pointer rests there. Leaving clears it at once,
+   and a drag or keyboard focus shows it immediately. The resize cursor still
+   appears straight away. */
+.ui-splitter:hover::before {
+  transition-delay: 400ms;
+}
+
+/* none, not a zero delay: it also cancels a hover delay still pending when
+   the drag starts, so the line lights on press. */
+.ui-splitter--dragging::before,
+.ui-splitter:focus-visible::before {
+  transition: none;
 }
 
 .ui-splitter[aria-disabled="true"] {
