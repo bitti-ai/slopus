@@ -24,11 +24,20 @@
      {menu.element}
 
    `open` also takes a KeyboardEvent (anchors to its target and focuses the
-   first item) or an element / DOMRect (anchors below it). */
+   first item) or an element / DOMRect (anchors below it).
 
-import { Check } from "lucide-react";
+   Submenus: an item with `items` instead of `onSelect` opens a cascading
+   menu beside it: on hover after a short pause, or on click, Enter, Space or
+   Right. Left or Esc closes just that level and puts focus back on its item;
+   a command anywhere in the cascade closes all of it. The item shows a
+   chevron, and the submenu flips to the left when there is no room on the
+   right:
+
+     { id: "move", label: "Move to", items: scenes.map((scene) => ({ label: scene.title, onSelect: … })) } */
+
+import { Check, ChevronRight } from "lucide-react";
 import {
-  useCallback, useLayoutEffect, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useRef, useState,
   type CSSProperties, type KeyboardEvent, type ReactNode, type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -49,7 +58,10 @@ export interface MenuItem {
   danger?: boolean;
   /** Renders a check column and role="menuitemcheckbox". */
   checked?: boolean;
-  onSelect: () => void;
+  /** Runs the command. Optional only for a submenu item (one with `items`). */
+  onSelect?: () => void;
+  /** Makes this a submenu item: these entries open in a cascading menu. */
+  items?: MenuEntry[];
 }
 
 export interface MenuSeparator { separator: true; id?: string }
@@ -75,13 +87,25 @@ export interface ContextMenuProps {
   className?: string;
   /** Minimum width in px (default 160 — Fluent's 120 is too tight for accelerators). */
   minWidth?: number;
+  /** Internal, for submenus: a command ran somewhere below, close everything. */
+  onChosen?: () => void;
+  /** Internal, for submenus: Left closes this level. */
+  closeOnLeft?: boolean;
+  /** Internal, for submenus opened by hovering: leave focus on the parent item. */
+  keepFocus?: boolean;
+  /** Internal, for submenus: the pointer reached it (cancels a pending close). */
+  onPointerEnter?: () => void;
 }
+
+/** How long the pointer rests on a submenu item before it opens. WinUI waits
+ *  about this long, so a diagonal move towards the submenu does not flicker. */
+export const SUBMENU_HOVER_DELAY = 250;
 
 const rectOf = (anchor: Element | RectLike): RectLike =>
   anchor instanceof Element ? anchor.getBoundingClientRect() : anchor;
 
 export function ContextMenu({
-  items, position, onClose, focusFirst, restoreFocus = true, className, minWidth = 160, ...aria
+  items, position, onClose, focusFirst, restoreFocus = true, className, minWidth = 160, onChosen, closeOnLeft = false, onPointerEnter, keepFocus = false, ...aria
 }: ContextMenuProps) {
   const menu = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -89,6 +113,11 @@ export function ContextMenu({
   const typeahead = useRef(createTypeahead());
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const [sub, setSub] = useState<{ index: number; anchor: HTMLElement; keyboard: boolean; hover: boolean; key: number } | null>(null);
+  const subCounter = useRef(0);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const clearHover = () => { if (hoverTimer.current !== undefined) { clearTimeout(hoverTimer.current); hoverTimer.current = undefined; } };
+  useEffect(() => clearHover, []);
   const hasGlyphColumn = items.some((entry) => !isSeparator(entry) && (entry.icon !== undefined || entry.checked !== undefined));
 
   const buttons = () => [...(menu.current?.querySelectorAll<HTMLButtonElement>("button[data-menu-item]:not(:disabled)") ?? [])];
@@ -106,7 +135,7 @@ export function ContextMenu({
     setStyle({ left: placed.left, top: placed.top, minWidth });
     const keyboard = focusFirst ?? lastInputWasKeyboard();
     if (keyboard) focusSafely(buttons()[0] ?? element);
-    else focusSafely(element);
+    else if (!keepFocus) focusSafely(element);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positionKey]);
 
@@ -117,17 +146,40 @@ export function ContextMenu({
 
   useLightDismiss(menu, true, (reason) => close(reason === "escape"));
 
-  const run = (item: MenuItem) => {
+  /* A command closes the whole cascade: a submenu hands it up to the root,
+     which restores focus to whatever had it before the menu opened. */
+  const chosen = useCallback(() => {
+    if (onChosen) onChosen();
+    else close(true);
+  }, [onChosen, close]);
+
+  const openSub = (index: number, anchor: HTMLElement, keyboard: boolean, hover = false) => {
+    clearHover();
+    subCounter.current += 1;
+    setSub({ index, anchor, keyboard, hover, key: subCounter.current });
+  };
+
+  const cascadeAt = (button: HTMLElement | null) => {
+    const entry = button ? items[Number(button.dataset.index)] : undefined;
+    return entry && !isSeparator(entry) && entry.items ? Number(button!.dataset.index) : -1;
+  };
+
+  const run = (item: MenuItem, button?: HTMLElement | null) => {
     if (item.disabled) return;
-    close(true);
-    item.onSelect();
+    if (item.items) {
+      const index = items.indexOf(item);
+      if (button && sub?.index !== index) openSub(index, button, lastInputWasKeyboard());
+      return;
+    }
+    chosen();
+    item.onSelect?.();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // Keys pressed in a menu never reach the surface behind it.
     event.stopPropagation();
     const entries = items.filter((entry): entry is MenuItem => !isSeparator(entry));
-    const accelerated = entries.find((item) => item.shortcut && !item.disabled && matchesCombo(event.nativeEvent, item.shortcut));
+    const accelerated = entries.find((item) => item.shortcut && !item.disabled && !item.items && matchesCombo(event.nativeEvent, item.shortcut));
     if (accelerated && (event.ctrlKey || event.altKey || event.metaKey || event.key.length > 1)) {
       event.preventDefault();
       run(accelerated);
@@ -135,8 +187,17 @@ export function ContextMenu({
     }
     const list = buttons();
     const index = list.indexOf(document.activeElement as HTMLButtonElement);
+    const focused = index >= 0 ? list[index] : null;
     let next = -1;
     switch (event.key) {
+      case "ArrowRight": {
+        const at = cascadeAt(focused);
+        if (focused && at >= 0) { event.preventDefault(); openSub(at, focused, true); }
+        return;
+      }
+      case "ArrowLeft":
+        if (closeOnLeft) { event.preventDefault(); close(true); }
+        return;
       case "ArrowDown": next = index < 0 ? 0 : (index + 1) % list.length; break;
       case "ArrowUp": next = index < 0 ? list.length - 1 : (index - 1 + list.length) % list.length; break;
       case "Home": next = 0; break;
@@ -145,7 +206,12 @@ export function ContextMenu({
       case "Escape": event.preventDefault(); close(true); return;
       case "Enter":
       case " ":
-        if (index >= 0) { event.preventDefault(); list[index].click(); }
+        if (focused) {
+          event.preventDefault();
+          const at = cascadeAt(focused);
+          if (at >= 0) openSub(at, focused, true);
+          else focused.click();
+        }
         return;
       default:
         if (isPrintableKey(event)) {
@@ -157,6 +223,23 @@ export function ContextMenu({
     focusSafely(list[next]);
   };
 
+  const subItem = sub ? items[sub.index] : undefined;
+  const submenu = sub && subItem && !isSeparator(subItem) && subItem.items ? (
+    <ContextMenu
+      key={sub.key}
+      items={subItem.items}
+      position={{ anchor: sub.anchor, placement: "right" }}
+      focusFirst={sub.keyboard}
+      keepFocus={sub.hover}
+      aria-label={subItem.label}
+      minWidth={minWidth}
+      closeOnLeft
+      onChosen={chosen}
+      onPointerEnter={clearHover}
+      onClose={() => setSub(null)}
+    />
+  ) : null;
+
   return createPortal(
     <div
       ref={menu}
@@ -167,25 +250,40 @@ export function ContextMenu({
       style={style}
       {...{ [LAYER_ATTR]: "menu" }}
       onContextMenu={(event: SyntheticEvent) => event.preventDefault()}
+      onMouseEnter={onPointerEnter}
       onKeyDown={onKeyDown}
     >
       {items.map((entry, index) => {
         if (isSeparator(entry)) return <div key={entry.id ?? `separator-${index}`} role="separator" className="ui-menu__separator" />;
         const checkable = entry.checked !== undefined;
+        const cascade = Boolean(entry.items);
         return (
           <button
             key={entry.id ?? entry.label}
             type="button"
             role={checkable ? "menuitemcheckbox" : "menuitem"}
             aria-checked={checkable ? entry.checked : undefined}
-            aria-keyshortcuts={ariaKeyShortcuts(entry.shortcut)}
+            aria-keyshortcuts={cascade ? undefined : ariaKeyShortcuts(entry.shortcut)}
+            aria-haspopup={cascade ? "menu" : undefined}
+            aria-expanded={cascade ? sub?.index === index : undefined}
             tabIndex={-1}
             disabled={entry.disabled}
             data-menu-item=""
+            data-index={index}
             data-label={entry.label}
-            className={cx("ui-menu__item", entry.danger && "ui-menu__item--danger")}
-            onClick={() => run(entry)}
-            onMouseEnter={(event) => { if (!entry.disabled) focusSafely(event.currentTarget); }}
+            className={cx("ui-menu__item", entry.danger && "ui-menu__item--danger", cascade && "ui-menu__item--cascade")}
+            onClick={(event) => run(entry, event.currentTarget)}
+            onMouseEnter={(event) => {
+              clearHover();
+              if (entry.disabled) return;
+              const button = event.currentTarget;
+              focusSafely(button);
+              if (cascade) {
+                if (sub?.index !== index) hoverTimer.current = setTimeout(() => openSub(index, button, false, true), SUBMENU_HOVER_DELAY);
+              } else if (sub) {
+                hoverTimer.current = setTimeout(() => setSub(null), SUBMENU_HOVER_DELAY);
+              }
+            }}
           >
             {hasGlyphColumn && (
               <span className="ui-menu__glyph" aria-hidden="true">
@@ -193,10 +291,12 @@ export function ContextMenu({
               </span>
             )}
             <span className="ui-menu__label">{entry.label}</span>
-            {entry.shortcut && <kbd className="ui-menu__shortcut">{formatShortcut(entry.shortcut)}</kbd>}
+            {entry.shortcut && !cascade && <kbd className="ui-menu__shortcut">{formatShortcut(entry.shortcut)}</kbd>}
+            {cascade && <ChevronRight className="ui-menu__chevron" size={16} aria-hidden="true" />}
           </button>
         );
       })}
+      {submenu}
     </div>,
     document.body,
   );

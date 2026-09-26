@@ -17,6 +17,9 @@
      InfoBar           <InfoBar severity="error" title="…" message="…" action={…} onClose={…} /> inline, full width.
      ComboBox          <ComboBox value onChange={(v) => …} options={[{value,label}]} aria-label /> or keep
                        <option>/<optgroup> children — a drop-in for <select> whose onChange gets the value.
+                       `editable` + parseText(text) → value | null + displayText: a text field with the list
+                       on a drop-down button; typed text commits on Enter / blur (the image editor's zoom).
+                       Every option carries data-value.
      optionsFromChildren(children) → ComboBox items from <option> elements.
      Splitter          <Splitter {...pane.splitterProps} orientation="vertical" reverse aria-label="Resize …" />
      usePaneSize       const pane = usePaneSize("screen.pane", 320, { min, max }); style={pane.style} sets --pane-screen-pane.
@@ -28,7 +31,8 @@
      PropRow           <PropRow label htmlFor value defaultValue onReset scrub={{ value, onChange, step, min, max }}>{field}</PropRow>
      ContextMenu       <ContextMenu items position={{x,y}|{anchor}} onClose aria-label /> (controlled).
      useContextMenu    const menu = useContextMenu(); onContextMenu={(e) => menu.open(e, items)}; render {menu.element}.
-                       items: { id?, label, icon?, shortcut?, disabled?, checked?, onSelect } | { separator: true }.
+                       items: { id?, label, icon?, shortcut?, disabled?, checked?, onSelect } | { separator: true };
+                       an item with `items: MenuEntry[]` (and no onSelect) is a cascading submenu.
      TooltipLayer      mounted once; any element with data-tooltip="…" [data-tooltip-shortcut="Ctrl+S"] gets one.
      tooltipProps      {...tooltipProps("Split clip", "S")} — the codemod for title="…".
      ToggleSwitch      <ToggleSwitch checked onChange={(on) => …} label? aria-label? stateText={false}? />

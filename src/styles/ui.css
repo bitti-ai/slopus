@@ -262,6 +262,62 @@
   color: var(--text-disabled);
 }
 
+/* Editable: a text field with the drop-down button at its end. The frame is
+   the field's (hover fill, the accent underline while typing); the input and
+   the button inside it are bare. */
+.ui-combo--editable {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ui-combo--editable:focus-within,
+.ui-combo--editable:focus-within:hover {
+  border-bottom-color: var(--field-focus-line);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
+  background: var(--fill-input-focus);
+}
+
+.ui-combo--editable.ui-combo--disabled {
+  color: var(--text-disabled);
+  background: var(--fill-control-disabled);
+}
+
+.ui-combo__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.ui-combo__input:focus,
+.ui-combo__input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.ui-combo__button {
+  width: var(--control-md);
+  height: 100%;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.ui-combo__button:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+.ui-combo__button:active:not(:disabled) { background: var(--fill-subtle-pressed); }
+
+.ui-combo__button .ui-combo__chevron { margin: 0; }
+
 .ui-combo__list {
   position: fixed;
   z-index: 950;
@@ -830,6 +886,19 @@
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   line-height: var(--leading-snug);
+}
+
+/* A submenu item: a chevron where the accelerator would be, and the item
+   stays lit while its cascade is open (focus may already be in it). */
+.ui-menu__chevron {
+  flex: none;
+  margin-left: var(--space-5);
+  margin-right: calc(-1 * var(--space-1));
+  color: var(--text-secondary);
+}
+
+.ui-menu__item[aria-expanded="true"]:not(:disabled) {
+  background: var(--fill-subtle-hover);
 }
 
 .ui-menu__separator {

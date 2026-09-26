@@ -381,9 +381,19 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const zoomValue = fitted ? "fit" : zoomPresets.find((step) => Math.abs(step - view.zoom) < 1e-6)?.toString() ?? "custom";
   const zoomOptions = [
     { value: "fit", label: "Fit" },
-    ...(zoomValue === "custom" ? [{ value: "custom", label: `${Math.round(view.zoom * 100)}%`, disabled: true }] : []),
     ...zoomPresets.map((step) => ({ value: String(step), label: `${step * 100}%` })),
   ];
+  /* The field is editable: any percentage between the zoom limits can be
+     typed ("137", "137%", "fit"). Anything else is refused and the field
+     goes back to the current zoom. */
+  const zoomText = fitted ? "Fit" : `${Math.round(view.zoom * 100)}%`;
+  const parseZoom = (text: string): string | null => {
+    if (/^\s*fit\s*$/i.test(text)) return "fit";
+    const match = /^\s*(\d+(?:[.,]\d+)?)\s*%?\s*$/.exec(text);
+    if (!match) return null;
+    const zoom = Number(match[1].replace(",", ".")) / 100;
+    return zoom >= MIN_IMAGE_ZOOM - 1e-9 && zoom <= MAX_IMAGE_ZOOM + 1e-9 ? String(zoom) : null;
+  };
 
   const tree = (node: ImageNode, depth: number) => {
     const children = scene.nodes.filter((child) => child.parentId === node.id);
@@ -498,12 +508,15 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </div>
         <span className="image-tools__separator" role="separator" aria-orientation="vertical" />
         <ComboBox
+          editable
           className="image-zoom"
           aria-label="Image zoom"
           data-tooltip="Zoom (Ctrl+0 fit, Ctrl+1 100%, Ctrl+= in, Ctrl+- out)"
           value={zoomValue}
+          displayText={zoomText}
+          parseText={parseZoom}
           options={zoomOptions}
-          onChange={(value) => { if (value === "fit") fit(); else if (value !== "custom") zoomTo(Number(value)); }}
+          onChange={(value) => { if (value === "fit") fit(); else zoomTo(Number(value)); }}
         />
       </div>
       <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} data-tooltip="Scroll to zoom · drag with the middle button to pan"

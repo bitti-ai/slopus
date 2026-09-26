@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useContextMenu, type MenuEntry } from "./ContextMenu";
+import { SUBMENU_HOVER_DELAY, useContextMenu, type MenuEntry } from "./ContextMenu";
 
 afterEach(cleanup);
 
@@ -128,5 +128,102 @@ describe("ContextMenu", () => {
     fireEvent.contextMenu(screen.getByTestId("surface"), { clientX: 5, clientY: 5 });
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
     expect(behind).not.toHaveBeenCalled();
+  });
+
+  describe("submenus", () => {
+    const cascade = () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const top = vi.fn();
+      const items: MenuEntry[] = [
+        { id: "top", label: "Duplicate", onSelect: top },
+        { id: "move", label: "Move to", items: [
+          { id: "a", label: "Opening", onSelect: first },
+          { id: "b", label: "Finale", onSelect: second },
+        ] },
+      ];
+      return { items, first, second, top };
+    };
+
+    it("marks the item with a chevron and opens on Right, with focus on the first entry", () => {
+      const { items, second } = cascade();
+      render(<Surface items={items} />);
+      const surface = screen.getByTestId("surface");
+      surface.focus();
+      fireEvent.keyDown(surface, { key: "F10", shiftKey: true });
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      const move = screen.getByRole("menuitem", { name: "Move to" });
+      expect(move).toHaveFocus();
+      expect(move).toHaveAttribute("aria-haspopup", "menu");
+      expect(move).toHaveAttribute("aria-expanded", "false");
+      expect(move.querySelector(".ui-menu__chevron")).not.toBeNull();
+      fireEvent.keyDown(move, { key: "ArrowRight" });
+      const sub = screen.getByRole("menu", { name: "Move to" });
+      expect(move).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("menuitem", { name: "Opening" })).toHaveFocus();
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+      fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(sub).not.toBeInTheDocument();
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(surface).toHaveFocus();
+    });
+
+    it("closes one level with Left or Esc and puts focus back on its item", () => {
+      const { items, first } = cascade();
+      render(<Surface items={items} />);
+      const surface = screen.getByTestId("surface");
+      surface.focus();
+      fireEvent.keyDown(surface, { key: "F10", shiftKey: true });
+      fireEvent.keyDown(document.activeElement!, { key: "End" });
+      const move = screen.getByRole("menuitem", { name: "Move to" });
+      fireEvent.keyDown(move, { key: "Enter" });
+      expect(screen.getByRole("menu", { name: "Move to" })).toBeInTheDocument();
+      fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+      expect(screen.queryByRole("menu", { name: "Move to" })).toBeNull();
+      expect(screen.getByRole("menu", { name: "Clip actions" })).toBeInTheDocument();
+      expect(move).toHaveFocus();
+      fireEvent.keyDown(move, { key: "ArrowRight" });
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("menu", { name: "Move to" })).toBeNull();
+      expect(screen.getByRole("menu", { name: "Clip actions" })).toBeInTheDocument();
+      expect(move).toHaveFocus();
+      expect(first).not.toHaveBeenCalled();
+    });
+
+    it("opens on hover after a pause, closes when another item is hovered, and runs a click", () => {
+      vi.useFakeTimers();
+      try {
+        const { items, first } = cascade();
+        render(<Surface items={items} />);
+        fireEvent.contextMenu(screen.getByTestId("surface"), { clientX: 5, clientY: 5 });
+        const move = screen.getByRole("menuitem", { name: "Move to" });
+        fireEvent.mouseEnter(move);
+        expect(screen.queryByRole("menu", { name: "Move to" })).toBeNull();
+        act(() => { vi.advanceTimersByTime(SUBMENU_HOVER_DELAY); });
+        expect(screen.getByRole("menu", { name: "Move to" })).toBeInTheDocument();
+        // Hovered, not keyed: focus stays on the parent item.
+        expect(move).toHaveFocus();
+        fireEvent.mouseEnter(screen.getByRole("menuitem", { name: "Duplicate" }));
+        act(() => { vi.advanceTimersByTime(SUBMENU_HOVER_DELAY); });
+        expect(screen.queryByRole("menu", { name: "Move to" })).toBeNull();
+        fireEvent.click(move);
+        fireEvent.click(screen.getByRole("menuitem", { name: "Opening" }));
+        expect(first).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      } finally { vi.useRealTimers(); }
+    });
+
+    it("flips to the left of its item when there is no room on the right", () => {
+      const { items } = cascade();
+      render(<Surface items={items} />);
+      fireEvent.contextMenu(screen.getByTestId("surface"), { clientX: 5, clientY: 5 });
+      const move = screen.getByRole("menuitem", { name: "Move to" });
+      const width = window.innerWidth;
+      vi.spyOn(move, "getBoundingClientRect").mockReturnValue({ left: width - 180, right: width - 20, top: 100, bottom: 132, width: 160, height: 32, x: width - 180, y: 100, toJSON: () => ({}) });
+      fireEvent.click(move);
+      const sub = screen.getByRole("menu", { name: "Move to" });
+      expect(parseFloat(sub.style.left)).toBeLessThan(width - 180);
+    });
   });
 });

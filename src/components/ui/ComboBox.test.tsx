@@ -147,4 +147,105 @@ describe("ComboBox", () => {
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowUp" });
     expect(onChange).toHaveBeenCalledWith(10);
   });
+
+  it("puts each option's value on it as data-value", () => {
+    render(<ComboBox<number> aria-label="Steps" value={20} onChange={vi.fn()} options={[{ value: 10, label: "Ten" }, { value: 20, label: "Twenty" }]} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("data-value"))).toEqual(["10", "20"]);
+  });
+
+  describe("editable", () => {
+    const presets: ComboItems = [{ value: "fit", label: "Fit" }, { value: "0.5", label: "50%" }, { value: "1", label: "100%" }];
+    const parsePercent = (text: string) => {
+      if (/^\s*fit\s*$/i.test(text)) return "fit";
+      const match = /^\s*(\d+(?:\.\d+)?)\s*%?\s*$/.exec(text);
+      if (!match) return null;
+      const percent = Number(match[1]);
+      return percent >= 10 && percent <= 800 ? String(percent / 100) : null;
+    };
+    function Zoom({ onChange }: { onChange?: (value: string) => void }) {
+      const [value, setValue] = useState("fit");
+      const text = value === "fit" ? "Fit" : `${Math.round(Number(value) * 100)}%`;
+      return <>
+        <ComboBox editable aria-label="Zoom" value={value} displayText={text} parseText={parsePercent} options={presets}
+          onChange={(next) => { setValue(next); onChange?.(next); }} />
+        <button>After</button>
+      </>;
+    }
+    const field = () => screen.getByRole("combobox", { name: "Zoom" }) as HTMLInputElement;
+
+    it("is a text field showing the display text, with the list on its button", () => {
+      const { container } = render(<Zoom />);
+      expect(field().tagName).toBe("INPUT");
+      expect(field()).toHaveValue("Fit");
+      fireEvent.click(container.querySelector(".ui-combo__button")!);
+      expect(screen.getByRole("listbox", { name: "Zoom" })).toBeInTheDocument();
+      expect(field()).toHaveFocus();
+      fireEvent.click(screen.getByRole("option", { name: "50%" }));
+      expect(field()).toHaveValue("50%");
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
+
+    it("commits typed text on Enter and on blur, through the validation callback", () => {
+      const onChange = vi.fn();
+      render(<Zoom onChange={onChange} />);
+      field().focus();
+      fireEvent.change(field(), { target: { value: "137" } });
+      fireEvent.keyDown(field(), { key: "Enter" });
+      expect(onChange).toHaveBeenLastCalledWith("1.37");
+      expect(field()).toHaveValue("137%");
+      fireEvent.change(field(), { target: { value: "250 %" } });
+      fireEvent.blur(field());
+      expect(onChange).toHaveBeenLastCalledWith("2.5");
+      expect(field()).toHaveValue("250%");
+    });
+
+    it("rejects invalid text and reverts, and Esc drops what was typed", () => {
+      const onChange = vi.fn();
+      render(<Zoom onChange={onChange} />);
+      field().focus();
+      fireEvent.change(field(), { target: { value: "huge" } });
+      fireEvent.keyDown(field(), { key: "Enter" });
+      expect(onChange).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("Fit");
+      fireEvent.change(field(), { target: { value: "5000" } });
+      fireEvent.blur(field());
+      expect(onChange).not.toHaveBeenCalled();
+      expect(field()).toHaveValue("Fit");
+      fireEvent.change(field(), { target: { value: "75" } });
+      fireEvent.keyDown(field(), { key: "Escape" });
+      expect(field()).toHaveValue("Fit");
+      fireEvent.blur(field());
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("opens with Alt+Down, moves with the arrows and picks with Enter", () => {
+      const onChange = vi.fn();
+      render(<Zoom onChange={onChange} />);
+      field().focus();
+      fireEvent.keyDown(field(), { key: "ArrowDown", altKey: true });
+      expect(field()).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("option", { name: "Fit" })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(field(), { key: "ArrowDown" });
+      fireEvent.keyDown(field(), { key: "ArrowDown" });
+      expect(field().getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: "100%" }).id);
+      fireEvent.keyDown(field(), { key: "Enter" });
+      expect(onChange).toHaveBeenLastCalledWith("1");
+      expect(field()).toHaveAttribute("aria-expanded", "false");
+      expect(field()).toHaveValue("100%");
+    });
+
+    it("matches option labels by default when there is no parseText", () => {
+      const onChange = vi.fn();
+      render(<ComboBox editable aria-label="Fruit" value="apple" onChange={onChange} options={fruit} />);
+      const input = screen.getByRole("combobox", { name: "Fruit" });
+      expect(input).toHaveValue("Apple");
+      fireEvent.change(input, { target: { value: "lemon" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("lemon");
+      fireEvent.change(input, { target: { value: "durian" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+  });
 });

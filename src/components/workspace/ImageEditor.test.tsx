@@ -369,15 +369,27 @@ it("picks canvas tools from a radio group or their letter keys and zooms from th
 
   const zoom = screen.getByRole("combobox", { name: "Image zoom" });
   const frame = canvas.parentElement!;
-  expect(zoom).toHaveTextContent("Fit");
+  expect(zoom).toHaveValue("Fit");
   fireEvent.keyDown(canvas, { key: "=", ctrlKey: true });
   expect(frame.style.getPropertyValue("--image-zoom")).toBe("1.5");
-  expect(zoom).toHaveTextContent("150%");
+  expect(zoom).toHaveValue("150%");
   fireEvent.keyDown(canvas, { key: "-", ctrlKey: true });
   fireEvent.keyDown(canvas, { key: "-", ctrlKey: true });
   expect(frame.style.getPropertyValue("--image-zoom")).toBe("0.75");
-  choose("Image zoom", "200%");
+  // Presets from the drop-down button beside the field.
+  fireEvent.click(zoom.parentElement!.querySelector(".ui-combo__button")!);
+  fireEvent.click(screen.getByRole("option", { name: "200%" }));
   expect(frame.style.getPropertyValue("--image-zoom")).toBe("2");
+  // Or any percentage, typed.
+  zoom.focus();
+  fireEvent.change(zoom, { target: { value: "137" } });
+  fireEvent.keyDown(zoom, { key: "Enter" });
+  expect(frame.style.getPropertyValue("--image-zoom")).toBe("1.37");
+  expect(zoom).toHaveValue("137%");
+  fireEvent.change(zoom, { target: { value: "9000%" } });
+  fireEvent.keyDown(zoom, { key: "Enter" });
+  expect(frame.style.getPropertyValue("--image-zoom")).toBe("1.37");
+  expect(zoom).toHaveValue("137%");
   fireEvent.keyDown(canvas, { key: "0", ctrlKey: true });
-  expect(zoom).toHaveTextContent("Fit");
+  expect(zoom).toHaveValue("Fit");
 });

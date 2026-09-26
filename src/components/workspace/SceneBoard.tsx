@@ -151,14 +151,17 @@ export function SceneBoard({
     return [
       { id: "open", label: "Open", icon: <ExternalLink size={16} />, onSelect: () => onSelect({ jobId: job.id, shotId: shot.id }) },
       { id: "rename", label: "Rename", icon: <Pencil size={16} />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: shot.id }) },
-      ...(others.length ? [{ separator: true } as const] : []),
-      ...others.map((target): MenuEntry => ({
-        id: `move-${target.id}`,
-        label: `Move to ${target.title}`,
+      ...(others.length ? [{ separator: true } as const, {
+        id: "move-to",
+        label: "Move to",
         icon: <FolderInput size={16} />,
         disabled: alone,
-        onSelect: () => onMoveShot(job.id, shot.id, target.id, null),
-      })),
+        items: others.map((target): MenuEntry => ({
+          id: `move-${target.id}`,
+          label: target.title,
+          onSelect: () => onMoveShot(job.id, shot.id, target.id, null),
+        })),
+      }] : []),
       { separator: true },
       { id: "delete", label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, disabled: alone || !onRemoveShot, onSelect: () => onRemoveShot?.(job, shot.id) },
     ];

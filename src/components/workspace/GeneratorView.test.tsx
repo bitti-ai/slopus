@@ -884,7 +884,14 @@ describe("Generator board as a native list", () => {
 
     const shot = screen.getByRole("button", { name: "Shot 2 of First scene" });
     fireEvent.keyDown(shot, { key: "F10", shiftKey: true });
-    fireEvent.click(within(screen.getByRole("menu", { name: "Shot 2 actions" })).getByRole("menuitem", { name: /Move to Second scene/ }));
+    const shotMenu = screen.getByRole("menu", { name: "Shot 2 actions" });
+    // One "Move to" item with the other scenes in a cascade, not one item per scene.
+    const moveTo = within(shotMenu).getByRole("menuitem", { name: "Move to" });
+    expect(moveTo).toHaveAttribute("aria-haspopup", "menu");
+    moveTo.focus();
+    fireEvent.keyDown(moveTo, { key: "ArrowRight" });
+    fireEvent.click(within(screen.getByRole("menu", { name: "Move to" })).getByRole("menuitem", { name: "Second scene" }));
+    expect(screen.queryByRole("menu")).toBeNull();
     expect(sceneShots(state.latest().generationJobs.find((job) => job.id === "scene-second")!).map((item) => item.id)).toEqual(["shot-second-a", "shot-first-b"]);
   });
 
