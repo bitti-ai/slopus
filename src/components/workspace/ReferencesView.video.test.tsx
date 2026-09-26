@@ -37,7 +37,7 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   expect(screen.queryByRole("button", { name: "Add images" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Add video" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
-  await screen.findByRole("heading", { name: "Refmods" });
+  await screen.findByRole("button", { name: /^Refmods/ });
   const icon = screen.getByRole("button", { name: "Regenerate reference icon" });
   expect(icon.closest(".reference-detail-art")).not.toBeNull();
   expect(icon).toBeEnabled();
@@ -58,7 +58,7 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   expect(screen.getByLabelText("Prompt")).toBeDisabled();
   expect(screen.getByRole("button", { name: "Add file" })).toBeDisabled();
   const removeRefmods = screen.getByRole("button", { name: "Remove refmods" });
-  expect(removeRefmods.closest("header")).toContainElement(screen.getByRole("heading", { name: "Refmods" }));
+  expect(removeRefmods.closest(".ui-prop-section__header")).toContainElement(screen.getByRole("button", { name: /^Refmods/ }));
   expect(removeRefmods).toHaveTextContent("");
   fireEvent.click(removeRefmods);
   expect(latest.references[0].refmods).toEqual([]);

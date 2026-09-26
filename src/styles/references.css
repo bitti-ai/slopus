@@ -12,13 +12,13 @@
    user's (usePaneSize → --pane-references-inspector); there are no width
    breakpoints, so a narrow window narrows the library instead. */
 .references-view {
-  --pane-references-inspector: 380px;                /* usePaneSize sets the real width inline */
+  --pane-references-inspector: var(--pane-side-default); /* usePaneSize sets the real width inline */
   height: 100%;
   min-height: 0;
   display: grid;
   /* Floors on both sides so a narrow view (agent pane open) keeps the list. */
-  grid-template-columns: minmax(240px, 1fr) auto minmax(260px, var(--pane-references-inspector));
-  background: var(--layer);
+  grid-template-columns: minmax(240px, 1fr) auto minmax(280px, var(--pane-references-inspector));
+  background: var(--surface-pane);
 }
 
 .references-main {
@@ -29,10 +29,13 @@
   flex-direction: column;
 }
 
+/* The command bar is chrome, like the Generator's: a 36px strip with the
+   divider where it meets the library's well. */
 .references-command {
   flex: 0 0 auto;
-  min-height: var(--space-7);
-  border-bottom: 1px solid var(--line);
+  min-height: var(--chrome-row);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
 }
 
 .references-main > .ui-infobar {
@@ -40,18 +43,17 @@
   margin: var(--space-2) var(--space-3) 0;
 }
 
+/* The library is where the references are laid out, so it sits in the well.
+   The icon grid keeps its own gutter; the details table runs edge to edge so
+   its header strip does. */
 .reference-library {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-3);
-}
-
-.reference-library__empty {
-  margin: var(--space-2) 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  background: var(--surface-well);
 }
 
 .references-status {
@@ -59,14 +61,16 @@
 }
 
 /* --- Icons view ---------------------------------------------------------------
-   Auto-filling 120px tiles: a square picture and a 12px name. Hover is a fill;
-   selection an accent fill with an accent edge, like any Windows grid view.
+   Auto-filling 120px tiles: a square picture and a 12px name. Rest, hover and
+   selection are the shared selectable-card rule (.ui-selectable--card): a
+   fill under the mouse, an accent fill and ring when selected.
    ========================================================================== */
 
 .reference-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
 }
 
 .reference-tile {
@@ -78,17 +82,6 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-primary);
-  transition: var(--transition-control);
-}
-
-.reference-tile:hover {
-  background: var(--fill-subtle-hover);
-}
-
-.reference-tile--selected,
-.reference-tile--selected:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .reference-tile:focus-visible {
@@ -138,6 +131,7 @@
 
 /* --- Details view ---------------------------------------------------------------
    28px rows, sortable columns, the same fill/accent selection as the icons.
+   The column header is a chrome strip, pinned while the rows scroll.
    ========================================================================== */
 
 .reference-details {
@@ -159,24 +153,30 @@
   z-index: 1;
   padding: 0;
   border-bottom: 1px solid var(--line);
-  background: var(--layer);
+  background: var(--surface-chrome);
   font-weight: var(--weight-regular);
   text-align: left;
 }
 
 .reference-details th button {
   width: 100%;
-  height: 28px;
+  height: var(--section-row);
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   color: var(--text-secondary);
   background: none;
   font: inherit;
+  font-weight: var(--weight-semibold);
   text-align: left;
+}
+
+.reference-details th:first-child button,
+.reference-details td:first-child {
+  padding-left: var(--space-3);
 }
 
 .reference-details th button:hover {
@@ -247,53 +247,49 @@
   background: var(--panel);
 }
 
-/* The selected reference owns the pane header, like the editable scene and
-   shot names in the Generator: 14px semibold, 40px. */
-.reference-inspector__head {
-  flex: 0 0 auto;
-  min-height: var(--space-7);
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1) 0 var(--space-2);
-  border-bottom: 1px solid var(--line);
-}
-
-.reference-inspector__head h2 {
-  min-width: 0;
-  flex: 1 1 auto;
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
-}
-
-.reference-inspector__title {
-  padding-left: var(--space-2);
-}
-
+/* Its sections run edge to edge, the first straight under the item header;
+   with nothing selected, the empty state centres in it. */
 .reference-inspector__scroll {
   min-height: 0;
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
 }
 
-/* Nothing selected: one caption line, not a centred hero. */
-.reference-empty {
-  margin: 0;
-  padding: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
+/* The reference's art as the item header's 28px chip: the same picture the
+   tile shows, filling the chip, with no room for a caption. */
+.reference-inspector .ui-item-header__chip .reference-art {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
 }
 
+.reference-inspector .ui-item-header__chip .reference-art > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.reference-inspector .ui-item-header__chip .reference-image-fallback em {
+  display: none;
+}
+
+.reference-inspector .ui-item-header__chip .reference-image-fallback > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The Preview section: the picture at a readable size, on a plate. Smaller
+   than the full-width art it replaced, now that the chip names the reference
+   at a glance: images and icons are held to 160px tall. */
 .reference-detail-art {
   position: relative;
   height: 128px;
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   background: var(--panel-3);
 }
 
@@ -313,9 +309,11 @@
 }
 
 .reference-detail-art.reference-detail-art--preset {
-  width: 100%;
+  width: 160px;
+  max-width: 100%;
   height: auto;
   aspect-ratio: 1;
+  justify-self: center;
 }
 
 .reference-detail-art--preset > .reference-image-fallback {
@@ -336,7 +334,9 @@
   display: block;
   width: 100%;
   height: auto;
+  max-height: 160px;
   padding: 0;
+  object-fit: contain;
 }
 
 .reference-detail-images .reference-image-fallback { min-height: 128px; }
@@ -347,7 +347,7 @@
   display: flex;
   justify-content: flex-start;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-1);
   background: transparent;
 }
 
@@ -425,8 +425,6 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--line);
 }
 
 .reference-image-controls > span {
@@ -459,25 +457,15 @@
   display: none;
 }
 
+/* The sections' bodies: each block used to draw its own bottom rule and
+   padding; the PropSection header above it now does both. */
 .reference-fields {
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  border-bottom: 1px solid var(--line);
+  padding-top: var(--space-1);
 }
 
 .reference-fields label {
   display: block;
   margin: 0;
-}
-
-.reference-fields label > span,
-.reference-used-by h3,
-.reference-refmods h3 {
-  display: block;
-  margin: 0 0 var(--space-1);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-snug);
 }
 
 .reference-fields textarea {
@@ -502,8 +490,6 @@
 .reference-location-settings {
   display: grid;
   gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line);
 }
 
 .reference-refmods,
@@ -516,19 +502,7 @@
 
 .reference-refmods {
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line);
-}
-
-.reference-refmods > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.reference-refmods > header h3 {
-  margin: 0;
+  padding-top: var(--space-1);
 }
 
 .reference-refmods > div > b {
@@ -547,13 +521,8 @@
 }
 
 .reference-used-by {
-  padding: var(--space-2) var(--space-3) var(--space-3);
-}
-
-.reference-used-by h3 span {
-  float: right;
-  color: var(--text-muted);
-  font-weight: var(--weight-regular);
+  display: grid;
+  margin-left: calc(-1 * var(--space-2));
 }
 
 .reference-used-by > button {
@@ -588,6 +557,7 @@
 
 .reference-used-by > p {
   margin: 0;
+  padding: var(--space-1) var(--space-2);
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
@@ -597,7 +567,7 @@
 .reference-video {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--space-1) 0;
 }
 
 .reference-video-dialog .reference-video {

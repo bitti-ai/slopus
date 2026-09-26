@@ -225,7 +225,7 @@ describe("Reference type presets", () => {
   it("renames the selected reference from the inspector header", () => {
     const state = setup();
     const name = screen.getByRole("textbox", { name: "Reference name" });
-    const header = name.closest("header");
+    const header = name.closest<HTMLElement>(".ui-item-header");
 
     expect(name).toHaveValue("Hero");
     expect(header).not.toBeNull();
@@ -470,9 +470,11 @@ describe("Reference library views and selection", () => {
     expect(open).toHaveBeenCalledWith(initial.generationJobs[0].id);
   });
 
-  it("says so in one line when nothing is selected", () => {
+  it("shows the shared empty state when nothing is selected", () => {
     setup({ ...project(), references: [] });
+    expect(screen.getByText("Nothing selected")).toBeInTheDocument();
     expect(screen.getByText("Select a reference to see its details.")).toBeInTheDocument();
-    expect(screen.getByText("No references yet.")).toBeInTheDocument();
+    expect(screen.getByText("No references yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New reference" })).toBeInTheDocument();
   });
 });

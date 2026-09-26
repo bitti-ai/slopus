@@ -1,6 +1,6 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, FileText, FolderOpen, ImagePlus, LayoutGrid, List, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, FileText, FolderOpen, ImagePlus, Images, LayoutGrid, List, MousePointerClick, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
 import { activeReferenceRefmods } from "../../lib/project";
 import {
@@ -33,7 +33,7 @@ import { DebugPromptDialog } from "./DebugPromptDialog";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { loadDebugOptionsEnabled, subscribeDebugOptions } from "../../lib/settings";
 import {
-  CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, ContentDialog, InfoBar, PropRow, SelectorBar, Splitter, StatusBar,
+  CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, ContentDialog, EmptyState, InfoBar, ItemHeader, PropRow, PropSection, SelectorBar, Splitter, StatusBar,
   tooltipProps, useContextMenu, usePaneSize, type MenuEntry,
 } from "../ui";
 import { isMenuKey } from "./SceneBoard";
@@ -110,12 +110,11 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [presetSearch, setPresetSearch] = useState("");
   const [view, setView] = useState<LibraryView>(readView);
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "name", descending: false });
-  const inspectorPane = usePaneSize("references.inspector", 380, { min: 280, max: 640 });
+  const inspectorPane = usePaneSize("references.inspector", 340, { min: 280, max: 560 });
   const root = useRef<HTMLDivElement>(null);
   const library = useRef<HTMLDivElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const menu = useContextMenu();
-  const inspectorTitleId = useId();
 
   const selected = config.references.find((ref) => ref.id === selectedId);
   const selectedImages = selected ? referenceImages(selected) : [];
@@ -442,13 +441,18 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       <section ref={library} className="reference-library" aria-labelledby="reference-library-heading">
         <h2 className="sr-only" id="reference-library-heading">Reference library</h2>
         {config.references.length === 0
-          ? <p className="reference-library__empty">No references yet.</p>
+          ? <EmptyState
+            icon={<Images />}
+            title="No references yet"
+            description="A reference keeps a character, a place or a look the same in every scene that uses it."
+            action={<button type="button" className="secondary-button" onClick={openNewReference}>New reference</button>}
+          />
           : view === "icons"
             ? <div className="reference-grid" role="listbox" aria-label="References" aria-multiselectable="true" aria-orientation="horizontal">
               {ordered.map((ref) => <div
                 key={ref.id}
                 role="option"
-                className={`reference-tile${selectedIds.has(ref.id) ? " reference-tile--selected" : ""}`}
+                className="reference-tile ui-selectable ui-selectable--card"
                 aria-label={`${ref.name} ${referenceKindLabel(ref)}`}
                 data-tooltip={isReferenceDescribed(ref) ? ref.description : `${ref.name} · not described yet`}
                 {...itemProps(ref)}
@@ -490,121 +494,154 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
 
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" aria-controls="reference-inspector" />
 
-    <aside id="reference-inspector" className="reference-inspector" aria-labelledby={selected ? undefined : inspectorTitleId} aria-label={selected ? `Reference: ${selected.name}` : undefined}>
-      {selected ? <header className="reference-inspector__head">
-        <h2><input
+    <aside id="reference-inspector" className="reference-inspector" aria-label={selected ? `Reference: ${selected.name}` : "Reference details"}>
+      {/* The selected reference heads the pane: its art is the chip, its name
+          is editable in place, and the meta line says what it is. */}
+      {selected && <ItemHeader
+        chip={art(selected)}
+        name={<input
           ref={nameInput}
-          className="panel-title__name reference-title__name"
+          className="ui-item-header__input"
           value={selected.name}
           aria-label="Reference name"
           aria-keyshortcuts="F2"
           onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })}
-        /></h2>
-        <button className="icon-button" onClick={() => remove([selected.id])} aria-label="Delete reference" {...tooltipProps("Delete reference", "Delete")}><Trash2 size={16} aria-hidden="true" /></button>
-      </header> : <header className="reference-inspector__head"><h2 id={inspectorTitleId} className="reference-inspector__title">Details</h2></header>}
+        />}
+        meta={[
+          selectedType === "custom" ? "Uncategorized" : referenceTypeLabel(selectedType),
+          referenceKindLabel(selected),
+          jobs.length === 0 ? "Not used" : jobs.length === 1 ? "1 scene" : `${jobs.length} scenes`,
+        ].join(" · ")}
+        actions={<button className="icon-button" onClick={() => remove([selected.id])} aria-label="Delete reference" {...tooltipProps("Delete reference", "Delete")}><Trash2 size={16} aria-hidden="true" /></button>}
+      />}
       <div className="reference-inspector__scroll">
         {selected ? <>
-          {selected.kind === "video" && <section className="reference-video" aria-label="Video reference">
-            <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
-              onChange={(video) => update(selected.id, { video })} />
-            <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} aria-hidden="true" /> Remove video</button>
-          </section>}
-          {(selected.kind !== "video" || showImages || hasRefmods) && <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${showImages ? " reference-detail-art--images" : (!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
-            {showImages
-              ? <div className="reference-detail-images"><ReferenceImage key={selectedImage.id} folderPath={folderPath} relativePath={selectedImage.relativePath} sourcePath={selectedImage.sourcePath} alt={selectedImage.name} /></div>
-              : selected.iconRelativePath
-                ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
-              : !hasRefmods && selectedPresetIcon
-                ? <PresetIcon className="reference-detail-preset-icon" preset={selectedPresetIcon} alt={`${selected.name} reference icon`} />
-              : <span><FileText size={16} aria-hidden="true" /></span>}
-            {/* A caption only where there is no picture to look at. */}
-            {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
-            {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" {...tooltipProps(`Remove ${selectedImage.name}`)} onClick={removeImage}><Trash2 size={14} aria-hidden="true" /></button>}
-            {!showImages && onRegenerateIcon && <button
-              type="button"
-              className="reference-icon-refresh"
-              aria-label="Regenerate reference icon"
-              data-tooltip={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : canGenerateIcon ? "Regenerate reference icon" : hasRefmods ? "Enable a refmod to generate an icon" : "Add a prompt to generate an icon"}
-              disabled={!canGenerateIcon || pendingIconIds.has(selected.id)}
-              onClick={() => {
-                setIconError(null);
-                try { onRegenerateIcon(selected.id); }
-                catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
-              }}
-            ><RefreshCw size={14} aria-hidden="true" /></button>}
-          </div>}
-          {showImages && <div className="reference-image-controls" role="group" aria-label="Reference images">
-            <button type="button" className="icon-button" aria-label="Previous reference image" data-tooltip="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
-            <span aria-live="polite">Image {currentImagePage + 1} of {selectedImages.length}</span>
-            <button type="button" className="icon-button" aria-label="Next reference image" data-tooltip="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight size={16} aria-hidden="true" /></button>
-          </div>}
-          <div className="reference-fields">
-            <label><span>Prompt</span><textarea className="text-field" disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
-            {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
-              : !isReferenceDescribed(selected) && <p>{selected.kind === "video"
-                ? "The clip is sent as a reference. Add a prompt to describe what to keep."
-                : selectedImages.length > 0
-                  ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
-                  : "Not described yet — it won’t be used until you add a definition."}</p>}
-          </div>
-          {hasRefmods && <section className="reference-refmods" aria-label="Refmod attachments">
-            <header>
-              <h3>Refmods</h3>
-              <button type="button" className="icon-button" aria-label="Remove refmods" data-tooltip="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Trash2 size={16} aria-hidden="true" /></button>
-            </header>
-            <p>Needs a Ref2VA generator. Strength 0 turns a refmod off; more copies use more GPU memory.</p>
-            {selected.refmods!.map((refmod) => <div key={refmod.id}>
-              <b data-tooltip={refmod.name}>{refmod.name}</b>
-              <PropRow label="Strength" htmlFor={`${refmod.id}-strength`}><input id={`${refmod.id}-strength`} className="text-field" aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
-                const strength = Number(event.target.value);
-                if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
-              }} /></PropRow>
-              <PropRow label="Copies" htmlFor={`${refmod.id}-copies`}><input id={`${refmod.id}-copies`} className="text-field" aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
-                const copies = Number(event.target.value);
-                if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
-              }} /></PropRow>
-            </div>)}
-          </section>}
-          {selectedLocation && <section className="reference-location-settings" aria-label="Location settings">
-            {LOCATION_SETTING_GROUPS.map((group) => <PropRow key={group.id} label={group.label}>
-              <ComboBox
-                aria-label={group.label}
-                disabled={hasRefmods}
-                value={selectedLocation.settings[group.id] ?? ""}
-                options={[{ value: "", label: "None" }, ...group.options.map((option) => ({ value: option.id, label: option.label }))]}
-                onChange={(value) => {
-                  const prompt = composeLocationPrompt(selectedLocation.preset, { ...selectedLocation.settings, [group.id]: value || undefined });
-                  update(selected.id, { description: prompt, content: prompt });
+          {selected.kind === "video" && <PropSection title="Video clip" persistKey="references.video">
+            <section className="reference-video" aria-label="Video reference">
+              <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
+                onChange={(video) => update(selected.id, { video })} />
+              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Trash2 size={16} aria-hidden="true" /> Remove video</button>
+            </section>
+          </PropSection>}
+          {/* The picture at a readable size, where the chip is only a glance:
+              paging through the images, removing one, regenerating the icon. */}
+          {(selected.kind !== "video" || showImages || hasRefmods) && <PropSection
+            title="Preview"
+            persistKey="references.preview"
+            summary={showImages ? `${currentImagePage + 1} of ${selectedImages.length}` : undefined}
+          >
+            <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${showImages ? " reference-detail-art--images" : (!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
+              {showImages
+                ? <div className="reference-detail-images"><ReferenceImage key={selectedImage.id} folderPath={folderPath} relativePath={selectedImage.relativePath} sourcePath={selectedImage.sourcePath} alt={selectedImage.name} /></div>
+                : selected.iconRelativePath
+                  ? <ReferenceImage className="reference-detail-preset-icon" folderPath={folderPath} relativePath={selected.iconRelativePath} alt={`${selected.name} reference icon`} />
+                : !hasRefmods && selectedPresetIcon
+                  ? <PresetIcon className="reference-detail-preset-icon" preset={selectedPresetIcon} alt={`${selected.name} reference icon`} />
+                : <span><FileText size={16} aria-hidden="true" /></span>}
+              {/* A caption only where there is no picture to look at. */}
+              {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
+              {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" {...tooltipProps(`Remove ${selectedImage.name}`)} onClick={removeImage}><Trash2 size={14} aria-hidden="true" /></button>}
+              {!showImages && onRegenerateIcon && <button
+                type="button"
+                className="reference-icon-refresh"
+                aria-label="Regenerate reference icon"
+                data-tooltip={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : canGenerateIcon ? "Regenerate reference icon" : hasRefmods ? "Enable a refmod to generate an icon" : "Add a prompt to generate an icon"}
+                disabled={!canGenerateIcon || pendingIconIds.has(selected.id)}
+                onClick={() => {
+                  setIconError(null);
+                  try { onRegenerateIcon(selected.id); }
+                  catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
                 }}
-              />
-            </PropRow>)}
-          </section>}
-          <section className="reference-type" aria-label="Reference classification">
-            <PropRow label="Category">
-              <ComboBox
-                aria-label="Category"
-                value={selectedType}
-                options={[
-                  ...(selectedType === "custom" ? [{ value: "custom", label: "Uncategorized", disabled: true }] : []),
-                  ...REFERENCE_TYPES.map((type) => ({ value: type.id, label: type.label })),
-                ]}
-                onChange={(value) => update(selected.id, { intendedUse: [value as PresetReferenceType], subcategory: "" })}
-              />
-            </PropRow>
-            {selectedType !== "custom" && <PropRow label="Subcategory">
-              <ComboBox
-                aria-label="Subcategory"
-                value={selectedSubcategory}
-                options={[{ value: "", label: "None" }, ...referenceSubcategories(selectedType).map((subcategory) => ({ value: subcategory, label: subcategory }))]}
-                onChange={(value) => update(selected.id, { subcategory: value })}
-              />
-            </PropRow>}
-          </section>
-          <section className="reference-used-by">
-            <h3>Used by <span>{jobs.length}</span></h3>
-            {jobs.length ? jobs.map((job) => <button type="button" key={job.id} onClick={() => onOpenGenerator?.(job.id)} data-tooltip={`Open ${job.title}`}><b>{job.title}</b><ChevronRight size={16} aria-hidden="true" /></button>) : <p>No scenes yet.</p>}
-          </section>
-        </> : <p className="reference-empty">Select a reference to see its details.</p>}
+              ><RefreshCw size={14} aria-hidden="true" /></button>}
+            </div>
+            {showImages && <div className="reference-image-controls" role="group" aria-label="Reference images">
+              <button type="button" className="icon-button" aria-label="Previous reference image" data-tooltip="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft size={16} aria-hidden="true" /></button>
+              <span aria-live="polite">Image {currentImagePage + 1} of {selectedImages.length}</span>
+              <button type="button" className="icon-button" aria-label="Next reference image" data-tooltip="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight size={16} aria-hidden="true" /></button>
+            </div>}
+          </PropSection>}
+          <PropSection title="Prompt" persistKey="references.prompt" summary={hasRefmods ? "Locked by refmods" : isReferenceDescribed(selected) ? undefined : "Not described"}>
+            <div className="reference-fields">
+              {/* The section header names the field on screen. */}
+              <label><span className="sr-only">Prompt</span><textarea className="text-field" disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
+              {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
+                : !isReferenceDescribed(selected) && <p>{selected.kind === "video"
+                  ? "The clip is sent as a reference. Add a prompt to describe what to keep."
+                  : selectedImages.length > 0
+                    ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
+                    : "Not described yet — it won’t be used until you add a definition."}</p>}
+            </div>
+          </PropSection>
+          {hasRefmods && <PropSection
+            title="Refmods"
+            persistKey="references.refmods"
+            summary={selected.refmods!.length}
+            actions={<button type="button" className="icon-button prop-row__button" aria-label="Remove refmods" data-tooltip="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Trash2 size={16} aria-hidden="true" /></button>}
+          >
+            <section className="reference-refmods" aria-label="Refmod attachments">
+              <p>Needs a Ref2VA generator. Strength 0 turns a refmod off; more copies use more GPU memory.</p>
+              {selected.refmods!.map((refmod) => <div key={refmod.id}>
+                <b data-tooltip={refmod.name}>{refmod.name}</b>
+                <PropRow label="Strength" htmlFor={`${refmod.id}-strength`}><input id={`${refmod.id}-strength`} className="text-field" aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
+                  const strength = Number(event.target.value);
+                  if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
+                }} /></PropRow>
+                <PropRow label="Copies" htmlFor={`${refmod.id}-copies`}><input id={`${refmod.id}-copies`} className="text-field" aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
+                  const copies = Number(event.target.value);
+                  if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
+                }} /></PropRow>
+              </div>)}
+            </section>
+          </PropSection>}
+          {selectedLocation && <PropSection title="Location" persistKey="references.location">
+            <section className="reference-location-settings" aria-label="Location settings">
+              {LOCATION_SETTING_GROUPS.map((group) => <PropRow key={group.id} label={group.label}>
+                <ComboBox
+                  aria-label={group.label}
+                  disabled={hasRefmods}
+                  value={selectedLocation.settings[group.id] ?? ""}
+                  options={[{ value: "", label: "None" }, ...group.options.map((option) => ({ value: option.id, label: option.label }))]}
+                  onChange={(value) => {
+                    const prompt = composeLocationPrompt(selectedLocation.preset, { ...selectedLocation.settings, [group.id]: value || undefined });
+                    update(selected.id, { description: prompt, content: prompt });
+                  }}
+                />
+              </PropRow>)}
+            </section>
+          </PropSection>}
+          <PropSection title="Classification" persistKey="references.classification">
+            <section className="reference-type" aria-label="Reference classification">
+              <PropRow label="Category">
+                <ComboBox
+                  aria-label="Category"
+                  value={selectedType}
+                  options={[
+                    ...(selectedType === "custom" ? [{ value: "custom", label: "Uncategorized", disabled: true }] : []),
+                    ...REFERENCE_TYPES.map((type) => ({ value: type.id, label: type.label })),
+                  ]}
+                  onChange={(value) => update(selected.id, { intendedUse: [value as PresetReferenceType], subcategory: "" })}
+                />
+              </PropRow>
+              {selectedType !== "custom" && <PropRow label="Subcategory">
+                <ComboBox
+                  aria-label="Subcategory"
+                  value={selectedSubcategory}
+                  options={[{ value: "", label: "None" }, ...referenceSubcategories(selectedType).map((subcategory) => ({ value: subcategory, label: subcategory }))]}
+                  onChange={(value) => update(selected.id, { subcategory: value })}
+                />
+              </PropRow>}
+            </section>
+          </PropSection>
+          <PropSection title="Used by" persistKey="references.used-by" summary={jobs.length}>
+            <div className="reference-used-by">
+              {jobs.length ? jobs.map((job) => <button type="button" key={job.id} onClick={() => onOpenGenerator?.(job.id)} data-tooltip={`Open ${job.title}`}><b>{job.title}</b><ChevronRight size={16} aria-hidden="true" /></button>) : <p>No scenes yet.</p>}
+            </div>
+          </PropSection>
+        </> : <EmptyState
+          icon={<MousePointerClick />}
+          title="Nothing selected"
+          description="Select a reference to see its details."
+        />}
       </div>
       {debugEnabled && selected && <div className="debug-prompt">
         <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" aria-expanded={showDebugIconPrompt} onClick={() => setShowDebugIconPrompt(true)}>Debug icon prompt</button>
