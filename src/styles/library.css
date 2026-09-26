@@ -351,7 +351,7 @@
   text-align: center;
 }
 
-/* Inherits the app's hero CTA from controls.css; only the fit is local. The
+/* Inherits the accent button from controls.css; only the fit is local. The
    auto margin was the hint's job before the hint moved onto this button. */
 .composer__submit {
   flex: 0 0 auto;
