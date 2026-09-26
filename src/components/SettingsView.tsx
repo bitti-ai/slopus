@@ -11,6 +11,7 @@ import { isTauri } from "../lib/persistence";
 import { WeightSourcesEditor } from "./WeightSourcesEditor";
 import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
 import { OpenableCard } from "./OpenableCard";
+import { TitleBar } from "./TitleBar";
 import { downloadableTemplateLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
@@ -270,7 +271,11 @@ const engineSeverity = (status: SlopfabStatus | null, desktop: boolean): InfoBar
    a 280px navigation pane with Back at its top, and a content column that
    reads like Windows Settings — a 28px title (a breadcrumb on sub-pages) over
    groups of one-setting-per-row cards. */
-export function SettingsView({ onClose, updates, initialTab = "engine" }: { onClose: () => void; updates?: ReactNode; initialTab?: TabId }) {
+export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions }: {
+  onClose: () => void; updates?: ReactNode; initialTab?: TabId;
+  /** App-wide title-bar buttons (the work queue), after Settings' own. */
+  titleBarActions?: ReactNode;
+}) {
   /* The engine first: this screen exists because those paths have to be set
      before anything can be rendered. */
   const [tab, setTab] = useState<TabId>(initialTab);
@@ -603,6 +608,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
 
   return (
     <>
+    {/* Back is the title bar's first button, as in the project window: it
+        leaves a sub-page first, then Settings. */}
+    <TitleBar
+      title="Settings"
+      leading={<button type="button" className="icon-button" onClick={back} aria-label="Back" data-tooltip="Back" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
+      actions={titleBarActions}
+    />
+    <div className="app-screen__content">
     <main aria-hidden={editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-label="Settings" onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
       // The mounted editor must not receive shortcuts while Settings has focus.
       // Alt+Left is Settings' own Back (App binds it while Settings is open),
@@ -611,9 +624,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
       if (event.key !== "Escape" || event.defaultPrevented) return;
       back();
     }}>
-      <NavPane aria-label="Settings sections" className="settings-nav" header={
-        <button type="button" className="icon-button settings-nav__back" onClick={back} aria-label="Back" data-tooltip="Back"><Back16 /></button>
-      }>
+      <NavPane aria-label="Settings sections" className="settings-nav">
         {TABS.map((item, index) => {
           const Icon = tab === item.id ? item.selectedIcon : item.icon;
           const count = item.id === "engine" ? missing.length : 0;
@@ -660,6 +671,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine" }: { onCl
         </div>
       </div>
     </main>
+    </div>
     {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} />}
     </>
   );

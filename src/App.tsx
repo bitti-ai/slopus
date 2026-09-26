@@ -323,10 +323,7 @@ function App() {
      its unsaved edits, the agent its draft, and the library its search. */
   const settingsPage = settingsOpen ? (
     <div className="app-screen">
-      <TitleBar title="Settings" actions={queueTrigger(settingsQueueButton)} />
-      <div className="app-screen__content">
-        <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} />
-      </div>
+      <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} titleBarActions={queueTrigger(settingsQueueButton)} />
     </div>
   ) : null;
 

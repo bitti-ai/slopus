@@ -32,10 +32,6 @@
 }
 
 /* Back sits alone above the items, where Windows Settings puts it. */
-.settings-nav__back {
-  margin: 0 0 var(--space-2) var(--space-1);
-}
-
 /* The content sits on the pane, so nav and page read as two regions. */
 .settings-view__body {
   min-width: 0;
