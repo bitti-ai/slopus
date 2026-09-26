@@ -5,7 +5,7 @@
    Dense scale. An editor is a tool surface, not a form, so it runs smaller
    than the rest of the app — the way Premiere, Resolve and Clipchamp do:
    toolbars 36px (--chrome-row), the monitor footer 24px (--chrome-row-sm),
-   ruler 28px, video tracks 56px, audio tracks 40px, caption tracks 32px,
+   ruler 28px, video tracks 88px (thumbnails read at a useful size), audio tracks 56px, caption tracks 32px,
    transport and toolbar buttons 24px (--control-sm), track toggles 20px,
    captions 12px. The export screen (export.css) uses the same scale.
 
@@ -24,12 +24,12 @@
   /* Defaults for the pane sizes TimelineView sets inline from usePaneSize. */
   --pane-timeline-sources: 296px;
   --pane-timeline-inspector: 340px;
-  --pane-timeline-height: 300px;
+  --pane-timeline-height: 340px;
   --pane-timeline-tracks: 180px;
   --toolbar-height: var(--chrome-row);
   --ruler-height: 28px;
-  --track-video-height: 56px;
-  --track-audio-height: 40px;
+  --track-video-height: 88px;
+  --track-audio-height: 56px;
   --track-caption-height: 32px;
 
   height: 100%;
@@ -1512,7 +1512,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   z-index: 0;
   inset: 18px 0 0;
   overflow: hidden;
-  opacity: 0.7;
+  opacity: 0.9;
   pointer-events: none;
 }
 

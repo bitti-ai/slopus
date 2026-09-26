@@ -269,7 +269,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const [inspectorOpen, setInspectorOpen] = useState(() => readFlag("slopus.timeline.inspector", true));
   const sourcesPane = usePaneSize("timeline.sources", 296, { min: 200, max: 480 });
   const inspectorPane = usePaneSize("timeline.inspector", 340, { min: 260, max: 560 });
-  const timelinePane = usePaneSize("timeline.height", 300, { min: 150, max: 800 });
+  const timelinePane = usePaneSize("timeline.height", 340, { min: 150, max: 800 });
   const trackPane = usePaneSize("timeline.tracks", 180, { min: 120, max: 320 });
   /* A drag in flight, and the timeline as it would be if the pointer were
      released right now. The lanes draw the preview, and the release commits
