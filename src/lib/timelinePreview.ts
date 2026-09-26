@@ -1,5 +1,5 @@
 import { visibleClipsAt } from "./export";
-import type { ProjectAsset, TimelineClip, TimelineTrack } from "./project";
+import { clipTransition, type ProjectAsset, type TimelineClip, type TimelineTrack } from "./project";
 
 export type PreviewSegment = { startMs: number; clips: TimelineClip[] };
 
@@ -12,8 +12,9 @@ export function previewSegments(tracks: TimelineTrack[], assets: ReadonlyMap<str
     for (const clip of track.clips) {
       boundaries.add(clip.startMs);
       boundaries.add(clip.startMs + clip.durationMs);
-      if (clip.transition && clip.transition.type !== "cut") {
-        boundaries.add(clip.startMs + Math.min(clip.durationMs, clip.transition.durationMs));
+      const transition = clipTransition(clip);
+      if (transition.type !== "cut") {
+        boundaries.add(clip.startMs + Math.min(clip.durationMs, transition.durationMs));
       }
     }
   }

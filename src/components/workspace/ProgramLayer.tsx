@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../lib/export";
 import { PreviewSources } from "../../lib/exportPipeline";
-import type { ProjectAsset, TimelineClip } from "../../lib/project";
+import { clipChromaKey, clipLook, type ProjectAsset, type TimelineClip } from "../../lib/project";
 import { ChromaKeyPreview } from "./ChromaKeyPreview";
 import { VideoEffectsPreview } from "./VideoEffectsPreview";
-import { hasVideoEffects } from "../../lib/effectSettings";
+import { activeVideoEffects, hasVideoEffects } from "../../lib/effectSettings";
+import type { GpuEffects } from "../../lib/videoEffectsGpu";
 import { isTauri } from "../../lib/persistence";
 import type { PreviewMedia } from "../../lib/previewPresentation";
 
@@ -93,8 +94,12 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
     if (video.current) setReady(video.current.readyState >= 2 && !video.current.seeking);
   };
   const style = previewMediaStyle(clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs));
-  const effects = hasVideoEffects(clip);
-  const sourceStyle: CSSProperties = composited || clip.chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
+  /* Bypassed effects are dropped here, the way the export drops them. Kept
+     per clip object so the effect canvases only redraw when the clip does. */
+  const gpuEffects = useMemo<GpuEffects>(() => ({ ...activeVideoEffects(clip), chromaKey: clipChromaKey(clip), look: clipLook(clip) }), [clip]);
+  const chromaKey = gpuEffects.chromaKey;
+  const effects = hasVideoEffects(gpuEffects);
+  const sourceStyle: CSSProperties = composited || chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
   const showStatus = active && foreground && isTauri() && Boolean(asset?.relativePath || asset?.sourcePath);
   return <div className="program-layer" data-clip-id={clip.id} data-active={active} aria-hidden={!active}
     aria-label={`${foreground ? "Foreground" : "Background"} clip: ${clip.label}`}
@@ -104,8 +109,8 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
       : <video key={url} ref={registerVideo} src={url} style={sourceStyle} muted={!active || muted} playsInline preload="auto"
         onLoadedMetadata={loaded} onLoadedData={loaded} onCanPlay={loaded} onSeeked={loaded}
         onError={() => setError(`Could not decode ${clip.label}.`)} />)}
-    {!composited && url && effects && <VideoEffectsPreview source={isImage ? image : video} sourceUrl={url} effects={clip} playing={playing && active && !isImage} style={style} onError={setError} />}
-    {!composited && url && !effects && clip.chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={clip.chromaKey} playing={playing && active && !isImage} style={style} onError={setError} />}
+    {!composited && url && effects && <VideoEffectsPreview source={isImage ? image : video} sourceUrl={url} effects={gpuEffects} playing={playing && active && !isImage} style={style} onError={setError} />}
+    {!composited && url && !effects && chromaKey && <ChromaKeyPreview source={isImage ? image : video} sourceUrl={url} effect={chromaKey} playing={playing && active && !isImage} style={style} onError={setError} />}
     {showStatus && (error
       ? <div className="program-note program-note--error" role="alert">{error}</div>
       : (!url || (!ready && !isImage)) && <div className="program-note"><span>Loading {clip.label}…</span></div>)}

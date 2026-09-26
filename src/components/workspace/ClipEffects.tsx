@@ -1,10 +1,10 @@
 import { ChevronRight, Ellipsis, FolderOpen, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
-import { parseCube } from "../../lib/effectSettings";
+import { isEffectOn, parseCube } from "../../lib/effectSettings";
 import { readLutFile } from "../../lib/exportPipeline";
 import { inTauri, pickFile } from "../../lib/nativeShell";
-import { ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMenu } from "../ui";
+import { Checkbox, ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMenu } from "../ui";
 import { ColorSwatch } from "./ColorPicker";
 
 type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut";
@@ -142,12 +142,12 @@ const EFFECTS: readonly EffectDefinition[] = [
   {
     id: "sharpen", name: "Sharpen", description: "Enhance fine edges and detail",
     defaults: { sharpen: { amount: 50 } },
-    editor: ({ clip, update, disabled }) => <Param label="Amount" ariaLabel="Sharpen amount" value={clip.sharpen!.amount} max={200} defaultValue={50} disabled={disabled} onChange={(amount) => update({ sharpen: { amount } })} />,
+    editor: ({ clip, update, disabled }) => <Param label="Amount" ariaLabel="Sharpen amount" value={clip.sharpen!.amount} max={200} defaultValue={50} disabled={disabled} onChange={(amount) => update({ sharpen: { ...clip.sharpen!, amount } })} />,
   },
   {
     id: "blur", name: "Gaussian blur", description: "Soften the picture with a Gaussian blur",
     defaults: { blur: { radius: 4 } },
-    editor: ({ clip, update, disabled }) => <Param label="Radius" ariaLabel="Blur radius" value={clip.blur!.radius} max={24} step={0.5} suffix=" px" defaultValue={4} disabled={disabled} onChange={(radius) => update({ blur: { radius } })} />,
+    editor: ({ clip, update, disabled }) => <Param label="Radius" ariaLabel="Blur radius" value={clip.blur!.radius} max={24} step={0.5} suffix=" px" defaultValue={4} disabled={disabled} onChange={(radius) => update({ blur: { ...clip.blur!, radius } })} />,
   },
   {
     id: "colorCorrection", name: "Colour correction", description: "Adjust exposure, contrast and saturation",
@@ -164,7 +164,7 @@ const EFFECTS: readonly EffectDefinition[] = [
   {
     id: "vignette", name: "Vignette", description: "Darken the edges of the picture",
     defaults: { vignette: { amount: 35 } },
-    editor: ({ clip, update, disabled }) => <Param label="Amount" ariaLabel="Vignette amount" value={clip.vignette!.amount} defaultValue={35} disabled={disabled} onChange={(amount) => update({ vignette: { amount } })} />,
+    editor: ({ clip, update, disabled }) => <Param label="Amount" ariaLabel="Vignette amount" value={clip.vignette!.amount} defaultValue={35} disabled={disabled} onChange={(amount) => update({ vignette: { ...clip.vignette!, amount } })} />,
   },
   {
     id: "lut", name: "3D LUT", description: "Apply a colour look from a .cube file",
@@ -174,10 +174,12 @@ const EFFECTS: readonly EffectDefinition[] = [
   },
 ];
 
-/* Each effect is an Expander-style block with a 32px header — chevron and
-   name, Reset, and a ⋯ menu — the way Premiere's Effect Controls and
-   Clipchamp's effect panel stack them. There is no per-effect bypass: effect
-   settings carry no "enabled" flag in the project schema yet. */
+/* Each effect is an Expander-style block with a 32px header — the bypass
+   checkbox, chevron and name, Reset, and a ⋯ menu — the way Premiere's
+   Effect Controls and Clipchamp's effect panel stack them. Unticking the
+   checkbox writes `enabled: false` into the effect's settings: the monitor
+   and the export render without it, and its values stay for when it is
+   ticked again (which removes the flag, so the file keeps its old shape). */
 function EffectBlock({ effect, clip, disabled, update, onRemove }: {
   effect: EffectDefinition; clip: TimelineClip; disabled: boolean;
   update: Update; onRemove: () => void;
@@ -188,9 +190,19 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
      is one step rather than sixty. */
   const keyed: Update = (patch, key) => update(patch, key ?? effect.id);
   const menu = useContextMenu();
-  const reset = () => update(effect.reset?.(clip) ?? effect.defaults);
-  return <section className={`clip-effect${open ? " clip-effect--open" : ""}`} aria-label={`${effect.name} effect`}>
+  const settings = clip[effect.id] as { enabled?: boolean | null } | null | undefined;
+  const on = isEffectOn(settings);
+  /* Reset puts the values back, not the bypass: a switched-off effect stays off. */
+  const reset = () => {
+    const patch = effect.reset?.(clip) ?? effect.defaults;
+    const values = patch[effect.id] as object | undefined;
+    update(on || !values ? patch : { [effect.id]: { ...values, enabled: false } });
+  };
+  const bypass = (next: boolean) => update({ [effect.id]: { ...settings, enabled: next ? undefined : false } });
+  return <section className={`clip-effect${open ? " clip-effect--open" : ""}${on ? "" : " clip-effect--bypassed"}`} aria-label={`${effect.name} effect`}>
     <header className="clip-effect__header">
+      <Checkbox className="clip-effect__bypass" checked={on} disabled={disabled} aria-label={`${effect.name} on`}
+        {...tooltipProps(on ? "Turn off (bypass)" : "Turn on")} onChange={bypass} />
       <button type="button" className="clip-effect__toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <ChevronRight size={12} aria-hidden="true" className="clip-effect__chevron" />
         <h3 className="clip-effect__name">{effect.name}</h3>

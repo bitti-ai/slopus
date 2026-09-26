@@ -1695,3 +1695,21 @@
 .ui-statusbar__items--end {
   margin-left: auto;
 }
+
+/* ============================================================================
+   Effect bypass (ClipEffects). Parked here by the integration pass because
+   timeline.css belonged to another agent at the time; it can move there.
+   The checkbox sits in the effect's 32px header ahead of the chevron, and a
+   bypassed effect's name reads secondary, the way Premiere dims an fx that
+   is switched off.
+   ========================================================================== */
+
+.clip-effect__bypass {
+  flex: none;
+  margin-left: var(--space-2);
+  padding-block: 0;
+}
+
+.clip-effect--bypassed .clip-effect__name {
+  color: var(--text-secondary);
+}

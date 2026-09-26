@@ -107,11 +107,44 @@ fn complete_project_create_open_save_reopen_is_lossless() {
 }
 
 #[test]
+fn effect_bypass_round_trips_and_stays_absent_when_unset() {
+    let mut config = fixture();
+    let clip = &mut config.timeline.tracks[0].clips[0];
+    clip.chroma_key = Some(ClipChromaKey {
+        color: "#00ff00".into(),
+        tolerance: 20.0,
+        enabled: Some(false),
+    });
+    clip.look = Some(ClipLook {
+        opacity: 80.0,
+        temperature: 0.0,
+        enabled: None,
+    });
+    let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let folder = PathBuf::from(&created.folder_path);
+    write_project(&folder, &config).unwrap();
+    assert_eq!(read_project(&folder).unwrap().config, config);
+    let json = serde_json::to_value(&config).unwrap();
+    let clip = &json["timeline"]["tracks"][0]["clips"][0];
+    assert_eq!(clip["chromaKey"]["enabled"], false);
+    // Unset stays unset: a project written before bypass keeps its shape.
+    assert!(clip["look"].as_object().unwrap().get("enabled").is_none());
+    // A file that carries the flag (written by the frontend) loads with it.
+    let parsed: ClipLook = serde_json::from_str(r#"{"opacity":50,"temperature":10,"enabled":false}"#).unwrap();
+    assert_eq!(parsed.enabled, Some(false));
+    let legacy: ClipLook = serde_json::from_str(r#"{"opacity":50,"temperature":10}"#).unwrap();
+    assert_eq!(legacy.enabled, None);
+}
+
+#[test]
 fn chroma_key_survives_save_and_reopen_and_validates_settings() {
     let mut config = fixture();
     config.timeline.tracks[0].clips[0].chroma_key = Some(ClipChromaKey {
         color: "#12ABef".into(),
         tolerance: 27.0,
+        enabled: None,
     });
     let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
     let root = tempfile::tempdir().unwrap();
@@ -135,6 +168,7 @@ fn chroma_key_survives_save_and_reopen_and_validates_settings() {
         invalid.timeline.tracks[0].clips[0].chroma_key = Some(ClipChromaKey {
             color: color.into(),
             tolerance,
+            enabled: None,
         });
         assert!(validate_and_normalize_config(invalid)
             .unwrap_err()

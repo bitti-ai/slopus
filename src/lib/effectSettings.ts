@@ -13,22 +13,44 @@ export const lutTableSchema = z.object({
   if (table.domainMin.some((min, i) => Math.fround(min) >= Math.fround(table.domainMax[i]))) context.addIssue({ code: "custom", message: "LUT domain maximum must exceed minimum at GPU precision." });
 });
 
+/* Bypass. `enabled: false` switches an effect off without losing its
+   settings (the checkbox in the effect's header). Absent — every project
+   written before bypass existed — or true means on, so old files load and
+   save byte for byte. Nullish rather than optional for the reason given on
+   projectAssetSchema.durationMs; Rust skips it when None. */
+export const effectEnabledSchema = z.boolean().nullish();
+
+/** True when the effect is present and not bypassed. */
+export const isEffectOn = <T extends { enabled?: boolean | null }>(effect: T | null | undefined): effect is T =>
+  effect !== null && effect !== undefined && effect.enabled !== false;
+
 export const effectSchemas = {
-  sharpen: z.object({ amount: z.number().finite().min(0).max(200) }).nullish(),
-  blur: z.object({ radius: z.number().finite().min(0).max(24) }).nullish(),
+  sharpen: z.object({ amount: z.number().finite().min(0).max(200), enabled: effectEnabledSchema }).nullish(),
+  blur: z.object({ radius: z.number().finite().min(0).max(24), enabled: effectEnabledSchema }).nullish(),
   colorCorrection: z.object({
     exposure: z.number().finite().min(-4).max(4),
     contrast: z.number().finite().min(-100).max(100),
     saturation: z.number().finite().min(0).max(200),
+    enabled: effectEnabledSchema,
   }).nullish(),
-  vignette: z.object({ amount: z.number().finite().min(0).max(100) }).nullish(),
-  lut: z.object({ intensity: z.number().finite().min(0).max(100), table: lutTableSchema.nullish() }).nullish(),
+  vignette: z.object({ amount: z.number().finite().min(0).max(100), enabled: effectEnabledSchema }).nullish(),
+  lut: z.object({ intensity: z.number().finite().min(0).max(100), table: lutTableSchema.nullish(), enabled: effectEnabledSchema }).nullish(),
 };
 export type VideoEffects = z.infer<z.ZodObject<typeof effectSchemas>>;
 export type LutTable = z.infer<typeof lutTableSchema>;
-export const hasVideoEffects = (effects: VideoEffects): boolean => Boolean(
-  effects.sharpen || effects.blur || effects.colorCorrection || effects.vignette || effects.lut,
-);
+
+/** The effects that render: bypassed ones are dropped, as if absent. Every
+ *  render path (program monitor, export) reads effects through this. */
+export const activeVideoEffects = (effects: VideoEffects): VideoEffects => ({
+  sharpen: isEffectOn(effects.sharpen) ? effects.sharpen : null,
+  blur: isEffectOn(effects.blur) ? effects.blur : null,
+  colorCorrection: isEffectOn(effects.colorCorrection) ? effects.colorCorrection : null,
+  vignette: isEffectOn(effects.vignette) ? effects.vignette : null,
+  lut: isEffectOn(effects.lut) ? effects.lut : null,
+});
+
+export const hasVideoEffects = (effects: VideoEffects): boolean =>
+  isEffectOn(effects.sharpen) || isEffectOn(effects.blur) || isEffectOn(effects.colorCorrection) || isEffectOn(effects.vignette) || isEffectOn(effects.lut);
 
 export const MAX_LUT_FILE_BYTES = 16 * 1024 * 1024;
 

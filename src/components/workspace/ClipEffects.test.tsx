@@ -41,6 +41,29 @@ async function inTauri(answers: Record<string, (args: unknown) => unknown>, body
 const CUBE = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
 
 describe("clip effects", () => {
+  it("bypasses an effect from its header checkbox, keeping its settings", () => {
+    render(<Harness />);
+    add("Sharpen");
+    add("Look");
+    fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
+    const sharpenOn = screen.getByRole("checkbox", { name: "Sharpen on" }) as HTMLInputElement;
+    expect(sharpenOn.checked).toBe(true);
+    // A fresh effect carries no flag at all: the file keeps its old shape.
+    expect(saved().sharpen).toEqual({ amount: 120 });
+    fireEvent.click(sharpenOn);
+    expect(saved().sharpen).toEqual({ amount: 120, enabled: false });
+    expect(screen.getByRole("region", { name: "Sharpen effect" }).className).toContain("clip-effect--bypassed");
+    // Editing or resetting a bypassed effect leaves it off.
+    fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "80" } });
+    expect(saved().sharpen).toEqual({ amount: 80, enabled: false });
+    fireEvent.click(screen.getByRole("button", { name: "Reset Sharpen" }));
+    expect(saved().sharpen).toEqual({ amount: 50, enabled: false });
+    fireEvent.click(sharpenOn);
+    expect(saved().sharpen).toEqual({ amount: 50 });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Look on" }));
+    expect(saved().look).toMatchObject({ enabled: false });
+  });
+
   it("adds, edits and removes effects independently", () => {
     render(<Harness />);
     for (const name of ["Sharpen", "Gaussian blur", "Colour correction", "Vignette"]) add(name);

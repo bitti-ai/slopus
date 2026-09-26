@@ -66,33 +66,57 @@ pub(crate) struct ClipTransform {
 pub(crate) struct ClipLook {
     pub(crate) opacity: f64,
     pub(crate) temperature: f64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipChromaKey {
     pub(crate) color: String,
     pub(crate) tolerance: f64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipAmount {
     pub(crate) amount: f64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipBlur {
     pub(crate) radius: f64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipColorCorrection {
     pub(crate) exposure: f64,
     pub(crate) contrast: f64,
     pub(crate) saturation: f64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipLut {
     pub(crate) intensity: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) table: Option<LutTable>,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +133,10 @@ pub(crate) struct LutTable {
 pub(crate) struct ClipTransition {
     pub(crate) r#type: String,
     pub(crate) duration_ms: u64,
+    /// Effect bypass: `Some(false)` keeps the settings but renders without
+    /// them. Absent in every project written before bypass existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }
 
 pub(crate) fn default_clip_status() -> String {

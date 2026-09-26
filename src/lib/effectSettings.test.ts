@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCube } from "./effectSettings";
+import { activeVideoEffects, hasVideoEffects, isEffectOn, parseCube } from "./effectSettings";
 import { timelineClipSchema } from "./project";
 import { clipFrameStyle, clipVisualSettings } from "./export";
 
@@ -53,4 +53,54 @@ it("retains effects through project parsing and export frame planning", () => {
   });
   expect(timelineClipSchema.safeParse({ ...clip, blur: { radius: 25 } }).success).toBe(false);
   expect(timelineClipSchema.safeParse({ ...clip, lut: { ...clip.lut, table: { ...clip.lut!.table, values: [] } } }).success).toBe(false);
+});
+
+describe("effect bypass", () => {
+  const base = { id: "clip", assetId: "asset", trackId: "video", label: "Clip", startMs: 0, durationMs: 2000 };
+
+  it("loads projects written before bypass unchanged and keeps an explicit flag", () => {
+    const legacy = timelineClipSchema.parse({ ...base, sharpen: { amount: 40 }, look: { opacity: 70, temperature: 5 } });
+    expect(JSON.parse(JSON.stringify(legacy)).sharpen).toEqual({ amount: 40 });
+    expect(JSON.parse(JSON.stringify(legacy)).look).toEqual({ opacity: 70, temperature: 5 });
+    const off = timelineClipSchema.parse({ ...base, sharpen: { amount: 40, enabled: false }, chromaKey: { color: "#00ff00", tolerance: 20, enabled: false } });
+    expect(off.sharpen?.enabled).toBe(false);
+    expect(off.chromaKey?.enabled).toBe(false);
+    expect(timelineClipSchema.safeParse({ ...base, blur: { radius: 2, enabled: "no" } }).success).toBe(false);
+  });
+
+  it("treats absent, null and true as on and only false as off", () => {
+    type Amount = { amount: number; enabled?: boolean | null };
+    const isEffectOnAmount = (effect: Amount | null | undefined) => isEffectOn(effect);
+    expect(isEffectOnAmount({ amount: 1 })).toBe(true);
+    expect(isEffectOnAmount({ amount: 1, enabled: null })).toBe(true);
+    expect(isEffectOnAmount({ amount: 1, enabled: true })).toBe(true);
+    expect(isEffectOnAmount({ amount: 1, enabled: false })).toBe(false);
+    expect(isEffectOnAmount(null)).toBe(false);
+    expect(isEffectOnAmount(undefined)).toBe(false);
+  });
+
+  it("drops bypassed effects from what renders", () => {
+    const effects = { sharpen: { amount: 40, enabled: false }, blur: { radius: 3 }, lut: { intensity: 50, enabled: false } };
+    expect(activeVideoEffects(effects)).toEqual({ sharpen: null, blur: { radius: 3 }, colorCorrection: null, vignette: null, lut: null });
+    expect(hasVideoEffects(effects)).toBe(true);
+    expect(hasVideoEffects({ sharpen: { amount: 40, enabled: false } })).toBe(false);
+  });
+
+  it("renders a clip with every effect bypassed like a clip without effects, in preview and export alike", () => {
+    const plain = timelineClipSchema.parse(base);
+    const bypassed = timelineClipSchema.parse({
+      ...base,
+      look: { opacity: 40, temperature: 50, enabled: false },
+      chromaKey: { color: "#00ff00", tolerance: 20, enabled: false },
+      transition: { type: "fade", durationMs: 500, enabled: false },
+      sharpen: { amount: 40, enabled: false },
+      blur: { radius: 3, enabled: false },
+      colorCorrection: { exposure: 1, contrast: 0, saturation: 100, enabled: false },
+      vignette: { amount: 30, enabled: false },
+      lut: { intensity: 50, enabled: false },
+    });
+    expect(clipVisualSettings(bypassed)).toEqual(clipVisualSettings(plain));
+    expect(clipFrameStyle(clipVisualSettings(bypassed), 0).opacity).toBe(1);
+    expect(hasVideoEffects(clipVisualSettings(bypassed))).toBe(false);
+  });
 });

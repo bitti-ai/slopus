@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createImageScene, imageSceneSchema } from "./imageScene";
-import { effectSchemas } from "./effectSettings";
+import { effectEnabledSchema, effectSchemas, isEffectOn } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
 export const PROJECT_FILE_NAME = "slopus.json";
@@ -209,20 +209,25 @@ export const clipTransformSchema = z.object({
   positionY: z.number().min(-100).max(100),
 });
 
+/* Look, transition and chroma key are effects in the inspector too, so they
+   take the same bypass flag as the GPU effects (see effectSettings.ts). */
 export const clipChromaKeySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   tolerance: z.number().min(0).max(100),
+  enabled: effectEnabledSchema,
 });
 
 export const clipLookSchema = z.object({
   opacity: z.number().min(0).max(100),
   /** Cool at -100, neutral at 0, warm at +100. */
   temperature: z.number().min(-100).max(100),
+  enabled: effectEnabledSchema,
 });
 
 export const clipTransitionSchema = z.object({
   type: z.enum(["cut", "fade", "wipe-left", "wipe-right"]),
   durationMs: z.number().int().min(100).max(3000),
+  enabled: effectEnabledSchema,
 });
 
 export const timelineClipSchema = z.object({
@@ -611,8 +616,10 @@ export const roundClipTransform = (transform: ClipTransform): ClipTransform => (
   positionY: roundTransformValue(transform.positionY),
 });
 export const clipTransform = (clip: TimelineClip): ClipTransform => roundClipTransform(clip.transform ?? DEFAULT_CLIP_TRANSFORM);
-export const clipLook = (clip: TimelineClip): ClipLook => clip.look ?? DEFAULT_CLIP_LOOK;
-export const clipTransition = (clip: TimelineClip): ClipTransition => clip.transition ?? DEFAULT_CLIP_TRANSITION;
+/* A bypassed Look or transition renders as if it were not there. */
+export const clipLook = (clip: TimelineClip): ClipLook => isEffectOn(clip.look) ? clip.look : DEFAULT_CLIP_LOOK;
+export const clipTransition = (clip: TimelineClip): ClipTransition => isEffectOn(clip.transition) ? clip.transition : DEFAULT_CLIP_TRANSITION;
+export const clipChromaKey = (clip: TimelineClip): ClipChromaKey | null => isEffectOn(clip.chromaKey) ? clip.chromaKey : null;
 export type GenerationBrief = z.infer<typeof generationBriefSchema>;
 export type ProjectReferenceImage = z.infer<typeof projectReferenceImageSchema>;
 export type ProjectReferenceRefmod = z.infer<typeof projectReferenceRefmodSchema>;

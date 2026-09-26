@@ -12,6 +12,7 @@
    ========================================================================== */
 
 import {
+  clipChromaKey,
   clipLook,
   clipTransform,
   clipTransition,
@@ -38,7 +39,7 @@ export interface ExportSettings {
   quality: QualityId;
 }
 
-import type { VideoEffects } from "./effectSettings";
+import { activeVideoEffects, type VideoEffects } from "./effectSettings";
 
 export interface ClipVisualSettings extends VideoEffects {
   transform: ClipTransform;
@@ -55,15 +56,13 @@ export interface ClipFrameStyle extends ClipVisualSettings {
   revealEnd: number;
 }
 
+/** What a clip looks like on screen. Bypassed effects are left out here, so
+ *  the monitor and the export both render without them. */
 export const clipVisualSettings = (clip: TimelineClip): ClipVisualSettings => ({
   transform: clipTransform(clip),
   look: clipLook(clip),
-  chromaKey: clip.chromaKey,
-  sharpen: clip.sharpen,
-  blur: clip.blur,
-  colorCorrection: clip.colorCorrection,
-  vignette: clip.vignette,
-  lut: clip.lut,
+  chromaKey: clipChromaKey(clip),
+  ...activeVideoEffects(clip),
   transition: clipTransition(clip),
 });
 
@@ -429,8 +428,9 @@ export function visibleClipsAt(
     }
     if (best) {
       visible.push(best);
-      const revealing = best.chromaKey || (best.look?.opacity ?? 100) < 100 ||
-        (best.transition && best.transition.type !== "cut" && timeMs - best.startMs < best.transition.durationMs);
+      const transition = clipTransition(best);
+      const revealing = Boolean(clipChromaKey(best)) || clipLook(best).opacity < 100 ||
+        (transition.type !== "cut" && timeMs - best.startMs < transition.durationMs);
       if (!revealing) break;
     }
   }
