@@ -8,7 +8,10 @@ import { ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMenu } from 
 import { ColorSwatch } from "./ColorPicker";
 
 type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut";
-type EditorProps = { clip: TimelineClip; update: (patch: Partial<TimelineClip>) => void; disabled: boolean };
+/** `key` names a run of edits to one parameter (a slider drag), so the
+ *  project's undo stack folds it into one step. */
+type Update = (patch: Partial<TimelineClip>, key?: string) => void;
+type EditorProps = { clip: TimelineClip; update: Update; disabled: boolean };
 type EffectDefinition = {
   id: EffectId;
   name: string;
@@ -177,10 +180,13 @@ const EFFECTS: readonly EffectDefinition[] = [
    settings carry no "enabled" flag in the project schema yet. */
 function EffectBlock({ effect, clip, disabled, update, onRemove }: {
   effect: EffectDefinition; clip: TimelineClip; disabled: boolean;
-  update: (patch: Partial<TimelineClip>) => void; onRemove: () => void;
+  update: Update; onRemove: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const more = useRef<HTMLButtonElement>(null);
+  /* Every parameter edit of this effect shares one undo key, so a slider drag
+     is one step rather than sixty. */
+  const keyed: Update = (patch, key) => update(patch, key ?? effect.id);
   const menu = useContextMenu();
   const reset = () => update(effect.reset?.(clip) ?? effect.defaults);
   return <section className={`clip-effect${open ? " clip-effect--open" : ""}`} aria-label={`${effect.name} effect`}>
@@ -207,7 +213,7 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
         ], { "aria-label": `${effect.name} options`, placement: "bottom-end", focusFirst: true })}
       ><Ellipsis size={14} aria-hidden="true" /></button>
     </header>
-    {open && <fieldset className="clip-effect__body" disabled={disabled}>{effect.editor({ clip, update, disabled })}</fieldset>}
+    {open && <fieldset className="clip-effect__body" disabled={disabled}>{effect.editor({ clip, update: keyed, disabled })}</fieldset>}
     {menu.element}
   </section>;
 }
@@ -215,13 +221,13 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
 export function ClipEffects({ clip, disabled, onChange }: {
   clip: TimelineClip;
   disabled: boolean;
-  onChange: (patch: Partial<TimelineClip>) => void;
+  onChange: (patch: Partial<TimelineClip>, key?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const available = EFFECTS.filter((effect) => !clip[effect.id]);
-  const update = (patch: Partial<TimelineClip>) => { if (!disabled) onChange(patch); };
+  const update: Update = (patch, key) => { if (!disabled) onChange(patch, key); };
   useEffect(() => setOpen(false), [clip.id, disabled]);
   const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;

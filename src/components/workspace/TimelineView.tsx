@@ -168,7 +168,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   config: ProjectConfig;
   folderPath: string;
   generationCompletionTimes?: Readonly<Record<string, number>>;
-  onChange: (next: ConfigUpdate) => void;
+  /** `key` names a run of edits (a scrub, a typed value, a gesture) so the
+   *  project's undo stack folds it into one step. */
+  onChange: (next: ConfigUpdate, key?: string) => void;
   /** What a decode learned about a file the project already had — a length, a
    *  size. Worth keeping, but the user did not edit anything by looking at the
    *  Media panel, so the holder records it WITHOUT marking the project unsaved.
@@ -441,15 +443,15 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      and so through the project's own onChange, which is what the project-level
      undo stack (Ctrl+Z / Ctrl+Y, in ProjectWorkspace) records. The timeline
      keeps no undo of its own. */
-  const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"]) =>
-    onChange((current) => withTimelineTracks(current, nextTracks));
-  const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track));
-  const updateClip = (clipId: string, updates: Partial<TimelineClip>) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })));
+  const updateTracks = (nextTracks: ProjectConfig["timeline"]["tracks"], key?: string) =>
+    onChange((current) => withTimelineTracks(current, nextTracks), key);
+  const renameTrack = (trackId: string, name: string) => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, name } : track), `track-name:${trackId}`);
+  const updateClip = (clipId: string, updates: Partial<TimelineClip>, key?: string) => updateTracks(tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.id === clipId ? { ...clip, ...updates } : clip) })), key);
   const TRANSFORM_LIMITS = { scale: [10, 400], rotation: [-180, 180], positionX: [-100, 100], positionY: [-100, 100] } as const;
   const updateTransform = (key: keyof NonNullable<TimelineClip["transform"]>, value: number) => {
     if (!selected || !selectedTransform || !Number.isFinite(value)) return;
     const [minimum, maximum] = TRANSFORM_LIMITS[key];
-    updateClip(selected.id, { transform: roundClipTransform({ ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) }) });
+    updateClip(selected.id, { transform: roundClipTransform({ ...selectedTransform, [key]: Math.max(minimum, Math.min(maximum, value)) }) }, `transform:${selected.id}:${key}`);
   };
   const toggleTrack = (trackId: string, key: "muted" | "locked") => updateTracks(tracks.map((track) => track.id === trackId ? { ...track, [key]: !track[key] } : track));
   /* Every removal — the toolbar, the key, the context menu — goes through one
@@ -749,7 +751,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const parsed = selected ? parseTimecode(value, fps) : null;
     if (parsed === null || !selected) return;
     const next = trimClip(tracks, selected.id, "end", selected.startMs + parsed, { minClipMs, room: roomFor(selected) });
-    if (next) updateTracks(next);
+    if (next) updateTracks(next, `duration:${selected.id}`);
   };
   /* Snapping, measured against a lane that is `widthPx` wide. A lane nothing
      has laid out yet — jsdom, a panel that has never been painted — gives a
@@ -1206,7 +1208,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   selectedClipId={selectedId}
                   transformEditingDisabled={selectedTrack?.locked ?? false}
                   onSelectClip={setSelectedId}
-                  onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) })}
+                  onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) }, `transform:${clipId}:gesture`)}
                 />
                 : <div className="program-empty"><span>Drop media on a track, or generate a scene.</span></div>}
               {safeArea && <div className="program-safe" aria-hidden="true"><i className="program-safe__frame"><b className="program-safe__action" /><b className="program-safe__title" /></i></div>}
@@ -1244,7 +1246,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 value={selected.label}
                 aria-label="Clip name"
                 {...tooltipProps("Rename", "F2")}
-                onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" })}
+                onChange={(event) => updateClip(selected.id, { label: event.target.value || "Untitled clip" }, `label:${selected.id}`)}
               /></h3>
             </div>
             <PropSection title="Timing" persistKey="timeline.clip.timing">
@@ -1285,7 +1287,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               })}
             </PropSection>
             <PropSection title="Effects" persistKey="timeline.clip.effects">
-              <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch) => updateClip(selected.id, patch)} />
+              <ClipEffects clip={selected} disabled={visualControlsDisabled} onChange={(patch, key) => updateClip(selected.id, patch, key && `effect:${selected.id}:${key}`)} />
             </PropSection>
           </> : <div className="inspector-empty">
             <span>{clipCount === 0 ? "Nothing on the timeline yet" : "No clip selected"}</span>

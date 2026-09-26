@@ -284,6 +284,6 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
     className="media-thumb"
     role="img"
     aria-label={failed ? `${asset.name} — preview unavailable` : asset.name}
-    title={failed ? "Slopus couldn’t read this file to make a preview." : undefined}
+    data-tooltip={failed ? "Couldn’t read this file" : undefined}
   >{icon}</span>;
 }

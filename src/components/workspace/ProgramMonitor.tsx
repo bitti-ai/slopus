@@ -299,10 +299,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   let overlay: React.ReactNode = null;
   if (!hasClips || !clip) overlay = null;
   else if (asset?.kind === "generated" && !asset.relativePath && !asset.sourcePath) {
-    overlay = <div className="program-note"><Film size={22} /><span>Generate {clip.label} to preview it. Its place on the timeline is already saved.</span></div>;
+    overlay = <div className="program-note"><Film size={16} /><span>{clip.label} isn’t generated yet</span></div>;
   }
   else if (!isTauri()) {
-    overlay = <div className="program-note"><Film size={22} /><span>Playback needs the desktop app — the browser preview has no project folder to read the footage from.</span></div>;
+    overlay = <div className="program-note"><Film size={16} /><span>Playback needs the desktop app</span></div>;
   }
 
   /* The frame is fitted inside the panel and the rest is the project's own
@@ -352,8 +352,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
       onPointerUp={endTransform}
       onPointerCancel={endTransform}
     >
-      <button className="program-transform__rotate" type="button" aria-label="Rotate clip" title="Drag to rotate" onPointerDown={(event) => beginTransform("rotate", event)} />
-      <button className="program-transform__scale" type="button" aria-label="Scale clip" title="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />
+      <button className="program-transform__rotate" type="button" aria-label="Rotate clip" data-tooltip="Drag to rotate" onPointerDown={(event) => beginTransform("rotate", event)} />
+      <button className="program-transform__scale" type="button" aria-label="Scale clip" data-tooltip="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />
       <span className="sr-only">Drag inside the frame to move the clip.</span>
     </div>}
     {audioClips.map((audioClip) => {
