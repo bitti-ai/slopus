@@ -35,6 +35,9 @@ interface GeneratorViewProps {
   cancellingJobIds?: ReadonlySet<string>;
   onOpenTimeline: () => void;
   selectedJobId?: string;
+  /** The scene open here, whenever it changes — the Timeline marks it in its
+   *  sources, and the Generator reopens on it. */
+  onSelectedJobChange?: (jobId: string) => void;
   onRuntimeChange?: (runtime: SlopfabStatus) => void;
 }
 
@@ -54,7 +57,7 @@ const readDensity = (): BoardDensity => {
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
+export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
@@ -130,7 +133,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     });
   }, [templateKey]);
 
-  useEffect(() => { if (selectedJobId) setSelection({ jobId: selectedJobId, shotId: null }); }, [selectedJobId]);
+  /* The workspace hears which scene is open, and may send one back (Open in
+     Generator). Its echo of this panel's own choice must not close the shot. */
+  useEffect(() => {
+    if (selectedJobId) setSelection((current) => current.jobId === selectedJobId ? current : { jobId: selectedJobId, shotId: null });
+  }, [selectedJobId]);
+  const reportSelection = useRef(onSelectedJobChange);
+  reportSelection.current = onSelectedJobChange;
+  useEffect(() => { if (selection.jobId) reportSelection.current?.(selection.jobId); }, [selection.jobId]);
 
   /* A scene can be deleted, and a shot can be removed, from under the panel.
      Falling back to the first scene beats a panel pointing at nothing. */

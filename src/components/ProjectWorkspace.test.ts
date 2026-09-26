@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
-import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, UNTITLED_SCENE, type GenerationJob, type ProjectConfig, type ProjectRecord } from "../lib/project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneShots, UNTITLED_SCENE, type GenerationJob, type ProjectConfig, type ProjectRecord } from "../lib/project";
 import { saveGeneratedScene } from "../lib/generatedVideo";
 import { formatDurationTimecode, formatSavedAt, formatSequenceLength, isGenerationOngoing } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
@@ -180,6 +180,21 @@ describe("project workspace timecode", () => {
     expect(within(generatorBar).getByRole("status")).toHaveTextContent(/scene/);
     expect(generatorBar).not.toHaveTextContent("references");
     expect(document.querySelectorAll(".ui-statusbar")).toHaveLength(1);
+  });
+
+  it("marks the scene open in the Generator in the Timeline's sources", () => {
+    const base = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    const config = { ...base, generationJobs: [
+      createDraftGenerationJob("First", { id: "scene-first", title: "First scene" }),
+      createDraftGenerationJob("Second", { id: "scene-second", title: "Second scene" }),
+    ] };
+    render(createElement(ProjectWorkspace, { project: { folderPath: "C:\Ceramic Lamp", config }, initialView: "generator", onBack: () => undefined, onSave: async () => undefined }));
+    fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+    const tabs = screen.getByRole("tablist", { name: "Project views" });
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Timeline" }));
+    const open = [...document.querySelectorAll(".scene-card.is-selected")];
+    expect(open).toHaveLength(1);
+    expect(open[0]).toHaveTextContent("Second scene");
   });
 
   it("surfaces native save failures in the workspace, inline under the title bar", async () => {
