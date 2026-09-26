@@ -205,7 +205,7 @@
   border-radius: 2px;
   color: var(--on-stage);
   background: color-mix(in srgb, var(--stage-bg) 60%, transparent);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-style: normal;
   line-height: 16px;
   font-variant-numeric: tabular-nums;
@@ -1065,7 +1065,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   width: 148px;
   min-height: 0;
   height: var(--control-sm);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
 
 .transport-format {
@@ -1251,7 +1251,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   border-left: 1px solid var(--text-muted);
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -1498,7 +1498,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   border-radius: 2px;
   background: color-mix(in srgb, var(--stage-bg) 28%, transparent);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   line-height: 14px;
 }
 
@@ -1636,7 +1636,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   color: var(--on-accent);
   background: var(--danger);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: 16px;
   white-space: nowrap;
@@ -1673,7 +1673,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   left: var(--space-1);
   color: var(--snap);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: 1;
   white-space: nowrap;

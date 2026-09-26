@@ -49,7 +49,7 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--accent-bright);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   transition: var(--transition-control);
 }
 

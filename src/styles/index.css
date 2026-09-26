@@ -38,7 +38,7 @@
 :root input[type="url"],
 :root input[type="email"],
 :root textarea {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
 }
 
 :root .generator-panel .job-title__name,

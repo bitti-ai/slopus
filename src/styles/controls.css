@@ -25,7 +25,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   font-size: var(--text-base);
   font-weight: var(--weight-regular);
   line-height: var(--leading-normal);
@@ -86,7 +86,7 @@
   padding: 0 var(--space-3);
   border: 1px solid var(--stroke-control);
   border-bottom-color: var(--stroke-control-bottom);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   background: var(--button-fill-bg);
   font-size: var(--text-base);
@@ -112,7 +112,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3);
   border: 1px solid var(--danger-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--danger);
   background: var(--danger-soft);
   font-size: var(--text-base);
@@ -284,7 +284,7 @@
   border: 1px solid var(--stroke-control);
   border-bottom-color: var(--stroke-control-bottom);
   padding: 2px var(--space-1);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 /* --- Check box, radio button, slider ----------------------------------------
@@ -494,7 +494,7 @@ input[type="range"]:disabled::-webkit-slider-thumb {
 /* --- Panel chrome (shared header strip inside editor panels) ---------------- */
 
 .panel-chrome {
-  height: var(--control-lg);
+  height: var(--control-md);
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -8,20 +8,19 @@
    and elevation, not a website. When in doubt, do what the Settings app does.
 
    RULES
-   1. Body copy is 14px (--text-base / --text-sm), Fluent "Body". Captions,
-      secondary labels and metadata are 12px (--text-xs), Fluent "Caption".
-   2. 12px (--text-2xs) is the ABSOLUTE FLOOR. Nothing in the app is smaller.
+   1. Body copy is 14px (--text-base), Fluent "Body". Captions, secondary
+      labels and metadata are 12px (--text-xs), Fluent "Caption".
+   2. 12px (--text-xs) is the ABSOLUTE FLOOR. Nothing in the app is smaller.
       Labels are sentence case at caption size: no uppercase, letter-spaced
-      eyebrows, and no negative tracking on headings (the --tracking-* tokens
-      are all 0 and exist only so old call sites resolve).
+      eyebrows, and no letter-spacing at all (there are no tracking tokens;
+      a heading never gets negative tracking).
    3. Spacing follows an 8px rhythm with 4px half-steps. Use --space-*, never
       arbitrary values.
    4. Standard controls are 32px tall (--control-md): buttons, text fields,
       selects, combo boxes, square icon buttons (--icon-button). Compact
       controls packed into a dense toolbar or row are 24px (--control-sm).
-      There is no taller "hero" size — --control-lg is also 32px and only
-      survives because layout rows are built from it.
-   5. Corners are 4px on controls (--radius-sm / --radius-md) and 8px on cards,
+      There is no taller "hero" size.
+   5. Corners are 4px on controls (--radius-sm) and 8px on cards,
       flyouts, menus and dialogs (--radius-lg / --radius-xl). --radius-pill is
       for badges, toggle switches and dots ONLY — never for a button or field.
       The accent button is the one committed action on a surface; everything
@@ -89,15 +88,12 @@
 
   /* --- Type ramp (Fluent) --------------------------------------------------
      Caption 12/16 · Body 14/20 · Body large 18/24 · Subtitle 20/28 ·
-     Title 28/36. The t-shirt names predate the ramp and several now collapse
-     onto the same Fluent step; that is deliberate, not a typo. */
-  --text-2xs: 12px;                    /* absolute floor: Caption */
-  --text-xs: 12px;                     /* Caption: secondary text, metadata, labels */
-  --text-sm: 14px;                     /* Body */
+     Title 28/36. One name per Fluent step; the t-shirt names predate the
+     ramp, which is why there is no --text-sm or --text-xl. */
+  --text-xs: 12px;                     /* Caption, and the absolute floor: secondary text, metadata, labels */
   --text-base: 14px;                   /* Body / default */
   --text-md: 18px;                     /* Body large: inspector titles */
-  --text-lg: 20px;                     /* Subtitle */
-  --text-xl: 20px;                     /* Subtitle: section and panel headings */
+  --text-lg: 20px;                     /* Subtitle: section and panel headings */
   --text-2xl: 28px;                    /* Title: page titles */
 
   /* --- Line height -------------------------------------------------------- */
@@ -126,9 +122,7 @@
   /* --- Radii --------------------------------------------------------------
      4px on controls, 8px on the containers that hold them (ControlCornerRadius
      and OverlayCornerRadius in WinUI). */
-  --radius-xs: 4px;
   --radius-sm: 4px;                    /* buttons, fields, list items, chips */
-  --radius-md: 4px;                    /* buttons, fields (the common spelling) */
   --radius-lg: 8px;                    /* cards, flyouts, menus */
   --radius-xl: 8px;                    /* dialogs */
   --radius-pill: 999px;                /* badges, toggle switches, dots ONLY */
@@ -139,7 +133,6 @@
      still generous for a mouse; this is a desktop app. */
   --control-sm: 24px;                  /* compact: dense toolbars, row actions */
   --control-md: 32px;                  /* standard button / combo box */
-  --control-lg: 32px;                  /* no taller variant exists; see rule 4 */
   --icon-button: 32px;                 /* square subtle icon button */
   --field-height: 32px;                /* text inputs, selects, search */
   --progress-height: 3px;              /* ProgressBar track */
@@ -244,8 +237,8 @@
      lifts to ~#3e414a, where --text-faint drops to 3.0:1 — menu labels use
      primary / secondary ink (9.1:1 / 6.3:1 there), faint is only hints. */
   --acrylic: rgba(30, 34, 44, 0.86);
-  --dialog-bg: #12151d;                /* ContentDialog body */
-  --dialog-footer-bg: #0d1016;         /* its button row, one step darker */
+  --dialog-bg: var(--panel-2);         /* ContentDialog body */
+  --dialog-footer-bg: var(--surface-pane); /* its button row, one step darker */
   --tooltip-bg: #1d212b;
   --tooltip-stroke: rgba(0, 0, 0, 0.2);
 
@@ -259,7 +252,12 @@
   /* --- Neutral washes ------------------------------------------------------
      Hover / rest / pressed tints laid over whatever surface is underneath.
      White in dark, BLACK in light — this is the single most common reason a
-     converted stylesheet looks broken in the other theme. */
+     converted stylesheet looks broken in the other theme. Not folded into
+     the Fluent --fill-subtle-* pair: the compact segmented control rests on
+     --wash-1, which has to stay fainter than a hovered segment, and the
+     window caption buttons (titlebar.css) were tuned against the system's
+     own caption hover on Mica with this pair — swapping them is a visual
+     change, not a rename, so it waits for a side-by-side check. */
   --wash-1: rgba(255, 255, 255, 0.025); /* resting fill on a segmented control */
   --wash-2: rgba(255, 255, 255, 0.045); /* hover */
   --grid-line: rgba(255, 255, 255, 0.14);    /* beat grid + empty-stage dots, on --bg */
@@ -316,7 +314,7 @@
      One flat fill with the faint Fluent elevation edge. No gradient, no
      coloured shadow. */
   --button-primary-bg: #3557c7;        /* white on it is 6.3:1 */
-  --button-primary-hover: #3f64d9;     /* 5.2:1 — lighter, as dark-theme hover should be */
+  --button-primary-hover: var(--accent-fill); /* 5.2:1 — lighter, as dark-theme hover should be */
   --button-primary-active: #2c49ac;    /* 7.9:1 */
   --button-primary-off-bg: var(--accent-disabled);
   --button-primary-off-ink: var(--on-accent-disabled);
@@ -412,7 +410,9 @@
    subtle fills). The accent darkens rather than brightens, because "more
    contrast" points the other way here. Aliases (--layer, --glass, the focus
    ring colour, --surface-base / -pane / -stage) are not restated: they
-   follow the names they point at.
+   follow the names they point at. The two dialog aliases ARE restated,
+   because light swaps which rung is the body and which the footer (white
+   body over a grey button row, where dark puts the lighter step on top).
    ========================================================================== */
 
 @media (prefers-color-scheme: light) {
@@ -447,8 +447,8 @@
     --fill-subtle-pressed: rgba(0, 0, 0, 0.0241);
     --thumb-bg: #ffffff;
     --acrylic: rgba(252, 252, 252, 0.85);
-    --dialog-bg: #ffffff;
-    --dialog-footer-bg: #f5f7fa;
+    --dialog-bg: var(--panel);
+    --dialog-footer-bg: var(--panel-2);
     --tooltip-bg: #f9f9f9;
     --tooltip-stroke: rgba(0, 0, 0, 0.0578);
 
@@ -481,7 +481,7 @@
     --on-accent-disabled: #ffffff;
 
     --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 */
-    --button-primary-hover: #2450c4;   /* 7.0:1 */
+    --button-primary-hover: #2450c4;   /* 7.0:1 — darker in light, so not the --accent-fill alias */
     --button-primary-active: #1e40af;  /* 8.7:1 */
     --button-primary-stroke: rgba(255, 255, 255, 0.08);
     --button-primary-stroke-bottom: rgba(0, 0, 0, 0.4);
@@ -558,8 +558,8 @@
   --fill-subtle-pressed: rgba(0, 0, 0, 0.0241);
   --thumb-bg: #ffffff;
   --acrylic: rgba(252, 252, 252, 0.85);
-  --dialog-bg: #ffffff;
-  --dialog-footer-bg: #f5f7fa;
+  --dialog-bg: var(--panel);
+  --dialog-footer-bg: var(--panel-2);
   --tooltip-bg: #f9f9f9;
   --tooltip-stroke: rgba(0, 0, 0, 0.0578);
 

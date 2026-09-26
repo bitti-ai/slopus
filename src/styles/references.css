@@ -4,7 +4,7 @@
    dialog.
 
    Sizing contract (see tokens.css): no literal px type sizes, nothing below
-   --text-2xs (12px), standard controls --control-md (32px), compact ones
+   --text-xs (12px), standard controls --control-md (32px), compact ones
    --control-sm (24px).
    ========================================================================== */
 
@@ -811,7 +811,7 @@
 .reference-preset-grid small {
   margin-bottom: 2px;
   color: var(--text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 
 .reference-preset-grid b {

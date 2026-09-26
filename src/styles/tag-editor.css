@@ -12,7 +12,7 @@
 .tag-editor__drag:active { cursor: grabbing; }
 .tag-editor__remove { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; margin-right: 1px; padding: 0; border: 0; border-radius: 2px; background: transparent; color: var(--text-secondary); }
 .tag-editor__remove:hover { color: var(--text-primary); background: var(--fill-subtle-hover); }
-.tag-editor__input { flex: 1 0 64px; min-width: 64px; height: var(--control-sm); padding: 0 var(--space-1); border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text-primary); font-size: var(--text-sm); }
+.tag-editor__input { flex: 1 0 64px; min-width: 64px; height: var(--control-sm); padding: 0 var(--space-1); border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text-primary); font-size: var(--text-base); }
 .tag-editor__suggestions { position: fixed; z-index: 960; max-height: 264px; overflow-y: auto; padding: var(--space-1); border: 1px solid var(--stroke-surface); border-radius: var(--radius-lg); background: var(--acrylic); backdrop-filter: var(--acrylic-filter); box-shadow: var(--shadow-sm); color: var(--text-primary); font-size: var(--text-base); }
 .tag-editor__suggestion { display: flex; align-items: center; min-height: var(--control-md); padding: 0 var(--space-3); border-radius: var(--radius-sm); }
 .tag-editor__suggestion--active { background: var(--fill-subtle-hover); }
