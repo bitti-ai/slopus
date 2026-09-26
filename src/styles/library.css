@@ -151,7 +151,7 @@
 }
 
 .composer__type-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.composer__type-option { position: relative; min-width: 0; cursor: pointer; }
+.composer__type-option { position: relative; min-width: 0; }
 .composer__type-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: 0; clip-path: inset(50%); overflow: hidden; }
 
 .composer__type-card {
@@ -178,7 +178,7 @@
 .composer__type-input:checked + .composer__type-card .composer__type-indicator::after { opacity: 1; }
 .composer__type-input:not(:disabled) + .composer__type-card:hover { border-color: var(--accent-line-strong); }
 .composer__type-input:focus-visible + .composer__type-card { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: var(--space-1); }
-.composer__type-input:disabled + .composer__type-card { opacity: 0.5; cursor: not-allowed; }
+.composer__type-input:disabled + .composer__type-card { opacity: 0.5; }
 
 @media (max-width: 600px) {
   .composer__project-type { margin-inline: var(--space-4); }
@@ -340,7 +340,6 @@
 }
 
 .composer__attach:disabled {
-  cursor: not-allowed;
   color: var(--text-faint);
   border-color: var(--line);
 }
@@ -900,7 +899,6 @@
 
 .delete-project-dialog__confirm:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .delete-project-dialog .spin {

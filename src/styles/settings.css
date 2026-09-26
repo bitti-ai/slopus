@@ -85,7 +85,6 @@
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
   line-height: var(--leading-snug);
-  cursor: pointer;
 }
 
 .settings-tabs button:hover {
@@ -141,7 +140,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  cursor: pointer;
 }
 .reference-icon-settings .generator-template-fields {
   flex: 0 1 320px;
@@ -290,7 +288,6 @@
   justify-content: center;
   width: var(--control-sm);
   height: var(--control-sm);
-  cursor: pointer;
 }
 
 .generator-template-fields {
@@ -331,7 +328,6 @@
   margin-top: var(--space-3);
   color: var(--text-secondary);
   font-size: var(--text-sm);
-  cursor: pointer;
 }
 
 .diagnostics-backend {
@@ -441,7 +437,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--wash-1);
-  cursor: pointer;
 }
 
 .diagnostics-debug-option input,
@@ -487,7 +482,6 @@
   border-radius: var(--radius-lg);
   color: var(--text-muted);
   background: var(--wash-1);
-  cursor: pointer;
   transition: 0.16s ease;
 }
 
@@ -683,7 +677,6 @@
 
 .settings-path label {
   display: block;
-  cursor: pointer;
 }
 
 .settings-path label b {
@@ -728,7 +721,6 @@
 }
 
 .weight-sources { min-width: 0; font-size: var(--text-sm); color: var(--text-muted); }
-.weight-sources summary { cursor: pointer; }
 .weight-sources p { margin: var(--space-2) 0; }
 .weight-source { display: grid; grid-template-columns: minmax(0, 1fr) 135px 125px auto; gap: var(--space-2); align-items: end; margin: var(--space-3) 0; }
 .weight-source label { min-width: 0; font-size: var(--text-xs); }

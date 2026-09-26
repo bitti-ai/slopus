@@ -15,8 +15,6 @@
   color: var(--text-primary);
   background: var(--bg);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
 }
 
 html,
@@ -62,6 +60,15 @@ h4 {
   line-height: var(--leading-tight);
 }
 
+/* Titles use the Display optical size of Segoe UI Variable, which is drawn
+   for 20px and up. h4 is used for small in-panel labels, so it stays on the
+   Text cut. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+}
+
 code,
 kbd,
 samp,
@@ -83,13 +90,40 @@ button {
   color: inherit;
 }
 
+/* The arrow, everywhere. On Windows the hand cursor means "this is a
+   hyperlink" and nothing else; a button, a tab, a card or a checkbox shows the
+   arrow and answers with a fill change instead. A disabled control shows the
+   arrow too — Windows has no "not allowed" cursor for a greyed-out button.
+   Other sheets set only the cursors that mean something: grab/grabbing on a
+   drag handle, the resize arrows on a splitter, text on a text surface. */
 button,
-select {
+select,
+label,
+summary,
+[role="button"],
+[role="tab"],
+[role="option"],
+[role="menuitem"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+input[type="color"],
+input[type="file"],
+:disabled {
+  cursor: default;
+}
+
+a[href] {
   cursor: pointer;
 }
 
-button:disabled {
-  cursor: not-allowed;
+/* Images and links are not drag sources in a native app: dragging a thumbnail
+   used to pick up a ghost of the file URL. Rows and cards that ask to be
+   dragged (draggable="true") still drag — the drag falls through the image to
+   the ancestor that is the real source. */
+img,
+a {
+  -webkit-user-drag: none;
 }
 
 input,
@@ -118,17 +152,37 @@ option {
   opacity: 1;
 }
 
-/* --- Focus ----------------------------------------------------------------- */
+/* --- Focus -----------------------------------------------------------------
+   The Fluent focus visual, for the keyboard only: a 2px ring in the text
+   colour (--focus-outer) standing 1px off the control, with that 1px gap
+   filled by --focus-inner so the ring reads on any fill, the accent included.
+   The outline is the outer ring; a box-shadow spread is the inner one.
 
+   Text inputs are deliberately NOT in this list. Chromium matches
+   input:focus-visible on a mouse click, so a ring there drew every time a
+   field was clicked; a Fluent TextBox shows focus as a 2px accent underline
+   instead (controls.css), and composite fields (search, composer, dock)
+   draw that underline on their wrapper. */
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
 select:focus-visible,
 summary:focus-visible,
 a:focus-visible,
-[tabindex]:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: 2px;
+[tabindex]:focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="range"]:focus-visible,
+input[type="color"]:focus-visible,
+input[type="button"]:focus-visible,
+input[type="submit"]:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-outer);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px var(--focus-inner);
+}
+
+input:focus-visible:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="button"], [type="submit"]),
+textarea:focus-visible,
+[contenteditable="true"]:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -140,6 +194,20 @@ a:focus-visible,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The Fluent ProgressRing, for anything that waits without a known length.
+   A 16px ring whose arc sweeps round; it replaces bouncing dots and pulsing
+   glows. Wears currentColor so it follows whatever label it replaces. */
+.progress-ring {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
 }
 
 /* --- Utilities ------------------------------------------------------------- */

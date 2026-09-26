@@ -277,7 +277,6 @@
 .agent-dock .agent-provider__trigger:disabled {
   color: var(--text-faint);
   background: var(--panel-3);
-  cursor: not-allowed;
 }
 
 .agent-provider__trigger:disabled .agent-provider__name,
@@ -308,7 +307,6 @@
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: var(--text-sm);
-  cursor: pointer;
 }
 
 .agent-provider__option[aria-selected="true"] {

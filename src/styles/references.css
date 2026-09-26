@@ -670,7 +670,7 @@
 .reference-trim__scroll { min-width: 0; overflow-x: auto; padding-bottom: var(--space-2); }
 .reference-trim__track { width: 100%; padding: 2px 4px; }
 .reference-trim__ticks { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
-.reference-trim__bar { position: relative; height: 40px; margin: 8px 7px 0; border-radius: var(--radius-sm); background: var(--panel-3); touch-action: none; user-select: none; cursor: pointer; }
+.reference-trim__bar { position: relative; height: 40px; margin: 8px 7px 0; border-radius: var(--radius-sm); background: var(--panel-3); touch-action: none; user-select: none; }
 .reference-trim__selection { position: absolute; top: 0; bottom: 0; display: flex; border: 2px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 20%, var(--panel-2)); }
 .reference-trim__selection button { touch-action: none; border: 0; padding: 0; }
 .reference-trim__handle { position: absolute; top: -2px; bottom: -2px; width: 14px; border-radius: 3px; background: var(--accent); cursor: ew-resize; z-index: 1; }
