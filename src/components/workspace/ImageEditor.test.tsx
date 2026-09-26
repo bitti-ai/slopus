@@ -24,6 +24,9 @@ function setup(initial = parseProjectConfig(fixture)) {
   return () => latest;
 }
 
+/* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
+const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
+
 it("starts an image root from the thumbnail Edit menu and hides root text controls", () => {
   const initial = parseProjectConfig(fixture);
   initial.assets = [{ id: "saved", name: "Saved", kind: "image", relativePath: "media/generated/saved.jpg", mimeType: "image/jpeg", width: 101, height: 77, createdAt: initial.createdAt }];
@@ -61,7 +64,6 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   initial.imageScene!.outputAssetId = "result-0";
   const current = setup(initial);
   fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Unsaved edit" } });
-  expect(screen.getByRole("button", { name: "Undo image edit" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
   expect(screen.getByLabelText("Steps")).toHaveValue(30);
@@ -70,7 +72,9 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   expect(screen.getByRole("button", { name: "Lettering" })).toBeInTheDocument();
   expect(current().references).toEqual(saved.references);
   expect(current().settings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5" });
-  expect(screen.getByRole("button", { name: "Undo image edit" })).toBeDisabled();
+  // Viewing a result starts a fresh history: Ctrl+Z has nothing to undo.
+  undoImageEdit();
+  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
   fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Another edit" } });
   fireEvent.click(screen.getByRole("button", { name: "View Result 0" }));
   expect(current().imageScene).toEqual({ ...original.scene, outputAssetId: "result-0" });
@@ -187,7 +191,7 @@ it("edits ordered style tokens with suggestions, custom tags, removal, undo, and
   fireEvent.click(screen.getByRole("button", { name: "Remove vibrant from Aesthetics" }));
   fireEvent.keyDown(screen.getByRole("button", { name: "Aesthetics tag: intricate" }), { key: "ArrowLeft", altKey: true });
   expect(current().imageScene!.style.aesthetics).toBe("intricate, Minimal poster, custom finish");
-  fireEvent.click(screen.getByRole("button", { name: "Undo image edit" }));
+  undoImageEdit();
   expect(current().imageScene!.style.aesthetics).toBe("Minimal poster, intricate, custom finish");
   choose("Mode", "Photo");
   const lighting = screen.getByRole("combobox", { name: "Add Lighting tag" });
@@ -236,7 +240,7 @@ it("drags whole hierarchy branches to nest or reorder, preserves placement, and 
   expect(current().imageScene).toBe(nested);
   drop("Rocket", "Rocket");
   expect(current().imageScene).toBe(nested);
-  fireEvent.click(screen.getByRole("button", { name: "Undo image edit" }));
+  undoImageEdit();
   expect(current().imageScene).toEqual(scene);
   drop("Rocket", "Cloud", 99);
   expect(current().imageScene!.nodes.filter((node) => node.parentId === "image-root").map((node) => node.id)).toEqual(["cloud", "group-rocket"]);
@@ -278,7 +282,7 @@ it("uses the context menu for creation, inline rename, and independent subtree c
   expect(child.box).toEqual(fixture.imageScene.nodes[2].box);
   actionAfterOpen("Rocket", "Delete");
   expect(current().imageScene!.nodes.some((node) => node.id === child.id)).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Undo image edit" }));
+  undoImageEdit();
   expect(current().imageScene!.nodes.some((node) => node.id === child.id)).toBe(true);
   actionAfterOpen("Launch vehicle", "New Text");
   const text = current().imageScene!.nodes.at(-1)!;

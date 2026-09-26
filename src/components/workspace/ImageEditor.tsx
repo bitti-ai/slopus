@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
-import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit11, Edit16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image24, Image32, Paste16, Redo16, Rename16, Sparkle16, Stop14, Text16, Text16Filled, Undo16 } from "../ui/icons";
+import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit11, Edit16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image24, Image32, Paste16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
@@ -442,10 +442,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
-      <PaneHeader title="Scene" actions={<>
-        <button className="icon-button image-pane-button" aria-label="Undo image edit" aria-keyshortcuts="Control+Z" {...tooltipProps("Undo", "Ctrl+Z")} disabled={!undo.current.length} onClick={() => history(true)}><Undo16 aria-hidden="true" /></button>
-        <button className="icon-button image-pane-button" aria-label="Redo image edit" aria-keyshortcuts="Control+Y" {...tooltipProps("Redo", "Ctrl+Y")} disabled={!redo.current.length} onClick={() => history(false)}><Redo16 aria-hidden="true" /></button>
-      </>} />
+      {/* Undo and Redo live in the title bar; Ctrl+Z / Ctrl+Y still step the image edits here. */}
+      <PaneHeader title="Scene" />
       <div role="tree" aria-label="Image nodes">{tree(root, 0)}</div>
     </aside>
     <Splitter {...treePane.splitterProps} aria-label="Resize hierarchy" />

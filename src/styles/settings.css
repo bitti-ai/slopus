@@ -47,7 +47,9 @@
 }
 
 .settings-page {
+  width: 100%;
   max-width: calc(1000px + 2 * var(--space-6));
+  margin-inline: auto;                 /* centred once the window is wider */
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
