@@ -1,9 +1,12 @@
 //! Getting a finished export out of the webview and onto the disk.
 //!
 //! The encode itself happens in the webview — WebCodecs owns the OS hardware
-//! encoder, and there is no FFmpeg here by design. Rust does the two things the
-//! webview cannot: open the platform's save dialog, and write the bytes to the
-//! path the user picked.
+//! encoder, and there is no FFmpeg here by design. Rust does the things the
+//! webview cannot: open the platform's save dialog (starting in the folder the
+//! last export went to), propose a default destination before any dialog has
+//! been shown, write the bytes to the path the user picked, open the finished
+//! file, and read the one kind of side file the editor imports by path — a
+//! `.cube` colour LUT picked in the native Open dialog.
 //!
 //! The bytes arrive as a RAW ipc body rather than as command arguments. A
 //! 200 MB file serialised as a JSON array of numbers is well over a gigabyte of
@@ -18,7 +21,7 @@ use std::{
 };
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle,
+    AppHandle, Manager,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -136,36 +139,193 @@ fn authorized_destination(value: &str) -> Result<PathBuf, String> {
 /// used to be. Flush the complete file before atomically publishing it.
 pub(crate) use crate::storage::atomic::write_atomically;
 
-/// Opens the platform's save dialog. `Ok(None)` means the user cancelled, which
-/// is not an error.
+/// Where the last export went, kept beside the app's settings so the next
+/// export (and the Save dialog) starts there. One line: the folder path.
+const LAST_FOLDER_FILE: &str = "last-export-folder.txt";
+
+fn last_folder_store(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join(LAST_FOLDER_FILE))
+}
+
+/// The folder the last export was written to, if it still exists.
+fn last_export_folder(app: &AppHandle) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(last_folder_store(app)?).ok()?;
+    let folder = PathBuf::from(text.trim());
+    (folder.is_absolute() && folder.is_dir()).then_some(folder)
+}
+
+fn remember_export_folder(app: &AppHandle, destination: &Path) {
+    let (Some(store), Some(folder)) = (last_folder_store(app), destination.parent()) else {
+        return;
+    };
+    // Best effort: forgetting the folder costs one extra click next time.
+    if let Some(parent) = store.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(store, folder.to_string_lossy().as_bytes());
+}
+
+/// The folder an export starts in: the last one used, else the user's Videos
+/// folder, else their home folder.
+fn starting_folder(app: &AppHandle) -> Option<PathBuf> {
+    last_export_folder(app)
+        .or_else(|| app.path().video_dir().ok().filter(|dir| dir.is_dir()))
+        .or_else(|| app.path().home_dir().ok().filter(|dir| dir.is_dir()))
+}
+
+/// Makes `name` an `.mp4` file name: sanitised, with the extension added when
+/// the suggestion lacks it.
+fn mp4_file_name(name: &str) -> String {
+    let safe = safe_file_name(name);
+    if safe.to_ascii_lowercase().ends_with(".mp4") {
+        safe
+    } else {
+        format!("{safe}.mp4")
+    }
+}
+
+/// Opens the platform's save dialog, starting in the last export folder (or
+/// Videos). `Ok(None)` means the user cancelled, which is not an error. Runs
+/// on a blocking thread so the dialog's own message loop never waits on the
+/// one the webview needs (see `pick_file` in native_shell.rs).
 #[tauri::command]
-pub fn choose_export_destination(
+pub async fn choose_export_destination(
     app: AppHandle,
     suggested_name: String,
 ) -> Result<Option<String>, String> {
-    let selected = app
-        .dialog()
-        .file()
-        .set_title("Export video")
-        .set_file_name(safe_file_name(&suggested_name))
-        .add_filter("MP4 video", &["mp4"])
-        .blocking_save_file();
-    let Some(selected) = selected else {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title("Export video")
+            .set_file_name(mp4_file_name(&suggested_name))
+            .add_filter("MP4 video", &["mp4"]);
+        if let Some(folder) = starting_folder(&app) {
+            dialog = dialog.set_directory(folder);
+        }
+        let Some(selected) = dialog.blocking_save_file() else {
+            return Ok(None);
+        };
+        let path = selected
+            .into_path()
+            .map_err(|error| format!("Could not use the selected path: {error}"))?;
+        // The write end will only accept a path that came through here.
+        remember_destination(&path);
+        remember_export_folder(&app, &path);
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|error| format!("The save dialog stopped unexpectedly: {error}"))?
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultDestination {
+    path: String,
+    exists: bool,
+}
+
+/// The destination the Export screen shows before the user has opened any
+/// dialog: the suggested name in the last export folder (or Videos). Rust
+/// builds the whole path itself — the webview only supplies a name, which is
+/// sanitised — so authorising it cannot open anything outside those folders.
+#[tauri::command]
+pub fn default_export_destination(
+    app: AppHandle,
+    suggested_name: String,
+) -> Result<Option<DefaultDestination>, String> {
+    let Some(folder) = starting_folder(&app) else {
         return Ok(None);
     };
-    let path = selected
-        .into_path()
-        .map_err(|error| format!("Could not use the selected path: {error}"))?;
-    // The write end will only accept a path that came through here.
+    let path = folder.join(mp4_file_name(&suggested_name));
+    checked_destination(&path.to_string_lossy())?;
     remember_destination(&path);
-    Ok(Some(path.to_string_lossy().into_owned()))
+    Ok(Some(DefaultDestination {
+        exists: path.exists(),
+        path: path.to_string_lossy().into_owned(),
+    }))
+}
+
+/// Whether an authorised destination already holds a file, so the page can
+/// ask before replacing it.
+#[tauri::command]
+pub fn export_destination_exists(path: String) -> Result<bool, String> {
+    Ok(authorized_destination(&path)?.exists())
+}
+
+/// Opens a finished export in the default video player. Only a destination
+/// this run was allowed to export to can be opened, so the command cannot be
+/// used to launch arbitrary files.
+#[tauri::command]
+pub fn open_export_file(path: String) -> Result<(), String> {
+    let path = authorized_destination(&path)?;
+    if !path.is_file() {
+        return Err(format!("{} does not exist.", path.display()));
+    }
+    #[cfg(windows)]
+    std::process::Command::new("explorer.exe")
+        .arg(&path)
+        .spawn()
+        .map_err(|error| format!("Could not open the video: {error}"))?;
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|error| format!("Could not open the video: {error}"))?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    std::process::Command::new("xdg-open")
+        .arg(&path)
+        .spawn()
+        .map_err(|error| format!("Could not open the video: {error}"))?;
+    Ok(())
+}
+
+/// The largest LUT the editor accepts — the same limit as MAX_LUT_FILE_BYTES in
+/// src/lib/effectSettings.ts.
+const MAX_LUT_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Checks a LUT path's shape: absolute, `.cube`, an existing file no larger
+/// than the limit.
+fn checked_lut_path(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value);
+    if !path.is_absolute() {
+        return Err(format!("{value} is not a full path."));
+    }
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase);
+    if extension.as_deref() != Some("cube") {
+        return Err("Choose a 3D .cube LUT file.".to_string());
+    }
+    let metadata = std::fs::metadata(&path).map_err(|_| format!("{value} does not exist."))?;
+    if !metadata.is_file() {
+        return Err(format!("{value} is not a file."));
+    }
+    if metadata.len() > MAX_LUT_FILE_BYTES {
+        return Err("LUT files must be smaller than 16 MB.".to_string());
+    }
+    Ok(path)
+}
+
+/// Reads the text of a `.cube` LUT the user picked in the Open dialog. The
+/// webview cannot read arbitrary paths itself; this reads only `.cube` files
+/// under the size limit, and parsing stays in the page (effectSettings.ts).
+#[tauri::command]
+pub fn read_lut_file(path: String) -> Result<String, String> {
+    let path = checked_lut_path(&path)?;
+    let bytes = std::fs::read(&path).map_err(|error| format!("Could not read the LUT: {error}"))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Writes the muxed MP4 to the chosen path and reports how many bytes landed,
 /// so the frontend can state the size of a file that demonstrably exists rather
 /// than the size it hoped for.
 #[tauri::command]
-pub fn write_export_file(request: Request<'_>) -> Result<u64, String> {
+pub fn write_export_file(app: AppHandle, request: Request<'_>) -> Result<u64, String> {
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("The export was sent as JSON instead of raw bytes.".to_string());
     };
@@ -181,6 +341,7 @@ pub fn write_export_file(request: Request<'_>) -> Result<u64, String> {
         .map_err(|_| "The export path header is not readable text.".to_string())?;
     let destination = authorized_destination(&percent_decode(encoded)?)?;
     write_atomically(&destination, bytes)?;
+    remember_export_folder(&app, &destination);
     Ok(bytes.len() as u64)
 }
 
@@ -271,6 +432,40 @@ mod tests {
         // Choosing one file does not open its neighbours.
         let neighbour = folder.path().join("Northern Light 2.mp4");
         assert!(authorized_destination(&neighbour.to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn mp4_file_names_gain_the_extension_once() {
+        assert_eq!(mp4_file_name("Northern Light"), "Northern Light.mp4");
+        assert_eq!(mp4_file_name("Northern Light.MP4"), "Northern Light.MP4");
+        assert_eq!(mp4_file_name("a/b"), "a b.mp4");
+    }
+
+    #[test]
+    fn lut_paths_must_be_cube_files_under_the_limit() {
+        let folder = tempfile::tempdir().unwrap();
+        let cube = folder.path().join("look.cube");
+        fs::write(&cube, b"LUT_3D_SIZE 2").unwrap();
+        assert_eq!(
+            read_lut_file(cube.to_string_lossy().into_owned()).unwrap(),
+            "LUT_3D_SIZE 2"
+        );
+        let other = folder.path().join("look.txt");
+        fs::write(&other, b"LUT_3D_SIZE 2").unwrap();
+        assert!(checked_lut_path(&other.to_string_lossy()).is_err());
+        assert!(checked_lut_path("look.cube").is_err());
+        assert!(checked_lut_path(&folder.path().join("missing.cube").to_string_lossy()).is_err());
+    }
+
+    #[test]
+    fn only_authorised_destinations_can_be_opened_or_checked() {
+        let folder = tempfile::tempdir().unwrap();
+        let film = folder.path().join("Somebody else.mp4");
+        fs::write(&film, b"x").unwrap();
+        assert!(open_export_file(film.to_string_lossy().into_owned()).is_err());
+        assert!(export_destination_exists(film.to_string_lossy().into_owned()).is_err());
+        remember_destination(&film);
+        assert!(export_destination_exists(film.to_string_lossy().into_owned()).unwrap());
     }
 
     #[test]

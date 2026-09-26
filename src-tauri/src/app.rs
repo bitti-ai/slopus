@@ -234,6 +234,10 @@ pub fn run() {
             commands::artifacts::generated_audio,
             commands::artifacts::release_generated_frames,
             export::choose_export_destination,
+            export::default_export_destination,
+            export::export_destination_exists,
+            export::open_export_file,
+            export::read_lut_file,
             export::write_export_file
         ])
         .run(tauri::generate_context!())
