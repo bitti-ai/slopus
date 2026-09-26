@@ -36,6 +36,14 @@ body {
   user-select: none;
 }
 
+/* `hidden` means hidden. The UA rule is a plain `display: none` that any
+   component rule setting `display` outranks, and the app keeps several panes
+   mounted-but-hidden (the agent pane, the screen behind Settings) — without
+   this, a closed agent pane still took the bottom of the window. */
+[hidden] {
+  display: none !important;
+}
+
 /* Where text is written, it is text: selecting, double-clicking a word and
    dragging through a value all keep working. */
 input,

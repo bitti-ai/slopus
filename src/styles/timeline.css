@@ -42,11 +42,14 @@
 .edit-panels {
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--pane-timeline-sources) auto minmax(0, 1fr) auto var(--pane-timeline-inspector);
+  /* The side panes shrink toward a floor before the row overflows: with the
+     agent pane open in a 900px window the content area is ~540px, less than
+     the two stored pane widths together. */
+  grid-template-columns: minmax(160px, var(--pane-timeline-sources)) auto minmax(160px, 1fr) auto minmax(220px, var(--pane-timeline-inspector));
 }
 
-.edit-panels--no-sources { grid-template-columns: minmax(0, 1fr) auto var(--pane-timeline-inspector); }
-.edit-panels--no-inspector { grid-template-columns: var(--pane-timeline-sources) auto minmax(0, 1fr); }
+.edit-panels--no-sources { grid-template-columns: minmax(160px, 1fr) auto minmax(220px, var(--pane-timeline-inspector)); }
+.edit-panels--no-inspector { grid-template-columns: minmax(160px, var(--pane-timeline-sources)) auto minmax(160px, 1fr); }
 .edit-panels--no-sources.edit-panels--no-inspector { grid-template-columns: minmax(0, 1fr); }
 
 .scene-panel,
@@ -164,9 +167,18 @@
   object-fit: cover;
 }
 
-/* Flat badges: a dark plate, 2px corners, no glass. */
-.scene-card__thumb i,
-.scene-card__thumb em {
+/* The 88×50 thumbnail has no room for the shot's own status caption
+   ("Rendering 68%", "Waiting to render", the ETA) — the text column beside it
+   already says the same thing. Keep the glyph and the progress line only. */
+.scene-card__thumb .shot-thumb em,
+.scene-card__thumb .shot-thumb small {
+  display: none;
+}
+
+/* Flat badges: a dark plate, 2px corners, no glass. Direct children only, so
+   the rule never reaches into the shot thumbnail's own markup. */
+.scene-card__thumb > i,
+.scene-card__thumb > em {
   position: absolute;
   z-index: 2;
   padding: 0 var(--space-1);
@@ -179,12 +191,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.scene-card__thumb i { left: 2px; top: 2px; }
-.scene-card__thumb em { right: 2px; bottom: 2px; }
+.scene-card__thumb > i { left: 2px; top: 2px; }
+.scene-card__thumb > em { right: 2px; bottom: 2px; }
 
 .scene-card > span:last-child,
 .scene-card b,
-.scene-card small {
+.scene-card > span:last-child small {
   display: block;
   min-width: 0;
 }
@@ -199,7 +211,7 @@
   line-height: var(--leading-snug);
 }
 
-.scene-card small {
+.scene-card > span:last-child small {
   overflow: hidden;
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -933,7 +945,9 @@
 /* --- Timeline toolbar ------------------------------------------------------ */
 
 .pro-timeline {
+  min-width: 0;
   min-height: 0;
+  container: pro-timeline / inline-size;
   display: grid;
   grid-template-rows: var(--toolbar-height) minmax(0, 1fr);
   background: var(--panel);
@@ -941,12 +955,14 @@
 }
 
 /* Lead | transport | tools. Two equal rails keep the transport on the row's
-   centre whatever the rails hold. */
+   centre while there is room; the tools rail never goes below its content, so
+   in a narrow pane (agent open, 900px window) the transport slides left
+   instead of the tools spilling over it. The lead rail gives up width first. */
 .timeline-toolbar {
   height: var(--toolbar-height);
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2);
@@ -956,6 +972,7 @@
 
 .timeline-toolbar__lead {
   min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -1088,6 +1105,22 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .timeline-zoom {
   width: 88px;
   flex: none;
+}
+
+/* A narrow timeline (agent pane open in a 900px window): the tools drop to
+   their icons — the tooltip still names each one — and the lead keeps only
+   the playhead clock, so nothing in the row overlaps. */
+@container pro-timeline (max-width: 760px) {
+  .timeline-toolbar { gap: var(--space-1); }
+  .timeline-toolbar h2,
+  .transport-format { display: none; }
+  .timeline-tools button:not(.timeline-tools__icon) {
+    width: 28px;
+    gap: 0;
+    padding: 0;
+    font-size: 0;
+  }
+  .timeline-zoom { width: 64px; }
 }
 
 /* --- Track grid ------------------------------------------------------------ */

@@ -52,9 +52,11 @@
 .image-tool:active { background: var(--fill-subtle-pressed); }
 .image-tool--on, .image-tool--on:hover { border-color: var(--accent-line); color: var(--accent-on-soft); background: var(--accent-soft); }
 .image-tool > span { display: grid; }
-.image-viewport { position: relative; flex: 1; min-height: 0; overflow: clip; container-type: size; user-select: none; }
+/* Fit leaves a 24px margin round the frame, so its edge reads as the canvas
+   edge instead of merging into the pane borders. */
+.image-viewport { position: relative; flex: 1; min-height: 0; overflow: clip; container-type: size; user-select: none; background: var(--layer-alt); }
 .image-viewport.panning, .image-viewport.panning * { cursor: grabbing; }
-.image-frame { position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--image-pan-x)), calc(-50% + var(--image-pan-y))); width: calc(min(100cqw, 100cqh * var(--image-ratio)) * var(--image-zoom)); aspect-ratio: var(--image-ratio); background: var(--panel); box-shadow: 0 0 0 1px var(--line-solid); }
+.image-frame { position: absolute; left: 50%; top: 50%; transform: translate(calc(-50% + var(--image-pan-x)), calc(-50% + var(--image-pan-y))); width: calc(min(100cqw - 48px, (100cqh - 48px) * var(--image-ratio)) * var(--image-zoom)); aspect-ratio: var(--image-ratio); background: var(--panel); box-shadow: 0 0 0 1px var(--line-solid); }
 .image-frame > img, .image-frame > .reference-image { position: absolute; width: 100%; height: 100%; object-fit: contain; inset: 0; }
 .image-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); text-align: center; padding: var(--space-4); color: var(--text-muted); }
 .image-empty strong { color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); }

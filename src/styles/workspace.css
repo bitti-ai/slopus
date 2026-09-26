@@ -160,4 +160,27 @@
   .project-views .ui-selector-bar__item {
     padding: 0 var(--space-2);
   }
+
+  /* At the 900px window minimum the four views need ~320px, which the row
+     only has once the app glyph goes, the middle loses its inset and the
+     title-bar commands drop their labels (their tooltips still name them). */
+  .project-titlebar .titlebar__icon {
+    display: none;
+  }
+
+  .project-titlebar .titlebar__middle {
+    padding: 0 var(--space-1);
+  }
+
+  .project-views {
+    gap: 0;
+  }
+
+  .project-commands > button {
+    width: var(--control-md);
+    gap: 0;
+    padding: 0;
+    font-size: 0;
+    justify-content: center;
+  }
 }
