@@ -11,9 +11,11 @@
 /* Foundation */
 @import "./tokens.css";
 @import "./base.css";
+@import "./window.css";
 @import "./controls.css";
 
 /* Application surfaces */
+@import "./titlebar.css";
 @import "./shell.css";
 @import "./settings.css";
 @import "./work-queue.css";
