@@ -10,7 +10,7 @@ import {
 
 afterEach(() => { cleanup(); resetShortcutsForTests(); });
 
-const press = (key: string, init: Partial<KeyboardEventInit> = {}, target: EventTarget = document.body) =>
+const press = (key: string, init: Partial<KeyboardEventInit> = {}, target: Element = document.body) =>
   fireEvent.keyDown(target, { key, bubbles: true, cancelable: true, ...init });
 
 describe("combo parsing and matching", () => {
