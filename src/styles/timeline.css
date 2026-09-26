@@ -4,9 +4,16 @@
 
    Dense scale. An editor is a tool surface, not a form, so it runs smaller
    than the rest of the app — the way Premiere, Resolve and Clipchamp do:
-   toolbar 36px, panel tabs 32px, ruler 24px, video tracks 56px, audio tracks
-   40px, transport and track toggles 28px / 20px, captions 12px. The export
-   screen (export.css) uses the same scale.
+   toolbars 36px (--chrome-row), the monitor footer 24px (--chrome-row-sm),
+   ruler 28px, video tracks 56px, audio tracks 40px, caption tracks 32px,
+   transport and toolbar buttons 24px (--control-sm), track toggles 20px,
+   captions 12px. The export screen (export.css) uses the same scale.
+
+   Surfaces follow the ladder in tokens.css: the side panes on
+   --surface-pane, every toolbar, the ruler, the track heads and the monitor
+   footer on --surface-chrome with a --stroke-divider where they meet another
+   rung, the lanes on --surface-well (every other one --surface-well-alt),
+   and the program stage on --surface-stage.
 
    Every pane is resizable (Splitter + usePaneSize, which set the --pane-*
    variables inline) and the side panes collapse from the timeline toolbar
