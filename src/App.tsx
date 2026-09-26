@@ -13,7 +13,7 @@ import { PromptComposer } from "./components/PromptComposer";
 import { SettingsView } from "./components/SettingsView";
 import { TitleBar } from "./components/TitleBar";
 import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/UpdatePanel";
-import { CommandBar, CommandBarButton, CommandBarSeparator, InfoBadge, InfoBar, TextField } from "./components/ui";
+import { CommandBar, CommandBarButton, CommandBarSeparator, EmptyState, InfoBadge, InfoBar, TextField } from "./components/ui";
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
 import { useRunningExportName } from "./lib/exportJob";
@@ -393,39 +393,45 @@ function App() {
       <div className="app-screen" hidden={settingsOpen}>
         <TitleBar title="Slopus" secondary="Preview" actions={shellActions} />
         <main className="library" aria-labelledby="library-title">
-          <h1 id="library-title" className="library__title">Projects</h1>
-          {(error || showUpdateInfo) && <div className="library__infobars">
-            {showUpdateInfo && <UpdateInfoBar updater={updater} onOpen={() => openSettings("updates")} onDismiss={() => setUpdateInfoDismissed(true)} />}
-            {error && <InfoBar severity="error" title={error.title} message={error.detail} onClose={() => setError(null)} />}
-          </div>}
-          <CommandBar
-            aria-label="Library commands"
-            className="library__commands"
-            end={<TextField
-              className="library__search"
-              inputRef={searchInput}
-              type="search"
-              value={query}
-              onChange={setQuery}
-              placeholder="Search projects"
-              aria-label="Search projects"
-              aria-keyshortcuts="Control+F"
-              trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search size={16} /></span>}
-            />}
-          >
-            {newProjectButton}
-            <CommandBarButton icon={<FolderOpen size={16} />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
-            <CommandBarSeparator />
-            <CommandBarButton icon={<Grid2X2 size={16} />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
-            <CommandBarButton icon={<List size={16} />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
-          </CommandBar>
-
-          {/* An empty library says so in its empty state; a heading counting
-              "0 projects" above it would only repeat that. */}
-          <section className="library__section" {...(showLibraryHeading ? { "aria-labelledby": "all-projects-heading" } : { "aria-label": "All projects" })}>
+          <div className="library__head">
+            <h1 id="library-title" className="library__title">Projects</h1>
+            {(error || showUpdateInfo) && <div className="library__infobars">
+              {showUpdateInfo && <UpdateInfoBar updater={updater} onOpen={() => openSettings("updates")} onDismiss={() => setUpdateInfoDismissed(true)} />}
+              {error && <InfoBar severity="error" title={error.title} message={error.detail} onClose={() => setError(null)} />}
+            </div>}
+          </div>
+          {/* The command bar and the list's heading row share one chrome strip;
+              the tiles scroll on the pane under it. */}
+          <div className="library__bar">
+            <CommandBar
+              aria-label="Library commands"
+              className="library__commands"
+              end={<TextField
+                className="library__search"
+                inputRef={searchInput}
+                type="search"
+                value={query}
+                onChange={setQuery}
+                placeholder="Search projects"
+                aria-label="Search projects"
+                aria-keyshortcuts="Control+F"
+                trailing={<span className="ui-textfield__icon" aria-hidden="true"><Search size={16} /></span>}
+              />}
+            >
+              {newProjectButton}
+              <CommandBarButton icon={<FolderOpen size={16} />} label="Open…" showLabel tooltip="Open project" shortcut="Ctrl+O" aria-label="Open project" disabled={busy} onClick={() => void openFromFolder()} />
+              <CommandBarSeparator />
+              <CommandBarButton icon={<Grid2X2 size={16} />} label="Grid view" pressed={projectLayout === "grid"} onClick={() => setProjectLayout("grid")} />
+              <CommandBarButton icon={<List size={16} />} label="List view" pressed={projectLayout === "list"} onClick={() => setProjectLayout("list")} />
+            </CommandBar>
+            {/* An empty library says so in its empty state; a heading counting
+                "0 projects" above it would only repeat that. */}
             {showLibraryHeading && <h2 id="all-projects-heading" className="library__subtitle">
               {query.trim() ? "Results" : "All projects"} <span className="library__count">{filteredProjects.length} {filteredProjects.length === 1 ? "project" : "projects"}</span>
             </h2>}
+          </div>
+
+          <section className="library__section" {...(showLibraryHeading ? { "aria-labelledby": "all-projects-heading" } : { "aria-label": "All projects" })}>
             {loading ? (
               <div className={`project-grid project-grid--${projectLayout}`} aria-busy="true">{[0, 1, 2].map((item) => <div className="project-skeleton" key={item}><i /><span /><small /></div>)}</div>
             ) : filteredProjects.length ? (
@@ -447,12 +453,14 @@ function App() {
                 })}
               </div>
             ) : query ? (
-              <div className="library-empty">
-                <Search size={48} aria-hidden="true" />
-                <h3>No results for “{query}”</h3>
-                <p>Search looks at project names, descriptions and folders.</p>
-                <div className="library-empty__actions"><button type="button" className="secondary-button" onClick={() => setQuery("")}>Clear search</button></div>
-              </div>
+              /* The compact shared empty state: only the first-run hero below
+                 is large. */
+              <EmptyState
+                icon={<Search size={32} />}
+                title={`No results for “${query}”`}
+                description="Search looks at project names, descriptions and folders."
+                action={<button type="button" className="secondary-button" onClick={() => setQuery("")}>Clear search</button>}
+              />
             ) : (
               <div className="library-empty">
                 <FolderOpen size={48} aria-hidden="true" />

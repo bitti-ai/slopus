@@ -47,8 +47,8 @@ function durationLabel(seconds: number) {
 
 /* A project in the library, as a GridView item: a plain tile with the real
    first frame (or a neutral glyph on --panel-3), the name and one caption
-   line. Hover changes the fill and nothing else. A click selects it; a
-   double-click or Enter opens it. The prompt it was made from is its tooltip.
+   line. Hover and selection are the shared .ui-selectable--card rule. A click
+   selects it; a double-click or Enter opens it. The prompt it was made from is its tooltip.
    Right-click, Shift+F10 or the ⋯ button opens the same context menu.
 
    The tile is an option in the library's listbox (App.tsx owns the list, the
@@ -95,7 +95,7 @@ export const ProjectCard = forwardRef(function ProjectCard(
       aria-selected={selected}
       aria-label={config.name}
       tabIndex={tabIndex}
-      className={`project-card project-card--${layout}${selected ? " project-card--selected" : ""}`}
+      className={`project-card project-card--${layout} ui-selectable ui-selectable--card`}
       data-tooltip={prompt || undefined}
       onClick={() => onSelect?.(project)}
       onDoubleClick={() => onOpen(project)}

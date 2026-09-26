@@ -3,14 +3,16 @@
    project / Project settings dialog (PromptComposer.tsx).
 
    The library is a Windows page, not a website: it fills the window edge to
-   edge (24px 36px padding) under the title bar, with a 28px "Projects" title,
-   a command bar (New project in accent, Open…, the view toggle, the search
-   box at the trailing end) and an auto-fill grid of plain tiles. There is no
-   centred 1180px column, no frosted sticky header, and no generated cover
-   art: a tile shows the project's real first frame, or a neutral glyph.
+   edge (--space-6 at the sides) under the title bar, with a 28px "Projects"
+   title on the pane, then a chrome strip holding the command bar (New project
+   in accent, Open…, the view toggle, the search box at the trailing end) and
+   the "All projects" row, then an auto-fill grid of plain tiles scrolling on
+   the pane. There is no centred 1180px column, no frosted sticky header, and
+   no generated cover art: a tile shows the project's real first frame, or a
+   neutral glyph.
 
-   Tile rhythm: thumbnail at 16:9 with 4px corners, then a 14px name and a
-   12px caption. `.project-skeleton` reproduces the same thumbnail ratio and
+   Tile rhythm: 4px corners like every card, thumbnail at 16:9, then a 14px
+   name and a 12px caption. `.project-skeleton` reproduces the same thumbnail ratio and
    text height so the grid does not jump when loading finishes.
    ========================================================================== */
 
@@ -20,30 +22,46 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-5) 36px var(--space-6);
   border-top: 1px solid var(--stroke-card);
-  background: var(--layer);
+  background: var(--surface-pane);
+}
+
+.library__head {
+  flex: none;
+  padding: var(--space-5) var(--space-6) var(--space-4);
 }
 
 /* Fluent Title: 28/36 semibold in the Display cut. */
 .library__title {
-  margin: 0 0 var(--space-4);
+  margin: 0;
   color: var(--text-primary);
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
-  line-height: 36px;
+  line-height: var(--leading-tight);
 }
 
 .library__infobars {
   display: grid;
   gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* --- Command strip ------------------------------------------------------------
+   Chrome, like every toolbar: the command bar row and, when there are
+   projects, the "All projects" row, with the divider edge under both. */
+
+.library__bar {
+  flex: none;
+  padding: 0 var(--space-6);
+  border-top: 1px solid var(--stroke-divider);
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-chrome);
 }
 
 .library__commands {
-  margin: 0 calc(-1 * var(--space-1)) var(--space-4);
+  min-height: var(--chrome-row);
+  margin: 0 calc(-1 * var(--space-1));
 }
 
 .library__commands .ui-command-bar__primary {
@@ -59,16 +77,28 @@
   width: 100%;
 }
 
+/* The tiles scroll here, under the strip. A flex column so the compact empty
+   state can centre itself in what is left. */
 .library__section {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-6) var(--space-6);
 }
 
-/* "All projects" with its count in secondary text. */
+/* "All projects" with its count in secondary text: the strip's second row. */
 .library__subtitle {
+  min-height: var(--chrome-row);
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: 0 0 var(--space-3);
+  margin: 0;
+  padding-block: var(--space-2);        /* 20px line + 16 = the 36px row */
+  box-sizing: border-box;
+  border-top: 1px solid var(--line);
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
@@ -96,9 +126,9 @@
 }
 
 /* --- Tile -------------------------------------------------------------------
-   A GridView item: the card fill and 1px stroke, 8px corners, the fill
-   changing on hover and press and nothing else — no lift, no glow, no accent
-   border. Selection is an inset accent edge, as in File Explorer's grid. */
+   A GridView item: a 1px stroke and 4px corners like every card. Rest, hover
+   and selection (accent-soft plus the accent ring) are the shared
+   .ui-selectable--card rule in ui.css, so nothing here sets a fill. */
 
 .project-card {
   position: relative;
@@ -108,25 +138,11 @@
   min-width: 0;
   padding: var(--space-2);
   border: 1px solid var(--stroke-card);
-  border-radius: var(--radius-lg);
-  background: var(--card);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   outline: none;
-  transition: var(--transition-control);
   -webkit-user-select: none;
   user-select: none;
-}
-
-.project-card:hover {
-  background: var(--card-hover);
-}
-
-.project-card:active {
-  background: var(--card-pressed);
-}
-
-.project-card--selected {
-  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .project-card:focus-visible {
@@ -186,7 +202,7 @@
   background: var(--layer);
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: 16px;
+  line-height: var(--leading-snug);
   font-variant-numeric: tabular-nums;
 }
 
@@ -214,7 +230,7 @@
 .project-card__meta {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  line-height: 16px;
+  line-height: var(--leading-snug);
 }
 
 /* ⋯ sits over the text row's trailing end; it is not a tab stop (Shift+F10
@@ -228,7 +244,7 @@
 }
 
 .project-card:hover .project-card__more,
-.project-card--selected .project-card__more,
+.project-card[aria-selected="true"] .project-card__more,
 .project-card:focus-within .project-card__more {
   opacity: 1;
 }
@@ -264,8 +280,7 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--stroke-card);
-  border-radius: var(--radius-lg);
-  background: var(--card);
+  border-radius: var(--radius-sm);
 }
 
 .project-skeleton i {
@@ -299,8 +314,10 @@
 }
 
 /* --- Empty ---------------------------------------------------------------------
-   No box, no dashed border (that reads as a file drop zone): a 48px glyph, a
-   20px line, one sentence and the two ways forward side by side. */
+   The first-run hero, the one large empty state in the app (a search with no
+   results uses the compact shared EmptyState). No box, no dashed border (that
+   reads as a file drop zone): a 48px glyph, a 20px line, one sentence and the
+   two ways forward side by side. */
 
 .library-empty {
   display: grid;
@@ -316,7 +333,7 @@
   color: var(--text-primary);
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
-  line-height: 28px;
+  line-height: 1.4;                    /* 28/20, Fluent Subtitle */
 }
 
 .library-empty p {

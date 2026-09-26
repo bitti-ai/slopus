@@ -37,6 +37,15 @@ describe("how long ago a project was edited", () => {
     expect(container.querySelector(".project-card__meta")!.textContent).toContain("Edited just now");
   });
 
+  it("states its selection through the shared selectable-card rule", () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    render(<ProjectCard project={{ folderPath: "C:\\Ceramic Lamp", config }} selected onOpen={() => undefined} />);
+    const card = screen.getByRole("option", { name: "Ceramic lamp" });
+    expect(card).toHaveAttribute("aria-selected", "true");
+    expect(card).toHaveClass("ui-selectable", "ui-selectable--card");
+    expect(card).not.toHaveClass("project-card--selected");
+  });
+
   it("uses the first visual timeline asset as the project cover", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     config.assets = [{
