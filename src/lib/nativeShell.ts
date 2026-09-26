@@ -319,17 +319,15 @@ export function accentTokens(accent: SystemAccent, theme: ResolvedTheme): Record
 const block = (selector: string, tokens: Record<string, string>) =>
   `${selector} {\n${Object.entries(tokens).map(([name, value]) => `  ${name}: ${value};`).join("\n")}\n}`;
 
-/** The stylesheet text for one accent. It mirrors the three blocks of
- *  tokens.css — dark on :root, light twice (the OS media query guarded by
- *  :not([data-theme="dark"]), and the explicit attribute) — so a theme switch
- *  repaints through CSS alone. `:root:root` outranks tokens.css's own
+/** The stylesheet text for one accent. It mirrors the two blocks of
+ *  tokens.css — dark on :root, light on [data-theme="light"] — so a theme
+ *  switch repaints through CSS alone. `:root:root` outranks tokens.css's own
  *  selectors by one class, whatever order the two sheets end up in. */
 export function accentStylesheet(accent: SystemAccent): string {
   const dark = accentTokens(accent, "dark");
   const light = accentTokens(accent, "light");
   return [
     block(":root:root", dark),
-    `@media (prefers-color-scheme: light) {\n${block(':root:root:not([data-theme="dark"])', light)}\n}`,
     block(':root:root[data-theme="light"]', light),
   ].join("\n");
 }

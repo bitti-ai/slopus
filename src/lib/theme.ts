@@ -6,19 +6,18 @@
  * never go into slopus.json), and a project folder copied here from another
  * machine does not bring somebody else's appearance with it.
  *
- * THREE states, not two:
+ * THREE choices, not two:
  *
- *   "system"  follow the computer, LIVE. No attribute is written, so
- *             `@media (prefers-color-scheme: light)` in tokens.css does the
- *             work and an OS flip while the app is open repaints with no JS
- *             involved at all.
+ *   "system"  follow the computer, LIVE: data-theme is the OS's theme, and
+ *             main.tsx re-applies it whenever the OS flips (watchSystemTheme)
  *   "light"   <html data-theme="light">
  *   "dark"    <html data-theme="dark">
  *
- * An explicit choice beats the OS in BOTH directions. That is a property of
- * the CSS, not of this file: the light rules are guarded by
- * `:root:not([data-theme="dark"])`, so "dark" on a light computer really does
- * fall back to the bare `:root` dark palette. Do not "simplify" that guard.
+ * The attribute always names the RESOLVED theme, never the choice. That is
+ * what lets tokens.css write its light palette once, under
+ * :root[data-theme="light"], instead of twice (a media-query copy for
+ * "system" plus the attribute copy) kept identical by hand. The choice itself
+ * lives in localStorage; read it with loadTheme(), never from the attribute.
  */
 
 import { setWindowTheme } from "./nativeShell";
@@ -98,7 +97,7 @@ export function hasMicaBackdrop(): boolean {
   return native;
 }
 
-/** Writes the choice onto <html> and repaints the document ground.
+/** Writes the resolved theme onto <html> and repaints the document ground.
  *
  *  The ground is set inline as well as by CSS because theme-boot.js sets it
  *  that way before the stylesheet has loaded; leaving a stale inline colour
@@ -111,10 +110,9 @@ export function hasMicaBackdrop(): boolean {
  *  the system menus and message boxes. */
 export function applyTheme(choice: ThemeChoice): ResolvedTheme {
   const root = document.documentElement;
-  if (choice === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", choice);
-
   const resolved = resolveTheme(choice);
+  root.setAttribute("data-theme", resolved);
+
   root.style.backgroundColor = hasMicaBackdrop() ? "transparent" : THEME_BACKGROUND[resolved];
   void setWindowTheme(choice);
 
@@ -122,9 +120,9 @@ export function applyTheme(choice: ThemeChoice): ResolvedTheme {
 }
 
 /** Calls back whenever the COMPUTER's setting changes. Returns an unsubscribe.
- *  Only "system" needs it — the CSS repaints on its own, but the settings
- *  screen has to keep saying which one the computer is currently on, and the
- *  inline ground colour above has to be rewritten. */
+ *  Only "system" needs it: the attribute (and with it the whole palette) and
+ *  the inline ground colour above have to be rewritten, and the settings
+ *  screen has to keep saying which one the computer is currently on. */
 export function watchSystemTheme(onChange: (theme: ResolvedTheme) => void): () => void {
   if (typeof matchMedia !== "function") return () => {};
   const query = matchMedia("(prefers-color-scheme: light)");

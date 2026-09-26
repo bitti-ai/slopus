@@ -30,7 +30,7 @@ const readCss = (fromProjectRoot: string) =>
 
 /* jsdom's matchMedia is not implemented at all, so every test that cares about
    the OS setting installs its own. `light` is what the query asks for, mirroring
-   `(prefers-color-scheme: light)` in tokens.css. */
+   `(prefers-color-scheme: light)` in theme.ts. */
 function stubMatchMedia(light: boolean) {
   const listeners = new Set<() => void>();
   const query = {
@@ -69,17 +69,21 @@ describe("theme preference", () => {
     expect(loadTheme()).toBe("light");
   });
 
-  it("writes an attribute for an explicit choice and none at all for system", () => {
+  it("always writes the resolved theme, system included", () => {
     expect(applyTheme("light")).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
 
     expect(applyTheme("dark")).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
-    /* No attribute is the point: it hands the decision back to the media query
-       so the OS can flip it live without JavaScript. */
+    /* tokens.css has no media-query palette: "system" has to name the OS's
+       theme on the attribute, or a light computer would paint dark. */
+    stubMatchMedia(true);
     applyTheme("system");
-    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    stubMatchMedia(false);
+    applyTheme("system");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });
 
   it("resolves system against the computer, in both directions", () => {
@@ -159,14 +163,14 @@ const declarations = (css: string): Map<string, string> => {
 describe("tokens.css", () => {
   const css = readCss("src/styles/tokens.css");
   const dark = declarations(block(css, "\n:root {"));
-  const mediaLight = declarations(block(css, ':root:not([data-theme="dark"]) {'));
-  const explicitLight = declarations(block(css, ':root[data-theme="light"] {'));
+  const light = declarations(block(css, ':root[data-theme="light"] {'));
 
-  it("guards the media block so an explicit dark choice beats a light computer", () => {
-    /* Drop this guard and picking Dark on a light-theme computer silently
-       repaints light: same specificity, and the media block wins on order. */
-    expect(css).toContain("@media (prefers-color-scheme: light)");
-    expect(css).toContain(':root:not([data-theme="dark"])');
+  it("writes the light palette exactly once, keyed on the attribute", () => {
+    /* theme.ts always stamps the resolved theme, so a prefers-color-scheme
+       copy would be a second palette to keep in step by hand, and one an
+       explicit Dark on a light computer would have to be guarded against. */
+    expect(css).not.toContain("prefers-color-scheme");
+    expect(css.split(':root[data-theme="light"] {').length).toBe(2);
   });
 
   it("never introduces a colour for the first time in a media or attribute block", () => {
@@ -174,19 +178,14 @@ describe("tokens.css", () => {
        only under light leaves dark painting with an unresolved var(), which
        falls back to inherit/initial and puts one theme's ink on the other
        theme's ground. */
-    const orphans = [...mediaLight.keys(), ...explicitLight.keys()].filter((name) => !dark.has(name));
+    const orphans = [...light.keys()].filter((name) => !dark.has(name));
     expect(orphans).toEqual([]);
-  });
-
-  it("keeps the two light blocks identical", () => {
-    expect([...explicitLight.entries()].sort()).toEqual([...mediaLight.entries()].sort());
   });
 
   it("flips color-scheme with the palette so platform menus follow", () => {
     /* Without this the <select> dropdown, the scrollbars and the caret stay
        dark on a light page — chrome the stylesheet cannot reach. */
     expect(block(css, "\n:root {")).toContain("color-scheme: dark");
-    expect(block(css, ':root:not([data-theme="dark"]) {')).toContain("color-scheme: light");
     expect(block(css, ':root[data-theme="light"] {')).toContain("color-scheme: light");
   });
 
@@ -196,7 +195,7 @@ describe("tokens.css", () => {
        flash of a colour that is in no palette, which nobody would ever notice
        by looking. */
     expect(dark.get("--bg")).toBe(THEME_BACKGROUND.dark);
-    expect(mediaLight.get("--bg")).toBe(THEME_BACKGROUND.light);
+    expect(light.get("--bg")).toBe(THEME_BACKGROUND.light);
 
     const boot = read("public/theme-boot.js");
     expect(boot).toContain(`dark: "${THEME_BACKGROUND.dark}"`);

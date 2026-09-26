@@ -192,11 +192,11 @@ describe("accent tokens", () => {
     expect(inkOn("#ffb900")).toBe("#000000");
   });
 
-  it("mirrors the three theme blocks of tokens.css so a theme switch needs no JavaScript", () => {
+  it("mirrors the two theme blocks of tokens.css so a theme switch is a CSS repaint", () => {
     const css = accentStylesheet(BLUE);
     expect(css).toContain(":root:root {");
-    expect(css).toContain('@media (prefers-color-scheme: light) {\n:root:root:not([data-theme="dark"]) {');
     expect(css).toContain(':root:root[data-theme="light"] {');
+    expect(css).not.toContain("prefers-color-scheme");
   });
 
   it("removes itself for null or a malformed payload, putting the palette's blue back", () => {

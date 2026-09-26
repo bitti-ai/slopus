@@ -46,31 +46,27 @@
 
    THEMING
    ----------------------------------------------------------------------------
-   Three states, one attribute:
+   Three choices, one attribute that always names the RESOLVED theme:
 
-     system (default)  no data-theme attribute; the media query below decides
+     system (default)  data-theme follows the OS, live (theme.ts listens to
+                       prefers-color-scheme and rewrites it)
      light             <html data-theme="light">
      dark              <html data-theme="dark">
 
    The COMPLETE palette is defined once, on a bare `:root`, in DARK. Light only
    ever REDEFINES those same names — it never introduces a colour of its own, so
    a token can never be missing in one theme and paint one theme's ink on the
-   other theme's ground. Light appears twice, and the two blocks must stay
-   identical:
-
-     @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) }
-         the OS asked for light and the user has not overridden it
-     :root[data-theme="light"]
-         the user asked for light, whatever the OS says
-
-   The `:not([data-theme="dark"])` guard is what makes an explicit choice beat
-   the OS in BOTH directions: without it, "dark" chosen on a light computer
-   would still get the light block (same specificity, later in the file wins).
+   other theme's ground. Light is written ONCE, under :root[data-theme="light"].
+   There is no `@media (prefers-color-scheme)` block: resolving "system"
+   against the OS is JavaScript's job (public/theme-boot.js before the first
+   paint, src/lib/theme.ts after), so the palette never has to be copied into
+   a second selector and kept in step by hand.
 
    A token written as `var(--other)` on :root is an ALIAS: it resolves against
    whichever theme is active, so light does not (and should not) restate it.
 
-   src/lib/theme.ts owns the attribute; index.html sets it before first paint.
+   src/lib/theme.ts owns the attribute; public/theme-boot.js sets it before
+   the first paint.
    ========================================================================== */
 
 :root {
@@ -400,7 +396,8 @@
 }
 
 /* ============================================================================
-   LIGHT — the OS asked for it and the user has not overridden it.
+   LIGHT — <html data-theme="light">, which theme.ts writes whether the user
+   picked Light or picked System on a light computer.
 
    Designed, not inverted. The ground is a cool grey (#eef1f6) and panels are
    WHITE, so a card still reads as raised; a straight inversion would have put
@@ -413,118 +410,6 @@
    follow the names they point at. The two dialog aliases ARE restated,
    because light swaps which rung is the body and which the footer (white
    body over a grey button row, where dark puts the lighter step on top).
-   ========================================================================== */
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-
-    --bg: #eef1f6;
-    --panel: #ffffff;
-    --panel-2: #f5f7fa;
-    --panel-3: #e9ecf3;
-
-    --surface-chrome: #f5f7fa;
-    --surface-well: #e4e8ef;
-    --surface-well-alt: #eaedf3;
-    --stroke-divider: rgba(15, 23, 42, 0.18);
-
-    --card: rgba(255, 255, 255, 0.7);
-    --card-hover: rgba(249, 249, 249, 0.5);
-    --card-pressed: rgba(249, 249, 249, 0.3);
-    --stroke-card: rgba(0, 0, 0, 0.0578);
-    --stroke-surface: rgba(0, 0, 0, 0.0578);
-    --stroke-control: rgba(0, 0, 0, 0.0578);
-    --stroke-control-bottom: rgba(0, 0, 0, 0.1622);
-    --stroke-strong: rgba(0, 0, 0, 0.4458);
-    --fill-control: rgba(255, 255, 255, 0.7);
-    --fill-control-hover: rgba(249, 249, 249, 0.5);
-    --fill-control-pressed: rgba(249, 249, 249, 0.3);
-    --fill-control-disabled: rgba(249, 249, 249, 0.3);
-    --fill-control-alt: rgba(0, 0, 0, 0.0241);
-    --fill-input-focus: #ffffff;
-    --fill-subtle-hover: rgba(0, 0, 0, 0.0373);
-    --fill-subtle-pressed: rgba(0, 0, 0, 0.0241);
-    --thumb-bg: #ffffff;
-    --acrylic: rgba(252, 252, 252, 0.85);
-    --dialog-bg: var(--panel);
-    --dialog-footer-bg: var(--panel-2);
-    --tooltip-bg: #f9f9f9;
-    --tooltip-stroke: rgba(0, 0, 0, 0.0578);
-
-    --line: rgba(15, 23, 42, 0.1);
-    --line-solid: #dde1ea;
-
-    --wash-1: rgba(15, 23, 42, 0.035);
-    --wash-2: rgba(15, 23, 42, 0.055);
-    --grid-line: rgba(15, 23, 42, 0.16);
-
-    --scrim: rgba(0, 0, 0, 0.3);       /* lighter than dark's: a white dialog needs less */
-
-    --text-primary: #101420;           /* 18.4:1 on --panel */
-    --text-secondary: #333c4e;         /* 11.1:1 */
-    --text-muted: #4a5365;             /*  7.7:1 */
-    --text-faint: #5a6377;             /*  6.0:1 on --panel, 5.1:1 on --panel-3 */
-    --text-disabled: rgba(0, 0, 0, 0.361);
-
-    --accent: #2d5bd7;
-    --accent-bright: #1e4fd0;          /* 6.8:1 — the readable accent */
-    --accent-fill: #2d5bd7;            /* 5.9:1 under white */
-    --accent-dark: #1e40af;
-    --accent-soft: rgba(45, 91, 215, 0.1);
-    --accent-soft-strong: rgba(45, 91, 215, 0.16);
-    --accent-on-soft: #1e40af;
-    --accent-line: rgba(45, 91, 215, 0.3);
-    --accent-line-strong: rgba(30, 79, 208, 0.6);
-    --accent-disabled: rgba(0, 0, 0, 0.2169);
-
-    --on-accent-disabled: #ffffff;
-
-    --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 */
-    --button-primary-hover: #2450c4;   /* 7.0:1 — darker in light, so not the --accent-fill alias */
-    --button-primary-active: #1e40af;  /* 8.7:1 */
-    --button-primary-stroke: rgba(255, 255, 255, 0.08);
-    --button-primary-stroke-bottom: rgba(0, 0, 0, 0.4);
-
-    --button-fill-bg: #e2e6ee;         /* --text-primary on it is 14.7:1 */
-    --button-fill-hover: #d6dbe6;
-
-    --track: #dfe3ec;
-    --progress-fill: #4a5365;          /* 6.0:1 on --track */
-
-    --success: #0f7a45;                /* 5.4:1 */
-    --success-soft: rgba(15, 122, 69, 0.08);
-
-    --warning: #8a5a09;                /* 5.9:1 */
-    --warning-soft: rgba(138, 90, 9, 0.08);
-
-    --danger: #c02c3a;                 /* 5.7:1 */
-    --danger-line: rgba(192, 44, 58, 0.3);
-    --danger-line-strong: rgba(192, 44, 58, 0.55);
-    --danger-soft: #fdf1f2;
-    --danger-soft-strong: #fbe4e6;
-
-    --audio: #10706a;                  /* 5.9:1 on --panel */
-
-    --clip-video: #4a68c8;             /* the kind colours: unchanged */
-    --clip-generated: #7d58c9;
-    --clip-image: #3f8a5c;
-    --clip-audio: #2f7d77;
-    --clip-caption: #9c6a1c;
-    --snap: #a27800;
-
-    --shadow: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
-    --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.14);
-    --shadow-tooltip: 0 4px 8px rgba(0, 0, 0, 0.14);
-
-    --focus-outer: rgba(0, 0, 0, 0.8956);
-    --focus-inner: rgba(255, 255, 255, 0.7);
-  }
-}
-
-/* ============================================================================
-   LIGHT — the user chose it explicitly, whatever the OS says.
-   Must stay identical to the block above apart from the selector.
    ========================================================================== */
 
 :root[data-theme="light"] {
@@ -592,7 +477,7 @@
   --on-accent-disabled: #ffffff;
 
   --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 */
-  --button-primary-hover: #2450c4;   /* 7.0:1 */
+  --button-primary-hover: #2450c4;   /* 7.0:1 — darker in light, so not the --accent-fill alias */
   --button-primary-active: #1e40af;  /* 8.7:1 */
   --button-primary-stroke: rgba(255, 255, 255, 0.08);
   --button-primary-stroke-bottom: rgba(0, 0, 0, 0.4);

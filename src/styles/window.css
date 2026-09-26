@@ -9,9 +9,8 @@
    --panel on top. Without the attribute — Windows 10, a browser — nothing in
    this block applies and the solid --bg from tokens.css stays.
 
-   `:root:root` outranks the three --bg declarations in tokens.css (bare
-   :root, the media-guarded light block and [data-theme="light"]) by one
-   class, so this holds in both themes whatever order the sheets load in.
+   `:root:root` outranks the two --bg declarations in tokens.css (bare
+   :root and [data-theme="light"]) by one class, so this holds in both themes whatever order the sheets load in.
    The inline ground theme.ts writes is `transparent` under Mica too.
 
    Anything that painted --bg as an OPAQUE plate — a cut-out, a mask edge, a

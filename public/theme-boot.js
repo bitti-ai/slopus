@@ -10,7 +10,9 @@
  * which is after the first paint. A plain <script src> in <head> blocks the
  * parser, so this runs before anything is on screen.
  *
- * It writes the same attribute and ground colour that src/lib/theme.ts writes,
+ * It writes the same attribute and ground colour that src/lib/theme.ts writes
+ * (data-theme is always the RESOLVED theme, "system" included: tokens.css
+ * only has an attribute-keyed light palette),
  * and deliberately duplicates the storage key and the two --bg values, because
  * nothing here may depend on the bundle having loaded. theme.test.ts pins both
  * copies against tokens.css so they cannot drift apart in silence.
@@ -38,9 +40,6 @@
   var root = document.documentElement;
   var mica = window.__SLOPUS_BACKDROP__ === "mica";
   if (mica) root.setAttribute("data-backdrop", "mica");
-  if (choice === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", choice);
-
   var resolved = choice;
   if (choice === "system") {
     resolved =
@@ -48,5 +47,6 @@
         ? "light"
         : "dark";
   }
+  root.setAttribute("data-theme", resolved);
   root.style.backgroundColor = mica ? "transparent" : GROUND[resolved];
 })();

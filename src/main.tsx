@@ -13,10 +13,10 @@ import "./styles/index.css";
 applyTheme(loadTheme());
 installGlobalDiagnostics();
 
-/* Only "system" needs watching, and only for the inline ground colour —
-   tokens.css repaints the app itself through
-   `@media (prefers-color-scheme)` with no JavaScript involved. The listener is
-   never torn down because it lives exactly as long as the window does. */
+/* Only "system" needs watching: data-theme names the resolved theme, so an
+   OS flip has to rewrite it (and the inline ground colour) for tokens.css to
+   repaint. The listener is never torn down because it lives exactly as long
+   as the window does. */
 watchSystemTheme(() => {
   if (loadTheme() === "system") applyTheme("system");
 });
