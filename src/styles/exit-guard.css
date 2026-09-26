@@ -1,9 +1,0 @@
-/* ============================================================================
-   exit-guard.css — retired.
-
-   The exit guard is a native message box now (src-tauri/src/window.rs), and
-   the CUDA and reference-icon questions that borrowed these rules are
-   ContentDialogs (src/components/ui). Nothing renders an .exit-guard any more.
-   The file stays only because index.css still imports it; drop the import
-   and delete the file together.
-   ========================================================================== */
