@@ -116,9 +116,9 @@ describe("project library controls", () => {
   it("puts the brand in the title bar, focuses search with Ctrl+F and switches between grid and list", async () => {
     const { container } = render(<App />);
     await screen.findByText("Northern Light — Brand Film");
-    // 16px icon, "Slopus" and "Preview" as the window caption; no web header.
+    // 16px icon, "Slopus" and the version and channel as the window caption; no web header.
     expect(container.querySelector(".titlebar__title")?.textContent).toBe("Slopus");
-    expect(container.querySelector(".titlebar__secondary")?.textContent).toBe("Preview");
+    expect(container.querySelector(".titlebar__secondary")?.textContent).toBe(`v${__APP_VERSION__} - Alpha`);
     expect(container.querySelector(".titlebar__icon img")?.getAttribute("src")).toContain("marketing/icon.png");
     expect(screen.getByRole("heading", { level: 1, name: "Projects" })).toBeInTheDocument();
     expect(container.querySelector("kbd")).toBeNull();

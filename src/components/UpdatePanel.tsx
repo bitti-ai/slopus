@@ -1,6 +1,7 @@
 import { Download32, Refresh32, Reset32, Success32 } from "./ui/icons";
 import { useSyncExternalStore, type ReactNode } from "react";
 import type { AppUpdater } from "../lib/updater";
+import { APP_CHANNEL, APP_VERSION } from "../lib/version";
 import { Expander, InfoBar, ProgressBar, ProgressRing } from "./ui";
 
 type UpdaterState = ReturnType<AppUpdater["getSnapshot"]>;
@@ -72,6 +73,7 @@ export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blo
         <span className="update-card__glyph">{glyph}</span>
         <div className="update-card__text" aria-live="polite">
           <h2 className="update-card__title">{statusTitle(state)}</h2>
+          <span className="update-card__caption">Current version {APP_VERSION} ({APP_CHANNEL})</span>
           <span className="update-card__caption">
             {state.stage === "disabled"
               ? "Installed release builds update themselves. To update a portable copy, download the new version."

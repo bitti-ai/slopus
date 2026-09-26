@@ -16,6 +16,7 @@ import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/U
 import { CommandBar, CommandBarButton, EmptyState, InfoBadge, InfoBar, TextField } from "./components/ui";
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
+import { APP_CHANNEL, APP_VERSION } from "./lib/version";
 import { useRunningExportName } from "./lib/exportJob";
 import { reportGenerationJobs, revealInExplorer, type GuardJob } from "./lib/nativeShell";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
@@ -388,7 +389,7 @@ function App() {
   return (
     <div className="app-shell">
       <div className="app-screen" hidden={settingsOpen}>
-        <TitleBar title="Slopus" secondary="Preview" actions={shellActions}>
+        <TitleBar title="Slopus" secondary={`v${APP_VERSION} - ${APP_CHANNEL}`} actions={shellActions}>
           {/* Search sits in the middle of the title bar, as in Windows Settings. */}
           <TextField
             className="titlebar-search"
