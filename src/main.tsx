@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { FluentRuntime } from "./components/ui";
 import { installGlobalDiagnostics } from "./lib/diagnostics";
 import { followSystemAccent, installBrowserGuards } from "./lib/nativeShell";
 import { applyTheme, loadTheme, watchSystemTheme } from "./lib/theme";
@@ -35,5 +36,7 @@ installBrowserGuards();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
+    {/* Delegated [data-tooltip] tooltips and the filled track on every slider. */}
+    <FluentRuntime />
   </React.StrictMode>,
 );
