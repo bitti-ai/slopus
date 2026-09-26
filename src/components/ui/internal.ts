@@ -82,11 +82,9 @@ export function trackModality() {
   const pointer = () => { lastKeyboard = false; };
   document.addEventListener("pointerdown", pointer, true);
   document.addEventListener("mousedown", pointer, true);
-  document.addEventListener("contextmenu", (event) => {
-    // A contextmenu event from the keyboard arrives with no pointer position.
-    if ((event as MouseEvent).button === 0 && (event as MouseEvent).clientX === 0 && (event as MouseEvent).clientY === 0 && lastKeyboard) return;
-    lastKeyboard = false;
-  }, true);
+  // No contextmenu listener: a right-click always presses the mouse first,
+  // while Shift+F10 / the Menu key leave the keyboard flag set, so a menu
+  // opened from a contextmenu event already knows which one it was.
 }
 trackModality();
 
