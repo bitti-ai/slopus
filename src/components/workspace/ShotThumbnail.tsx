@@ -37,6 +37,9 @@ const PLAY_EVENT = "slopus:play-generated-shot";
 
 /** Drawn frames, keyed by file and time. */
 const POSTERS = new Map<string, string>();
+/* Each poster's width / height, so a tile that remounts takes the frame's
+   shape at once instead of starting 16:9 and jumping. */
+const POSTER_SHAPES = new Map<string, string>();
 /** Files that opened and would not give up a picture, so the next card does not
  *  read the whole thing again for the same silence. */
 const UNREADABLE = new Set<string>();
@@ -284,6 +287,8 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   const [playing, setPlaying] = useState(false);
   const [playFailed, setPlayFailed] = useState(false);
   const [estimateNow, setEstimateNow] = useState(() => Date.now());
+  /* Bumped when a poster's shape is first measured, to re-render with it. */
+  const [, setShapeSeen] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const requestRef = useRef(0);
   const cutTimerRef = useRef<number | null>(null);
@@ -393,10 +398,14 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   };
 
   if (result.poster) {
+    const poster = result.poster;
+    const shape = POSTER_SHAPES.get(poster);
     const action = playFailed ? "Playback unavailable" : loadingPlayback ? "Opening shot" : playing ? "Pause" : "Play";
     return <button
       type="button"
       className="shot-thumb shot-thumb--poster shot-thumb--playable"
+      /* The tile takes the rendered frame's own shape, not a fixed 16:9. */
+      style={shape ? { aspectRatio: shape } : undefined}
       aria-label={`${action} shot ${shotNumber} of ${job.title}`}
       data-tooltip={`${action} this shot only (${seconds.toFixed(1)}s–${endSeconds.toFixed(1)}s)`}
       onClick={(event) => void togglePlayback(event)}
@@ -413,7 +422,12 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
           onTimeUpdate={stopAtCut}
           onEnded={stopAtCut}
         />
-        : <img src={result.poster} alt="" loading="lazy" />}
+        : <img src={poster} alt="" loading="lazy" onLoad={(event) => {
+          const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+          if (!width || !height || POSTER_SHAPES.get(poster) === `${width} / ${height}`) return;
+          POSTER_SHAPES.set(poster, `${width} / ${height}`);
+          setShapeSeen((count) => count + 1);
+        }} />}
       <span className={`shot-thumb__play ${loadingPlayback ? "shot-thumb__play--loading" : ""}`} aria-hidden="true">
         {loadingPlayback ? <Spinner20 className="spin" /> : playing ? <Pause20 /> : playFailed ? <Warning20 /> : <Play20Filled />}
       </span>

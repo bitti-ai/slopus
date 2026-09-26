@@ -354,14 +354,14 @@
    of the shot's words. 4px corners and a hairline edge like any Fluent grid
    item; rest, hover and the open shot are the shared selectable-card rule
    (.ui-selectable--card: an accent fill and ring). The grid auto-fills
-   fixed 280px columns: resizing the inspector wraps tiles onto more rows
+   fixed 360px columns: resizing the inspector wraps tiles onto more rows
    rather than growing or shrinking them.
    ========================================================================== */
 
 .shot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(0, var(--shot-tile-width)));
-  --shot-tile-width: 280px;
+  --shot-tile-width: 360px;
   gap: var(--space-2);
   margin: 0;
   padding: var(--space-2) var(--space-3) var(--space-3);
@@ -523,7 +523,9 @@
 
 /* --- The frame a tile shows ---------------------------------------------------
 
-   A real frame of the shot once the scene has been rendered, and nothing
+   A real frame of the shot once the scene has been rendered, in that frame's
+   own shape (ShotThumbnail sets aspect-ratio from the poster; 16:9 until
+   then), and nothing
    invented before that: the placeholder says which state the scene is in
    instead. Same rule as the media thumb and the reference card.
    ========================================================================== */
