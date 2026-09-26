@@ -13,6 +13,10 @@ export interface ProjectSessionState {
   saveError: string | null;
   canUndo: boolean;
   canRedo: boolean;
+  /** When the file on disk last matched a save: this session's last successful
+   *  save, or the document's own `updatedAt` (stamped when it was written) for
+   *  a project that has not been saved since it was opened. Null if unknown. */
+  savedAt: number | null;
 }
 
 /* ── Undo ──────────────────────────────────────────────────────────────────
@@ -65,7 +69,8 @@ export class ProjectSession {
   constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
     this.savedConfig = record.config;
     const config = saveImageDraft(record.config);
-    this.state = { config, dirty: config !== record.config, saving: false, saveError: null, canUndo: false, canRedo: false };
+    const stamped = Date.parse(record.config.updatedAt);
+    this.state = { config, dirty: config !== record.config, saving: false, saveError: null, canUndo: false, canRedo: false, savedAt: Number.isFinite(stamped) ? stamped : null };
     this.history.subscribe(() => {
       if (this.history.canUndo !== this.state.canUndo || this.history.canRedo !== this.state.canRedo) {
         this.publish({ canUndo: this.history.canUndo, canRedo: this.history.canRedo });
@@ -147,7 +152,7 @@ export class ProjectSession {
     this.writes = write.then(() => undefined, () => undefined);
     return write.then(() => {
       this.savedConfig = record.config;
-      if (this.revision === revision) this.publish({ dirty: false });
+      this.publish(this.revision === revision ? { dirty: false, savedAt: Date.now() } : { savedAt: Date.now() });
     }).catch((reason) => {
       const detail = describeDiagnosticError(reason);
       this.publish({ saveError: detail });

@@ -9,6 +9,7 @@ import { clipEndMs } from "../../lib/timeline";
 import { PreviewSources } from "../../lib/exportPipeline";
 import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
 import { PreviewMedia } from "../../lib/previewPresentation";
+import { PLAYBACK_SAMPLE_MS, previewEngine } from "../../lib/previewEngine";
 
 /* The monitor owns a continuous timeline clock. Each visible or upcoming clip
  * owns a persistent media element: loading, decoding the first frame and seeking
@@ -213,6 +214,19 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
   }, [playing, rate, contentEndMs, report]);
+  /* The status bar's playback rate: counted by the picture on every tick,
+     published once a second, never through this component's state. */
+  useEffect(() => {
+    if (!playing) return;
+    previewEngine.start();
+    let last = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      previewEngine.sample(now - last);
+      last = now;
+    }, PLAYBACK_SAMPLE_MS);
+    return () => { window.clearInterval(timer); previewEngine.stop(); };
+  }, [playing]);
   /* Media plays forward only. In reverse the elements stay paused and follow
      the clock by seeking, which ProgramLayer does for any paused layer. */
   const mediaPlaying = playing && rate > 0;

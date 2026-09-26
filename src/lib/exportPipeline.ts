@@ -38,6 +38,7 @@ import type { ProjectAsset, ProjectConfig } from "./project";
 import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
 import { hasVideoEffects } from "./effectSettings";
 import { createVideoEffectsProcessor } from "./videoEffectsGpu";
+import { previewEngine } from "./previewEngine";
 
 /* ---------------------------------------------------------------------------
    What this machine can do
@@ -211,7 +212,16 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 /** Either a working GPU compositor, or the reason there is none. Never a bare
  *  null: "WebGPU was unavailable" with no cause is what the last round shipped,
  *  and it is unactionable. */
-type GpuAttempt = { compositor: Compositor; reason: null } | { compositor: null; reason: string };
+type GpuAttempt = { compositor: Compositor; reason: null; adapterName: string } | { compositor: null; reason: string };
+
+/** What an adapter calls itself, from `adapter.info`. Often partial (a vendor
+ *  and an architecture) and sometimes empty, when the webview withholds it. */
+export function adapterName(info: GPUAdapterInfo | undefined): string {
+  return [info?.description, info?.device, info?.vendor, info?.architecture]
+    .filter((part) => Boolean(part))
+    .join(" ")
+    .trim();
+}
 
 const NO_GPU_API = "This webview exposes no navigator.gpu at all.";
 const NO_ADAPTER =
@@ -349,14 +359,21 @@ async function createWebGpuCompositor(width: number, height: number, background:
       device.destroy();
     },
   };
-  return { compositor, reason: null };
+  return { compositor, reason: null, adapterName: adapterName(adapter.info) };
 }
 
 /** The monitor presents through one canvas for its entire lifetime. Sharing
  * the export compositor keeps VideoFrames in GPU memory and applies the same
  * transforms, transitions and effects without swapping browser video surfaces. */
 export async function createPreviewCompositor(canvas: HTMLCanvasElement, width: number, height: number, background: string): Promise<Compositor | null> {
-  return (await createWebGpuCompositor(width, height, background, canvas)).compositor;
+  let attempt: GpuAttempt;
+  try { attempt = await createWebGpuCompositor(width, height, background, canvas); }
+  catch (reason) {
+    previewEngine.setGpu({ kind: "none", reason: `Starting the GPU compositor failed: ${reason instanceof Error ? reason.message : String(reason)}` });
+    throw reason;
+  }
+  previewEngine.setGpu(attempt.compositor ? { kind: "webgpu", name: attempt.adapterName } : { kind: "none", reason: attempt.reason });
+  return attempt.compositor;
 }
 
 function createCanvasCompositor(width: number, height: number, background: string): Compositor {
@@ -420,6 +437,8 @@ export interface CompositorProbe {
   /** Why, in this machine's own terms. For canvas2d that is the reason the GPU
    *  path is out; for webgpu it is what the adapter calls itself. */
   detail: string;
+  /** The adapter's own name (webgpu only; empty when the webview withholds it). */
+  adapterName?: string;
 }
 
 /** Asks the GPU for an adapter, exactly as the export will.
@@ -438,12 +457,8 @@ export async function probeCompositor(): Promise<CompositorProbe> {
     if (!adapter) return { kind: "canvas2d", detail: NO_ADAPTER };
     /* Nothing is kept: this adapter is dropped here and the export requests its
        own. The probe is a question, not a reservation. */
-    const info: GPUAdapterInfo | undefined = adapter.info;
-    const named = [info?.description, info?.device, info?.vendor, info?.architecture]
-      .filter((part) => Boolean(part))
-      .join(" ")
-      .trim();
-    return { kind: "webgpu", detail: named ? `GPU adapter: ${named}.` : "This computer offered a GPU adapter." };
+    const named = adapterName(adapter.info);
+    return { kind: "webgpu", detail: named ? `GPU adapter: ${named}.` : "This computer offered a GPU adapter.", adapterName: named };
   } catch (reason) {
     return {
       kind: "canvas2d",

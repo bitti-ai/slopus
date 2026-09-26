@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPreviewCompositor, type Compositor } from "../../lib/exportPipeline";
 import { presentPreviewFrame, type PreviewMedia } from "../../lib/previewPresentation";
+import { previewEngine } from "../../lib/previewEngine";
 import type { TimelineClip } from "../../lib/project";
 
 /** A persistent presentation surface: media elements may come and go, but a
@@ -17,19 +18,24 @@ export function ProgramPicture({ media, layers, playheadMs, width, height, backg
   const canvas = useRef<HTMLCanvasElement>(null);
   const current = useRef({ layers, playheadMs, onAvailable });
   current.current = { layers, playheadMs, onAvailable };
-  const redraw = useRef<(() => void) | null>(null);
+  const redraw = useRef<((tick?: boolean) => void) | null>(null);
   const [available, setAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!canvas.current) return;
     let live = true;
     let compositor: Compositor | null = null;
-    const draw = () => {
+    /* A playhead tick (not a media event) is what playback is measured by:
+       did the new moment reach the screen, or did the old picture stay? */
+    const draw = (tick = false) => {
       if (!live || !compositor) return;
-      try { presentPreviewFrame(compositor, media, current.current.layers, current.current.playheadMs); }
+      try {
+        const presented = presentPreviewFrame(compositor, media, current.current.layers, current.current.playheadMs);
+        if (tick) previewEngine.tick(presented);
+      }
       catch (reason) { setError(String(reason)); }
     };
-    const unsubscribe = media.subscribe(draw);
+    const unsubscribe = media.subscribe(() => draw());
     redraw.current = draw;
     setError(null);
     void createPreviewCompositor(canvas.current, width, height, background).then((created) => {
@@ -49,7 +55,7 @@ export function ProgramPicture({ media, layers, playheadMs, width, height, backg
       compositor?.dispose();
     };
   }, [media, width, height, background]);
-  useLayoutEffect(() => redraw.current?.(), [layers, playheadMs]);
+  useLayoutEffect(() => redraw.current?.(true), [layers, playheadMs]);
   return <>
     <canvas ref={canvas} className="program-composited-picture" aria-label="Video preview" style={{ visibility: available ? "visible" : "hidden" }} />
     {available && error && <div className="program-note program-note--error" role="alert">{error}</div>}

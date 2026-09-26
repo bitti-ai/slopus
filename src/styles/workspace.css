@@ -137,6 +137,58 @@
   min-height: 0;
 }
 
+/* --- Status bar ------------------------------------------------------------------
+   One StatusBar along the window's foot on every view. The view portals its
+   own facts into the leading slot (display: contents, so they sit in the
+   strip's own gap rhythm); the sequence format and save state trail. Values
+   are the ink, labels the secondary text around them. */
+
+.project-status__view {
+  display: contents;
+}
+
+.project-status b {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.project-status__fact,
+.project-status__format {
+  font-variant-numeric: tabular-nums;
+}
+
+.project-status__fact {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-status__save {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.project-status__save::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.project-status__save--saved {
+  color: var(--success);
+}
+
+.project-status__save--unsaved {
+  color: var(--warning);
+}
+
+.project-status__save--saving::before {
+  opacity: 0.5;
+}
+
 /* --- Narrow windows ---------------------------------------------------------
    The window minimum is 900px (tauri.conf.json). The project name gives up
    width first, then the tab icons go, so the tabs, Save and the caption

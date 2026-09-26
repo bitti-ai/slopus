@@ -8,7 +8,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useShortcut } from "../../lib/commands";
 import { askNative } from "../../lib/nativeShell";
-import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, StatusBar, tooltipProps, usePaneSize } from "../ui";
+import { ProjectStatus } from "./ProjectStatus";
+import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
@@ -572,15 +573,11 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           />}
       </div>
 
-      <StatusBar
-        aria-label="Generator status"
-        className="generator-status"
-        end={runtimeError || (generatorRuntime && generatorRuntime.state !== "ready")
-          ? <span className="generator-status__runtime">{runtimeError ? "Generator unavailable" : runtimeHeadline(generatorRuntime)}</span>
-          : undefined}
-      >
+      <ProjectStatus label="Generator status">
         <span role="status">{boardSummary(active.length, queued.length, jobs.length)}</span>
-      </StatusBar>
+        {(runtimeError || (generatorRuntime && generatorRuntime.state !== "ready"))
+          && <span className="generator-status__runtime">{runtimeError ? "Generator unavailable" : runtimeHeadline(generatorRuntime)}</span>}
+      </ProjectStatus>
     </main>
 
     {selected && <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" aria-controls="generator-inspector" />}

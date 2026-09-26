@@ -14,7 +14,9 @@ import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
 import { PromptComposer } from "./PromptComposer";
 import { TitleBar } from "./TitleBar";
-import { InfoBadge, InfoBar, SelectorBar, Splitter, usePaneSize } from "./ui";
+import { InfoBadge, InfoBar, SelectorBar, Splitter, StatusBar, tooltipProps, usePaneSize } from "./ui";
+import { ProjectStatusSlot } from "./workspace/ProjectStatus";
+import { outputDimensions, videoDurationMs } from "../lib/export";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../lib/persistence";
 
@@ -33,6 +35,24 @@ export function formatDurationTimecode(totalSeconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
   return [hours, minutes, remainder].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+/** A sequence's length as the status bar gives it: "32 s", "2.5 s", "1:05". */
+export function formatSequenceLength(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  if (seconds < 60) return `${Number(seconds.toFixed(seconds < 10 ? 1 : 0))} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/** "Saved 18:42" for today, "Saved 24 Sep" for an older save. */
+export function formatSavedAt(savedAt: number | null, now = Date.now()): string {
+  if (savedAt === null) return "Saved";
+  const when = new Date(savedAt);
+  const today = new Date(now).toDateString() === when.toDateString();
+  return `Saved ${today
+    ? when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : when.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
 }
 
 const AGENT_PANE_KEY = "slopus.workspace.agentPane";
@@ -107,7 +127,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const [localQueue] = useState(() => new WorkQueue((record) => saveRef.current(record)));
   const queue = workQueue ?? localQueue;
   const session = useMemo(() => queue.project(project), [queue, project.folderPath, project.config.id]);
-  const { config, saving, dirty, saveError, canUndo, canRedo } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { config, saving, dirty, saveError, canUndo, canRedo, savedAt } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   const imageProject = config.generationType === "image";
   const imageOutput = config.assets.find((asset) => asset.kind === "image" && asset.id === config.imageScene?.outputAssetId);
@@ -138,6 +158,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const generationCompletionTimes = Object.fromEntries(projectItems.filter((item) => item.completionAt !== null).map((item) => [item.sceneId, item.completionAt as number]));
   const cancellingJobIds = new Set(projectItems.filter((item) => item.cancelling).map((item) => item.sceneId));
   const panelId = useId();
+  /* The status bar's leading side is filled by the view through a portal. */
+  const [statusSlot, setStatusSlot] = useState<HTMLElement | null>(null);
   useEffect(() => workQueue ? undefined : queue.start(), [queue, workQueue]);
   /* Every edit a view reports is an undo step. A view may pass a key to
      coalesce a run of edits (a drag, typing) into one; the default key already
@@ -174,6 +196,10 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     }
     knownSceneIds.current = current;
   }, [config.generationJobs, project.folderPath]);
+
+  const { width: frameWidth, height: frameHeight } = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const lengthMs = useMemo(() => videoDurationMs(config), [config]);
+  const sequenceFormat = `${frameWidth}×${frameHeight} · ${config.settings.frameRate} fps · ${formatSequenceLength(lengthMs)}`;
 
   const views: ShownView[] = imageProject ? ["editor", "references"] : ["timeline", "generator", "references", "export"];
   const running = config.generationJobs.filter(isGenerationOngoing).length;
@@ -264,6 +290,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       {imageExportError && <InfoBar severity="error" title="Couldn’t export image" message={imageExportError} onClose={() => setImageExportError(null)} />}
     </div>}
 
+    <ProjectStatusSlot.Provider value={statusSlot}>
     <div className={`project-body${agentOpen ? " project-body--agent" : ""}`} style={agentPane.style}>
       <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`}>
         {view === "editor" && imageProject && <ImageEditor config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onCancel={(id) => queue.cancel(id)} work={projectItems.filter((item) => item.kind === "image").at(-1)} />}
@@ -294,5 +321,22 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
         />
       </aside>
     </div>
+    </ProjectStatusSlot.Provider>
+
+    {/* One strip along the window's foot on every view: the view's own facts
+        on the leading side, the sequence and whether it is on disk trailing. */}
+    <StatusBar
+      aria-label={`${VIEW_LABELS[view]} status`}
+      className="project-status"
+      end={<>
+        {!imageProject && <span className="project-status__format" {...tooltipProps("Sequence format: frame size, frame rate and length")}>{sequenceFormat}</span>}
+        <span
+          className={`project-status__save project-status__save--${saving ? "saving" : dirty ? "unsaved" : "saved"}`}
+          {...tooltipProps(!saving && !dirty && savedAt !== null ? `Saved ${new Date(savedAt).toLocaleString()}` : undefined)}
+        >{saving ? "Saving…" : dirty ? "Unsaved changes" : formatSavedAt(savedAt)}</span>
+      </>}
+    >
+      <span ref={setStatusSlot} className="project-status__view" />
+    </StatusBar>
   </div>;
 }

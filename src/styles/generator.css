@@ -78,10 +78,6 @@
   background: var(--surface-well);
 }
 
-.generator-status {
-  flex: 0 0 auto;
-}
-
 .generator-status__runtime {
   color: var(--warning);
 }

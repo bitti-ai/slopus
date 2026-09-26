@@ -56,10 +56,6 @@
   background: var(--surface-well);
 }
 
-.references-status {
-  flex: 0 0 auto;
-}
-
 /* --- Icons view ---------------------------------------------------------------
    Auto-filling 120px tiles: a square picture and a 12px name. Rest, hover and
    selection are the shared selectable-card rule (.ui-selectable--card): a

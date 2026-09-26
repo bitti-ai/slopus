@@ -1,4 +1,6 @@
 import { clipEffectCount, ClipEffects } from "./ClipEffects";
+import { ProjectStatus } from "./ProjectStatus";
+import { PreviewEngineStatus } from "./PreviewEngineStatus";
 import {
   AudioLines, ChevronFirst, ChevronLast, Clapperboard, Copy, Ellipsis, Film, Image as ImageIcon, LayoutGrid, List, Lock, LockOpen,
   MousePointerClick, PanelLeft, PanelRight, Pause, Play, Plus, Scan, Scissors, Sparkles, StepBack, StepForward, Trash2, Type, Upload,
@@ -1561,6 +1563,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           <Splitter {...trackPane.splitterProps} className="timeline-track-splitter" aria-label="Resize track headers" />
         </div>
       </section>
+      <ProjectStatus label="Timeline status"><PreviewEngineStatus /></ProjectStatus>
       {menu.element}
     </div>
   );

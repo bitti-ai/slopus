@@ -38,6 +38,7 @@ import {
 import { askNative, messageNative, revealInExplorer } from "../../lib/nativeShell";
 import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
+import { ProjectStatus } from "./ProjectStatus";
 import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
 import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
@@ -541,5 +542,15 @@ export function ExportView({ config, folderPath, onClose }: {
         </div>
       </section>
     </div>
+    {/* The encoder and compositor this export would run on, as this machine
+        answered the probes above. Nothing is shown until they have answered. */}
+    <ProjectStatus label="Export status">
+      {codecProbe?.supported && <span className="project-status__fact" {...tooltipProps("The codec string this computer's WebCodecs encoder accepted")}>
+        Encode <b>{OUTPUT_CODECS.find((codec) => codec.id === settings.codec)?.label ?? settings.codec}</b> · {codecProbe.codecString}
+      </span>}
+      {compositor && <span className="project-status__fact" {...tooltipProps(compositor.detail)}>
+        {compositor.kind === "webgpu" ? <>GPU <b>{compositor.adapterName || "WebGPU"}</b></> : <>Compositor <b>2D canvas</b></>}
+      </span>}
+    </ProjectStatus>
   </div>;
 }

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../fixtures/project-v1-complete.json";
 import { compileMiniMaxH3Prompt, createProjectConfig, parseProjectConfig, sceneShots, UNTITLED_SCENE, type GenerationJob, type ProjectConfig, type ProjectRecord } from "../lib/project";
 import { saveGeneratedScene } from "../lib/generatedVideo";
-import { formatDurationTimecode, isGenerationOngoing } from "./ProjectWorkspace";
+import { formatDurationTimecode, formatSavedAt, formatSequenceLength, isGenerationOngoing } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
@@ -153,6 +153,33 @@ describe("project workspace timecode", () => {
     fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true });
     expect(within(tabs).getByRole("tab", { name: "Generator" })).toHaveAttribute("aria-selected", "true");
     expect(within(pane).getByRole("textbox", { name: "Ask Slop about this generation queue" })).toBeInTheDocument();
+  });
+
+  it("formats the status bar's sequence length and save time", () => {
+    expect(formatSequenceLength(32_000)).toBe("32 s");
+    expect(formatSequenceLength(2_500)).toBe("2.5 s");
+    expect(formatSequenceLength(65_000)).toBe("1:05");
+    expect(formatSavedAt(null)).toBe("Saved");
+    const now = new Date(2026, 8, 26, 18, 42).getTime();
+    expect(formatSavedAt(now, now)).toMatch(/^Saved .*42/);
+    expect(formatSavedAt(new Date(2026, 8, 24, 9, 0).getTime(), now)).toMatch(/^Saved .*24/);
+  });
+
+  it("keeps one status bar on every view: the view's facts leading, format and save state trailing", async () => {
+    const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
+    render(createElement(ProjectWorkspace, { project: { folderPath: "C:\Ceramic Lamp", config }, initialView: "references", onBack: () => undefined, onSave: async () => undefined }));
+    const bar = screen.getByRole("region", { name: "References status" });
+    expect(bar).toHaveTextContent("0 references");
+    expect(bar).toHaveTextContent(`1920×1080 · ${config.settings.frameRate} fps · 0 s`);
+    expect(bar).toHaveTextContent(/Saved/);
+
+    const tabs = screen.getByRole("tablist", { name: "Project views" });
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Generator" }));
+    const generatorBar = screen.getByRole("region", { name: "Generator status" });
+    expect(generatorBar).toBe(bar);
+    expect(within(generatorBar).getByRole("status")).toHaveTextContent(/scene/);
+    expect(generatorBar).not.toHaveTextContent("references");
+    expect(document.querySelectorAll(".ui-statusbar")).toHaveLength(1);
   });
 
   it("surfaces native save failures in the workspace, inline under the title bar", async () => {

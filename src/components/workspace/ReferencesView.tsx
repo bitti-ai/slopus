@@ -27,13 +27,14 @@ import { ReferenceIconGenerationDialog } from "../ReferenceIconGenerationDialog"
 import { builtinIconRevision, refreshBuiltinIcons, subscribeBuiltinIcons } from "../../lib/builtinReferenceIcons";
 import { builtinIconVisitAction, saveBuiltinIconChoice } from "../../lib/referenceIconSettings";
 import { ReferenceVideo } from "./ReferenceVideo";
+import { ProjectStatus } from "./ProjectStatus";
 import { MediaThumbnail } from "./MediaThumbnail";
 import { inspectReferenceVideo } from "../../lib/referenceVideo";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { loadDebugOptionsEnabled, subscribeDebugOptions } from "../../lib/settings";
 import {
-  CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, ContentDialog, EmptyState, InfoBar, ItemHeader, PropRow, PropSection, SelectorBar, Splitter, StatusBar,
+  CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, ContentDialog, EmptyState, InfoBar, ItemHeader, PropRow, PropSection, SelectorBar, Splitter,
   tooltipProps, useContextMenu, usePaneSize, type MenuEntry,
 } from "../ui";
 import { isMenuKey } from "./SceneBoard";
@@ -485,10 +486,10 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               </table>
             </div>}
       </section>
-      <StatusBar aria-label="References status" className="references-status">
+      <ProjectStatus label="References status">
         <span>{config.references.length === 1 ? "1 reference" : `${config.references.length} references`}</span>
         {selection.length > 1 && <span>{selection.length} selected</span>}
-      </StatusBar>
+      </ProjectStatus>
       {menu.element}
     </main>
 
