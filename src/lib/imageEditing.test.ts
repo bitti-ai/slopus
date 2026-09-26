@@ -29,6 +29,7 @@ it("uses hierarchy order, skips empty groups, and converts boxes to original pix
   expect(edits[0].prompt).toContain("<Picture 1> ([Shot 1] edited keyframe): partially_preserved");
   expect(edits[0].prompt).toContain("[Shot 1] The edited keyframe corresponds to <Picture 1>");
   expect(edits[0].prompt).not.toMatch(/<Subject|video editing|A still photograph/);
+  for (const edit of edits) expect(edit.prompt).not.toMatch(/\b(box|mask\w*|rectangle|region|boundary|border|pixels?)\b/i);
   scene.nodes[3].box = null;
   expect(() => compileImageEdits(config)).toThrow("placement box");
 });
@@ -43,6 +44,7 @@ it("reserves Picture 1 for the source and counts it toward H3's nine-picture lim
   expect(prompt).toContain("<Subject 1> is Reference 0, providing appearance from <Picture 2>");
   expect(prompt).toContain("<Subject 8> is Reference 7, providing appearance from <Picture 9>");
   expect(prompt).toContain("[keyframe completion + reference generation]");
+  expect(prompt).not.toMatch(/\b(box|mask\w*|rectangle|region|boundary|border|pixels?)\b/i);
   config.imageScene.referenceIds.push("ref-8");
   expect(() => compileImageEdits(config)).toThrow("at most nine reference images");
 });

@@ -18,7 +18,7 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
     const y = Math.min(source.height - 1, Math.floor(node.box.y * source.height / 1000));
     const right = Math.min(source.width, Math.ceil((node.box.x + node.box.width) * source.width / 1000));
     const bottom = Math.min(source.height, Math.ceil((node.box.y + node.box.height) * source.height / 1000));
-    const description = ["The edited keyframe corresponds to <Picture 1>, with the following change confined to the masked rectangle. Preserve the surrounding composition and any previously completed edits.", node.description,
+    const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : "", node.colors.length ? `Use these colors: ${node.colors.join(", ")}.` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: scene.referenceIds };
     const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: editScene });
