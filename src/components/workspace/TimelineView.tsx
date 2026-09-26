@@ -1173,7 +1173,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 onClick={() => void importMedia()}
                 disabled={importing || !isTauri()}
                 {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
-              ><Import16 aria-hidden="true" /> Import</button>
+              ><Import16 aria-hidden="true" /><span className="sr-only">Import</span></button>
               {panelTab === "media" && <div className="scene-panel__layout" role="group" aria-label="Media layout">
                 <button
                   type="button"
