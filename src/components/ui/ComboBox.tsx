@@ -33,7 +33,7 @@
        parseText={(text) => parsePercent(text)} options={presets} onChange={zoomTo} />
 */
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown12 } from "./icons";
 import {
   Children, Fragment, isValidElement, useId, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type KeyboardEvent, type ReactElement, type ReactNode,
@@ -298,7 +298,7 @@ function SelectComboBox<V extends ComboValue = string>(props: ComboBoxProps<V>) 
       >
         {selected?.icon && <span className="ui-combo__icon" aria-hidden="true">{selected.icon}</span>}
         <span className={cx("ui-combo__value", !selected && "ui-combo__value--placeholder")}>{selected ? selected.label : placeholder ?? " "}</span>
-        <ChevronDown className="ui-combo__chevron" size={12} aria-hidden="true" />
+        <ChevronDown12 className="ui-combo__chevron" aria-hidden="true" />
       </button>
       {name !== undefined && <input type="hidden" name={name} value={value === null || value === undefined ? "" : String(value)} />}
       {open && createPortal(
@@ -498,7 +498,7 @@ function EditableComboBox<V extends ComboValue = string>(props: ComboBoxProps<V>
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => { input.current?.focus(); if (open) close(); else openList(); }}
         >
-          <ChevronDown className="ui-combo__chevron" size={12} aria-hidden="true" />
+          <ChevronDown12 className="ui-combo__chevron" aria-hidden="true" />
         </button>
       </span>
       {name !== undefined && <input type="hidden" name={name} value={value === null || value === undefined ? "" : String(value)} />}

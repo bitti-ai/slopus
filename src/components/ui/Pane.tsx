@@ -6,12 +6,12 @@
    EmptyState says so and offers the way forward.
 
      <ItemHeader
-       color="var(--clip-generated)" icon={<Sparkles size={16} />}
+       color="var(--clip-generated)" icon={<Sparkle16 />}
        name={<input className="ui-item-header__input" value={name} … aria-label="Clip name" />}
        meta="Generated video · V1 · 6.2 s"
        actions={<button className="icon-button" aria-label="More">…</button>} />
 
-     <EmptyState icon={<Film size={32} />} title="No media yet"
+     <EmptyState icon={<Film32 />} title="No media yet"
        description="Import video, images or audio to use them on the timeline."
        action={<button className="secondary-button" …>Import</button>} />
 */

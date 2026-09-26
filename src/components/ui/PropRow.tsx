@@ -19,7 +19,7 @@
      </PropSection>
 */
 
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { ChevronDown12, Reset12 } from "./icons";
 import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cx } from "./internal";
 
@@ -116,7 +116,7 @@ export function PropRow({ label, htmlFor, children, value, defaultValue, modifie
           data-tooltip={resetLabel ?? "Reset to default"}
           onClick={onReset}
         >
-          <RotateCcw size={12} aria-hidden="true" />
+          <Reset12 aria-hidden="true" />
         </button>
       ) : <span className="ui-prop-row__reset-spacer" aria-hidden="true" />}
     </div>
@@ -165,7 +165,7 @@ export function PropSection({ title, children, open, defaultOpen = true, onOpenC
     <section className={cx("ui-prop-section", isOpen && "ui-prop-section--open", className)}>
       <div className="ui-prop-section__header">
         <button type="button" className="ui-prop-section__toggle" aria-expanded={isOpen} aria-controls={contentId} onClick={toggle}>
-          <ChevronDown size={12} aria-hidden="true" className="ui-prop-section__chevron" />
+          <ChevronDown12 aria-hidden="true" className="ui-prop-section__chevron" />
           <span className="ui-prop-section__title">{title}</span>
           {summary !== undefined && summary !== null && summary !== false && <span className="ui-prop-section__summary">{summary}</span>}
         </button>

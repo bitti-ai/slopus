@@ -17,9 +17,9 @@
 
      const menu = useContextMenu();
      <div onContextMenu={(e) => menu.open(e, [
-       { id: "rename", label: "Rename", icon: <Pencil size={16} />, shortcut: "F2", onSelect: rename },
+       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", onSelect: rename },
        { separator: true },
-       { id: "delete", label: "Delete", icon: <Trash2 size={16} />, shortcut: "Delete", onSelect: remove },
+       { id: "delete", label: "Delete", icon: <Delete16 />, shortcut: "Delete", onSelect: remove },
      ])} />
      {menu.element}
 
@@ -35,7 +35,7 @@
 
      { id: "move", label: "Move to", items: scenes.map((scene) => ({ label: scene.title, onSelect: … })) } */
 
-import { Check, ChevronRight } from "lucide-react";
+import { Check16, ChevronRight16 } from "./icons";
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
   type CSSProperties, type KeyboardEvent, type ReactNode, type SyntheticEvent,
@@ -287,12 +287,12 @@ export function ContextMenu({
           >
             {hasGlyphColumn && (
               <span className="ui-menu__glyph" aria-hidden="true">
-                {checkable ? (entry.checked ? <Check size={16} /> : null) : entry.icon}
+                {checkable ? (entry.checked ? <Check16 /> : null) : entry.icon}
               </span>
             )}
             <span className="ui-menu__label">{entry.label}</span>
             {entry.shortcut && !cascade && <kbd className="ui-menu__shortcut">{formatShortcut(entry.shortcut)}</kbd>}
-            {cascade && <ChevronRight className="ui-menu__chevron" size={16} aria-hidden="true" />}
+            {cascade && <ChevronRight16 className="ui-menu__chevron" aria-hidden="true" />}
           </button>
         );
       })}

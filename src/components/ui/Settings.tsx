@@ -6,19 +6,19 @@
    4px apart inside a SettingsGroup, which can carry a 14px semibold heading.
 
      <SettingsGroup heading="Appearance">
-       <SettingsCard icon={<Palette size={20} />} header="Theme" description="Light, dark or follow Windows">
+       <SettingsCard icon={<Palette20 />} header="Theme" description="Light, dark or follow Windows">
          <ComboBox value={theme} onChange={setTheme} options={themes} />
        </SettingsCard>
        <SettingsCard header="About" description="Version 0.1.1" onClick={openAbout} />         // chevron
        <SettingsCard header="Documentation" href="https://…" />                               // external glyph
-       <SettingsExpander icon={<Cpu size={20} />} header="GPU" description="…" control={<ToggleSwitch …/>}>
+       <SettingsExpander icon={<Gpu20 />} header="GPU" description="…" control={<ToggleSwitch …/>}>
          <SettingsRow header="Device">…</SettingsRow>
          <SettingsRow header="Memory limit">…</SettingsRow>
        </SettingsExpander>
      </SettingsGroup>
 */
 
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronDown16, ChevronRight16, OpenExternal16 } from "./icons";
 import { useId, useState, type ReactNode } from "react";
 import { cx } from "./internal";
 
@@ -72,8 +72,8 @@ export function SettingsCard({ icon, header, description, children, onClick, hre
   const trailing = (children || glyph !== "none") && (
     <span className="ui-settings-card__control">
       {children}
-      {glyph === "chevron" && <ChevronRight size={16} aria-hidden="true" className="ui-settings-card__glyph" />}
-      {glyph === "external" && <ExternalLink size={16} aria-hidden="true" className="ui-settings-card__glyph" />}
+      {glyph === "chevron" && <ChevronRight16 aria-hidden="true" className="ui-settings-card__glyph" />}
+      {glyph === "external" && <OpenExternal16 aria-hidden="true" className="ui-settings-card__glyph" />}
     </span>
   );
   const classes = cx("ui-settings-card", !icon && "ui-settings-card--no-icon", disabled && "ui-settings-card--disabled", className);
@@ -154,7 +154,7 @@ export function SettingsExpander({ icon, header, description, control, children,
         </span>
         <span className="ui-settings-card__control">
           {control && <span className="ui-settings-expander__control">{control}</span>}
-          <ChevronDown size={16} aria-hidden="true" className="ui-settings-expander__chevron" />
+          <ChevronDown16 aria-hidden="true" className="ui-settings-expander__chevron" />
         </span>
       </div>
       <div id={contentId} className="ui-settings-expander__content" role="region" aria-labelledby={headerId} hidden={!isOpen}>

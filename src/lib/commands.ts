@@ -323,7 +323,7 @@ export function useShortcut(
    (a menu item, a command bar button and the key all running the same thing):
 
      const save = useCommand({ id: "save", label: "Save", shortcut: "Ctrl+S", run: onSave });
-     <CommandBarButton {...save.buttonProps} icon={<Save size={16} />} />
+     <CommandBarButton {...save.buttonProps} icon={<Save16 />} />
 
    It is a thin layer over useShortcut and needs no provider. */
 

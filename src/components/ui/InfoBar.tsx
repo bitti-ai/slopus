@@ -9,7 +9,7 @@
      <InfoBar severity="success" title="Saved" message={path} action={<button className="secondary-button">Open folder</button>} />
 */
 
-import { Check, X } from "lucide-react";
+import { Check10Filled, Dismiss10Filled, Dismiss16 } from "./icons";
 import type { ReactNode } from "react";
 import { cx } from "./internal";
 
@@ -36,8 +36,8 @@ export interface InfoBarProps {
 export function SeverityGlyph({ severity }: { severity: InfoBarSeverity }) {
   return (
     <span className={cx("ui-severity-glyph", `ui-severity-glyph--${severity}`)} aria-hidden="true">
-      {severity === "success" ? <Check size={10} strokeWidth={3} />
-        : severity === "error" ? <X size={10} strokeWidth={3} />
+      {severity === "success" ? <Check10Filled />
+        : severity === "error" ? <Dismiss10Filled />
           : <span className="ui-severity-glyph__mark">{severity === "warning" ? "!" : "i"}</span>}
     </span>
   );
@@ -55,7 +55,7 @@ export function InfoBar({ severity = "informational", title, message, children, 
       {action && <div className="ui-infobar__action">{action}</div>}
       {onClose && (
         <button type="button" className="icon-button ui-infobar__close" aria-label={closeLabel} data-tooltip={closeLabel} onClick={onClose}>
-          <X size={16} />
+          <Dismiss16 />
         </button>
       )}
     </div>

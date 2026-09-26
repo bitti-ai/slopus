@@ -52,7 +52,7 @@
      ItemHeader        <ItemHeader color="var(--clip-video)" icon={…} name="Clip" | name={<input className=
                        "ui-item-header__input" …/>} meta="Video · V1 · 6.2 s" actions={…} chip? id? level? />
                        — 48px, heads a pane that shows one selected thing.
-     EmptyState        <EmptyState icon={<Film size={32}/>} title="No media yet" description="…" action={…} />
+     EmptyState        <EmptyState icon={<Film32 />} title="No media yet" description="…" action={…} />
      NavPane/NavItem   <NavPane aria-label footer={…}><NavItem icon label selected badge onClick /></NavPane>
      Flyout            <Flyout open anchor={buttonRef} onClose aria-label>…</Flyout> (light dismiss, acrylic).
      TextField         <TextField value onChange={(v) => …} icon trailing={<button className="ui-textfield__button" …/>} />

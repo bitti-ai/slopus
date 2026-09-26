@@ -5,7 +5,7 @@
    already paints them Fluent); these components add the label layout,
    indeterminate state and the slider's filled track. */
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown16 } from "./icons";
 import {
   createContext, useContext, useEffect, useId, useRef,
   type ChangeEvent, type CSSProperties, type InputHTMLAttributes, type KeyboardEvent, type ReactNode,
@@ -316,7 +316,7 @@ export function Expander({ header, description, icon, children, expanded, defaul
           <span className="ui-expander__title">{header}</span>
           {description && <span className="ui-expander__description">{description}</span>}
         </span>
-        <ChevronDown size={16} aria-hidden="true" className="ui-expander__chevron" />
+        <ChevronDown16 aria-hidden="true" className="ui-expander__chevron" />
       </button>
       <div id={contentId} className="ui-expander__content" hidden={!isOpen}>{children}</div>
     </div>
