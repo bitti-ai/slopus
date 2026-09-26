@@ -184,7 +184,6 @@
   height: 7px;
   border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 8px var(--success-glow);
 }
 
 /* Missing weights belong to the selected generator, so its selector uses the

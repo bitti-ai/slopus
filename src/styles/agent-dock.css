@@ -16,8 +16,7 @@
   height: calc(var(--control-lg) + var(--space-5) + 1px);
   border-top: 1px solid var(--line-solid);
   background: var(--panel);
-  box-shadow: var(--shadow-up);
-  transition: height 180ms ease;
+  transition: height var(--motion-panel) var(--ease-decelerate);
 }
 
 /* The Agent tab owns the workspace below the project top bar. Its height is
@@ -123,17 +122,18 @@
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-2) 0 var(--space-3);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-strong);
   border-radius: var(--radius-lg);
   background: var(--dock-bg);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px var(--hairline-hi);
 }
 
+/* The dock is a text field: focus is the Fluent TextBox underline (a 2px
+   accent bottom edge, drawn as border + 1px inset so nothing shifts), never
+   a halo. */
 .agent-dock:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
+  border-bottom-color: var(--field-focus-line);
+  box-shadow: inset 0 -1px 0 var(--field-focus-line);
 }
 
 /* The full Agent composer has three visual rows: two for the prompt and one
@@ -338,7 +338,6 @@
 /* Provider state is real information — every state gets a truthful colour. */
 .agent-provider--ready i {
   background: var(--success);
-  box-shadow: 0 0 8px var(--success-glow);
 }
 
 .agent-provider--authRequired i,

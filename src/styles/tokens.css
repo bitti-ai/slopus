@@ -4,21 +4,46 @@
    This file is the contract. Every other stylesheet consumes these variables
    and MUST NOT introduce raw px type sizes, raw greys, or off-grid spacing.
 
+   The target is a native Windows 11 app: WinUI 3 / Fluent proportions, type
+   and elevation, not a website. When in doubt, do what the Settings app does.
+
    RULES
-   1. Body copy is 15px (--text-base). Prose never goes below it.
-   2. 12px (--text-2xs) is the ABSOLUTE FLOOR, reserved for mono micro-labels
-      (timecodes, badges, uppercase eyebrows). Nothing in the app is smaller.
+   1. Body copy is 14px (--text-base / --text-sm), Fluent "Body". Captions,
+      secondary labels and metadata are 12px (--text-xs), Fluent "Caption".
+   2. 12px (--text-2xs) is the ABSOLUTE FLOOR. Nothing in the app is smaller.
+      Labels are sentence case at caption size: no uppercase, letter-spaced
+      eyebrows, and no negative tracking on headings (the --tracking-* tokens
+      are all 0 and exist only so old call sites resolve).
    3. Spacing follows an 8px rhythm with 4px half-steps. Use --space-*, never
       arbitrary values.
-   4. Every interactive control is at least 36px (--control-sm) in its smallest
-      interactive dimension. 32px is tolerated ONLY for icon buttons packed into
-      a dense grid that cannot grow.
-   5. Primary actions are at least 40px (--control-md); hero CTAs 48px
-      (--control-lg). Text fields and selects are --field-height (40px).
-   6. Prose uses line-height 1.5 (--leading-normal). Tight UI labels may use
-      --leading-snug (1.35); only display type uses --leading-tight.
-   7. The dimmest text allowed anywhere is --text-faint, which clears 4.5:1 on
-      --panel / --panel-3 IN BOTH THEMES. Never hand-write a grey below it.
+   4. Standard controls are 32px tall (--control-md): buttons, text fields,
+      selects, combo boxes, square icon buttons (--icon-button). Compact
+      controls packed into a dense toolbar or row are 24px (--control-sm).
+      There is no taller "hero" size — --control-lg is also 32px and only
+      survives because layout rows are built from it.
+   5. Corners are 4px on controls (--radius-sm / --radius-md) and 8px on cards,
+      flyouts, menus and dialogs (--radius-lg / --radius-xl). --radius-pill is
+      for badges, toggle switches and dots ONLY — never for a button or field.
+      The accent button is the one committed action on a surface; everything
+      else is a standard (neutral) or subtle (transparent) button.
+   6. Prose uses line-height 20/14 (--leading-normal). Captions use 16/12
+      (--leading-snug); display type uses --leading-tight.
+   7. The dimmest READABLE text allowed anywhere is --text-faint, which clears
+      4.5:1 on --panel / --panel-3 IN BOTH THEMES. --text-disabled is dimmer on
+      purpose and may only ever label a control that is actually disabled.
+   8. Elevation is Fluent's: cards have a 1px stroke and NO shadow; flyouts,
+      menus and tooltips use --shadow-sm; dialogs use --shadow. Hover changes a
+      fill, never a shadow, a scale or a position.
+   9. The cursor is the arrow on every control. `pointer` (the hand) means
+      "hyperlink" on Windows and is reserved for a real a[href].
+  10. Motion is quiet: state changes transition background-color and color
+      only, over --motion-fast. Things that open use --motion-panel with
+      --ease-decelerate. No springs, no bounces, no glows.
+  11. Blur (acrylic) is for menus, flyouts and popovers only (--acrylic +
+      --acrylic-filter). Modal scrims are a flat --scrim.
+  12. Keyboard focus is the Fluent double ring: 2px --focus-outer outside a
+      1px --focus-inner. Text inputs never draw it; they show a 2px accent
+      underline (--field-focus-line) instead.
 
    THEMING
    ----------------------------------------------------------------------------
@@ -43,32 +68,43 @@
    the OS in BOTH directions: without it, "dark" chosen on a light computer
    would still get the light block (same specificity, later in the file wins).
 
+   A token written as `var(--other)` on :root is an ALIAS: it resolves against
+   whichever theme is active, so light does not (and should not) restate it.
+
    src/lib/theme.ts owns the attribute; index.html sets it before first paint.
    ========================================================================== */
 
 :root {
   color-scheme: dark;
 
-  /* --- Font families ------------------------------------------------------ */
-  --font-sans: "Manrope", Inter, system-ui, sans-serif;
-  --font-mono: "DM Mono", ui-monospace, SFMono-Regular, monospace;
+  /* --- Font families ------------------------------------------------------
+     The Windows system faces. Nothing is self-hosted any more: Segoe UI
+     Variable and Cascadia Mono ship with Windows 11, which is the only
+     platform this app targets, and a bundled geometric face was the first
+     thing that made it read as a website. The Text optical size is for UI and
+     body copy; Display is for titles at 20px and above. */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  /* --- Type scale (base body = 15px, floor = 12px) ------------------------ */
-  --text-2xs: 12px;                    /* absolute floor — mono micro-labels only */
-  --text-xs: 13px;                     /* secondary text, captions, dense panel labels */
-  --text-sm: 14px;
-  --text-base: 15px;                   /* body / default */
-  --text-md: 17px;
-  --text-lg: 20px;
-  --text-xl: 24px;
-  --text-2xl: 30px;
-  --text-3xl: clamp(30px, 3vw, 40px);  /* page hero */
+  /* --- Type ramp (Fluent) --------------------------------------------------
+     Caption 12/16 · Body 14/20 · Body large 18/24 · Subtitle 20/28 ·
+     Title 28/36. The t-shirt names predate the ramp and several now collapse
+     onto the same Fluent step; that is deliberate, not a typo. */
+  --text-2xs: 12px;                    /* absolute floor: Caption */
+  --text-xs: 12px;                     /* Caption: secondary text, metadata, labels */
+  --text-sm: 14px;                     /* Body */
+  --text-base: 14px;                   /* Body / default */
+  --text-md: 18px;                     /* Body large: inspector titles */
+  --text-lg: 20px;                     /* Subtitle */
+  --text-xl: 20px;                     /* Subtitle: section and panel headings */
+  --text-2xl: 28px;                    /* Title: page titles */
 
   /* --- Line height -------------------------------------------------------- */
-  --leading-tight: 1.2;
-  --leading-snug: 1.35;
-  --leading-normal: 1.5;
-  --leading-relaxed: 1.6;
+  --leading-tight: 1.2857;             /* 36/28, Title */
+  --leading-snug: 1.3333;              /* 16/12, Caption and tight labels */
+  --leading-normal: 1.4286;            /* 20/14, Body */
+  --leading-relaxed: 1.5;
 
   /* --- Weight ------------------------------------------------------------- */
   --weight-regular: 400;
@@ -76,10 +112,12 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* --- Letter spacing ----------------------------------------------------- */
-  --tracking-tight: -0.02em;
-  --tracking-hero: -0.03em;
-  --tracking-label: 0.08em;
+  /* --- Letter spacing ------------------------------------------------------
+     Segoe UI Variable is spaced for its optical size already. All three are
+     0 and kept only so older rules resolve; do not add new uses. */
+  --tracking-tight: 0;
+  --tracking-hero: 0;
+  --tracking-label: 0;
 
   /* --- Spacing (8px rhythm, 4px half-steps) ------------------------------- */
   --space-1: 4px;
@@ -92,31 +130,51 @@
   --space-8: 48px;
   --space-9: 64px;
 
-  /* --- Radii -------------------------------------------------------------- */
+  /* --- Radii --------------------------------------------------------------
+     4px on controls, 8px on the containers that hold them (ControlCornerRadius
+     and OverlayCornerRadius in WinUI). */
   --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-pill: 999px;
+  --radius-sm: 4px;                    /* buttons, fields, list items, chips */
+  --radius-md: 4px;                    /* buttons, fields (the common spelling) */
+  --radius-lg: 8px;                    /* cards, flyouts, menus */
+  --radius-xl: 8px;                    /* dialogs */
+  --radius-pill: 999px;                /* badges, toggle switches, dots ONLY */
+  --radius-progress: 1.5px;            /* the 3px progress bar and its fill */
 
-  /* --- Control sizing (minimum hit targets — never go under) -------------- */
-  --control-sm: 36px;                  /* dense/secondary controls, minimum hit target */
-  --control-md: 40px;                  /* default control + icon buttons */
-  --control-lg: 48px;                  /* primary actions */
-  --icon-button: 40px;                 /* square icon buttons */
-  --field-height: 40px;                /* text inputs, selects */
+  /* --- Control sizing -----------------------------------------------------
+     Fluent standard density. The hit target of a 24px compact control is
+     still generous for a mouse; this is a desktop app. */
+  --control-sm: 24px;                  /* compact: dense toolbars, row actions */
+  --control-md: 32px;                  /* standard button / combo box */
+  --control-lg: 32px;                  /* no taller variant exists; see rule 4 */
+  --icon-button: 32px;                 /* square subtle icon button */
+  --field-height: 32px;                /* text inputs, selects, search */
+  --progress-height: 3px;              /* ProgressBar track */
+  --check-size: 20px;                  /* checkbox and radio box */
+  --slider-thumb: 20px;                /* range thumb, outer disc */
 
   /* --- Layout ------------------------------------------------------------- */
   --topbar-height: 56px;
   --content-max: 1180px;
 
   /* --- Motion -------------------------------------------------------------
-     Two durations. State changes are fast; things that actually open are not.
-     Motion in an editor belongs to the content — the playhead, a clip being
-     dragged, a render bar filling — not to the furniture. */
-  --motion-fast: 120ms;
-  --motion-panel: 200ms;
+     Fluent timings. Control state (hover, pressed) is a colour change over
+     --motion-fast, linear. Things that open or slide use --motion-normal or
+     --motion-panel with --ease-decelerate. Motion in an editor belongs to the
+     content — the playhead, a clip being dragged, a render bar filling — not
+     to the furniture. */
+  --motion-fast: 83ms;
+  --motion-normal: 167ms;
+  --motion-panel: 250ms;
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-accelerate: cubic-bezier(1, 0, 1, 1);
+  /* The one transition a control is allowed. */
+  --transition-control: background-color var(--motion-fast) linear, color var(--motion-fast) linear;
+
+  /* --- Acrylic -------------------------------------------------------------
+     The only backdrop-filter in the app, and only on menus, flyouts and
+     popovers, always over --acrylic. */
+  --acrylic-filter: blur(30px) saturate(125%);
 
   /* ==========================================================================
      COLOUR — dark (the base palette; light redefines every name below)
@@ -128,6 +186,37 @@
   --panel-2: #12151d;                  /* a surface sitting on a panel */
   --panel-3: #171b24;                  /* chips, menus, skeletons, placeholders */
   --field-bg: #0b0e14;                 /* recessed: text inputs, search field */
+
+  /* --- Fluent layers --------------------------------------------------------
+     The WinUI surface stack, named the way the Fluent spec names it so the
+     next person can look a value up. Opaque surfaces are aliases of the panel
+     steps above; the fills and strokes are translucent overlays in the WinUI
+     proportions (white over dark, black-or-white over light) so they read the
+     same on whatever they sit on. */
+  --layer: var(--panel);               /* a pane laid on the ground (LayerFill) */
+  --layer-alt: var(--panel-2);         /* a second pane on a layer (LayerFillAlt) */
+  --card: rgba(255, 255, 255, 0.0512); /* CardBackgroundFill: settings rows, tiles */
+  --card-hover: rgba(255, 255, 255, 0.0837);   /* a clickable card under the mouse */
+  --card-pressed: rgba(255, 255, 255, 0.0326);
+  --stroke-card: rgba(255, 255, 255, 0.0698);  /* the 1px edge every card has instead of a shadow */
+  --stroke-surface: rgba(255, 255, 255, 0.093); /* flyout, menu and dialog edge */
+  --stroke-control: rgba(255, 255, 255, 0.0698);   /* standard button / field edge */
+  --stroke-control-bottom: rgba(255, 255, 255, 0.035); /* its bottom edge, a shade darker */
+  --stroke-strong: rgba(255, 255, 255, 0.544); /* text-field underline at rest, unchecked box, slider track */
+  --fill-control: rgba(255, 255, 255, 0.0605);         /* standard button / field at rest */
+  --fill-control-hover: rgba(255, 255, 255, 0.0837);
+  --fill-control-pressed: rgba(255, 255, 255, 0.0326);
+  --fill-control-disabled: rgba(255, 255, 255, 0.0419);
+  --fill-control-alt: rgba(0, 0, 0, 0.1);      /* an unchecked checkbox / radio */
+  --fill-input-focus: rgba(30, 30, 30, 0.7);   /* a text field while typing */
+  --fill-subtle-hover: rgba(255, 255, 255, 0.0605);    /* subtle button, list item, menu item */
+  --fill-subtle-pressed: rgba(255, 255, 255, 0.0419);
+  --thumb-bg: #454545;                 /* slider thumb disc, radio's inner dot on accent */
+  --acrylic: rgba(44, 44, 44, 0.96);   /* menus, flyouts, popovers (with --acrylic-filter) */
+  --dialog-bg: #12151d;                /* ContentDialog body */
+  --dialog-footer-bg: #0d1016;         /* its button row, one step darker */
+  --tooltip-bg: #1d212b;
+  --tooltip-stroke: rgba(0, 0, 0, 0.2);
 
   /* --- Lines --------------------------------------------------------------
      --line / --line-strong are translucent so they work over any surface.
@@ -150,25 +239,29 @@
   --hatch-strong: rgba(255, 255, 255, 0.09); /* the "cannot drop here" hatch */
   --grid-line: rgba(255, 255, 255, 0.14);    /* beat grid + empty-stage dots, on --bg */
 
-  /* --- Translucent chrome (always paired with backdrop-filter) ------------ */
-  --glass: rgba(13, 16, 22, 0.92);     /* floating control / overlay panel */
-  --glass-hover: rgba(20, 26, 40, 0.96);
-  --topbar-glass: rgba(8, 10, 15, 0.74);
-  --scrim: rgba(4, 6, 10, 0.72);       /* behind a modal */
+  /* --- Floating chrome -----------------------------------------------------
+     Opaque now. These used to be translucent and paired with a backdrop
+     blur; blur is reserved for menus and flyouts (rule 11), so a floating
+     control is simply a layer. */
+  --glass: var(--panel);               /* floating control / overlay panel */
+  --glass-hover: var(--panel-2);
+  --topbar-glass: var(--bg);           /* the topbar sits on the ground, like a title bar */
+  --scrim: rgba(0, 0, 0, 0.5);         /* behind a modal: flat, never blurred */
 
   /* --- Text (contrast-checked against --panel / --panel-3) ---------------- */
   --text-primary: #eff1f7;             /* 16.9:1 on --panel */
   --text-secondary: #c5cbd7;           /* 11.7:1 */
   --text-muted: #9aa2b1;               /*  7.4:1 — replaces every #86..#9x grey */
-  --text-faint: #838b9a;               /* DIMMEST text allowed — 5.6:1 on --panel */
+  --text-faint: #838b9a;               /* DIMMEST readable text — 5.6:1 on --panel */
+  --text-disabled: rgba(255, 255, 255, 0.362); /* disabled controls only (rule 7) */
 
   /* --- Accent --------------------------------------------------------------
      --accent is 4.2:1 on --panel: BORDERS, dots and fills only, never text.
      --accent-bright is the accent AT READING CONTRAST (6.2:1) and is the one
-     that may carry a label or a focus ring. */
+     that may carry a label. */
   --accent: #3d6df2;
   --accent-bright: #6b8dff;
-  --accent-fill: #3f64d9;              /* a FILLED accent button: white on it is 5.2:1,
+  --accent-fill: #3f64d9;              /* a FILLED accent control: white on it is 5.2:1,
                                           where white on --accent is only 4.5:1 */
   --accent-dark: #173ca6;              /* solid accent chip, always wears --on-accent */
   --accent-soft: rgba(60, 105, 239, 0.15);
@@ -176,14 +269,15 @@
   --accent-on-soft: #c7d2ff;           /* label sitting on --accent-soft */
   --accent-line: rgba(107, 141, 255, 0.28);
   --accent-line-strong: rgba(103, 138, 245, 0.55);
-  --accent-ring: rgba(63, 94, 198, 0.1);   /* 3px halo on a focused composite */
-  --eyebrow: #8fa0d8;                  /* uppercase accent-tinted section label */
+  --accent-disabled: rgba(255, 255, 255, 0.158); /* a checked box / accent button, disabled */
+  --eyebrow: #8fa0d8;                  /* accent-tinted section label (sentence case) */
 
   /* --- On-accent -----------------------------------------------------------
      The primary button and the send button stay blue in BOTH themes, so what
      sits on them is white in both. Deliberately theme-independent. */
   --on-accent: #ffffff;
   --on-accent-dim: rgba(255, 255, 255, 0.35);
+  --on-accent-disabled: rgba(255, 255, 255, 0.53);
 
   /* --- The export stage -----------------------------------------------------
      The stage behind the picture stays BLACK in both themes on purpose: a
@@ -197,31 +291,30 @@
   --stage-alert-ink: #f19aa1;          /* 9.3:1 on --stage-alert-bg over the stage */
   --stage-alert-line: rgba(236, 125, 134, 0.45);
 
-  /* --- Primary button -----------------------------------------------------
-     One flat fill. No gradient, no border, no coloured shadow, no inner sheen:
-     the five effects that used to stack here were compensating for a topbar
-     with four other blue objects in it, which step 4 removes. */
+  /* --- Accent button (Fluent AccentButtonStyle) ----------------------------
+     One flat fill with the faint Fluent elevation edge. No gradient, no
+     coloured shadow. */
   --button-primary-bg: #3557c7;        /* white on it is 6.3:1 */
   --button-primary-hover: #3f64d9;     /* 5.2:1 — lighter, as dark-theme hover should be */
   --button-primary-active: #2c49ac;    /* 7.9:1 */
-  --button-primary-off-bg: var(--wash-2);   /* disabled is a state, not a transparency */
-  --button-primary-off-ink: var(--text-faint);  /* 5.1:1 over the wash on --panel */
+  --button-primary-off-bg: var(--accent-disabled);
+  --button-primary-off-ink: var(--on-accent-disabled);
+  --button-primary-stroke: rgba(255, 255, 255, 0.08);
+  --button-primary-stroke-bottom: rgba(0, 0, 0, 0.14);
   /* The dock's send button keeps a visible edge of its own. */
   --dock-send-border: #5578ed;
 
   /* --- Segmented control ---------------------------------------------------
      The selected view tab is a chip raised off the track, not a blue plate.
-     Selection is elevation here, which frees the accent for the one committed
-     action on the screen. --segment-active-bg is a SURFACE step, so the 4.5:1
-     text rule does not apply to it; what has to clear is the label on it,
-     which is --text-primary at 14.2:1 dark / 18.4:1 light. */
+     --segment-active-bg is a SURFACE step, so the 4.5:1 text rule does not
+     apply to it; what has to clear is the label on it, which is
+     --text-primary at 14.2:1 dark / 18.4:1 light. */
   --segment-active-bg: #1b2130;
   --segment-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 
   /* --- Filled neutral -------------------------------------------------------
-     A row's own verb: louder than a ghost control, quieter than the one blue
-     action on the surface. Without this level a demoted Generate is
-     indistinguishable from the Settings button beside it. */
+     A row's own verb: louder than a subtle control, quieter than the one
+     accent action on the surface. */
   --button-fill-bg: #252b36;           /* --text-primary on it is 12.6:1 */
   --button-fill-hover: #2d3442;
 
@@ -230,11 +323,11 @@
   --progress-fill: #9aa2b1;            /* 6.0:1 on --track */
 
   /* --- Status --------------------------------------------------------------
-     Each hue has a text/dot value, a border tint and a surface tint. */
+     Each hue has a text/dot value, a border tint and a surface tint. Status
+     dots are flat: no glow. */
   --success: #6ecf95;
   --success-line: rgba(110, 207, 149, 0.3);
   --success-soft: rgba(110, 207, 149, 0.07);
-  --success-glow: rgba(110, 207, 149, 0.55);
 
   --warning: #e3a862;
   --warning-line: rgba(227, 168, 98, 0.32);
@@ -270,27 +363,42 @@
   --clip-sheen-strong: rgba(255, 255, 255, 0.17);
   --clip-stripe: rgba(255, 255, 255, 0.04);
 
-  /* --- Composer / dock surfaces ------------------------------------------- */
-  --composer-bg: linear-gradient(
-    135deg,
-    rgba(21, 29, 53, 0.76),
-    rgba(13, 16, 23, 0.95) 55%,
-    #0d1016
-  );
+  /* --- Composer / dock surfaces --------------------------------------------
+     Solid layers. The composer used to be a 135° blue gradient; a native app
+     puts its input on a plain layer and lets the accent button carry colour. */
+  --composer-bg: var(--layer);
   --dock-bg: #12151d;
 
-  /* --- Elevation ---------------------------------------------------------- */
-  --shadow: 0 22px 65px rgba(0, 0, 0, 0.34);
-  --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.28);
-  --shadow-up: 0 -12px 30px rgba(0, 0, 0, 0.2);
+  /* --- Elevation ------------------------------------------------------------
+     Fluent's two shadows, and nothing else. Cards have none (rule 8). */
+  --shadow: 0 32px 64px rgba(0, 0, 0, 0.37), 0 2px 21px rgba(0, 0, 0, 0.37); /* dialog */
+  --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.26);    /* flyout, menu, popover */
+  --shadow-tooltip: 0 4px 8px rgba(0, 0, 0, 0.26);
 
   /* --- Focus --------------------------------------------------------------
-     One ring for the whole app. base.css applies it to focusable elements;
-     composite controls (search field, composer) apply it to the wrapper that
-     reads as the control, and suppress the inner element's own ring so the
-     two never stack. */
+     The Fluent focus visual, keyboard only (base.css). Two rings: a 2px
+     --focus-outer in the text colour and a 1px --focus-inner in the ground
+     colour just inside it, so the ring reads on any fill, including the
+     accent. Composite controls apply it to the wrapper that reads as the
+     control. Text inputs never draw it: they get --field-focus-line as a 2px
+     bottom border instead. --focus-ring-color is the old single-ring name,
+     kept as an alias of the outer ring. */
   --focus-ring-width: 2px;
-  --focus-ring-color: var(--accent-bright);
+  --focus-outer: #ffffff;
+  --focus-inner: rgba(0, 0, 0, 0.7);
+  --focus-ring-color: var(--focus-outer);
+  --focus-ring:
+    0 0 0 1px var(--focus-inner),
+    0 0 0 3px var(--focus-outer);      /* as a box-shadow, where outline cannot reach */
+  --field-focus-line: var(--accent-bright);
+
+  /* --- Glyphs ---------------------------------------------------------------
+     Shapes used as CSS masks, painted with background-color so they take the
+     palette's ink. They live here because an SVG inside a data URI would
+     otherwise have to spell a colour outside this file; a mask only reads
+     alpha, so the fill in these is irrelevant. */
+  --glyph-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.3 4.7 8.8 9.8 3.4' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --glyph-dash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='black' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 /* ============================================================================
@@ -299,10 +407,12 @@
    Designed, not inverted. The ground is a cool grey (#eef1f6) and panels are
    WHITE, so a card still reads as raised; a straight inversion would have put
    white paper behind everything and left the cards invisible. The neutral
-   washes flip from white-over-dark to black-over-light. The accent darkens
-   rather than brightens, because "more contrast" points the other way here.
-   Every ratio in the comments is computed, not estimated (see the report in
-   the commit that introduced this block).
+   washes flip from white-over-dark to black-over-light, and the Fluent fills
+   take the WinUI light values (white control fills over a grey ground, black
+   subtle fills). The accent darkens rather than brightens, because "more
+   contrast" points the other way here. Aliases (--layer, --glass, the focus
+   ring colour, --composer-bg) are not restated: they follow the names they
+   point at.
    ========================================================================== */
 
 @media (prefers-color-scheme: light) {
@@ -314,6 +424,29 @@
     --panel-2: #f5f7fa;
     --panel-3: #e9ecf3;
     --field-bg: #ffffff;
+
+    --card: rgba(255, 255, 255, 0.7);
+    --card-hover: rgba(249, 249, 249, 0.5);
+    --card-pressed: rgba(249, 249, 249, 0.3);
+    --stroke-card: rgba(0, 0, 0, 0.0578);
+    --stroke-surface: rgba(0, 0, 0, 0.0578);
+    --stroke-control: rgba(0, 0, 0, 0.0578);
+    --stroke-control-bottom: rgba(0, 0, 0, 0.1622);
+    --stroke-strong: rgba(0, 0, 0, 0.4458);
+    --fill-control: rgba(255, 255, 255, 0.7);
+    --fill-control-hover: rgba(249, 249, 249, 0.5);
+    --fill-control-pressed: rgba(249, 249, 249, 0.3);
+    --fill-control-disabled: rgba(249, 249, 249, 0.3);
+    --fill-control-alt: rgba(0, 0, 0, 0.0241);
+    --fill-input-focus: #ffffff;
+    --fill-subtle-hover: rgba(0, 0, 0, 0.0373);
+    --fill-subtle-pressed: rgba(0, 0, 0, 0.0241);
+    --thumb-bg: #ffffff;
+    --acrylic: rgba(252, 252, 252, 0.85);
+    --dialog-bg: #ffffff;
+    --dialog-footer-bg: #f5f7fa;
+    --tooltip-bg: #f9f9f9;
+    --tooltip-stroke: rgba(0, 0, 0, 0.0578);
 
     --line: rgba(15, 23, 42, 0.1);
     --line-strong: rgba(15, 23, 42, 0.18);
@@ -328,15 +461,13 @@
     --hatch-strong: rgba(15, 23, 42, 0.1);
     --grid-line: rgba(15, 23, 42, 0.16);
 
-    --glass: rgba(255, 255, 255, 0.92);
-    --glass-hover: rgba(245, 248, 255, 0.97);
-    --topbar-glass: rgba(246, 248, 252, 0.78);
-    --scrim: rgba(20, 25, 36, 0.45);   /* still DARKENS: a white panel needs it */
+    --scrim: rgba(0, 0, 0, 0.3);       /* lighter than dark's: a white dialog needs less */
 
     --text-primary: #101420;           /* 18.4:1 on --panel */
     --text-secondary: #333c4e;         /* 11.1:1 */
     --text-muted: #4a5365;             /*  7.7:1 */
     --text-faint: #5a6377;             /*  6.0:1 on --panel, 5.1:1 on --panel-3 */
+    --text-disabled: rgba(0, 0, 0, 0.361);
 
     --accent: #2d5bd7;
     --accent-bright: #1e4fd0;          /* 6.8:1 — the readable accent */
@@ -347,12 +478,16 @@
     --accent-on-soft: #1e40af;
     --accent-line: rgba(45, 91, 215, 0.3);
     --accent-line-strong: rgba(30, 79, 208, 0.6);
-    --accent-ring: rgba(45, 91, 215, 0.14);
+    --accent-disabled: rgba(0, 0, 0, 0.2169);
     --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
-    --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 — the old --accent-fill value */
+    --on-accent-disabled: #ffffff;
+
+    --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 */
     --button-primary-hover: #2450c4;   /* 7.0:1 */
     --button-primary-active: #1e40af;  /* 8.7:1 */
+    --button-primary-stroke: rgba(255, 255, 255, 0.08);
+    --button-primary-stroke-bottom: rgba(0, 0, 0, 0.4);
     --dock-send-border: #2d5bd7;
 
     --segment-active-bg: #ffffff;
@@ -367,7 +502,6 @@
     --success: #0f7a45;                /* 5.4:1 */
     --success-line: rgba(15, 122, 69, 0.35);
     --success-soft: rgba(15, 122, 69, 0.08);
-    --success-glow: rgba(15, 122, 69, 0.4);
 
     --warning: #8a5a09;                /* 5.9:1 */
     --warning-line: rgba(138, 90, 9, 0.35);
@@ -395,23 +529,20 @@
     --clip-sheen-strong: rgba(255, 255, 255, 0.85);
     --clip-stripe: rgba(15, 23, 42, 0.05);
 
-    --composer-bg: linear-gradient(
-      135deg,
-      rgba(226, 234, 253, 0.9),
-      rgba(248, 250, 253, 0.96) 55%,
-      #ffffff
-    );
     --dock-bg: #f5f7fa;
 
-    --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
-    --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
-    --shadow-up: 0 -12px 30px rgba(15, 23, 42, 0.06);
+    --shadow: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
+    --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.14);
+    --shadow-tooltip: 0 4px 8px rgba(0, 0, 0, 0.14);
+
+    --focus-outer: rgba(0, 0, 0, 0.8956);
+    --focus-inner: rgba(255, 255, 255, 0.7);
   }
 }
 
 /* ============================================================================
    LIGHT — the user chose it explicitly, whatever the OS says.
-   Must stay byte-identical to the block above apart from the selector.
+   Must stay identical to the block above apart from the selector.
    ========================================================================== */
 
 :root[data-theme="light"] {
@@ -422,6 +553,29 @@
   --panel-2: #f5f7fa;
   --panel-3: #e9ecf3;
   --field-bg: #ffffff;
+
+  --card: rgba(255, 255, 255, 0.7);
+  --card-hover: rgba(249, 249, 249, 0.5);
+  --card-pressed: rgba(249, 249, 249, 0.3);
+  --stroke-card: rgba(0, 0, 0, 0.0578);
+  --stroke-surface: rgba(0, 0, 0, 0.0578);
+  --stroke-control: rgba(0, 0, 0, 0.0578);
+  --stroke-control-bottom: rgba(0, 0, 0, 0.1622);
+  --stroke-strong: rgba(0, 0, 0, 0.4458);
+  --fill-control: rgba(255, 255, 255, 0.7);
+  --fill-control-hover: rgba(249, 249, 249, 0.5);
+  --fill-control-pressed: rgba(249, 249, 249, 0.3);
+  --fill-control-disabled: rgba(249, 249, 249, 0.3);
+  --fill-control-alt: rgba(0, 0, 0, 0.0241);
+  --fill-input-focus: #ffffff;
+  --fill-subtle-hover: rgba(0, 0, 0, 0.0373);
+  --fill-subtle-pressed: rgba(0, 0, 0, 0.0241);
+  --thumb-bg: #ffffff;
+  --acrylic: rgba(252, 252, 252, 0.85);
+  --dialog-bg: #ffffff;
+  --dialog-footer-bg: #f5f7fa;
+  --tooltip-bg: #f9f9f9;
+  --tooltip-stroke: rgba(0, 0, 0, 0.0578);
 
   --line: rgba(15, 23, 42, 0.1);
   --line-strong: rgba(15, 23, 42, 0.18);
@@ -436,57 +590,58 @@
   --hatch-strong: rgba(15, 23, 42, 0.1);
   --grid-line: rgba(15, 23, 42, 0.16);
 
-  --glass: rgba(255, 255, 255, 0.92);
-  --glass-hover: rgba(245, 248, 255, 0.97);
-  --topbar-glass: rgba(246, 248, 252, 0.78);
-  --scrim: rgba(20, 25, 36, 0.45);
+  --scrim: rgba(0, 0, 0, 0.3);       /* lighter than dark's: a white dialog needs less */
 
-  --text-primary: #101420;
-  --text-secondary: #333c4e;
-  --text-muted: #4a5365;
-  --text-faint: #5a6377;
+  --text-primary: #101420;           /* 18.4:1 on --panel */
+  --text-secondary: #333c4e;         /* 11.1:1 */
+  --text-muted: #4a5365;             /*  7.7:1 */
+  --text-faint: #5a6377;             /*  6.0:1 on --panel, 5.1:1 on --panel-3 */
+  --text-disabled: rgba(0, 0, 0, 0.361);
 
   --accent: #2d5bd7;
-  --accent-bright: #1e4fd0;
-  --accent-fill: #2d5bd7;
+  --accent-bright: #1e4fd0;          /* 6.8:1 — the readable accent */
+  --accent-fill: #2d5bd7;            /* 5.9:1 under white */
   --accent-dark: #1e40af;
   --accent-soft: rgba(45, 91, 215, 0.1);
   --accent-soft-strong: rgba(45, 91, 215, 0.16);
   --accent-on-soft: #1e40af;
   --accent-line: rgba(45, 91, 215, 0.3);
   --accent-line-strong: rgba(30, 79, 208, 0.6);
-  --accent-ring: rgba(45, 91, 215, 0.14);
-  --eyebrow: #47549a;
+  --accent-disabled: rgba(0, 0, 0, 0.2169);
+  --eyebrow: #47549a;                /* 6.6:1 on --panel */
 
-  --button-primary-bg: #2d5bd7;
-  --button-primary-hover: #2450c4;
-  --button-primary-active: #1e40af;
+  --on-accent-disabled: #ffffff;
+
+  --button-primary-bg: #2d5bd7;      /* white on it is 5.9:1 */
+  --button-primary-hover: #2450c4;   /* 7.0:1 */
+  --button-primary-active: #1e40af;  /* 8.7:1 */
+  --button-primary-stroke: rgba(255, 255, 255, 0.08);
+  --button-primary-stroke-bottom: rgba(0, 0, 0, 0.4);
   --dock-send-border: #2d5bd7;
 
   --segment-active-bg: #ffffff;
   --segment-active-shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
 
-  --button-fill-bg: #e2e6ee;
+  --button-fill-bg: #e2e6ee;         /* --text-primary on it is 14.7:1 */
   --button-fill-hover: #d6dbe6;
 
   --track: #dfe3ec;
-  --progress-fill: #4a5365;
+  --progress-fill: #4a5365;          /* 6.0:1 on --track */
 
-  --success: #0f7a45;
+  --success: #0f7a45;                /* 5.4:1 */
   --success-line: rgba(15, 122, 69, 0.35);
   --success-soft: rgba(15, 122, 69, 0.08);
-  --success-glow: rgba(15, 122, 69, 0.4);
 
-  --warning: #8a5a09;
+  --warning: #8a5a09;                /* 5.9:1 */
   --warning-line: rgba(138, 90, 9, 0.35);
   --warning-soft: rgba(138, 90, 9, 0.08);
 
-  --danger: #c02c3a;
+  --danger: #c02c3a;                 /* 5.7:1 */
   --danger-line: rgba(192, 44, 58, 0.3);
   --danger-line-strong: rgba(192, 44, 58, 0.55);
   --danger-soft: #fdf1f2;
   --danger-soft-strong: #fbe4e6;
-  --danger-text-soft: #7a4a52;
+  --danger-text-soft: #7a4a52;       /* 6.3:1 on --danger-soft */
 
   --audio: #10706a;                  /* 5.9:1 on --panel, 4.8:1 on --audio-soft */
   --audio-soft: rgba(16, 112, 106, 0.14);
@@ -503,15 +658,12 @@
   --clip-sheen-strong: rgba(255, 255, 255, 0.85);
   --clip-stripe: rgba(15, 23, 42, 0.05);
 
-  --composer-bg: linear-gradient(
-    135deg,
-    rgba(226, 234, 253, 0.9),
-    rgba(248, 250, 253, 0.96) 55%,
-    #ffffff
-  );
   --dock-bg: #f5f7fa;
 
-  --shadow: 0 22px 65px rgba(15, 23, 42, 0.14);
-  --shadow-sm: 0 8px 22px rgba(15, 23, 42, 0.1);
-  --shadow-up: 0 -12px 30px rgba(15, 23, 42, 0.06);
+  --shadow: 0 32px 64px rgba(0, 0, 0, 0.1876), 0 2px 21px rgba(0, 0, 0, 0.1474);
+  --shadow-sm: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --shadow-tooltip: 0 4px 8px rgba(0, 0, 0, 0.14);
+
+  --focus-outer: rgba(0, 0, 0, 0.8956);
+  --focus-inner: rgba(255, 255, 255, 0.7);
 }
