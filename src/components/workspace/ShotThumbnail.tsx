@@ -398,7 +398,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       type="button"
       className="shot-thumb shot-thumb--poster shot-thumb--playable"
       aria-label={`${action} shot ${shotNumber} of ${job.title}`}
-      title={`${action} this shot only (${seconds.toFixed(1)}s–${endSeconds.toFixed(1)}s)`}
+      data-tooltip={`${action} this shot only (${seconds.toFixed(1)}s–${endSeconds.toFixed(1)}s)`}
       onClick={(event) => void togglePlayback(event)}
     >
       {playbackUrl

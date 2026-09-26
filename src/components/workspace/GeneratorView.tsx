@@ -444,8 +444,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
-    if (job.status === "ready") return "This scene is being saved now.";
-    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "This scene needs a previous scene to continue.";
+    if (job.status === "ready") return "Saving this scene.";
+    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "Needs a previous scene to continue from.";
     return templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
 
@@ -703,21 +703,21 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
   }
   if (animate) {
     const bound = sceneGenerationReferences(job, references);
-    if (usableVideoReferences(bound).length !== 1) return "Select exactly one reference video for this scene before animating.";
-    if (usableReferenceImages(bound).length !== 1) return "Select exactly one repainted frame of the driving scene before animating.";
+    if (usableVideoReferences(bound).length !== 1) return "Choose one reference video.";
+    if (usableReferenceImages(bound).length !== 1) return "Choose one repainted frame.";
     if (job.usePreviousSceneLastFrame || bound.some((reference) => reference.refmods?.some((refmod) => refmod.strength > 0))) {
-      return "Animate does not support scene continuation or refmods.";
+      return "Animate can’t continue a scene or use refmods.";
     }
   }
   if (!animate && !characterReplace && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
-    return "Describe what happens or add speech in at least one shot before this scene can be generated.";
+    return "Write a description or speech in at least one shot.";
   }
   if (sceneDurationSeconds(job) <= 0) {
-    return "This scene is nought seconds long, so there are no frames to render. Give it a length first.";
+    return "Give the scene a length.";
   }
   const dangling = danglingReferenceTokens(shots, references);
   if (!animate && !characterReplace && dangling.length > 0) {
-    return "A reference named in one of the lines can no longer be used, and would be left out of the prompt. Swap it for another one or take it out of the line first.";
+    return "A reference in a shot can’t be used. Replace it or remove it from the line.";
   }
   return null;
 }

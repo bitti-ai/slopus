@@ -23,5 +23,5 @@ export function PresetIcon({ preset, className, alt = "" }: { preset: ReferenceP
     return () => { disposed = true; observer.disconnect(); };
   }, [preset.id, preset.icon, available, revision]);
   if (url) return <img className={className} src={url} alt={alt} loading="lazy" />;
-  return <span ref={marker} className={className} role={alt ? "img" : undefined} aria-label={alt || undefined} title={error ? "Could not load icon" : undefined} />;
+  return <span ref={marker} className={className} role={alt ? "img" : undefined} aria-label={alt || undefined} data-tooltip={error ? "Couldn’t load icon" : undefined} />;
 }
