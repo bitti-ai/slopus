@@ -2,11 +2,13 @@
    settings.css — the Settings page. Split out of shell.css.
 
    Settings is a page of the app window, drawn under the shell's title bar,
-   not an overlay: a 280px navigation pane (Back at its top) and a scrolling
-   content column that is at most 1000px wide, left-aligned, with 56px side
-   padding — the Windows 11 Settings layout. Nothing here paints --bg: under
-   Mica that is transparent, and the page lets the backdrop show through. The
-   rows themselves are the shared SettingsGroup / SettingsCard /
+   not an overlay: a 280px navigation pane (Back at its top) on the Mica
+   backdrop, and a scrolling content column on --surface-pane behind a
+   --stroke-divider edge, its page at most 1000px wide, left-aligned, with
+   --space-6 side padding — the Windows 11 Settings layout. Nothing here paints
+   --bg: under Mica that is transparent, and the nav lets the backdrop show
+   through. Group headings are 14px semibold, like the library's "All
+   projects". The rows themselves are the shared SettingsGroup / SettingsCard /
    SettingsExpander from ui.css; this file only lays out the page and the few
    things those cards hold.
    ========================================================================== */
@@ -34,19 +36,22 @@
   margin: 0 0 var(--space-2) var(--space-1);
 }
 
+/* The content sits on the pane, so nav and page read as two regions. */
 .settings-view__body {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  border-left: 1px solid var(--stroke-divider);
+  background: var(--surface-pane);
 }
 
 .settings-page {
-  max-width: calc(1000px + 2 * 56px);
+  max-width: calc(1000px + 2 * var(--space-6));
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2) 56px var(--space-8);
+  padding: var(--space-2) var(--space-6) var(--space-8);
 }
 
 /* Groups are 4px-stacked cards; between groups, the heading's own space. */
@@ -70,7 +75,7 @@
   font-family: var(--font-display);
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
-  line-height: 36px;
+  line-height: var(--leading-tight);
   outline: none;
 }
 
@@ -109,7 +114,7 @@
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: transparent;
-  font: var(--weight-semibold) var(--text-2xl) / 36px var(--font-display);
+  font: var(--weight-semibold) var(--text-2xl) / var(--leading-tight) var(--font-display);
   transition: var(--transition-control);
 }
 
@@ -308,12 +313,11 @@ input.settings-field--number,
 }
 
 /* --- Narrower windows -------------------------------------------------------
-   The window's minimum is 900px; below 1100px the pane and the gutters give
-   the cards the room. */
+   The window's minimum is 900px; below 1100px the nav and the fields give
+   the cards the room (the gutters are already --space-6). */
 
 @media (max-width: 1100px) {
   .settings-view { grid-template-columns: 240px minmax(0, 1fr); }
-  .settings-page { padding-inline: var(--space-6); }
   .settings-field { width: 240px; }
   .weight-source { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
