@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, type ProjectRecord } from "../../lib/project";
 import { AGENT_TURN_EVENT, cancelAgentTurn, runAgentTurn, type AgentTurnEventPayload, type ProviderStatus } from "../../lib/runtime";
-import { AgentDock, readableProviderOutput } from "./AgentDock";
+import { AgentDock, COMPOSER_MAX_LINES, readableProviderOutput } from "./AgentDock";
 
 let eventHandler: ((event: { payload: AgentTurnEventPayload }) => void) | undefined;
 
@@ -50,6 +50,29 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
+  it("grows the prompt box with its text up to six lines, then scrolls", async () => {
+    // jsdom lays nothing out: report 20px per line of text as the content height.
+    const spy = vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {
+      return Math.max(2, this.value.split("\n").length) * 20;
+    });
+    try {
+      render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={() => undefined} onCommands={async () => undefined} />);
+      await act(async () => { await Promise.resolve(); });
+      const box = screen.getByRole("textbox", { name: /Ask Slop about/ }) as HTMLTextAreaElement;
+      // jsdom gives a textarea a 1px border, which is added to the content height.
+      const border = 2;
+      expect(box.style.height).toBe(`${40 + border}px`);
+      fireEvent.change(box, { target: { value: "one\ntwo\nthree\nfour" } });
+      expect(box.style.height).toBe(`${80 + border}px`);
+      expect(box.style.overflowY).toBe("hidden");
+      fireEvent.change(box, { target: { value: Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n") } });
+      const style = getComputedStyle(box);
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      expect(box.style.height).toBe(`${COMPOSER_MAX_LINES * 20 + padding + border}px`);
+      expect(box.style.overflowY).toBe("auto");
+    } finally { spy.mockRestore(); }
+  });
+
   it("is a docked pane with a header, a provider picker and a one-line empty state", async () => {
     const available: ProviderStatus[] = [
       providers[0],

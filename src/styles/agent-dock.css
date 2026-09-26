@@ -138,8 +138,8 @@
 }
 
 /* --- Composer -------------------------------------------------------------------
-   A flush TextBox (4px corners, the accent underline on focus) with the send
-   button beside it. */
+   A flush TextBox (4px corners, the accent underline on focus) that grows
+   with its text, with the send button beside it. */
 
 .agent-composer {
   flex: 0 0 auto;
@@ -150,16 +150,17 @@
   border-top: 1px solid var(--line);
 }
 
+/* Two lines at rest; AgentDock grows it with the text up to six lines
+   (COMPOSER_MAX_LINES) and then it scrolls, so there is no resize grip. */
 .agent-composer__field.text-field {
   min-width: 0;
   flex: 1 1 auto;
   height: auto;
-  min-height: 56px;
-  max-height: 200px;
+  min-height: 54px;
   padding: 6px var(--space-2);
   font-family: inherit;
   line-height: var(--leading-normal);
-  resize: vertical;
+  resize: none;
 }
 
 .agent-composer__field::placeholder {

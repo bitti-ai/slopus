@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { ArrowUp, Eraser, Square, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
@@ -17,6 +17,9 @@ import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
 import { ComboBox, PaneHeader, ProgressRing, tooltipProps } from "../ui";
+
+/** How tall the prompt box grows before it scrolls. */
+export const COMPOSER_MAX_LINES = 6;
 
 interface AgentActivity {
   kind: "output" | "diagnostic" | "validation";
@@ -57,6 +60,21 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
   const conversation = useRef<HTMLDivElement | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const cancelButton = useRef<HTMLButtonElement | null>(null);
+  /* The prompt box grows with what is typed, up to six lines, then scrolls —
+     the way the Windows Copilot and Teams composers behave — instead of a
+     resize grip. */
+  useLayoutEffect(() => {
+    const element = field.current;
+    if (!element) return;
+    const style = getComputedStyle(element);
+    const line = parseFloat(style.lineHeight) || 20;
+    const chrome = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    const max = Math.round(line * COMPOSER_MAX_LINES + chrome);
+    element.style.height = "auto";
+    const wanted = element.scrollHeight + (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    element.style.height = `${Math.min(wanted, max)}px`;
+    element.style.overflowY = wanted > max ? "auto" : "hidden";
+  }, [prompt]);
   const selected = providers.find((item) => item.id === provider);
   const ready = selected?.state === "ready";
   const messages = useMemo(() => sessionMessages.slice(-4), [sessionMessages]);
@@ -189,7 +207,7 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
       <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
         {empty && <p className="agent-conversation__empty">Ask Slop to write scenes from a prompt, refine shots or edit {context}.</p>}
         {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
-        {pendingPrompt && <p className="agent-conversation__user agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
+        {pendingPrompt && <p className="agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
         {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
           <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
         </p>)}
