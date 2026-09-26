@@ -69,46 +69,58 @@
   overflow-y: auto;
 }
 
-/* --- Panel tabs ------------------------------------------------------------
-   A SelectorBar: text tabs with the 3×16px accent pill under the chosen one. */
+/* --- Sources toolbar ---------------------------------------------------------
+   One PaneHeader for both views: Scenes / Media as a compact segmented
+   control, Import and (on Media) the grid/list toggle on the trailing edge. */
 
-.panel-tabs {
-  height: 32px;
+.scene-panel__import {
+  height: var(--control-sm);
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--line);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: transparent;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  transition: var(--transition-control);
 }
 
-.panel-tabs .ui-selector-bar__item {
-  min-height: 0;
-  height: 100%;
-  font-size: var(--text-xs);
-  border-radius: var(--radius-sm);
+.scene-panel__import:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+.scene-panel__import:active:not(:disabled) { background: var(--fill-subtle-pressed); }
+.scene-panel__import:disabled { color: var(--text-disabled); }
+
+.scene-panel__layout {
+  display: flex;
+  gap: 2px;
 }
+
+/* Icon-only, so each button carries its name in an .sr-only span. The on
+   state is the shared accent tint (.ui-toggle-button[aria-pressed]). */
+.scene-panel__toggle {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  transition: var(--transition-control);
+}
+
+.scene-panel__toggle:hover { background: var(--fill-subtle-hover); }
 
 /* --- Scene panel ----------------------------------------------------------- */
-
-.scene-panel__head {
-  height: 36px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-2);
-}
-
-.media-import-button.secondary-button {
-  min-height: var(--control-sm);
-  height: var(--control-sm);
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  font-size: var(--text-xs);
-}
 
 .scene-list {
   flex: 1 1 auto;
   min-height: 0;
-  padding: var(--space-1) var(--space-2) var(--space-3);
+  padding: 0 0 var(--space-3);
   overflow-y: auto;
 }
 
@@ -119,6 +131,9 @@
   line-height: var(--leading-snug);
 }
 
+/* A row in a separated list (.ui-selectable--separated): transparent at rest,
+   a hairline under it, the accent pill when it is the scene the Generator
+   has open. No background of its own, or the shared states would lose. */
 .scene-card {
   width: 100%;
   min-height: 64px;
@@ -126,17 +141,14 @@
   grid-template-columns: 88px minmax(0, 1fr);
   gap: var(--space-2);
   align-items: center;
-  margin-bottom: 2px;
-  padding: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   text-align: left;
   color: var(--text-muted);
-  background: transparent;
-  transition: var(--transition-control);
 }
 
-.scene-card:hover { background: var(--fill-subtle-hover); }
 .scene-card:active { background: var(--fill-subtle-pressed); }
 
 /* Flat placeholder with a glyph: no hatching, no invented art. */
@@ -220,39 +232,31 @@
   white-space: nowrap;
 }
 
+/* The status word with a dot before it, coloured by where the scene is. */
+.scene-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.scene-card__status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--text-faint);
+}
+
+.scene-card__status--generating::before,
+.scene-card__status--ready::before { background: var(--accent); }
+.scene-card__status--completed::before { background: var(--success); }
+.scene-card__status--failed::before { background: var(--danger); }
+
 .scene-add.secondary-button {
-  width: 100%;
-  margin-top: var(--space-2);
+  width: calc(100% - 2 * var(--space-2));
+  margin: var(--space-2) var(--space-2) 0;
   gap: var(--space-2);
-}
-
-/* --- Panel layout toggle ---------------------------------------------------
-   Grid or list for the media panel. Icon-only, so each button carries its name
-   for screen readers in an .sr-only span. */
-
-.layout-toggle {
-  display: flex;
-  gap: 2px;
-}
-
-.layout-toggle button {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  background: none;
-  transition: var(--transition-control);
-}
-
-.layout-toggle button:hover { background: var(--fill-subtle-hover); }
-
-.layout-toggle button.active {
-  color: var(--text-primary);
-  background: var(--fill-subtle-pressed);
 }
 
 /* --- Media panel ----------------------------------------------------------- */
@@ -268,14 +272,23 @@
   grid-auto-rows: max-content;
   align-content: start;
   gap: var(--space-2);
-  padding: 0 var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-3);
 }
 
-.media-grid .panel-hint {
+.media-grid .panel-hint,
+.media-grid__empty {
   grid-column: 1 / -1;
 }
 
-.media-grid .media-card__source {
+.media-grid:has(> .media-grid__empty) {
+  height: 100%;
+  padding-top: 0;
+}
+
+/* A card (.ui-selectable--card): the rest state is set with single-class
+   selectors (or :where) so the shared hover and selected states — an accent
+   ring on the card's own edge — still win. */
+.media-card__source {
   min-width: 0;
   min-height: var(--control-sm);
   padding: 0 0 var(--space-1);
@@ -284,11 +297,6 @@
   border-radius: var(--radius-sm);
   text-align: left;
   background: var(--card);
-  transition: var(--transition-control);
-}
-
-.media-grid .media-card__source:hover:not(:disabled) {
-  background: var(--card-hover);
 }
 
 .media-grid .media-card__source b,
@@ -360,12 +368,11 @@
   align-content: center;
   column-gap: var(--space-2);
   padding: 0;
-  border-color: transparent;
-  background: transparent;
 }
 
-.media-grid--list .media-card__source:hover:not(:disabled) {
-  background: var(--fill-subtle-hover);
+:where(.media-grid--list) .media-card__source {
+  border-color: transparent;
+  background: transparent;
 }
 
 .media-grid--list .media-thumb {

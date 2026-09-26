@@ -1,6 +1,6 @@
 import { ClipEffects } from "./ClipEffects";
 import {
-  ChevronFirst, ChevronLast, Copy, Film, Layers3, LayoutGrid, List, Lock, LockOpen,
+  ChevronFirst, ChevronLast, Copy, Film, LayoutGrid, List, Lock, LockOpen,
   PanelLeft, PanelRight, Pause, Play, Plus, Scissors, StepBack, StepForward, Trash2, Upload,
   Volume2, VolumeX, ZoomIn, ZoomOut,
 } from "lucide-react";
@@ -26,12 +26,12 @@ import {
 } from "../../lib/timeline";
 import { useShortcut } from "../../lib/commands";
 import {
-  ComboBox, PropRow, PropSection, SelectorBar, Slider, Splitter, tooltipProps, useContextMenu, usePaneSize,
+  ComboBox, EmptyState, PaneHeader, PropRow, PropSection, SelectorBar, Slider, Splitter, tooltipProps, useContextMenu, usePaneSize,
   type MenuEntry,
 } from "../ui";
 import { MediaThumbnail, type MeasuredMedia } from "./MediaThumbnail";
 import { ProgramMonitor } from "./ProgramMonitor";
-import { sceneShape, STATUS_WORD } from "./sceneStatus";
+import { sceneShape, STATUS_BADGE } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
 import { CommittedNumberInput } from "./CommittedNumberInput";
 import { TimelineClipThumbnails } from "./TimelineClipThumbnails";
@@ -164,7 +164,7 @@ interface TrackActions {
   dropLane: (event: React.DragEvent<HTMLDivElement>, track: TimelineTrack) => void;
 }
 
-export function TimelineView({ config, folderPath, generationCompletionTimes = {}, onChange, onMeasured, onOpenGenerator }: {
+export function TimelineView({ config, folderPath, generationCompletionTimes = {}, onChange, onMeasured, onOpenGenerator, openSceneId }: {
   config: ProjectConfig;
   folderPath: string;
   generationCompletionTimes?: Readonly<Record<string, number>>;
@@ -177,6 +177,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
    *  Omitted, measurements go back through onChange like any other change. */
   onMeasured?: (update: (current: ProjectConfig) => ProjectConfig) => void;
   onOpenGenerator: (jobId?: string) => void;
+  /** The scene the Generator has open, marked selected in the Scenes list. */
+  openSceneId?: string;
 }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const fps = config.settings.frameRate;
@@ -190,6 +192,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      names. Which one a cutter wants is a habit, not a per-project choice, so
      it is remembered on this machine rather than written into the project. */
   const [mediaLayout, setMediaLayout] = useState<MediaLayout>(loadMediaLayout);
+  /* The media card Delete would act on: the focused one, or the last one
+     clicked or right-clicked. */
+  const [mediaSelectedId, setMediaSelectedId] = useState<string | null>(null);
   const viewRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -1085,38 +1090,43 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       <h1 className="sr-only">Timeline editor</h1>
       <div className={panelsClass}>
         {sourcesOpen && <aside className="scene-panel" aria-label="Scenes and media">
-          <SelectorBar
-            className="panel-tabs"
-            aria-label="Scenes and media"
-            value={panelTab}
-            onChange={setPanelTab}
-            items={[
-              { value: "scenes", label: "Scenes", icon: <Layers3 size={16} /> },
-              { value: "media", label: "Media", icon: <Film size={16} /> },
-            ]}
+          {/* One toolbar for both views: the views lead, the actions trail, and
+              the content below starts at the same height on either tab. */}
+          <PaneHeader
+            className="scene-panel__toolbar"
+            views={<SelectorBar
+              compact
+              aria-label="Scenes and media"
+              value={panelTab}
+              onChange={setPanelTab}
+              items={[{ value: "scenes", label: "Scenes" }, { value: "media", label: "Media" }]}
+            />}
+            actions={<>
+              <button
+                type="button"
+                className="scene-panel__import"
+                onClick={() => void importMedia()}
+                disabled={importing || !isTauri()}
+                {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
+              ><Upload size={16} aria-hidden="true" /> Import</button>
+              {panelTab === "media" && <div className="scene-panel__layout" role="group" aria-label="Media layout">
+                <button
+                  type="button"
+                  className="ui-toggle-button scene-panel__toggle"
+                  aria-pressed={mediaLayout === "grid"}
+                  onClick={() => chooseMediaLayout("grid")}
+                  {...tooltipProps("Grid")}
+                ><LayoutGrid size={16} aria-hidden="true" /><span className="sr-only">Grid</span></button>
+                <button
+                  type="button"
+                  className="ui-toggle-button scene-panel__toggle"
+                  aria-pressed={mediaLayout === "list"}
+                  onClick={() => chooseMediaLayout("list")}
+                  {...tooltipProps("List")}
+                ><List size={16} aria-hidden="true" /><span className="sr-only">List</span></button>
+              </div>}
+            </>}
           />
-          {panelTab === "media" && <div className="scene-panel__head">
-            <button
-              className="secondary-button media-import-button"
-              onClick={() => void importMedia()}
-              disabled={importing || !isTauri()}
-              {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
-            ><Upload size={16} /> Import</button>
-            <div className="layout-toggle" role="group" aria-label="Media layout">
-              <button
-                className={mediaLayout === "grid" ? "active" : ""}
-                aria-pressed={mediaLayout === "grid"}
-                onClick={() => chooseMediaLayout("grid")}
-                {...tooltipProps("Grid")}
-              ><LayoutGrid size={16} /><span className="sr-only">Grid</span></button>
-              <button
-                className={mediaLayout === "list" ? "active" : ""}
-                aria-pressed={mediaLayout === "list"}
-                onClick={() => chooseMediaLayout("list")}
-                {...tooltipProps("List")}
-              ><List size={16} /><span className="sr-only">List</span></button>
-            </div>
-          </div>}
           {panelTab === "scenes" ? (
             <div className="scene-list" role="tabpanel" aria-label="Scenes">
               {config.generationJobs.map((job, index) => {
@@ -1125,11 +1135,13 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   ...config.assets.filter((asset) => job.outputRelativePath && asset.relativePath === job.outputRelativePath).map((asset) => asset.id),
                 ]);
                 const placements = tracks.flatMap((track) => track.clips).filter((clip) => clip.id === job.clipId || assetIds.has(clip.assetId)).length;
+                const open = job.id === openSceneId;
                 return <button
                   key={job.id}
-                  className="scene-card"
+                  className={`scene-card ui-selectable ui-selectable--separated${open ? " is-selected" : ""}`}
                   draggable
                   data-scene-id={job.id}
+                  aria-current={open ? "true" : undefined}
                   onClick={() => onOpenGenerator(job.id)}
                   onContextMenu={(event) => menu.open(event, [
                     { label: "Open in Generator", onSelect: () => onOpenGenerator(job.id) },
@@ -1141,14 +1153,19 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     setDraggedAsset(undefined);
                   }}
                   onDragEnd={() => { setDraggedScene(undefined); setDropTrackId(null); }}
-                  {...tooltipProps(`${job.title}. Drag onto a track to use it.`)}
+                  {...tooltipProps(`${job.title} · ${sceneShape(job)}. Drag onto a track to use it.`)}
                 >
                   <span className="scene-card__thumb">
                     {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
                       : <Film size={20} aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
-                  <span><b>{job.title}</b><small>{STATUS_WORD[job.status]}{placements > 0 ? ` · ${placements} on timeline` : ""}</small><small>{sceneShape(job)}</small></span>
+                  <span>
+                    <b>{job.title}</b>
+                    {/* A status dot before the word; the scene's shape (length,
+                        shots) moved into the tooltip. */}
+                    <small><span className={`scene-card__status scene-card__status--${job.status}`}>{STATUS_BADGE[job.status]}</span>{placements > 0 ? ` · ${placements} on timeline` : ""}</small>
+                  </span>
                 </button>;
               })}
               <button className="secondary-button scene-add" onClick={addScene}><Plus size={16} /> Add scene</button>
@@ -1159,12 +1176,15 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   whole mechanism — the button still clicks and still takes
                   focus, so keyboard users are not shut out of selecting it.
                   Removing a file is Delete on the focused card, or its context
-                  menu: no × on every card. */}
+                  menu: no × on every card. The selected card is the one Delete
+                  acts on — the focused one, or the last one clicked. */}
               {mediaAssets.map((asset) => <div className="media-card" key={asset.id}>
                 <button
-                  className="media-card__source"
+                  className={`media-card__source ui-selectable ui-selectable--card${asset.id === mediaSelectedId ? " is-selected" : ""}`}
                   draggable
                   data-asset-id={asset.id}
+                  onFocus={() => setMediaSelectedId(asset.id)}
+                  onClick={() => setMediaSelectedId(asset.id)}
                   onDragStart={(event) => {
                     event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
                     event.dataTransfer.effectAllowed = "copy";
@@ -1172,9 +1192,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                     setDraggedScene(undefined);
                   }}
                   onDragEnd={() => { setDraggedAsset(undefined); setDropTrackId(null); }}
-                  onContextMenu={(event) => menu.open(event, [
-                    { label: "Remove from project", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, onSelect: () => removeMediaAsset(asset.id) },
-                  ], { "aria-label": `${asset.name} actions` })}
+                  onContextMenu={(event) => {
+                    setMediaSelectedId(asset.id);
+                    menu.open(event, [
+                      { label: "Remove from project", icon: <Trash2 size={16} />, shortcut: "Delete", danger: true, onSelect: () => removeMediaAsset(asset.id) },
+                    ], { "aria-label": `${asset.name} actions` });
+                  }}
                   {...tooltipProps(`${asset.name}. Drag onto a track to use it.`)}
                 >
                   <MediaThumbnail folderPath={folderPath} asset={asset} onMeasured={(measured) => recordMeasured(asset.id, measured)} />
@@ -1183,6 +1206,19 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
                 </button>
               </div>)}
+              {mediaAssets.length === 0 && !importError && <EmptyState
+                className="media-grid__empty"
+                icon={<Film />}
+                title="No media yet"
+                description="Import video, sound or images, then drag them onto a track."
+                action={<button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void importMedia()}
+                  disabled={importing || !isTauri()}
+                  {...tooltipProps(isTauri() ? undefined : "Importing files is available in the desktop app")}
+                ><Upload size={16} aria-hidden="true" /> Import media</button>}
+              />}
               {importError && <p className="panel-hint panel-hint--error" role="alert">{importError}</p>}
             </div>
           )}

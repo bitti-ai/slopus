@@ -247,6 +247,26 @@ describe("the media and scene panels", () => {
     expect(within(media).getByText("Room tone")).not.toBeNull();
   });
 
+  it("heads both views with one toolbar, marks the open scene and the chosen media card, and says when there is no media", () => {
+    const config = projectWithMedia();
+    const job = config.generationJobs[0];
+    const { container } = render(createElement(TimelineView, { config, folderPath: "C:\\Ceramic Lamp", onChange: vi.fn(), onOpenGenerator: () => undefined, openSceneId: job.id }));
+    expect(container.querySelectorAll(".scene-panel .ui-pane-header")).toHaveLength(1);
+    expect(container.querySelector(".scene-panel .ui-pane-header__title")).toBeNull();
+    const scene = container.querySelector(`[data-scene-id="${job.id}"]`)!;
+    expect(scene.classList.contains("is-selected")).toBe(true);
+    expect(scene.querySelector(".scene-card__status")).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+    expect(screen.getByRole("button", { name: "Grid" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.focus(cardFor(config.assets[1]));
+    expect(cardFor(config.assets[1]).classList.contains("is-selected")).toBe(true);
+    expect(cardFor(config.assets[0]).classList.contains("is-selected")).toBe(false);
+    cleanup();
+    mediaPanel(parseProjectConfig({ ...config, assets: [] }));
+    expect(screen.getByText("No media yet")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import media" })).toBeTruthy();
+  });
+
   it("offers Add scene as a plain button that opens the unstarted draft", () => {
     const opened = vi.fn();
     const config = projectWithMedia();
