@@ -73,7 +73,7 @@ describe("Slop output panel", () => {
     } finally { spy.mockRestore(); }
   });
 
-  it("is a docked pane with a header, a provider picker and a one-line empty state", async () => {
+  it("is a docked pane with a toolbar, a provider picker and the shared empty state", async () => {
     const available: ProviderStatus[] = [
       providers[0],
       { id: "claude", label: "Claude Code", state: "ready", executable: "claude", version: "test", detail: "Ready" },
@@ -82,9 +82,11 @@ describe("Slop output panel", () => {
     render(<AgentDock context="this project" record={project()} providers={available} onPromptStart={() => undefined} onCommands={async () => undefined} onClose={onClose} />);
     await act(async () => { await Promise.resolve(); });
 
-    expect(screen.getByRole("heading", { name: "Agent" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "What should we create today?" })).not.toBeInTheDocument();
-    expect(screen.getByRole("log", { name: "Slop output" })).toHaveTextContent("Ask Slop to write scenes");
+    // A pane toolbar, not a title bar: the workspace's aside names the pane.
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    const log = screen.getByRole("log", { name: "Slop output" });
+    expect(log.querySelector(".ui-empty-state .ui-empty-state__title")).toHaveTextContent("Nothing asked yet");
+    expect(log).toHaveTextContent("Ask Slop to write scenes");
     expect(screen.getByRole("img", { name: "Codex status: Ready" })).toBeInTheDocument();
     const selector = screen.getByRole("combobox", { name: "Agent provider" });
     fireEvent.click(selector);

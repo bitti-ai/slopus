@@ -1,7 +1,7 @@
 /* ============================================================================
-   agent-dock.css — the agent as a docked tool pane: a 32px pane header
-   (title, provider status and ComboBox, clear, close), the conversation, and a
-   flush text box with a send button. No glass, shadow, glow or halo: it is a
+   agent-dock.css — the agent as a docked tool pane: a 36px pane toolbar
+   (provider status and ComboBox leading, clear and close trailing; no title),
+   the conversation, and a flush text box with a send button. No glass, shadow, glow or halo: it is a
    pane like the inspectors, sitting on the same layer. The pane container
    (placement, splitter, show/hide) is the workspace's (.project-agent-pane).
    ========================================================================== */
@@ -12,19 +12,16 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--layer);
+  background: var(--surface-pane);
 }
 
 .agent-dock__header {
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--line);
 }
 
-.agent-dock__header .ui-pane-header__actions {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
+/* The picker gives way before the clear and close buttons do. */
+.agent-dock__header .ui-pane-header__views {
+  flex: 0 1 auto;
 }
 
 .agent-dock__action.icon-button {
@@ -32,14 +29,13 @@
   height: var(--control-sm);
 }
 
-/* A compact provider picker in the header. */
+/* A compact provider picker leading the toolbar, after its status light. */
 .ui-combo.agent-provider {
   min-width: 0;
   width: auto;
-  max-width: 160px;
+  max-width: 200px;
   height: var(--control-sm);
   min-height: var(--control-sm);
-  margin-left: var(--space-1);
   font-size: var(--text-xs);
 }
 
@@ -87,7 +83,8 @@
   padding: var(--space-2) var(--space-3);
 }
 
-.agent-conversation p {
+/* Direct children only: the empty state's own paragraphs keep its styles. */
+.agent-conversation > p {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -97,14 +94,14 @@
   line-height: var(--leading-normal);
 }
 
-.agent-conversation p > span {
+.agent-conversation > p > span {
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 /* Speaker labels: 12px semibold, sentence case, secondary ink. */
-.agent-conversation b {
+.agent-conversation > p > b {
   color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
@@ -122,11 +119,6 @@
 .agent-conversation__diagnostic > span,
 .agent-conversation__error > span {
   color: var(--danger);
-}
-
-.agent-conversation p.agent-conversation__empty {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
 }
 
 .agent-conversation__thinking {
@@ -164,7 +156,7 @@
 }
 
 .agent-composer__field::placeholder {
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .agent-composer__send {

@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { ArrowUp, Eraser, Square, X } from "lucide-react";
+import { ArrowUp, Bot, Eraser, Square, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
@@ -16,7 +16,7 @@ import {
 import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
-import { ComboBox, PaneHeader, ProgressRing, tooltipProps } from "../ui";
+import { ComboBox, EmptyState, PaneHeader, ProgressRing, tooltipProps } from "../ui";
 
 /** How tall the prompt box grows before it scrolls. */
 export const COMPOSER_MAX_LINES = 6;
@@ -26,8 +26,9 @@ interface AgentActivity {
   text: string;
 }
 
-/** The agent as a docked tool pane: a 32px header (title, provider, clear,
- *  close), the conversation, and a flush text box with a send button.
+/** The agent as a docked tool pane: a 36px pane toolbar (the provider picker
+ *  leading, clear and close trailing — no title, the workspace's aside already
+ *  names the pane), the conversation, and a flush text box with a send button.
  *
  *  The pane container — its placement, splitter and show/hide — belongs to the
  *  workspace. `onClose` wires the header's close button to it; without it the
@@ -182,9 +183,8 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
       }}
     >
       <PaneHeader
-        title="Agent"
         className="agent-dock__header"
-        actions={<>
+        views={<>
           <span className={`agent-provider-light agent-provider--${selected?.state ?? "unknown"}`} role="img" aria-label={providerStatusLabel} data-tooltip={blockedDetail ?? providerStatusLabel}><i /></span>
           <ComboBox
             className="agent-provider"
@@ -200,12 +200,19 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
             }))}
             onChange={(next) => { setProvider(next as ProviderId); saveAgentProvider(next as ProviderId); }}
           />
+        </>}
+        actions={<>
           <button type="button" className="icon-button agent-dock__action" aria-label="Clear conversation" {...tooltipProps("Clear conversation")} disabled={Boolean(requestId) || empty} onClick={clear}><Eraser size={16} aria-hidden="true" /></button>
           {onClose && <button type="button" className="icon-button agent-dock__action" aria-label="Close agent" {...tooltipProps("Close")} onClick={onClose}><X size={16} aria-hidden="true" /></button>}
         </>}
       />
       <div ref={conversation} className="agent-conversation" role="log" aria-label="Slop output" aria-live="polite">
-        {empty && <p className="agent-conversation__empty">Ask Slop to write scenes from a prompt, refine shots or edit {context}.</p>}
+        {empty && <EmptyState
+          className="agent-conversation__empty"
+          icon={<Bot size={32} />}
+          title="Nothing asked yet"
+          description={`Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
+        />}
         {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
         {pendingPrompt && <p className="agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
         {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
