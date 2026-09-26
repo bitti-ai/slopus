@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Bot, Download, Film, Image, Redo2, Save, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, ChevronDown, Download, Film, Image, Redo2, Save, Sparkles, Undo2 } from "lucide-react";
 import { ImageEditor } from "./workspace/ImageEditor";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
@@ -246,7 +246,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     <TitleBar
       className="project-titlebar"
       leading={<button type="button" className="icon-button" onClick={goBack} aria-label="Back to project library" data-tooltip="Back to projects" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><ArrowLeft size={16} /></button>}
-      title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}>{config.name}</button>}
+      title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown size={12} aria-hidden="true" /></button>}
       actions={<>
         <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo2 size={16} /></button>
         <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo2 size={16} /></button>
@@ -278,8 +278,8 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           value: id,
           controls: `${panelId}-view`,
           label: id === "generator" && running > 0
-            ? <span className="project-views__label" data-tooltip={`${running} generation${running === 1 ? "" : "s"} running or queued`} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}>{VIEW_LABELS[id]}<InfoBadge value={running} severity="informational" /></span>
-            : <span className="project-views__label" data-tooltip={VIEW_LABELS[id]} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}>{VIEW_LABELS[id]}</span>,
+            ? <span className="project-views__label" data-tooltip={`${running} generation${running === 1 ? "" : "s"} running or queued`} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span><InfoBadge value={running} severity="informational" /></span>
+            : <span className="project-views__label" data-tooltip={VIEW_LABELS[id]} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span></span>,
           icon: viewIcon(id),
         }))}
       />

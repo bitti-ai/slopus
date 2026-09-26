@@ -26,31 +26,46 @@
 
 /* --- Title bar -------------------------------------------------------------- */
 
-/* The project name is the caption text and a button: it opens Project
-   settings. Caption-sized, like any window title, with a subtle hover. */
+/* The project name is a button that opens Project settings, and looks like
+   one: a control fill with a hairline, the name in semibold and a 12px
+   chevron saying there is more behind it. Caption-sized, like any window
+   title; the name ellipsises, the chevron never does. */
 .project-title {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   max-width: 280px;
   min-width: 0;
   height: var(--control-md);
   padding: 0 var(--space-2);
-  overflow: hidden;
   border: 0;
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--fill-control);
+  box-shadow: inset 0 0 0 1px var(--stroke-control);
   color: inherit;
   font: inherit;
+  font-weight: var(--weight-semibold);
   white-space: nowrap;
-  text-overflow: ellipsis;
   transition: var(--transition-control);
 }
 
+.project-title__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-title > svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+
 .project-title:hover {
-  background: var(--fill-subtle-hover);
+  background: var(--fill-control-hover);
 }
 
 .project-title:active {
-  background: var(--fill-subtle-pressed);
+  background: var(--fill-control-pressed);
 }
 
 .project-titlebar .titlebar__identity {
@@ -63,17 +78,40 @@
 }
 
 /* The views. Tabs, not links: arrow keys move between them, Ctrl+1…4 jump.
-   The selected one is marked by the accent pill under it and nothing else —
-   no weight change, so the row never shifts when the selection moves. */
+   The pill alone is easy to miss at this height, so the selected one is also
+   semibold on a subtle control fill. Each name reserves its semibold width
+   (a hidden bold copy under it), so the row never shifts when the selection
+   moves. */
 .project-views {
   min-width: 0;
   overflow: hidden;
+}
+
+.project-views .ui-selector-bar__item--selected {
+  background: var(--fill-control);
+  font-weight: var(--weight-semibold);
+}
+
+.project-views .ui-selector-bar__item--selected:hover:not(:disabled) {
+  background: var(--fill-control-hover);
 }
 
 .project-views__label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.project-views__name {
+  display: inline-grid;
+}
+
+.project-views__name::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: var(--weight-semibold);
 }
 
 .project-commands {
