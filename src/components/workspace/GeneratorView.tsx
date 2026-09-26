@@ -594,15 +594,15 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <ItemHeader
             color="var(--clip-generated)"
             icon={<Clapperboard size={16} />}
-            name={<input
-              ref={titleInput}
-              className="ui-item-header__input"
-              value={openShot.name ?? ""}
-              placeholder={`Shot ${shotIndex + 1}`}
-              aria-label={`Rename shot ${shotIndex + 1}`}
-              aria-keyshortcuts="F2"
-              onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
-            />}
+            name={<h2 className="generator-panel__name"><input
+                ref={titleInput}
+                className="ui-item-header__input"
+                value={openShot.name ?? ""}
+                placeholder={`Shot ${shotIndex + 1}`}
+                aria-label={`Rename shot ${shotIndex + 1}`}
+                aria-keyshortcuts="F2"
+                onChange={(event) => patchShot(selected, openShot.id, { name: event.target.value || null })}
+              /></h2>}
             meta={<>
               {`Shot ${shotIndex + 1} · ${seconds(shotEndsAt - openShot.startSeconds)} · in `}
               <button type="button" className="generator-panel__up" data-tooltip={`Back to ${selected.title}`} onClick={() => setSelection({ jobId: selected.id, shotId: null })}>
@@ -640,14 +640,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <ItemHeader
             color="var(--clip-generated)"
             icon={<Sparkles size={16} />}
-            name={<input
-              ref={titleInput}
-              className="ui-item-header__input"
-              value={selected.title}
-              aria-label={`Rename ${selected.title}`}
-              aria-keyshortcuts="F2"
-              onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
-            />}
+            name={<h2 className="generator-panel__name"><input
+                ref={titleInput}
+                className="ui-item-header__input"
+                value={selected.title}
+                aria-label={`Rename ${selected.title}`}
+                aria-keyshortcuts="F2"
+                onChange={(event) => updateJob(selected.id, { title: event.target.value || "Untitled scene", updatedAt: new Date().toISOString() })}
+              /></h2>}
             meta={sceneMeta(selected, selectedShots.length, selectedIndicator)}
             actions={<button
               type="button"

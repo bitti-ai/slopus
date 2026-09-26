@@ -661,6 +661,16 @@
   text-decoration-color: currentColor;
 }
 
+/* The editable name stays the pane's heading, as it was before the item
+   header: an h2 around the input, laid out as the input alone would be. */
+.generator-panel__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: 0;
+  font: inherit;
+}
+
 /* An unnamed shot shows its number as the placeholder; it is the name until
    one is typed, so it reads in the name's ink, not a hint's. */
 .generator-panel .ui-item-header__input::placeholder {

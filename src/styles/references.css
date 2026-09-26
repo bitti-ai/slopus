@@ -257,6 +257,16 @@
   overflow-y: auto;
 }
 
+/* The editable name stays the pane's heading: an h2 around the input, laid
+   out as the input alone would be. */
+.reference-inspector__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: 0;
+  font: inherit;
+}
+
 /* The reference's art as the item header's 28px chip: the same picture the
    tile shows, filling the chip, with no room for a caption. */
 .reference-inspector .ui-item-header__chip .reference-art {

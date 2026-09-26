@@ -499,14 +499,14 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           is editable in place, and the meta line says what it is. */}
       {selected && <ItemHeader
         chip={art(selected)}
-        name={<input
-          ref={nameInput}
-          className="ui-item-header__input"
-          value={selected.name}
-          aria-label="Reference name"
-          aria-keyshortcuts="F2"
-          onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })}
-        />}
+        name={<h2 className="reference-inspector__name"><input
+            ref={nameInput}
+            className="ui-item-header__input"
+            value={selected.name}
+            aria-label="Reference name"
+            aria-keyshortcuts="F2"
+            onChange={(event) => update(selected.id, { name: event.target.value || "Untitled reference" })}
+          /></h2>}
         meta={[
           selectedType === "custom" ? "Uncategorized" : referenceTypeLabel(selectedType),
           referenceKindLabel(selected),
