@@ -386,7 +386,7 @@
   text-align: left;
 }
 
-.reference-detail-art :is(.reference-icon-refresh, .reference-image-remove) {
+.reference-detail-art .reference-image-remove {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
@@ -405,26 +405,22 @@
   transition: opacity var(--motion-fast) linear, background-color var(--motion-fast) linear;
 }
 
-.reference-detail-art--text :is(.reference-icon-refresh, .reference-image-remove) {
+.reference-detail-art--text .reference-image-remove {
   top: calc(50% - var(--control-sm) / 2);
 }
 
-.reference-detail-art:hover :is(.reference-icon-refresh, .reference-image-remove),
-.reference-detail-art:focus-within :is(.reference-icon-refresh, .reference-image-remove) {
+.reference-detail-art:hover .reference-image-remove,
+.reference-detail-art:focus-within .reference-image-remove {
   opacity: 1;
   pointer-events: auto;
 }
 
-.reference-detail-art :is(.reference-icon-refresh, .reference-image-remove):hover:not(:disabled) {
+.reference-detail-art .reference-image-remove:hover:not(:disabled) {
   background: var(--fill-control-hover);
 }
 
-.reference-detail-art .reference-icon-refresh:disabled {
-  color: var(--text-disabled);
-}
-
 @media (hover: none) {
-  .reference-detail-art :is(.reference-icon-refresh, .reference-image-remove) {
+  .reference-detail-art .reference-image-remove {
     opacity: 1;
     pointer-events: auto;
   }

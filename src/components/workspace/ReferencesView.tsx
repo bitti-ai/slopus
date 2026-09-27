@@ -1,4 +1,4 @@
-import { Add16, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh14, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
+import { Add16, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -525,11 +525,23 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             </section>
           </PropSection>}
           {/* The picture at a readable size, where the chip is only a glance:
-              paging through the images, removing one, regenerating the icon. */}
+              paging through the images, removing one. The header regenerates the icon. */}
           {(selected.kind !== "video" || showImages || hasRefmods) && <PropSection
             title="Preview"
             persistKey="references.preview"
             summary={showImages ? `${currentImagePage + 1} of ${selectedImages.length}` : undefined}
+            actions={!showImages && onRegenerateIcon && <button
+              type="button"
+              className="icon-button prop-row__button"
+              aria-label="Regenerate reference icon"
+              data-tooltip={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : canGenerateIcon ? "Regenerate reference icon" : hasRefmods ? "Enable a refmod to generate an icon" : "Add a prompt to generate an icon"}
+              disabled={!canGenerateIcon || pendingIconIds.has(selected.id)}
+              onClick={() => {
+                setIconError(null);
+                try { onRegenerateIcon(selected.id); }
+                catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
+              }}
+            ><Refresh16 aria-hidden="true" /></button>}
           >
             <div className={`reference-detail-art${showImages || selected.iconRelativePath || (!hasRefmods && selectedPresetIcon) ? " reference-detail-art--photo" : " reference-detail-art--text"}${showImages ? " reference-detail-art--images" : (!hasRefmods && selectedPresetIcon) || selected.iconRelativePath ? " reference-detail-art--preset" : ""}`}>
               {showImages
@@ -542,18 +554,6 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               {/* A caption only where there is no picture to look at. */}
               {!showImages && !selected.iconRelativePath && (hasRefmods || !selectedPresetIcon) && <em>{referenceKindLabel(selected)}</em>}
               {showImages && <button type="button" className="reference-image-remove" aria-label="Remove reference image" {...tooltipProps(`Remove ${selectedImage.name}`)} onClick={removeImage}><Delete14 aria-hidden="true" /></button>}
-              {!showImages && onRegenerateIcon && <button
-                type="button"
-                className="reference-icon-refresh"
-                aria-label="Regenerate reference icon"
-                data-tooltip={pendingIconIds.has(selected.id) ? "Icon generation queued or running" : canGenerateIcon ? "Regenerate reference icon" : hasRefmods ? "Enable a refmod to generate an icon" : "Add a prompt to generate an icon"}
-                disabled={!canGenerateIcon || pendingIconIds.has(selected.id)}
-                onClick={() => {
-                  setIconError(null);
-                  try { onRegenerateIcon(selected.id); }
-                  catch (reason) { setIconError(reason instanceof Error ? reason.message : String(reason)); }
-                }}
-              ><Refresh14 aria-hidden="true" /></button>}
             </div>
             {showImages && <div className="reference-image-controls" role="group" aria-label="Reference images">
               <button type="button" className="icon-button" aria-label="Previous reference image" data-tooltip="Previous image" disabled={currentImagePage === 0} onClick={() => setImagePage(currentImagePage - 1)}><ChevronLeft16 aria-hidden="true" /></button>

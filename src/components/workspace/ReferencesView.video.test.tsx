@@ -39,7 +39,7 @@ it("attaches mixed files through Add file and renders an icon with an enabled re
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
   await screen.findByRole("button", { name: /^Refmods/ });
   const icon = screen.getByRole("button", { name: "Regenerate reference icon" });
-  expect(icon.closest(".reference-detail-art")).not.toBeNull();
+  expect(icon.closest(".ui-prop-section__actions")).not.toBeNull();
   expect(icon).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Render icon with refmod" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("Prompt")).toBeDisabled();
