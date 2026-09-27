@@ -37,7 +37,9 @@ it("exports the selected image from the Export tab and handles cancellation and 
   const settings = screen.getByRole("region", { name: "Export settings" });
   expect(within(settings).getByRole("combobox", { name: "Format" })).toHaveTextContent("JPG");
   expect(within(settings).getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1024 × 768 (original)");
-  expect(screen.getByRole("region", { name: "Image preview" })).toContainElement(screen.getByRole("img", { name: /Second/ }));
+  const preview = screen.getByRole("region", { name: "Image preview" });
+  expect(within(preview.querySelector(".export-screen") as HTMLElement).getByRole("img", { name: /Second/ })).toBeInTheDocument();
+  expect(within(screen.getByLabelText("Generated images")).getByRole("button", { name: "View Second" })).toHaveAttribute("aria-pressed", "true");
   const button = within(settings).getByRole("button", { name: "Export…" });
   fireEvent.click(button);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {

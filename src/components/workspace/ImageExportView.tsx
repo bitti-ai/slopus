@@ -5,6 +5,7 @@ import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
+import { ImageBar } from "./ImageBar";
 import { ReferenceImage } from "./ReferenceImage";
 
 /* The image project's Export tab: the same page as the video export (see
@@ -12,7 +13,7 @@ import { ReferenceImage } from "./ReferenceImage";
    pane on the right opening straight on its first section, with Export… pinned
    at its foot. Output sets the size (the image's own, or a rung of the project
    ladder at its aspect), the format and, for JPG, the quality; Export… then
-   asks where to save. Format and quality are remembered across projects. */
+   asks where to save. The image bar under the stage picks which image. Format and quality are remembered across projects. */
 
 type ImageFormat = "jpg" | "png";
 const STORAGE_KEY = "slopus.image-export.v1";
@@ -31,7 +32,11 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
   const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const output = config.assets.find((asset) => asset.kind === "image" && asset.id === config.imageScene?.outputAssetId);
+  /* Which image to export is this page's own choice: it starts on the one open
+     in the Editor, and picking another here leaves the Editor where it was. */
+  const images = config.assets.filter((asset) => asset.kind === "image");
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const output = images.find((asset) => asset.id === chosenId) ?? images.find((asset) => asset.id === config.imageScene?.outputAssetId);
   const draft = Boolean(output?.imageDraft);
   const desktop = isTauri();
 
@@ -86,6 +91,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
               : <EmptyState className="export-empty" icon={<Image32 />} title={draft ? "The image is a draft" : "No image to export yet"} description={blocker ?? undefined} />}
           </div>
         </div>
+        {images.length > 0 && <ImageBar images={images} selectedId={output?.id} folderPath={folderPath} onSelect={(id) => { setChosenId(id); setError(null); }} />}
       </section>
 
       <Splitter {...settingsPane.splitterProps} reverse aria-label="Resize export settings" aria-controls="image-export-settings" />

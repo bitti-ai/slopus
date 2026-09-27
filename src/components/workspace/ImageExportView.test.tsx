@@ -58,3 +58,20 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
   fireEvent.click(screen.getByRole("option", { name: /PNG/ }));
   expect(screen.queryByRole("slider", { name: "JPG quality" })).toBeNull();
 });
+
+it("shows the image bar and exports the image picked in it, leaving the Editor's image alone", async () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.mocked(invoke).mockResolvedValue(true);
+  const config = withOutput({ width: 2048, height: 1152 });
+  config.assets.push({ id: "second", name: "Second", kind: "image", relativePath: "media/generated/second.jpg", mimeType: "image/jpeg", width: 1024, height: 576, createdAt: config.createdAt } as ProjectConfig["assets"][number]);
+  render(<ImageExportView config={config} folderPath="D:/Images" />);
+  const bar = screen.getByLabelText("Generated images");
+  expect(within(bar).getByRole("button", { name: "View Out" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(within(bar).getByRole("button", { name: "View Second" }));
+  expect(within(bar).getByRole("button", { name: "View Second" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1024 × 576 (original)");
+  fireEvent.click(screen.getByRole("button", { name: "Export…" }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({ relativePath: "media/generated/second.jpg" })));
+  expect(config.imageScene!.outputAssetId).toBe("out");
+});

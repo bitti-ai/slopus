@@ -46,6 +46,13 @@
   background: var(--surface-stage);
 }
 
+/* An image project's image bar runs under the stage, on chrome, where the
+   video export has its transport bar. */
+.export-preview > .image-results {
+  flex: none;
+  background: var(--surface-chrome);
+}
+
 /* The stage is the screen plus its transport bar. It is also the element that
    goes fullscreen, so the bar comes along. */
 .export-stage {

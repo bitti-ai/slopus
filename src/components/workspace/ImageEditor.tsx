@@ -1,5 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
-import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit11, Edit16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image24, Image32, Paste16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
+import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
@@ -12,6 +12,7 @@ import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplat
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
+import { ImageBar } from "./ImageBar";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
 import styleSuggestions from "../../lib/imageStyleSuggestions.json";
@@ -118,25 +119,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
-  const previousImageCount = useRef(images.length);
-  useLayoutEffect(() => {
-    const bar = imageResults.current;
-    if (bar && images.length > previousImageCount.current) bar.scrollLeft = bar.scrollWidth;
-    previousImageCount.current = images.length;
-  }, [images.length]);
-  useEffect(() => {
-    const element = imageResults.current;
-    if (!element) return;
-    const wheel = (event: WheelEvent) => {
-      if (event.ctrlKey || element.scrollWidth <= element.clientWidth) return;
-      event.preventDefault();
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientWidth : 1;
-      element.scrollLeft += delta * unit;
-    };
-    element.addEventListener("wheel", wheel, { passive: false });
-    return () => element.removeEventListener("wheel", wheel);
-  }, [images.length]);
   // Generated assets retain the dimensions returned by the native encoder.
   // Project settings size only the empty canvas and future generation requests.
   const { width, height } = imageRoot && scene.sourceImage ? scene.sourceImage : output?.width && output?.height
@@ -553,20 +535,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       </div></div>
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
       <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt`}</span></div>
-      <div ref={imageResults} tabIndex={0} className="image-results" aria-label="Generated images" onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); setImageMenu({ id: null, x: event.clientX, y: event.clientY }); }} onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) {
-          event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); setContextMenu(null); setImageMenu({ id: null, x: bounds.left, y: bounds.top });
-        }
-      }}>{images.map((asset) => <button key={asset.id} data-image-asset={asset.id} data-tooltip={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === scene.outputAssetId}
-        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContextMenu(null); setImageMenu({ id: asset.id, x: event.clientX, y: event.clientY }); }}
-        onKeyDown={(event) => {
-          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-            event.preventDefault();
-            const bounds = event.currentTarget.getBoundingClientRect();
-            setContextMenu(null); setImageMenu({ id: asset.id, x: bounds.left, y: bounds.bottom });
-          }
-        }}
-        onClick={() => selectImage(asset.id)}>{asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}{asset.imageDraft && <span className="image-draft-badge"><Edit11 aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}</button>)}</div>
+      <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
+        onMenu={(id, x, y) => { setContextMenu(null); setImageMenu({ id, x, y }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     <aside className="image-inspector" aria-label="Image node inspector">
