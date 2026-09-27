@@ -24,7 +24,7 @@ export function ReferenceIconGenerationDialog({ count, onAnswer, builtins = fals
     >
       {builtins ? <>
         <p>Generate icons for {count} built-in references to make them easier to browse? This can take a long time. It runs in the background and pauses for video generation.</p>
-        <p>The icons are shared across projects and saved in a reference-icons folder next to the log files.</p>
+        <p>The icons are shared across projects.</p>
       </> : <>
         <p>{count} {count === 1 ? "reference needs an icon" : "references need icons"}. Generate them with the video engine now? This uses your GPU; videos waiting to render go first.</p>
       </>}
