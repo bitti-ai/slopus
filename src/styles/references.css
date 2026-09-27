@@ -620,6 +620,17 @@
    A type list on the left, and on the right a search box, the subcategory
    SelectorBar and the presets. The dialog body scrolls the preset grid only. */
 
+/* A 920px dialog would stretch New and Cancel to half its width each; keep
+   them button-sized at the right, as in a narrow dialog. */
+.reference-preset-dialog .ui-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.reference-preset-dialog .ui-dialog__button {
+  width: 140px;
+}
+
 .reference-preset-dialog__lead {
   margin: 0 0 var(--space-3);
   color: var(--text-secondary);
