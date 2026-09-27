@@ -470,20 +470,21 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">
-        <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
-        <ComboBox
-          className="image-generator"
-          aria-label="Generator"
-          data-tooltip="Generator"
-          value={template?.id ?? ""}
-          disabled={Boolean(active) || !imageTemplates.length}
-          placeholder="No MiniMax H3 templates"
-          options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: templateNeedsDownload(item), description: templateNeedsDownload(item) ? "Download in Settings" : undefined }))}
-          onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
-        />
-        {/* The canvas tools sit at the trailing edge; Generate and the generator lead. */}
-        <span className="image-tools__spacer" aria-hidden="true" />
-        <button className={`image-tool${boxes ? " image-tool--on" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} data-tooltip="Show placement boxes" onClick={() => { setBoxes(!boxes); setDrawKind(null); }}>{boxes ? <Boxes16Filled aria-hidden="true" /> : <Boxes16 aria-hidden="true" />}</button>
+        {/* Three columns: Generate and the generator lead, the canvas tools
+            sit in the middle, the view controls at the trailing edge. */}
+        <div className="image-tools__start">
+          <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
+          <ComboBox
+            className="image-generator"
+            aria-label="Generator"
+            data-tooltip="Generator"
+            value={template?.id ?? ""}
+            disabled={Boolean(active) || !imageTemplates.length}
+            placeholder="No MiniMax H3 templates"
+            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: templateNeedsDownload(item), description: templateNeedsDownload(item) ? "Download in Settings" : undefined }))}
+            onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
+          />
+        </div>
         <div className="image-tools__group" role="radiogroup" aria-label="Canvas tool" onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault();
@@ -505,18 +506,21 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             onClick={() => chooseTool(tool.id)}
           ><span aria-hidden="true">{drawKind === tool.id ? tool.onIcon : tool.icon}</span></button>)}
         </div>
-        <span className="image-tools__separator" role="separator" aria-orientation="vertical" />
-        <ComboBox
-          editable
-          className="image-zoom"
-          aria-label="Image zoom"
-          data-tooltip="Zoom (Ctrl+0 fit, Ctrl+1 100%, Ctrl+= in, Ctrl+- out)"
-          value={zoomValue}
-          displayText={zoomText}
-          parseText={parseZoom}
-          options={zoomOptions}
-          onChange={(value) => { if (value === "fit") fit(); else zoomTo(Number(value)); }}
-        />
+        <div className="image-tools__end">
+          <button className={`image-tool${boxes ? " image-tool--on" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} data-tooltip="Show placement boxes" onClick={() => { setBoxes(!boxes); setDrawKind(null); }}>{boxes ? <Boxes16Filled aria-hidden="true" /> : <Boxes16 aria-hidden="true" />}</button>
+          <span className="image-tools__separator" role="separator" aria-orientation="vertical" />
+          <ComboBox
+            editable
+            className="image-zoom"
+            aria-label="Image zoom"
+            data-tooltip="Zoom (Ctrl+0 fit, Ctrl+1 100%, Ctrl+= in, Ctrl+- out)"
+            value={zoomValue}
+            displayText={zoomText}
+            parseText={parseZoom}
+            options={zoomOptions}
+            onChange={(value) => { if (value === "fit") fit(); else zoomTo(Number(value)); }}
+          />
+        </div>
       </div>
       <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} data-tooltip="Scroll to zoom · drag with the middle button to pan"
         onPointerDownCapture={(event) => {
