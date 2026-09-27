@@ -470,6 +470,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     ]} />}
     <section className="image-center" aria-label="Image panel">
       <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">
+        <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
         <ComboBox
           className="image-generator"
           aria-label="Generator"
@@ -480,8 +481,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: templateNeedsDownload(item), description: templateNeedsDownload(item) ? "Download in Settings" : undefined }))}
           onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
         />
-        <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
-        {/* The canvas tools sit at the trailing edge; the generator and Generate lead. */}
+        {/* The canvas tools sit at the trailing edge; Generate and the generator lead. */}
         <span className="image-tools__spacer" aria-hidden="true" />
         <button className={`image-tool${boxes ? " image-tool--on" : ""}`} aria-label="Show placement boxes" aria-pressed={boxes} data-tooltip="Show placement boxes" onClick={() => { setBoxes(!boxes); setDrawKind(null); }}>{boxes ? <Boxes16Filled aria-hidden="true" /> : <Boxes16 aria-hidden="true" />}</button>
         <div className="image-tools__group" role="radiogroup" aria-label="Canvas tool" onKeyDown={(event) => {
