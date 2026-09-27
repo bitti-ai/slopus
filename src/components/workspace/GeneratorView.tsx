@@ -516,24 +516,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           <CommandBarButton icon={density === "list" ? <ListView16Filled /> : <ListView16 />} label="List" pressed={density === "list"} onClick={() => chooseDensity("list")} />
         </>}
       >
-        {/* The generator the next render uses, with its readiness as a glyph
-            beside the name; the words for a state that needs attention are
-            in the tooltip and the status bar. */}
-        <span className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}>
-          {/* The combo carries its own full name for assistive tech. */}
-          <span className="generator-runtime__label" aria-hidden="true">Generator:</span>
-          <i role="img" aria-label={runtimeLabel} data-tooltip={runtimeError ?? generatorRuntime?.detail ?? runtimeLabel} />
-          <ComboBox
-            className="generator-template"
-            aria-label={`Video generator template: ${selectedTemplate.name}`}
-            data-tooltip={selectedTemplate.name}
-            value={selectedTemplate.id}
-            disabled={availableTemplates.length === 0}
-            options={availableTemplates.map((template) => ({ value: template.id, label: template.name }))}
-            onChange={chooseGeneratorTemplate}
-          />
-        </span>
-        <CommandBarSeparator />
         {cancellable.length > 0
           ? <CommandBarButton
             className="generator-command__cancel"
@@ -552,6 +534,25 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             disabled={active.length > 0}
             onClick={() => void generateAll()}
           />}
+        <CommandBarSeparator />
+        {/* The generator the next render uses, with its readiness as a glyph
+            beside the name; the words for a state that needs attention are
+            in the tooltip and the status bar. */}
+        <span className={`generator-runtime generator-runtime--${runtimeError ? "unavailable" : generatorRuntime?.state ?? "checking"}`}>
+          {/* The combo carries its own full name for assistive tech. */}
+          <span className="generator-runtime__label" aria-hidden="true">Generator:</span>
+          <i role="img" aria-label={runtimeLabel} data-tooltip={runtimeError ?? generatorRuntime?.detail ?? runtimeLabel} />
+          <ComboBox
+            className="generator-template"
+            aria-label={`Video generator template: ${selectedTemplate.name}`}
+            data-tooltip={selectedTemplate.name}
+            value={selectedTemplate.id}
+            disabled={availableTemplates.length === 0}
+            options={availableTemplates.map((template) => ({ value: template.id, label: template.name }))}
+            onChange={chooseGeneratorTemplate}
+          />
+        </span>
+        <CommandBarSeparator />
         <CommandBarButton icon={<Add16 />} label="Add scene" showLabel onClick={newScene} />
       </CommandBar>
 
