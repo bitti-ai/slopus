@@ -223,14 +223,38 @@ pub(crate) fn write_generated_image_frame(
     })
 }
 
+/// How the Export tab asks for the image: its file format, its pixel size
+/// (the generated size when absent) and, for JPEG, the quality 1–100.
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageExportOptions {
+    pub format: Option<ImageExportFormat>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub quality: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ImageExportFormat {
+    Jpg,
+    Png,
+}
+
+/// The quality generated JPEGs are written at: exporting at this or above,
+/// unresized, cannot gain anything over the file itself, so it is copied.
+const GENERATED_JPEG_QUALITY: u8 = 95;
+
 #[tauri::command]
 pub(crate) async fn export_generated_image(
     app: AppHandle,
     folder_path: String,
     relative_path: String,
+    options: Option<ImageExportOptions>,
 ) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
+        let options = options.unwrap_or_default();
         let root = ProjectRoot::open(&folder_path)?;
         let source = root.existing(&relative_path)?;
         if !relative_path.starts_with("media/generated/")
@@ -238,32 +262,55 @@ pub(crate) async fn export_generated_image(
         {
             return Err("Choose a generated JPEG or PNG image to export.".into());
         }
-        let Some(destination) = app
-            .dialog()
-            .file()
-            .set_title("Export image")
-            .add_filter("JPEG image", &["jpg", "jpeg"])
-            .add_filter("PNG image", &["png"])
-            .set_file_name("image")
-            .blocking_save_file()
-        else {
+        let dialog = app.dialog().file().set_title("Export image");
+        let dialog = match options.format {
+            Some(ImageExportFormat::Jpg) => dialog.add_filter("JPEG image", &["jpg", "jpeg"]).set_file_name("image.jpg"),
+            Some(ImageExportFormat::Png) => dialog.add_filter("PNG image", &["png"]).set_file_name("image.png"),
+            None => dialog
+                .add_filter("JPEG image", &["jpg", "jpeg"])
+                .add_filter("PNG image", &["png"])
+                .set_file_name("image"),
+        };
+        let Some(destination) = dialog.blocking_save_file() else {
             return Ok(false);
         };
         let destination = destination
             .into_path()
             .map_err(|_| "Choose a local image destination.")?;
-        export_image_file(&source, &destination)?;
+        // The chosen format wins over a mistyped or missing extension.
+        let destination = match options.format {
+            Some(ImageExportFormat::Png) if !has_extension(&destination, &["png"]) => destination.with_extension("png"),
+            Some(ImageExportFormat::Jpg) if !has_extension(&destination, &["jpg", "jpeg"]) => destination.with_extension("jpg"),
+            _ => destination,
+        };
+        export_image_file_with(&source, &destination, options)?;
         Ok(true)
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
-/// Copy JPEGs without another lossy encode; PNG exports retain the decoded
-/// source pixels and full resolution. File extensions always match the bytes.
+fn has_extension(path: &std::path::Path, extensions: &[&str]) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| extensions.iter().any(|candidate| value.eq_ignore_ascii_case(candidate)))
+}
+
+/// Export at the generated size and default quality; see export_image_file_with.
 pub(crate) fn export_image_file(
     source: &std::path::Path,
     destination: &std::path::Path,
+) -> Result<(), String> {
+    export_image_file_with(source, destination, ImageExportOptions::default())
+}
+
+/// Copy the file untouched when nothing would change (same format, same size,
+/// and for JPEG no quality below the one it was written at); otherwise decode,
+/// resize with Lanczos3 and encode. File extensions always match the bytes.
+pub(crate) fn export_image_file_with(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    options: ImageExportOptions,
 ) -> Result<(), String> {
     let destination = if destination.extension().is_none() {
         destination.with_extension("jpg")
@@ -278,21 +325,37 @@ pub(crate) fn export_image_file(
     if !matches!(extension.as_str(), "jpg" | "jpeg" | "png") {
         return Err("Choose a .jpg, .jpeg or .png filename for the exported image.".into());
     }
+    let quality = options.quality.unwrap_or(GENERATED_JPEG_QUALITY).clamp(1, 100);
     let bytes = fs::read(source).map_err(|error| format!("Could not read image: {error}"))?;
     let source_format = image::guess_format(&bytes).map_err(|error| format!("Could not read image format: {error}"))?;
     let target_format = if extension == "png" { image::ImageFormat::Png } else { image::ImageFormat::Jpeg };
-    let bytes = if source_format != target_format {
-        let image = image::load_from_memory_with_format(&bytes, source_format)
+    let (source_width, source_height) = image::ImageReader::with_format(std::io::Cursor::new(&bytes), source_format)
+        .into_dimensions()
+        .map_err(|error| format!("Could not read image size: {error}"))?;
+    let width = options.width.unwrap_or(source_width);
+    let height = options.height.unwrap_or(source_height);
+    if width == 0 || height == 0 || width > 16_384 || height > 16_384 {
+        return Err("Choose an export size between 1 and 16384 pixels.".into());
+    }
+    let resized = (width, height) != (source_width, source_height);
+    let unchanged = source_format == target_format
+        && !resized
+        && (target_format == image::ImageFormat::Png || quality >= GENERATED_JPEG_QUALITY);
+    let bytes = if unchanged {
+        bytes
+    } else {
+        let mut image = image::load_from_memory_with_format(&bytes, source_format)
             .map_err(|error| format!("Could not decode image: {error}"))?;
+        if resized {
+            image = image.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
+        }
         let mut encoded = std::io::Cursor::new(Vec::new());
         if target_format == image::ImageFormat::Jpeg {
-            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 95).encode_image(&image.to_rgb8()).map_err(|error| error.to_string())?;
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, quality).encode_image(&image.to_rgb8()).map_err(|error| error.to_string())?;
         } else {
             image.write_to(&mut encoded, target_format).map_err(|error| format!("Could not encode PNG: {error}"))?;
         }
         encoded.into_inner()
-    } else {
-        bytes
     };
     crate::storage::atomic::write_atomically(&destination, &bytes)
 }

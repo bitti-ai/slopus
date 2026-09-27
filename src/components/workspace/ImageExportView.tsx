@@ -1,16 +1,32 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
-import type { ProjectConfig } from "../../lib/project";
+import { outputDimensions } from "../../lib/export";
+import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
-import { EmptyState, InfoBar, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
+import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
 import { ReferenceImage } from "./ReferenceImage";
 
 /* The image project's Export tab: the same page as the video export (see
    export.css) — the image on the stage, filling it, and the resizable settings
    pane on the right opening straight on its first section, with Export… pinned
-   at its foot. For now Export… only opens the Save dialog (JPG or PNG is picked
-   there); the pane is where output settings will grow. */
+   at its foot. Output sets the size (the image's own, or a rung of the project
+   ladder at its aspect), the format and, for JPG, the quality; Export… then
+   asks where to save. Format and quality are remembered across projects. */
+
+type ImageFormat = "jpg" | "png";
+const STORAGE_KEY = "slopus.image-export.v1";
+const DEFAULT_QUALITY = 90;
+
+function loadPreferences(): { format: ImageFormat; quality: number } {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as { format?: unknown; quality?: unknown };
+    const quality = typeof saved.quality === "number" && saved.quality >= 1 && saved.quality <= 100 ? Math.round(saved.quality) : DEFAULT_QUALITY;
+    return { format: saved.format === "png" ? "png" : "jpg", quality };
+  } catch { return { format: "jpg", quality: DEFAULT_QUALITY }; }
+}
+
+const sizeKey = (width: number, height: number) => `${width}x${height}`;
 export function ImageExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
   const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const [exporting, setExporting] = useState(false);
@@ -25,18 +41,39 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
       : !desktop ? "Exporting is available in the Slopus desktop app."
         : null;
   const disabled = blocker !== null || exporting;
-  const size = output?.width && output?.height ? `${output.width} × ${output.height}` : null;
+  const [preferences, setPreferences] = useState(loadPreferences);
+  const choose = (patch: Partial<typeof preferences>) => {
+    const next = { ...preferences, ...patch };
+    setPreferences(next);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* remembered for this session only */ }
+  };
+
+  /* The image's own size first, then the ladder at the project's aspect —
+     the same sizes the video export offers — skipping a rung that is it. */
+  const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
+  const sizes = [
+    ...(original ? [{ ...original, label: `${original.width} × ${original.height} (original)` }] : []),
+    ...PROJECT_RESOLUTIONS.map((resolution) => outputDimensions(resolution, config.settings.aspectRatio))
+      .filter((size) => !original || sizeKey(size.width, size.height) !== sizeKey(original.width, original.height))
+      .map((size) => ({ ...size, label: `${size.width} × ${size.height}` })),
+  ];
+  const [chosenSize, setChosenSize] = useState<string | null>(null);
+  const size = sizes.find((candidate) => sizeKey(candidate.width, candidate.height) === chosenSize) ?? sizes[0];
 
   const exportImage = async () => {
     if (!output?.relativePath || disabled) return;
     setExporting(true); setError(null);
-    try { await invoke("export_generated_image", { folderPath, relativePath: output.relativePath }); }
+    try {
+      await invoke("export_generated_image", {
+        folderPath,
+        relativePath: output.relativePath,
+        options: { format: preferences.format, width: size?.width, height: size?.height, quality: preferences.format === "jpg" ? preferences.quality : undefined },
+      });
+    }
     catch (reason) { setError(String(reason)); }
     finally { setExporting(false); }
   };
 
-  const facts: [string, string][] = [["Format", "JPG or PNG, chosen when saving"]];
-  if (size) facts.push(["Size", `${size} px`]);
 
   return <div className="export-view" style={settingsPane.style}>
     <h1 className="sr-only">Export</h1>
@@ -57,12 +94,29 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
       <section id="image-export-settings" className="export-settings" aria-label="Export settings">
         <div className="export-settings__scroll">
           <PropSection title="Output" persistKey="export.image.output">
-            <dl className="export-summary">
-              {facts.map(([term, value]) => <div key={term}>
-                <dt>{term}</dt>
-                <dd>{value}</dd>
-              </div>)}
-            </dl>
+            <PropRow label="Resolution" htmlFor="image-export-resolution">
+              <ComboBox
+                id="image-export-resolution"
+                value={size ? sizeKey(size.width, size.height) : ""}
+                disabled={exporting || sizes.length === 0}
+                placeholder="Generate an image first"
+                onChange={setChosenSize}
+                options={sizes.map((candidate) => ({ value: sizeKey(candidate.width, candidate.height), label: candidate.label }))}
+              />
+            </PropRow>
+            <PropRow label="Format" htmlFor="image-export-format">
+              <ComboBox
+                id="image-export-format"
+                value={preferences.format}
+                disabled={exporting}
+                onChange={(value) => choose({ format: value as ImageFormat })}
+                options={[{ value: "jpg", label: "JPG" }, { value: "png", label: "PNG · lossless" }]}
+              />
+            </PropRow>
+            {preferences.format === "jpg" && <PropRow label="Quality" value={preferences.quality} defaultValue={DEFAULT_QUALITY} onReset={exporting ? undefined : () => choose({ quality: DEFAULT_QUALITY })} resetLabel="Reset quality">
+              <Slider aria-label="JPG quality" min={1} max={100} step={1} value={preferences.quality} disabled={exporting} onChange={(quality) => choose({ quality })} />
+              <span className="export-quality__value">{preferences.quality}</span>
+            </PropRow>}
           </PropSection>
           <div className="export-messages">
             {blocker && <InfoBar severity="informational" title="Nothing to export yet" message={blocker} />}
@@ -76,7 +130,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
               className="primary-button"
               disabled={disabled}
               onClick={() => void exportImage()}
-              {...tooltipProps(exporting ? "Export is running" : blocker ?? "Save the image as JPG or PNG")}
+              {...tooltipProps(exporting ? "Export is running" : blocker ?? `Save the image as ${preferences.format.toUpperCase()}`)}
             >{exporting ? "Exporting…" : "Export…"}</button>
           </div>
         </div>

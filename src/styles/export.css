@@ -295,6 +295,16 @@ img.export-image {
 
 /* The summary as a label/value list, one line per fact, on the PropRow grid:
    the --prop-label column, the value, and the empty reset column. */
+/* The image export's JPG quality, read out beside its slider. */
+.export-quality__value {
+  min-width: 32px;
+  flex: none;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .export-summary {
   margin: 0;
   display: grid;

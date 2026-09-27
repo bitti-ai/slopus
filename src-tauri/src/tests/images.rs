@@ -116,6 +116,30 @@ fn image_export_writes_real_png_or_copies_jpeg_without_changing_pixels_or_resolu
 }
 
 #[test]
+fn image_export_resizes_and_reencodes_at_the_chosen_quality() {
+    use crate::commands::artifacts::{export_image_file_with, ImageExportFormat, ImageExportOptions};
+    let folder = project_folder();
+    let root = folder.path().to_string_lossy();
+    let rgba: Vec<u8> = (0..128 * 80).flat_map(|index| [(index % 256) as u8, (index / 7 % 256) as u8, 160, 255]).collect();
+    let saved = write_generated_image_frame(&root, "resize-test", 128, 80, &rgba).unwrap();
+    let source = folder.path().join(saved.relative_path);
+    let original = fs::read(&source).unwrap();
+    let half = folder.path().join("half.png");
+    export_image_file_with(&source, &half, ImageExportOptions { format: Some(ImageExportFormat::Png), width: Some(64), height: Some(40), quality: None }).unwrap();
+    assert_eq!(::image::image_dimensions(&half).unwrap(), (64, 40));
+    let low = folder.path().join("low.jpg");
+    export_image_file_with(&source, &low, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(20) }).unwrap();
+    let low = fs::read(low).unwrap();
+    assert_ne!(low, original);
+    assert!(low.len() < original.len());
+    let best = folder.path().join("best.jpg");
+    export_image_file_with(&source, &best, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(100) }).unwrap();
+    assert_eq!(fs::read(best).unwrap(), original);
+    let zero = folder.path().join("zero.jpg");
+    assert!(export_image_file_with(&source, &zero, ImageExportOptions { format: None, width: Some(0), height: Some(40), quality: None }).is_err());
+}
+
+#[test]
 fn image_tree_survives_folder_creation_save_and_reopen() {
     let root = tempfile::tempdir().unwrap();
     let config = image_fixture();

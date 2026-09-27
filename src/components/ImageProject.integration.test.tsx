@@ -35,12 +35,14 @@ it("exports the selected image from the Export tab and handles cancellation and 
   fireEvent.click(screen.getByRole("button", { name: "View Second" }));
   fireEvent.click(within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: /Export/ }));
   const settings = screen.getByRole("region", { name: "Export settings" });
-  expect(within(settings).getByText("JPG or PNG, chosen when saving")).toBeInTheDocument();
-  expect(within(settings).getByText("1024 × 768 px")).toBeInTheDocument();
+  expect(within(settings).getByRole("combobox", { name: "Format" })).toHaveTextContent("JPG");
+  expect(within(settings).getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1024 × 768 (original)");
   expect(screen.getByRole("region", { name: "Image preview" })).toContainElement(screen.getByRole("img", { name: /Second/ }));
   const button = within(settings).getByRole("button", { name: "Export…" });
   fireEvent.click(button);
-  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", { folderPath: "D:/Images", relativePath: "media/generated/Second.jpg" }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {
+    folderPath: "D:/Images", relativePath: "media/generated/Second.jpg", options: { format: "jpg", width: 1024, height: 768, quality: 90 },
+  }));
   expect(within(settings).getByRole("button", { name: "Exporting…" })).toBeDisabled();
   await act(async () => complete(false));
   expect(button).toBeEnabled();
