@@ -297,6 +297,8 @@ fn has_extension(path: &std::path::Path, extensions: &[&str]) -> bool {
 }
 
 /// Export at the generated size and default quality; see export_image_file_with.
+/// The app always passes options; this is the tests' shorthand.
+#[cfg(test)]
 pub(crate) fn export_image_file(
     source: &std::path::Path,
     destination: &std::path::Path,
