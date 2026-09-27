@@ -571,7 +571,19 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     <aside className="image-inspector" aria-label="Image node inspector">
       {/* The selected node heads the inspector, not an "Inspector" title. */}
-      <ItemHeader name={selected.name} meta={selected.kind[0].toUpperCase() + selected.kind.slice(1)} />
+      {/* The name is edited in place in the header, as a shot's or a clip's
+          is; an image-edit root has no name of its own to change. */}
+      <ItemHeader
+        name={selected.kind === "root" && imageRoot ? selected.name : <h2 className="image-inspector__name" aria-label={selected.name}><input
+          className="ui-item-header__input"
+          value={selected.name}
+          maxLength={120}
+          aria-label="Name"
+          data-tooltip="Rename"
+          onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }}
+        /></h2>}
+        meta={selected.kind[0].toUpperCase() + selected.kind.slice(1)}
+      />
       <div className="image-inspector__fields">
         {selected.kind === "root" && <PropRow label="Type" htmlFor={rootField("type")}>
           <ComboBox id={rootField("type")} aria-label="Type" value={imageRoot ? "image" : "prompt"} options={[{ value: "prompt", label: "Prompt" }, { value: "image", label: "Image" }]}
@@ -584,7 +596,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           })}><FolderOpen16 aria-hidden="true" />Open image</button>
           {scene.sourceImage && <p className="image-inspector__caption">{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
         </> : <>
-          <PropRow label="Name" htmlFor={rootField("name")}><input id={rootField("name")} className="text-field" value={selected.name} maxLength={120} onChange={(event) => { if (event.target.value.trim()) patchNode({ name: event.target.value }); }} /></PropRow>
           <label className="image-inspector__area">{selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea className="text-field" rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
         </>}
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
