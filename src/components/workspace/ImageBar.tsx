@@ -7,8 +7,9 @@ import "../../styles/image-editor.css";
 /* The strip of an image project's images along the foot of the Editor and the
    Export tab: one thumbnail per image, the selected one ringed in accent, a
    draft badged. The mouse wheel scrolls it sideways, and a new image scrolls
-   into view at the end. `onMenu` opens a context menu for an image (id) or
-   for the bar (null) at a point; without it the bar has no menu. */
+   into view at the end; the arrow keys step through it. `onMenu` opens a
+   context menu for an image (id) or for the bar (null) at a point; without it
+   the bar has no menu. */
 export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
@@ -39,16 +40,38 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
     return () => element.removeEventListener("wheel", wheel);
   }, [images.length]);
 
+  /* Left and Right step the focus along the thumbnails, Home and End jump to
+     either end, and the bar scrolls to keep the focused one in view. Moving
+     the focus does not open the image: Enter or Space does, as a click. From
+     the bar itself, the first step lands on the selected thumbnail. */
+  const arrowKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey) return false;
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-image-asset]")];
+    if (buttons.length === 0) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const at = buttons.indexOf(event.target as HTMLButtonElement);
+    const selected = Math.max(0, buttons.findIndex((button) => button.getAttribute("aria-pressed") === "true"));
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? buttons.length - 1
+        : at < 0 ? selected
+          : Math.min(buttons.length - 1, Math.max(0, at + (event.key === "ArrowRight" ? 1 : -1)));
+    buttons[next].focus();
+    buttons[next].scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    return true;
+  };
+
   const menuKey = (event: KeyboardEvent) => event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 
   return <div ref={bar} tabIndex={0} className="image-results" aria-label="Generated images"
     onContextMenu={onMenu && ((event) => { event.preventDefault(); onMenu(null, event.clientX, event.clientY); })}
-    onKeyDown={onMenu && ((event) => {
-      if (event.target !== event.currentTarget || !menuKey(event)) return;
+    onKeyDown={(event) => {
+      if (arrowKey(event)) return;
+      if (!onMenu || event.target !== event.currentTarget || !menuKey(event)) return;
       event.preventDefault();
       const bounds = event.currentTarget.getBoundingClientRect();
       onMenu(null, bounds.left, bounds.top);
-    })}>
+    }}>
     {images.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === selectedId}
       onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY); })}
       onKeyDown={onMenu && ((event) => {

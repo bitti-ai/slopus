@@ -75,3 +75,25 @@ it("shows the image bar and exports the image picked in it, leaving the Editor's
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({ relativePath: "media/generated/second.jpg" })));
   expect(config.imageScene!.outputAssetId).toBe("out");
 });
+
+it("steps through the image bar with the arrow keys without opening an image", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const config = withOutput({ width: 2048, height: 1152 });
+  for (const name of ["Second", "Third"]) config.assets.push({ id: name, name, kind: "image", relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", width: 1024, height: 576, createdAt: config.createdAt } as ProjectConfig["assets"][number]);
+  render(<ImageExportView config={config} folderPath="D:/Images" />);
+  const bar = screen.getByLabelText("Generated images");
+  const [out, second, third] = ["Out", "Second", "Third"].map((name) => within(bar).getByRole("button", { name: `View ${name}` }));
+  bar.focus();
+  fireEvent.keyDown(bar, { key: "ArrowRight" });
+  expect(out).toHaveFocus();
+  fireEvent.keyDown(out, { key: "ArrowRight" });
+  expect(second).toHaveFocus();
+  fireEvent.keyDown(second, { key: "End" });
+  expect(third).toHaveFocus();
+  fireEvent.keyDown(third, { key: "ArrowRight" });
+  expect(third).toHaveFocus();
+  fireEvent.keyDown(third, { key: "ArrowLeft" });
+  expect(second).toHaveFocus();
+  expect(out).toHaveAttribute("aria-pressed", "true");
+});
