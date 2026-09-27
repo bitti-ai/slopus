@@ -57,14 +57,14 @@
 }
 
 /* --- Icons view ---------------------------------------------------------------
-   Auto-filling 240px-and-up tiles: a square picture and a 12px name. Rest, hover and
+   Auto-filling 160px-and-up tiles: a square picture and a 12px name. Rest, hover and
    selection are the shared selectable-card rule (.ui-selectable--card): a
    fill under the mouse, an accent fill and ring when selected.
    ========================================================================== */
 
 .reference-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
 }
