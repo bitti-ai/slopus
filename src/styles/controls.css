@@ -103,6 +103,24 @@
   color: var(--text-disabled);
 }
 
+/* An icon button whose work is under way (the Work queue while a job runs,
+   the Agent toggle during a turn): an accent arc turns around the glyph,
+   the indeterminate ProgressRing's motion at the button's size. */
+.icon-button--busy {
+  position: relative;
+}
+
+.icon-button--busy::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
 /* A toggle icon button that is on (.icon-button--checked / aria-pressed)
    takes the shared on-state in ui.css ("Toggle on-state"). */
 

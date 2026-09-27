@@ -134,6 +134,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     return initialView === "agent" || initialView === "editor" ? "timeline" : initialView;
   });
   const [agentOpen, setAgentOpenState] = useState(() => initialView === "agent" || readAgentPane());
+  const [agentBusy, setAgentBusy] = useState(false);
   const setAgentOpen = (open: boolean) => { setAgentOpenState(open); writeAgentPane(open); };
   /* 360px is a comfortable conversation column, but at the 900px window
      minimum it would take 40% of the width from the editor. The pane gives
@@ -252,7 +253,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           </button>
         </div>
         <span className="titlebar-separator" aria-hidden="true" />
-        <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}`} aria-label="Agent" aria-pressed={agentOpen} aria-controls={`${panelId}-agent`} data-tooltip={agentOpen ? "Hide agent" : "Show agent"} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A" onClick={toggleAgent}>{agentOpen ? <Agent16Filled /> : <Agent16 />}</button>
+        <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}${agentBusy ? " icon-button--busy" : ""}`} aria-label="Agent" aria-pressed={agentOpen} aria-busy={agentBusy} aria-controls={`${panelId}-agent`} data-tooltip={`${agentOpen ? "Hide agent" : "Show agent"}${agentBusy ? " · working" : ""}`} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A" onClick={toggleAgent}>{agentOpen ? <Agent16Filled /> : <Agent16 />}</button>
         {titleBarActions}
       </>}
     >
@@ -297,6 +298,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
           providers={runtime?.providers ?? CHECKING_PROVIDERS}
           onClose={() => { setAgentOpen(false); agentToggle.current?.focus(); }}
           onPromptStart={() => { if (!agentOpen) setAgentOpen(true); }}
+          onBusyChange={setAgentBusy}
           /* The provider only proposes typed commands. Apply them to the session's
              latest state—edits can continue while it thinks—as one undo step, then
              route the result through the same ordered save queue as the Save button. */

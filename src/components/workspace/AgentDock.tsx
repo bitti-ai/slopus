@@ -34,7 +34,7 @@ interface AgentActivity {
  *  workspace. `onClose` wires the header's close button to it; without it the
  *  button is not shown. `expanded` is accepted for compatibility and no longer
  *  changes the layout: the pane is always the full conversation. */
-export function AgentDock({ context, record, providers, onPromptStart, onCommands, onClose }: {
+export function AgentDock({ context, record, providers, onPromptStart, onCommands, onClose, onBusyChange }: {
   context: string;
   record: ProjectRecord;
   providers: ProviderStatus[];
@@ -44,6 +44,8 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
   onCommands: (commands: ProjectCommand[]) => Promise<void>;
   /** Hide the pane (the header's × button). */
   onClose?: () => void;
+  /** Told when a turn starts and ends, so the Agent toggle can show it. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const configured = loadAgentProvider() ?? record.config.providerSettings.agent?.options.selectedProvider;
   const initial = providers.some((item) => item.id === configured)
@@ -58,6 +60,8 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
   const activeRequest = useRef<string | null>(null);
+  const busy = requestId !== null;
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const conversation = useRef<HTMLDivElement | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const cancelButton = useRef<HTMLButtonElement | null>(null);

@@ -147,6 +147,10 @@ function App() {
     void reportGenerationJobs(JSON.parse(guardKey) as GuardJob[]).catch(() => undefined);
   }, [guardKey]);
   const queueCount = guardJobs.length + Number(weightDownloadActive);
+  /* Something is being worked on right now, not merely waiting its turn:
+     a generation or icon past the queue, an export, a weight download. */
+  const queueBusy = weightDownloadActive || exportingName !== null
+    || workItems.some((item) => isWorkActive(item) && item.status !== "queued");
 
   useEffect(() => {
     void listRecentProjects()
@@ -304,8 +308,8 @@ function App() {
     ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
 
   const queueTrigger = (ref: RefObject<HTMLButtonElement>) => (
-    <button ref={ref} type="button" className="icon-button titlebar-command" onClick={() => setWorkQueueOpen((open) => !open)}
-      aria-label="Work queue" aria-haspopup="dialog" aria-expanded={workQueueOpen} data-tooltip={queueCount ? `Work queue · ${queueCount} running or queued` : "Work queue"}>
+    <button ref={ref} type="button" className={`icon-button titlebar-command${queueBusy ? " icon-button--busy" : ""}`} onClick={() => setWorkQueueOpen((open) => !open)}
+      aria-label="Work queue" aria-haspopup="dialog" aria-expanded={workQueueOpen} aria-busy={queueBusy} data-tooltip={queueCount ? `Work queue · ${queueCount} running or queued` : queueBusy ? "Work queue · working" : "Work queue"}>
       <WorkQueue16 aria-hidden="true" />
       {queueCount > 0 && <InfoBadge className="titlebar-command__badge" value={queueCount} />}
     </button>
