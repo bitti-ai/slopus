@@ -1,39 +1,46 @@
-# Slopus 0.1.1
+# Slopus 0.2.0
 
-This alpha update adds video effects, improved video references, more generator
-controls, and a simpler settings workflow.
+This alpha update adds still image projects, new scene types, and a rebuilt
+Windows 11–style interface with project-wide undo.
 
 ## What's new
 
-- GPU video effects in preview and export: sharpening, Gaussian blur, color
-  correction, vignette, and imported `.cube` LUTs.
-- Video references accept longer source files with a 2-15 second selection.
-  A dedicated trim popup previews the active trim edge and supports optional
-  soundtrack conditioning and decoder fallback.
-- Project-wide Looks with scene overrides, plus a timeline that grows
-  automatically as clips are added, moved, or extended.
-- Scene continuation from saved latents, new Singularity and Animate generator
-  templates, and Turbo and LightX2V Turbo LoRA downloads.
-- Per-LoRA strength multipliers, a MotionCache toggle, generator creation in a
-  popup, and template selection for reference icon generation.
-- Full-screen Settings and simpler project and reference controls.
+- Image projects: compose a still image as a hierarchy of objects, text and
+  groups on a canvas, generate it with MiniMax H3, then refine it with
+  sequential edits on an opened or generated image. Generated images and
+  drafts stay in an image bar, and each keeps the settings it was made with.
+- Image export as JPG or PNG, at the original size or a size from the project
+  ladder, with adjustable JPG quality.
+- New scene types: Pose, Character replace, Extend and Bridge, alongside
+  First & last frame and Animate.
+- A new interface in the style of Windows 11: a frameless Mica window, a title
+  bar with the project's Save, Undo and Redo, and Fluent controls and icons.
+- Project-wide Undo and Redo (Ctrl+Z, Ctrl+Y) for edits made in any view, by
+  the agent, or in project settings.
+- Rebuilt Generator, References, Timeline, Export and Settings screens. The
+  Generator is a board of scenes and shot tiles; References has Icons and
+  Details views with multi-select; the Timeline gains zoom, keyboard
+  shortcuts and context menus.
+- The agent is a docked, resizable pane that keeps running while hidden.
+- The Work queue and Agent buttons show when work is under way, and exports
+  keep running in the background.
+- Reference images can be paged through and removed, and effects can be
+  bypassed without removing them.
 
 ## Fixes and improvements
 
-- Updated the bundled SlopFab runtime and aligned generation planning and
-  progress with model metadata.
-- Added LoRA timestep-grid preparation during downloads and local imports,
-  with a Prepare action for existing adapters.
-- Improved discovery of existing model weights, custom weight folder support,
-  and availability reporting when template LoRAs are missing.
-- Expanded regression coverage across project persistence, generation,
-  references, rendering, and release publishing.
+- Updated the bundled SlopFab runtime.
+- Smoother previews: clips are preloaded and pixels are kept across cuts.
+- Fixed export stalls in the video encoder.
+- Choosing the project folder now comes before project setup.
+- Expanded regression coverage for image projects, the new interface, undo,
+  and export.
 
 ## Known limitations
 
 Animate integration is experimental. Animate output is capped at 345 frames.
 
-The new video effects require WebGPU. Full model inference and CUDA/Vulkan render
+Video effects require WebGPU. Full model inference and CUDA/Vulkan render
 performance have not been revalidated for this release.
 
 ## Getting started
@@ -48,5 +55,5 @@ requirements in future updates. CUDA requires a compatible NVIDIA setup;
 Vulkan is also supported. AI agent providers may require separate setup and
 authentication.
 
-This is alpha software. Image, 3D, music, and speech generation as standalone
-project types are planned for future versions.
+This is alpha software. 3D, music, and speech generation as standalone project
+types are planned for future versions.
