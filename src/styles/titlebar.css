@@ -34,6 +34,7 @@
 }
 
 .titlebar__leading,
+.titlebar__after-title,
 .titlebar__actions {
   display: flex;
   align-items: center;
@@ -48,6 +49,10 @@
 
 .titlebar__actions {
   padding: 0 var(--space-2);
+}
+
+.titlebar__after-title {
+  padding-right: var(--space-2);
 }
 
 .titlebar__identity {

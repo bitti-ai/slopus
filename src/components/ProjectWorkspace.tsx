@@ -92,8 +92,8 @@ function useWindowWidth(): number {
      └───────────────────────────────────────────────────┘┃└─────────────────┘
 
    The title bar is the caption AND the app's header (i-frame-1): Back, the
-   project name (click for project settings), the view switcher as a
-   SelectorBar (tabs, not links; Ctrl+1…4), Undo/Redo, Save, and the pane and
+   project name (click for project settings), Save, Undo/Redo, the view
+   switcher as a SelectorBar (tabs, not links; Ctrl+1…4), and the pane and
    app buttons. The agent is a docked pane on the right with a Splitter;
    Ctrl+Shift+A or the title-bar button shows and hides it, and both its width
    and whether it is open are remembered.
@@ -240,10 +240,9 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       className="project-titlebar"
       leading={<button type="button" className="icon-button" onClick={goBack} aria-label="Back to project library" data-tooltip="Back to projects" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
       title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown12 aria-hidden="true" /></button>}
-      actions={<>
-        <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo16 /></button>
-        <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo16 /></button>
-        <span className="titlebar-separator" aria-hidden="true" />
+      /* Save, then Undo and Redo, right after the project's name: the commands
+         about the document sit with the document's title. */
+      afterTitle={<>
         <div className="project-commands">
           {/* The standing "All changes saved" pill is gone; the button itself is
               the save state. Off means the file on disk already matches what is
@@ -252,7 +251,10 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
             <Save16 aria-hidden="true" /> {saving ? "Saving…" : "Save"}
           </button>
         </div>
-        <span className="titlebar-separator" aria-hidden="true" />
+        <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo16 /></button>
+        <button type="button" className="icon-button" disabled={!canRedo} onClick={() => session.redo()} aria-label="Redo" data-tooltip="Redo" data-tooltip-shortcut="Ctrl+Y" aria-keyshortcuts="Control+Y Control+Shift+Z"><Redo16 /></button>
+      </>}
+      actions={<>
         <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}${agentBusy ? " icon-button--busy" : ""}`} aria-label="Agent" aria-pressed={agentOpen} aria-busy={agentBusy} aria-controls={`${panelId}-agent`} data-tooltip={`${agentOpen ? "Hide agent" : "Show agent"}${agentBusy ? " · working" : ""}`} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A" onClick={toggleAgent}>{agentOpen ? <Agent16Filled /> : <Agent16 />}</button>
         {titleBarActions}
       </>}

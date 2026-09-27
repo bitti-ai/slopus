@@ -28,6 +28,8 @@ export interface TitleBarProps {
   icon?: ReactNode | false;
   /** Before the icon, e.g. a Back button. */
   leading?: ReactNode;
+  /** Right after the title, e.g. a project's Save and Undo/Redo. */
+  afterTitle?: ReactNode;
   /** The flexible middle, e.g. a search box or tabs. Fills the free width. */
   children?: ReactNode;
   /** Right-aligned, just before the caption buttons, e.g. Save. */
@@ -62,6 +64,7 @@ export function TitleBar({
   secondary,
   icon: customIcon,
   leading,
+  afterTitle,
   children,
   actions,
   className,
@@ -83,6 +86,7 @@ export function TitleBar({
         <span className="titlebar__title">{title}</span>
         {secondary && <span className="titlebar__secondary">{secondary}</span>}
       </div>
+      {afterTitle && <div className="titlebar__after-title">{afterTitle}</div>}
       <div className="titlebar__middle">{children}</div>
       {actions && <div className="titlebar__actions">{actions}</div>}
       {/* Not tab stops, like Windows' own: the keyboard reaches them through
