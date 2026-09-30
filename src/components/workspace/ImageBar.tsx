@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { imageFamilyRoot } from "../../lib/imageHistory";
+import { imageFamily, imageFamilyRoot } from "../../lib/imageHistory";
 import type { ProjectAsset } from "../../lib/project";
 import { ChevronLeft16, Edit11, Image24 } from "../ui/icons";
 import { ReferenceImage } from "./ReferenceImage";
@@ -9,8 +9,8 @@ import "../../styles/image-editor.css";
    Export tab: one thumbnail per image, the selected one ringed in accent, a
    draft badged. The mouse wheel scrolls it sideways, and a new image scrolls
    into view at the end; the arrow keys step through it. `onMenu` opens a
-   context menu for an image (id) or for the bar (null) at a point; without it
-   the bar has no menu.
+   context menu for an image (id) or for the bar (null) at a point, and says
+   whether the bar is showing a family; without it the bar has no menu.
 
    An image regenerated or edited from another joins that image's family. The
    bar lists the originals; while an image with a family is selected it shows
@@ -21,20 +21,20 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   selectedId: string | null | undefined;
   folderPath: string;
   onSelect: (id: string) => void;
-  onMenu?: (id: string | null, x: number, y: number) => void;
+  onMenu?: (id: string | null, x: number, y: number, inFamily: boolean) => void;
 }>(function ImageBar({ images, selectedId, folderPath, onSelect, onMenu }, ref) {
   const bar = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => bar.current as HTMLDivElement);
 
   const root = imageFamilyRoot(images, selectedId);
-  const family = root ? images.filter((asset) => asset.id === root || imageFamilyRoot(images, asset.id) === root) : [];
+  const family = imageFamily(images, selectedId);
   // Selecting an image opens its family; Back shows the originals until the
   // next selection.
   const [showAll, setShowAll] = useState(false);
   useEffect(() => setShowAll(false), [selectedId]);
   const inFamily = !showAll && family.length > 1;
   const originals = images.filter((asset) => imageFamilyRoot(images, asset.id) === asset.id);
-  const shown = inFamily ? [images.find((asset) => asset.id === root)!, ...family.filter((asset) => asset.id !== root)] : originals;
+  const shown = inFamily ? family : originals;
   const pressed = inFamily ? selectedId : root;
   const childCount = (id: string) => images.filter((asset) => asset.id !== id && imageFamilyRoot(images, asset.id) === id).length;
 
@@ -82,24 +82,24 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   const menuKey = (event: KeyboardEvent) => event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
 
   return <div ref={bar} tabIndex={0} className="image-results" aria-label="Generated images"
-    onContextMenu={onMenu && ((event) => { event.preventDefault(); onMenu(null, event.clientX, event.clientY); })}
+    onContextMenu={onMenu && ((event) => { event.preventDefault(); onMenu(null, event.clientX, event.clientY, inFamily); })}
     onKeyDown={(event) => {
       if (arrowKey(event)) return;
       if (!onMenu || event.target !== event.currentTarget || !menuKey(event)) return;
       event.preventDefault();
       const bounds = event.currentTarget.getBoundingClientRect();
-      onMenu(null, bounds.left, bounds.top);
+      onMenu(null, bounds.left, bounds.top, inFamily);
     }}>
     {inFamily && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
       onClick={() => { setShowAll(true); bar.current?.focus(); }}><ChevronLeft16 aria-hidden="true" /></button>}
     {shown.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name}
       aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed}
-      onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY); })}
+      onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY, inFamily); })}
       onKeyDown={onMenu && ((event) => {
         if (!menuKey(event)) return;
         event.preventDefault();
         const bounds = event.currentTarget.getBoundingClientRect();
-        onMenu(asset.id, bounds.left, bounds.bottom);
+        onMenu(asset.id, bounds.left, bounds.bottom, inFamily);
       })}
       onClick={() => { setShowAll(false); onSelect(asset.id); }}>
       {asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}

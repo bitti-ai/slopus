@@ -536,3 +536,34 @@ it("shows an image's family behind a back button, the original first", () => {
   fireEvent.click(screen.getByRole("button", { name: "View Other" }));
   expect(bar()).toEqual(["View Original, 3 versions", "View Other"]);
 });
+
+it("removes an original with a family only from inside the family, and the leftmost image takes its place", () => {
+  const initial = parseProjectConfig(fixture);
+  const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+  initial.assets = [image("Original"), image("Other"), image("Retry", "Original"), image("Edited", "Original")];
+  initial.imageScene!.outputAssetId = "Other";
+  const current = setup(initial);
+  const bar = () => within(screen.getByLabelText("Generated images")).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+  const remove = (name: string) => {
+    fireEvent.contextMenu(screen.getByRole("button", { name }));
+    return screen.getByRole("menuitem", { name: "Remove" });
+  };
+  // On the originals, an original with a family cannot be removed; one alone can.
+  expect(remove("View Original, 3 versions")).toBeDisabled();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(remove("View Other")).toBeEnabled();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+
+  // Inside the family it can, and the leftmost image becomes the original.
+  fireEvent.click(screen.getByRole("button", { name: "View Original, 3 versions" }));
+  fireEvent.click(remove("View Original"));
+  expect(bar()).toEqual(["Back to all images", "View Retry", "View Edited"]);
+  expect(screen.getByRole("button", { name: "View Retry" })).toHaveAttribute("aria-pressed", "true");
+  expect(current().assets.map((asset) => [asset.id, asset.parentAssetId])).toEqual([["Other", undefined], ["Retry", undefined], ["Edited", "Retry"]]);
+
+  // Emptying the family takes it off the originals too.
+  fireEvent.click(remove("View Retry"));
+  expect(bar()).toEqual(["View Other", "View Edited"]);
+  fireEvent.click(remove("View Edited"));
+  expect(bar()).toEqual(["View Other"]);
+});

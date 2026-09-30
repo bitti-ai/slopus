@@ -26,8 +26,16 @@ export function imageFamilyRoot(assets: readonly ProjectAsset[], id: string | nu
   return asset.parentAssetId && assets.some((candidate) => candidate.id === asset.parentAssetId && candidate.kind === "image") ? asset.parentAssetId : asset.id;
 }
 
-/** Removes an image. Its children stay a family: the oldest becomes the
- *  original the others belong to. */
+/** An image's family in the bar's order: the original, then the images made
+ *  from it. An image with no family is a family of one. */
+export function imageFamily(assets: readonly ProjectAsset[], id: string | null | undefined): ProjectAsset[] {
+  const root = imageFamilyRoot(assets, id);
+  if (!root) return [];
+  return [assets.find((asset) => asset.id === root)!, ...assets.filter((asset) => asset.id !== root && imageFamilyRoot(assets, asset.id) === root)];
+}
+
+/** Removes an image. Its children stay a family: the leftmost of them — the
+ *  oldest — becomes the original the others belong to. */
 export function removeImageAsset(assets: readonly ProjectAsset[], id: string): ProjectAsset[] {
   const children = assets.filter((asset) => asset.parentAssetId === id);
   const heir = children[0]?.id;

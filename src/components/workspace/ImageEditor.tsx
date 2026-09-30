@@ -5,7 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { createEmptyImage, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -46,7 +46,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number } | null>(null);
+  const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean } | null>(null);
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -191,9 +191,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       const remaining = currentImages.filter((asset) => asset.id !== id);
       const currentScene = current.imageScene ?? scene;
       const removingSelected = currentScene.outputAssetId === id;
-      const next = removingSelected
-        ? remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)]
-        : remaining.find((asset) => asset.id === currentScene.outputAssetId);
+      const family = imageFamily(currentImages, id);
+      const familyLeft = imageFamily(removeImageAsset(currentImages, id), family.find((asset) => asset.id !== id)?.id);
+      const next = !removingSelected ? remaining.find((asset) => asset.id === currentScene.outputAssetId)
+        : familyLeft.length ? familyLeft[Math.min(family.findIndex((asset) => asset.id === id), familyLeft.length - 1)]
+          : remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)];
       const updated = { ...current,
         assets: removeImageAsset(current.assets, id),
         imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : createImageScene() : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
@@ -471,7 +473,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       }) },
       ...(imageMenu.id ? [
         { label: "Edit", icon: <Edit16 />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
-        { label: "Remove", icon: <Delete16 />, danger: true, disabled: workItems.some((item) => isWorkActive(item) && item.imageAssetId === imageMenu.id), action: () => removeImage(imageMenu.id!) },
+        { label: "Remove", icon: <Delete16 />, danger: true,
+          disabled: workItems.some((item) => isWorkActive(item) && item.imageAssetId === imageMenu.id) || (!imageMenu.inFamily && imageFamily(images, imageMenu.id).length > 1),
+          action: () => removeImage(imageMenu.id!) },
       ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">
@@ -560,7 +564,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
       <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
-        onMenu={(id, x, y) => { setContextMenu(null); setImageMenu({ id, x, y }); }} />
+        onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     <aside className="image-inspector" aria-label="Image node inspector">
