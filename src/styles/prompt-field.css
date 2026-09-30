@@ -30,8 +30,12 @@
    single-line padding and height. */
 .prompt-field .prompt-field__input {
   width: 100%;
-  height: auto;
-  min-height: calc(var(--prompt-rows, 4) * 1lh + 2 * var(--space-2) + 2px);
+  /* A fixed height of `rows` lines, like the textarea it replaced: a longer
+     prompt scrolls inside it, and the bottom edge still drags it taller. */
+  height: calc(var(--prompt-rows, 4) * 1lh + 2 * var(--space-2) + 2px);
+  min-height: calc(2lh + 2 * var(--space-2) + 2px);
+  overflow-y: auto;
+  resize: vertical;
   padding: var(--space-2);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
