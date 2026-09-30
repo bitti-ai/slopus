@@ -27,7 +27,7 @@ import {
   roundClipTransform,
   seedProjectWorkspace,
   LEGACY_RESOLUTIONS,
-  PROJECT_RESOLUTIONS,
+  IMAGE_RESOLUTIONS,
   STORY_TRACK_ID,
   usableImageReferences,
   usableReferenceImages,
@@ -736,13 +736,13 @@ describe("project schema", () => {
 
 describe("the frame sizes a project can be", () => {
   it("accepts exactly the ladder plus the names already on disk, and nothing else", () => {
-    /* `is_supported_resolution` in src-tauri/src/project/validation/values.rs spells the same nine
+    /* `is_supported_resolution` in src-tauri/src/project/validation/values.rs spells the same
        names. They have to agree in BOTH directions: Rust writes the settings
        file before the frontend ever parses it, so a name Rust accepts and zod
        refuses is saved and then fails to open (see CLAUDE.md). */
-    expect(resolutionSchema.options).toEqual([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
+    expect(resolutionSchema.options).toEqual([...IMAGE_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
     expect(resolutionSchema.options).toEqual([
-      "416p", "544p", "640p", "768p", "1088p", "1344p", "720p", "1080p", "4k",
+      "416p", "544p", "640p", "768p", "1088p", "1344p", "1536p", "2048p", "720p", "1080p", "4k",
     ]);
     for (const rejected of ["8k", "480p", "1080P", "768", ""]) {
       expect(resolutionSchema.safeParse(rejected).success).toBe(false);

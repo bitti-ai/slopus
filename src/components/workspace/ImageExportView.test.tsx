@@ -48,10 +48,13 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
   vi.mocked(invoke).mockResolvedValue(true);
   render(<ImageExportView config={withOutput({ width: 2048, height: 1152 })} folderPath="D:/Images" />);
   fireEvent.change(screen.getByRole("slider", { name: "JPG quality" }), { target: { value: "60" } });
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  expect(screen.getByRole("option", { name: "2720 × 1536" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("option", { name: "3648 × 2048" }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {
     folderPath: "D:/Images", relativePath: "media/generated/out.png",
-    options: { format: "jpg", width: 2048, height: 1152, quality: 60 },
+    options: { format: "jpg", width: 3648, height: 2048, quality: 60 },
   }));
   expect(JSON.parse(localStorage.getItem("slopus.image-export.v1")!)).toEqual({ format: "jpg", quality: 60 });
   fireEvent.click(screen.getByRole("combobox", { name: "Format" }));

@@ -20,7 +20,7 @@ import {
   type ExportSegment,
   type ExportSettings,
 } from "./export";
-import { createProjectConfig, LEGACY_RESOLUTIONS, PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
+import { createProjectConfig, IMAGE_RESOLUTIONS, LEGACY_RESOLUTIONS, PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
 
 const asset = (id: string, overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
   id,
@@ -119,7 +119,7 @@ describe("output geometry", () => {
   it("keeps both edges on a multiple of 32 in every shape a project can be", () => {
     // The whole point of the ladder: a frame the engine cannot generate is a
     // frame the project would have to rescale to fill.
-    for (const resolution of PROJECT_RESOLUTIONS) {
+    for (const resolution of IMAGE_RESOLUTIONS) {
       for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
         const { width, height } = outputDimensions(resolution, ratio);
         expect({ resolution, ratio, width: width % 32, height: height % 32 })
@@ -133,7 +133,7 @@ describe("output geometry", () => {
     expect(outputDimensions("768p", "9:16")).toEqual({ width: 768, height: 1376 });
     expect(outputDimensions("768p", "1:1")).toEqual({ width: 768, height: 768 });
     expect(outputDimensions("768p", "4:5")).toEqual({ width: 768, height: 960 });
-    for (const resolution of PROJECT_RESOLUTIONS) {
+    for (const resolution of IMAGE_RESOLUTIONS) {
       const wide = outputDimensions(resolution, "16:9");
       expect(outputDimensions(resolution, "9:16")).toEqual({ width: wide.height, height: wide.width });
       expect(outputDimensions(resolution, "1:1")).toEqual({ width: wide.height, height: wide.height });
@@ -160,7 +160,7 @@ describe("output geometry", () => {
   });
 
   it("never produces an odd edge, which a 4:2:0 encoder refuses", () => {
-    for (const resolution of [...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]) {
+    for (const resolution of [...IMAGE_RESOLUTIONS, ...LEGACY_RESOLUTIONS]) {
       for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
         const { width, height } = outputDimensions(resolution, ratio);
         expect(width % 2).toBe(0);

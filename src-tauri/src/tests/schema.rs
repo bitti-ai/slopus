@@ -623,7 +623,7 @@ fn validator_accepts_every_boundary_the_frontend_schema_allows() {
         );
     }
     for resolution in [
-        "416p", "544p", "640p", "768p", "1088p", "1344p", "720p", "1080p", "4k",
+        "416p", "544p", "640p", "768p", "1088p", "1344p", "1536p", "2048p", "720p", "1080p", "4k",
     ] {
         let mut config = fixture();
         config.settings.resolution = resolution.into();

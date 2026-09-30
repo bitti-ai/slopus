@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
+import { choose } from "./workspace/comboTestUtils";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "../lib/project";
 import { executeAgentCommands } from "../lib/runtime";
 import { imageScenePrompt } from "../lib/imageScene";
@@ -164,8 +165,13 @@ it("offers image and video projects when creating a folder project", async () =>
   render(<PromptComposer busy={false} onCreate={submit} onClose={vi.fn()} />);
   fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
   expect(screen.getByLabelText("Project name")).toHaveValue("Untitled image");
+  choose("Resolution", "2720 × 1536");
+  fireEvent.click(screen.getByRole("radio", { name: "Video project" }));
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1376 × 768 (default)");
+  fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
+  choose("Resolution", "3648 × 2048");
   fireEvent.click(screen.getByRole("button", { name: /Create project/ }));
-  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ generationType: "image" })));
+  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ generationType: "image", resolution: "2048p" })));
 });
 
 it("opens the three-tab image workspace and saves hierarchy/inspector edits through the project session", async () => {

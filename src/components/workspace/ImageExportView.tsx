@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { outputDimensions } from "../../lib/export";
-import { PROJECT_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
+import { IMAGE_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
@@ -53,12 +53,12 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* remembered for this session only */ }
   };
 
-  /* The image's own size first, then the ladder at the project's aspect —
-     the same sizes the video export offers — skipping a rung that is it. */
+  /* The image's own size first, then the image ladder at the project's aspect,
+     skipping a rung that matches the original. */
   const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
   const sizes = [
     ...(original ? [{ ...original, label: `${original.width} × ${original.height} (original)` }] : []),
-    ...PROJECT_RESOLUTIONS.map((resolution) => outputDimensions(resolution, config.settings.aspectRatio))
+    ...IMAGE_RESOLUTIONS.map((resolution) => outputDimensions(resolution, config.settings.aspectRatio))
       .filter((size) => !original || sizeKey(size.width, size.height) !== sizeKey(original.width, original.height))
       .map((size) => ({ ...size, label: `${size.width} × ${size.height}` })),
   ];

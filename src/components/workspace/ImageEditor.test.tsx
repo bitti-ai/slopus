@@ -94,9 +94,11 @@ it("displays each generated image at its saved aspect ratio independently of fut
   const current = setup(initial);
   const frame = screen.getByLabelText("Image placement canvas").parentElement!;
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
-  choose("Resolution", /^\d+ × 1344$|^1344 × \d+$|1344/);
+  choose("Resolution", "2720 × 1536");
+  expect(current().settings.resolution).toBe("1536p");
+  choose("Resolution", "3648 × 2048");
   choose("Aspect ratio", "1:1");
-  expect(current().settings).toMatchObject({ resolution: "1344p", aspectRatio: "1:1" });
+  expect(current().settings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   fireEvent.click(screen.getByRole("button", { name: "View Tall" }));
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1088 / 1920));
@@ -104,7 +106,7 @@ it("displays each generated image at its saved aspect ratio independently of fut
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.assets).toEqual(initial.assets);
-  expect(reopened.settings).toMatchObject({ resolution: "1344p", aspectRatio: "1:1" });
+  expect(reopened.settings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
 });
 
 it("removes generated images through their context menu and keeps the preview and thumbnail valid", () => {

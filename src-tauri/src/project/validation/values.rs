@@ -3,9 +3,9 @@ pub(crate) fn is_supported_aspect_ratio(value: &str) -> bool {
     matches!(value, "16:9" | "9:16" | "1:1" | "4:5")
 }
 
-/// The same nine names `resolutionSchema` in src/lib/project.ts accepts, and no
+/// The same names `resolutionSchema` in src/lib/project.ts accepts, and no
 /// others in either direction — this layer writes the file the frontend then
-/// has to parse. The first six are the ladder a new project is created at, every
+/// has to parse. The first eight include the two larger still-image sizes, every
 /// rung a multiple of 32 on both edges because that is what MiniMax H3
 /// generates at; the last three are names already on disk, kept so a project
 /// saved before the ladder was rebuilt still opens at the pixels it always had.
@@ -14,7 +14,17 @@ pub(crate) fn is_supported_aspect_ratio(value: &str) -> bool {
 pub(crate) fn is_supported_resolution(value: &str) -> bool {
     matches!(
         value,
-        "416p" | "544p" | "640p" | "768p" | "1088p" | "1344p" | "720p" | "1080p" | "4k"
+        "416p"
+            | "544p"
+            | "640p"
+            | "768p"
+            | "1088p"
+            | "1344p"
+            | "1536p"
+            | "2048p"
+            | "720p"
+            | "1080p"
+            | "4k"
     )
 }
 
