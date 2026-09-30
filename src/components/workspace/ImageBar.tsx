@@ -58,6 +58,22 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
     return () => element.removeEventListener("wheel", wheel);
   }, [shown.length]);
 
+  /* The platform's overlay scrollbar appears for a moving pointer, not for a
+     scroll made in code — which is what the wheel above is — so the bar is
+     marked while it scrolls, by any means, and draws its own scrollbar then. */
+  useEffect(() => {
+    const element = bar.current;
+    if (!element) return;
+    let timer = 0;
+    const scroll = () => {
+      element.classList.add("image-results--scrolling");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => element.classList.remove("image-results--scrolling"), 900);
+    };
+    element.addEventListener("scroll", scroll, { passive: true });
+    return () => { element.removeEventListener("scroll", scroll); window.clearTimeout(timer); };
+  }, []);
+
   /* Left and Right step the focus along the thumbnails, Home and End jump to
      either end, and the bar scrolls to keep the focused one in view. Moving
      the focus does not open the image: Enter or Space does, as a click. From

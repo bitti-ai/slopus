@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { promptValue, typePrompt } from "./promptTestUtils";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
@@ -566,4 +566,16 @@ it("removes an original with a family only from inside the family, and the leftm
   expect(bar()).toEqual(["View Other", "View Edited"]);
   fireEvent.click(remove("View Edited"));
   expect(bar()).toEqual(["View Other"]);
+});
+
+it("shows the image bar's scrollbar while it scrolls, then hides it again", () => {
+  vi.useFakeTimers();
+  try {
+    setup();
+    const bar = screen.getByLabelText("Generated images");
+    fireEvent.scroll(bar);
+    expect(bar).toHaveClass("image-results--scrolling");
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(bar).not.toHaveClass("image-results--scrolling");
+  } finally { vi.useRealTimers(); }
 });
