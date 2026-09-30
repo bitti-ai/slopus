@@ -25,7 +25,10 @@
 .prompt-field__tool[aria-expanded="true"] { color: var(--accent-on-soft); background: var(--accent-soft); }
 .prompt-field__tool:disabled { color: var(--text-disabled); }
 
-.prompt-field__input {
+/* Scoped by .prompt-field so it outranks .text-field: this sheet is imported
+   by the component, ahead of index.css, and would otherwise lose to its
+   single-line padding and height. */
+.prompt-field .prompt-field__input {
   width: 100%;
   height: auto;
   min-height: calc(var(--prompt-rows, 4) * 1lh + 2 * var(--space-2) + 2px);
@@ -37,7 +40,7 @@
   line-height: var(--leading-normal);
   cursor: text;
 }
-.prompt-field__input:focus {
+.prompt-field .prompt-field__input:focus {
   outline: none;
   border-bottom-color: var(--field-focus-line);
   box-shadow: inset 0 -1px 0 var(--field-focus-line);
