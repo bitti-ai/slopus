@@ -26,7 +26,7 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
     const bottom = Math.min(source.height, Math.ceil((node.box.y + node.box.height) * source.height / 1000));
     const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : "", node.colors.length ? `Use these colors: ${node.colors.join(", ")}.` : ""].filter(Boolean).join(" ");
-    const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: node.referenceIds ?? scene.referenceIds };
+    const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };
     const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: editScene });
     return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
   });

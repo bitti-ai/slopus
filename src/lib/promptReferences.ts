@@ -37,3 +37,18 @@ export function promptReferenceNames(text: string): string[] {
   }
   return seen;
 }
+
+/** The references a prompt mentions, first mention first. A name no reference
+ *  has is an error: the chip shows it as missing, and generating anyway would
+ *  quietly drop what the prompt asks for. */
+export function resolvePromptReferences<T extends { name: string }>(text: string, references: readonly T[]): T[] {
+  return promptReferenceNames(text).map((name) => {
+    const reference = references.find((candidate) => candidate.name === name);
+    if (!reference) throw new Error(`The prompt mentions [${name}], but no image or text reference has that name.`);
+    return reference;
+  });
+}
+
+/** The text with every `[Name]` written by `label` instead. */
+export const replacePromptReferences = (text: string, label: (name: string) => string): string =>
+  splitPromptText(text).map((part) => part.kind === "text" ? part.value : label(part.value)).join("");

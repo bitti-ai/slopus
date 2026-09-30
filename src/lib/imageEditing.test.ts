@@ -39,13 +39,14 @@ it("reserves Picture 1 for the source and counts it toward H3's nine-picture lim
   config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/imported/source.png", name: "Source", width: 101, height: 77 }), "image-root", "object");
   config.imageScene.nodes[1].description = "A red balloon";
   config.references = Array.from({ length: 9 }, (_, index) => ({ id: `ref-${index}`, kind: "image" as const, name: `Reference ${index}`, description: "Red satin", relativePath: `references/${index}.png`, intendedUse: [], createdAt: config.createdAt }));
-  config.imageScene.referenceIds = config.references.slice(0, 8).map((reference) => reference.id);
+  const mention = (count: number) => `A red balloon ${config.references.slice(0, count).map((reference) => `[${reference.name}]`).join(" ")}`;
+  config.imageScene.nodes[1].description = mention(8);
   const prompt = compileImageEdits(config).edits[0].prompt;
   expect(prompt).toContain("<Subject 1> is Reference 0, providing appearance from <Picture 2>");
   expect(prompt).toContain("<Subject 8> is Reference 7, providing appearance from <Picture 9>");
   expect(prompt).toContain("[keyframe completion + reference generation]");
   expect(prompt).not.toMatch(/\b(box|mask\w*|rectangle|region|boundary|border|pixels?)\b/i);
-  config.imageScene.referenceIds.push("ref-8");
+  config.imageScene.nodes[1].description = mention(9);
   expect(() => compileImageEdits(config)).toThrow("at most nine reference images");
 });
 
@@ -63,28 +64,29 @@ it("starts with a clean image root and requires described edits before submissio
   expect(parseProjectConfig(JSON.parse(JSON.stringify(edited))).imageScene).toEqual(edited.imageScene);
 });
 
-it("applies whole-image actions first and compiles only each edit's linked references", () => {
+it("applies whole-image actions first and compiles only the references each edit mentions", () => {
   const config = parseProjectConfig(fixture);
   config.imageScene = createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 101, height: 77 });
   config.references = ["Lighting", "Balloon", "Unused"].map((name) => ({ id: name, name, kind: "image", description: name, relativePath: `references/${name}.png`, intendedUse: [], createdAt: config.createdAt }));
   const root = config.imageScene.nodes[0];
-  root.description = "Warm up the entire image";
-  root.referenceIds = ["Lighting"];
+  root.description = "Warm up the entire image like [Lighting]";
+  // Stored ids no longer choose anything: only mentions do.
+  root.referenceIds = ["Unused"];
   expect(compileImageEdits(config).edits).toHaveLength(1);
   config.imageScene = addImageNode(config.imageScene, root.id, "object");
-  Object.assign(config.imageScene.nodes[1], { description: "Add a balloon", referenceIds: ["Balloon"] });
+  Object.assign(config.imageScene.nodes[1], { description: "Add a [Balloon]" });
   let edits = compileImageEdits(config).edits;
   expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
-  expect(edits[0].prompt).toContain("Warm up the entire image");
+  expect(edits[0].prompt).toContain("Warm up the entire image like <Subject 1>");
   expect(edits[0].prompt).toContain("<Subject 1> is Lighting, providing appearance from <Picture 2>");
   expect(edits[0].prompt).not.toContain("Balloon");
   expect(edits[1].prompt).toContain("<Subject 1> is Balloon, providing appearance from <Picture 2>");
   expect(edits[1].prompt).not.toContain("Lighting");
   expect(edits.map((edit) => edit.references.map((reference) => reference.id))).toEqual([["Lighting"], ["Balloon"]]);
   config.imageScene.referenceIds = ["Unused"];
-  config.imageScene.nodes[1].referenceIds = [];
+  config.imageScene.nodes[1].description = "Add a balloon";
   edits = compileImageEdits(config).edits;
   expect(edits[1].references).toEqual([]);
-  config.imageScene.nodes[1].referenceIds = ["missing"];
-  expect(() => compileImageEdits(config)).toThrow("no longer exists");
+  config.imageScene.nodes[1].description = "Add a [missing]";
+  expect(() => compileImageEdits(config)).toThrow("The prompt mentions [missing]");
 });

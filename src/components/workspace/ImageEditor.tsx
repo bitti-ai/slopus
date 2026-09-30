@@ -5,7 +5,6 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { promptReferenceNames } from "../../lib/promptReferences";
 import { createEmptyImage, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { IMAGE_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
@@ -148,7 +147,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
     const parent = imageRoot ? root.id : insertParent;
     const next = addImageNode(scene, parent, imageRoot ? "object" : kind, box);
-    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit", referenceIds: [] });
+    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit" });
     commit(next); setSelection(next.nodes.at(-1)!.id);
     setCollapsed((current) => { const next = new Set(current); next.delete(parent); return next; });
   };
@@ -438,19 +437,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
   const promptReferences = config.references.filter((reference) => reference.kind === "image" || reference.kind === "text")
     .map((reference) => ({ id: reference.id, name: reference.name, detail: reference.kind === "image" ? "Image" : "Text", icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
-  /* A reference newly cited in a prompt is one the generation has to be
-     given, so citing it links it to the edit (or, composing, to the image). */
-  const changePrompt = (description: string) => {
-    const before = promptReferenceNames(selected.description);
-    const cited = promptReferenceNames(description).filter((name) => !before.includes(name))
-      .flatMap((name) => promptReferences.filter((reference) => reference.name === name).map((reference) => reference.id));
-    const nodes = scene.nodes.map((node) => node.id === selected.id ? { ...node, description } : node);
-    if (imageRoot) {
-      const referenceIds = selected.referenceIds ?? scene.referenceIds;
-      const linked = [...referenceIds, ...cited.filter((id) => !referenceIds.includes(id))];
-      commit({ ...scene, nodes: nodes.map((node) => node.id === selected.id && linked.length !== referenceIds.length ? { ...node, referenceIds: linked } : node) });
-    } else commit({ ...scene, nodes, referenceIds: selected.kind === "root" ? [...scene.referenceIds, ...cited.filter((id) => !scene.referenceIds.includes(id))] : scene.referenceIds });
-  };
+
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
       {/* Undo and Redo live in the title bar; Ctrl+Z / Ctrl+Y still step the image edits here. */}
@@ -594,17 +581,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           {scene.sourceImage && <p className="image-inspector__caption">{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
           <p className="image-inspector__caption">Applies to the whole image before the individual edits.</p>
         </>}
-        <div className="image-inspector__area"><span id={rootField("prompt-label")}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} onChange={changePrompt} /></div>
-        {imageRoot && <PropSection title="References" persistKey="image.edit.references">
-          {config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => {
-            const referenceIds = selected.referenceIds ?? scene.referenceIds;
-            return <label className="image-check" key={reference.id}><input type="checkbox" checked={referenceIds.includes(reference.id)} onChange={(event) => patchNode({ referenceIds: event.target.checked ? [...referenceIds, reference.id] : referenceIds.filter((id) => id !== reference.id) })} />{reference.name}</label>;
-          })}
-          {!config.references.some((reference) => reference.kind === "image" || reference.kind === "text") && <p className="image-inspector__caption">Add image or text references under References, then link them to this edit.</p>}
-        </PropSection>}
+        <div className="image-inspector__area"><span id={rootField("prompt-label")}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} onChange={(description) => patchNode({ description })} /></div>
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
         {selected.kind === "root" && !imageRoot && <>
-          <label className="image-inspector__area">Background (environment)<textarea className="text-field" rows={3} value={scene.background} onChange={(event) => commit({ ...scene, background: event.target.value })} /></label>
+          <div className="image-inspector__area"><span id={rootField("background-label")}>Background (environment)</span><PromptTextField aria-labelledby={rootField("background-label")} rows={3} value={scene.background} references={promptReferences} onChange={(background) => commit({ ...scene, background })} /></div>
           <PropSection title="Image generation" persistKey="image.generation">
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             <PropRow label="Seed" htmlFor={rootField("seed")}><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} data-tooltip="-1 picks a random seed" onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
@@ -617,10 +597,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             <TagEditor label="Lighting" value={scene.style.lighting} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoLightingSuggestions : styleSuggestions.ArtLightingSuggestions} onChange={(lighting) => commit({ ...scene, style: { ...scene.style, lighting } })} />
             {scene.style.mode === "art" && <TagEditor label="Medium" value={scene.style.medium} suggestions={styleSuggestions.MediumSuggestions} onChange={(medium) => commit({ ...scene, style: { ...scene.style, medium } })} />}
             <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
-          </PropSection>
-          <PropSection title="References" persistKey="image.references">
-            {config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => <label className="image-check" key={reference.id}><input type="checkbox" checked={scene.referenceIds.includes(reference.id)} onChange={(event) => commit({ ...scene, referenceIds: event.target.checked ? [...scene.referenceIds, reference.id] : scene.referenceIds.filter((id) => id !== reference.id) })} />{reference.name}</label>)}
-            {!config.references.length && <p className="image-inspector__caption">None yet — add them under References.</p>}
           </PropSection>
         </>}
         {selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">

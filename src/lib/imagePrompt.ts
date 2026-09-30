@@ -1,4 +1,5 @@
-import { createImageScene, imageScenePromptParts } from "./imageScene";
+import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
+import { replacePromptReferences, resolvePromptReferences } from "./promptReferences";
 import { activeReferenceRefmods, referenceDefinition, referenceImages, type ProjectConfig } from "./project";
 import { SHOT_TAG_GROUPS } from "./shot-tags";
 
@@ -6,12 +7,8 @@ import { SHOT_TAG_GROUPS } from "./shot-tags";
  * six-section contracts still apply to a single silent image. */
 export function compileImagePrompt(config: ProjectConfig) {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
-  const references = scene.referenceIds.map((id) => {
-    const reference = config.references.find((candidate) => candidate.id === id);
-    if (!reference) throw new Error(`Selected image reference '${id}' no longer exists.`);
-    if (reference.kind === "video" || reference.kind === "audio") throw new Error("Still images accept image and text references.");
-    return reference;
-  });
+  // Only the references the prompt mentions as [Name] go to the generation.
+  const references = resolvePromptReferences(imageScenePromptText(scene), config.references.filter((reference) => reference.kind === "image" || reference.kind === "text"));
   // An inpainting source is also an explicit composition anchor. The caller
   // submits it before the selected reference pictures, even with no subjects.
   const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
@@ -29,13 +26,16 @@ export function compileImagePrompt(config: ProjectConfig) {
   });
   if (picture > 9) throw new Error("MiniMax H3 supports at most nine reference images per generation.");
   const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === config.settings.defaultLook)?.label;
-  const visual = imageScenePromptParts(scene, look);
-  if (!visual) return { prompt: "", references };
+  const parts = imageScenePromptParts(scene, look);
+  if (!parts) return { prompt: "", references };
+  const label = (index: number) => `<Subject ${index + 1}>`;
+  // A mention reads as the subject it defines, or by name when it defines none.
+  const mention = (name: string) => { const index = subjects.findIndex((subject) => subject.name === name); return index < 0 ? name : label(index); };
+  const visual = { style: replacePromptReferences(parts.style, mention), composition: replacePromptReferences(parts.composition, mention) };
   const audio = ["overall_soundscape: N/A", "non_diegetic_music: N/A"];
   if (!subjects.length && !editing) return {
     prompt: [`integrated_multimodal_description: [Shot 1] ${visual.style}\n${visual.composition}`, ...audio].join("\n\n"), references,
   };
-  const label = (index: number) => `<Subject ${index + 1}>`;
   const definitions = subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`);
   const retention = subjects.map((subject, index) => `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`);
   if (editing) {

@@ -45,6 +45,10 @@ export type ImageBox = NonNullable<ImageNode["box"]>;
 export const imageSceneReferenceIds = (scene: ImageScene): string[] =>
   [...new Set([...scene.referenceIds, ...scene.nodes.flatMap((node) => node.referenceIds ?? [])])];
 
+/** Every authored line of the scene a reference can be mentioned in as [Name]. */
+export const imageScenePromptText = (scene: ImageScene): string =>
+  [...scene.nodes.map((node) => node.description), scene.background].join("\n");
+
 export function createImageScene(prompt = ""): ImageScene {
   return { nodes: [{ id: "image-root", parentId: null, kind: "root", name: "Image", description: prompt, text: "", box: null, colors: [] }],
     background: "", style: { mode: "photo", aesthetics: "", lighting: "", medium: "", detail: "" }, steps: 20, seed: -1, referenceIds: [], outputAssetId: null };

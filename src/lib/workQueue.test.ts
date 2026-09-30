@@ -89,10 +89,9 @@ describe("image generation work", () => {
     const { queue } = setup();
     const record = imageProject();
     let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
-    scene.nodes[0].description = "Make the light warmer";
-    scene.nodes[0].referenceIds = ["Lighting"];
+    scene.nodes[0].description = "Make the light warmer like [Lighting]";
     scene = addImageNode(scene, "image-root", "object");
-    Object.assign(scene.nodes[1], { name: "Edit", description: "Add a red balloon", referenceIds: ["Balloon"] });
+    Object.assign(scene.nodes[1], { name: "Edit", description: "Add a red [Balloon]" });
     record.config.imageScene = scene;
     record.config.references = ["Lighting", "Balloon"].map((name) => ({ id: name, name, kind: "image", description: name,
       relativePath: `references/${name}.png`, intendedUse: [], createdAt: record.config.createdAt,
@@ -123,13 +122,12 @@ describe("image generation work", () => {
     const { queue } = setup();
     const record = imageProject();
     let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
-    for (const description of ["A red balloon", "A blue boat"]) {
+    for (const description of ["A red balloon like [Balloon]", "A blue boat beside [Balloon]"]) {
       scene = addImageNode(scene, "image-root", "object");
       scene.nodes.at(-1)!.description = description;
     }
     record.config.imageScene = scene;
     record.config.references = [{ id: "balloon", kind: "image", name: "Balloon", description: "Red satin", relativePath: "references/balloon.png", intendedUse: [], createdAt: record.config.createdAt }];
-    scene.referenceIds = ["balloon"];
     const session = queue.project(record);
     vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/edited.png", width: 101, height: 77 });
     queue.enqueueImage(session, template);
@@ -224,7 +222,7 @@ describe("image generation work", () => {
       { id: "outfit", name: "Outfit", sourcePath: "D:/Refmods/outfit.safetensors", strength: 1, copies: 1 },
       { id: "disabled", name: "Disabled", sourcePath: "D:/Refmods/off.safetensors", strength: 0, copies: 3 },
     ] }];
-    project.config.imageScene!.referenceIds = ["person"];
+    project.config.imageScene!.nodes[0].description += " with [Person]";
     queue.enqueueImage(queue.project(project), template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
@@ -240,7 +238,7 @@ describe("image generation work", () => {
     const project = imageProject();
     project.config.settings.defaultLook = "watercolor";
     project.config.references = [{ id: "ocean", kind: "image", name: "Ocean", description: "Turquoise water", relativePath: "references/ocean.png", intendedUse: [], createdAt: project.config.createdAt }];
-    project.config.imageScene!.referenceIds = ["ocean"];
+    project.config.imageScene!.nodes[0].description += " over [Ocean]";
     const preview = compileImagePrompt(project.config).prompt;
     queue.enqueueImage(queue.project(project), template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());

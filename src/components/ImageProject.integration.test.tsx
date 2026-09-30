@@ -133,7 +133,8 @@ it("shows the full image prompt at the end of the inspector only when debug is e
     { id: "mood", kind: "text", name: "Mood", description: "Peaceful and bright", intendedUse: [], createdAt: project.config.createdAt },
     { id: "unused", kind: "text", name: "Unused", description: "Do not include this reference", intendedUse: [], createdAt: project.config.createdAt },
   ];
-  project.config.imageScene!.referenceIds = ["subject", "mood"];
+  // Only mentioned references reach the prompt; Unused is never mentioned.
+  project.config.imageScene!.nodes[0].description = "A [Rocket] launch over the ocean at dawn, [Mood]";
   render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={vi.fn()} />);
   expect(screen.queryByRole("button", { name: "Debug prompt" })).not.toBeInTheDocument();
   act(() => saveDebugOptionsEnabled(true));
@@ -147,11 +148,12 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   button.focus();
   fireEvent.click(button);
   const prompt = within(screen.getByRole("dialog", { name: "Debug prompt" })).getByLabelText("The compiled MiniMax H3 prompt");
-  for (const line of imageScenePrompt(project.config.imageScene!, "Watercolor").split("\n")) expect(prompt.textContent).toContain(line);
+  const compiled = imageScenePrompt(project.config.imageScene!, "Watercolor").replace("[Rocket]", "<Subject 1>").replace("[Mood]", "<Subject 2>");
+  for (const line of compiled.split("\n")) expect(prompt.textContent).toContain(line);
   expect(prompt.textContent).toContain('Render the exact text "TO THE MOON".');
   expect(prompt.textContent).toContain("Watercolor visual style");
   expect(prompt.textContent).toContain("subject_definitions:\n<Subject 1> is Rocket, providing appearance from <Picture 1> and <Picture 2>. A silver rocket.\n<Subject 2> is Mood, providing appearance. Peaceful and bright.");
-  expect(prompt.textContent).toContain("[Shot 1] A rocket launch over the ocean at dawn.");
+  expect(prompt.textContent).toContain("[Shot 1] A <Subject 1> launch over the ocean at dawn, <Subject 2>.");
   expect(prompt.textContent).toMatch(/overall_soundscape: N\/A\n\nnon_diegetic_music: N\/A$/);
   expect(prompt.textContent).not.toContain("Do not include this reference");
   fireEvent.keyDown(prompt, { key: "Escape" });

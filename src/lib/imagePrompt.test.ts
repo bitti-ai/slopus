@@ -52,7 +52,8 @@ describe("MiniMax H3 still-image prompts", () => {
       { id: "track", kind: "image", name: "Track", description: "A gravel track", relativePath: "references/track.png", intendedUse: [], createdAt: config.createdAt },
       { id: "unused", kind: "text", name: "Unused", description: "Exclude these words", intendedUse: [], createdAt: config.createdAt },
     ];
-    config.imageScene!.referenceIds = ["track", "palette", "runner"];
+    // Only mentions choose references, in the order they are first mentioned.
+    config.imageScene!.nodes[0].description = "On [Track] in [Palette] tones, [Runner] is suspended mid-stride";
     const result = compileImagePrompt(config);
     expect(result.references.map((reference) => reference.id)).toEqual(["track", "palette", "runner"]);
     expect(result.prompt.match(/^\w+:/gm)).toEqual(["subject_definitions:", "summary:", "retention_analysis:", "detailed_description:", "overall_soundscape:", "non_diegetic_music:"]);
@@ -60,7 +61,7 @@ describe("MiniMax H3 still-image prompts", () => {
     expect(result.prompt).toContain("<Subject 2> is Palette, providing appearance. Warm ochre and red.");
     expect(result.prompt).toContain("<Subject 3> is Runner, providing appearance from <Picture 2> and <Picture 3>. Red jersey.");
     expect(result.prompt).toContain("summary:\n[reference generation] A single still image uses <Subject 1>, <Subject 2>, <Subject 3>");
-    expect(result.prompt).toContain("detailed_description:\nA still photograph.\n[Shot 1] A runner suspended mid-stride.");
+    expect(result.prompt).toContain("detailed_description:\nA still photograph.\n[Shot 1] On <Subject 1> in <Subject 2> tones, <Subject 3> is suspended mid-stride.");
     for (let index = 1; index <= 3; index++) {
       expect(result.prompt).toContain(`<Subject ${index}> (appears in [Shot 1]): fully_preserved`);
       expect(result.prompt.split("detailed_description:")[1]).toContain(`Use <Subject ${index}>`);
@@ -68,8 +69,8 @@ describe("MiniMax H3 still-image prompts", () => {
     expect(result.prompt).toMatch(/overall_soundscape: N\/A\n\nnon_diegetic_music: N\/A$/);
     expect(result.prompt).not.toContain("integrated_multimodal_description");
     expect(result.prompt).not.toMatch(/Exclude these words|<Video|<Audio|first frame|last frame/);
-    config.imageScene!.referenceIds = ["missing"];
-    expect(() => compileImagePrompt(config)).toThrow("no longer exists");
+    config.imageScene!.nodes[0].description = "[Missing] runs";
+    expect(() => compileImagePrompt(config)).toThrow("The prompt mentions [Missing], but no image or text reference has that name.");
   });
 
   it("uses the brief for legacy image documents and leaves genuinely empty prompts empty", () => {
@@ -83,13 +84,15 @@ describe("MiniMax H3 still-image prompts", () => {
     const config = photo();
     config.references = [{ id: "identity", kind: "text", name: "Woman", description: "", intendedUse: ["character"], createdAt: config.createdAt,
       refmods: [{ id: "encoded", name: "Identity", sourcePath: "D:/identity.safetensors", strength: 1, copies: 1 }] }];
-    config.imageScene!.referenceIds = ["identity"];
+    config.imageScene!.nodes[0].description = "[Woman] suspended mid-stride";
     const prompt = compileImagePrompt(config).prompt;
     expect(prompt).toContain("<Subject 1> is Woman, providing identity and appearance from the supplied reference conditioning.");
     expect(prompt).toContain("Use <Subject 1> for Woman's identity and appearance from the supplied reference conditioning.");
     expect(prompt).not.toMatch(/Additional visual guidance: Woman|<Picture|<Video|safetensors/);
     config.references[0].refmods![0].strength = 0;
-    expect(compileImagePrompt(config).prompt).not.toContain("Woman");
+    // With nothing to condition on, the mention reads as the plain name.
+    expect(compileImagePrompt(config).prompt).not.toMatch(/<Subject|\[Woman\]/);
+    expect(compileImagePrompt(config).prompt).toContain("Woman suspended mid-stride.");
     expect(compileImagePrompt(config).prompt).toMatch(/^integrated_multimodal_description: \[Shot 1\]/);
   });
   it("keeps picture numbering independent of refmod and text subjects", () => {
@@ -99,10 +102,26 @@ describe("MiniMax H3 still-image prompts", () => {
       { id: "style", kind: "text", name: "Style", description: "", intendedUse: ["style"], createdAt: config.createdAt, refmods: [{ id: "style-mod", name: "Style", sourcePath: "D:/style.safetensors", strength: 1, copies: 1 }] },
       { id: "runner", kind: "image", name: "Runner", description: "Red jersey", relativePath: "references/runner.png", intendedUse: ["character"], createdAt: config.createdAt },
     ];
-    config.imageScene!.referenceIds = config.references.map((reference) => reference.id);
+    config.imageScene!.nodes[0].description = "[Disabled] and a [Style] frame around [Runner]";
     const prompt = compileImagePrompt(config).prompt;
     expect(prompt).toContain("<Subject 1> is Style, providing visual style from the supplied reference conditioning.");
     expect(prompt).toContain("<Subject 2> is Runner, providing identity and appearance from <Picture 1>.");
-    expect(prompt).not.toMatch(/Disabled|<Subject 3>|<Picture 2>|<Video/);
+    expect(prompt).not.toMatch(/Disabled,|is Disabled|<Subject 3>|<Picture 2>|<Video/);
+  });
+  it("passes only the references the prompt mentions, from any node or the background", () => {
+    const config = photo();
+    config.references = [
+      { id: "hero", kind: "image", name: "Hero", description: "", relativePath: "references/hero.png", intendedUse: ["character"], createdAt: config.createdAt },
+      { id: "sky", kind: "text", name: "Sky", description: "", content: "Violet dusk", intendedUse: [], createdAt: config.createdAt },
+      { id: "clip", kind: "video", name: "Clip", description: "", relativePath: "references/clip.mp4", intendedUse: [], createdAt: config.createdAt },
+    ];
+    config.imageScene!.referenceIds = ["sky"];
+    expect(compileImagePrompt(config).references).toEqual([]);
+    const scene = addImageNode(config.imageScene!, "image-root", "object");
+    scene.nodes.at(-1)!.description = "[Hero] waving";
+    config.imageScene = { ...scene, background: "A [Sky] over the hills" };
+    expect(compileImagePrompt(config).references.map((reference) => reference.id)).toEqual(["hero", "sky"]);
+    config.imageScene.background = "[Clip]";
+    expect(() => compileImagePrompt(config)).toThrow("[Clip]");
   });
 });

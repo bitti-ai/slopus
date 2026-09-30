@@ -17,7 +17,9 @@ import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 /* The prompt is a contenteditable: typing is its text and an input event. */
 const typePrompt = (field: HTMLElement, text: string) => { field.textContent = text; fireEvent.input(field); };
-const promptValue = (field: HTMLElement) => field.textContent;
+/* Reads a chip back as the [Name] it stands for, as the value stores it. */
+const promptValue = (field: HTMLElement) => [...field.childNodes].map((node) => node instanceof HTMLElement && node.dataset.promptReference !== undefined
+  ? `[${node.dataset.promptReference}]` : node.textContent ?? "").join("").replaceAll("​", "");
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 function setup(initial = parseProjectConfig(fixture)) {
@@ -53,8 +55,9 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   addFile();
   await waitFor(() => expect(current().imageScene?.sourceImage).toEqual(source));
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
-  typePrompt(screen.getByLabelText("Edit prompt"), "Make the lighting warmer");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Mood" }));
+  // References come from what each prompt mentions; there is no list to tick.
+  expect(screen.queryByRole("checkbox", { name: "Mood" })).not.toBeInTheDocument();
+  typePrompt(screen.getByLabelText("Edit prompt"), "Make the lighting warmer like [Mood]");
   expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 1000, height: 800 });
   const canvas = screen.getByLabelText("Image placement canvas");
   Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
@@ -69,10 +72,9 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   fireEvent.keyDown(canvas, { key: "e" });
   expect(screen.getByRole("radio", { name: "Draw edit" })).toHaveAttribute("aria-checked", "true");
   pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 320); pointer("pointerUp", 400, 320);
-  expect(current().imageScene!.nodes[1]).toMatchObject({ name: "Edit", box: { x: 100, y: 100, width: 300, height: 300 }, referenceIds: [] });
-  expect(screen.getByRole("checkbox", { name: "Mood" })).not.toBeChecked();
-  typePrompt(screen.getByLabelText("Edit prompt"), "Add a red balloon");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Balloon" }));
+  expect(current().imageScene!.nodes[1]).toMatchObject({ name: "Edit", box: { x: 100, y: 100, width: 300, height: 300 } });
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
+  typePrompt(screen.getByLabelText("Edit prompt"), "Add a red [Balloon]");
   const edits = compileImageEdits(current()).edits;
   expect(edits.map((edit) => edit.references.map((reference) => reference.id))).toEqual([["Mood"], ["Balloon"]]);
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
@@ -81,10 +83,10 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   fireEvent.contextMenu(screen.getByLabelText("Generated images"));
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the lighting warmer");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the lighting warmer like [Mood]");
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red balloon");
-  expect(screen.getByRole("checkbox", { name: "Balloon" })).toBeChecked();
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red [Balloon]");
+  expect(screen.getByRole("button", { name: "Reference Balloon" })).toHaveClass("prompt-chip");
   const beforeFailure = current();
   vi.mocked(invoke).mockRejectedValueOnce(new Error("Image file is unreadable"));
   addFile();

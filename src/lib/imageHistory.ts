@@ -1,8 +1,10 @@
-import { createImageEditScene, createImageScene, imageSceneReferenceIds } from "./imageScene";
+import { createImageEditScene, createImageScene, imageSceneReferenceIds, imageScenePromptText } from "./imageScene";
+import { promptReferenceNames } from "./promptReferences";
 import type { ImageGenerationSnapshot, ProjectAsset, ProjectConfig } from "./project";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
+  const mentioned = promptReferenceNames(imageScenePromptText(scene));
   return structuredClone({
     scene: { ...scene, outputAssetId: null },
     resolution: config.settings.resolution,
@@ -11,7 +13,10 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
     briefPrompt: config.brief.prompt,
     prompt,
     generatorTemplateId,
-    references: imageSceneReferenceIds(scene).map((id) => config.references.find((reference) => reference.id === id)!),
+    // What the prompt mentions, plus any ids a scene saved before mentions
+    // were how references are chosen (the snapshot schema still checks them).
+    references: config.references.filter((reference) => imageSceneReferenceIds(scene).includes(reference.id)
+      || ((reference.kind === "image" || reference.kind === "text") && mentioned.includes(reference.name))),
   });
 }
 
