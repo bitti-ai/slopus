@@ -214,6 +214,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const removeSelected = () => {
     if (selected.kind === "root") return;
+    pointer.current = null; setDraftBox(null);
     const parent = selected.parentId ?? root.id;
     commit(removeImageNode(scene, selected.id)); setSelection(parent);
     requestAnimationFrame(() => focusNode(parent));
@@ -239,6 +240,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const pointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0 || !boxes) return;
+    viewport.current?.focus({ preventScroll: true });
     const target = event.target as SVGElement;
     const id = drawKind ? undefined : target.dataset.node;
     if (!id && !drawKind) { setSelection(root.id); return; }
@@ -328,6 +330,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   useShortcut(["Ctrl+Z"], () => { if (!undo.current.length) return false; history(true); }, { scope: editorRoot });
   useShortcut(["Ctrl+Y", "Ctrl+Shift+Z"], () => { if (!redo.current.length) return false; history(false); }, { scope: editorRoot });
+  useShortcut("Delete", removeSelected, { scope: viewport });
 
   /* Canvas tools: a radio group of icon toggles with one-letter keys. */
   const TOOLS = [

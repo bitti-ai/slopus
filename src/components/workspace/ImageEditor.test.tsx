@@ -341,6 +341,42 @@ it("walks the tree with arrow keys as a single tab stop and duplicates with Ctrl
   expect(screen.getByRole("button", { name: "Image" })).toHaveAttribute("tabindex", "0");
 });
 
+it("deletes a box selected on the canvas, supports undo, and leaves text editing alone", () => {
+  const current = setup();
+  const original = current().imageScene!;
+  const canvas = screen.getByLabelText("Image placement canvas");
+  const viewport = canvas.closest(".image-viewport")!;
+  Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
+  const selectBox = (id: string) => {
+    const box = canvas.querySelector(`[data-node="${id}"]`)!;
+    const event = createEvent.pointerDown(box);
+    Object.defineProperties(event, { button: { value: 0 }, clientX: { value: 100 }, clientY: { value: 100 }, pointerId: { value: 1 } });
+    fireEvent(box, event);
+    const up = createEvent.pointerUp(canvas);
+    Object.defineProperty(up, "pointerId", { value: 1 });
+    fireEvent(canvas, up);
+  };
+  screen.getByLabelText("Prompt (high-level description)").focus();
+  selectBox("title");
+  expect(viewport).toHaveFocus();
+  const description = screen.getByLabelText("Description");
+  description.focus();
+  fireEvent.keyDown(description, { key: "Delete" });
+  expect(current().imageScene).toEqual(original);
+  selectBox("title");
+  fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+  expect(canvas.querySelector('[data-node="title"]')).toBeNull();
+  expect(current().imageScene!.nodes.map((node) => node.id)).toEqual(["image-root", "group-rocket"]);
+  fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+  expect(current().imageScene).toEqual(original);
+  // Deleting a group removes its children as it does in the hierarchy.
+  selectBox("group-rocket");
+  fireEvent.keyDown(document.activeElement!, { key: "Delete" });
+  expect(current().imageScene!.nodes.map((node) => node.id)).toEqual(["image-root"]);
+  fireEvent.keyDown(viewport, { key: "Delete" });
+  expect(current().imageScene!.nodes.map((node) => node.id)).toEqual(["image-root"]);
+});
+
 it("undoes and redoes image edits with the keyboard inside the editor only", () => {
   const current = setup();
   const before = current().imageScene!.nodes.length;
