@@ -7,7 +7,10 @@ import { PromptComposer } from "./PromptComposer";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "../lib/project";
 import { executeAgentCommands } from "../lib/runtime";
 import { imageScenePrompt } from "../lib/imageScene";
-import { saveDebugOptionsEnabled } from "../lib/settings";
+import { EMPTY_ENGINE_SETTINGS, saveDebugOptionsEnabled, saveGeneratorTemplateSettings } from "../lib/settings";
+import { imageGenerationSnapshot } from "../lib/imageHistory";
+import { WorkQueue } from "../lib/workQueue";
+import * as runtime from "../lib/runtime";
 import fixture from "../../fixtures/project-v1-image.json";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../lib/persistence";
@@ -16,6 +19,45 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
+
+it.each([false, true])("scopes generation controls to each image and queues others (draft: %s)", async (imageDraft) => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.spyOn(runtime, "resolveSlopfabPlan").mockResolvedValue({ alignedFrames: 1, canvasWidth: 768, canvasHeight: 768 } as Awaited<ReturnType<typeof runtime.resolveSlopfabPlan>>);
+  const enqueue = vi.spyOn(runtime, "enqueueSlopfabGeneration").mockResolvedValue(undefined);
+  const cancel = vi.spyOn(runtime, "cancelSlopfabGeneration").mockResolvedValue(true);
+  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [{ id: "test", name: "Test", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } }] });
+  const project = record();
+  project.config.assets = ["First", "Second", "Third"].map((name) => ({ id: name, name, kind: "image", imageDraft,
+    relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: project.config.createdAt,
+    imageGeneration: imageGenerationSnapshot(project.config, "", "test") }));
+  project.config.imageScene!.outputAssetId = "First";
+  const queue = new WorkQueue(vi.fn(async (record) => record));
+  render(<ProjectWorkspace project={project} workQueue={queue} onBack={vi.fn()} onSave={vi.fn()} />);
+  const panel = within(screen.getByRole("region", { name: "Image panel" }));
+  fireEvent.click(panel.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
+  expect(panel.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  expect(panel.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  expect(panel.getByRole("combobox", { name: "Generator" })).toBeEnabled();
+  fireEvent.click(panel.getByRole("button", { name: "Generate" }));
+  expect(queue.getSnapshot().map((item) => [item.imageAssetId, item.status])).toEqual([["First", "generating"], ["Second", "queued"]]);
+  expect(enqueue).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "View Third" }));
+  expect(panel.getByRole("button", { name: "Generate" })).toBeEnabled();
+  expect(panel.queryByRole("progressbar")).not.toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View First" }));
+  expect(screen.getByRole("menuitem", { name: "Remove" })).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Generated image actions" }), { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: "View First" }));
+  fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(cancel).toHaveBeenCalledWith(queue.getSnapshot()[0].id));
+  fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
+  expect(queue.getSnapshot()[1].status).toBe("cancelled");
+  expect(panel.getByRole("button", { name: "Generate" })).toBeEnabled();
+});
 
 it("exports the selected image from the Export tab and handles cancellation and errors", async () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);

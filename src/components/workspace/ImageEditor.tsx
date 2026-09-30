@@ -26,9 +26,9 @@ import "../../styles/image-editor.css";
 const MIN_IMAGE_ZOOM = 0.1;
 const MAX_IMAGE_ZOOM = 8;
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, work }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
-  onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; work?: WorkItem;
+  onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
 }) {
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
   const root = scene.nodes.find((node) => node.kind === "root")!;
@@ -116,6 +116,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     pan.current = null; setPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
+  const work = workItems.filter((item) => item.imageAssetId === scene.outputAssetId).at(-1);
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
@@ -447,7 +448,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       }) },
       ...(imageMenu.id ? [
         { label: "Edit", icon: <Edit16 />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
-        { label: "Remove", icon: <Delete16 />, danger: true, disabled: Boolean(active && work.imageDraftId === imageMenu.id), action: () => removeImage(imageMenu.id!) },
+        { label: "Remove", icon: <Delete16 />, danger: true, disabled: workItems.some((item) => isWorkActive(item) && item.imageAssetId === imageMenu.id), action: () => removeImage(imageMenu.id!) },
       ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">

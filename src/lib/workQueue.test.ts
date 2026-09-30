@@ -58,6 +58,33 @@ const finish = async (queue: WorkQueue, id: string) => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it.each([false, true])("queues distinct images in order without changing the viewed image (draft: %s)", async (imageDraft) => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.assets = ["first", "second", "third"].map((id) => ({ id, kind: "image", name: id, imageDraft,
+      relativePath: `media/${id}.jpg`, mimeType: "image/jpeg", createdAt: record.config.createdAt }));
+    record.config.imageScene!.outputAssetId = "first";
+    const session = queue.project(record);
+    vi.mocked(invoke).mockImplementation(async (_command, args) => ({ relativePath: `media/${(args as { jobId: string }).jobId}.jpg`, width: 768, height: 768 }));
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    session.update((current) => restoreGeneratedImage(current, "second"));
+    queue.enqueueImage(session, template);
+    queue.enqueueImage(session, template);
+    const [first, second] = queue.getSnapshot();
+    expect(queue.getSnapshot()).toHaveLength(2);
+    expect(second).toMatchObject({ imageAssetId: "second", status: "queued" });
+    expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
+    session.update((current) => restoreGeneratedImage(current, "third"));
+    await finish(queue, first.id);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].jobId).toBe(second.id);
+    await finish(queue, second.id);
+    const result = session.getSnapshot().config;
+    expect(result.imageScene!.outputAssetId).toBe("third");
+    expect(result.thumbnail).toBe("media/third.jpg");
+    expect(result.assets.filter((asset) => [first, second].some((item) => asset.relativePath === `media/${item.id}.jpg`))).toHaveLength(2);
+  });
   it("submits ordered inpainting as one job, saves PNG, and leaves a clean edit root", async () => {
     const { queue } = setup();
     const record = imageProject();
