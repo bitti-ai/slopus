@@ -127,6 +127,13 @@ fn image_export_resizes_and_reencodes_at_the_chosen_quality() {
     let half = folder.path().join("half.png");
     export_image_file_with(&source, &half, ImageExportOptions { format: Some(ImageExportFormat::Png), width: Some(64), height: Some(40), quality: None }).unwrap();
     assert_eq!(::image::image_dimensions(&half).unwrap(), (64, 40));
+    let enlarged = folder.path().join("enlarged.jpg");
+    export_image_file_with(&source, &enlarged, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: Some(1280), height: Some(720), quality: Some(90) }).unwrap();
+    let decoded = ::image::open(&enlarged).unwrap().to_rgb8();
+    assert_eq!(decoded.dimensions(), (1280, 720));
+    // Content fills the new canvas, including its far edge, rather than padding.
+    assert!(decoded.get_pixel(1279, 719)[2] > 100);
+    assert_eq!(fs::read(&source).unwrap(), original);
     let low = folder.path().join("low.jpg");
     export_image_file_with(&source, &low, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(20) }).unwrap();
     let low = fs::read(low).unwrap();

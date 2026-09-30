@@ -7,6 +7,7 @@ import { parseProjectConfig, type ProjectConfig } from "../../lib/project";
 import * as persistence from "../../lib/persistence";
 import { invoke } from "@tauri-apps/api/core";
 import { ImageExportView } from "./ImageExportView";
+import { imageGenerationSnapshot } from "../../lib/imageHistory";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
@@ -49,17 +50,48 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
   render(<ImageExportView config={withOutput({ width: 2048, height: 1152 })} folderPath="D:/Images" />);
   fireEvent.change(screen.getByRole("slider", { name: "JPG quality" }), { target: { value: "60" } });
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
-  expect(screen.getByRole("option", { name: "2720 × 1536" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("option", { name: "3648 × 2048" }));
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "2048 × 1152 (original)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160",
+  ]);
+  fireEvent.click(screen.getByRole("option", { name: "3840 × 2160" }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {
     folderPath: "D:/Images", relativePath: "media/generated/out.png",
-    options: { format: "jpg", width: 3648, height: 2048, quality: 60 },
+    options: { format: "jpg", width: 3840, height: 2160, quality: 60 },
   }));
   expect(JSON.parse(localStorage.getItem("slopus.image-export.v1")!)).toEqual({ format: "jpg", quality: 60 });
   fireEvent.click(screen.getByRole("combobox", { name: "Format" }));
   fireEvent.click(screen.getByRole("option", { name: /PNG/ }));
   expect(screen.queryByRole("slider", { name: "JPG quality" })).toBeNull();
+});
+
+it.each([
+  ["9:16", ["720 × 1280", "1080 × 1920", "1440 × 2560", "2160 × 3840"]],
+  ["1:1", ["512 × 512", "1024 × 1024", "1080 × 1080", "2048 × 2048", "4096 × 4096"]],
+  ["4:5", ["720 × 900", "1080 × 1350", "1440 × 1800", "2160 × 2700", "3072 × 3840"]],
+] as const)("offers export sizes in the saved image's %s aspect ratio", (aspectRatio, labels) => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const config = withOutput({ width: 1376, height: 768 });
+  config.assets[0].imageGeneration = { ...imageGenerationSnapshot(config, "", "test"), aspectRatio };
+  render(<ImageExportView config={config} folderPath="D:/Images" />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["1376 × 768 (original)", ...labels]);
+});
+
+it("keeps Original selected across images and omits duplicate presets", () => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const config = withOutput({ width: 1920, height: 1080 });
+  config.assets.push({ ...config.assets[0], id: "second", name: "Second", width: 5760, height: 3240 });
+  render(<ImageExportView config={config} folderPath="D:/Images" />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  expect(screen.queryByRole("option", { name: "1920 × 1080" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("option", { name: "1920 × 1080 (original)" }));
+  fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("5760 × 3240 (original)");
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "5760 × 3240 (original)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160",
+  ]);
 });
 
 it("shows the image bar and exports the image picked in it, leaving the Editor's image alone", async () => {

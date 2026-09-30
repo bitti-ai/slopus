@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
-import { outputDimensions } from "../../lib/export";
-import { IMAGE_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
+import type { AspectRatio, ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
@@ -11,13 +10,20 @@ import { ReferenceImage } from "./ReferenceImage";
 /* The image project's Export tab: the same page as the video export (see
    export.css) — the image on the stage, filling it, and the resizable settings
    pane on the right opening straight on its first section, with Export… pinned
-   at its foot. Output sets the size (the image's own, or a rung of the project
-   ladder at its aspect), the format and, for JPG, the quality; Export… then
+   at its foot. Output sets the size (the image's own, or a standard export size
+   at its aspect), the format and, for JPG, the quality; Export… then
    asks where to save. The image bar under the stage picks which image. Format and quality are remembered across projects. */
 
 type ImageFormat = "jpg" | "png";
 const STORAGE_KEY = "slopus.image-export.v1";
 const DEFAULT_QUALITY = 90;
+
+const EXPORT_SIZES: Record<AspectRatio, readonly (readonly [number, number])[]> = {
+  "16:9": [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]],
+  "9:16": [[720, 1280], [1080, 1920], [1440, 2560], [2160, 3840]],
+  "1:1": [[512, 512], [1024, 1024], [1080, 1080], [2048, 2048], [4096, 4096]],
+  "4:5": [[720, 900], [1080, 1350], [1440, 1800], [2160, 2700], [3072, 3840]],
+};
 
 function loadPreferences(): { format: ImageFormat; quality: number } {
   try {
@@ -53,17 +59,18 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* remembered for this session only */ }
   };
 
-  /* The image's own size first, then the image ladder at the project's aspect,
-     skipping a rung that matches the original. */
+  /* Generation sizes use a 32-pixel grid; exports use standard exact ratios.
+     A saved image retains its authored aspect even if project settings change. */
   const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
+  const aspectRatio = output?.imageGeneration?.aspectRatio ?? config.settings.aspectRatio;
   const sizes = [
-    ...(original ? [{ ...original, label: `${original.width} × ${original.height} (original)` }] : []),
-    ...IMAGE_RESOLUTIONS.map((resolution) => outputDimensions(resolution, config.settings.aspectRatio))
+    ...(original ? [{ ...original, value: "original", label: `${original.width} × ${original.height} (original)` }] : []),
+    ...EXPORT_SIZES[aspectRatio].map(([width, height]) => ({ width, height }))
       .filter((size) => !original || sizeKey(size.width, size.height) !== sizeKey(original.width, original.height))
-      .map((size) => ({ ...size, label: `${size.width} × ${size.height}` })),
+      .map((size) => ({ ...size, value: sizeKey(size.width, size.height), label: `${size.width} × ${size.height}` })),
   ];
   const [chosenSize, setChosenSize] = useState<string | null>(null);
-  const size = sizes.find((candidate) => sizeKey(candidate.width, candidate.height) === chosenSize) ?? sizes[0];
+  const size = sizes.find((candidate) => candidate.value === chosenSize) ?? sizes[0];
 
   const exportImage = async () => {
     if (!output?.relativePath || disabled) return;
@@ -103,11 +110,11 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
             <PropRow label="Resolution" htmlFor="image-export-resolution">
               <ComboBox
                 id="image-export-resolution"
-                value={size ? sizeKey(size.width, size.height) : ""}
+                value={size?.value ?? ""}
                 disabled={exporting || sizes.length === 0}
                 placeholder="Generate an image first"
                 onChange={setChosenSize}
-                options={sizes.map((candidate) => ({ value: sizeKey(candidate.width, candidate.height), label: candidate.label }))}
+                options={sizes.map((candidate) => ({ value: candidate.value, label: candidate.label }))}
               />
             </PropRow>
             <PropRow label="Format" htmlFor="image-export-format">
