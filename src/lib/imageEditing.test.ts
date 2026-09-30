@@ -39,7 +39,7 @@ it("reserves Picture 1 for the source and counts it toward H3's nine-picture lim
   config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/imported/source.png", name: "Source", width: 101, height: 77 }), "image-root", "object");
   config.imageScene.nodes[1].description = "A red balloon";
   config.references = Array.from({ length: 9 }, (_, index) => ({ id: `ref-${index}`, kind: "image" as const, name: `Reference ${index}`, description: "Red satin", relativePath: `references/${index}.png`, intendedUse: [], createdAt: config.createdAt }));
-  const mention = (count: number) => `A red balloon ${config.references.slice(0, count).map((reference) => `[${reference.name}]`).join(" ")}`;
+  const mention = (count: number) => `A red balloon ${config.references.slice(0, count).map((reference) => `@[ref:${reference.id}]`).join(" ")}`;
   config.imageScene.nodes[1].description = mention(8);
   const prompt = compileImageEdits(config).edits[0].prompt;
   expect(prompt).toContain("<Subject 1> is Reference 0, providing appearance from <Picture 2>");
@@ -64,17 +64,17 @@ it("starts with a clean image root and requires described edits before submissio
   expect(parseProjectConfig(JSON.parse(JSON.stringify(edited))).imageScene).toEqual(edited.imageScene);
 });
 
-it("applies whole-image actions first and compiles only the references each edit mentions", () => {
+it("applies whole-image actions first and compiles only the references each edit cites", () => {
   const config = parseProjectConfig(fixture);
   config.imageScene = createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 101, height: 77 });
   config.references = ["Lighting", "Balloon", "Unused"].map((name) => ({ id: name, name, kind: "image", description: name, relativePath: `references/${name}.png`, intendedUse: [], createdAt: config.createdAt }));
   const root = config.imageScene.nodes[0];
-  root.description = "Warm up the entire image like [Lighting]";
-  // Stored ids no longer choose anything: only mentions do.
+  root.description = "Warm up the entire image like @[ref:Lighting]";
+  // Stored ids no longer choose anything: only citations do.
   root.referenceIds = ["Unused"];
   expect(compileImageEdits(config).edits).toHaveLength(1);
   config.imageScene = addImageNode(config.imageScene, root.id, "object");
-  Object.assign(config.imageScene.nodes[1], { description: "Add a [Balloon]" });
+  Object.assign(config.imageScene.nodes[1], { description: "Add a @[ref:Balloon]" });
   let edits = compileImageEdits(config).edits;
   expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
   expect(edits[0].prompt).toContain("Warm up the entire image like <Subject 1>");
@@ -87,6 +87,6 @@ it("applies whole-image actions first and compiles only the references each edit
   config.imageScene.nodes[1].description = "Add a balloon";
   edits = compileImageEdits(config).edits;
   expect(edits[1].references).toEqual([]);
-  config.imageScene.nodes[1].description = "Add a [missing]";
-  expect(() => compileImageEdits(config)).toThrow("The prompt mentions [missing]");
+  config.imageScene.nodes[1].description = "Add a @[ref:missing]";
+  expect(() => compileImageEdits(config)).toThrow("The prompt cites a reference that no longer exists.");
 });

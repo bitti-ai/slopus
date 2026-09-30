@@ -4,11 +4,15 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
-import { canCitePromptReference, promptReferenceNames, splitPromptText } from "../../lib/promptReferences";
+import { referenceTypeLabel, type ProjectReference } from "../../lib/project";
 
 afterEach(cleanup);
 
-const references: PromptReference[] = [{ id: "hero", name: "Hero", icon: <img alt="" src="data:image/png;base64," data-testid="hero-icon" /> }, { id: "castle", name: "Castle" }, { id: "odd", name: "Odd [v2]" }];
+const references: PromptReference[] = [
+  { id: "hero", name: "Hero", icon: <img alt="" src="data:image/png;base64," data-testid="hero-icon" /> },
+  { id: "castle", name: "Castle" },
+  { id: "odd]", name: "Odd" },
+];
 
 function setup(initial: string, onInsertReference = vi.fn()) {
   let latest = initial;
@@ -30,35 +34,25 @@ const caretAt = (node: Node, offset: number) => {
   fireEvent(document, new Event("selectionchange"));
 };
 
-it("reads references out of the text as [Name]", () => {
-  expect(splitPromptText("A [Hero] at the [Castle].")).toEqual([
-    { kind: "text", value: "A " }, { kind: "reference", value: "Hero" }, { kind: "text", value: " at the " },
-    { kind: "reference", value: "Castle" }, { kind: "text", value: "." },
-  ]);
-  expect(splitPromptText("[] and [a\nb] stay text")).toEqual([{ kind: "text", value: "[] and [a\nb] stay text" }]);
-  expect(promptReferenceNames("[Hero] meets [Castle] and [Hero]")).toEqual(["Hero", "Castle"]);
-  expect(canCitePromptReference("Odd [v2]")).toBe(false);
-});
-
-it("shows references as chips, and ones no reference is named as missing", () => {
-  const { field } = setup("[Hero] walks to [Tower]");
+it("shows cited references as chips by name, and a deleted one as missing", () => {
+  const { field } = setup("@[ref:hero] walks to @[ref:tower]");
   const chips = field.querySelectorAll(".prompt-chip");
-  expect([...chips].map((chip) => chip.textContent)).toEqual(["Hero", "Tower"]);
+  expect([...chips].map((chip) => chip.textContent)).toEqual(["Hero", "Deleted reference"]);
   expect(chips[1]).toHaveClass("prompt-chip--missing");
   expect(chips[0]).toHaveAttribute("contenteditable", "false");
-  expect(field).toHaveTextContent("Hero walks to Tower");
+  expect(field).toHaveTextContent("Hero walks to Deleted reference");
 });
 
-it("inserts the chosen reference at the caret from the toolbar", () => {
+it("inserts the chosen reference at the caret from the toolbar, never fused to a word", () => {
   const onInsert = vi.fn();
   const { field, value } = setup("A knight rides", onInsert);
   caretAt(field.firstChild!, 2);
   fireEvent.click(screen.getByRole("button", { name: "Reference" }));
   expect(screen.getByRole("dialog", { name: "Insert a reference" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Odd [v2]" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Odd" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Hero" })).toContainElement(screen.getByTestId("hero-icon"));
   fireEvent.click(screen.getByRole("button", { name: "Hero" }));
-  expect(value()).toBe("A [Hero] knight rides");
+  expect(value()).toBe("A @[ref:hero] knight rides");
   expect(onInsert).toHaveBeenCalledWith(references[0]);
   expect(field.querySelector(".prompt-chip")).toHaveTextContent("Hero");
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -68,39 +62,48 @@ it("adds a reference at the end of a field that was never focused", () => {
   const { value } = setup("Ride to ");
   fireEvent.click(screen.getByRole("button", { name: "Reference" }));
   fireEvent.click(screen.getByRole("button", { name: "Castle" }));
-  expect(value()).toBe("Ride to [Castle]");
+  expect(value()).toBe("Ride to @[ref:castle]");
 });
 
 it("opens the picker from a chip to change it or take it out", () => {
-  const { field, value } = setup("[Hero] at the [Hero] gate");
+  const { field, value } = setup("@[ref:hero] at the @[ref:hero] gate");
   fireEvent.click(field.querySelectorAll(".prompt-chip")[1]);
   expect(screen.getByRole("dialog", { name: "Change reference Hero" })).toHaveTextContent("Cites Hero");
   expect(screen.getByRole("button", { name: "Hero" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("button", { name: "Castle" }));
-  expect(value()).toBe("[Hero] at the [Castle] gate");
+  expect(value()).toBe("@[ref:hero] at the @[ref:castle] gate");
 
   fireEvent.click(field.querySelectorAll(".prompt-chip")[0]);
   fireEvent.click(screen.getByRole("button", { name: "Remove from the prompt" }));
-  expect(value()).toBe(" at the [Castle] gate");
+  expect(value()).toBe(" at the @[ref:castle] gate");
   expect(field.querySelectorAll(".prompt-chip")).toHaveLength(1);
 });
 
-it("turns a [Name] typed by hand into a chip and keeps line breaks as text", () => {
+it("turns a token pasted or typed by hand into a chip and keeps line breaks as text", () => {
   const { field, value } = setup("");
-  field.textContent = "Meet [Hero]";
+  field.textContent = "Meet @[ref:hero]";
   fireEvent.input(field);
-  expect(value()).toBe("Meet [Hero]");
+  expect(value()).toBe("Meet @[ref:hero]");
   expect(field.querySelector(".prompt-chip")).toHaveTextContent("Hero");
 
   field.focus();
   caretAt(field.firstChild!, 4);
   fireEvent.keyDown(field, { key: "Enter" });
-  expect(value()).toBe("Meet\n [Hero]");
+  expect(value()).toBe("Meet\n @[ref:hero]");
 });
 
 it("pastes only the characters", () => {
   const { field, value } = setup("Hello");
   caretAt(field.firstChild!, 5);
-  fireEvent.paste(field, { clipboardData: { getData: (type: string) => type === "text/plain" ? " <b>[Castle]</b>\r\nnext" : "" } });
-  expect(value()).toBe("Hello <b>[Castle]</b>\nnext");
+  fireEvent.paste(field, { clipboardData: { getData: (type: string) => type === "text/plain" ? " <b>@[ref:castle]</b>\r\nnext" : "" } });
+  expect(value()).toBe("Hello <b>@[ref:castle]</b>\nnext");
+});
+
+it("names a refmod reference as a refmod, whatever else it holds", () => {
+  const base = { description: "", intendedUse: [], createdAt: "2026-01-01T00:00:00.000Z" };
+  const refmods = [{ id: "encoded", name: "Identity", sourcePath: "D:/identity.safetensors", strength: 1, copies: 1 }];
+  expect(referenceTypeLabel({ ...base, id: "a", kind: "text", name: "A", refmods } as ProjectReference)).toBe("Refmod");
+  expect(referenceTypeLabel({ ...base, id: "b", kind: "image", name: "B", relativePath: "b.png", refmods } as ProjectReference)).toBe("Refmod");
+  expect(referenceTypeLabel({ ...base, id: "c", kind: "image", name: "C", relativePath: "c.png" } as ProjectReference)).toBe("Image");
+  expect(referenceTypeLabel({ ...base, id: "d", kind: "text", name: "D" } as ProjectReference)).toBe("Text");
 });

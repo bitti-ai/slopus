@@ -70,6 +70,20 @@ pub struct ImageStyle {
 }
 
 impl ImageScene {
+    /// Every reference the scene's prompts cite as `@[ref:<id>]` — node
+    /// descriptions and the background — which is what generation is given.
+    pub(crate) fn cited_reference_ids(&self) -> Result<Vec<&str>, String> {
+        let mut ids = Vec::new();
+        for text in self.nodes.iter().map(|node| node.description.as_str()).chain([self.background.as_str()]) {
+            for id in super::reference_tokens::action_reference_ids(text)? {
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.root_type.as_deref().is_some_and(|kind| !matches!(kind, "prompt" | "image")) {
             return Err("Invalid image root type.".into());

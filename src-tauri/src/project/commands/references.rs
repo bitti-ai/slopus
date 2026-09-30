@@ -74,9 +74,12 @@ pub(super) fn apply(
             if project
                 .image_scene
                 .as_ref()
-                .is_some_and(|scene| scene.reference_ids.contains(id))
+                .is_some_and(|scene| {
+                    scene.reference_ids.contains(id)
+                        || scene.cited_reference_ids().is_ok_and(|cited| cited.contains(&id.as_str()))
+                })
             {
-                return Err(format!("reference '{id}' is still used by the image; update image.set before removing it"));
+                return Err(format!("reference '{id}' is still used by the image; remove its citations before removing it"));
             }
             let at = project
                 .references

@@ -132,8 +132,8 @@ it("shows the full image prompt at the end of the inspector only when debug is e
     { id: "mood", kind: "text", name: "Mood", description: "Peaceful and bright", intendedUse: [], createdAt: project.config.createdAt },
     { id: "unused", kind: "text", name: "Unused", description: "Do not include this reference", intendedUse: [], createdAt: project.config.createdAt },
   ];
-  // Only mentioned references reach the prompt; Unused is never mentioned.
-  project.config.imageScene!.nodes[0].description = "A [Rocket] launch over the ocean at dawn, [Mood]";
+  // Only cited references reach the prompt; Unused is never cited.
+  project.config.imageScene!.nodes[0].description = "A @[ref:subject] launch over the ocean at dawn, @[ref:mood]";
   render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={vi.fn()} />);
   expect(screen.queryByRole("button", { name: "Debug prompt" })).not.toBeInTheDocument();
   act(() => saveDebugOptionsEnabled(true));
@@ -147,7 +147,7 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   button.focus();
   fireEvent.click(button);
   const prompt = within(screen.getByRole("dialog", { name: "Debug prompt" })).getByLabelText("The compiled MiniMax H3 prompt");
-  const compiled = imageScenePrompt(project.config.imageScene!, "Watercolor").replace("[Rocket]", "<Subject 1>").replace("[Mood]", "<Subject 2>");
+  const compiled = imageScenePrompt(project.config.imageScene!, "Watercolor").replace("@[ref:subject]", "<Subject 1>").replace("@[ref:mood]", "<Subject 2>");
   for (const line of compiled.split("\n")) expect(prompt.textContent).toContain(line);
   expect(prompt.textContent).toContain('Render the exact text "TO THE MOON".');
   expect(prompt.textContent).toContain("Watercolor visual style");

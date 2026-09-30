@@ -45,7 +45,7 @@ export type ImageBox = NonNullable<ImageNode["box"]>;
 export const imageSceneReferenceIds = (scene: ImageScene): string[] =>
   [...new Set([...scene.referenceIds, ...scene.nodes.flatMap((node) => node.referenceIds ?? [])])];
 
-/** Every authored line of the scene a reference can be mentioned in as [Name]. */
+/** Every authored line of the scene a reference can be cited in as @[ref:<id>]. */
 export const imageScenePromptText = (scene: ImageScene): string =>
   [...scene.nodes.map((node) => node.description), scene.background].join("\n");
 

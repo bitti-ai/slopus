@@ -1,10 +1,9 @@
 import { createImageEditScene, createImageScene, imageSceneReferenceIds, imageScenePromptText } from "./imageScene";
-import { promptReferenceNames } from "./promptReferences";
-import type { ImageGenerationSnapshot, ProjectAsset, ProjectConfig } from "./project";
+import { actionReferenceIds, type ImageGenerationSnapshot, type ProjectAsset, type ProjectConfig } from "./project";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
-  const mentioned = promptReferenceNames(imageScenePromptText(scene));
+  const cited = actionReferenceIds(imageScenePromptText(scene));
   return structuredClone({
     scene: { ...scene, outputAssetId: null },
     resolution: config.settings.resolution,
@@ -13,10 +12,9 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
     briefPrompt: config.brief.prompt,
     prompt,
     generatorTemplateId,
-    // What the prompt mentions, plus any ids a scene saved before mentions
-    // were how references are chosen (the snapshot schema still checks them).
-    references: config.references.filter((reference) => imageSceneReferenceIds(scene).includes(reference.id)
-      || ((reference.kind === "image" || reference.kind === "text") && mentioned.includes(reference.name))),
+    // What the prompt cites, plus any ids a scene saved before citations were
+    // how references are chosen (the snapshot schema still checks them).
+    references: config.references.filter((reference) => imageSceneReferenceIds(scene).includes(reference.id) || cited.includes(reference.id)),
   });
 }
 

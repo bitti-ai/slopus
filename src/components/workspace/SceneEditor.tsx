@@ -3,12 +3,12 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
   actionReferenceIds,
-  canTokenizeReference,
   danglingReferenceTokens,
   isReferenceUsable,
   isVisualReference,
   isVideoTransition,
   referenceImages,
+  referenceTypeLabel,
   usableVideoReferences,
   normalizeSceneShots,
   referenceToken,
@@ -37,17 +37,8 @@ import {
   type ShotTagSelection,
 } from "../../lib/shot-tags";
 import { CommittedNumberInput } from "./CommittedNumberInput";
-import { PromptTextField, type PromptTokenFormat } from "./PromptTextField";
+import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
-
-/** A line cites a reference by id — `@[ref:<id>]` — which survives a rename
- *  and a reorder; the chip shows its name. */
-const ACTION_TOKENS: PromptTokenFormat = {
-  split: splitActionText,
-  token: referenceToken,
-  key: (reference) => reference.id,
-  uncitable: (reference) => canTokenizeReference(reference.id) ? null : "This reference can’t be written into a line",
-};
 
 /** The step the length slider and the cut handles move in. Half a second is the
  *  finest cut the timestamp format prints exactly (`formatSceneSeconds`), so
@@ -137,7 +128,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   const pickable = useMemo(() => citable.map((reference) => {
     const number = numbered.findIndex((item) => item.id === reference.id) + 1;
     return {
-      id: reference.id, name: reference.name, detail: number > 0 ? `Reference ${number}` : "Not in this scene yet",
+      id: reference.id, name: reference.name, detail: `${number > 0 ? `Reference ${number}` : "Not in this scene yet"} · ${referenceTypeLabel(reference)}`,
       icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "video" ? <Video16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
     };
   }), [citable, numbered, folderPath]);
@@ -184,10 +175,8 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         aria-label={`Describe shot ${shotNumber}`}
         rows={6}
         value={shot.action}
-        format={ACTION_TOKENS}
         references={pickable}
         missingLabel={(referenceId) => referenceById.get(referenceId)?.name ?? "Deleted reference"}
-        missingTooltip="Left out of the prompt — click to swap it for another reference or remove it"
         disabled={disabled}
         placeholder={job.sceneType === "pose" ? "Example: a dancer in a red coat performs this movement on a rainy city street." : "Example: she walks towards the camera and stops under the awning."}
         onChange={(action) => onChange({ action })}

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { createImageScene } from "./imageScene";
+import { createImageScene, imageScenePromptText } from "./imageScene";
 import { applyImageCommand, type ImageCommand } from "./imageCommands";
 import { isTauri } from "./persistence";
 import type { TemplateLora } from "./loras";
@@ -316,6 +316,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         if (next.generationType !== "image") throw new Error(`${command.op} requires an image project.`);
         const scene = applyImageCommand(next.imageScene ?? createImageScene(next.brief.prompt), command);
         for (const id of scene.referenceIds) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`Image reference '${id}' must name an existing image or text reference.`);
+        for (const id of actionReferenceIds(imageScenePromptText(scene))) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`The image cites '@[ref:${id}]', which must name an existing image or text reference.`);
         next.imageScene = scene;
         break;
       }
@@ -347,8 +348,8 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         break;
       }
       case "ref.remove": {
-        if (next.imageScene?.referenceIds.includes(command.id)) throw new Error(`Reference '${command.id}' is still used by the image; update image.set before removing it.`);
         const token = `@[ref:${command.id}]`;
+        if (next.imageScene && (next.imageScene.referenceIds.includes(command.id) || imageScenePromptText(next.imageScene).includes(token))) throw new Error(`Reference '${command.id}' is still used by the image; remove its citations before removing it.`);
         if (next.generationJobs.some((job) => job.startFrameReferenceId === command.id || job.endFrameReferenceId === command.id || job.shots?.some((shot) => shot.action.includes(token)))) {
           throw new Error(`Reference '${command.id}' is still used by a scene.`);
         }

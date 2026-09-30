@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { canCitePromptReference, promptReferenceToken, splitPromptText, type PromptPart } from "../../lib/promptReferences";
+import { canTokenizeReference, referenceToken, splitActionText, type ActionPart } from "../../lib/project";
 import { Add14, Delete14 } from "../ui/icons";
 import { Flyout, TextField } from "../ui";
 import "../../styles/prompt-field.css";
@@ -17,26 +17,27 @@ export interface PromptReference {
  *  and carries its key: what `split` reads out of the token and `token` writes
  *  back. */
 export interface PromptTokenFormat {
-  split: (text: string) => PromptPart[];
+  split: (text: string) => ActionPart[];
   token: (key: string) => string;
   key: (reference: PromptReference) => string;
   /** Why a reference cannot be written as a token, or null when it can. */
   uncitable?: (reference: PromptReference) => string | null;
 }
 
-/** `[Name]` — readable in the saved text, and what a person may type by hand. */
-export const NAME_TOKENS: PromptTokenFormat = {
-  split: splitPromptText,
-  token: promptReferenceToken,
-  key: (reference) => reference.name,
-  uncitable: (reference) => canCitePromptReference(reference.name) ? null : "Rename it without brackets to cite it in a prompt",
+/** `@[ref:<id>]` — an id survives a rename and a reorder; the chip shows the
+ *  name. The same token the video compiler and the agent read. */
+export const REFERENCE_TOKENS: PromptTokenFormat = {
+  split: splitActionText,
+  token: referenceToken,
+  key: (reference) => reference.id,
+  uncitable: (reference) => canTokenizeReference(reference.id) ? null : "This reference can’t be written into a prompt",
 };
 
 /* A multi-line prompt whose references are smart chips inside the text.
 
    The value is plain text with each reference written into it as a token —
-   `[Name]` by default (see lib/promptReferences), or any other `format` — and
-   the field shows every token as a chip. The Reference button on the toolbar
+   `@[ref:<id>]` by default, or any other `format` — and the field shows every
+   token as a chip. The Reference button on the toolbar
    above opens a picker and drops the chosen reference at the caret; clicking a
    chip opens the same picker to change it to another reference or take it out.
 
@@ -68,7 +69,7 @@ interface Chips {
   missingLabel: (key: string) => string;
 }
 
-export function PromptTextField({ value, onChange, references, format = NAME_TOKENS, missingLabel = (key) => key, missingTooltip = "No reference has this name — click to choose one", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
+export function PromptTextField({ value, onChange, references, format = REFERENCE_TOKENS, missingLabel = () => "Deleted reference", missingTooltip = "Left out of the prompt — click to swap it for another reference or remove it", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
   value: string;
   onChange: (value: string) => void;
   /** The references the picker offers; a chip for any other key is missing. */

@@ -349,6 +349,15 @@ pub(super) fn apply(
         _ => unreachable!("command dispatched to the wrong domain"),
     }
     scene.validate()?;
+    for id in scene.cited_reference_ids()? {
+        if !project.references.iter().any(|reference| {
+            reference.id == id && matches!(reference.kind.as_str(), "image" | "text")
+        }) {
+            return Err(format!(
+                "The image cites '@[ref:{id}]', which must name an existing image or text reference."
+            ));
+        }
+    }
     for id in &scene.reference_ids {
         if !project.references.iter().any(|reference| {
             &reference.id == id && matches!(reference.kind.as_str(), "image" | "text")

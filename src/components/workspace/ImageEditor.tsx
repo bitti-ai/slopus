@@ -7,7 +7,7 @@ import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
-import { IMAGE_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
+import { IMAGE_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
@@ -436,7 +436,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
   const promptReferences = config.references.filter((reference) => reference.kind === "image" || reference.kind === "text")
-    .map((reference) => ({ id: reference.id, name: reference.name, detail: reference.kind === "image" ? "Image" : "Text", icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
+    .map((reference) => ({ id: reference.id, name: reference.name, detail: referenceTypeLabel(reference), icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
+  // A chip for a video or audio reference names it; one deleted says so.
+  const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
 
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
@@ -581,10 +583,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           {scene.sourceImage && <p className="image-inspector__caption">{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
           <p className="image-inspector__caption">Applies to the whole image before the individual edits.</p>
         </>}
-        <div className="image-inspector__area"><span id={rootField("prompt-label")}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} onChange={(description) => patchNode({ description })} /></div>
+        <div className="image-inspector__area"><span id={rootField("prompt-label")}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} missingLabel={missingReference} onChange={(description) => patchNode({ description })} /></div>
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
         {selected.kind === "root" && !imageRoot && <>
-          <div className="image-inspector__area"><span id={rootField("background-label")}>Background (environment)</span><PromptTextField aria-labelledby={rootField("background-label")} rows={3} value={scene.background} references={promptReferences} onChange={(background) => commit({ ...scene, background })} /></div>
+          <div className="image-inspector__area"><span id={rootField("background-label")}>Background (environment)</span><PromptTextField aria-labelledby={rootField("background-label")} rows={3} value={scene.background} references={promptReferences} missingLabel={missingReference} onChange={(background) => commit({ ...scene, background })} /></div>
           <PropSection title="Image generation" persistKey="image.generation">
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             <PropRow label="Seed" htmlFor={rootField("seed")}><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} data-tooltip="-1 picks a random seed" onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>

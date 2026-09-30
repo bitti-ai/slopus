@@ -19,7 +19,7 @@ import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
 import { chooseOption, optionNames } from "./workspace/comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-const storedLine = (field: HTMLElement) => promptValue(field, (id) => `@[ref:${id}]`);
+const storedLine = promptValue;
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 
@@ -941,7 +941,7 @@ describe("project workspace timecode", () => {
     // The picker says which references the scene already numbers.
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
     expect(within(screen.getByRole("dialog", { name: "Insert a reference" })).getAllByRole("button").map((button) => button.textContent))
-      .toEqual(["Red-haired womanNot in this scene yet", "City streetNot in this scene yet"]);
+      .toEqual(["Red-haired womanNot in this scene yet · Text", "City streetNot in this scene yet · Text"]);
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
     insertPromptReference("Red-haired woman");
     let next = onChange.mock.calls.at(-1)![0];
@@ -977,7 +977,7 @@ describe("project workspace timecode", () => {
     fireEvent.click(line().querySelectorAll(".prompt-chip")[0]);
     const picker = screen.getByRole("dialog", { name: "Change reference Red-haired woman" });
     expect(within(picker).getAllByRole("button").map((button) => button.textContent))
-      .toEqual(["Red-haired womanReference 1", "City streetReference 2", "Remove from the prompt"]);
+      .toEqual(["Red-haired womanReference 1 · Text", "City streetReference 2 · Text", "Remove from the prompt"]);
     fireEvent.click(within(picker).getByRole("button", { name: /^City street/ }));
     next = onChange.mock.calls.at(-1)![0];
     show(next);

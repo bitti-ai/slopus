@@ -740,6 +740,14 @@ export const referenceRefmodInputs = (folderPath: string, references: ProjectRef
  *  route would be a guess. The tag is no longer offered in the UI; this only
  *  meets references saved before that. A reference carrying any other tag, or
  *  no tag at all, is visible content as before. */
+/** The kind a picker names a reference by. A refmod reference steers the
+ *  model with its encoded conditioning, whatever else it holds. */
+export function referenceTypeLabel(reference: ProjectReference): "Refmod" | "Video" | "Image" | "Text" {
+  if (reference.refmods?.length) return "Refmod";
+  if (reference.kind === "video") return "Video";
+  return reference.kind === "image" || referenceImages(reference).length ? "Image" : "Text";
+}
+
 export function isVisualReference(reference: ProjectReference): boolean {
   return reference.kind === "video" || reference.intendedUse.length === 0 || reference.intendedUse.some((use) => use !== "audio");
 }

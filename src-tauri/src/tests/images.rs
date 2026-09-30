@@ -306,6 +306,24 @@ fn granular_image_commands_edit_subtrees_without_touching_generated_outputs() {
 }
 
 #[test]
+fn image_prompts_cite_existing_references_and_keep_them_from_removal() {
+    use crate::project::commands::{execute_commands_at, ProjectCommand};
+    let command = |value: serde_json::Value| -> ProjectCommand { serde_json::from_value(value).unwrap() };
+    let current = image_fixture();
+    let add = command(serde_json::json!({"op":"ref.add","id":"ref-mara","name":"Mara","text":"A lighthouse keeper","use":["character"]}));
+    let cite = command(serde_json::json!({"op":"image.configure","prompt":"@[ref:ref-mara] holds the lantern","background":"Fog"}));
+    let next = execute_commands_at(&current, &[add.clone(), cite], &current.updated_at).unwrap();
+    assert_eq!(next.image_scene.as_ref().unwrap().cited_reference_ids().unwrap(), ["ref-mara"]);
+    let remove = command(serde_json::json!({"op":"ref.remove","id":"ref-mara"}));
+    let error = execute_commands_at(&next, &[remove], &next.updated_at).unwrap_err();
+    assert!(error.contains("still used by the image"), "{error}");
+    for text in ["@[ref:missing] waves", "A @[ref:ref-mara"] {
+        let cite = command(serde_json::json!({"op":"image.configure","background":text}));
+        assert!(execute_commands_at(&current, &[add.clone(), cite], &current.updated_at).is_err(), "{text}");
+    }
+}
+
+#[test]
 fn invalid_image_commands_roll_back_the_entire_batch() {
     use crate::project::commands::{execute_commands_at, ProjectCommand};
     let cases: serde_json::Value =

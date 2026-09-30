@@ -8,8 +8,8 @@ export const typePrompt = (field: HTMLElement, text: string) => {
   fireEvent.input(field);
 };
 
-/** The value on screen; `token` writes a chip's key back (default `[Name]`). */
-export const promptValue = (field: HTMLElement, token = (key: string) => `[${key}]`): string =>
+/** The value on screen, each chip written back as the token it stands for. */
+export const promptValue = (field: HTMLElement, token = (key: string) => `@[ref:${key}]`): string =>
   [...field.childNodes].map((node) => node instanceof HTMLElement && node.dataset.promptReference !== undefined
     ? token(node.dataset.promptReference) : node.textContent ?? "").join("").replaceAll("​", "");
 
