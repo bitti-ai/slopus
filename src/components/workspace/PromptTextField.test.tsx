@@ -8,7 +8,7 @@ import { canCitePromptReference, promptReferenceNames, splitPromptText } from ".
 
 afterEach(cleanup);
 
-const references: PromptReference[] = [{ id: "hero", name: "Hero" }, { id: "castle", name: "Castle" }, { id: "odd", name: "Odd [v2]" }];
+const references: PromptReference[] = [{ id: "hero", name: "Hero", icon: <img alt="" src="data:image/png;base64," data-testid="hero-icon" /> }, { id: "castle", name: "Castle" }, { id: "odd", name: "Odd [v2]" }];
 
 function setup(initial: string, onInsertReference = vi.fn()) {
   let latest = initial;
@@ -56,6 +56,7 @@ it("inserts the chosen reference at the caret from the toolbar", () => {
   fireEvent.click(screen.getByRole("button", { name: "Reference" }));
   expect(screen.getByRole("dialog", { name: "Insert a reference" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Odd [v2]" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Hero" })).toContainElement(screen.getByTestId("hero-icon"));
   fireEvent.click(screen.getByRole("button", { name: "Hero" }));
   expect(value()).toBe("A [Hero]knight rides");
   expect(onInsert).toHaveBeenCalledWith(references[0]);

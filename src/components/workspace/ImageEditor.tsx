@@ -14,6 +14,7 @@ import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
 import { PromptTextField } from "./PromptTextField";
+import { ReferenceIcon } from "./ReferenceIcon";
 import { ImageBar } from "./ImageBar";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
@@ -436,7 +437,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
   const promptReferences = config.references.filter((reference) => reference.kind === "image" || reference.kind === "text")
-    .map((reference) => ({ id: reference.id, name: reference.name, detail: reference.kind === "image" ? "Image" : "Text", icon: reference.kind === "image" ? <Image16 /> : <Text16 /> }));
+    .map((reference) => ({ id: reference.id, name: reference.name, detail: reference.kind === "image" ? "Image" : "Text", icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
   /* A reference newly cited in a prompt is one the generation has to be
      given, so citing it links it to the edit (or, composing, to the image). */
   const changePrompt = (description: string) => {
