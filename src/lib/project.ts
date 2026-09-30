@@ -128,10 +128,7 @@ export const aspectRatioSchema = z.enum(["16:9", "9:16", "1:1", "4:5"]);
  *  wide and 768×1376 tall. `outputDimensions` in export.ts holds the pixels
  *  themselves; a test pins the two lists together so neither can grow a member
  *  the other has never heard of. */
-export const PROJECT_RESOLUTIONS = ["416p", "544p", "640p", "768p", "1088p", "1344p"] as const;
-
-/** Still images offer two larger sizes, also aligned to the 32-pixel grid. */
-export const IMAGE_RESOLUTIONS = [...PROJECT_RESOLUTIONS, "1536p", "2048p"] as const;
+export const PROJECT_RESOLUTIONS = ["416p", "544p", "640p", "768p", "1088p", "1344p", "1536p", "2048p"] as const;
 
 /** Names still on disk, from before the ladder was rebuilt on multiples of 32.
  *  They keep their exact old pixels (1080p is still 1920×1080) and they are not
@@ -139,7 +136,7 @@ export const IMAGE_RESOLUTIONS = [...PROJECT_RESOLUTIONS, "1536p", "2048p"] as c
  *  back, and 1080 is not a multiple of 32. */
 export const LEGACY_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
 
-export const resolutionSchema = z.enum([...IMAGE_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
+export const resolutionSchema = z.enum([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
 
 export const imageGenerationSnapshotSchema = z.object({
   scene: imageSceneSchema,

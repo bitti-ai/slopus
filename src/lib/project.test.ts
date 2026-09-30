@@ -27,7 +27,7 @@ import {
   roundClipTransform,
   seedProjectWorkspace,
   LEGACY_RESOLUTIONS,
-  IMAGE_RESOLUTIONS,
+  PROJECT_RESOLUTIONS,
   STORY_TRACK_ID,
   usableImageReferences,
   usableReferenceImages,
@@ -740,7 +740,7 @@ describe("the frame sizes a project can be", () => {
        names. They have to agree in BOTH directions: Rust writes the settings
        file before the frontend ever parses it, so a name Rust accepts and zod
        refuses is saved and then fails to open (see CLAUDE.md). */
-    expect(resolutionSchema.options).toEqual([...IMAGE_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
+    expect(resolutionSchema.options).toEqual([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
     expect(resolutionSchema.options).toEqual([
       "416p", "544p", "640p", "768p", "1088p", "1344p", "1536p", "2048p", "720p", "1080p", "4k",
     ]);

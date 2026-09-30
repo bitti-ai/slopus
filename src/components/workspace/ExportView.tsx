@@ -8,6 +8,8 @@ import {
   estimatedBytes,
   formatBytes,
   formatDuration,
+  exportSizeChoices,
+  exportSizeKey,
   outputDimensions,
   OUTPUT_CODECS,
   QUALITY_PRESETS,
@@ -39,18 +41,9 @@ import { askNative, messageNative, revealInExplorer } from "../../lib/nativeShel
 import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { ProjectStatus } from "./ProjectStatus";
-import { PROJECT_RESOLUTIONS, type ProjectConfig, type Resolution } from "../../lib/project";
+import type { ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
-/* The ladder a project can be created at, plus the project's own size when that
-   is one of the names from before the ladder was rebuilt. Dropping the legacy
-   rung outright would leave a 1080p project looking at a list that does not
-   contain what the project IS, and the first touch of any other field would
-   have quietly resized the export. */
-const resolutionChoices = (current: Resolution): Resolution[] =>
-  PROJECT_RESOLUTIONS.includes(current as (typeof PROJECT_RESOLUTIONS)[number])
-    ? [...PROJECT_RESOLUTIONS]
-    : [...PROJECT_RESOLUTIONS, current];
 const FRAME_RATES: FrameRate[] = [24, 25, 30, 60];
 const describe = (reason: unknown) => (reason instanceof Error ? reason.message : String(reason));
 
@@ -90,6 +83,7 @@ export function ExportView({ config, folderPath, onClose }: {
   const [settings, setSettings] = useState<ExportSettings>(() => defaultExportSettings(config));
   const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const plan = useMemo(() => buildExportPlan(config, settings), [config, settings]);
+  const sizeChoices = exportSizeChoices(outputDimensions(config.settings.resolution, config.settings.aspectRatio), config.settings.aspectRatio, "project");
   const bitrate = useMemo(
     () => bitrateFor(plan.width, plan.height, plan.frameRate, settings.quality),
     [plan.width, plan.height, plan.frameRate, settings.quality],
@@ -428,15 +422,18 @@ export function ExportView({ config, folderPath, onClose }: {
             </PropRow>
 
             <PropRow label="Resolution" htmlFor="export-resolution">
+              {/* The project's own frame first, then the standard sizes at its
+                  aspect. A size this machine's encoders cannot take shows as
+                  such under Codec, from the probe at that size. */}
               <ComboBox
                 id="export-resolution"
-                value={settings.resolution}
+                value={exportSizeKey(settings.width, settings.height)}
                 disabled={runningHere}
-                onChange={(value) => setSettings({ ...settings, resolution: value as Resolution })}
-                options={resolutionChoices(config.settings.resolution).map((resolution) => {
-                  const size = outputDimensions(resolution, config.settings.aspectRatio);
-                  return { value: resolution, label: `${size.width} × ${size.height}` };
-                })}
+                onChange={(value) => {
+                  const size = sizeChoices.find((choice) => choice.value === value);
+                  if (size) setSettings({ ...settings, width: size.width, height: size.height });
+                }}
+                options={sizeChoices.map((choice) => ({ value: choice.value, label: choice.label }))}
               />
             </PropRow>
 

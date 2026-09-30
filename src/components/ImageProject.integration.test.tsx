@@ -169,8 +169,9 @@ it("offers image and video projects when creating a folder project", async () =>
   fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
   expect(screen.getByLabelText("Project name")).toHaveValue("Untitled image");
   choose("Resolution", "2720 × 1536");
+  // Video offers the same larger sizes, so switching keeps the choice.
   fireEvent.click(screen.getByRole("radio", { name: "Video project" }));
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1376 × 768 (default)");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("2720 × 1536");
   fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
   choose("Resolution", "3648 × 2048");
   fireEvent.click(screen.getByRole("button", { name: /Create project/ }));

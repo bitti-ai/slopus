@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { outputDimensions } from "../lib/export";
 import { useShortcut } from "../lib/commands";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
-import { IMAGE_RESOLUTIONS, PROJECT_RESOLUTIONS } from "../lib/project";
+import { PROJECT_RESOLUTIONS } from "../lib/project";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
 import { ComboBox, ContentDialog, InfoBar, RadioGroup } from "./ui";
 
@@ -47,9 +47,8 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   const [defaultLook, setDefaultLook] = useState(project?.settings.defaultLook ?? "");
   const nameInput = useRef<HTMLInputElement>(null);
   const id = useId();
-  const availableResolutions: readonly Resolution[] = generationType === "image" ? IMAGE_RESOLUTIONS : PROJECT_RESOLUTIONS;
-  const resolutions: readonly Resolution[] = project && !availableResolutions.includes(project.settings.resolution)
-    ? [...availableResolutions, project.settings.resolution] : availableResolutions;
+  const resolutions: readonly Resolution[] = project && !PROJECT_RESOLUTIONS.some((value) => value === project.settings.resolution)
+    ? [...PROJECT_RESOLUTIONS, project.settings.resolution] : PROJECT_RESOLUTIONS;
   const blocked = busy || Boolean(checkingFolder) || Boolean(folderError) || !name.trim();
   const close = () => { if (!busy) onClose(); };
 
@@ -97,7 +96,6 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
             disabled={busy}
             onChange={(type) => {
               setGenerationType(type);
-              if (type === "video" && !PROJECT_RESOLUTIONS.some((value) => value === resolution)) setResolution(DEFAULT_RESOLUTION);
               if (!folderPath && (name === "Untitled video" || name === "Untitled image")) setName(`Untitled ${type}`);
             }}
             options={[

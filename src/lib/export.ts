@@ -33,7 +33,9 @@ export type OutputCodecId = "h264" | "vp9" | "av1";
 export type QualityId = "draft" | "balanced" | "high";
 
 export interface ExportSettings {
-  resolution: Resolution;
+  /** The encoded frame, in pixels: the project's own size or a standard one. */
+  width: number;
+  height: number;
   frameRate: FrameRate;
   codec: OutputCodecId;
   quality: QualityId;
@@ -100,7 +102,11 @@ function avcLevel(width: number, height: number, frameRate: number): string {
   if (macroblocks <= 8192 && rate <= 245_760) return "28"; // 4.0
   if (macroblocks <= 8704 && rate <= 522_240) return "2a"; // 4.2
   if (macroblocks <= 22_080 && rate <= 589_824) return "33"; // 5.1
-  return "34"; // 5.2
+  if (macroblocks <= 36_864 && rate <= 2_073_600) return "34"; // 5.2
+  // 6.x: frames past 4K UHD, such as 4096×4096 or 3072×3840.
+  if (macroblocks <= 139_264 && rate <= 4_177_920) return "3c"; // 6.0
+  if (macroblocks <= 139_264 && rate <= 8_355_840) return "3d"; // 6.1
+  return "3e"; // 6.2
 }
 
 export const OUTPUT_CODECS: readonly OutputCodec[] = [
@@ -215,11 +221,35 @@ export function resolutionLabel(resolution: Resolution, aspectRatio: AspectRatio
   return `${width} × ${height}`;
 }
 
+/* The sizes an export offers besides the project's own: the standard delivery
+   sizes at each aspect, at its exact ratio. The generation ladder above is on a
+   32-pixel grid, which is what the model needs and not what a player or a
+   platform expects — so an export may leave it. */
+export const STANDARD_EXPORT_SIZES: Record<AspectRatio, readonly (readonly [number, number])[]> = {
+  "16:9": [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]],
+  "9:16": [[720, 1280], [1080, 1920], [1440, 2560], [2160, 3840]],
+  "1:1": [[512, 512], [1024, 1024], [1080, 1080], [2048, 2048], [4096, 4096]],
+  "4:5": [[720, 900], [1080, 1350], [1440, 1800], [2160, 2700], [3072, 3840]],
+};
+
+export const exportSizeKey = (width: number, height: number) => `${width}x${height}`;
+
+/** The Resolution choices of an export: `own` (the project's or the image's
+ *  size, named by `ownLabel`) first, then every standard size that differs. */
+export function exportSizeChoices(own: { width: number; height: number } | null, aspectRatio: AspectRatio, ownLabel: string) {
+  return [
+    ...(own ? [{ ...own, value: exportSizeKey(own.width, own.height), label: `${own.width} × ${own.height} (${ownLabel})` }] : []),
+    ...STANDARD_EXPORT_SIZES[aspectRatio].map(([width, height]) => ({ width, height }))
+      .filter((size) => !own || exportSizeKey(size.width, size.height) !== exportSizeKey(own.width, own.height))
+      .map((size) => ({ ...size, value: exportSizeKey(size.width, size.height), label: `${size.width} × ${size.height}` })),
+  ];
+}
+
 /** The export starts as the project already describes itself. Nothing here is
  *  invented: resolution and frame rate are the project's own settings. */
 export function defaultExportSettings(config: ProjectConfig): ExportSettings {
   return {
-    resolution: config.settings.resolution,
+    ...outputDimensions(config.settings.resolution, config.settings.aspectRatio),
     frameRate: config.settings.frameRate,
     codec: "h264",
     quality: "balanced",
@@ -452,7 +482,7 @@ export function videoDurationMs(config: ProjectConfig): number {
 }
 
 export function buildExportPlan(config: ProjectConfig, settings: ExportSettings): ExportPlan {
-  const { width, height } = outputDimensions(settings.resolution, config.settings.aspectRatio);
+  const { width, height } = settings;
   const frameRate = settings.frameRate;
   const tracks = config.timeline.tracks;
   const videoTracks = tracks.filter((track) => track.kind === "video");

@@ -228,7 +228,7 @@ describe("project library controls", () => {
 
     // The ladder the user asked for, in pixels rather than a name for them.
     expect(optionNames(size)).toEqual([
-      "736 × 416", "960 × 544", "1152 × 640", "1376 × 768 (default)", "1920 × 1088", "2432 × 1344",
+      "736 × 416", "960 × 544", "1152 × 640", "1376 × 768 (default)", "1920 × 1088", "2432 × 1344", "2720 × 1536", "3648 × 2048",
     ]);
     // Every edge a multiple of 32 — the whole reason the old 720p/1080p/4K
     // ladder was replaced.
@@ -241,7 +241,7 @@ describe("project library controls", () => {
        old labels ("1080p HD") could sit above either and say nothing. */
     chooseOption(shape, "Vertical 9:16");
     expect(optionNames(size)).toEqual([
-      "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432",
+      "416 × 736", "544 × 960", "640 × 1152", "768 × 1376 (default)", "1088 × 1920", "1344 × 2432", "1536 × 2720", "2048 × 3648",
     ]);
 
     chooseOption(size, "544 × 960");

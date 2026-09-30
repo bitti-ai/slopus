@@ -7,6 +7,7 @@ import externalFixture from "../../../fixtures/project-v1-external-media.json";
 import { createProjectConfig, parseProjectConfig, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { resetExportJobForTests, setExportJobForTests } from "../../lib/exportJob";
 import { ExportView } from "./ExportView";
+import { chooseOption, optionNames } from "./comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -63,6 +64,16 @@ describe("the export view where nothing can encode", () => {
     expect(within(screen.getByText("Duration").parentElement!).getByText("00:03.000")).toBeTruthy();
     expect(screen.getByText("72 frames at 24 fps")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Resolution" }).textContent).toContain("1920 × 1080");
+  });
+
+  it("offers the project's own frame and then the standard delivery sizes", () => {
+    const config = project([clip("a", 0, 2_000)]);
+    config.settings.resolution = "1344p";
+    render(<ExportView config={config} folderPath="/tmp/project" />);
+    const resolution = screen.getByRole("combobox", { name: "Resolution" });
+    expect(optionNames(resolution)).toEqual(["2432 × 1344 (project)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160"]);
+    chooseOption(resolution, "3840 × 2160");
+    expect(screen.getByText(/3840 × 2160/)).toBeTruthy();
   });
 
   it("says outright that a timeline with no audio clips produces no sound", () => {

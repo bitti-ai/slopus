@@ -6,9 +6,11 @@ import {
   clipVisualSettings,
   defaultExportSettings,
   estimatedBytes,
+  exportSizeChoices,
   fitRect,
   formatBytes,
   formatDuration,
+  OUTPUT_CODECS,
   generationDimensions,
   outputDimensions,
   resolutionLabel,
@@ -20,7 +22,7 @@ import {
   type ExportSegment,
   type ExportSettings,
 } from "./export";
-import { createProjectConfig, IMAGE_RESOLUTIONS, LEGACY_RESOLUTIONS, PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
+import { createProjectConfig, LEGACY_RESOLUTIONS, PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig, type TimelineClip } from "./project";
 
 const asset = (id: string, overrides: Partial<ProjectAsset> = {}): ProjectAsset => ({
   id,
@@ -67,7 +69,7 @@ function project(clips: TimelineClip[], assets: ProjectAsset[], overrides: Parti
 }
 
 const settings = (overrides: Partial<ExportSettings> = {}): ExportSettings => ({
-  resolution: "1080p", frameRate: 30, codec: "h264", quality: "balanced", ...overrides,
+  width: 1920, height: 1080, frameRate: 30, codec: "h264", quality: "balanced", ...overrides,
 });
 
 const clipSegments = (segments: ExportSegment[]) => segments.flatMap((segment) => (segment.kind === "clip" ? [segment] : []));
@@ -102,6 +104,20 @@ describe("effect compositing", () => {
 });
 
 describe("output geometry", () => {
+  it("offers an export its own size first, then the standard sizes that differ", () => {
+    expect(exportSizeChoices({ width: 1920, height: 1080 }, "16:9", "project").map((size) => size.label))
+      .toEqual(["1920 × 1080 (project)", "1280 × 720", "2560 × 1440", "3840 × 2160"]);
+    expect(exportSizeChoices(null, "4:5", "original").map((size) => size.value)).toEqual(["720x900", "1080x1350", "1440x1800", "2160x2700", "3072x3840"]);
+  });
+
+  it("asks H.264 for a level that holds the frame, past 4K UHD too", () => {
+    const h264 = OUTPUT_CODECS.find((codec) => codec.id === "h264")!;
+    expect(h264.candidates(1920, 1080, 30)[0]).toBe("avc1.640028");
+    expect(h264.candidates(3840, 2160, 60)[0]).toBe("avc1.640034");
+    expect(h264.candidates(4096, 4096, 30)[0]).toBe("avc1.64003c");
+    expect(h264.candidates(3072, 3840, 60)[0]).toBe("avc1.64003c");
+  });
+
   it("offers the widescreen sizes MiniMax H3 actually generates at", () => {
     // The ladder, verbatim. These are not 16:9 rounded off — 2432×1344 is 1.810
     // against 16:9's 1.778 — so they are pinned here rather than recomputed by
@@ -113,13 +129,15 @@ describe("output geometry", () => {
       { width: 1376, height: 768 },
       { width: 1920, height: 1088 },
       { width: 2432, height: 1344 },
+      { width: 2720, height: 1536 },
+      { width: 3648, height: 2048 },
     ]);
   });
 
   it("keeps both edges on a multiple of 32 in every shape a project can be", () => {
     // The whole point of the ladder: a frame the engine cannot generate is a
     // frame the project would have to rescale to fill.
-    for (const resolution of IMAGE_RESOLUTIONS) {
+    for (const resolution of PROJECT_RESOLUTIONS) {
       for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
         const { width, height } = outputDimensions(resolution, ratio);
         expect({ resolution, ratio, width: width % 32, height: height % 32 })
@@ -133,7 +151,7 @@ describe("output geometry", () => {
     expect(outputDimensions("768p", "9:16")).toEqual({ width: 768, height: 1376 });
     expect(outputDimensions("768p", "1:1")).toEqual({ width: 768, height: 768 });
     expect(outputDimensions("768p", "4:5")).toEqual({ width: 768, height: 960 });
-    for (const resolution of IMAGE_RESOLUTIONS) {
+    for (const resolution of PROJECT_RESOLUTIONS) {
       const wide = outputDimensions(resolution, "16:9");
       expect(outputDimensions(resolution, "9:16")).toEqual({ width: wide.height, height: wide.width });
       expect(outputDimensions(resolution, "1:1")).toEqual({ width: wide.height, height: wide.height });
@@ -160,7 +178,7 @@ describe("output geometry", () => {
   });
 
   it("never produces an odd edge, which a 4:2:0 encoder refuses", () => {
-    for (const resolution of [...IMAGE_RESOLUTIONS, ...LEGACY_RESOLUTIONS]) {
+    for (const resolution of [...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]) {
       for (const ratio of ["16:9", "9:16", "1:1", "4:5"] as const) {
         const { width, height } = outputDimensions(resolution, ratio);
         expect(width % 2).toBe(0);
@@ -189,7 +207,7 @@ describe("output geometry", () => {
 describe("defaults", () => {
   it("starts from the project's own settings instead of inventing numbers", () => {
     const config = project([], [], { resolution: "4k", frameRate: 60 });
-    expect(defaultExportSettings(config)).toEqual({ resolution: "4k", frameRate: 60, codec: "h264", quality: "balanced" });
+    expect(defaultExportSettings(config)).toEqual({ width: 3840, height: 2160, frameRate: 60, codec: "h264", quality: "balanced" });
   });
 
   it("derives the bitrate from the frame size and rate", () => {

@@ -5,7 +5,7 @@ pub(crate) fn is_supported_aspect_ratio(value: &str) -> bool {
 
 /// The same names `resolutionSchema` in src/lib/project.ts accepts, and no
 /// others in either direction — this layer writes the file the frontend then
-/// has to parse. The first eight include the two larger still-image sizes, every
+/// has to parse. The first eight are the ladder a new project is created at, every
 /// rung a multiple of 32 on both edges because that is what MiniMax H3
 /// generates at; the last three are names already on disk, kept so a project
 /// saved before the ladder was rebuilt still opens at the pixels it always had.

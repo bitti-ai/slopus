@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
-import type { AspectRatio, ProjectConfig } from "../../lib/project";
+import { exportSizeChoices } from "../../lib/export";
+import type { ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
@@ -18,13 +19,6 @@ type ImageFormat = "jpg" | "png";
 const STORAGE_KEY = "slopus.image-export.v1";
 const DEFAULT_QUALITY = 90;
 
-const EXPORT_SIZES: Record<AspectRatio, readonly (readonly [number, number])[]> = {
-  "16:9": [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]],
-  "9:16": [[720, 1280], [1080, 1920], [1440, 2560], [2160, 3840]],
-  "1:1": [[512, 512], [1024, 1024], [1080, 1080], [2048, 2048], [4096, 4096]],
-  "4:5": [[720, 900], [1080, 1350], [1440, 1800], [2160, 2700], [3072, 3840]],
-};
-
 function loadPreferences(): { format: ImageFormat; quality: number } {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as { format?: unknown; quality?: unknown };
@@ -33,7 +27,6 @@ function loadPreferences(): { format: ImageFormat; quality: number } {
   } catch { return { format: "jpg", quality: DEFAULT_QUALITY }; }
 }
 
-const sizeKey = (width: number, height: number) => `${width}x${height}`;
 export function ImageExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
   const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const [exporting, setExporting] = useState(false);
@@ -63,12 +56,8 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
      A saved image retains its authored aspect even if project settings change. */
   const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
   const aspectRatio = output?.imageGeneration?.aspectRatio ?? config.settings.aspectRatio;
-  const sizes = [
-    ...(original ? [{ ...original, value: "original", label: `${original.width} × ${original.height} (original)` }] : []),
-    ...EXPORT_SIZES[aspectRatio].map(([width, height]) => ({ width, height }))
-      .filter((size) => !original || sizeKey(size.width, size.height) !== sizeKey(original.width, original.height))
-      .map((size) => ({ ...size, value: sizeKey(size.width, size.height), label: `${size.width} × ${size.height}` })),
-  ];
+  const sizes = exportSizeChoices(original, aspectRatio, "original")
+    .map((size, index) => original && index === 0 ? { ...size, value: "original" } : size);
   const [chosenSize, setChosenSize] = useState<string | null>(null);
   const size = sizes.find((candidate) => candidate.value === chosenSize) ?? sizes[0];
 
