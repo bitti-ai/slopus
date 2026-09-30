@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { typePrompt } from "./workspace/promptTestUtils";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
@@ -16,8 +17,6 @@ import fixture from "../../fixtures/project-v1-image.json";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../lib/persistence";
 
-/* The prompt is a contenteditable: typing is its text and an input event. */
-const typePrompt = (field: HTMLElement, text: string) => { field.textContent = text; fireEvent.input(field); };
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });

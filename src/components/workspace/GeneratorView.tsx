@@ -638,6 +638,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               endsAt={shotEndsAt}
               duration={sceneDurationSeconds(selected)}
               references={isVideoTransition(selected) ? sceneGenerationReferences(selected, config.references) : config.references}
+              folderPath={folderPath}
               disabled={false}
               onChange={(updates) => patchShot(selected, openShot.id, updates)}
             />
@@ -679,6 +680,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               defaultLook={config.settings.defaultLook}
               disabled={false}
               references={config.references}
+              folderPath={folderPath}
               importAvailable={isTauri()}
               importError={startFrameError}
               previousScene={jobs[jobs.findIndex((job) => job.id === selected.id) - 1]}

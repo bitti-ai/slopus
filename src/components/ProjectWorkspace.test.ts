@@ -2,7 +2,7 @@ import { WorkQueue } from "../lib/workQueue";
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,13 +12,14 @@ import { saveGeneratedScene } from "../lib/generatedVideo";
 import { formatDurationTimecode, formatSavedAt, formatSequenceLength, isGenerationOngoing } from "./ProjectWorkspace";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { GeneratorView } from "./workspace/GeneratorView";
-import { REFERENCE_DRAG_TYPE } from "./workspace/SceneEditor";
+import { changePromptChip, insertPromptReference, placePromptCaret, promptChips, promptValue, typePrompt } from "./workspace/promptTestUtils";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { saveDebugOptionsEnabled } from "../lib/settings";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
 import { chooseOption, optionNames } from "./workspace/comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+const storedLine = (field: HTMLElement) => promptValue(field, (id) => `@[ref:${id}]`);
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("../lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 
@@ -510,9 +511,9 @@ describe("project workspace timecode", () => {
       project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "generator",
       onBack: () => undefined, onSave: async () => undefined,
     }));
-    const line = () => screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement;
+    const line = () => screen.getByRole("textbox", { name: "Describe shot 1" });
     openShot(1);
-    fireEvent.change(line(), { target: { value: "a slow push across the launch pad" } });
+    typePrompt(line(), "a slow push across the launch pad");
     fireEvent.click(screen.getByRole("tab", { name: "Timeline" }));
     await screen.findByRole("heading", { name: "Timeline", level: 2 });
     fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
@@ -526,7 +527,7 @@ describe("project workspace timecode", () => {
        a composer the parent has to hold on its behalf — every keystroke lands on
        the scene itself, so the project carries them across the trip. Losing the
        user's own half-written words is the one thing this app must never do. */
-    expect(line().value).toBe("a slow push across the launch pad");
+    expect(storedLine(line())).toBe("a slow push across the launch pad");
   });
 
   it("does not bind an audio-tagged reference a new shot's prompt would drop", () => {
@@ -789,7 +790,7 @@ describe("project workspace timecode", () => {
       fireEvent.change(screen.getByRole("spinbutton", { name: `Shot ${shotNumber} starts at, in seconds` }), { target: { value: String(startSeconds) } });
       next = onChange.mock.calls.at(-1)![0];
       rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
-      fireEvent.change(screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` }), { target: { value: line } });
+      typePrompt(screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` }), line);
       next = onChange.mock.calls.at(-1)![0];
       rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     }
@@ -887,7 +888,7 @@ describe("project workspace timecode", () => {
 
     // One shot, holding the words and the tags the file already had.
     openShot(1);
-    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value).toBe("A quiet product film");
+    expect(storedLine(screen.getByRole("textbox", { name: "Describe shot 1" }))).toBe("A quiet product film");
     // The legacy per-job tag now reads as a setting ON the shot.
     expect(screen.getByRole("button", { name: "Remove Lens: Macro from shot 1" })).not.toBeNull();
     expect(screen.queryByRole("textbox", { name: "Describe shot 2" })).toBeNull();
@@ -918,12 +919,12 @@ describe("project workspace timecode", () => {
     expect((screen.getByRole("slider", { name: "First scene length in seconds" }) as HTMLInputElement).disabled).toBe(false);
     expect((screen.getByRole("button", { name: "Add a shot to First scene" }) as HTMLButtonElement).disabled).toBe(false);
     openShot(1);
-    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).disabled).toBe(false);
+    expect(screen.getByRole("textbox", { name: "Describe shot 1" })).toHaveAttribute("contenteditable", "true");
     expect((screen.getByRole("combobox", { name: "Add a setting to shot 1" }) as HTMLSelectElement).disabled).toBe(false);
     expect(screen.queryByText(/It can be changed once it finishes/)).toBeNull();
   });
 
-  it("drops a reference into a line, cites it as a subject, and changes its smart chip", () => {
+  it("inserts a reference into a line, cites it as a subject, and changes its smart chip", () => {
     const fresh = lampProject();
     const createdAt = fresh.createdAt;
     const references = [
@@ -934,34 +935,33 @@ describe("project workspace timecode", () => {
     const onChange = vi.fn();
     const render1 = render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     const show = (next: ProjectConfig) => render1.rerender(createElement(GeneratorView, { config: parseProjectConfig(next), folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
+    const line = () => screen.getByRole("textbox", { name: "Describe shot 1" });
     openShot(1);
 
-    // Dragged out of the palette and dropped onto the line.
-    const drop = (referenceId: string) => {
-      const field = screen.getByRole("textbox", { name: "Describe shot 1" });
-      const event = createEvent.drop(field);
-      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
-      fireEvent(field, event);
-    };
-    drop("ref-woman");
+    // The picker says which references the scene already numbers.
+    fireEvent.click(screen.getByRole("button", { name: "Reference" }));
+    expect(within(screen.getByRole("dialog", { name: "Insert a reference" })).getAllByRole("button").map((button) => button.textContent))
+      .toEqual(["Red-haired womanNot in this scene yet", "City streetNot in this scene yet"]);
+    fireEvent.click(screen.getByRole("button", { name: "Reference" }));
+    insertPromptReference("Red-haired woman");
     let next = onChange.mock.calls.at(-1)![0];
     // Writing it into the line is what binds it to the scene, which is what
     // gives it a subject number and a place in reference_paths.
     expect(next.generationJobs[0].referenceIds).toEqual(["ref-woman"]);
     show(next);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Describe shot 1" }), { target: { value: "[Reference 1] walks towards the camera on " } });
+    typePrompt(line(), "@[ref:ref-woman] walks towards the camera on ");
     next = onChange.mock.calls.at(-1)![0];
     show(next);
-    drop("ref-street");
+    placePromptCaret(line());
+    insertPromptReference("City street");
     next = onChange.mock.calls.at(-1)![0];
     expect(next.generationJobs[0].referenceIds).toEqual(["ref-woman", "ref-street"]);
     show(next);
 
-    // What the user reads in the field is "Reference N"; what is stored is the
-    // reference's id, so a rename or a reorder cannot re-point the sentence.
-    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value)
-      .toBe("[Reference 1] walks towards the camera on [Reference 2]");
+    // What the user reads in the field is each reference's name, on a chip;
+    // what is stored is its id, so a rename or a reorder cannot re-point it.
+    expect(promptChips(line())).toEqual(["Red-haired woman", "City street"]);
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     openScene();
     openDebugPrompt();
@@ -974,21 +974,25 @@ describe("project workspace timecode", () => {
 
     // Clicking the first reference in the line offers every other one.
     openShot(1);
-    const token = screen.getByRole("combobox", { name: "Reference 1 · Red-haired woman — choose another reference" });
-    expect(token.closest(".shot-action-editor")).not.toBeNull();
-    expect(screen.queryByText("Every reference in the line can be swapped for another:")).toBeNull();
-    expect(optionNames(token)).toEqual([
-      "Reference 1 · Red-haired woman", "Reference 2 · City street", "Remove from the line",
-    ]);
-    chooseOption(token, "Reference 2 · City street");
+    fireEvent.click(line().querySelectorAll(".prompt-chip")[0]);
+    const picker = screen.getByRole("dialog", { name: "Change reference Red-haired woman" });
+    expect(within(picker).getAllByRole("button").map((button) => button.textContent))
+      .toEqual(["Red-haired womanReference 1", "City streetReference 2", "Remove from the prompt"]);
+    fireEvent.click(within(picker).getByRole("button", { name: /^City street/ }));
     next = onChange.mock.calls.at(-1)![0];
     show(next);
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-street] walks towards the camera on @[ref:ref-street]");
     openScene();
     expect(compiled()).toContain("<Subject 2> walks towards the camera on <Subject 2>");
+
+    // A reference that can no longer be cited stays on its chip, marked.
+    openShot(1);
+    show({ ...next, references: next.references.filter((reference: { id: string }) => reference.id !== "ref-street") });
+    expect(line().querySelector(".prompt-chip--missing")).toHaveTextContent("Deleted reference");
+    expect(screen.getByText("A reference can’t be used")).toBeInTheDocument();
   });
 
-  it("keeps a word off the citation wherever in the line it is dropped", () => {
+  it("keeps a word off the citation wherever in the line it is inserted", () => {
     /* The caret has two sides and the insert used to look at one of them. At
        the START of a line there is nothing in front of the token, so nothing
        forced a space after it and the sentence compiled to
@@ -1003,30 +1007,27 @@ describe("project workspace timecode", () => {
     ];
     const start = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], shots: [{ id: "shot-a", startSeconds: 0, action: "walks towards the camera and stops." }], referenceIds: [] }] });
 
-    /* Each case drops the same reference at a different caret offset into the
+    /* Each case inserts the same reference at a different caret offset into the
        same untouched line, so the only variable is where it landed. */
-    const dropAt = (caret: number): string => {
+    const insertAt = (caret: number): string => {
       let config = start;
       const onChange = vi.fn((next: ProjectConfig) => { config = parseProjectConfig(next); });
       const view = () => createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange, onOpenTimeline: () => undefined, selectedJobId: start.generationJobs[0].id });
       const app = render(view());
       openShot(1);
-      const field = screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement;
-      field.setSelectionRange(caret, caret);
-      const event = createEvent.drop(field);
-      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? "ref-woman" : "", types: [REFERENCE_DRAG_TYPE] } });
-      fireEvent(field, event);
+      placePromptCaret(screen.getByRole("textbox", { name: "Describe shot 1" }), caret);
+      insertPromptReference("Red-haired woman");
       app.unmount();
       return config.generationJobs[0].shots![0].action;
     };
 
     const line = "walks towards the camera and stops.";
-    expect(dropAt(0)).toBe(`@[ref:ref-woman] ${line}`);
-    expect(dropAt(line.length)).toBe(`${line} @[ref:ref-woman]`);
+    expect(insertAt(0)).toBe(`@[ref:ref-woman] ${line}`);
+    expect(insertAt(line.length)).toBe(`${line} @[ref:ref-woman]`);
     /* Between two words, from either side of the space that separates them:
        one space each side, never two and never none. */
-    expect(dropAt("walks towards ".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
-    expect(dropAt("walks towards".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
+    expect(insertAt("walks towards ".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
+    expect(insertAt("walks towards".length)).toBe("walks towards @[ref:ref-woman] the camera and stops.");
   });
 
 
@@ -1051,6 +1052,7 @@ describe("project workspace timecode", () => {
     const show = () => app.rerender(view());
     const set = (role: string, name: string, value: string) => {
       if (role === "combobox") chooseTag(name, value);
+      else if (name.startsWith("Describe shot")) typePrompt(screen.getByRole(role, { name }), value);
       else fireEvent.change(screen.getByRole(role, { name }), { target: { value } });
       show();
     };
@@ -1060,11 +1062,9 @@ describe("project workspace timecode", () => {
        exactly as the user would. */
     const shot = (shotNumber: number) => { openShot(shotNumber, "First scene"); show(); };
     const scene = () => { openScene("First scene"); show(); };
-    const dropReference = (referenceId: string, shotNumber: number) => {
-      const field = screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` });
-      const event = createEvent.drop(field);
-      Object.defineProperty(event, "dataTransfer", { value: { getData: (type: string) => type === REFERENCE_DRAG_TYPE ? referenceId : "", types: [REFERENCE_DRAG_TYPE] } });
-      fireEvent(field, event);
+    const insertReference = (name: string, shotNumber: number) => {
+      placePromptCaret(screen.getByRole("textbox", { name: `Describe shot ${shotNumber}` }));
+      insertPromptReference(name);
       show();
     };
 
@@ -1072,19 +1072,19 @@ describe("project workspace timecode", () => {
     press("Add a shot to First scene");
     press("Add a shot to First scene");
 
-    // The street is dropped FIRST and the woman second, but the numbering
+    // The street is inserted FIRST and the woman second, but the numbering
     // follows the project's reference order once both are bound — which is the
     // order reference_paths is built in, so <Subject 1> is <Picture 1>.
     shot(1);
-    dropReference("ref-street", 1);
-    dropReference("ref-woman", 1);
-    set("textbox", "Describe shot 1", "[Reference 1] walks towards the camera on [Reference 2]");
+    insertReference("City street", 1);
+    insertReference("Red-haired woman", 1);
+    set("textbox", "Describe shot 1", "@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     shot(2);
     set("spinbutton", "Shot 2 starts at, in seconds", "4.5");
     set("textbox", "Describe shot 2", "she stops at a doorway and looks up");
     shot(3);
     set("spinbutton", "Shot 3 starts at, in seconds", "9");
-    set("textbox", "Describe shot 3", "the door opens and light spills across [Reference 2]");
+    set("textbox", "Describe shot 3", "the door opens and light spills across @[ref:ref-street]");
 
     shot(1);
     set("combobox", "Add a setting to shot 1", "cameraMovement");
@@ -1099,11 +1099,10 @@ describe("project workspace timecode", () => {
     set("textbox", "The sound of this scene", "Rain on cobbles, distant traffic, her boots on stone.");
     set("textbox", "The music of this scene", "Low sustained cello, slow tempo, swelling in the last two seconds.");
 
-    // What the field shows is "Reference N"; what is stored is the id, so a
-    // rename or a reorder cannot re-point the sentence.
+    // What the field shows is each name on a chip; what is stored is the id,
+    // so a rename or a reorder cannot re-point the sentence.
     shot(1);
-    expect((screen.getByRole("textbox", { name: "Describe shot 1" }) as HTMLTextAreaElement).value)
-      .toBe("[Reference 1] walks towards the camera on [Reference 2]");
+    expect(promptChips(screen.getByRole("textbox", { name: "Describe shot 1" }))).toEqual(["Red-haired woman", "City street"]);
     expect(config.generationJobs[0].shots![0].action).toBe("@[ref:ref-woman] walks towards the camera on @[ref:ref-street]");
     expect(config.generationJobs[0].durationSeconds).toBe(12);
     expect(config.generationJobs[0].shots!.map((item) => item.startSeconds)).toEqual([0, 4.5, 9]);
@@ -1158,10 +1157,7 @@ describe("project workspace timecode", () => {
 
     // And the swap: the same sentence, pointed at the other reference.
     shot(1);
-    const token = document.querySelector(".reference-smart-chip") as HTMLElement;
-    expect(optionNames(token))
-      .toEqual(["Reference 1 · Red-haired woman", "Reference 2 · City street", "Remove from the line"]);
-    chooseOption(token, "Reference 2 · City street");
+    changePromptChip(screen.getByRole("textbox", { name: "Describe shot 1" }), 0, "City street");
     show();
     scene();
     expect(document.querySelector(".compiled-prompt__text")!.textContent)

@@ -9,6 +9,7 @@ import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "..
 import { askNative } from "../../lib/nativeShell";
 import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
 import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
+import { insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
 import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
@@ -164,7 +165,7 @@ it("submits Pose from the scene panel with its video and optional prompt referen
   expect(generate).toBeDisabled();
   choose("Pose video reference for this scene", "Motion");
   expect(generate).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Describe shot 1"), { target: { value: "A dancer on a rainy street." } });
+  typePrompt(screen.getByLabelText("Describe shot 1"), "A dancer on a rainy street.");
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
   expect(submitted.mock.calls[0][0][0].request).toMatchObject({
@@ -172,7 +173,8 @@ it("submits Pose from the scene panel with its video and optional prompt referen
     referencePaths: [],
     referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
   });
-  fireEvent.click(screen.getByRole("button", { name: /Not in this scene yet Hero/ }));
+  placePromptCaret(screen.getByLabelText("Describe shot 1"));
+  insertPromptReference("Hero");
   expect(latest.generationJobs[0].shots![0].action).toContain("@[ref:hero]");
   fireEvent.click(generate);
   expect(submitted.mock.calls.at(-1)![0][0].request.referencePaths).toEqual(["C:/project/references/hero.png"]);
@@ -238,7 +240,7 @@ it.each(["extend", "bridge"] as const)("submits %s with ordered video anchors an
   expect(request.prompt).toContain("The dancer turns toward the door.");
   expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0].startVideoReferenceId).toBe("start");
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of Transition" }));
-  fireEvent.change(screen.getByLabelText("Describe shot 1"), { target: { value: "" } });
+  typePrompt(screen.getByLabelText("Describe shot 1"), "");
   expect(generate).toBeDisabled();
 });
 

@@ -58,7 +58,7 @@ it("inserts the chosen reference at the caret from the toolbar", () => {
   expect(screen.getByRole("button", { name: "Odd [v2]" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Hero" })).toContainElement(screen.getByTestId("hero-icon"));
   fireEvent.click(screen.getByRole("button", { name: "Hero" }));
-  expect(value()).toBe("A [Hero]knight rides");
+  expect(value()).toBe("A [Hero] knight rides");
   expect(onInsert).toHaveBeenCalledWith(references[0]);
   expect(field.querySelector(".prompt-chip")).toHaveTextContent("Hero");
   expect(screen.queryByRole("dialog")).toBeNull();

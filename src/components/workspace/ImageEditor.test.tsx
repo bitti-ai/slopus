@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { promptValue, typePrompt } from "./promptTestUtils";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
@@ -15,11 +16,6 @@ import * as persistence from "../../lib/persistence";
 import fixture from "../../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
-/* The prompt is a contenteditable: typing is its text and an input event. */
-const typePrompt = (field: HTMLElement, text: string) => { field.textContent = text; fireEvent.input(field); };
-/* Reads a chip back as the [Name] it stands for, as the value stores it. */
-const promptValue = (field: HTMLElement) => [...field.childNodes].map((node) => node instanceof HTMLElement && node.dataset.promptReference !== undefined
-  ? `[${node.dataset.promptReference}]` : node.textContent ?? "").join("").replaceAll("​", "");
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 function setup(initial = parseProjectConfig(fixture)) {

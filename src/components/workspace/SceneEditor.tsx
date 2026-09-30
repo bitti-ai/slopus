@@ -1,8 +1,9 @@
-import { Dismiss12, ImageAdd16 } from "../ui/icons";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
   actionReferenceIds,
+  canTokenizeReference,
   danglingReferenceTokens,
   isReferenceUsable,
   isVisualReference,
@@ -36,11 +37,17 @@ import {
   type ShotTagSelection,
 } from "../../lib/shot-tags";
 import { CommittedNumberInput } from "./CommittedNumberInput";
+import { PromptTextField, type PromptTokenFormat } from "./PromptTextField";
+import { ReferenceIcon } from "./ReferenceIcon";
 
-/** What a reference chip carries when it is dragged into a shot's line. A
- *  private type, so a file dragged in from the desktop is never mistaken for
- *  one — the drop handler checks for it before it touches the text. */
-export const REFERENCE_DRAG_TYPE = "application/x-slopus-reference";
+/** A line cites a reference by id — `@[ref:<id>]` — which survives a rename
+ *  and a reorder; the chip shows its name. */
+const ACTION_TOKENS: PromptTokenFormat = {
+  split: splitActionText,
+  token: referenceToken,
+  key: (reference) => reference.id,
+  uncitable: (reference) => canTokenizeReference(reference.id) ? null : "This reference can’t be written into a line",
+};
 
 /** The step the length slider and the cut handles move in. Half a second is the
  *  finest cut the timestamp format prints exactly (`formatSceneSeconds`), so
@@ -99,8 +106,10 @@ export function writeShots(job: GenerationJob, next: readonly SceneShot[], extra
 /** Everything about ONE shot: when it starts, the line the user wrote for it,
  *  the references that line cites, and the settings hung off it. This is what
  *  clicking a card on the board opens. */
-export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, disabled, onChange, promptOnly = false }: {
+export function ShotInspector({ job, shots, shot, index, endsAt, duration, references, folderPath = "", disabled, onChange, promptOnly = false }: {
   promptOnly?: boolean;
+  /** The project folder, for each reference's art in the picker. */
+  folderPath?: string;
   job: GenerationJob;
   /** Every shot of the scene, so the panel can number the references the same
    *  way the compiler does and warn about the ones no line can still cite. */
@@ -118,11 +127,20 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   disabled: boolean;
   onChange: (updates: Partial<SceneShot>) => void;
 }) {
-  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const citable = useMemo(() => citableReferences(references), [references]);
   const tokenOrder = useMemo(() => referenceOrder(job, shots, references), [job, shots, references]);
   const numbered = useMemo(() => citable.filter((reference) => tokenOrder.includes(reference.id)), [citable, tokenOrder]);
   const referenceById = useMemo(() => new Map(references.map((reference) => [reference.id, reference])), [references]);
+  /* The picker names each reference by the number the line gives it, which
+     is the <Subject N> it becomes; one the scene does not cite yet is bound
+     to it, and numbered, by being written into a line. */
+  const pickable = useMemo(() => citable.map((reference) => {
+    const number = numbered.findIndex((item) => item.id === reference.id) + 1;
+    return {
+      id: reference.id, name: reference.name, detail: number > 0 ? `Reference ${number}` : "Not in this scene yet",
+      icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "video" ? <Video16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
+    };
+  }), [citable, numbered, folderPath]);
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);
   const settings = shot.settings ?? {};
   const shotNumber = index + 1;
@@ -130,42 +148,6 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   const speechLanguages: readonly string[] = SPEECH_LANGUAGES.some((language) => language === speechLanguage)
     ? SPEECH_LANGUAGES
     : [...SPEECH_LANGUAGES, speechLanguage];
-
-  /* The line, written the way the user reads and types it. What is STORED is
-     `@[ref:<id>]`, which survives a rename and a reorder; what is SHOWN is
-     "[Reference N]", which is what they were promised and what they may type by
-     hand. The two are one mapping, applied in both directions here and nowhere
-     else, so the field can never show a citation the storage does not hold. */
-  const display = useMemo(() => splitActionText(shot.action).map((part) => {
-    if (part.kind === "text") return part.value;
-    const number = tokenOrder.indexOf(part.value) + 1;
-    return number > 0 ? `[Reference ${number}]` : part.value;
-  }).join(""), [shot.action, tokenOrder]);
-
-  const store = (typed: string): string => typed.replace(/\[Reference (\d+)\]/g, (whole, digits: string) => {
-    const id = tokenOrder[Number(digits) - 1];
-    // A number nobody has a reference for stays exactly as typed. It is the
-    // user's own text, and turning it into a citation would invent a subject.
-    return id ? referenceToken(id) : whole;
-  });
-
-  const insertAtCaret = (referenceId: string) => {
-    const number = tokenOrder.indexOf(referenceId) + 1;
-    const field = fieldRef.current;
-    const at = field ? field.selectionStart : display.length;
-    const before = display.slice(0, at);
-    const after = display.slice(at);
-    // Both sides, not just the one in front of the caret. A drop at the START
-    // of a line has nothing before it, so `lead` is empty and the token used to
-    // fuse to the first word: "<Subject 1>walks towards the camera" — a
-    // malformed citation, sent to the model exactly as written.
-    const lead = before && !/\s$/.test(before) ? " " : "";
-    const trail = after && !/^\s/.test(after) ? " " : "";
-    // A reference this scene does not cite yet has no number, so the token is
-    // written by id and the number appears once the scene binds it.
-    const token = number > 0 ? `[Reference ${number}]` : referenceToken(referenceId);
-    onChange({ action: store(`${before}${lead}${token}${trail}${after}`) });
-  };
 
   /* Open on its own, a shot is three sections: the shot itself, the
      references its line can cite, and its settings. Inside the Pose scene's
@@ -196,41 +178,21 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 
     {job.sceneType === "character-replace" ? <CharacterReplaceInputs shot={shot} references={references} disabled={disabled} onChange={onChange} /> : <>
     <div className="shot-card__action">
-      <label className="shot-card__sublabel" htmlFor={`shot-action-${shot.id}`}>{job.sceneType === "pose" ? "Where the pose is used" : "Description"}</label>
-      <div className="shot-action-editor">
-        <textarea
-          id={`shot-action-${shot.id}`}
-          ref={fieldRef}
-          value={display}
-          disabled={disabled}
-          aria-label={`Describe shot ${shotNumber}`}
-          placeholder={job.sceneType === "pose" ? "Example: a dancer in a red coat performs this movement on a rainy city street." : "Example: she walks towards the camera and stops under the awning."}
-          onChange={(event) => onChange({ action: store(event.target.value) })}
-          onDragOver={(event) => { if (event.dataTransfer.types.includes(REFERENCE_DRAG_TYPE)) event.preventDefault(); }}
-          onDrop={(event) => {
-            const referenceId = event.dataTransfer.getData(REFERENCE_DRAG_TYPE);
-            if (!referenceId) return;
-            event.preventDefault();
-            insertAtCaret(referenceId);
-          }}
-        />
-        <ReferenceSmartChips
-          action={shot.action}
-          tokenOrder={tokenOrder}
-          referenceById={referenceById}
-          citable={citable}
-          numbered={numbered}
-          disabled={disabled}
-          onChange={(partIndex, to) => {
-            const action = splitActionText(shot.action).map((part, currentIndex) => {
-              if (part.kind === "text") return part.value;
-              if (currentIndex === partIndex) return to ? referenceToken(to) : "";
-              return referenceToken(part.value);
-            }).join("");
-            onChange({ action });
-          }}
-        />
-      </div>
+      <span className="shot-card__sublabel" aria-hidden="true">{job.sceneType === "pose" ? "Where the pose is used" : "Description"}</span>
+      <PromptTextField
+        id={`shot-action-${shot.id}`}
+        aria-label={`Describe shot ${shotNumber}`}
+        rows={6}
+        value={shot.action}
+        format={ACTION_TOKENS}
+        references={pickable}
+        missingLabel={(referenceId) => referenceById.get(referenceId)?.name ?? "Deleted reference"}
+        missingTooltip="Left out of the prompt — click to swap it for another reference or remove it"
+        disabled={disabled}
+        placeholder={job.sceneType === "pose" ? "Example: a dancer in a red coat performs this movement on a rainy city street." : "Example: she walks towards the camera and stops under the awning."}
+        onChange={(action) => onChange({ action })}
+      />
+      <DanglingReferences dangling={dangling} referenceById={referenceById} />
     </div>
 
     {!promptOnly && <div className="shot-speech">
@@ -258,16 +220,6 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
     </div>}
     </>}
     </>)}
-
-    {job.sceneType !== "character-replace" && group("References", "references", citable.length || undefined, <ReferencePalette
-      labelled={promptOnly}
-      citable={citable}
-      numbered={numbered}
-      dangling={dangling}
-      referenceById={referenceById}
-      disabled={disabled}
-      onInsert={insertAtCaret}
-    />)}
 
     {job.sceneType !== "character-replace" && !promptOnly && group("Settings", "settings", chosenSettings || undefined, <ShotSettings
       settings={settings}
@@ -328,12 +280,13 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+export function SceneInspector({ job, shots, references, folderPath = "", previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
+  folderPath?: string;
   previousScene?: GenerationJob;
   defaultSteps: number;
   disabled: boolean;
@@ -384,7 +337,7 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
           <p className="prop-caption">Uses the saved clip range for pose and motion. Describe the subject and setting below.</p>
           {shots.map((shot, index) => <ShotInspector key={shot.id} job={job} shots={shots} shot={shot} index={index}
             endsAt={shots[index + 1]?.startSeconds ?? sceneDurationSeconds(job)} duration={sceneDurationSeconds(job)}
-            references={references} disabled={disabled} promptOnly
+            references={references} folderPath={folderPath} disabled={disabled} promptOnly
             onChange={(updates) => onShots(shots.map((item) => item.id === shot.id ? { ...item, ...updates } : item))} />)}
         </>}
         {characterReplace && <p className="prop-caption">Open a shot to choose its source video and new character.</p>}
@@ -532,50 +485,6 @@ export function SceneInspector({ job, shots, references, previousScene, defaultS
   </section>;
 }
 
-/** Selectable smart chips live inside the description editor. Each one owns a
- *  single token occurrence, so changing it leaves identical citations later
- *  in the same sentence alone. */
-function ReferenceSmartChips({ action, tokenOrder, referenceById, citable, numbered, disabled, onChange }: {
-  action: string;
-  tokenOrder: string[];
-  referenceById: Map<string, ProjectReference>;
-  citable: ProjectReference[];
-  numbered: ProjectReference[];
-  disabled: boolean;
-  onChange: (partIndex: number, to: string | null) => void;
-}) {
-  const parts = splitActionText(action);
-  if (!parts.some((part) => part.kind === "reference")) return null;
-  const label = (id: string): string => {
-    const number = tokenOrder.indexOf(id) + 1;
-    const name = referenceById.get(id)?.name;
-    return `Reference ${number > 0 ? number : "?"}${name ? ` · ${name}` : ""}`;
-  };
-  return <div className="shot-action-editor__chips">
-    {parts.map((part, index) => part.kind === "reference" && <ComboBox
-        key={index}
-        className={`reference-smart-chip ${citable.some((reference) => reference.id === part.value) ? "" : "reference-smart-chip--broken"}`}
-        value={part.value}
-        disabled={disabled}
-        aria-label={`${label(part.value)} — choose another reference`}
-        options={[
-          // A reference that can no longer be cited still has to be listed,
-          // or the control could not show what the line currently says.
-          ...(!citable.some((reference) => reference.id === part.value) ? [{ value: part.value, label: `${label(part.value)} — can’t be used` }] : []),
-          ...citable.map((reference) => {
-            const number = numbered.findIndex((item) => item.id === reference.id) + 1;
-            return { value: reference.id, label: number > 0 ? `Reference ${number} · ${reference.name}` : `${reference.name} — not in this scene yet` };
-          }),
-          { value: "", label: "Remove from the line" },
-        ]}
-        onChange={(value) => {
-          if (value === "") onChange(index, null);
-          else if (value !== part.value) onChange(index, value);
-        }}
-      />)}
-  </div>;
-}
-
 /* --- Settings ------------------------------------------------------------- */
 
 /** Settings are ADDED one at a time and given a value, rather than laid out as
@@ -646,47 +555,14 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
 
 /* --- The references this scene can use ------------------------------------ */
 
-function ReferencePalette({ labelled, citable, numbered, dangling, referenceById, disabled, onInsert }: {
-  /** Name the palette itself, where no section header does it. */
-  labelled: boolean;
-  citable: ProjectReference[];
-  numbered: ProjectReference[];
-  dangling: string[];
-  referenceById: Map<string, ProjectReference>;
-  disabled: boolean;
-  onInsert: (referenceId: string) => void;
-}) {
-  return <div className="reference-palette">
-    {labelled && <span className="shot-card__sublabel">References</span>}
-    {citable.length === 0 && <span className="reference-palette__lead">None yet — add one under References.</span>}
-    <ul>
-      {citable.map((reference) => {
-        const number = numbered.findIndex((item) => item.id === reference.id) + 1;
-        return <li key={reference.id}>
-          <button
-            type="button"
-            className="reference-chip"
-            draggable={!disabled}
-            disabled={disabled}
-            data-tooltip={number > 0
-              ? `Writes “Reference ${number}” into the line, and <Subject ${number}> into the prompt. Drag it, or click to insert at the caret.`
-              : "Dropping it into a line adds it to this scene with the next Reference number"}
-            onDragStart={(event) => {
-              event.dataTransfer.setData(REFERENCE_DRAG_TYPE, reference.id);
-              event.dataTransfer.effectAllowed = "copy";
-            }}
-            onClick={() => onInsert(reference.id)}
-          >
-            <em>{number > 0 ? `Reference ${number}` : "Not in this scene yet"}</em>
-            <b>{reference.name}</b>
-          </button>
-        </li>;
-      })}
-    </ul>
-    {dangling.length > 0 && <InfoBar
-      severity="error"
-      title={dangling.length === 1 ? "A reference can’t be used" : `${dangling.length} references can’t be used`}
-      message={`${dangling.map((id) => referenceById.get(id)?.name ?? "A deleted reference").join(", ")} ${dangling.length === 1 ? "is" : "are"} left out of the prompt. Swap ${dangling.length === 1 ? "it" : "each one"} for another reference or remove ${dangling.length === 1 ? "it" : "them"} from the line before generating.`}
-    />}
-  </div>;
+/** A line can still name a reference the prompt can no longer use — one
+ *  deleted, or switched to sound only. Its chip shows it; this says what
+ *  happens to it. */
+function DanglingReferences({ dangling, referenceById }: { dangling: string[]; referenceById: Map<string, ProjectReference> }) {
+  if (!dangling.length) return null;
+  return <InfoBar
+    severity="error"
+    title={dangling.length === 1 ? "A reference can’t be used" : `${dangling.length} references can’t be used`}
+    message={`${dangling.map((id) => referenceById.get(id)?.name ?? "A deleted reference").join(", ")} ${dangling.length === 1 ? "is" : "are"} left out of the prompt. Swap ${dangling.length === 1 ? "it" : "each one"} for another reference or remove ${dangling.length === 1 ? "it" : "them"} from the line before generating.`}
+  />;
 }
