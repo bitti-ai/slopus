@@ -5,6 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
+import { promptReferenceNames } from "../../lib/promptReferences";
 import { createEmptyImage, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { IMAGE_RESOLUTIONS, type ProjectConfig } from "../../lib/project";
@@ -12,6 +13,7 @@ import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplat
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
+import { PromptTextField } from "./PromptTextField";
 import { ImageBar } from "./ImageBar";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
@@ -432,6 +434,22 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     </div>;
   };
   const rootField = (field: string) => `${editorId}-${field}`;
+  const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
+  const promptReferences = config.references.filter((reference) => reference.kind === "image" || reference.kind === "text")
+    .map((reference) => ({ id: reference.id, name: reference.name, detail: reference.kind === "image" ? "Image" : "Text", icon: reference.kind === "image" ? <Image16 /> : <Text16 /> }));
+  /* A reference newly cited in a prompt is one the generation has to be
+     given, so citing it links it to the edit (or, composing, to the image). */
+  const changePrompt = (description: string) => {
+    const before = promptReferenceNames(selected.description);
+    const cited = promptReferenceNames(description).filter((name) => !before.includes(name))
+      .flatMap((name) => promptReferences.filter((reference) => reference.name === name).map((reference) => reference.id));
+    const nodes = scene.nodes.map((node) => node.id === selected.id ? { ...node, description } : node);
+    if (imageRoot) {
+      const referenceIds = selected.referenceIds ?? scene.referenceIds;
+      const linked = [...referenceIds, ...cited.filter((id) => !referenceIds.includes(id))];
+      commit({ ...scene, nodes: nodes.map((node) => node.id === selected.id && linked.length !== referenceIds.length ? { ...node, referenceIds: linked } : node) });
+    } else commit({ ...scene, nodes, referenceIds: selected.kind === "root" ? [...scene.referenceIds, ...cited.filter((id) => !scene.referenceIds.includes(id))] : scene.referenceIds });
+  };
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
       {/* Undo and Redo live in the title bar; Ctrl+Z / Ctrl+Y still step the image edits here. */}
@@ -575,7 +593,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           {scene.sourceImage && <p className="image-inspector__caption">{scene.sourceImage.name} · {scene.sourceImage.width} × {scene.sourceImage.height}</p>}
           <p className="image-inspector__caption">Applies to the whole image before the individual edits.</p>
         </>}
-        <label className="image-inspector__area">{imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description"}<textarea className="text-field" rows={4} value={selected.description} onChange={(event) => patchNode({ description: event.target.value })} /></label>
+        <div className="image-inspector__area"><span id={rootField("prompt-label")}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} onChange={changePrompt} /></div>
         {imageRoot && <PropSection title="References" persistKey="image.edit.references">
           {config.references.filter((reference) => reference.kind === "image" || reference.kind === "text").map((reference) => {
             const referenceIds = selected.referenceIds ?? scene.referenceIds;

@@ -15,6 +15,9 @@ import * as persistence from "../../lib/persistence";
 import fixture from "../../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
+/* The prompt is a contenteditable: typing is its text and an input event. */
+const typePrompt = (field: HTMLElement, text: string) => { field.textContent = text; fireEvent.input(field); };
+const promptValue = (field: HTMLElement) => field.textContent;
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 function setup(initial = parseProjectConfig(fixture)) {
@@ -50,7 +53,7 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   addFile();
   await waitFor(() => expect(current().imageScene?.sourceImage).toEqual(source));
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Edit prompt"), { target: { value: "Make the lighting warmer" } });
+  typePrompt(screen.getByLabelText("Edit prompt"), "Make the lighting warmer");
   fireEvent.click(screen.getByRole("checkbox", { name: "Mood" }));
   expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 1000, height: 800 });
   const canvas = screen.getByLabelText("Image placement canvas");
@@ -68,7 +71,7 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 320); pointer("pointerUp", 400, 320);
   expect(current().imageScene!.nodes[1]).toMatchObject({ name: "Edit", box: { x: 100, y: 100, width: 300, height: 300 }, referenceIds: [] });
   expect(screen.getByRole("checkbox", { name: "Mood" })).not.toBeChecked();
-  fireEvent.change(screen.getByLabelText("Edit prompt"), { target: { value: "Add a red balloon" } });
+  typePrompt(screen.getByLabelText("Edit prompt"), "Add a red balloon");
   fireEvent.click(screen.getByRole("checkbox", { name: "Balloon" }));
   const edits = compileImageEdits(current()).edits;
   expect(edits.map((edit) => edit.references.map((reference) => reference.id))).toEqual([["Mood"], ["Balloon"]]);
@@ -78,9 +81,9 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   fireEvent.contextMenu(screen.getByLabelText("Generated images"));
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
-  expect(screen.getByLabelText("Edit prompt")).toHaveValue("Make the lighting warmer");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the lighting warmer");
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-  expect(screen.getByLabelText("Edit prompt")).toHaveValue("Add a red balloon");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red balloon");
   expect(screen.getByRole("checkbox", { name: "Balloon" })).toBeChecked();
   const beforeFailure = current();
   vi.mocked(invoke).mockRejectedValueOnce(new Error("Image file is unreadable"));
@@ -99,14 +102,14 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   expect(current().imageScene!.nodes).toHaveLength(1);
   expect(screen.queryByLabelText("Prompt (high-level description)")).not.toBeInTheDocument();
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Edit prompt")).toHaveValue("");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   expect(within(screen.getByRole("radiogroup", { name: "Canvas tool" })).getAllByRole("radio").map((tool) => tool.getAttribute("aria-label"))).toEqual(["Select", "Draw edit"]);
   const draft = screen.getByRole("button", { name: "View Editing Saved" });
   expect(draft).toHaveAttribute("aria-pressed", "true");
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
   expect(screen.getAllByRole("menuitem").filter((item) => item.textContent?.startsWith("New ")).map((item) => item.textContent)).toEqual(["New Edit"]);
   fireEvent.click(screen.getByRole("menuitem", { name: "New Edit" }));
-  fireEvent.change(screen.getByLabelText("Edit prompt"), { target: { value: "A red balloon" } });
+  typePrompt(screen.getByLabelText("Edit prompt"), "A red balloon");
   fireEvent.click(screen.getByRole("button", { name: "View Saved" }));
   expect(draft).toHaveAttribute("aria-pressed", "false");
   fireEvent.click(draft);
@@ -130,9 +133,9 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   initial.assets = [original, saved].map((snapshot, index) => ({ id: `result-${index}`, name: `Result ${index}`, kind: "image", relativePath: `media/generated/result-${index}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, imageGeneration: snapshot }));
   initial.imageScene!.outputAssetId = "result-0";
   const current = setup(initial);
-  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Unsaved edit" } });
+  typePrompt(screen.getByLabelText("Prompt (high-level description)"), "Unsaved edit");
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
-  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe(saved.scene.nodes[0].description);
   expect(screen.getByLabelText("Steps")).toHaveValue(30);
   expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(saved.generatorTemplateId);
   expect(screen.getByRole("button", { name: "Lantern" })).toBeInTheDocument();
@@ -141,8 +144,8 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   expect(current().settings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5" });
   // Viewing a result starts a fresh history: Ctrl+Z has nothing to undo.
   undoImageEdit();
-  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue(saved.scene.nodes[0].description);
-  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "Another edit" } });
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe(saved.scene.nodes[0].description);
+  typePrompt(screen.getByLabelText("Prompt (high-level description)"), "Another edit");
   fireEvent.click(screen.getByRole("button", { name: "View Result 0" }));
   expect(current().imageScene).toEqual({ ...original.scene, outputAssetId: "result-0" });
   expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(original.generatorTemplateId);
@@ -216,19 +219,19 @@ it("creates a blank draft from the image bar and preserves it while browsing", (
   fireEvent.contextMenu(screen.getByRole("button", { name: "View Saved" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("");
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe("");
   expect(current().imageScene!.nodes).toHaveLength(1);
   expect(screen.getByRole("button", { name: "View New image" })).toHaveAttribute("aria-pressed", "true");
-  fireEvent.change(screen.getByLabelText("Prompt (high-level description)"), { target: { value: "A green forest" } });
+  typePrompt(screen.getByLabelText("Prompt (high-level description)"), "A green forest");
   fireEvent.click(screen.getByRole("button", { name: "View Saved" }));
   fireEvent.click(screen.getByRole("button", { name: "View New image" }));
-  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("A green forest");
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe("A green forest");
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).assets).toEqual(current().assets);
   fireEvent.contextMenu(screen.getByLabelText("Generated images"));
   expect(screen.queryByRole("menuitem", { name: "Remove" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   expect(current().assets).toHaveLength(3);
-  expect(screen.getByLabelText("Prompt (high-level description)")).toHaveValue("");
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe("");
 });
 
 it("creates an image from the empty bar's keyboard context menu", () => {

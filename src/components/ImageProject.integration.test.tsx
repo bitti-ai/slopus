@@ -16,6 +16,8 @@ import fixture from "../../fixtures/project-v1-image.json";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../lib/persistence";
 
+/* The prompt is a contenteditable: typing is its text and an input event. */
+const typePrompt = (field: HTMLElement, text: string) => { field.textContent = text; fireEvent.input(field); };
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
@@ -182,7 +184,7 @@ it("opens the three-tab image workspace and saves hierarchy/inspector edits thro
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
   fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "Hello world" } });
-  fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Large blue letters" } });
+  typePrompt(screen.getByLabelText("Description"), "Large blue letters");
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(save).toHaveBeenCalled());
   expect(save.mock.calls[0]).toBeDefined();
