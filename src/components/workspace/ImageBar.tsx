@@ -1,6 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { imageFamilyRoot } from "../../lib/imageHistory";
 import type { ProjectAsset } from "../../lib/project";
-import { Edit11, Image24 } from "../ui/icons";
+import { ChevronLeft16, Edit11, Image24 } from "../ui/icons";
 import { ReferenceImage } from "./ReferenceImage";
 import "../../styles/image-editor.css";
 
@@ -9,7 +10,12 @@ import "../../styles/image-editor.css";
    draft badged. The mouse wheel scrolls it sideways, and a new image scrolls
    into view at the end; the arrow keys step through it. `onMenu` opens a
    context menu for an image (id) or for the bar (null) at a point; without it
-   the bar has no menu. */
+   the bar has no menu.
+
+   An image regenerated or edited from another joins that image's family. The
+   bar lists the originals; while an image with a family is selected it shows
+   just that family — the original first, then the images made from it — with
+   a back button at its leading edge that returns to the originals. */
 export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
@@ -20,12 +26,24 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   const bar = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => bar.current as HTMLDivElement);
 
-  const previousCount = useRef(images.length);
+  const root = imageFamilyRoot(images, selectedId);
+  const family = root ? images.filter((asset) => asset.id === root || imageFamilyRoot(images, asset.id) === root) : [];
+  // Selecting an image opens its family; Back shows the originals until the
+  // next selection.
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => setShowAll(false), [selectedId]);
+  const inFamily = !showAll && family.length > 1;
+  const originals = images.filter((asset) => imageFamilyRoot(images, asset.id) === asset.id);
+  const shown = inFamily ? [images.find((asset) => asset.id === root)!, ...family.filter((asset) => asset.id !== root)] : originals;
+  const pressed = inFamily ? selectedId : root;
+  const childCount = (id: string) => images.filter((asset) => asset.id !== id && imageFamilyRoot(images, asset.id) === id).length;
+
+  const previousCount = useRef(shown.length);
   useLayoutEffect(() => {
     const element = bar.current;
-    if (element && images.length > previousCount.current) element.scrollLeft = element.scrollWidth;
-    previousCount.current = images.length;
-  }, [images.length]);
+    if (element && shown.length > previousCount.current) element.scrollLeft = element.scrollWidth;
+    previousCount.current = shown.length;
+  }, [shown.length]);
   useEffect(() => {
     const element = bar.current;
     if (!element) return;
@@ -38,7 +56,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
     };
     element.addEventListener("wheel", wheel, { passive: false });
     return () => element.removeEventListener("wheel", wheel);
-  }, [images.length]);
+  }, [shown.length]);
 
   /* Left and Right step the focus along the thumbnails, Home and End jump to
      either end, and the bar scrolls to keep the focused one in view. Moving
@@ -72,7 +90,10 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
       const bounds = event.currentTarget.getBoundingClientRect();
       onMenu(null, bounds.left, bounds.top);
     }}>
-    {images.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name} aria-label={`View ${asset.name}`} aria-pressed={asset.id === selectedId}
+    {inFamily && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
+      onClick={() => { setShowAll(true); bar.current?.focus(); }}><ChevronLeft16 aria-hidden="true" /></button>}
+    {shown.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name}
+      aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed}
       onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY); })}
       onKeyDown={onMenu && ((event) => {
         if (!menuKey(event)) return;
@@ -80,8 +101,9 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
         const bounds = event.currentTarget.getBoundingClientRect();
         onMenu(asset.id, bounds.left, bounds.bottom);
       })}
-      onClick={() => onSelect(asset.id)}>
+      onClick={() => { setShowAll(false); onSelect(asset.id); }}>
       {asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}
+      {!inFamily && childCount(asset.id) > 0 && <span className="image-family-badge" aria-hidden="true">{childCount(asset.id) + 1}</span>}
       {asset.imageDraft && <span className="image-draft-badge"><Edit11 aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}
     </button>)}
   </div>;

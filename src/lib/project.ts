@@ -180,11 +180,17 @@ export const projectAssetSchema = z.object({
   hasAudio: z.boolean().nullish(),
   imageGeneration: imageGenerationSnapshotSchema.nullish(),
   imageDraft: z.boolean().nullish(),
+  /** The original image this one was regenerated or edited from. Always the
+   *  family's first image, never another child, so a family is one level. */
+  parentAssetId: idSchema.nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
   if (asset.imageDraft && (asset.kind !== "image" || !asset.imageGeneration || (asset.imageGeneration.scene.rootType === "image" && !asset.imageGeneration.scene.sourceImage))) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Image drafts require a scene snapshot and image roots require a source." });
+  }
+  if (asset.parentAssetId && (asset.kind !== "image" || asset.parentAssetId === asset.id)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["parentAssetId"], message: "Only an image can have a parent image, and not itself." });
   }
   if (asset.imageGeneration && asset.kind !== "image") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageGeneration"], message: "Only image assets can store image generation history." });

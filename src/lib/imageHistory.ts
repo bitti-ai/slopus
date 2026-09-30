@@ -18,6 +18,23 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
   });
 }
 
+/** The first image of `id`'s family: its parent, or itself when it is an
+ *  original (or its parent has since been removed). */
+export function imageFamilyRoot(assets: readonly ProjectAsset[], id: string | null | undefined): string | undefined {
+  const asset = assets.find((candidate) => candidate.id === id && candidate.kind === "image");
+  if (!asset) return undefined;
+  return asset.parentAssetId && assets.some((candidate) => candidate.id === asset.parentAssetId && candidate.kind === "image") ? asset.parentAssetId : asset.id;
+}
+
+/** Removes an image. Its children stay a family: the oldest becomes the
+ *  original the others belong to. */
+export function removeImageAsset(assets: readonly ProjectAsset[], id: string): ProjectAsset[] {
+  const children = assets.filter((asset) => asset.parentAssetId === id);
+  const heir = children[0]?.id;
+  return assets.filter((asset) => asset.id !== id).map((asset) => asset.parentAssetId !== id ? asset
+    : asset.id === heir ? { ...asset, parentAssetId: undefined } : { ...asset, parentAssetId: heir });
+}
+
 /** Keep the editable version in history without creating another image file. */
 export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
   const scene = config.imageScene;
@@ -28,11 +45,13 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
   const existing = selected?.imageDraft ? selected : undefined;
   const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
+  const edited = source && config.assets.find((asset) => asset.kind === "image" && !asset.imageDraft && asset.relativePath === source.relativePath);
+  const parentAssetId = existing ? existing.parentAssetId : imageFamilyRoot(config.assets, edited?.id);
   const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
   if (existing && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
   const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? (source ? `Editing ${source.name}` : "New image"),
     imageDraft: true, mimeType: /\.png$/i.test(source?.relativePath ?? "") ? "image/png" : "image/jpeg",
-    imageGeneration: snapshot, createdAt: existing?.createdAt ?? new Date().toISOString() };
+    imageGeneration: snapshot, ...(parentAssetId ? { parentAssetId } : {}), createdAt: existing?.createdAt ?? new Date().toISOString() };
   return { ...config, imageScene: { ...scene, outputAssetId: id }, assets: existing ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset] };
 }
 
@@ -52,7 +71,7 @@ export function completeImageDraft(config: ProjectConfig, id: string, result: Pr
   const changed = draft && JSON.stringify({ ...draft.imageGeneration, prompt: "" }) !== JSON.stringify({ ...result.imageGeneration, prompt: "" });
   // Edits made during generation remain a separate draft on the original source.
   const pending = changed ? { ...draft, id: `image-draft-${crypto.randomUUID()}` } : null;
-  const asset = { ...result, id, imageDraft: false };
+  const asset = { ...result, id, imageDraft: false, ...(draft?.parentAssetId ? { parentAssetId: draft.parentAssetId } : {}) };
   const assets = config.assets.some((item) => item.id === id) ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset];
   const next = { ...config, assets: pending ? [...assets, pending] : assets };
   if (!selected) return next;

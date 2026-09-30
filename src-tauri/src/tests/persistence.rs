@@ -390,6 +390,7 @@ fn a_project_file_only_yields_media_a_hand_edit_cannot_widen() {
         has_audio: None,
         image_generation: None,
         image_draft: None,
+        parent_asset_id: None,
         created_at: config.created_at.clone(),
     });
     let created = create_project_in(root.path(), &config).unwrap();

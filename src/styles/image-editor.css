@@ -76,6 +76,11 @@
 .image-draft-badge { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 3px; padding: 2px; background: var(--glass); color: var(--text-primary); font-size: var(--text-xs); }
 .image-results button[aria-pressed="true"] { border-color: var(--accent); }
 .image-results img { width: 100%; height: 100%; object-fit: cover; }
+/* Back to the originals, at the leading edge of a family. */
+.image-results button.image-results__back { flex: 0 0 32px; display: grid; place-items: center; border: 0; color: var(--text-secondary); background: transparent; }
+.image-results button.image-results__back:hover { color: var(--text-primary); background: var(--fill-subtle-hover); }
+/* How many images an original's family holds, itself included. */
+.image-family-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; padding: 0 4px; border-radius: var(--radius-pill); color: var(--on-accent); background: var(--accent); font-size: var(--text-xs); line-height: 18px; text-align: center; }
 
 /* --- Inspector -------------------------------------------------------------------
    Label + control pairs are PropRows; the free-text fields stay full width

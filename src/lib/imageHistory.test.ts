@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
+import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { imageGenerationSnapshotSchema, parseProjectConfig } from "./project";
 import fixture from "../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
@@ -78,5 +78,31 @@ describe("generated image history", () => {
     expect(restored.imageScene!.rootType).not.toBe("image");
     expect(restored.imageScene!.outputAssetId).toBe("legacy");
     expect(restored.imageScene!.sourceImage).toBeUndefined();
+  });
+  it("puts an edit of any image in its original's family, one level deep", () => {
+    const config = parseProjectConfig(fixture);
+    const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.png`, mimeType: "image/png", width: 101, height: 77, createdAt: config.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+    config.assets = [image("original"), image("child", "original")];
+    expect(imageFamilyRoot(config.assets, "child")).toBe("original");
+    expect(imageFamilyRoot(config.assets, "original")).toBe("original");
+    // Editing the child starts a draft in the original's family, not the child's.
+    config.imageScene = createImageEditScene({ relativePath: "media/generated/child.png", name: "child", width: 101, height: 77 });
+    const drafted = saveImageDraft(config, "test");
+    const draft = drafted.assets.find((asset) => asset.imageDraft)!;
+    expect(draft.parentAssetId).toBe("original");
+    // Generating it keeps the family.
+    const done = completeImageDraft(drafted, draft.id, { ...image(draft.id), imageGeneration: draft.imageGeneration });
+    expect(done.assets.find((asset) => asset.id === draft.id)).toMatchObject({ imageDraft: false, parentAssetId: "original" });
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(done))).assets).toEqual(done.assets);
+    // An imported file starts a family of its own.
+    config.imageScene = createImageEditScene({ relativePath: "media/imported/photo.png", name: "photo", width: 101, height: 77 });
+    expect(saveImageDraft(config, "test").assets.find((asset) => asset.imageDraft)!.parentAssetId).toBeUndefined();
+  });
+
+  it("keeps a family together when its original is removed", () => {
+    const config = parseProjectConfig(fixture);
+    const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: config.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+    const assets = removeImageAsset([image("a"), image("b", "a"), image("c", "a"), image("d")], "a");
+    expect(assets.map((asset) => [asset.id, asset.parentAssetId])).toEqual([["b", undefined], ["c", "b"], ["d", undefined]]);
   });
 });

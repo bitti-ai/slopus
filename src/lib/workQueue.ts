@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
-import { completeImageDraft, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
+import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
@@ -44,6 +44,8 @@ export interface WorkItem {
 }
 interface PendingWork {
   imageDraftId?: string;
+  /** The family a regenerated image joins. */
+  imageParentId?: string;
   image?: boolean;
   imageGeneration?: ImageGenerationSnapshot;
   id: string;
@@ -222,6 +224,8 @@ export class WorkQueue {
     const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
+    // Generating again from a finished image makes a new image in its family.
+    const imageParentId = imageDraftId ? undefined : imageFamilyRoot(current.assets, scene.outputAssetId);
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
@@ -232,7 +236,7 @@ export class WorkQueue {
       referencePaths: referencePaths(references),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, imageDraftId, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.work.set(id, { id, image: true, imageDraftId, imageParentId, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: scene.outputAssetId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
@@ -421,7 +425,7 @@ export class WorkQueue {
           thumbnail: saved.relativePath,
           imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
         } : {}),
-        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }],
+        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId && current.assets.some((asset) => asset.id === work.imageParentId) ? { parentAssetId: work.imageParentId } : {}), createdAt: new Date().toISOString() }],
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }

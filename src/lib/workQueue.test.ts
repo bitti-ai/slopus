@@ -84,6 +84,10 @@ describe("image generation work", () => {
     expect(result.imageScene!.outputAssetId).toBe("third");
     expect(result.thumbnail).toBe("media/third.jpg");
     expect(result.assets.filter((asset) => [first, second].some((item) => asset.relativePath === `media/${item.id}.jpg`))).toHaveLength(2);
+    // Generating again from a finished image adds to its family; a draft
+    // becomes the image itself.
+    expect([first, second].map((item) => result.assets.find((asset) => asset.relativePath === `media/${item.id}.jpg`)!.parentAssetId))
+      .toEqual(imageDraft ? [undefined, undefined] : ["first", "second"]);
   });
   it("submits whole-image and local edits with separate reference pictures and refmods", async () => {
     const { queue } = setup();

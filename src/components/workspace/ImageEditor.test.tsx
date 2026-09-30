@@ -119,7 +119,10 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   expect(screen.getByLabelText("Prompt (high-level description)")).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: "Draw object" })).toBeInTheDocument();
-  fireEvent.click(draft);
+  // The edit is in Saved's family, which the bar opens from Saved.
+  expect(screen.queryByRole("button", { name: "Back to all images" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "View Saved, 2 versions" }));
+  fireEvent.click(screen.getByRole("button", { name: "View Editing Saved" }));
   expect(current().imageScene!.sourceImage?.name).toBe("Saved");
 });
 
@@ -511,4 +514,25 @@ it("heads the inspector with the selected node rather than an Inspector title", 
   expect(within(inspector).getByText("Root")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: /^Inspector/ })).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Scene" })).toBeInTheDocument();
+});
+
+it("shows an image's family behind a back button, the original first", () => {
+  const initial = parseProjectConfig(fixture);
+  const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+  initial.assets = [image("Original"), image("Other"), image("Retry", "Original"), image("Edited", "Original")];
+  initial.imageScene!.outputAssetId = "Other";
+  setup(initial);
+  const bar = () => within(screen.getByLabelText("Generated images")).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+  expect(bar()).toEqual(["View Original, 3 versions", "View Other"]);
+  fireEvent.click(screen.getByRole("button", { name: "View Original, 3 versions" }));
+  expect(bar()).toEqual(["Back to all images", "View Original", "View Retry", "View Edited"]);
+  expect(screen.getByRole("button", { name: "View Original" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  expect(screen.getByRole("button", { name: "View Edited" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Back to all images" }));
+  // Back to the originals, with the family still marked as the selection.
+  expect(bar()).toEqual(["View Original, 3 versions", "View Other"]);
+  expect(screen.getByRole("button", { name: "View Original, 3 versions" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "View Other" }));
+  expect(bar()).toEqual(["View Original, 3 versions", "View Other"]);
 });

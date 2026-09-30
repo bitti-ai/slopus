@@ -63,6 +63,7 @@ pub(super) fn apply(
                             has_audio: None,
                             image_generation: None,
                             image_draft: None,
+                            parent_asset_id: None,
                             created_at: job.created_at.clone(),
                         });
                         planned_id

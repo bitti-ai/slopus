@@ -5,7 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { createEmptyImage, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
@@ -195,7 +195,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         ? remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)]
         : remaining.find((asset) => asset.id === currentScene.outputAssetId);
       const updated = { ...current,
-        assets: current.assets.filter((asset) => asset.id !== id),
+        assets: removeImageAsset(current.assets, id),
         imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : createImageScene() : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },

@@ -23,6 +23,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                 return Err("Image generation snapshot has a missing reference.".into());
             }
         }
+        if asset.parent_asset_id.as_ref().is_some_and(|parent| asset.kind != "image" || parent.trim().is_empty() || *parent == asset.id) {
+            return Err(format!("Asset '{}' can only name another image as its parent.", asset.id));
+        }
         if asset.id.trim().is_empty() || asset.name.trim().is_empty() {
             return Err("Asset id and name cannot be empty.".into());
         }
