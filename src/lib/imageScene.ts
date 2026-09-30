@@ -6,6 +6,7 @@ export const imageNodeSchema = z.object({
   id: z.string().min(1), parentId: z.string().min(1).nullable(),
   kind: z.enum(["root", "group", "object", "text", "background"]),
   name: z.string().min(1).max(120), description: z.string(), text: z.string(),
+  referenceIds: z.array(z.string().min(1)).max(100).optional(),
   box: boxSchema.nullable(), colors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(16),
 });
 export const imageSourceSchema = z.object({
@@ -40,6 +41,9 @@ export const imageSceneSchema = z.object({
 export type ImageScene = z.infer<typeof imageSceneSchema>;
 export type ImageNode = z.infer<typeof imageNodeSchema>;
 export type ImageBox = NonNullable<ImageNode["box"]>;
+
+export const imageSceneReferenceIds = (scene: ImageScene): string[] =>
+  [...new Set([...scene.referenceIds, ...scene.nodes.flatMap((node) => node.referenceIds ?? [])])];
 
 export function createImageScene(prompt = ""): ImageScene {
   return { nodes: [{ id: "image-root", parentId: null, kind: "root", name: "Image", description: prompt, text: "", box: null, colors: [] }],

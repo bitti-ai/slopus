@@ -19,7 +19,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             }
             super::references::validate_references(&mut snapshot.references)?;
             let ids = unique_ids(snapshot.references.iter().map(|reference| reference.id.as_str()), "image snapshot reference")?;
-            if snapshot.scene.reference_ids.iter().any(|id| !ids.contains(id.as_str())) {
+            if snapshot.scene.reference_ids.iter().chain(snapshot.scene.nodes.iter().flat_map(|node| node.reference_ids.iter().flatten())).any(|id| !ids.contains(id.as_str())) {
                 return Err("Image generation snapshot has a missing reference.".into());
             }
         }

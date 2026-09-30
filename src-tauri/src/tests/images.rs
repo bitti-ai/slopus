@@ -167,7 +167,9 @@ fn image_tree_survives_folder_creation_save_and_reopen() {
 
 #[test]
 fn image_generation_history_survives_native_save_and_reopen_and_validates_snapshots() {
-    let snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    snapshot["scene"]["nodes"][1]["referenceIds"] = snapshot["scene"]["referenceIds"].clone();
+    snapshot["scene"]["referenceIds"] = serde_json::json!([]);
     let expected: crate::project::image::ImageGenerationSnapshot = serde_json::from_value(snapshot.clone()).unwrap();
     let mut config = image_fixture();
     config.assets.push(serde_json::from_value(serde_json::json!({

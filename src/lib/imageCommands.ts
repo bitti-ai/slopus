@@ -3,7 +3,7 @@ import { imageDescendants, imageNodeSchema, imageSceneSchema, removeImageNode, r
 
 const id = z.string().min(1);
 const before = id.nullish();
-const editableNode = imageNodeSchema.pick({ name: true, description: true, text: true, box: true, colors: true }).partial();
+const editableNode = imageNodeSchema.pick({ name: true, description: true, text: true, box: true, colors: true, referenceIds: true }).partial();
 const authoredScene = imageSceneSchema.innerType().omit({ outputAssetId: true, rootType: true, sourceImage: true });
 const configuration = authoredScene.omit({ nodes: true, style: true }).partial().extend({ prompt: z.string().optional(), style: authoredScene.shape.style.partial().strict().optional() });
 export const imageCommandSchema = z.discriminatedUnion("op", [
@@ -52,7 +52,7 @@ export function applyImageCommand(current: ImageScene, command: ImageCommand): I
       break;
     }
     case "image.node.add":
-      insert([{ id: command.id, parentId: command.parent, kind: command.kind, name: command.name, description: command.description ?? "", text: command.text ?? "", box: command.box ?? null, colors: command.colors ?? [] }], command.parent, command.before);
+      insert([{ id: command.id, parentId: command.parent, kind: command.kind, name: command.name, description: command.description ?? "", text: command.text ?? "", box: command.box ?? null, colors: command.colors ?? [], ...(command.referenceIds ? { referenceIds: command.referenceIds } : {}) }], command.parent, command.before);
       break;
     case "image.node.set": {
       node(command.id);

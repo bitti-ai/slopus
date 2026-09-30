@@ -85,6 +85,40 @@ describe("image generation work", () => {
     expect(result.thumbnail).toBe("media/third.jpg");
     expect(result.assets.filter((asset) => [first, second].some((item) => asset.relativePath === `media/${item.id}.jpg`))).toHaveLength(2);
   });
+  it("submits whole-image and local edits with separate reference pictures and refmods", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
+    scene.nodes[0].description = "Make the light warmer";
+    scene.nodes[0].referenceIds = ["Lighting"];
+    scene = addImageNode(scene, "image-root", "object");
+    Object.assign(scene.nodes[1], { name: "Edit", description: "Add a red balloon", referenceIds: ["Balloon"] });
+    record.config.imageScene = scene;
+    record.config.references = ["Lighting", "Balloon"].map((name) => ({ id: name, name, kind: "image", description: name,
+      relativePath: `references/${name}.png`, intendedUse: [], createdAt: record.config.createdAt,
+      refmods: [{ id: name, name, relativePath: `references/${name}.safetensors`, strength: 0.75, copies: 2 }] }));
+    const session = queue.project(record);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/edited.png", width: 101, height: 77 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    const steps = request.imageEdit!.edits;
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
+    for (const [index, name] of ["Lighting", "Balloon"].entries()) {
+      expect(steps[index].referencePaths).toEqual(["C:/Image/media/generated/source.jpg", `C:/Image/references/${name}.png`]);
+      expect(steps[index].refmods).toEqual([{ path: `C:/Image/references/${name}.safetensors`, strength: 0.75, copies: 2 }]);
+      expect(steps[index].prompt).toContain(`<Subject 1> is ${name}, providing appearance from <Picture 2>`);
+    }
+    expect(request.referencePaths).toEqual(steps[0].referencePaths);
+    expect(request.refmods).toEqual(steps[0].refmods);
+    expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].imageEdit).toEqual(request.imageEdit);
+    await finish(queue, request.jobId);
+    const result = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+    expect(result.assets[0].imageGeneration!.references.map((reference) => reference.id)).toEqual(["Lighting", "Balloon"]);
+    expect(result.imageScene!.nodes).toHaveLength(1);
+    expect(result.imageScene!.nodes[0].description).toBe("");
+  });
   it("submits ordered inpainting as one job, saves PNG, and leaves a clean edit root", async () => {
     const { queue } = setup();
     const record = imageProject();

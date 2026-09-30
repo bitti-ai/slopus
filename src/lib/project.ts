@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createImageScene, imageSceneSchema } from "./imageScene";
+import { createImageScene, imageSceneReferenceIds, imageSceneSchema } from "./imageScene";
 import { effectEnabledSchema, effectSchemas, isEffectOn } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
 
@@ -152,7 +152,7 @@ export const imageGenerationSnapshotSchema = z.object({
   references: z.array(z.lazy(() => projectReferenceSchema)).max(100),
 }).superRefine((snapshot, context) => {
   const ids = new Set(snapshot.references.map((reference) => reference.id));
-  if (ids.size !== snapshot.references.length || snapshot.scene.referenceIds.some((id) => !ids.has(id))) {
+  if (ids.size !== snapshot.references.length || imageSceneReferenceIds(snapshot.scene).some((id) => !ids.has(id))) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Image generation references must have unique IDs and include every selected reference." });
   }
 });

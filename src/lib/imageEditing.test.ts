@@ -56,9 +56,35 @@ it("starts with a clean image root and requires described edits before submissio
   expect(edited.imageScene).toMatchObject({ rootType: "image", sourceImage: { width: 101, height: 77 }, outputAssetId: null });
   expect(edited.imageScene!.nodes).toHaveLength(1);
   expect(edited.imageScene!.nodes[0].description).toBe("");
-  expect(() => compileImageEdits(edited)).toThrow("Add an Object");
+  expect(() => compileImageEdits(edited)).toThrow("Enter a whole-image edit prompt");
   edited.imageScene = addImageNode(edited.imageScene!, "image-root", "object");
   expect(() => compileImageEdits(edited)).toThrow("Describe the edit");
   expect(config.imageScene!.nodes.length).toBeGreaterThan(1);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(edited))).imageScene).toEqual(edited.imageScene);
+});
+
+it("applies whole-image actions first and compiles only each edit's linked references", () => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 101, height: 77 });
+  config.references = ["Lighting", "Balloon", "Unused"].map((name) => ({ id: name, name, kind: "image", description: name, relativePath: `references/${name}.png`, intendedUse: [], createdAt: config.createdAt }));
+  const root = config.imageScene.nodes[0];
+  root.description = "Warm up the entire image";
+  root.referenceIds = ["Lighting"];
+  expect(compileImageEdits(config).edits).toHaveLength(1);
+  config.imageScene = addImageNode(config.imageScene, root.id, "object");
+  Object.assign(config.imageScene.nodes[1], { description: "Add a balloon", referenceIds: ["Balloon"] });
+  let edits = compileImageEdits(config).edits;
+  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
+  expect(edits[0].prompt).toContain("Warm up the entire image");
+  expect(edits[0].prompt).toContain("<Subject 1> is Lighting, providing appearance from <Picture 2>");
+  expect(edits[0].prompt).not.toContain("Balloon");
+  expect(edits[1].prompt).toContain("<Subject 1> is Balloon, providing appearance from <Picture 2>");
+  expect(edits[1].prompt).not.toContain("Lighting");
+  expect(edits.map((edit) => edit.references.map((reference) => reference.id))).toEqual([["Lighting"], ["Balloon"]]);
+  config.imageScene.referenceIds = ["Unused"];
+  config.imageScene.nodes[1].referenceIds = [];
+  edits = compileImageEdits(config).edits;
+  expect(edits[1].references).toEqual([]);
+  config.imageScene.nodes[1].referenceIds = ["missing"];
+  expect(() => compileImageEdits(config)).toThrow("no longer exists");
 });

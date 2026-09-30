@@ -214,17 +214,22 @@ export class WorkQueue {
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false) } });
-    const { prompt, references } = compileImagePrompt(current);
+    const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current);
+    const referencePaths = (selected: typeof references) => [
+      ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
+      ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
+    ];
     const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
-      ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits } } : {}),
+      ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
+        ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
+      })) } } : {}),
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
-      referencePaths: [...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
-        ...references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))],
+      referencePaths: referencePaths(references),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
     this.work.set(id, { id, image: true, imageDraftId, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });

@@ -78,12 +78,17 @@ pub struct ImageEditRequest {
     pub edits: Vec<ImageEditStep>,
 }
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageEditStep {
     pub prompt: String,
     pub x: i32,
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    #[serde(default)]
+    pub reference_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub refmods: Option<Vec<RefmodInput>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

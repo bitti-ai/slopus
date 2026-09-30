@@ -46,6 +46,8 @@ pub struct ImageNode {
     pub name: String,
     pub description: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_ids: Option<Vec<String>>,
     pub r#box: Option<ImageBox>,
     pub colors: Vec<String>,
 }
@@ -111,6 +113,7 @@ impl ImageScene {
                     "root" | "group" | "object" | "text" | "background"
                 )
                 || node.colors.len() > 16
+                || node.reference_ids.as_ref().is_some_and(|ids| ids.len() > 100 || ids.iter().any(String::is_empty))
                 || node.colors.iter().any(|color| {
                     color.len() != 7
                         || !color.starts_with('#')

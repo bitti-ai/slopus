@@ -47,6 +47,8 @@ fn run_edit_sequence(
         if item.cancel.load(Ordering::Acquire) { return Err("Image editing cancelled.".into()); }
         let mut request = item.request.clone();
         request.prompt = step.prompt.clone();
+        if let Some(paths) = &step.reference_paths { request.reference_paths = paths.clone(); }
+        if let Some(refmods) = &step.refmods { request.refmods = refmods.clone(); }
         request.image_edit.as_mut().unwrap().edits = vec![step.clone()];
         request.image_edit_pixels = pixels.take();
         let sink = item.events.clone();

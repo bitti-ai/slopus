@@ -55,6 +55,34 @@ fn sequential_image_edits_feed_previous_pixels_and_report_combined_progress() {
 }
 
 #[test]
+fn image_edits_use_their_own_reference_pictures_and_refmods() {
+    let mut item = item();
+    item.request.reference_paths = vec!["legacy.png".into()];
+    item.request.refmods = vec![serde_json::from_value(serde_json::json!({"path":"legacy.safetensors","strength":1.0,"copies":1})).unwrap()];
+    let steps = &mut item.request.image_edit.as_mut().unwrap().edits;
+    steps[0].reference_paths = Some(vec!["source.png".into(), "balloon.png".into()]);
+    steps[0].refmods = Some(vec![serde_json::from_value(serde_json::json!({"path":"balloon.safetensors","strength":0.75,"copies":2})).unwrap()]);
+    steps[1].reference_paths = Some(vec!["source.png".into()]);
+    steps[1].refmods = Some(vec![]);
+    let mut calls = 0;
+    run_edit_sequence(&item, |stage| {
+        calls += 1;
+        if calls == 1 {
+            assert_eq!(stage.request.reference_paths, ["source.png", "balloon.png"]);
+            assert_eq!(stage.request.refmods[0].path, "balloon.safetensors");
+            assert_eq!(stage.request.refmods[0].strength, 0.75);
+            assert_eq!(stage.request.refmods[0].copies, 2);
+        } else {
+            assert_eq!(stage.request.reference_paths, ["source.png"]);
+            assert!(stage.request.refmods.is_empty());
+            assert!(stage.request.image_edit_pixels.is_some());
+        }
+        Ok(result(calls))
+    }).unwrap();
+    assert_eq!(calls, 2);
+}
+
+#[test]
 fn cancellation_and_failures_do_not_publish_partial_image_edits() {
     for cancel in [false, true] {
         let item = item();

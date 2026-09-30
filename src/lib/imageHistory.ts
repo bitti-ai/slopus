@@ -1,4 +1,4 @@
-import { createImageEditScene, createImageScene } from "./imageScene";
+import { createImageEditScene, createImageScene, imageSceneReferenceIds } from "./imageScene";
 import type { ImageGenerationSnapshot, ProjectAsset, ProjectConfig } from "./project";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
@@ -11,7 +11,7 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
     briefPrompt: config.brief.prompt,
     prompt,
     generatorTemplateId,
-    references: scene.referenceIds.map((id) => config.references.find((reference) => reference.id === id)!),
+    references: imageSceneReferenceIds(scene).map((id) => config.references.find((reference) => reference.id === id)!),
   });
 }
 
@@ -22,7 +22,7 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const source = scene.rootType === "image" ? scene.sourceImage : null;
   if (!source && !selected?.imageDraft) return config;
-  if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1) return config;
+  if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
   const existing = selected?.imageDraft ? selected : undefined;
   const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
   const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");

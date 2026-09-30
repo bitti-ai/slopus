@@ -32,6 +32,7 @@ fn new_scene(prompt: &str) -> ImageScene {
             name: "Image".into(),
             description: prompt.into(),
             text: String::new(),
+            reference_ids: None,
             r#box: None,
             colors: vec![],
         }],
@@ -232,6 +233,7 @@ pub(super) fn apply(
             r#box,
             colors,
             before,
+            reference_ids,
         } => {
             if !matches!(kind.as_str(), "object" | "text" | "group" | "background") {
                 return Err("New image nodes must be objects, text, groups or backgrounds.".into());
@@ -243,6 +245,7 @@ pub(super) fn apply(
                 name: name.clone(),
                 description: description.clone().unwrap_or_default(),
                 text: text.clone().unwrap_or_default(),
+                reference_ids: reference_ids.clone(),
                 r#box: r#box.clone(),
                 colors: colors.clone().unwrap_or_default(),
             };
@@ -255,6 +258,7 @@ pub(super) fn apply(
             text,
             r#box,
             colors,
+            reference_ids,
         } => {
             let at = index(&scene, id)?;
             ensure_any(
@@ -264,6 +268,7 @@ pub(super) fn apply(
                     text.is_some(),
                     r#box.is_changed(),
                     colors.is_some(),
+                    reference_ids.is_some(),
                 ],
                 "Image node update has no fields to change.",
             )?;
@@ -283,6 +288,9 @@ pub(super) fn apply(
             }
             if let Some(value) = colors {
                 scene.nodes[at].colors = value.clone();
+            }
+            if let Some(value) = reference_ids {
+                scene.nodes[at].reference_ids = Some(value.clone());
             }
         }
         ProjectCommand::ImageNodeMove { id, parent, before } => {

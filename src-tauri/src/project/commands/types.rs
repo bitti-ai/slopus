@@ -47,6 +47,8 @@ pub enum ProjectCommand {
         colors: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         before: Option<String>,
+        #[serde(rename = "referenceIds", default, skip_serializing_if = "Option::is_none")]
+        reference_ids: Option<Vec<String>>,
     },
     #[serde(rename = "image.node.set")]
     ImageNodeSet {
@@ -61,6 +63,8 @@ pub enum ProjectCommand {
         r#box: Patch<crate::project::image::ImageBox>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         colors: Option<Vec<String>>,
+        #[serde(rename = "referenceIds", default, skip_serializing_if = "Option::is_none")]
+        reference_ids: Option<Vec<String>>,
     },
     #[serde(rename = "image.node.move")]
     ImageNodeMove {

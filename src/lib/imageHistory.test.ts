@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { imageGenerationSnapshot, restoreGeneratedImage } from "./imageHistory";
+import { imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { imageGenerationSnapshotSchema, parseProjectConfig } from "./project";
 import fixture from "../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
 import { createImageEditScene } from "./imageScene";
 
 describe("generated image history", () => {
+  it("preserves a whole-image prompt and linked references as a new draft of a saved image", () => {
+    const config = parseProjectConfig(fixture);
+    const source = { relativePath: "media/generated/source.png", name: "Source", width: 101, height: 77 };
+    config.assets = [{ id: "saved", kind: "image", ...source, mimeType: "image/png", createdAt: config.createdAt }];
+    config.imageScene = { ...createImageEditScene(source), outputAssetId: "saved" };
+    config.imageScene.nodes[0].description = "Make the lighting warmer";
+    config.imageScene.nodes[0].referenceIds = ["mood"];
+    config.references = [{ id: "mood", name: "Mood", kind: "text", description: "Warm sunset", intendedUse: [], createdAt: config.createdAt }];
+    const saved = saveImageDraft(config, "test");
+    expect(saved.assets).toHaveLength(2);
+    expect(saved.imageScene!.outputAssetId).not.toBe("saved");
+    const reopened = parseProjectConfig(JSON.parse(JSON.stringify(saved)));
+    reopened.references = [];
+    const restored = restoreGeneratedImage(reopened, saved.imageScene!.outputAssetId!);
+    expect(restored.references).toEqual(config.references);
+    expect(restored.imageScene!.nodes[0]).toMatchObject({ description: "Make the lighting warmer", referenceIds: ["mood"] });
+    const snapshot = reopened.assets[1].imageGeneration!;
+    expect(imageGenerationSnapshotSchema.safeParse({ ...snapshot, references: [] }).success).toBe(false);
+  });
   it("restores saved inputs and references after reopening without changing other results", () => {
     const config = parseProjectConfig(fixture);
     const snapshot = imageGenerationSnapshotSchema.parse(snapshotFixture);
