@@ -383,14 +383,14 @@ impl Api {
     pub fn set_image_edit_path(&self, r: *mut Request, path: &Path, bounds: [i32; 4]) -> Result<(), String> {
         let set = self.set_image_edit_path.ok_or("This slopfab.dll does not support bounding-box image editing. Update the runtime.")?;
         let path = path_cstring(path)?;
-        self.error(unsafe { set(r, path.as_ptr(), bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 0) })
+        self.error(unsafe { set(r, path.as_ptr(), bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 16) })
     }
     pub fn set_image_edit_rgb(&self, r: *mut Request, pixels: &[u8], width: i32, height: i32, bounds: [i32; 4]) -> Result<(), String> {
         let set = self.set_image_edit_rgb.ok_or("This slopfab.dll does not support sequential image editing. Update the runtime.")?;
         if width <= 0 || height <= 0 || pixels.len() != width as usize * height as usize * 3 {
             return Err("Invalid image edit RGB buffer.".into());
         }
-        self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 0) })
+        self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], 1.0, 16) })
     }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         let set = self.set_save_latents.ok_or(
