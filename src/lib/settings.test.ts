@@ -25,6 +25,20 @@ import {
 describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
 
+  it("assigns MiniMax H3 to current and legacy generators and preserves future model types", () => {
+    expect(createGeneratorTemplate().modelType).toBe("minimax-h3");
+    expect(loadGeneratorTemplateSettings().templates.every((template) => template.modelType === "minimax-h3")).toBe(true);
+    for (const modelType of [undefined, null, "", 123]) {
+      localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({
+        templates: [{ id: "legacy", name: "Renamed generator", modelType }], defaultTemplateId: "legacy", catalogVersion: 9,
+      }));
+      expect(loadGeneratorTemplateSettings().templates[0].modelType).toBe("minimax-h3");
+    }
+    const future = createGeneratorTemplate("Future generator", "future-model");
+    saveGeneratorTemplateSettings({ templates: [future], defaultTemplateId: future.id, catalogVersion: 9 });
+    expect(loadGeneratorTemplateSettings().templates[0]).toMatchObject(future);
+  });
+
   it("persists MotionCache per template and replaces stale runtime options", () => {
     const template = createGeneratorTemplate();
     expect(template.motionCache ?? false).toBe(false);

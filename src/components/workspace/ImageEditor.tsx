@@ -8,7 +8,7 @@ import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
-import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -60,6 +60,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => !templateNeedsDownload(candidate)) ?? imageTemplates[0];
+  const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
   const onChange = (update: ConfigUpdate) => changeConfig((current) => {
     const next = typeof update === "function" ? update(current) : update;
     const selecting = next.imageScene?.outputAssetId && next.imageScene.outputAssetId !== current.imageScene?.outputAssetId;
@@ -562,7 +563,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height} · Placement boxes guide the prompt`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily }); }} />
     </section>
@@ -605,13 +606,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
           </PropSection>
         </>}
-        {selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
+        {!isMiniMaxH3 && selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
           <label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>
           {selected.box && (["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={rootField(field)}>
             <input id={rootField(field)} className="text-field" type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} />
           </PropRow>)}
         </PropSection>}
-        {(!imageRoot || selected.colors.length > 0) && <PropSection title="Color palette" persistKey="image.palette">
+        {!isMiniMaxH3 && (!imageRoot || selected.colors.length > 0) && <PropSection title="Color palette" persistKey="image.palette">
           <div className="image-palette">{selected.colors.map((color, index) => <div key={index}><input aria-label={`Palette color ${index + 1}`} type="color" value={color} onChange={(event) => patchNode({ colors: selected.colors.map((old, i) => i === index ? event.target.value : old) })} /><button className="icon-button image-pane-button" aria-label={`Remove color ${index + 1}`} data-tooltip="Remove color" onClick={() => patchNode({ colors: selected.colors.filter((_, i) => i !== index) })}><Delete14 aria-hidden="true" /></button></div>)}<button className="secondary-button" disabled={selected.colors.length >= (selected.kind === "root" ? 16 : 5)} onClick={() => patchNode({ colors: [...selected.colors, "#808080"] })}><Add14 aria-hidden="true" />Color</button></div>
         </PropSection>}
       </div>

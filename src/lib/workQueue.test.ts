@@ -56,7 +56,7 @@ const finish = async (queue: WorkQueue, id: string) => {
 };
 
 describe("image generation work", () => {
-  const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
+  const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
   it.each([false, true])("queues distinct images in order without changing the viewed image (draft: %s)", async (imageDraft) => {
     const { queue } = setup();

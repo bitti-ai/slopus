@@ -67,9 +67,14 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
   return legacy;
 }
 
+export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
+
 export interface GeneratorTemplate {
   id: string;
   name: string;
+  /** Stable model-family identifier, independent of template name and mode.
+   * Open to new identifiers as other model families are added. */
+  modelType: string;
   defaultSteps: number;
   attention: AttentionMode;
   motionCache?: boolean;
@@ -164,10 +169,11 @@ const pathsFrom = (value: unknown): EngineSettings => {
   return result;
 };
 
-export function createGeneratorTemplate(name = "New template"): GeneratorTemplate {
+export function createGeneratorTemplate(name = "New template", modelType = MINIMAX_H3_MODEL_TYPE): GeneratorTemplate {
   return {
     id: `generator-template-${crypto.randomUUID()}`,
     name,
+    modelType,
     defaultSteps: DEFAULT_GENERATION_STEPS,
     attention: "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
@@ -187,7 +193,7 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
     { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 },
   ];
-  return { id: "minimax-h3-original", name: "First/Last Frame", defaultSteps: 20, attention: "sage2", paths, sources };
+  return { id: "minimax-h3-original", name: "First/Last Frame", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: 20, attention: "sage2", paths, sources };
 }
 
 function minimaxVariantTemplate(id: string, name: string, transformer: string, defaultSteps = 20): GeneratorTemplate {
@@ -236,7 +242,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
   defaultTemplateId: "default",
   catalogVersion: 9,
 });
@@ -253,6 +259,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     if (!id || ids.has(id)) return [];
     ids.add(id);
     const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim() : "Untitled template";
+    const modelType = typeof candidate.modelType === "string" && candidate.modelType.trim() ? candidate.modelType.trim() : MINIMAX_H3_MODEL_TYPE;
     const defaultSteps = typeof candidate.defaultSteps === "number"
       && Number.isInteger(candidate.defaultSteps)
       && candidate.defaultSteps >= 2
@@ -285,7 +292,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
           url: file.url.trim(), ...(file.role === "promptEmbedding" ? { role: "promptEmbedding" as const } : {}),
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
-    return [{ id, name, defaultSteps, attention, paths, sources,
+    return [{ id, name, modelType, defaultSteps, attention, paths, sources,
       ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
       ...(candidate.additionalSafetensors !== undefined ? { additionalSafetensors } : {}),
       ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
@@ -434,7 +441,7 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
 export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
   return settings.templates.find((template) => template.id === settings.defaultTemplateId && !templateNeedsDownload(template))
     ?? settings.templates.find((template) => !templateNeedsDownload(template))
-    ?? { id: "", name: "No downloaded generators", defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
+    ?? { id: "", name: "No downloaded generators", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
 }
 
 export function loadDefaultGenerationSteps(): number {

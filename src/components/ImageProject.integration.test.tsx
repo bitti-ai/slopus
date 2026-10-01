@@ -28,7 +28,7 @@ it.each([false, true])("scopes generation controls to each image and queues othe
   vi.spyOn(runtime, "resolveSlopfabPlan").mockResolvedValue({ alignedFrames: 1, canvasWidth: 768, canvasHeight: 768 } as Awaited<ReturnType<typeof runtime.resolveSlopfabPlan>>);
   const enqueue = vi.spyOn(runtime, "enqueueSlopfabGeneration").mockResolvedValue(undefined);
   const cancel = vi.spyOn(runtime, "cancelSlopfabGeneration").mockResolvedValue(true);
-  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [{ id: "test", name: "Test", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } }] });
+  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [{ id: "test", name: "Test", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } }] });
   const project = record();
   project.config.assets = ["First", "Second", "Third"].map((name) => ({ id: name, name, kind: "image", imageDraft,
     relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: project.config.createdAt,

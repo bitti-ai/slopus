@@ -8,7 +8,7 @@ import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, type ProjectConfig } from "../../lib/project";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
-import { defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { createGeneratorTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { imageScenePrompt } from "../../lib/imageScene";
 import { compileImageEdits } from "../../lib/imageEditing";
 import { invoke } from "@tauri-apps/api/core";
@@ -31,6 +31,28 @@ function setup(initial = parseProjectConfig(fixture)) {
 
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
+
+it("hides placement and palette controls by model type while preserving boxes and palettes", () => {
+  const h3 = createGeneratorTemplate("Renamed H3");
+  const future = createGeneratorTemplate("Future generator", "future-model");
+  saveGeneratorTemplateSettings({ templates: [h3, future], defaultTemplateId: h3.id, catalogVersion: 9 });
+  const current = setup();
+  const before = structuredClone(current().imageScene!.nodes);
+  expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Title" }));
+  expect(screen.queryByText("Placement (0–1000)")).not.toBeInTheDocument();
+  expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Explicit placement")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Draw object" })).toBeEnabled();
+  expect(screen.getByLabelText("Image placement canvas").querySelectorAll("rect[data-node]").length).toBeGreaterThan(0);
+  choose("Generator", "Future generator");
+  expect(screen.getByText("Placement (0–1000)")).toBeInTheDocument();
+  expect(screen.getByText("Color palette")).toBeInTheDocument();
+  choose("Generator", "Renamed H3");
+  expect(screen.queryByText("Placement (0–1000)")).not.toBeInTheDocument();
+  expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
+  expect(current().imageScene!.nodes).toEqual(before);
+});
 
 it("adds image files in edit mode and saves whole-image and drawn edits with separate references", async () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
@@ -69,6 +91,8 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   expect(screen.getByRole("radio", { name: "Draw edit" })).toHaveAttribute("aria-checked", "true");
   pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 320); pointer("pointerUp", 400, 320);
   expect(current().imageScene!.nodes[1]).toMatchObject({ name: "Edit", box: { x: 100, y: 100, width: 300, height: 300 } });
+  expect(screen.queryByText("Placement (0–1000)")).not.toBeInTheDocument();
+  expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   typePrompt(screen.getByLabelText("Edit prompt"), "Add a red @[ref:Balloon]");
   const edits = compileImageEdits(current()).edits;
