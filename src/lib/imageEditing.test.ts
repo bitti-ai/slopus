@@ -13,12 +13,14 @@ it("uses hierarchy order, skips empty groups, and converts boxes to original pix
   scene.nodes[2].description = "A blue boat";
   scene = addImageNode(scene, group, "object", { x: 900, y: 900, width: 100, height: 100 });
   scene.nodes[3].description = "A red balloon";
+  scene.nodes[3].colors = ["#FF0000"];
   config.imageScene = scene;
   config.settings.defaultLook = "watercolor";
   const { edits } = compileImageEdits(config);
   expect(edits).toHaveLength(2);
   expect(edits[0]).toMatchObject({ x: 90, y: 69, width: 11, height: 8 });
   expect(edits[0].prompt).toContain("A red balloon");
+  expect(edits[0].prompt).not.toMatch(/Use these colors|#FF0000/);
   expect(edits[1]).toMatchObject({ x: 25, y: 19, width: 51, height: 39 });
   expect(edits[1].prompt).toContain("A blue boat");
   expect(edits[0].prompt).not.toContain("watercolor");
@@ -59,6 +61,7 @@ it("starts with a clean image root and requires described edits before submissio
   expect(edited.imageScene!.nodes[0].description).toBe("");
   expect(() => compileImageEdits(edited)).toThrow("Enter a whole-image edit prompt");
   edited.imageScene = addImageNode(edited.imageScene!, "image-root", "object");
+  edited.imageScene.nodes[1].colors = ["#FF0000"];
   expect(() => compileImageEdits(edited)).toThrow("Describe the edit");
   expect(config.imageScene!.nodes.length).toBeGreaterThan(1);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(edited))).imageScene).toEqual(edited.imageScene);

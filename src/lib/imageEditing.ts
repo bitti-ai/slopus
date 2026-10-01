@@ -17,15 +17,15 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
   const ordered: ImageNode[] = root.description.trim() ? [{ ...root, box: { x: 0, y: 0, width: 1000, height: 1000 } }] : [];
   const visit = (parent: string) => { for (const node of scene.nodes.filter((item) => item.parentId === parent)) { ordered.push(node); visit(node.id); } };
   visit(root.id);
-  const edits = ordered.filter((node) => node.kind !== "group" || node.description.trim() || node.text || node.colors.length).map((node) => {
+  const edits = ordered.filter((node) => node.kind !== "group" || node.description.trim() || node.text).map((node) => {
     if (!node.box) throw new Error(`Set a placement box for '${node.name}'.`);
-    if (!node.description.trim() && !node.text && !node.colors.length) throw new Error(`Describe the edit for '${node.name}'.`);
+    if (!node.description.trim() && !node.text) throw new Error(`Describe the edit for '${node.name}'.`);
     const x = Math.min(source.width - 1, Math.floor(node.box.x * source.width / 1000));
     const y = Math.min(source.height - 1, Math.floor(node.box.y * source.height / 1000));
     const right = Math.min(source.width, Math.ceil((node.box.x + node.box.width) * source.width / 1000));
     const bottom = Math.min(source.height, Math.ceil((node.box.y + node.box.height) * source.height / 1000));
     const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
-      node.text ? `Render the exact text "${node.text}".` : "", node.colors.length ? `Use these colors: ${node.colors.join(", ")}.` : ""].filter(Boolean).join(" ");
+      node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };
     const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: editScene });
     return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };

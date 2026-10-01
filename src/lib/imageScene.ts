@@ -95,10 +95,10 @@ export function resizeImageNode(scene: ImageScene, id: string, box: ImageBox): I
 const sentence = (text: string) => /[.!?。！？]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
 
 /** Visual content only. The compiler places style before or after [Shot 1]
- * according to H3's reference or base format. Boxes refer to the full image. */
+ * according to H3's reference or base format. Boxes and palettes are omitted. */
 export function imageScenePromptParts(scene: ImageScene, look?: string): { style: string; composition: string } | null {
   const root = scene.nodes.find((node) => node.kind === "root")!;
-  const hasContent = scene.background.trim() || scene.nodes.some((node) => node.description.trim() || node.colors.length || (node.kind === "text" && node.text) || (node.kind !== "root" && node.box));
+  const hasContent = scene.background.trim() || scene.nodes.some((node) => node.description.trim() || (node.kind === "text" && node.text));
   if (!hasContent) return null;
   const treatment = [
     ...(look?.trim() ? [`${look.trim()} visual style`] : []),
@@ -108,11 +108,8 @@ export function imageScenePromptParts(scene: ImageScene, look?: string): { style
   ];
   const medium = scene.style.mode === "photo" ? "A still photograph" : `A still image in ${scene.style.medium.trim() || "an artistic medium"}`;
   const style = sentence(`${medium}${treatment.length ? ` with ${treatment.join(", ")}` : ""}`);
-  const placement = (node: ImageNode) => node.box ? `Position in the full image: left ${node.box.x / 10}%, top ${node.box.y / 10}%, width ${node.box.width / 10}%, height ${node.box.height / 10}%.` : "";
   const lines: string[] = [
     ...(root.description.trim() ? [sentence(root.description)] : []),
-    ...(root.colors.length ? [`Overall color palette: ${root.colors.join(", ")}.`] : []),
-    ...(root.box ? [placement(root)] : []),
     ...(scene.background.trim() ? [`Background: ${sentence(scene.background)}`] : []),
   ];
   const visit = (node: ImageNode, depth: number) => {
@@ -120,10 +117,9 @@ export function imageScenePromptParts(scene: ImageScene, look?: string): { style
     const description = node.description.trim() ? sentence(node.description) : "";
     // Quote visible lettering verbatim, including its language and line breaks.
     const text = node.kind === "text" && node.text ? `Render the exact text "${node.text}".` : "";
-    const colors = node.colors.length ? `Color palette: ${node.colors.join(", ")}.` : "";
-    const subject = node.kind === "group" ? "A grouped arrangement." : node.kind === "text" ? "Visible lettering." : node.kind === "background" ? "A background element." : "A depicted object.";
-    const detail = [subject, description, text, placement(node), colors, ...(children.length ? ["Its composition includes:"] : [])].filter(Boolean).join(" ");
-    lines.push(`${"  ".repeat(depth)}${detail}`);
+    const subject = node.kind === "group" ? "A grouped arrangement." : node.kind === "text" ? "Visible lettering." : node.kind === "background" ? "A background element." : "";
+    const detail = [subject, description, text, ...(children.length ? ["Its composition includes:"] : [])].filter(Boolean).join(" ");
+    if (detail) lines.push(`${"  ".repeat(depth)}${detail}`);
     children.forEach((child) => visit(child, depth + 1));
   };
   scene.nodes.filter((node) => node.parentId === root.id).forEach((node) => visit(node, 0));

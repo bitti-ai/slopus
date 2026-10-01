@@ -21,16 +21,16 @@ describe("MiniMax H3 still-image prompts", () => {
     expect(config).toEqual(snapshot);
   });
 
-  it("preserves nested composition, placement and palettes even for undescribed groups", () => {
+  it("preserves nested composition while omitting placement and palettes", () => {
     const config = parseProjectConfig(fixture);
     config.imageScene!.nodes[1].description = "";
     const prompt = compileImagePrompt(config).prompt;
     expect(prompt).toContain("integrated_multimodal_description: [Shot 1] A still image in Illustration");
     expect(prompt).toContain("Screen print art style.");
-    expect(prompt).toContain("Overall color palette: #204060.");
+    expect(prompt).not.toMatch(/palette|#204060|#FF0000|Position in|\[300, 100, 700, 900\]|\[350, 150, 650, 250\]/);
     expect(prompt).toContain("Background: Ocean at dawn.");
-    expect(prompt).toContain("A grouped arrangement. Position in the full image: left 30%, top 10%, width 40%, height 80%. Its composition includes:\n  Visible lettering. Bold red lettering.");
-    expect(prompt).toContain('Render the exact text "LIFT OFF". Position in the full image: left 35%, top 15%, width 30%, height 10%. Color palette: #FF0000.');
+    expect(prompt).toContain("A grouped arrangement. Its composition includes:\n  Visible lettering. Bold red lettering.");
+    expect(prompt).toContain('Render the exact text "LIFT OFF".');
     expect(prompt).not.toMatch(/group:|text:|group-rocket|Camera and lens/);
   });
 

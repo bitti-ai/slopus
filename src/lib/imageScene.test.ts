@@ -39,10 +39,15 @@ describe("image documents", () => {
     const prompt = imageScenePrompt(resized);
     expect(prompt).toContain('Render the exact text "LIFT OFF"');
     expect(prompt).toContain("white rocket surrounded by glowing vapor");
-    expect(prompt).toContain("left 12.5%");
+    expect(prompt).not.toContain("[125, 125, 275, 175]");
     expect(prompt).toContain("Screen print");
-    expect(prompt).toContain("#FF0000");
+    expect(prompt).not.toContain("#FF0000");
     expect(imageScenePrompt(createImageScene())).toBe("");
-    expect(addImageNode(createImageScene(), "image-root", "object").nodes).toHaveLength(2);
+    const objectScene = addImageNode(createImageScene(), "image-root", "object", { x: 172, y: 237, width: 681, height: 249 });
+    expect(objectScene.nodes).toHaveLength(2);
+    objectScene.nodes[1].colors = ["#FF0000"];
+    expect(imageScenePrompt(objectScene)).toBe("");
+    objectScene.nodes[1].description = "sunglasses";
+    expect(imageScenePrompt(objectScene)).toBe("A still photograph.\nsunglasses.");
   });
 });
