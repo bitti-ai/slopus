@@ -53,9 +53,12 @@ struct Probe {
     at: Instant,
 }
 
+/// Never dropped, unlike `Workers`: test binaries have no Windows manifest
+/// and must not link the webview runtime that an AppHandle's drop pulls in.
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
 #[derive(Default)]
 struct Inner {
-    app: OnceLock<AppHandle>,
     file: OnceLock<PathBuf>,
     saved: Mutex<Saved>,
     announced: Mutex<Vec<Announced>>,
@@ -210,7 +213,7 @@ fn probe(address: &str, token: Option<&str>) -> Result<WorkerInfo, String> {
 impl Workers {
     /// Loads the saved selection and starts listening for workers.
     pub fn start(&self, app: &AppHandle, data_directory: &Path) {
-        let _ = self.0.app.set(app.clone());
+        let _ = APP.set(app.clone());
         let file = data_directory.join("workers.json");
         if let Some(saved) = fs::read(&file).ok().and_then(|bytes| serde_json::from_slice::<Saved>(&bytes).ok()) {
             if let Ok(mut current) = self.0.saved.lock() {
@@ -224,7 +227,7 @@ impl Workers {
             if let Ok(mut current) = inner.announced.lock() {
                 *current = announced;
             }
-            if let Some(app) = inner.app.get() {
+            if let Some(app) = APP.get() {
                 let _ = app.emit("workers-changed", ());
             }
         }) {
@@ -260,9 +263,7 @@ impl Workers {
             Err(_) => return Saved::default(),
         };
         self.save(&saved);
-        if let Some(app) = self.0.app.get() {
-            let _ = app.emit("workers-changed", ());
-        }
+        self.emit("workers-changed", serde_json::Value::Null);
         saved
     }
 
@@ -457,7 +458,15 @@ impl Workers {
     }
 
     fn emit(&self, event: &str, payload: serde_json::Value) {
-        if let Some(app) = self.0.app.get() {
+        #[cfg(test)]
+        {
+            eprintln!("{event}: {payload}");
+            if payload["state"] == "failed" {
+                tests::FAILED.lock().unwrap().push(payload["detail"].to_string());
+            }
+        }
+        #[cfg(not(test))]
+        if let Some(app) = APP.get() {
             let _ = app.emit(event, payload);
         }
     }
@@ -849,6 +858,8 @@ mod tests {
     use super::*;
     use crate::project::ProviderOption;
 
+    pub(super) static FAILED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
     #[test]
     fn addresses_get_the_default_port_and_reject_urls_with_paths() {
         assert_eq!(normalize_address("192.168.1.20").unwrap(), format!("192.168.1.20:{DEFAULT_PORT}"));
@@ -891,5 +902,104 @@ mod tests {
         assert_eq!(job.continuation, Some(2));
         assert_eq!(sources.len(), 2);
         assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new()).is_err());
+    }
+
+    #[test]
+    fn finished_jobs_bring_latents_home_and_release_the_worker_copy_with_the_frames() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap().to_string();
+        let released = Arc::new(AtomicBool::new(false));
+        let seen = released.clone();
+        std::thread::spawn(move || {
+            for request in server.incoming_requests() {
+                let url = request.url().to_string();
+                let body: Vec<u8> = match url.as_str() {
+                    "/v1/jobs/work-collect/latents" => b"latent bytes".to_vec(),
+                    "/v1/jobs/work-collect/summary" => serde_json::to_vec(&serde_json::json!({
+                        "jobId": "work-collect", "width": 2, "height": 1, "frameCount": 2, "fps": 24.0,
+                        "audioChannels": 1, "audioSampleRate": 48000, "audioSamples": 2,
+                    })).unwrap(),
+                    "/v1/jobs/work-collect/audio" => [0.5f32, -0.5].iter().flat_map(|sample| sample.to_le_bytes()).collect(),
+                    "/v1/jobs/work-collect/frames/1" => vec![9; 8],
+                    "/v1/jobs/work-collect" => { seen.store(true, Ordering::Release); b"true".to_vec() }
+                    _ => { let _ = request.respond(tiny_http::Response::empty(404)); continue; }
+                };
+                let _ = request.respond(tiny_http::Response::from_data(body));
+            }
+        });
+        let info = WorkerInfo {
+            id: "00112233aabbccdd".into(), name: "Stub".into(), version: "0".into(), protocol: PROTOCOL_VERSION,
+            requires_token: false, gpus: Vec::new(),
+            runtime: WorkerRuntime { state: "ready".into(), version: None, platform: None, cuda_available: false, cuda_device_names: Vec::new(), detail: String::new() },
+        };
+        let connection = Connection { base: format!("http://{address}"), token: None, name: "Stub".into(), address, info, http: http_client(None) };
+        let folder = tempfile::tempdir().unwrap();
+        let latents = folder.path().join("work-collect.safetensors");
+        Workers::default().collect(&connection, "work-collect", Some(&latents)).unwrap();
+        assert_eq!(fs::read(&latents).unwrap(), b"latent bytes");
+        assert!(!folder.path().join("work-collect.safetensors.part").exists());
+        assert_eq!(rendered::summary("work-collect").unwrap().audio_samples, 2);
+        assert_eq!(rendered::frame("work-collect", 1).unwrap().unwrap(), vec![9; 8]);
+        assert!(rendered::frame("work-collect", 0).is_err(), "a missing frame is an error, not a blank picture");
+        assert!(!released.load(Ordering::Acquire));
+        assert!(rendered::release("work-collect"));
+        let started = Instant::now();
+        while !released.load(Ordering::Acquire) {
+            assert!(started.elapsed() < Duration::from_secs(5), "the worker copy was not released");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Drives a running worker through the same path as the app. Needs
+    /// SLOPUS_E2E_WORKER (host:port) and SLOPUS_E2E_WEIGHTS (a folder of
+    /// Slopus downloads: transformer, text encoder and VAEs).
+    #[test]
+    #[ignore]
+    fn end_to_end_with_a_running_worker() {
+        let address = std::env::var("SLOPUS_E2E_WORKER").expect("SLOPUS_E2E_WORKER");
+        let weights = PathBuf::from(std::env::var("SLOPUS_E2E_WEIGHTS").expect("SLOPUS_E2E_WEIGHTS"));
+        let find = |part: &str| fs::read_dir(&weights).unwrap().filter_map(Result::ok).map(|entry| entry.path())
+            .find(|path| path.to_string_lossy().contains(part) && path.extension().is_some_and(|ext| ext == "safetensors"))
+            .unwrap_or_else(|| panic!("no {part} weights")).to_string_lossy().into_owned();
+        let folder = tempfile::tempdir().unwrap();
+        let reference = folder.path().join("reference.png");
+        image::RgbImage::from_fn(256, 256, |x, y| image::Rgb([x as u8, y as u8, 128])).save(&reference).unwrap();
+        let options = BTreeMap::from([
+            ("transformer".to_string(), ProviderOption::String(find("ref2va_Pruned"))),
+            ("textEncoder".to_string(), ProviderOption::String(find("qwen3vl"))),
+            ("videoVae".to_string(), ProviderOption::String(find("video_vae_fp16"))),
+            ("audioVae".to_string(), ProviderOption::String(find("audio_vae"))),
+            ("attention".to_string(), ProviderOption::String("sage2".into())),
+        ]);
+        let settings = BTreeMap::from([("slopfab".to_string(), ProviderSetting { enabled: true, model: None, options })]);
+        let workers = Workers::default();
+        let list = workers.add(&address).unwrap();
+        let id = list.workers[0].id.clone().unwrap();
+        workers.select(Some(id)).unwrap();
+        let connection = workers.active().unwrap().expect("selected worker");
+        let job_id = format!("work-e2e-{}", std::process::id());
+        let request = GenerationRequest {
+            job_id: job_id.clone(), prompt: "A red apple on a wooden table.".into(), frames: 1, still_image: true,
+            steps: 8, seed: 7, canvas_width: 512, canvas_height: 512,
+            reference_paths: vec![reference.to_string_lossy().into_owned()],
+            ..Default::default()
+        };
+        let (job, _) = build_job(&request, &settings).unwrap();
+        assert!(job.files.iter().filter(|file| matches!(file, FileRef::Url { .. })).count() == 4, "downloads are sent as URLs");
+        let plan = workers.plan(&connection, &request, &settings).unwrap();
+        eprintln!("plan: {plan}");
+        workers.enqueue(connection, request, &settings).unwrap();
+        let started = Instant::now();
+        let summary = loop {
+            if let Some(summary) = rendered::summary(&job_id) { break summary; }
+            if let Some(error) = FAILED.lock().unwrap().first() { panic!("worker job failed: {error}"); }
+            assert!(started.elapsed() < Duration::from_secs(900), "worker job timed out");
+            std::thread::sleep(Duration::from_millis(500));
+        };
+        assert_eq!((summary.width, summary.height, summary.frame_count), (512, 512, 1));
+        let frame = rendered::frame(&job_id, 0).unwrap().unwrap();
+        assert_eq!(frame.len(), 512 * 512 * 4);
+        image::RgbaImage::from_raw(512, 512, frame).unwrap().save(std::env::temp_dir().join("slopus-worker-e2e.png")).unwrap();
+        assert!(rendered::release(&job_id));
     }
 }

@@ -2,10 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
 import { downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
-import { ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
-  type EnginePathId, type GeneratorTemplate, type WeightSource } from "./settings";
+import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
+  type EnginePathId, type GeneratorTemplate, type WeightGpu, type WeightSource } from "./settings";
 
-export interface WeightGpu { name: string; memoryBytes: number }
+export type { WeightGpu } from "./settings";
+export { chooseWeightSource };
 export interface DownloadState {
   templateId: string;
   loraId?: string;
@@ -38,17 +39,6 @@ export function weightDownloadProgress(download: DownloadState): number {
   const current = (download.field || download.loraId || download.currentLoraId || download.currentAdditionalId) && download.total && download.total > 0
     ? Math.min(1, Math.max(0, download.downloaded / download.total)) : 0;
   return Math.min(download.active ? 99 : 100, 100 * (download.completed + current) / download.files);
-}
-
-export function chooseWeightSource(sources: WeightSource[], devices: WeightGpu[]): WeightSource | null {
-  // Prefer an explicit GPU match, then the highest memory tier that fits.
-  // Equal-ranked alternatives keep the author's order. Unknown hardware only
-  // qualifies for universal variants with no minimum memory requirement.
-  const matches = sources.filter((source) => !source.gpuModel.trim() && source.minVramGb === 0
-    || devices.some((gpu) => gpu.name.toLowerCase().includes(source.gpuModel.trim().toLowerCase())
-      // Drivers reserve part of VRAM (a 32 GB card may report 31.4 GiB).
-      && Math.ceil(gpu.memoryBytes / 1024 ** 3) >= source.minVramGb));
-  return matches.sort((a, b) => Number(Boolean(b.gpuModel.trim())) - Number(Boolean(a.gpuModel.trim())) || b.minVramGb - a.minVramGb)[0] ?? null;
 }
 
 export function updateWeightPath(template: GeneratorTemplate, field: EnginePathId, value: string): GeneratorTemplate {

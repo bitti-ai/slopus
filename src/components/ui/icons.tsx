@@ -38,6 +38,7 @@ export { Cube16Regular as Cube16, Cube16Filled } from "@fluentui/react-icons/hea
 export { Cursor16Regular as Cursor16, Cursor16Filled } from "@fluentui/react-icons/headless/svg/cursor";
 export { Cut16Regular as Cut16 } from "@fluentui/react-icons/headless/svg/cut";
 export { Delete16Regular as Delete16 } from "@fluentui/react-icons/headless/svg/delete";
+export { Desktop20Regular as Desktop20 } from "@fluentui/react-icons/headless/svg/desktop";
 export { DeveloperBoard20Regular as Gpu20 } from "@fluentui/react-icons/headless/svg/developer-board";
 export { Dismiss12Regular as Dismiss12, Dismiss16Regular as Dismiss16 } from "@fluentui/react-icons/headless/svg/dismiss";
 export { DocumentCube20Regular as ModelFile20 } from "@fluentui/react-icons/headless/svg/document-cube";
@@ -77,6 +78,7 @@ export { ScanDash16Regular as SafeArea16, ScanDash16Filled as SafeArea16Filled }
 export { Search16Regular as Search16, Search32Regular as Search32 } from "@fluentui/react-icons/headless/svg/search";
 export { SelectObject16Regular as Boxes16, SelectObject16Filled as Boxes16Filled } from "@fluentui/react-icons/headless/svg/select-object";
 export { Send16Regular as Send16 } from "@fluentui/react-icons/headless/svg/send";
+export { Server16Regular as Worker16, Server16Filled as Worker16Filled, Server20Regular as Worker20 } from "@fluentui/react-icons/headless/svg/server";
 export { Settings16Regular as Settings16 } from "@fluentui/react-icons/headless/svg/settings";
 export { Sparkle12Regular as Sparkle12, Sparkle16Regular as Sparkle16, Sparkle16Filled, Sparkle20Regular as Sparkle20 } from "@fluentui/react-icons/headless/svg/sparkle";
 export { SpinnerIos16Regular as Spinner16, SpinnerIos20Regular as Spinner20 } from "@fluentui/react-icons/headless/svg/spinner-ios";

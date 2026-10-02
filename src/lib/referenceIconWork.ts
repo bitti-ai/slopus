@@ -258,7 +258,7 @@ export class ReferenceIconWork {
       if (!template) throw new Error("Choose an available text-prompt generator for reference icons in Settings.");
       const config = task.session.getSnapshot().config;
       const runtimeConfig = { ...config, providerSettings: { ...config.providerSettings,
-        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false),
+        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources),
       } };
       const steps = generationStepsWithLoras(template.defaultSteps, runtimeConfig);
       if (this.item) { this.item = { ...this.item, settings: { ...this.item.settings, steps } }; this.publish(); }

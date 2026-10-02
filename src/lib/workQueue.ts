@@ -16,6 +16,7 @@ import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneGe
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { generationStepsWithLoras, withEngineSettings } from "./settings";
+import { remoteWorkerSelected } from "./workers";
 import { purgeTimelineThumbnails } from "./timelineThumbnails";
 import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -215,7 +216,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
     const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current);
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
@@ -310,6 +311,8 @@ export class WorkQueue {
     work.cancelled = true;
     if (item.status === "queued" || item.status === "preparing") {
       this.cancelled(work);
+      // Stops files that are still being sent to a LAN worker for this job.
+      if (item.status === "preparing" && remoteWorkerSelected()) void cancelSlopfabGeneration(work.id).catch(() => undefined);
       return;
     }
     this.patch(id, { cancelling: true, detail: "Cancelling generation" });
@@ -351,6 +354,12 @@ export class WorkQueue {
     const work = this.work.get(event.jobId);
     const item = this.items.find((candidate) => candidate.id === event.jobId);
     if (!work || !item || !["preparing", "generating"].includes(item.status)) return;
+    if (isWorkerTransfer(event)) {
+      // Files moving to a LAN worker: say what is happening without moving
+      // the generation bar or the time estimate.
+      if (!item.cancelling) this.patch(work.id, { detail: workerTransferDetail(event) });
+      return;
+    }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
     this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
@@ -435,4 +444,17 @@ export class WorkQueue {
       finally { work.finish(); }
     }
   }
+}
+
+type WorkerTransfer = GenerationTimingProgress & { detail?: string; transferred?: number; transferTotal?: number | null };
+
+function isWorkerTransfer(event: GenerationTimingProgress): event is WorkerTransfer {
+  return event.stage === "workerUpload" || event.stage === "workerDownload";
+}
+
+function workerTransferDetail(event: WorkerTransfer): string {
+  const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  const amount = event.transferTotal ? ` · ${Math.floor(100 * (event.transferred ?? 0) / event.transferTotal)}% of ${gb(event.transferTotal)}`
+    : event.transferred ? ` · ${gb(event.transferred)}` : "";
+  return `${event.detail ?? (event.stage === "workerUpload" ? "Sending files to the worker" : "Worker downloading weights")}${amount}`;
 }
