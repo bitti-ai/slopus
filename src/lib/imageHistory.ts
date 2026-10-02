@@ -76,7 +76,7 @@ export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: st
 export function completeImageDraft(config: ProjectConfig, id: string, result: ProjectAsset): ProjectConfig {
   const draft = config.assets.find((asset) => asset.id === id && asset.imageDraft);
   const selected = config.imageScene?.outputAssetId === id;
-  const changed = draft && JSON.stringify({ ...draft.imageGeneration, prompt: "" }) !== JSON.stringify({ ...result.imageGeneration, prompt: "" });
+  const changed = draft && JSON.stringify({ ...draft.imageGeneration, prompt: "", usedSeed: undefined }) !== JSON.stringify({ ...result.imageGeneration, prompt: "", usedSeed: undefined });
   // Edits made during generation remain a separate draft on the original source.
   const pending = changed ? { ...draft, id: `image-draft-${crypto.randomUUID()}` } : null;
   const asset = { ...result, id, imageDraft: false, ...(draft?.parentAssetId ? { parentAssetId: draft.parentAssetId } : {}) };

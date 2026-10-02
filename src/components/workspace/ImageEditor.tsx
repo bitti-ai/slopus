@@ -28,6 +28,16 @@ import "../../styles/image-editor.css";
 const MIN_IMAGE_ZOOM = 0.1;
 const MAX_IMAGE_ZOOM = 8;
 
+function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undefined; onError: (message: string) => void }) {
+  return <PropRow label="Used seed" htmlFor={id}>
+    <input id={id} className="text-field" readOnly value={seed ?? "Not recorded"} />
+    <button type="button" className="icon-button" aria-label="Copy used seed" data-tooltip="Copy used seed" disabled={seed === undefined} onClick={async () => {
+      try { await navigator.clipboard.writeText(String(seed)); }
+      catch { onError("Could not copy the seed. Select and copy it from the field."); }
+    }}><Copy16 aria-hidden="true" /></button>
+  </PropRow>;
+}
+
 export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
@@ -35,6 +45,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const imageRoot = scene.rootType === "image";
+  const generatedImage = config.assets.find((asset) => asset.id === scene.outputAssetId && !asset.imageDraft && asset.imageGeneration);
+  const recordedSeed = generatedImage?.imageGeneration?.usedSeed ?? generatedImage?.imageGeneration?.scene.seed;
+  const usedSeed = recordedSeed !== undefined && recordedSeed >= 0 ? recordedSeed : undefined;
   const editPlan = useMemo(() => {
     if (!imageRoot) return null;
     try { return { ...compileImageEdits(config), error: null }; }
@@ -595,6 +608,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           <PropSection title="Image generation" persistKey="image.generation">
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             <PropRow label="Seed" htmlFor={rootField("seed")}><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} data-tooltip="-1 picks a random seed" onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
+            {generatedImage && <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />}
             <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={config.settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, settings: { ...current.settings, aspectRatio }, brief: { ...current.brief, aspectRatio } })); }} /></PropRow>
             <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={config.settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, config.settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, config.settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, settings: { ...current.settings, resolution }, brief: { ...current.brief, resolution } })); }} /></PropRow>
           </PropSection>
@@ -606,6 +620,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
           </PropSection>
         </>}
+        {selected.kind === "root" && imageRoot && generatedImage && <PropSection title="Image generation" persistKey="image.generation">
+          <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />
+        </PropSection>}
         {!isMiniMaxH3 && selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
           <label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>
           {selected.box && (["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={rootField(field)}>

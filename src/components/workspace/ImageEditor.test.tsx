@@ -9,7 +9,7 @@ import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, type ProjectConfig } from "../../lib/project";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
 import { createGeneratorTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
-import { imageScenePrompt } from "../../lib/imageScene";
+import { createImageEditScene, imageScenePrompt } from "../../lib/imageScene";
 import { compileImageEdits } from "../../lib/imageEditing";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../../lib/persistence";
@@ -17,7 +17,7 @@ import fixture from "../../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function setup(initial = parseProjectConfig(fixture)) {
   let latest: ProjectConfig = initial;
   function Harness() {
@@ -31,6 +31,48 @@ function setup(initial = parseProjectConfig(fixture)) {
 
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
+
+it.each([false, true])("shows and copies the selected result's exact seed as read-only (image edits: %s)", async (imageRoot) => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", Object.assign(Object.create(navigator), { clipboard: { writeText } }));
+  const initial = parseProjectConfig(fixture);
+  if (imageRoot) initial.imageScene = createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 768, height: 768 });
+  initial.assets = [Number.MAX_SAFE_INTEGER, 0].map((usedSeed, index) => ({
+    id: `seed-result-${index}`, name: `Seed result ${index}`, kind: "image", relativePath: `media/result-${index}.png`,
+    width: 768, height: 768, mimeType: "image/png", createdAt: initial.createdAt,
+    imageGeneration: { ...imageGenerationSnapshot(initial, "Submitted prompt", defaultGeneratorTemplate().id), usedSeed },
+  }));
+  initial.imageScene!.outputAssetId = "seed-result-0";
+  const current = setup(initial);
+  const seed = screen.getByLabelText("Used seed");
+  expect(seed).toHaveValue(String(Number.MAX_SAFE_INTEGER));
+  expect(seed).toHaveAttribute("readonly");
+  expect(seed).not.toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Copy used seed" }));
+  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(String(Number.MAX_SAFE_INTEGER)));
+  fireEvent.click(screen.getByRole("button", { name: "View Seed result 1" }));
+  expect(screen.getByLabelText("Used seed")).toHaveValue("0");
+  fireEvent.click(screen.getByRole("button", { name: "Copy used seed" }));
+  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("0"));
+  expect(current().assets.map((asset) => asset.imageGeneration?.usedSeed)).toEqual([Number.MAX_SAFE_INTEGER, 0]);
+  writeText.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+  fireEvent.click(screen.getByRole("button", { name: "Copy used seed" }));
+  await screen.findByText("Could not copy the seed. Select and copy it from the field.");
+});
+
+it("does not invent a used seed for an older random result or show one for drafts", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene!.seed = -1;
+  const snapshot = imageGenerationSnapshot(initial, "Old prompt", defaultGeneratorTemplate().id);
+  initial.assets = [false, true].map((imageDraft, index) => ({ id: `old-${index}`, name: `Old ${index}`, kind: "image", imageDraft,
+    relativePath: `media/old-${index}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, imageGeneration: snapshot }));
+  initial.imageScene!.outputAssetId = "old-0";
+  setup(initial);
+  expect(screen.getByLabelText("Used seed")).toHaveValue("Not recorded");
+  expect(screen.getByRole("button", { name: "Copy used seed" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "View Old 1" }));
+  expect(screen.queryByLabelText("Used seed")).not.toBeInTheDocument();
+});
 
 it("hides placement and palette controls by model type while preserving boxes and palettes", () => {
   const h3 = createGeneratorTemplate("Renamed H3");

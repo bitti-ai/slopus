@@ -22,6 +22,14 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
+
+function imageGenerationSeed(seed: number): number {
+  if (seed !== -1) return seed;
+  // Resolve before submission so history stores exactly what the engine uses.
+  // Keep all 53 bits exactly representable in JSON and the editable seed field.
+  const [high, low] = crypto.getRandomValues(new Uint32Array(2));
+  return (high & 0x1fffff) * 0x100000000 + low;
+}
 export interface WorkItem {
   imageAssetId?: string | null;
   imageDraftId?: string;
@@ -232,11 +240,11 @@ export class WorkQueue {
       ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
         ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
       })) } } : {}),
-      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: scene.seed,
+      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: imageGenerationSeed(scene.seed),
       referencePaths: referencePaths(references),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, imageDraftId, imageParentId, imageGeneration: imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
+    this.work.set(id, { id, image: true, imageDraftId, imageParentId, imageGeneration: { ...imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), usedSeed: request.seed }, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: scene.outputAssetId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];

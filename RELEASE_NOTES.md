@@ -16,6 +16,7 @@ This alpha update adds still image projects, new scene types, and a rebuilt Wind
 
 ## Fixes and improvements
 
+- Generated still images retain their used seed, shown as a read-only field with a copy button in Image generation.
 - Interrupted weight and LoRA downloads retain their progress and can resume on retry or after reopening the app.
 - Updated the bundled SlopFab runtime.
 - Smoother previews: clips are preloaded and pixels are kept across cuts.
