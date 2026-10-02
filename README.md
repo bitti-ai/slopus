@@ -53,7 +53,7 @@ Unpack the Slopus worker package (`Slopus-<version>-windows-x64-worker.zip`, con
 slopus-worker.exe --weights D:\Models
 ```
 
-Allow it through Windows Firewall when asked. In Slopus, open **Settings → Workers** and click **Use** next to the worker. Generators whose weights have download links become usable even if they are not downloaded on this computer; the worker downloads missing weights into its weights folders on first use. Run `slopus-worker.exe --help` for options: `--port`, `--name`, `--token` (require an access token), `--data`, `--weights` (repeatable), `--vulkan` and `--no-mdns`. Choose **This computer** to generate locally again.
+Allow it through Windows Firewall when asked. In Slopus, open **Settings → Workers** and click **Use** next to the worker. Generators whose weights have download links become usable even if they are not downloaded on this computer; the worker downloads missing weights into its weights folders on first use. Run `slopus-worker.exe --help` for options: `--port`, `--name`, `--token` (require an access token), `--data`, `--weights` (repeatable), `--backend` and `--no-mdns`. The worker uses CUDA when it is available (CUDA 13 if installed, otherwise CUDA 12) and otherwise falls back to Vulkan, printing a warning if an NVIDIA GPU is present without a usable CUDA installation. `--backend cuda13`, `--backend cuda12`, `--backend cuda` or `--backend vulkan` overrides the choice. Choose **This computer** to generate locally again.
 
 The project's GPU setup recommendations are:
 

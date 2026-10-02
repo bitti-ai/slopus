@@ -13,7 +13,8 @@ const USAGE: &str = r"Usage: slopus-worker [options]
   --token <text>      Require this access token from clients
   --data <folder>     Uploads, job files and logs (default: %LOCALAPPDATA%\Slopus Worker)
   --weights <folder>  Extra weights folder to search and download into; repeatable
-  --vulkan            Use the Vulkan backend instead of CUDA
+  --backend <name>    GPU backend: auto (default: CUDA 13, then CUDA 12, else Vulkan),
+                      cuda (CUDA 13, then 12), cuda13, cuda12 or vulkan
   --no-mdns           Do not announce on the network; clients add it by address
   --help              Show this help";
 
@@ -31,7 +32,7 @@ fn parse() -> Result<WorkerOptions, String> {
                 let folder = std::path::absolute(value("--weights")?).map_err(|error| error.to_string())?;
                 options.weights.push(folder);
             }
-            "--vulkan" => options.vulkan = true,
+            "--backend" => options.backend = value("--backend")?.parse()?,
             "--no-mdns" => options.advertise = false,
             "--help" | "-h" => {
                 println!("{USAGE}");

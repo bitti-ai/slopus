@@ -28,6 +28,7 @@ pub use types::*;
 pub use events::NativeEvent;
 pub use icons::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 pub use planning::resolve_plan;
+pub use platform::{probe_backend, BackendProbe};
 pub use status::{status, worker_status};
 const DLL_FILE_NAME: &str = "slopfab.dll";
 /// Tauri stages the repository's runtime resources in development and release

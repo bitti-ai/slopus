@@ -6,4 +6,4 @@ pub mod server;
 pub mod store;
 
 pub use protocol::{WorkerRuntime, DEFAULT_PORT};
-pub use server::{run, WorkerOptions};
+pub use server::{run, Backend, WorkerOptions};

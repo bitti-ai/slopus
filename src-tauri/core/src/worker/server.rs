@@ -26,6 +26,74 @@ use std::{
 };
 use tiny_http::{Header, Method, Request, Response, Server};
 
+/// Which GPU backend the worker runs generation on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Backend {
+    /// CUDA 13, then CUDA 12, when available; otherwise Vulkan.
+    #[default]
+    Auto,
+    /// CUDA 13, then CUDA 12; an error when neither loads.
+    Cuda,
+    Cuda13,
+    Cuda12,
+    Vulkan,
+}
+
+impl Backend {
+    fn is_cuda(self) -> bool {
+        matches!(self, Self::Cuda | Self::Cuda13 | Self::Cuda12)
+    }
+
+    /// The engine's CUDA toolkit request.
+    pub fn cuda_version(self) -> &'static str {
+        match self {
+            Self::Cuda13 => "13",
+            Self::Cuda12 => "12",
+            _ => "auto",
+        }
+    }
+}
+
+impl std::str::FromStr for Backend {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, String> {
+        match value.to_ascii_lowercase().replace(['-', ' ', '.'], "").as_str() {
+            "auto" => Ok(Self::Auto),
+            "cuda" => Ok(Self::Cuda),
+            "cuda13" => Ok(Self::Cuda13),
+            "cuda12" => Ok(Self::Cuda12),
+            "vulkan" => Ok(Self::Vulkan),
+            _ => Err(format!("Unknown backend '{value}'. Use auto, cuda, cuda13, cuda12 or vulkan.")),
+        }
+    }
+}
+
+/// The backend to run on, and a warning to show when Auto had to fall back.
+/// Forcing CUDA where it cannot load is an error rather than a silent Vulkan run.
+pub fn choose_backend(requested: Backend, probe: &slopfab::BackendProbe) -> Result<(bool, Option<String>), String> {
+    let problem = probe.cuda_problem.as_deref().unwrap_or("CUDA was not found");
+    let flag = match requested {
+        Backend::Cuda13 => "--backend cuda13",
+        Backend::Cuda12 => "--backend cuda12",
+        _ => "--backend cuda",
+    };
+    let install = match requested {
+        Backend::Cuda13 => "Install the CUDA 13 toolkit",
+        Backend::Cuda12 => "Install the CUDA 12.8 toolkit",
+        _ => "Install CUDA 12.8 (RTX 30/40) or CUDA 13 (RTX 50)",
+    };
+    match (requested, probe.cuda) {
+        (Backend::Vulkan, _) => Ok((true, None)),
+        (_, Some(_)) => Ok((false, None)),
+        (backend, None) if backend.is_cuda() && probe.nvidia_gpu => Err(format!("{flag}: CUDA is not available ({problem}). {install}, or use --backend vulkan.")),
+        (backend, None) if backend.is_cuda() => Err(format!("{flag}: no NVIDIA GPU was found. Use --backend vulkan.")),
+        (Backend::Auto, None) if probe.nvidia_gpu => Ok((true, Some(format!(
+            "WARNING: This NVIDIA GPU supports CUDA, but CUDA was not detected ({problem}). Using the slower Vulkan backend. Install CUDA 12.8 (RTX 30/40) or CUDA 13 (RTX 50) for faster generation."
+        )))),
+        (_, None) => Ok((true, None)),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkerOptions {
     pub port: u16,
@@ -33,13 +101,13 @@ pub struct WorkerOptions {
     pub token: Option<String>,
     pub data: Option<PathBuf>,
     pub weights: Vec<PathBuf>,
-    pub vulkan: bool,
+    pub backend: Backend,
     pub advertise: bool,
 }
 
 impl Default for WorkerOptions {
     fn default() -> Self {
-        Self { port: DEFAULT_PORT, name: None, token: None, data: None, weights: Vec::new(), vulkan: false, advertise: true }
+        Self { port: DEFAULT_PORT, name: None, token: None, data: None, weights: Vec::new(), backend: Backend::Auto, advertise: true }
     }
 }
 
@@ -183,11 +251,27 @@ pub fn run(options: WorkerOptions) -> Result<(), String> {
         eprintln!("Could not initialize diagnostic logging: {error}");
     }
     let roots = crate::weights::worker_weight_roots(&options.weights, &data)?;
+    // Vulkan needs no CUDA probe; the engine then keeps its default toolkit choice.
+    let probed = if options.backend == Backend::Vulkan { Err(String::new()) }
+        else { slopfab::probe_backend(&slopfab::default_dll_path(), options.backend.cuda_version()) };
+    let (vulkan, backend) = match probed {
+        Ok(probe) => {
+            let (vulkan, warning) = choose_backend(options.backend, &probe)?;
+            if let Some(warning) = warning {
+                eprintln!("{warning}");
+                diagnostics::warn("worker", "backend.fallback", &warning, serde_json::json!({}));
+            }
+            (vulkan, if vulkan { "Vulkan" } else { probe.cuda.unwrap_or("CUDA") })
+        }
+        Err(_) if options.backend == Backend::Vulkan => (true, "Vulkan"),
+        // The engine could not load; the worker still answers and reports why.
+        Err(_) => (false, "unavailable"),
+    };
     let worker = Arc::new(Worker {
         id: worker_id(&data)?,
         name: options.name.clone().unwrap_or_else(computer_name),
         token: options.token.clone().filter(|token| !token.is_empty()),
-        vulkan: options.vulkan,
+        vulkan,
         store: Arc::new(FileStore::new(&data, roots.clone())?),
         data,
         runtime: slopfab::SlopfabRuntime::default(),
@@ -198,6 +282,7 @@ pub fn run(options: WorkerOptions) -> Result<(), String> {
     let info = worker.info();
     println!("Slopus worker '{}' ({}) listening on port {}.", info.name, info.id, options.port);
     println!("Engine: {} {}", info.runtime.state, info.runtime.version.as_deref().unwrap_or(""));
+    println!("Backend: {backend}{}", if options.backend == Backend::Auto { " (automatic; override with --backend)" } else { "" });
     println!("Weights: {}", roots.iter().map(|root| root.display().to_string()).collect::<Vec<_>>().join("; "));
     println!("Data: {}", worker.data.display());
     if worker.token.is_some() {
@@ -531,4 +616,44 @@ fn percent_decode(part: &str) -> Result<String, String> {
         }
     }
     String::from_utf8(decoded).map_err(|_| "Upload paths must be UTF-8.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn probe(nvidia_gpu: bool, cuda: Option<&'static str>) -> slopfab::BackendProbe {
+        slopfab::BackendProbe { nvidia_gpu, cuda, cuda_problem: (nvidia_gpu && cuda.is_none()).then(|| "cublas64_12.dll not found".into()) }
+    }
+
+    #[test]
+    fn auto_uses_cuda_when_it_loads_and_warns_before_falling_back_on_nvidia() {
+        assert_eq!(choose_backend(Backend::Auto, &probe(true, Some("CUDA 13"))).unwrap(), (false, None));
+        let (vulkan, warning) = choose_backend(Backend::Auto, &probe(true, None)).unwrap();
+        assert!(vulkan);
+        assert!(warning.unwrap().contains("cublas64_12.dll not found"));
+        assert_eq!(choose_backend(Backend::Auto, &probe(false, None)).unwrap(), (true, None), "AMD and Intel use Vulkan quietly");
+    }
+
+    #[test]
+    fn a_requested_cuda_major_must_load() {
+        assert_eq!(Backend::Cuda13.cuda_version(), "13");
+        assert_eq!(Backend::Cuda12.cuda_version(), "12");
+        assert_eq!(Backend::Auto.cuda_version(), "auto");
+        assert_eq!("CUDA-12".parse::<Backend>().unwrap(), Backend::Cuda12);
+        assert_eq!("cuda13".parse::<Backend>().unwrap(), Backend::Cuda13);
+        assert_eq!(choose_backend(Backend::Cuda12, &probe(true, Some("CUDA 12"))).unwrap(), (false, None));
+        let error = choose_backend(Backend::Cuda13, &probe(true, None)).unwrap_err();
+        assert!(error.starts_with("--backend cuda13") && error.contains("CUDA 13 toolkit"), "{error}");
+    }
+
+    #[test]
+    fn an_explicit_backend_overrides_detection_but_cuda_must_exist() {
+        assert_eq!(choose_backend(Backend::Vulkan, &probe(true, Some("CUDA 12"))).unwrap(), (true, None));
+        assert_eq!(choose_backend(Backend::Cuda, &probe(true, Some("CUDA 12"))).unwrap(), (false, None));
+        assert!(choose_backend(Backend::Cuda, &probe(true, None)).unwrap_err().contains("CUDA is not available"));
+        assert!(choose_backend(Backend::Cuda, &probe(false, None)).unwrap_err().contains("no NVIDIA GPU"));
+        assert_eq!("VULKAN".parse::<Backend>().unwrap(), Backend::Vulkan);
+        assert!("metal".parse::<Backend>().is_err());
+    }
 }
