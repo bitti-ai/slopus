@@ -107,14 +107,6 @@
   overflow-wrap: anywhere;
 }
 
-.release-notes > p:first-child {
-  margin-top: 0;
-  padding-left: var(--space-4);
-  border-left: 3px solid var(--accent);
-  color: var(--text-primary);
-  font-size: var(--text-md);
-}
-
 .release-notes h3 {
   margin: var(--space-5) 0 var(--space-3);
   padding-bottom: var(--space-2);
