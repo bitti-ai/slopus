@@ -6,6 +6,7 @@ pushd "%~dp0" || exit /b 1
 set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"
+set "WORKER_EXE=%ROOT_DIR%\src-tauri\target\release\slopus-worker.exe"
 
 set "SLOPFAB_DIR=%ROOT_DIR%\lib\slopfab"
 
@@ -75,6 +76,9 @@ if not exist "%RELEASE_EXE%" (
   goto :fail
 )
 
+rem The LAN worker is headless and embeds no frontend, so plain cargo is right.
+"%CARGO_EXE%" build --release --manifest-path "%ROOT_DIR%\src-tauri\Cargo.toml" --bin slopus-worker || goto :fail
+
 rem Guard against silently shipping the dev-mode binary again: a production
 rem build embeds the hashed frontend assets, a dev-mode one does not.
 echo.
@@ -100,6 +104,8 @@ copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
 rem Match the installer's resource layout: one DLL beside Slopus.exe.
 copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\slopfab.dll" >nul || goto :fail
 echo        Runtime:   slopfab.dll included.
+copy /Y "%WORKER_EXE%" "%OUTPUT_DIR%\slopus-worker.exe" >nul || goto :fail
+echo        Worker:    slopus-worker.exe included.
 
 call :write_readme "%OUTPUT_DIR%\README.txt"
 echo        Folder:    %OUTPUT_STEM%-portable\
@@ -137,6 +143,11 @@ exit /b 0
 >>"%~1" echo VIDEO GENERATION
 >>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe. Download generator weights in Settings.
 >>"%~1" echo   Model weights are not included. Set their paths in Settings.
+>>"%~1" echo.
+>>"%~1" echo LAN WORKER
+>>"%~1" echo   Run "slopus-worker.exe" from this folder on another computer to generate there.
+>>"%~1" echo   Slopus finds it on the local network; choose it in Settings, Workers.
+>>"%~1" echo   Run "slopus-worker.exe --help" for options such as --weights and --token.
 exit /b 0
 
 :fail
