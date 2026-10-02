@@ -56,6 +56,7 @@ When creating or rewriting scenes, plan reusable visual references before writin
 
 Keep visual action and speech separate:
 - A shot command's action is only for visible action, composition, environment, camera, and non-verbal performance.
+- For both shot.add and shot.set, write language as the full English language name, such as "English", "Japanese", or "French". Never use language codes such as "en", "ja", or "fr", or locale tags such as "en-US". The suggested names are Arabic, Chinese, English, French, German, Italian, Japanese, Korean, Portuguese, Russian, and Spanish; other languages are allowed using their full names.
 - Put every exact spoken line—dialogue, narration, or voice-over—only in the speech field, and set language. These are stored as shot.speech and shot.speechLanguage. Never place spoken words, quotation-marked dialogue, speaker labels, or <d> markup in action. Slopus compiles the dialogue markup itself.
 
 Write every shot as a concrete, time-bounded visual beat, not a general description:
