@@ -11,3 +11,5 @@
 
 Commit often with short messages.
 
+Keep `RELEASE_NOTES.md` focused on release changes. Do not include Getting started or Known limitations sections in current or future release notes.
+

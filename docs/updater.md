@@ -75,6 +75,7 @@ For a local build followed by manual publishing, use the existing steps:
    `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Update the configured
    window title too. Cargo updates its lockfile during the build.
 2. Update `RELEASE_NOTES.md`, which supplies the release notes by default.
+   Keep notes focused on release changes; omit Getting started and Known limitations sections.
    Set `UPDATE_NOTES_FILE` to use another UTF-8 text file instead.
 3. Run `release.cmd`. It builds signed installers, copies their `.sig` files,
    and writes `artifacts/latest.json` with the version, signatures and download URLs.

@@ -33,10 +33,8 @@ it("embeds formatted notes on first launch, then remembers the version across la
   const first = render(<StrictMode><App /></StrictMode>);
   const dialog = screen.getByRole("dialog", { name: title });
   expect(within(dialog).getByRole("heading", { name: "What's new" })).toBeInTheDocument();
-  expect(within(dialog).getByRole("heading", { name: "Known limitations" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("heading", { name: "Fixes and improvements" })).toBeInTheDocument();
   expect(within(dialog).getAllByRole("listitem").length).toBeGreaterThan(10);
-  expect(within(dialog).getByText("24 GB of VRAM or more is recommended").tagName).toBe("STRONG");
-  expect(within(dialog).getByText("Slopus.exe").tagName).toBe("CODE");
   expect(dialog).toContainElement(document.activeElement as HTMLElement);
   expect(hasSeenReleaseNotes()).toBe(true);
   fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
