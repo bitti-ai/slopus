@@ -1,13 +1,11 @@
 use crate::diagnostics;
-use reqwest::{blocking::Client, Url};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{self, OpenOptions},
-    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
-    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, State};
 
@@ -22,6 +20,8 @@ struct Progress { request_id: String, downloaded: u64, total: Option<u64> }
 struct CompletedFile { url: String, bytes: u64 }
 
 pub(crate) mod lora;
+mod download;
+use download::{has_partial_download, transfer};
 
 fn download_url(value: &str) -> Result<Url, String> {
     let mut url = Url::parse(value.trim()).map_err(|_| "Enter an HTTP or HTTPS download URL.".to_string())?;
@@ -96,6 +96,12 @@ fn transfer_from_roots(url: &Url, roots: &[PathBuf], cancelled: &AtomicBool, pro
     if cancelled.load(Ordering::Relaxed) { return Err("Download cancelled.".into()); }
     // Search every location before choosing a destination, including read-only caches.
     if let Some(path) = find_cached_weight(url, roots) { return Ok(path); }
+    // A previous session may have started in a fallback or an older custom folder.
+    for root in roots {
+        if has_partial_download(url, root) && writable_weights(root).is_ok() {
+            return transfer(url, root, cancelled, progress);
+        }
+    }
     transfer(url, &weights_directory(roots)?, cancelled, progress)
 }
 
@@ -116,61 +122,6 @@ pub async fn find_downloaded_weights(app: AppHandle, urls: Vec<String>) -> Resul
     tauri::async_runtime::spawn_blocking(move || {
         Ok(find_downloaded(urls, &configured_weight_roots(&app)?))
     }).await.map_err(|error| error.to_string())?
-}
-
-fn transfer(url: &Url, directory: &Path, cancelled: &AtomicBool, mut progress: impl FnMut(u64, Option<u64>)) -> Result<String, String> {
-    let destination = directory.join(destination_name(url));
-    if cached_file(&destination, url) { return Ok(destination.to_string_lossy().into_owned()); }
-    let mut random = [0u8; 16];
-    getrandom::fill(&mut random).map_err(|error| error.to_string())?;
-    let temporary = directory.join(format!(".download-{:x}.part", u128::from_le_bytes(random)));
-    let result = (|| {
-        let client = Client::builder().connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(24 * 60 * 60)).build().map_err(|error| error.to_string())?;
-        let mut response = client.get(url.clone()).header("Accept-Encoding", "identity").send()
-            .and_then(|response| response.error_for_status()).map_err(|error| format!("Download failed: {error}"))?;
-        if response.status() != reqwest::StatusCode::OK { return Err("The server did not return a complete file.".into()); }
-        if response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok())
-            .is_some_and(|value| value.starts_with("text/html")) {
-            return Err("The URL returned a web page instead of a weight file. Use a direct download link.".into());
-        }
-        let total = response.content_length();
-        let mut file = OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(|error| error.to_string())?;
-        let mut downloaded = 0u64;
-        let mut buffer = vec![0u8; 1024 * 1024];
-        let mut last_progress = Instant::now();
-        progress(0, total);
-        loop {
-            if cancelled.load(Ordering::Relaxed) { return Err("Download cancelled.".into()); }
-            let count = response.read(&mut buffer).map_err(|error| format!("Download interrupted: {error}"))?;
-            if count == 0 { break; }
-            file.write_all(&buffer[..count]).map_err(|error| format!("Could not write weights: {error}"))?;
-            downloaded += count as u64;
-            if last_progress.elapsed() >= Duration::from_millis(200) {
-                progress(downloaded, total);
-                last_progress = Instant::now();
-            }
-        }
-        if downloaded == 0 || total.is_some_and(|total| downloaded != total) {
-            return Err("The download is incomplete. Try downloading again.".into());
-        }
-        if cancelled.load(Ordering::Relaxed) { return Err("Download cancelled.".into()); }
-        file.sync_all().map_err(|error| error.to_string())?;
-        drop(file);
-        // Only a successful, complete transfer receives the final filename.
-        if destination.exists() {
-            if cached_file(&destination, url) { return Ok(destination.to_string_lossy().into_owned()); }
-            fs::remove_file(&destination).map_err(|error| error.to_string())?;
-        }
-        fs::rename(&temporary, &destination).map_err(|error| error.to_string())?;
-        let record = CompletedFile { url: url.to_string(), bytes: downloaded };
-        fs::write(destination.with_extension("complete.json"), serde_json::to_vec(&record).map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())?;
-        progress(downloaded, Some(downloaded));
-        Ok(destination.to_string_lossy().into_owned())
-    })();
-    let _ = fs::remove_file(&temporary);
-    result
 }
 
 #[tauri::command]
@@ -281,6 +232,7 @@ pub async fn remove_downloaded_weights(app: AppHandle, paths: Vec<String>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
 
     #[test]
@@ -410,7 +362,10 @@ mod tests {
             let folder = tempfile::tempdir().unwrap();
             let url = server(response);
             assert!(transfer(&url, folder.path(), &AtomicBool::new(cancelled), |_, _| {}).is_err());
-            assert_eq!(fs::read_dir(folder.path()).unwrap().count(), 0);
+            let destination = folder.path().join(destination_name(&url));
+            assert!(!destination.exists());
+            assert!(!destination.with_extension("complete.json").exists());
+            assert!(find_downloaded(vec![url.to_string()], &[folder.path().to_path_buf()]).is_empty());
         }
     }
 
