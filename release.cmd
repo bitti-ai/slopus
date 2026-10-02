@@ -79,8 +79,12 @@ rem after, and kept there afterwards so the build is runnable without unpacking.
 set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
 
 echo.
-echo [1/5] Installing locked frontend dependencies...
+echo [1/6] Installing locked frontend dependencies...
 call npm ci || goto :fail
+
+echo.
+echo [2/6] Running pre-release tests...
+call npm run test:release || goto :fail
 
 rem `npm run tauri build` - NOT `cargo build --release`. Plain cargo compiles the
 rem binary but never runs the Tauri CLI, so the app keeps its dev configuration:
@@ -89,7 +93,7 @@ rem built frontend. The result launches to ERR_CONNECTION_REFUSED on any machine
 rem without a dev server running. The CLI runs the frontend build, embeds dist/
 rem into the binary, and produces the installers.
 echo.
-echo [2/5] Building the release application and installers...
+echo [3/6] Building the release application and installers...
 rem Use the supplied password or an empty one without an interactive prompt.
 call npm run tauri build -- --ci || goto :fail
 
@@ -102,12 +106,12 @@ if not exist "%RELEASE_EXE%" (
 rem Guard against silently shipping the dev-mode binary again: a production
 rem build embeds the hashed frontend assets, a dev-mode one does not.
 echo.
-echo [3/5] Verifying the frontend is embedded...
+echo [4/6] Verifying the frontend is embedded...
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $asset=(Get-ChildItem -LiteralPath (Join-Path $env:ROOT_DIR 'dist\assets') -Filter '*.js' | Select-Object -First 1).BaseName; if (-not $asset) { Write-Host 'ERROR: no built frontend found in dist/assets.'; exit 1 }; $bytes=[IO.File]::ReadAllBytes($env:RELEASE_EXE); $text=[Text.Encoding]::ASCII.GetString($bytes); if ($text.Contains($asset)) { Write-Host ('       OK - ' + $asset + ' is embedded in the executable.'); exit 0 }; Write-Host ''; Write-Host 'ERROR: the executable does not contain the built frontend. It would launch'; Write-Host '       to ERR_CONNECTION_REFUSED. This happens when the binary is built with'; Write-Host '       cargo directly instead of through the Tauri CLI.'; exit 1"
 if errorlevel 1 goto :fail
 
 echo.
-echo [4/5] Collecting artifacts...
+echo [5/6] Collecting artifacts...
 if not exist "%ARTIFACTS_DIR%" mkdir "%ARTIFACTS_DIR%"
 
 rem Pick the newest bundle of each kind rather than hard-coding Tauri's file
@@ -154,7 +158,7 @@ call :write_readme "%OUTPUT_DIR%\README.txt"
 echo        Folder:    %OUTPUT_STEM%-portable\
 
 echo.
-echo [5/5] Creating the portable archive...
+echo [6/6] Creating the portable archive...
 rem Archive without the marker so distributed copies can check for updates.
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
 rem Disable updates only in the unpacked folder used for local testing.
@@ -185,6 +189,7 @@ exit /b 0
 
 :help
 echo Usage: release.cmd [--publish]
+echo   Run pre-release tests before building; a failed test stops the release.
 echo   Build signed installers, updater manifest and portable ZIP.
 echo   --publish uploads a draft to GitHub, then publishes it as latest.
 echo   Requires gh auth login and a pushed version tag matching this commit.
