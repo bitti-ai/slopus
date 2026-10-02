@@ -10,7 +10,7 @@ use std::{
     sync::{atomic::AtomicBool, Mutex},
 };
 
-pub(crate) struct FileStore {
+pub struct FileStore {
     uploads: PathBuf,
     weight_roots: Vec<PathBuf>,
     /// One download at a time, like the desktop app; parallel clients that
@@ -19,7 +19,7 @@ pub(crate) struct FileStore {
 }
 
 impl FileStore {
-    pub(crate) fn new(data: &Path, weight_roots: Vec<PathBuf>) -> Result<Self, String> {
+    pub fn new(data: &Path, weight_roots: Vec<PathBuf>) -> Result<Self, String> {
         let uploads = data.join("uploads");
         fs::create_dir_all(&uploads).map_err(|error| format!("Could not create {}: {error}", uploads.display()))?;
         Ok(Self { uploads, weight_roots, downloads: Mutex::new(()) })
@@ -37,7 +37,7 @@ impl FileStore {
     }
 
     /// Upload entries this worker does not hold yet.
-    pub(crate) fn missing(&self, files: &[FileRef]) -> Result<Vec<(String, String)>, String> {
+    pub fn missing(&self, files: &[FileRef]) -> Result<Vec<(String, String)>, String> {
         let mut missing = Vec::new();
         for file in files {
             if let FileRef::Upload { key, entries, .. } = file {
@@ -54,7 +54,7 @@ impl FileStore {
 
     /// Streams one uploaded entry to disk. It only takes its final name once
     /// every announced byte has arrived.
-    pub(crate) fn receive(&self, key: &str, entry: &str, bytes: u64, body: &mut dyn Read) -> Result<(), String> {
+    pub fn receive(&self, key: &str, entry: &str, bytes: u64, body: &mut dyn Read) -> Result<(), String> {
         let destination = self.entry_path(key, entry)?;
         let directory = destination.parent().ok_or("Invalid upload path.")?;
         fs::create_dir_all(directory).map_err(|error| error.to_string())?;
@@ -80,7 +80,7 @@ impl FileStore {
 
     /// The local path for one file, without network access. Fails when the
     /// file still has to be uploaded or downloaded.
-    pub(crate) fn resolve(&self, file: &FileRef) -> Result<PathBuf, String> {
+    pub fn resolve(&self, file: &FileRef) -> Result<PathBuf, String> {
         match file {
             FileRef::Url { url, lora } => {
                 let path = weights::cached_weight(url, &self.weight_roots)
@@ -107,7 +107,7 @@ impl FileStore {
     }
 
     /// Downloads and prepares everything `files` names that is not here yet.
-    pub(crate) fn prepare(
+    pub fn prepare(
         &self,
         files: &[FileRef],
         cancelled: &AtomicBool,

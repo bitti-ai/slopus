@@ -8,10 +8,10 @@ use std::{
 
 /// A worker seen on the network. Its HTTP info is fetched separately.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Announced {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) addresses: Vec<SocketAddr>,
+pub struct Announced {
+    pub id: String,
+    pub name: String,
+    pub addresses: Vec<SocketAddr>,
 }
 
 fn host_label(name: &str) -> String {
@@ -40,7 +40,7 @@ fn address_rank(address: &SocketAddr) -> (u8, SocketAddr) {
 }
 
 /// Keeps announcing this worker for as long as the returned daemon lives.
-pub(crate) fn advertise(info: &WorkerInfo, port: u16) -> Result<ServiceDaemon, String> {
+pub fn advertise(info: &WorkerInfo, port: u16) -> Result<ServiceDaemon, String> {
     let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
     let host = format!("{}-{}.local.", host_label(&super::server::computer_name()), &info.id[..6.min(info.id.len())]);
     let protocol = PROTOCOL_VERSION.to_string();
@@ -59,7 +59,7 @@ pub(crate) fn advertise(info: &WorkerInfo, port: u16) -> Result<ServiceDaemon, S
 
 /// Browses in the background and calls `changed` with every worker currently
 /// announced whenever that set changes.
-pub(crate) fn browse(changed: impl Fn(Vec<Announced>) + Send + 'static) -> Result<ServiceDaemon, String> {
+pub fn browse(changed: impl Fn(Vec<Announced>) + Send + 'static) -> Result<ServiceDaemon, String> {
     let daemon = ServiceDaemon::new().map_err(|error| error.to_string())?;
     let events = daemon.browse(SERVICE_TYPE).map_err(|error| error.to_string())?;
     std::thread::Builder::new()

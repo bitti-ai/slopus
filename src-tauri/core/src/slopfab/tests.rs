@@ -2,7 +2,7 @@ use super::{
     config::*, events::stage_name, ffi::RequestHandle, h3::*, planning::*, platform::*,
     references::ReferenceVideos, *,
 };
-use crate::project::{ProviderOption, ProviderSetting};
+use crate::settings::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]

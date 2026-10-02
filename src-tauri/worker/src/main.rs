@@ -3,7 +3,7 @@
 //! Runs the same generation code as the desktop app and announces itself with
 //! mDNS, so Slopus lists it under Settings → Workers. Place it beside
 //! slopfab.dll, like Slopus.exe.
-use slopus_lib::{run_worker, WorkerOptions, DEFAULT_WORKER_PORT};
+use slopus_core::worker::{run as run_worker, WorkerOptions, DEFAULT_PORT as DEFAULT_WORKER_PORT};
 use std::path::PathBuf;
 
 const USAGE: &str = r"Usage: slopus-worker [options]

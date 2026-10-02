@@ -77,9 +77,7 @@ pub(super) fn configure_request(
         api.set_continuation_file(
             handle,
             path,
-            crate::generation::models::h3::MODEL
-                .capabilities
-                .continuation_overlap,
+            crate::models::H3_CAPABILITIES.continuation_overlap,
         )?;
     }
     if purpose == RequestPurpose::Generate {
@@ -153,6 +151,6 @@ pub(super) fn configure_request(
 
 // https://huggingface.co/Viggle/Viggle-Animate/raw/main/assets/fixed_prompt.txt
 pub(super) const ANIMATE_PROMPT: &str =
-    include_str!("../../assets/viggle-animate-fixed-prompt.txt");
+    include_str!("../../../assets/viggle-animate-fixed-prompt.txt");
 // SlopFab rounds up to 17*k + 5 frames but rejects Animate plans over 360.
 pub(super) const ANIMATE_MAX_ALIGNED_FRAMES: i32 = (360 - 5) / 17 * 17 + 5;

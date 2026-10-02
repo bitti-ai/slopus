@@ -1,6 +1,14 @@
+# One version for the app and the worker. scripts/updater-manifest.mjs checks
+# it against package.json and tauri.conf.json.
+[workspace.package]
+version = "0.2.0"
+
+[workspace]
+members = ["core", "worker"]
+
 [package]
 name = "slopus"
-version = "0.2.0"
+version.workspace = true
 description = "An AI media harness for planning, generating, and editing media locally."
 authors = ["Slopus"]
 edition = "2021"
@@ -31,8 +39,9 @@ jpeg-encoder = "0.6"
 image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }
 tokio = { version = "1", features = ["rt", "time", "net", "macros"] }
 tauri-plugin-window-state = "2"
-# LAN generation workers: the worker serves HTTP and both sides use mDNS.
-tiny_http = "0.12"
+# The generation runtime and LAN worker protocol, shared with slopus-worker.
+slopus-core = { path = "core" }
+# The worker client browses for workers with mDNS.
 mdns-sd = "0.21"
 
 [target.'cfg(windows)'.dependencies]
@@ -57,3 +66,4 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage
 
 [dev-dependencies]
 tempfile = "3"
+tiny_http = "0.12"

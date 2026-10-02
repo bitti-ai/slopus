@@ -1,7 +1,7 @@
 //! The wire contract between Slopus and a LAN worker. Both sides compile this
 //! file, so a field renamed here is renamed for both.
 use crate::{
-    project::{ProviderOption, ProviderSetting},
+    settings::{ProviderOption, ProviderSetting},
     slopfab::{GenerationRequest, GpuDevice},
 };
 use serde::{Deserialize, Serialize};

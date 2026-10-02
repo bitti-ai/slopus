@@ -7,7 +7,7 @@ use super::{
     references::ReferenceVideos,
     types::*,
 };
-use crate::{diagnostics, project::ProviderSetting, rendered};
+use crate::{diagnostics, settings::ProviderSetting, rendered};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{

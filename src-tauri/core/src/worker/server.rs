@@ -8,8 +8,8 @@ use super::{
 };
 use crate::{
     diagnostics,
-    media::artifacts::generated_file_stem,
-    project::{ProviderOption, ProviderSetting},
+    names::generated_file_stem,
+    settings::{ProviderOption, ProviderSetting},
     rendered, slopfab,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

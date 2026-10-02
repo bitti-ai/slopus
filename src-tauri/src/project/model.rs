@@ -118,21 +118,8 @@ pub(crate) struct AgentMessage {
     pub(crate) created_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct ProviderSetting {
-    pub(crate) enabled: bool,
-    pub(crate) model: Option<String>,
-    #[serde(default)]
-    pub(crate) options: BTreeMap<String, ProviderOption>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ProviderOption {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-}
+// Shared with the LAN worker, which receives provider settings with each job.
+pub(crate) use slopus_core::settings::{ProviderOption, ProviderSetting};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

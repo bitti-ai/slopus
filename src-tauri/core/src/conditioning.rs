@@ -89,7 +89,7 @@ pub fn prepare(source: &Path) -> Result<PathBuf, String> {
 }
 
 #[cfg(test)]
-pub(crate) fn fixture(path: &Path) {
+pub fn fixture(path: &Path) {
     let header = serde_json::to_vec(&json!({
         "prompt_embeds": { "dtype": "BF16", "shape": [1, TOKENS, 5120], "data_offsets": [0, VALUES * 2] },
         "text_token_tags": { "dtype": "I64", "shape": [TOKENS], "data_offsets": [VALUES * 2, VALUES * 2 + TOKENS * 8] },

@@ -1,7 +1,7 @@
 //! The desktop side of LAN workers: which worker is selected, how to reach it,
 //! and running a generation there as if the native queue were local. The
 //! webview keeps using the same commands and events either way.
-use super::{
+use slopus_core::worker::{
     discovery::{self, Announced},
     protocol::*,
 };
@@ -10,8 +10,8 @@ use crate::{
     project::ProviderSetting,
     rendered,
     slopfab::{self, GenerationRequest, GpuDevice},
-    weights,
 };
+use slopus_core::weights;
 use reqwest::blocking::{Body, Client, Response};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{

@@ -3425,6 +3425,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "slopus-core",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3437,6 +3438,32 @@ dependencies = [
  "webview2-com",
  "windows",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "slopus-core"
+version = "0.2.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "image",
+ "jpeg-encoder",
+ "libloading 0.8.9",
+ "mdns-sd",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tiny_http",
+ "windows",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "slopus-worker"
+version = "0.2.0"
+dependencies = [
+ "slopus-core",
+ "tauri-winres",
 ]
 
 [[package]]

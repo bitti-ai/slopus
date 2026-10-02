@@ -11,7 +11,7 @@ use super::{
     references::ReferenceVideos,
     types::*,
 };
-use crate::project::ProviderSetting;
+use crate::settings::ProviderSetting;
 use getrandom::fill as fill_random;
 use std::collections::BTreeMap;
 
@@ -66,7 +66,7 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
     }
-    let limits = crate::generation::models::h3::MODEL.capabilities;
+    let limits = crate::models::H3_CAPABILITIES;
     if request.reference_paths.len() > limits.max_image_references
         || request.reference_video_ids.len() > limits.max_video_references
         || request.reference_count() > limits.max_references
@@ -114,7 +114,7 @@ pub(super) fn scene_frame_window(
     if request.frames <= 0 {
         return Err("Continuation needs a positive frame count.".into());
     }
-    let limits = crate::generation::models::h3::MODEL.capabilities;
+    let limits = crate::models::H3_CAPABILITIES;
     let frames = request
         .frames
         .checked_add(limits.frame_stride - 1)

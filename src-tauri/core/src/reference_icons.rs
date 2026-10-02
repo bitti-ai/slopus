@@ -24,7 +24,7 @@ fn builtin_path(data_directory: &Path, id: &str) -> Result<PathBuf, String> {
 
 pub fn save_builtin(data_directory: &Path, id: &str, rgba: &[u8]) -> Result<(), String> {
     let path = builtin_path(data_directory, id)?;
-    crate::export::write_atomically(&path, &encode_jpeg(rgba)?)
+    crate::storage::atomic::write_atomically(&path, &encode_jpeg(rgba)?)
 }
 
 pub fn read_builtin(data_directory: &Path, id: &str) -> Result<Vec<u8>, String> {

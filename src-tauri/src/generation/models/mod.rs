@@ -6,16 +6,7 @@ pub(crate) struct SceneDefaults {
     pub duration_seconds: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ModelCapabilities {
-    pub max_scene_seconds: f64,
-    pub min_steps: i32,
-    pub max_image_references: usize,
-    pub max_video_references: usize,
-    pub max_references: usize,
-    pub continuation_overlap: i32,
-    pub frame_stride: i32,
-}
+pub(crate) use slopus_core::models::ModelCapabilities;
 
 pub(crate) struct ModelDefinition {
     pub defaults: SceneDefaults,

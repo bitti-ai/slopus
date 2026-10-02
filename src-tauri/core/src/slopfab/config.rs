@@ -1,5 +1,5 @@
 use super::{default_dll_path, platform::ComputePlatform, types::GenerationRequest};
-use crate::project::{ProviderOption, ProviderSetting};
+use crate::settings::{ProviderOption, ProviderSetting};
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
 

@@ -1,5 +1,5 @@
 use super::{config::Configuration, ffi, platform::*, types::*};
-use crate::project::ProviderSetting;
+use crate::settings::ProviderSetting;
 use std::{collections::BTreeMap, path::Path};
 
 fn model_statuses(configuration: &Configuration, available: impl Fn(&Path) -> bool) -> Vec<ModelStatus> {

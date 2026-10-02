@@ -1,5 +1,5 @@
 use super::{config::Configuration, ffi};
-use crate::project::ProviderSetting;
+use crate::settings::ProviderSetting;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{atomic::Ordering, Arc, Mutex},

@@ -3,13 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 #[cfg(not(windows))]
-pub(crate) fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
+pub fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
     fs::rename(temporary, destination)?;
     fs::File::open(destination.parent().expect("project file has a parent"))?.sync_all()
 }
 
 #[cfg(windows)]
-pub(crate) fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
+pub fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::{
         Foundation::GetLastError,
@@ -59,7 +59,7 @@ impl Drop for TemporaryFile {
     }
 }
 
-pub(crate) fn write_with_replacer<F>(
+pub fn write_with_replacer<F>(
     destination: &Path,
     bytes: &[u8],
     replacer: F,
@@ -99,7 +99,7 @@ where
     replacer(&temporary.0, destination)
 }
 
-pub(crate) fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
+pub fn write_atomically(destination: &Path, bytes: &[u8]) -> Result<(), String> {
     write_with_replacer(destination, bytes, atomic_replace)
         .map_err(|error| format!("Could not save {}: {error}", destination.display()))
 }

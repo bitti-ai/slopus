@@ -1,0 +1,15 @@
+[package]
+name = "slopus-worker"
+version.workspace = true
+description = "Headless Slopus generation worker for the local network."
+authors = ["Slopus"]
+edition = "2021"
+rust-version = "1.87"
+
+[dependencies]
+# Only the shared runtime: no UI framework at build or run time.
+slopus-core = { path = "../core" }
+
+[target.'cfg(windows)'.build-dependencies]
+# Windows file version and product name, matching Slopus.exe.
+tauri-winres = "0.3"

@@ -78,8 +78,8 @@ if not exist "%RELEASE_EXE%" (
   goto :fail
 )
 
-rem The LAN worker is headless and embeds no frontend, so plain cargo is right.
-"%CARGO_EXE%" build --release --manifest-path "%ROOT_DIR%\src-tauri\Cargo.toml" --bin slopus-worker || goto :fail
+rem The LAN worker is its own crate on slopus-core, without Tauri, so plain cargo is right.
+"%CARGO_EXE%" build --release --manifest-path "%ROOT_DIR%\src-tauri\Cargo.toml" -p slopus-worker || goto :fail
 
 rem Guard against silently shipping the dev-mode binary again: a production
 rem build embeds the hashed frontend assets, a dev-mode one does not.
