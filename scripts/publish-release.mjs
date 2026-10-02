@@ -57,6 +57,7 @@ export function releaseFiles(root, version) {
   }
   if (!manifest.platforms[`${target}-nsis`]) throw new Error('Missing NSIS updater target.');
   names.add(`${stem}-portable.zip`);
+  names.add(`${stem}-worker.zip`);
   // Upload the manifest last. Only this explicit list can become release assets.
   names.add('latest.json');
   const files = [...names].map((name) => {

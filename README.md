@@ -47,7 +47,7 @@ Local video generation requires separately installed model weights and GPU suppo
 
 ### Generating on another computer
 
-Copy the portable Slopus folder (it contains `slopus-worker.exe` and `slopfab.dll`) to a computer with a capable GPU on the same network and run:
+Unpack the Slopus worker package (`Slopus-<version>-windows-x64-worker.zip`, containing `slopus-worker.exe` and `slopfab.dll`) on a computer with a capable GPU on the same network and run:
 
 ```
 slopus-worker.exe --weights D:\Models

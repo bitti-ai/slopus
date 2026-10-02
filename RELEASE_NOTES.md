@@ -11,7 +11,7 @@ This alpha update adds still image projects, new scene types, and a rebuilt Wind
 - Project-wide Undo and Redo (Ctrl+Z, Ctrl+Y) for edits made in any view, by the agent, or in project settings.
 - Rebuilt Generator, References, Timeline, Export and Settings screens. The Generator is a board of scenes and shot tiles; References has Icons and Details views with multi-select; the Timeline gains zoom, keyboard shortcuts and context menus.
 - The agent is a docked, resizable pane that keeps running while hidden.
-- LAN workers: run `slopus-worker` on another computer and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves, local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
+- LAN workers: unpack the new Slopus worker package on another computer, run `slopus-worker`, and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves, local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
 - The Work queue and Agent buttons show when work is under way, and exports keep running in the background.
 - Reference images can be paged through and removed, and effects can be bypassed without removing them.
 

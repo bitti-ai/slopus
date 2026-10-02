@@ -55,6 +55,8 @@ set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
 rem The portable layout is staged straight into the folder the zip is named
 rem after, and kept there afterwards so the build is runnable without unpacking.
 set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
+set "WORKER_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker.zip"
+set "WORKER_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker"
 
 echo.
 echo [1/5] Installing locked frontend dependencies...
@@ -104,8 +106,6 @@ copy /Y "%RELEASE_EXE%" "%OUTPUT_DIR%\Slopus.exe" >nul || goto :fail
 rem Match the installer's resource layout: one DLL beside Slopus.exe.
 copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%OUTPUT_DIR%\slopfab.dll" >nul || goto :fail
 echo        Runtime:   slopfab.dll included.
-copy /Y "%WORKER_EXE%" "%OUTPUT_DIR%\slopus-worker.exe" >nul || goto :fail
-echo        Worker:    slopus-worker.exe included.
 
 call :write_readme "%OUTPUT_DIR%\README.txt"
 echo        Folder:    %OUTPUT_STEM%-portable\
@@ -117,11 +117,14 @@ powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop
 rem Disable updates only in the unpacked folder used for local testing.
 > "%OUTPUT_DIR%\slopus-portable" echo Local test build - automatic updates disabled.
 if errorlevel 1 goto :fail
+call :package_worker || goto :fail
 
 echo.
 echo Package complete.
 echo   %OUTPUT_ZIP%
 echo   %OUTPUT_DIR%\
+echo   %WORKER_ZIP%
+echo   %WORKER_DIR%\
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
@@ -130,6 +133,33 @@ echo The portable app requires WebView2 to be installed already.
 echo Run release.cmd to also build the setup executable and MSI installer.
 echo.
 popd
+exit /b 0
+
+:package_worker
+rem The LAN worker ships as its own package: the headless worker and the
+rem runtime it loads, nothing else. Copy it to the computer that generates.
+if exist "%WORKER_DIR%" rd /s /q "%WORKER_DIR%"
+if exist "%WORKER_DIR%" (
+  echo ERROR: could not clear %WORKER_DIR%.
+  echo        Close anything running out of that folder and retry.
+  exit /b 1
+)
+mkdir "%WORKER_DIR%" || exit /b 1
+copy /Y "%WORKER_EXE%" "%WORKER_DIR%\slopus-worker.exe" >nul || exit /b 1
+copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%WORKER_DIR%\slopfab.dll" >nul || exit /b 1
+> "%WORKER_DIR%\README.txt" echo Slopus worker %APP_VERSION% ^(windows-%PACKAGE_ARCH%^)
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo Run "slopus-worker.exe" to let Slopus generate on this computer over the local network.
+>>"%WORKER_DIR%\README.txt" echo Slopus finds it automatically; choose it in Settings, Workers. Allow it through Windows Firewall when asked.
+>>"%WORKER_DIR%\README.txt" echo Keep slopfab.dll beside slopus-worker.exe.
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo WEIGHTS
+>>"%WORKER_DIR%\README.txt" echo   Weights with download links are downloaded here on first use. Add folders that already
+>>"%WORKER_DIR%\README.txt" echo   hold Slopus downloads with --weights. Other model files are sent from Slopus.
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo Run "slopus-worker.exe --help" for options such as --port, --token and --weights.
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:WORKER_DIR '*') -DestinationPath $env:WORKER_ZIP -CompressionLevel Optimal -Force" || exit /b 1
+echo        Worker:    %OUTPUT_STEM%-worker\
 exit /b 0
 
 :write_readme
@@ -145,9 +175,7 @@ exit /b 0
 >>"%~1" echo   Model weights are not included. Set their paths in Settings.
 >>"%~1" echo.
 >>"%~1" echo LAN WORKER
->>"%~1" echo   Run "slopus-worker.exe" from this folder on another computer to generate there.
->>"%~1" echo   Slopus finds it on the local network; choose it in Settings, Workers.
->>"%~1" echo   Run "slopus-worker.exe --help" for options such as --weights and --token.
+>>"%~1" echo   To generate on another computer, run the separate Slopus worker package there.
 exit /b 0
 
 :fail
