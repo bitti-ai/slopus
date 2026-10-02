@@ -1,4 +1,4 @@
-# Slopus 0.2.0
+# Slopus 0.2.1
 
 This alpha update adds still image projects, new scene types, and a rebuilt Windows 11–style interface with project-wide undo.
 
