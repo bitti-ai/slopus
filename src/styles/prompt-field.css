@@ -58,7 +58,7 @@
 .prompt-chip {
   display: inline;
   margin-inline: 1px;
-  padding: 1px var(--space-2);
+  padding: 0 var(--space-2);
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-pill);
   color: var(--accent-on-soft);
