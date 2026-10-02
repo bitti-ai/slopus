@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { markReleaseNotesSeen } from "./lib/releaseNotes";
 import { ProjectCard, relativeDate } from "./components/ProjectCard";
 import { chooseOption, comboValue, optionNames } from "./components/workspace/comboTestUtils";
 import { installBrowserGuards } from "./lib/nativeShell";
@@ -62,7 +63,7 @@ describe("how long ago a project was edited", () => {
 });
 
 describe("project library controls", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => { localStorage.clear(); markReleaseNotesSeen(); });
   afterEach(cleanup);
 
   it("loads a saved image project with a generated cover and no timeline clips", async () => {

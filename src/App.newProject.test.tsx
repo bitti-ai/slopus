@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
+import { markReleaseNotesSeen } from "./lib/releaseNotes";
 import type { ProjectConfig } from "./lib/project";
 import type { NewProjectFolder } from "./lib/persistence";
 
@@ -15,6 +16,7 @@ vi.mock("./lib/runtime", async (original) => ({ ...await original<typeof import(
 let selected: NewProjectFolder | null;
 beforeEach(() => {
   localStorage.clear(); vi.clearAllMocks();
+  markReleaseNotesSeen();
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   selected = { folderPath: "D:\\tmp\\Folder name", error: null };
   vi.mocked(invoke).mockImplementation(async (command, args) => {

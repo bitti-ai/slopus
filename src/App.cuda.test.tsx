@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
+import { markReleaseNotesSeen } from "./lib/releaseNotes";
 import { getRuntimeStatus, type RuntimeStatus } from "./lib/runtime";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
@@ -24,6 +25,7 @@ const detected: RuntimeStatus = {
 
 beforeEach(() => {
   localStorage.clear();
+  markReleaseNotesSeen();
   vi.clearAllMocks();
   vi.mocked(invoke).mockResolvedValue(undefined);
   vi.mocked(getRuntimeStatus).mockResolvedValue(detected);

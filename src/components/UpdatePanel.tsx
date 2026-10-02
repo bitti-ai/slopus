@@ -2,7 +2,7 @@ import { Download32, Refresh32, Reset32, Success32 } from "./ui/icons";
 import { useSyncExternalStore, type ReactNode } from "react";
 import type { AppUpdater } from "../lib/updater";
 import { APP_CHANNEL, APP_VERSION } from "../lib/version";
-import { Expander, InfoBar, ProgressBar, ProgressRing } from "./ui";
+import { Expander, InfoBar, ProgressBar, ProgressRing, SettingsCard } from "./ui";
 
 type UpdaterState = ReturnType<AppUpdater["getSnapshot"]>;
 
@@ -48,7 +48,7 @@ function statusTitle(state: UpdaterState): string {
   }
 }
 
-export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blockReason: () => string | null }) {
+export function UpdatePanel({ updater, blockReason, onOpenReleaseNotes }: { updater: AppUpdater; blockReason: () => string | null; onOpenReleaseNotes?: () => void }) {
   const state = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
   const busy = ["checking", "downloading", "installing"].includes(state.stage);
   const blocked = blockReason();
@@ -89,6 +89,9 @@ export function UpdatePanel({ updater, blockReason }: { updater: AppUpdater; blo
         {action && <div className="update-card__action">{action}</div>}
       </div>
       {state.error && <InfoBar severity="error" message={state.error} />}
+      {onOpenReleaseNotes && <SettingsCard header="Release notes" description={`See what's new in Slopus ${APP_VERSION}`}>
+        <button type="button" className="secondary-button" onClick={onOpenReleaseNotes}>View release notes</button>
+      </SettingsCard>}
       {state.version && blocked && state.stage !== "restart" && !transferring && <InfoBar severity="warning" message={blocked} />}
       {state.stage === "restart" && blocked && <InfoBar severity="warning" message={blocked} />}
       {state.notes && (

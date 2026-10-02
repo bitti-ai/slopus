@@ -2,6 +2,8 @@ import { WorkQueue, isWorkActive, projectQueueKey } from "./lib/workQueue";
 import { WorkQueuePanel } from "./components/WorkQueuePanel";
 import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerationDialog";
 import { CudaSetupDialog } from "./components/CudaSetupDialog";
+import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
+import { hasSeenReleaseNotes } from "./lib/releaseNotes";
 import { missingCudaDownload } from "./lib/cudaSupport";
 import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
 import { Add16, FolderOpen16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, Search16, Search32, Settings16, WorkQueue16 } from "./components/ui/icons";
@@ -92,6 +94,7 @@ function App() {
      the engine paths, and the Generator would otherwise go on reporting the
      missing weights the user just pointed it at until they reopened it. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(() => !hasSeenReleaseNotes());
   const [settingsInitialTab, setSettingsInitialTab] = useState<"engine" | "updates">("engine");
   const [updater] = useState(() => new AppUpdater());
   const updateState = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
@@ -104,7 +107,7 @@ function App() {
       ? "Finish the current project action before installing an update."
       : workQueue.updateBlockReason();
   const updateBlockReason = useCallback(() => updateGuard.current(), []);
-  const updatePanel = <UpdatePanel updater={updater} blockReason={updateBlockReason} />;
+  const updatePanel = <UpdatePanel updater={updater} blockReason={updateBlockReason} onOpenReleaseNotes={() => setReleaseNotesOpen(true)} />;
   const [settingsRevision, setSettingsRevision] = useState(0);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const queueButton = useRef<HTMLButtonElement>(null);
@@ -302,9 +305,10 @@ function App() {
   useShortcut("Alt+ArrowLeft", closeSettings, { enabled: settingsOpen });
 
   const queueFlyout = <WorkQueuePanel queue={workQueue} items={workItems} open={workQueueOpen} anchor={settingsOpen ? settingsQueueButton : queueButton} onClose={() => setWorkQueueOpen(false)} />;
-  const cudaNotice = cudaDownload && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
+  const releaseNotesDialog = releaseNotesOpen ? <ReleaseNotesDialog onClose={() => setReleaseNotesOpen(false)} /> : null;
+  const cudaNotice = cudaDownload && !releaseNotesOpen && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
     ? <CudaSetupDialog download={cudaDownload} onContinue={() => setCudaNoticeDismissed(true)} /> : null;
-  const iconConfirmation = iconConfirmationCount > 0 && !cudaNotice && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
+  const iconConfirmation = iconConfirmationCount > 0 && !releaseNotesOpen && !cudaNotice && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
     ? <ReferenceIconGenerationDialog count={iconConfirmationCount} onAnswer={workQueue.answerIconConfirmation} /> : null;
 
   const queueTrigger = (ref: RefObject<HTMLButtonElement>) => (
@@ -352,6 +356,7 @@ function App() {
       {queueFlyout}
       {iconConfirmation}
       {cudaNotice}
+      {releaseNotesDialog}
     </div>;
   }
 
@@ -486,6 +491,7 @@ function App() {
       {projectToDelete && <DeleteProjectDialog project={projectToDelete} deleting={deletingProject} onConfirm={() => void deleteNow(projectToDelete)} onCancel={() => setProjectToDelete(null)} />}
       {iconConfirmation}
       {cudaNotice}
+      {releaseNotesDialog}
     </div>
   );
 }
