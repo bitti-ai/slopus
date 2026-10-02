@@ -80,6 +80,7 @@ rem after, and kept there afterwards so the build is runnable without unpacking.
 set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
 set "WORKER_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker.zip"
 set "WORKER_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker"
+set "LINUX_WORKER_NAME=Slopus-%APP_VERSION%-linux-x64-worker.tar.gz"
 
 echo.
 echo [1/6] Installing locked frontend dependencies...
@@ -171,6 +172,7 @@ rem Disable updates only in the unpacked folder used for local testing.
 > "%OUTPUT_DIR%\slopus-portable" echo Local test build - automatic updates disabled.
 if errorlevel 1 goto :fail
 call :package_worker || goto :fail
+call :package_linux_worker || goto :fail
 
 echo.
 echo Package complete.
@@ -182,6 +184,7 @@ echo   %OUTPUT_ZIP%
 echo   %OUTPUT_DIR%\
 echo   %WORKER_ZIP%
 echo   %WORKER_DIR%\
+if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" echo   %ARTIFACTS_DIR%\%LINUX_WORKER_NAME%
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
@@ -214,6 +217,7 @@ exit /b 1
 rem The LAN worker ships as its own package: the headless worker and the
 rem runtime it loads, nothing else. Copy it to the computer that generates.
 if exist "%WORKER_DIR%" rd /s /q "%WORKER_DIR%"
+if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" del /q "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%"
 if exist "%WORKER_DIR%" (
   echo ERROR: could not clear %WORKER_DIR%.
   echo        Close anything running out of that folder and retry.
@@ -235,6 +239,18 @@ copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%WORKER_DIR%\slopfab.dll" >nul || exit /b 1
 >>"%WORKER_DIR%\README.txt" echo Run "slopus-worker.exe --help" for options such as --port, --token and --weights.
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:WORKER_DIR '*') -DestinationPath $env:WORKER_ZIP -CompressionLevel Optimal -Force" || exit /b 1
 echo        Worker:    %OUTPUT_STEM%-worker\
+exit /b 0
+
+:package_linux_worker
+rem The Linux worker is built inside WSL, which has the Linux toolchain, and
+rem packed with lib\slopfab\libslopfab.so. See scripts\package-linux-worker.sh.
+where.exe wsl.exe >nul 2>nul || (
+  echo ERROR: WSL was not found. Releases include the Linux worker, which is built in WSL.
+  echo        Install WSL with Ubuntu and Rust, then retry.
+  exit /b 1
+)
+wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
+echo        Linux:     %LINUX_WORKER_NAME%
 exit /b 0
 
 :write_readme

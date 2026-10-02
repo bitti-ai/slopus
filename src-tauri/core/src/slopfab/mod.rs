@@ -30,7 +30,10 @@ pub use icons::{generate_reference_icon_batch, ReferenceIconBatchConfig, Referen
 pub use planning::resolve_plan;
 pub use platform::{probe_backend, BackendProbe};
 pub use status::{status, worker_status};
+#[cfg(windows)]
 const DLL_FILE_NAME: &str = "slopfab.dll";
+#[cfg(not(windows))]
+const DLL_FILE_NAME: &str = "libslopfab.so";
 /// Tauri stages the repository's runtime resources in development and release
 /// builds. Installers and portable folders use the same relative layout.
 pub fn default_dll_path() -> PathBuf {

@@ -11,7 +11,8 @@ const USAGE: &str = r"Usage: slopus-worker [options]
   --port <number>     TCP port to listen on (default 47321)
   --name <text>       Name shown in Slopus (default: computer name)
   --token <text>      Require this access token from clients
-  --data <folder>     Uploads, job files and logs (default: %LOCALAPPDATA%\Slopus Worker)
+  --data <folder>     Uploads, job files and logs (default: %LOCALAPPDATA%\Slopus Worker on
+                      Windows, ~/.local/share/slopus-worker on Linux)
   --weights <folder>  Extra weights folder to search and download into; repeatable
   --backend <name>    GPU backend: auto (default: CUDA 13, then CUDA 12, else Vulkan),
                       cuda (CUDA 13, then 12), cuda13, cuda12 or vulkan

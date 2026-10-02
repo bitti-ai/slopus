@@ -618,7 +618,54 @@ unsafe fn load_library(path: &Path) -> Result<Library, libloading::Error> {
 
 #[cfg(not(windows))]
 unsafe fn load_library(path: &Path) -> Result<Library, libloading::Error> {
+    preload_cublas();
     unsafe { Library::new(path) }
+}
+
+/// The Linux runtime links CUDA 13 cuBLAS by soname, with a search path that
+/// only matches the machine it was built on. When the system linker cannot
+/// find it, load it once from the usual CUDA install folders; the runtime then
+/// binds to the already loaded copy. A missing cuBLAS is reported by the
+/// runtime load itself.
+#[cfg(not(windows))]
+fn preload_cublas() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        const SONAME: &str = "libcublas.so.13";
+        let global = libloading::os::unix::RTLD_NOW | libloading::os::unix::RTLD_GLOBAL;
+        let open = |name: &std::ffi::OsStr| unsafe { libloading::os::unix::Library::open(Some(name), global) };
+        if open(SONAME.as_ref()).map(std::mem::forget).is_ok() {
+            return;
+        }
+        for directory in cuda_library_directories() {
+            let candidate = directory.join(SONAME);
+            if candidate.is_file() && open(candidate.as_os_str()).map(std::mem::forget).is_ok() {
+                return;
+            }
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn cuda_library_directories() -> Vec<std::path::PathBuf> {
+    let mut roots: Vec<std::path::PathBuf> = ["CUDA_HOME", "CUDA_PATH"].iter()
+        .filter_map(|name| std::env::var_os(name).map(Into::into)).collect();
+    roots.push("/usr/local/cuda".into());
+    // Versioned installs, newest first: /usr/local/cuda-13.3 before cuda-13.0.
+    let mut versioned: Vec<_> = std::fs::read_dir("/usr/local").into_iter().flatten().flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with("cuda-13")))
+        .collect();
+    versioned.sort();
+    roots.extend(versioned.into_iter().rev());
+    let mut directories = Vec::new();
+    for root in roots {
+        directories.push(root.join("lib64"));
+        directories.push(root.join("targets/x86_64-linux/lib"));
+    }
+    directories.extend(["/usr/lib/x86_64-linux-gnu", "/usr/lib64"].map(std::path::PathBuf::from));
+    directories
 }
 unsafe fn c_string(value: *const c_char) -> String {
     if value.is_null() {

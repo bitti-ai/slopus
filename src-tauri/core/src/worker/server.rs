@@ -78,6 +78,7 @@ pub fn choose_backend(requested: Backend, probe: &slopfab::BackendProbe) -> Resu
         _ => "--backend cuda",
     };
     let install = match requested {
+        _ if !cfg!(windows) => "Install the NVIDIA driver and CUDA 13 cuBLAS (the Linux runtime is built for CUDA 13)",
         Backend::Cuda13 => "Install the CUDA 13 toolkit",
         Backend::Cuda12 => "Install the CUDA 12.8 toolkit",
         _ => "Install CUDA 12.8 (RTX 30/40) or CUDA 13 (RTX 50)",
@@ -88,7 +89,8 @@ pub fn choose_backend(requested: Backend, probe: &slopfab::BackendProbe) -> Resu
         (backend, None) if backend.is_cuda() && probe.nvidia_gpu => Err(format!("{flag}: CUDA is not available ({problem}). {install}, or use --backend vulkan.")),
         (backend, None) if backend.is_cuda() => Err(format!("{flag}: no NVIDIA GPU was found. Use --backend vulkan.")),
         (Backend::Auto, None) if probe.nvidia_gpu => Ok((true, Some(format!(
-            "WARNING: This NVIDIA GPU supports CUDA, but CUDA was not detected ({problem}). Using the slower Vulkan backend. Install CUDA 12.8 (RTX 30/40) or CUDA 13 (RTX 50) for faster generation."
+            "WARNING: This NVIDIA GPU supports CUDA, but CUDA was not detected ({problem}). Using the slower Vulkan backend. {} for faster generation.",
+            if cfg!(windows) { "Install CUDA 12.8 (RTX 30/40) or CUDA 13 (RTX 50)" } else { "Install CUDA 13 cuBLAS" }
         )))),
         (_, None) => Ok((true, None)),
     }
@@ -213,11 +215,15 @@ fn parsed_header<T: std::str::FromStr>(request: &Request, name: &str) -> Result<
 
 fn data_directory(options: &WorkerOptions) -> PathBuf {
     options.data.clone().unwrap_or_else(|| {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
-            .unwrap_or_else(std::env::temp_dir)
-            .join("Slopus Worker")
+        if cfg!(windows) {
+            std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("Slopus Worker")
+        } else {
+            // XDG base directories: $XDG_DATA_HOME, else ~/.local/share.
+            std::env::var_os("XDG_DATA_HOME").map(PathBuf::from)
+                .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
+                .unwrap_or_else(std::env::temp_dir)
+                .join("slopus-worker")
+        }
     })
 }
 
@@ -239,6 +245,8 @@ pub fn computer_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
         .ok()
+        // Shells set HOSTNAME without exporting it, so services rarely see it.
+        .or_else(|| fs::read_to_string("/etc/hostname").ok().map(|name| name.trim().to_string()))
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| "Slopus worker".into())
 }
@@ -644,7 +652,8 @@ mod tests {
         assert_eq!("cuda13".parse::<Backend>().unwrap(), Backend::Cuda13);
         assert_eq!(choose_backend(Backend::Cuda12, &probe(true, Some("CUDA 12"))).unwrap(), (false, None));
         let error = choose_backend(Backend::Cuda13, &probe(true, None)).unwrap_err();
-        assert!(error.starts_with("--backend cuda13") && error.contains("CUDA 13 toolkit"), "{error}");
+        let hint = if cfg!(windows) { "CUDA 13 toolkit" } else { "CUDA 13 cuBLAS" };
+        assert!(error.starts_with("--backend cuda13") && error.contains(hint), "{error}");
     }
 
     #[test]

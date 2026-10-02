@@ -47,13 +47,16 @@ Local video generation requires separately installed model weights and GPU suppo
 
 ### Generating on another computer
 
-Unpack the Slopus worker package (`Slopus-<version>-windows-x64-worker.zip`, containing `slopus-worker.exe` and `slopfab.dll`) on a computer with a capable GPU on the same network and run:
+Workers run on Windows or Linux. On a computer with a capable GPU on the same network, unpack the worker package and start it:
 
-```
-slopus-worker.exe --weights D:\Models
-```
+| Platform | Package | Start |
+| --- | --- | --- |
+| Windows x64 | `Slopus-<version>-windows-x64-worker.zip` (`slopus-worker.exe`, `slopfab.dll`) | `slopus-worker.exe --weights D:\Models` |
+| Linux x86_64 | `Slopus-<version>-linux-x64-worker.tar.gz` (`slopus-worker`, `libslopfab.so`) | `./slopus-worker --weights ~/models` |
 
-Allow it through Windows Firewall when asked. In Slopus, open **Settings → Workers** and click **Use** next to the worker. Generators whose weights have download links become usable even if they are not downloaded on this computer; the worker downloads missing weights into its weights folders on first use. Run `slopus-worker.exe --help` for options: `--port`, `--name`, `--token` (require an access token), `--data`, `--weights` (repeatable), `--backend` and `--no-mdns`. The worker uses CUDA when it is available (CUDA 13 if installed, otherwise CUDA 12) and otherwise falls back to Vulkan, printing a warning if an NVIDIA GPU is present without a usable CUDA installation. `--backend cuda13`, `--backend cuda12`, `--backend cuda` or `--backend vulkan` overrides the choice. Choose **This computer** to generate locally again.
+The Linux worker needs no desktop or UI libraries, but it does need an NVIDIA GPU with the NVIDIA driver and CUDA 13 cuBLAS (`libcublas.so.13`); it looks for cuBLAS in `/usr/local/cuda*` if the system linker does not find it. Allow the worker through the firewall (TCP 47321, and UDP 5353 for discovery).
+
+In Slopus, open **Settings → Workers** and click **Use** next to the worker. Generators whose weights have download links become usable even if they are not downloaded on this computer; the worker downloads missing weights into its weights folders on first use. Run `slopus-worker --help` for options: `--port`, `--name`, `--token` (require an access token), `--data`, `--weights` (repeatable), `--backend` and `--no-mdns`. The worker uses CUDA when it is available and otherwise falls back to Vulkan, printing a warning if an NVIDIA GPU is present without a usable CUDA installation. On Windows it uses CUDA 13 if installed, otherwise CUDA 12; the Linux runtime uses CUDA 13. `--backend cuda13`, `--backend cuda12`, `--backend cuda` or `--backend vulkan` overrides the choice. Choose **This computer** to generate locally again.
 
 The project's GPU setup recommendations are:
 

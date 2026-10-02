@@ -106,3 +106,6 @@ fixtures/*.json text eol=lf
 *.xlsx filter=lfs diff=lfs merge=lfs -text
 *.ppt filter=lfs diff=lfs merge=lfs -text
 *.pptx filter=lfs diff=lfs merge=lfs -text
+
+# Shell scripts run in Linux/WSL bash, which rejects CRLF line endings.
+*.sh text eol=lf
