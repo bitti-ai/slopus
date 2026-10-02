@@ -290,8 +290,13 @@ pub fn directory(app: &AppHandle) -> PathBuf {
 }
 
 pub fn initialize(app: &AppHandle) -> Result<DiagnosticLogInfo, String> {
-    let directory = directory(app);
-    let writer = LogWriter::new(&directory, MAX_BYTES)?;
+    initialize_in(&directory(app))
+}
+
+/// Starts logging into an explicit folder. The headless worker has no Tauri
+/// app handle, but writes the same records.
+pub fn initialize_in(directory: &Path) -> Result<DiagnosticLogInfo, String> {
+    let writer = LogWriter::new(directory, MAX_BYTES)?;
     let info = writer.info();
     LOGGER
         .set(Mutex::new(writer))

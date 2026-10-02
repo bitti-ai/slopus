@@ -10,6 +10,12 @@ fn prepare(
     let _models = model_access
         .try_write()
         .map_err(|_| "Model files are in use. Prepare the LoRA after generation finishes.")?;
+    prepare_exclusive(path, width, allow_download)
+}
+
+/// Preparation for a caller that already holds the model write lock. The LAN
+/// worker waits for that lock instead of failing while a job is running.
+pub(crate) fn prepare_exclusive(path: &Path, width: i32, allow_download: bool) -> Result<(), String> {
     // Slopfab owns format validation, asset selection and atomic embedding.
     // Preserve the URL record even on an idempotent retry after a record-write error.
     let record_path = path.with_extension("complete.json");

@@ -24,7 +24,7 @@ pub struct ModelStatus {
     pub path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpuDevice {
     pub name: String,
@@ -35,7 +35,9 @@ pub fn gpu_devices() -> Vec<GpuDevice> {
     ffi::gpu_devices()
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+// Serialize exists for LAN workers. Skipped fields stay on this side: the
+// worker resolves its own continuation, edit source and latent paths.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
     pub job_id: String,
@@ -71,13 +73,13 @@ pub struct GenerationRequest {
     pub save_latents_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageEditRequest {
     pub source_relative_path: String,
     pub edits: Vec<ImageEditStep>,
 }
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageEditStep {
     pub prompt: String,

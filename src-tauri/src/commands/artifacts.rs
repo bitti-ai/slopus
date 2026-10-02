@@ -391,7 +391,8 @@ pub(crate) fn save_builtin_reference_icon(
 /// One frame of a finished render, as RGBA the webview can build a `VideoFrame`
 /// from. A frame at a time because a whole render is hundreds of megabytes and
 /// the encoder only ever wants the next one.
-#[tauri::command]
+// Off the main thread: a worker render fetches its frames over the network.
+#[tauri::command(async)]
 pub(crate) fn generated_frame(job_id: String, index: u32) -> Result<tauri::ipc::Response, String> {
     rendered::frame(&job_id, index)?
         .map(tauri::ipc::Response::new)
@@ -402,7 +403,8 @@ pub(crate) fn generated_frame(job_id: String, index: u32) -> Result<tauri::ipc::
 
 /// The render's soundtrack, interleaved little-endian f32 — one read, because
 /// even fifteen seconds of stereo is a couple of megabytes.
-#[tauri::command]
+// Off the main thread: a worker render fetches its frames over the network.
+#[tauri::command(async)]
 pub(crate) fn generated_audio(job_id: String) -> Result<tauri::ipc::Response, String> {
     rendered::audio(&job_id)
         .map(tauri::ipc::Response::new)

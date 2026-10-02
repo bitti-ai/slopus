@@ -17,8 +17,10 @@ mod slopfab;
 mod storage;
 mod weights;
 mod window;
+mod worker;
 
 pub use app::run;
+pub use worker::{run as run_worker, WorkerOptions, DEFAULT_PORT as DEFAULT_WORKER_PORT};
 pub use slopfab::{
     default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec,
 };

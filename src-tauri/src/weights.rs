@@ -111,6 +111,32 @@ fn find_downloaded(urls: Vec<String>, roots: &[PathBuf]) -> HashMap<String, Stri
     }).collect()
 }
 
+/// Weight folders for a process without the desktop settings file: the LAN
+/// worker passes its own `--weights` folders and data directory.
+pub(crate) fn worker_weight_roots(custom: &[PathBuf], data_directory: &Path) -> Result<Vec<PathBuf>, String> {
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let primary = executable.parent().ok_or("Could not locate the worker executable.")?.join("weights");
+    Ok(weight_roots(custom, primary, data_directory.join("weights")))
+}
+
+/// A completed download of `url` in any root, without touching the network.
+pub(crate) fn cached_weight(url: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+    find_cached_weight(&download_url(url).ok()?, roots).map(PathBuf::from)
+}
+
+/// Finds or downloads one weight URL, as the desktop download command does.
+pub(crate) fn fetch_weight(url: &str, roots: &[PathBuf], cancelled: &AtomicBool, progress: impl FnMut(u64, Option<u64>)) -> Result<PathBuf, String> {
+    transfer_from_roots(&download_url(url)?, roots, cancelled, progress).map(PathBuf::from)
+}
+
+/// The URL a complete Slopus download came from. A LAN worker is sent this
+/// instead of the file, so it can fetch the weights itself.
+pub(crate) fn recorded_download_url(path: &Path) -> Option<String> {
+    let record: CompletedFile = serde_json::from_slice(&fs::read(path.with_extension("complete.json")).ok()?).ok()?;
+    let url = download_url(&record.url).ok()?;
+    (path.file_name()?.to_str()? == destination_name(&url) && cached_file(path, &url)).then_some(record.url)
+}
+
 #[tauri::command]
 pub async fn find_downloaded_weights(app: AppHandle, urls: Vec<String>) -> Result<HashMap<String, String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -215,7 +241,7 @@ pub async fn weight_download_hardware() -> Result<Vec<crate::slopfab::GpuDevice>
     tauri::async_runtime::spawn_blocking(hardware_devices).await.map_err(|error| error.to_string())
 }
 
-fn hardware_devices() -> Vec<crate::slopfab::GpuDevice> {
+pub(crate) fn hardware_devices() -> Vec<crate::slopfab::GpuDevice> {
     #[cfg(windows)]
     {
         use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE};

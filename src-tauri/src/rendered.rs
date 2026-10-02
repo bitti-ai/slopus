@@ -337,7 +337,7 @@ pub fn audio(job_id: &str) -> Option<Vec<u8>> {
 /// The event is a notification — it can be missed, it can arrive at a window
 /// that is reloading — and the only authority on what can still be encoded is
 /// what is still held.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedSummary {
     pub job_id: String,

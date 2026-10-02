@@ -31,6 +31,9 @@ jpeg-encoder = "0.6"
 image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }
 tokio = { version = "1", features = ["rt", "time", "net", "macros"] }
 tauri-plugin-window-state = "2"
+# LAN generation workers: the worker serves HTTP and both sides use mDNS.
+tiny_http = "0.12"
+mdns-sd = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 # Must stay on the same major as wry's, or with_webview hands back a controller
