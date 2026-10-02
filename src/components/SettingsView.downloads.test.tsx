@@ -9,7 +9,7 @@ import { loadGeneratorTemplateSettings, minimaxSingularityTemplate } from "../li
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
-import { loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
+import { DMAD_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -19,6 +19,23 @@ const pick = (name: string, option: string) => {
   fireEvent.click(screen.getByRole("option", { name: option }));
 };
 const card = (openLabel: string) => screen.getByRole("button", { name: openLabel }).closest(".settings-open-card") as HTMLElement;
+
+it("downloads DMAD, preserves its sampling recipe when edited, and explains its fixed grid", async () => {
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit DMAD 4-Step LoRA" }));
+  expect(screen.getByRole("combobox", { name: "LoRA sampling recipe" })).toHaveTextContent("DMAD 4-Step");
+  expect(screen.queryByLabelText("Override step count")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(loadLoras().find(({ id }) => id === DMAD_LORA.id)?.samplingPreset).toBe("dmad-4step");
+  fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
+  pick("Add LoRA to generator", DMAD_LORA.name);
+  expect(screen.getByText(/DMAD fixes generation to four/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null }));
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: DMAD_LORA.url }));
+  expect(loadLoras().find(({ id }) => id === DMAD_LORA.id)).toMatchObject({ samplingPreset: "dmad-4step", path: expect.stringContaining("dmad_minimax_h3") });
+});
 
 it("keeps a failed local import editable and supports local-only preparation", async () => {
   const normal = vi.mocked(invoke).getMockImplementation()!;

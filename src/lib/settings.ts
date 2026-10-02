@@ -513,6 +513,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.loras;
   delete options.schedule;
   delete options.stepOverride;
+  delete options.samplingPreset;
   delete options.generationMode;
   delete options.promptEmbedding;
   delete options.motionCache;
@@ -527,6 +528,12 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
   const stepOverride = highestLoraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
+  if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) {
+    options.samplingPreset = "dmad-4step";
+    // The fixed sigma grid defines four evaluations and forbids approximate caches.
+    options.stepOverride = 4;
+    delete options.motionCache;
+  }
   for (const field of ENGINE_PATH_FIELDS) {
     if (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer")) {
       delete options[field.id];

@@ -91,8 +91,10 @@ describe("generated image history", () => {
     const draft = drafted.assets.find((asset) => asset.imageDraft)!;
     expect(draft.parentAssetId).toBe("original");
     // Generating it keeps the family.
-    const done = completeImageDraft(drafted, draft.id, { ...image(draft.id), imageGeneration: draft.imageGeneration });
+    const done = completeImageDraft(drafted, draft.id, { ...image(draft.id), imageGeneration: { ...draft.imageGeneration!, usedSeed: 91234 } });
     expect(done.assets.find((asset) => asset.id === draft.id)).toMatchObject({ imageDraft: false, parentAssetId: "original" });
+    expect(done.assets.some((asset) => asset.imageDraft)).toBe(false);
+    expect(done.assets.find((asset) => asset.id === draft.id)!.imageGeneration!.usedSeed).toBe(91234);
     expect(parseProjectConfig(JSON.parse(JSON.stringify(done))).assets).toEqual(done.assets);
     // An imported file starts a family of its own.
     config.imageScene = createImageEditScene({ relativePath: "media/imported/photo.png", name: "photo", width: 101, height: 77 });

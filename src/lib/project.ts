@@ -146,6 +146,7 @@ export const imageGenerationSnapshotSchema = z.object({
   briefPrompt: z.string(),
   prompt: z.string(),
   generatorTemplateId: z.string().min(1),
+  usedSeed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   references: z.array(z.lazy(() => projectReferenceSchema)).max(100),
 }).superRefine((snapshot, context) => {
   const ids = new Set(snapshot.references.map((reference) => reference.id));

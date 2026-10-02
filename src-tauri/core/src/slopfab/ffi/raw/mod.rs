@@ -85,6 +85,7 @@ pub struct Api {
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
+    set_sampling_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
     add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
@@ -198,6 +199,9 @@ impl Api {
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
                 ),
+                set_sampling_settings: library
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_sampling_settings\0")
+                    .ok().map(|symbol| *symbol),
                 set_seed: symbol!(
                     "slopfab_request_set_seed",
                     unsafe extern "C" fn(*mut Request, u64) -> i32
@@ -315,6 +319,16 @@ impl Api {
             }
             Ok(c_string((self.version_string)()))
         }
+    }
+    pub fn set_dmad_sampling(&self, r: *mut Request) -> Result<(), String> {
+        const UPGRADE: &str = "DMAD requires slopfab.dll API 1.16 or later. Update the runtime.";
+        if unsafe { (self.capi_version)() } < ((1 << 24) | (16 << 12)) {
+            return Err(UPGRADE.into());
+        }
+        let set = self.set_sampling_settings.ok_or(UPGRADE)?;
+        // Released DMAD adapters do not embed slopfab.sampling metadata.
+        let settings = CString::new(r#"{"version":1,"sampler":"renoise","video_sigma_shift":12,"audio_sigma_shift":2,"base_sigmas":[1,0.75,0.5,0.25,0]}"#).unwrap();
+        self.error(unsafe { set(r, settings.as_ptr()) })
     }
     fn error(&self, code: i32) -> Result<(), String> {
         if code == 0 {

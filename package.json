@@ -1,7 +1,7 @@
 {
   "name": "slopus",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "An AI media harness for planning, generating, and editing media locally.",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:release": "vitest run --config vitest.release.config.ts",
     "icons": "node scripts/make-icons.mjs",
     "reference-icons": "node scripts/generate-reference-icons.mjs",
     "tauri": "tauri"

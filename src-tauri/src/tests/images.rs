@@ -168,6 +168,7 @@ fn image_tree_survives_folder_creation_save_and_reopen() {
 #[test]
 fn image_generation_history_survives_native_save_and_reopen_and_validates_snapshots() {
     let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    snapshot["usedSeed"] = serde_json::json!(9_007_199_254_740_991_u64);
     snapshot["scene"]["nodes"][1]["referenceIds"] = snapshot["scene"]["referenceIds"].clone();
     snapshot["scene"]["referenceIds"] = serde_json::json!([]);
     let expected: crate::project::image::ImageGenerationSnapshot = serde_json::from_value(snapshot.clone()).unwrap();
@@ -187,12 +188,13 @@ fn image_generation_history_survives_native_save_and_reopen_and_validates_snapsh
     write_project(Path::new(&created.folder_path), &updated).unwrap();
     let reopened = read_project(Path::new(&created.folder_path)).unwrap();
     assert_eq!(reopened.config.assets[0].image_generation.as_ref(), Some(&expected));
-    for invalid in ["tree", "reference", "resolution"] {
+    for invalid in ["tree", "reference", "resolution", "seed"] {
         let mut bad = reopened.config.clone();
         let history = bad.assets[0].image_generation.as_mut().unwrap();
         match invalid {
             "tree" => history.scene.nodes[1].parent_id = Some("missing".into()),
             "reference" => history.references.clear(),
+            "seed" => history.used_seed = Some(9_007_199_254_740_992),
             _ => history.resolution = "invalid".into(),
         }
         assert!(validate_and_normalize_config(bad).is_err(), "{invalid}");

@@ -140,8 +140,22 @@ The fill tracks completed files plus progress through the current file.
 Downloads also appear in Work Queue with progress and cancellation controls.
 They run separately from the generation queue and do not occupy a generation slot.
 Progress details and cancellation remain available in Settings if the editor is closed.
-Failed transfers can be retried; completed files are retained, while an interrupted
-file starts again. No full model file is buffered in memory.
+Failed or cancelled transfers keep their downloaded bytes. Choose **Retry**, or
+reopen the app and choose **Download** for the same generator or LoRA, to continue
+from the saved position. Completed files are reused and progress includes the
+bytes already downloaded. Downloads do not restart automatically when the app opens.
+
+Partial downloads use a stable `.part` file and matching `.part.json` record in
+the weight folder. Keep both files together if moving an unfinished download.
+Slopus searches all configured weight folders for existing progress before
+starting a new file. Partial files cannot be used for generation until complete.
+
+Resume requests use the saved strong ETag with HTTP `Range` and `If-Range`, and
+validate the returned byte range before appending. If the file changed, the server
+ignores ranges, or no strong ETag is available, Slopus starts that file again
+instead of combining incompatible data. This follows the
+[HTTP range request rules](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.5).
+No full model file is buffered in memory.
 
 After completion, the path fields show local files, while the source URLs remain
 stored. Templates needing downloads cannot be selected as default and are omitted

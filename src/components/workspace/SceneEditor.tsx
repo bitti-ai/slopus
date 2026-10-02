@@ -399,9 +399,9 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
               />
               {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
             </PropRow>
-            <p className="prop-caption">{animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : job.usePreviousSceneLastFrame
-              ? previousScene ? `Continues “${previousScene.title}” from its saved latents with 22 overlapping frames. Generate that scene first, or use Generate all.` : "Move this scene after another scene to continue it."
-              : "Anchors the opening frame."}</p>
+            {(animate || job.usePreviousSceneLastFrame) && <p className="prop-caption">{animate
+              ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting."
+              : previousScene ? `Continues “${previousScene.title}” from its saved latents with 22 overlapping frames. Generate that scene first, or use Generate all.` : "Move this scene after another scene to continue it."}</p>}
           </>}
           {!animate && !transition && !pose && <PropRow label="Last frame" htmlFor={`${id}-end`}>
             <ComboBox id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"

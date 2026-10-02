@@ -9,6 +9,11 @@ pub(super) struct LoraAdapter {
     pub(super) strength: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum SamplingPreset {
+    Dmad4Step,
+}
+
 #[derive(Clone)]
 pub(super) struct Configuration {
     pub(super) dll_path: PathBuf,
@@ -20,6 +25,7 @@ pub(super) struct Configuration {
     pub(super) models: [(i32, &'static str, Option<PathBuf>); 5],
     pub(super) loras: Result<Vec<LoraAdapter>, String>,
     pub(super) step_override: Result<Option<i32>, String>,
+    pub(super) sampling_preset: Result<Option<SamplingPreset>, String>,
 }
 
 impl Configuration {
@@ -83,6 +89,11 @@ impl Configuration {
                 }
                 _ => Err("LoRA step override must be a whole number from 2 to 2147483647.".into()),
             },
+            sampling_preset: match slopfab.and_then(|setting| setting.options.get("samplingPreset")) {
+                None => Ok(None),
+                Some(ProviderOption::String(value)) if value == "dmad-4step" => Ok(Some(SamplingPreset::Dmad4Step)),
+                _ => Err("Unsupported LoRA sampling recipe.".into()),
+            },
         }
     }
 
@@ -129,6 +140,9 @@ impl Configuration {
     }
 
     pub(super) fn generation_steps(&self, fallback: i32) -> Result<i32, String> {
+        if self.sampling_preset.clone()? == Some(SamplingPreset::Dmad4Step) {
+            return Ok(4);
+        }
         self.step_override
             .clone()
             .map(|steps| steps.unwrap_or(fallback))
@@ -169,11 +183,12 @@ impl Configuration {
             })
             .unwrap_or_default();
         format!(
-            "slopfab={version}|platform={}|attention={}|motionCache={}|{models}|loras={adapters}|steps={:?}",
+            "slopfab={version}|platform={}|attention={}|motionCache={}|{models}|loras={adapters}|steps={:?}|sampling={:?}",
             platform.label(),
             self.attention,
             self.motion_cache,
-            self.step_override
+            self.step_override,
+            self.sampling_preset
         )
     }
 }

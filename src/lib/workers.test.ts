@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { TURBO_LORA } from "./loras";
+import { DMAD_LORA, TURBO_LORA } from "./loras";
 import { engineProviderSetting, templateNeedsDownload, templateUsable, viggleAnimateTemplate, type GeneratorTemplate } from "./settings";
 import { refreshWorkers, remoteWorkerSelected, selectedWorker, selectWorker, WORKERS_EVENT, type WorkerList } from "./workers";
 
@@ -73,6 +73,15 @@ describe("LAN generation workers", () => {
     const animate = viggleAnimateTemplate();
     const embedding = engineProviderSetting(animate.paths, undefined, animate.attention, [], "animate", animate.additionalSafetensors, false, animate.sources).options;
     expect(embedding.promptEmbedding).toBe(animate.additionalSafetensors![0].url);
+  });
+
+  it("sends a DMAD download link with its sampling recipe to a worker", async () => {
+    await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker()] });
+    const template = { ...downloadable(), loras: [{ loraId: DMAD_LORA.id, enabled: true, strength: 1 }] };
+    const options = engineProviderSetting(template.paths, undefined, "sage2", template.loras, "prompt", [], true, template.sources).options;
+    expect(JSON.parse(options.loras as string)).toEqual([{ path: DMAD_LORA.url, strength: 1 }]);
+    expect(options).toMatchObject({ samplingPreset: "dmad-4step", stepOverride: 4 });
+    expect(options).not.toHaveProperty("motionCache");
   });
 
   it("still needs a source for every required model on a worker", async () => {

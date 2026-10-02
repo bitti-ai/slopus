@@ -13,6 +13,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                 || !is_supported_aspect_ratio(&snapshot.aspect_ratio)
                 || snapshot.default_look.as_deref().is_some_and(|look| !is_shot_tag_id(look))
                 || snapshot.generator_template_id.is_empty()
+                || snapshot.used_seed.is_some_and(|seed| seed > 9_007_199_254_740_991)
                 || snapshot.references.len() > 100
             {
                 return Err("Invalid image generation snapshot settings.".into());

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
-import { downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
+import { DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
@@ -66,9 +66,28 @@ it.each([0, 1, -3, 2.5, NaN, Infinity, 2147483648])("rejects invalid step overri
 });
 
 it("starts with the bundled adapters and preserves the local library", () => {
-  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA]);
+  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA]);
   saveLoras([{ ...TAOMATE_LORA, path: "C:/weights/TaoMate.safetensors" }, { id: "style", name: "Style", path: "D:/style.safetensors" }]);
-  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo"]);
+  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step"]);
+});
+
+it("preserves DMAD's recipe and local path and gives its fixed grid priority over step overrides", () => {
+  saveLoras([{ ...DMAD_LORA, path: "D:/renamed.safetensors" }, { ...LIGHTX2V_TURBO_LORA, path: "D:/style.safetensors" }]);
+  expect(loadLoras().find(({ id }) => id === DMAD_LORA.id)).toMatchObject({ path: "D:/renamed.safetensors", samplingPreset: "dmad-4step" });
+  const paths = createGeneratorTemplate().paths;
+  const selection = [
+    { loraId: DMAD_LORA.id, enabled: true, strength: 1 },
+    { loraId: LIGHTX2V_TURBO_LORA.id, enabled: true, strength: 0.5 },
+  ];
+  const provider = engineProviderSetting(paths, undefined, "sage2", selection, "prompt", [], true);
+  expect(provider.options).toMatchObject({ samplingPreset: "dmad-4step", stepOverride: 4 });
+  expect(provider.options).not.toHaveProperty("motionCache");
+  expect(engineProviderSetting(paths, provider, "sage2", [...selection].reverse()).options.stepOverride).toBe(4);
+  for (const inactive of [{ enabled: false, strength: 1 }, { enabled: true, strength: 0 }]) {
+    const without = engineProviderSetting(paths, provider, "sage2", [{ ...selection[0], ...inactive }, selection[1]], "prompt", [], true);
+    expect(without.options).not.toHaveProperty("samplingPreset");
+    expect(without.options).toMatchObject({ stepOverride: 6, motionCache: true });
+  }
 });
 
 it("round-trips template order, enabled flags and strengths, and sends only active adapters", () => {

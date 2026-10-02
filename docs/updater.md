@@ -11,6 +11,31 @@ marker do not check for updates. Both packaging scripts add this marker only to
 the uncompressed folder for local testing, after creating the ZIP. The distributed
 ZIP omits the marker, so extracted release builds can check for updates.
 
+## Pre-release tests
+
+`release.cmd` runs `npm run test:release` after installing dependencies and before
+building any release artifacts. A failed check stops the script, including when
+using `--publish`. Run the same command separately to check without building or
+publishing anything.
+
+The generation URL tests use the app's fresh-install generator and LoRA catalogs.
+They check every model URL, GPU/VRAM download variant, additional conditioning
+file and bundled LoRA, combining duplicate URLs into a single request. Hugging
+Face `blob` links are converted to the same `resolve` links used by the app.
+
+Checks follow redirects and require a successful, nonempty file response rather
+than an HTML page. They use `HEAD` first; when the server does not support it or
+omits the size, they request `bytes=0-0` and cancel after the first streamed chunk.
+Even if the server ignores the range, the response is never read in full or saved.
+Checks run three at a time, with a 20-second timeout per attempt and one retry
+for network failures, timeouts, rate limits or server errors. Internet access is
+required; unavailable files or persistent connection failures block the release.
+
+Add future release checks as `tests/release/**/*.test.ts`. The dedicated
+`vitest.release.config.ts` discovers them automatically. Regular `npm test` runs
+exclude these live checks; the URL probe's local HTTP regression tests run in the
+regular suite as `scripts/release-downloads.test.ts`.
+
 ## Signing key
 
 The public key is committed in `src-tauri/tauri.conf.json`. The matching private

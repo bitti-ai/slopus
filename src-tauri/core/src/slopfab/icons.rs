@@ -111,6 +111,7 @@ pub fn generate_reference_icon_batch(
         dll_path: batch.dll_path.clone(),
         loras: Ok(Vec::new()),
         step_override: Ok(None),
+        sampling_preset: Ok(None),
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
         motion_cache: false,

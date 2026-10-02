@@ -58,6 +58,25 @@ const finish = async (queue: WorkQueue, id: string) => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it.each([-1, 0, Number.MAX_SAFE_INTEGER])("saves the exact submitted image seed without changing the authored seed (%s)", async (seed) => {
+    const { queue, saved } = setup();
+    const record = imageProject();
+    record.config.imageScene!.seed = seed;
+    const session = queue.project(record);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/seed.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(Number.isSafeInteger(request.seed)).toBe(true);
+    expect(request.seed).toBeGreaterThanOrEqual(0);
+    if (seed !== -1) expect(request.seed).toBe(seed);
+    expect(queue.getSnapshot()[0].settings.seed).toBe(request.seed);
+    await finish(queue, request.jobId);
+    const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+    expect(reopened.assets[0].imageGeneration).toMatchObject({ usedSeed: request.seed, scene: { seed } });
+    expect(reopened.imageScene!.seed).toBe(seed);
+    expect(saved.mock.calls.at(-1)![0].config.assets[0].imageGeneration!.usedSeed).toBe(request.seed);
+  });
   it.each([false, true])("queues distinct images in order without changing the viewed image (draft: %s)", async (imageDraft) => {
     const { queue } = setup();
     const record = imageProject();

@@ -1,24 +1,25 @@
-# Slopus 0.2.0
+# Slopus 0.2.1
 
-This alpha update adds still image projects, new scene types, and a rebuilt Windows 11–style interface with project-wide undo.
+This alpha update adds DMAD LoRA support, resumable model downloads, and improvements to image generation, reference prompts, and the image bar.
 
 ## What's new
 
-- Image projects: compose a still image as a hierarchy of objects, text and groups on a canvas, generate it with MiniMax H3, then refine it with sequential edits on an opened or generated image. Generated images and drafts stay in an image bar, and each keeps the settings it was made with.
-- Image export as JPG or PNG, at the original size or a size from the project ladder, with adjustable JPG quality. Pick any image to export from the image bar under the preview.
-- New scene types: Pose, Character replace, Extend and Bridge, alongside First & last frame and Animate.
-- A new interface in the style of Windows 11: a frameless Mica window, a title bar with the project's Save, Undo and Redo, and Fluent controls and icons.
-- Project-wide Undo and Redo (Ctrl+Z, Ctrl+Y) for edits made in any view, by the agent, or in project settings.
-- Rebuilt Generator, References, Timeline, Export and Settings screens. The Generator is a board of scenes and shot tiles; References has Icons and Details views with multi-select; the Timeline gains zoom, keyboard shortcuts and context menus.
-- The agent is a docked, resizable pane that keeps running while hidden.
-- LAN workers: unpack the new Slopus worker package on another computer, run `slopus-worker`, and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves, local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
-- The Work queue and Agent buttons show when work is under way, and exports keep running in the background.
-- Reference images can be paged through and removed, and effects can be bypassed without removing them.
+- Interrupted weight and LoRA downloads retain their progress and can resume on retry, including after reopening the app.
+- Reference smart chips in image prompts and video shot descriptions, with reference artwork in the picker.
+- Queue still-image generation for individual images. Regenerated and edited images are grouped under their original in the image bar.
+- Generated still images retain their used seed, shown as a read-only field with a copy button in Image generation.
+- Higher image and video generation resolutions, plus standard image and video export sizes.
+- Downloadable DMAD 4-Step LoRA for MiniMax H3, with its re-noising sampling recipe applied automatically. Its fixed four-step schedule overrides step counts and turns off MotionCache.
+- Bundled release notes appear once per app version.
+- LAN workers: run the Slopus worker package on another Windows or Linux computer and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves and use CUDA when available, with a Vulkan fallback; local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
 
 ## Fixes and improvements
 
-- Updated the bundled SlopFab runtime.
-- Smoother previews: clips are preloaded and pixels are kept across cuts.
-- Fixed export stalls in the video encoder.
-- Choosing the project folder now comes before project setup.
-- Expanded regression coverage for image projects, the new interface, undo, and export.
+- Simplified image edits and added references for individual edits. Still-image generation receives only the references mentioned in its prompt, with clear image and RefMod identifiers.
+- Removed box coordinates and palettes from image prompts, and limited image controls to supported generator model types.
+- Improved image family deletion so removing a variant preserves its original. Selected image boxes can also be deleted from the canvas.
+- Long prompts scroll inside their fields. Smart chips align with surrounding text and no longer overlap on adjacent lines.
+- Moved the Add a reference scrollbar clear of reference cards, and made the image bar scrollbar appear while scrolling.
+- Agent-generated shots use full language names, such as English.
+- Removed the opening-frame helper caption and made the release-note introduction render as normal text.
+- Updated the bundled SlopFab runtime to API 1.16 and adapted LoRA preparation to preserve companion-grid downloads for older adapters.

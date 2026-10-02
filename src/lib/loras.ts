@@ -7,6 +7,7 @@ export interface Lora {
   path: string;
   url?: string;
   stepOverride?: number;
+  samplingPreset?: "dmad-4step";
   needsPreparation?: boolean;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
@@ -30,6 +31,11 @@ export const LIGHTX2V_TURBO_LORA: Lora = {
   url: "https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/main/experimental/minimax_h3_fl2v_lightx2v_turbo_4to8step_v0.1-v1.0_768p_v4_step600_dareties.safetensors",
   stepOverride: 6,
 };
+export const DMAD_LORA: Lora = {
+  id: "dmad-4step", name: "DMAD 4-Step", path: "",
+  url: "https://huggingface.co/ZhengmingYu/DMAD/resolve/main/minimax_h3/dmad_minimax_h3_4step_full_critic.safetensors",
+  samplingPreset: "dmad-4step",
+};
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -41,6 +47,7 @@ export function loadLoras(): Lora[] {
         || typeof entry.name !== "string" || !entry.name.trim() || typeof entry.path !== "string") return [];
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
+        ...(entry.samplingPreset === "dmad-4step" ? { samplingPreset: "dmad-4step" as const } : {}),
         ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
@@ -50,8 +57,9 @@ export function loadLoras(): Lora[] {
     if (!ids.has(TURBO_LORA.id)) entries.push({ ...TURBO_LORA });
     if (!ids.has(VIGGLE_ANIMATE_LORA.id)) entries.push({ ...VIGGLE_ANIMATE_LORA });
     if (!ids.has(LIGHTX2V_TURBO_LORA.id)) entries.push({ ...LIGHTX2V_TURBO_LORA });
+    if (!ids.has(DMAD_LORA.id)) entries.push({ ...DMAD_LORA });
     return entries;
-  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }, { ...LIGHTX2V_TURBO_LORA }]; }
+  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }, { ...LIGHTX2V_TURBO_LORA }, { ...DMAD_LORA }]; }
 }
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
@@ -95,13 +103,13 @@ export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = fa
       const path = local ?? lora?.url;
       if (!path) throw new Error(lora?.needsPreparation ? `Prepare LoRA ${lora.name} in Settings before using it.`
         : `Locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
-      return [{ path, strength, stepOverride: lora?.stepOverride }];
+      return [{ path, strength, stepOverride: lora?.stepOverride, samplingPreset: lora?.samplingPreset }];
     }
     if (lora?.needsPreparation) throw new Error(`Prepare LoRA ${lora.name} in Settings before using it.`);
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
     }
-    return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride }];
+    return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride, samplingPreset: lora.samplingPreset }];
   });
 }
 

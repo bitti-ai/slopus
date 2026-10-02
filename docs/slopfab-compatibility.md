@@ -1,5 +1,36 @@
 # Slopfab compatibility
 
+## API 1.16: DMAD
+
+The bundled runtime comes from SlopFab commit `017d2b6`, built with
+`SLOPFAB_WITH_FFMPEG=OFF`. The DMAD 4-Step LoRA preset downloads the full-critic
+adapter and sends its recipe through `slopfab_request_set_sampling_settings`:
+re-noising, video/audio sigma shifts 12/2, and base sigmas `[1, .75, .5, .25, 0]`.
+The fixed grid takes precedence over scene and other LoRA step counts, and
+Slopus disables MotionCache for this recipe. Preview and execution use the
+same settings on CUDA and Vulkan. Older runtimes report that API 1.16 is needed.
+
+The recipe is saved with the machine-local LoRA library, independent of the
+downloaded filename. Local imports can select **DMAD 4-Step** under **Sampling
+recipe**. Disabled and zero-strength adapters do not select the recipe.
+The released adapter needs no companion timestep grid; Slopus checks the
+adapter header and skips grid preparation for attention/MLP-only adapters.
+The new runtime's preparation API requires its reserved argument to be zero.
+For legacy AdaLN adapters, Slopus now handles the optional companion download,
+using the same pinned revision, size and SHA-256 as the old runtime, then calls
+local-only preparation. Custom grid metadata still requires local assets.
+
+The [DMAD model card](https://huggingface.co/ZhengmingYu/DMAD/blob/main/README.md)
+describes training on T2VA at 1344x768, 124 frames and 24 fps. SlopFab also
+supports applying it to FL2VA; upstream quality results do not establish quality
+for this base-model swap or quantized weights. Slopus preserves the project's
+chosen dimensions and duration.
+
+Regression tests cover recipe persistence, download discovery, inactive LoRAs,
+fixed-grid precedence, and native preview/execution request construction on both
+backends. Release checks probe the download URL without fetching the full file.
+Full model inference was not rerun for this integration.
+
 ## API 1.14: Extend and Bridge
 
 The bundled runtime now builds from SlopFab commit `103687a` with

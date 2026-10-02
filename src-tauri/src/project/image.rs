@@ -11,6 +11,8 @@ pub(crate) struct ImageGenerationSnapshot {
     pub brief_prompt: String,
     pub prompt: String,
     pub generator_template_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_seed: Option<u64>,
     pub references: Vec<super::references::ReusableReference>,
 }
 
