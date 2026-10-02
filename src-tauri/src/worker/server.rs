@@ -73,6 +73,7 @@ impl JobLog {
 struct Preparation {
     status: Mutex<FilePreparation>,
     cancel: Arc<AtomicBool>,
+    created: Instant,
 }
 
 struct Worker {
@@ -388,11 +389,16 @@ impl Worker {
         let preparation = Arc::new(Preparation {
             status: Mutex::new(FilePreparation { state: "running".into(), ..Default::default() }),
             cancel: Arc::new(AtomicBool::new(false)),
+            created: Instant::now(),
         });
         {
             let mut preparations = self.preparations.lock().map_err(|_| "Lock failed.")?;
-            // Finished entries are only read once; keep the map small.
-            preparations.retain(|_, entry| entry.status.lock().is_ok_and(|status| status.state == "running"));
+            // Keep finished results long enough for their client to read them.
+            preparations.retain(|_, entry| entry.created.elapsed() < Duration::from_secs(60 * 60)
+                || entry.status.lock().is_ok_and(|status| status.state == "running"));
+            if preparations.get(id).is_some_and(|entry| entry.status.lock().is_ok_and(|status| status.state != "running")) {
+                preparations.remove(id);
+            }
             if preparations.contains_key(id) {
                 return Err("Files for this job are already being prepared.".into());
             }

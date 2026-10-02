@@ -63,7 +63,8 @@ struct Inner {
     saved: Mutex<Saved>,
     announced: Mutex<Vec<Announced>>,
     probes: Mutex<HashMap<String, Probe>>,
-    jobs: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// Jobs sent from here, with the worker each one went to.
+    jobs: Mutex<HashMap<String, (Arc<AtomicBool>, Connection)>>,
     daemon: Mutex<Option<mdns_sd::ServiceDaemon>>,
 }
 
@@ -282,14 +283,16 @@ impl Workers {
 
     /// Every address a worker id might answer on, best first.
     fn addresses_for(&self, id: &str, saved: &Saved) -> Vec<String> {
-        let mut addresses: Vec<String> = self.0.announced.lock().map(|announced| announced.iter()
+        // The address that last answered first, then what mDNS announces.
+        let mut addresses: Vec<String> = saved.known.get(id).map(|known| known.address.clone()).into_iter().collect();
+        for address in self.0.announced.lock().map(|announced| announced.iter()
             .filter(|worker| worker.id == id)
             .flat_map(|worker| worker.addresses.iter().map(socket_address))
-            .collect()).unwrap_or_default();
-        if let Some(known) = saved.known.get(id) {
-            addresses.push(known.address.clone());
+            .collect::<Vec<_>>()).unwrap_or_default() {
+            if !addresses.contains(&address) {
+                addresses.push(address);
+            }
         }
-        addresses.dedup();
         addresses
     }
 
@@ -471,13 +474,13 @@ impl Workers {
         }
     }
 
-    fn register(&self, job_id: &str) -> Result<Arc<AtomicBool>, String> {
+    fn register(&self, job_id: &str, connection: &Connection) -> Result<Arc<AtomicBool>, String> {
         let mut jobs = self.0.jobs.lock().map_err(|_| "Worker job lock failed.")?;
         if jobs.contains_key(job_id) {
             return Err("This generation job is already queued.".into());
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        jobs.insert(job_id.to_string(), cancel.clone());
+        jobs.insert(job_id.to_string(), (cancel.clone(), connection.clone()));
         Ok(cancel)
     }
 
@@ -487,17 +490,16 @@ impl Workers {
         }
     }
 
-    /// Cancels a job this computer sent to a worker. False when it sent none.
+    /// Cancels a job this computer sent to a worker, on the worker it went
+    /// to even if another one is selected now. False when it sent none.
     pub(crate) fn cancel(&self, job_id: &str) -> bool {
-        let Some(flag) = self.0.jobs.lock().ok().and_then(|jobs| jobs.get(job_id).cloned()) else { return false };
+        let Some((flag, connection)) = self.0.jobs.lock().ok().and_then(|jobs| jobs.get(job_id).cloned()) else { return false };
         flag.store(true, Ordering::Release);
-        if let Ok(Some(connection)) = self.active() {
-            let job_id = job_id.to_string();
-            std::thread::spawn(move || {
-                let _ = connection.post::<serde_json::Value>(&format!("/v1/jobs/{job_id}/cancel"), &());
-                let _ = connection.post::<serde_json::Value>(&format!("/v1/prepare/{job_id}/cancel"), &());
-            });
-        }
+        let job_id = job_id.to_string();
+        std::thread::spawn(move || {
+            let _ = connection.post::<serde_json::Value>(&format!("/v1/jobs/{job_id}/cancel"), &());
+            let _ = connection.post::<serde_json::Value>(&format!("/v1/prepare/{job_id}/cancel"), &());
+        });
         true
     }
 
@@ -562,7 +564,7 @@ impl Workers {
 
     pub(crate) fn plan(&self, connection: &Connection, request: &GenerationRequest, settings: &BTreeMap<String, ProviderSetting>) -> Result<serde_json::Value, String> {
         let (job, sources) = build_job(request, settings)?;
-        let cancel = self.register(&request.job_id)?;
+        let cancel = self.register(&request.job_id, connection)?;
         let result = self.send_files(connection, &job, &sources, &cancel)
             .and_then(|_| connection.post::<serde_json::Value>("/v1/plan", &job));
         self.unregister(&request.job_id);
@@ -575,7 +577,7 @@ impl Workers {
     pub(crate) fn enqueue(&self, connection: Connection, request: GenerationRequest, settings: &BTreeMap<String, ProviderSetting>) -> Result<(), String> {
         crate::media::artifacts::generated_file_stem(&request.job_id)?;
         let (job, sources) = build_job(&request, settings)?;
-        let cancel = self.register(&request.job_id)?;
+        let cancel = self.register(&request.job_id, &connection)?;
         let workers = self.clone();
         let latents = request.save_latents_path.clone();
         diagnostics::info("workers", "job.sending", "Generation is being sent to a worker.", serde_json::json!({
