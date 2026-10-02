@@ -6,6 +6,46 @@ use crate::project::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn dmad_recipe_reaches_preview_and_execution_on_both_backends() {
+    let root = tempfile::tempdir().unwrap();
+    let adapter = root.path().join("renamed-adapter.safetensors");
+    metadata_checkpoint(&adapter, serde_json::json!({}));
+    let settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
+        enabled: true, model: None,
+        options: BTreeMap::from([
+            ("samplingPreset".into(), ProviderOption::String("dmad-4step".into())),
+            ("motionCache".into(), ProviderOption::Boolean(true)),
+            ("stepOverride".into(), ProviderOption::Number(12.0)),
+            ("loras".into(), ProviderOption::String(serde_json::json!([
+                { "path": adapter, "strength": 1.0 }
+            ]).to_string())),
+        ]),
+    })]);
+    let configuration = Configuration::from_settings(&settings);
+    assert_eq!(configuration.generation_steps(30).unwrap(), 4);
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request = GenerationRequest {
+        prompt: "A polar bear plays the violin in the snow.".into(),
+        frames: 124, steps: 30, seed: 42, canvas_width: 1344, canvas_height: 768,
+        ..Default::default()
+    };
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+            let plan = api.resolve(&handle).unwrap();
+            assert_eq!(plan.num_model_evaluations, 4);
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("renoise"), "{description}");
+            assert!(description.contains("shift 12"), "{description}");
+            assert!(description.contains("shift 2"), "{description}");
+        }
+    }
+    let ordinary = Configuration::from_settings(&BTreeMap::new());
+    assert_ne!(configuration.timing_profile("1.16.0", ComputePlatform::Vulkan), ordinary.timing_profile("1.16.0", ComputePlatform::Vulkan));
+}
+
+#[test]
 fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
     let references = ReferenceVideos::default();
     let mut configuration = Configuration::from_settings(&BTreeMap::new());

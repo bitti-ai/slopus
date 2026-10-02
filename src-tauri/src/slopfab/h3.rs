@@ -1,6 +1,6 @@
 //! H3 and Animate request recipes for the SlopFab backend.
 use super::{
-    config::Configuration,
+    config::{Configuration, SamplingPreset},
     ffi::{self, RequestHandle},
     planning::{generation_seed, RequestPurpose},
     platform::ComputePlatform,
@@ -53,6 +53,10 @@ pub(super) fn configure_request(
         api.set_still_image(handle)?;
     }
     api.set_steps(handle, configuration.generation_steps(request.steps)?)?;
+    let dmad = configuration.sampling_preset.as_ref().map_err(Clone::clone)? == &Some(SamplingPreset::Dmad4Step);
+    if dmad {
+        api.set_dmad_sampling(handle)?;
+    }
     api.set_seed(handle, generation_seed(request.seed)?)?;
     if let Some(edit) = &request.image_edit {
         let step = edit.edits.first().ok_or("Add an image edit before generating.")?;
@@ -68,7 +72,7 @@ pub(super) fn configure_request(
     }
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
-    api.set_motion_cache(handle, configuration.motion_cache && request.image_edit.is_none())?;
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none())?;
     api.set_verbose(handle, false)?;
     if let Some(mode) = request.video_transition.as_deref() {
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;

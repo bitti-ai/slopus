@@ -127,6 +127,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_seed(r.pointer.as_ptr(), v)
     }
+    pub fn set_dmad_sampling(&self, r: &RequestHandle) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_dmad_sampling(r.pointer.as_ptr())
+    }
     pub fn set_verbose(&self, r: &RequestHandle, v: bool) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_verbose(r.pointer.as_ptr(), v)

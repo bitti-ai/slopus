@@ -4,6 +4,7 @@ This alpha update adds still image projects, new scene types, and a rebuilt Wind
 
 ## What's new
 
+- Downloadable DMAD 4-Step LoRA with its re-noising sampling recipe for MiniMax H3.
 - Image projects: compose a still image as a hierarchy of objects, text and groups on a canvas, generate it with MiniMax H3, then refine it with sequential edits on an opened or generated image. Generated images and drafts stay in an image bar, and each keeps the settings it was made with.
 - Image export as JPG or PNG, at the original size or a size from the project ladder, with adjustable JPG quality. Pick any image to export from the image bar under the preview.
 - New scene types: Pose, Character replace, Extend and Bridge, alongside First & last frame and Animate.

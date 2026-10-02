@@ -58,6 +58,7 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
   const [path, setPath] = useState(existing?.path ?? "");
   const [override, setOverride] = useState(existing?.stepOverride !== undefined);
   const [steps, setSteps] = useState(String(existing?.stepOverride ?? 3));
+  const [samplingPreset, setSamplingPreset] = useState(existing?.samplingPreset);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [allowDownload, setAllowDownload] = useState(true);
@@ -72,7 +73,7 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
       if (!name.trim()) setName(picked.split(/[\\/]/).pop()!.replace(/\.safetensors$/i, ""));
     } catch (reason) { setError(String(reason)); }
   };
-  const invalid = !name.trim() || (!path.trim() && !existing?.url) || (override && !isLoraStepOverride(Number(steps)));
+  const invalid = !name.trim() || (!path.trim() && !existing?.url) || (!samplingPreset && override && !isLoraStepOverride(Number(steps)));
   const save = async () => {
     if (invalid) return;
     if (path.trim() && (!/^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path.trim()) || path.includes("\0"))) {
@@ -84,7 +85,7 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
         await prepareLora({ id: loraId, name: name.trim(), path: path.trim() }, allowDownload);
       }
       const library = loadLoras();
-      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), path: path.trim(), stepOverride: override ? Number(steps) : undefined,
+      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), path: path.trim(), samplingPreset, stepOverride: !samplingPreset && override ? Number(steps) : undefined,
         ...(path.trim() !== existing?.path ? { needsPreparation: undefined } : {}) };
       saveLoras(existing ? library.map((lora) => lora.id === loraId ? entry : lora) : [...library, entry]);
       if (mounted.current) onDone();
@@ -98,9 +99,13 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
       <label>Name<input className="text-field" aria-label="LoRA name" value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label>Local file<span className="lora-manual__path"><input className="text-field" aria-label="LoRA path" value={path} spellCheck={false} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
         <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}>Browse…</button></span></label>
-      <Checkbox aria-label="Override step count" checked={override} onChange={setOverride} label="Override step count"
-        description="The highest override among active LoRAs replaces the scene's step count." />
-      {override && <label>Step count<input className="text-field" aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
+      <label>Sampling recipe<ComboBox aria-label="LoRA sampling recipe" value={samplingPreset ?? "default"}
+        onChange={(value) => setSamplingPreset(value === "dmad-4step" ? value : undefined)}
+        options={[{ value: "default", label: "Default" }, { value: "dmad-4step", label: "DMAD 4-Step" }]} /></label>
+      {samplingPreset && <InfoBar severity="informational" message="DMAD uses four re-noising evaluations with video/audio shifts of 12/2. Its fixed schedule overrides step counts and turns off MotionCache." />}
+      {!samplingPreset && <Checkbox aria-label="Override step count" checked={override} onChange={setOverride} label="Override step count"
+        description="The highest override among active LoRAs replaces the scene's step count." />}
+      {!samplingPreset && override && <label>Step count<input className="text-field" aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
       <Checkbox aria-label="Download missing timestep grid" checked={allowDownload} onChange={setAllowDownload} label="Download missing timestep grid"
         description="New files are prepared in place before use, which may embed a timestep grid." />
       {error && <InfoBar severity="error" message={error} />}
@@ -111,6 +116,7 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
 export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
   const library = useLoras();
   const active = value.filter((entry) => entry.enabled && entry.strength !== 0);
+  const dmad = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "dmad-4step");
   const stepOverride = highestLoraStepOverride(active
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const available = library.filter((entry) => (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
@@ -139,6 +145,7 @@ export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]
         onChange={(loraId) => { if (loraId) onChange([...value, { loraId, enabled: true, strength: 1 }]); }}
         options={available.map((lora) => ({ value: lora.id, label: lora.name }))} />
     </SettingsCard>
-    {stepOverride !== undefined && <InfoBar severity="informational" message={`Active LoRAs set the scene's step count to ${stepOverride}, the highest selected override.`} />}
+    {dmad ? <InfoBar severity="informational" message="DMAD fixes generation to four re-noising evaluations and turns off MotionCache." />
+      : stepOverride !== undefined && <InfoBar severity="informational" message={`Active LoRAs set the scene's step count to ${stepOverride}, the highest selected override.`} />}
   </SettingsGroup>;
 }
