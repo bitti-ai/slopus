@@ -21,6 +21,17 @@ rust-version = "1.87"
 name = "slopus_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The reference icon generator (scripts/generate-reference-icons.mjs) is a
+# development tool. Behind a feature, the Tauri CLI leaves it out of installers
+# and packages, where it would otherwise land on PATH as /usr/bin/reference_icons.
+reference-icon-tool = []
+
+[[bin]]
+name = "reference_icons"
+path = "src/bin/reference_icons.rs"
+required-features = ["reference-icon-tool"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

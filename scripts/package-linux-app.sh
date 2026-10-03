@@ -54,7 +54,8 @@ if [[ $(head -c 4 "$runtime" 2>/dev/null | od -An -c | tr -d ' ') != '177ELF' ]]
   fail "$runtime is missing or a Git LFS pointer. Run git lfs pull."
 fi
 
-cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$root/src-tauri/Cargo.toml")
+# A Windows checkout has CRLF line endings; keep the \r out of the comparison.
+cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$root/src-tauri/Cargo.toml" | tr -d '\r')
 [[ $cargo_version == "$version" ]] || fail "version $version does not match src-tauri/Cargo.toml ($cargo_version)."
 
 # The Windows build ran `npm run build` moments ago; refuse a missing frontend
@@ -64,7 +65,7 @@ asset=$(find "$root/dist/assets" -maxdepth 1 -name '*.js' -printf '%f\n' 2>/dev/
 [[ -n $asset ]] || fail 'dist/assets has no JavaScript bundle.'
 
 # The same CLI version as package-lock.json, installed once per version.
-cli_version=$(sed -n '/"node_modules\/@tauri-apps\/cli": {/,/}/s/.*"version": "\(.*\)".*/\1/p' "$root/package-lock.json" | head -n 1)
+cli_version=$(sed -n '/"node_modules\/@tauri-apps\/cli": {/,/}/s/.*"version": "\(.*\)".*/\1/p' "$root/package-lock.json" | tr -d '\r' | head -n 1)
 [[ -n $cli_version ]] || fail 'could not read the @tauri-apps/cli version from package-lock.json.'
 tools="$HOME/.cache/slopus/tauri-cli-$cli_version"
 if [[ ! -x $tools/bin/cargo-tauri ]]; then
@@ -72,7 +73,10 @@ if [[ ! -x $tools/bin/cargo-tauri ]]; then
   cargo install tauri-cli --version "=$cli_version" --locked --root "$tools"
 fi
 
-config='{"build":{"beforeBuildCommand":""}}'
+# useLocalToolsDir keeps the AppImage tools in $target_dir/.tauri, where our
+# GStreamer plugin replaces the downloaded one (see the plugin for why).
+build_config='"build":{"beforeBuildCommand":""}'
+config="{$build_config,\"bundle\":{\"useLocalToolsDir\":true}}"
 if [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} ]]; then
   # release.cmd passes the Windows path of the key file through WSLENV.
   if [[ $TAURI_SIGNING_PRIVATE_KEY =~ ^[A-Za-z]:[\\/] ]] && command -v wslpath >/dev/null; then
@@ -81,13 +85,15 @@ if [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} ]]; then
   fi
   signed=1
 else
-  config='{"build":{"beforeBuildCommand":""},"bundle":{"createUpdaterArtifacts":false}}'
+  config="{$build_config,\"bundle\":{\"useLocalToolsDir\":true,\"createUpdaterArtifacts\":false}}"
   signed=0
 fi
 
 target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/linux-app-target"}
 bundle="$target_dir/release/bundle"
 rm -rf -- "$bundle"
+mkdir -p "$target_dir/.tauri"
+install -m 0755 "$root/scripts/linux/linuxdeploy-plugin-gstreamer.sh" "$target_dir/.tauri/linuxdeploy-plugin-gstreamer.sh"
 (
   cd -- "$root"
   # The AppImage tools are themselves AppImages; WSL has no FUSE to mount them.
@@ -104,6 +110,18 @@ deb=$(pick deb '*.deb')
 rpm=$(pick rpm '*.rpm')
 appimage=$(pick appimage '*.AppImage')
 [[ -n $deb && -n $rpm && -n $appimage ]] || fail "expected a .deb, .rpm and AppImage under $bundle."
+
+# The AppImage carries its own libraries; make sure none of them is FFmpeg, a
+# GPL codec or the CUDA toolkit (see scripts/linux/linuxdeploy-plugin-gstreamer.sh).
+extract=$(mktemp -d /tmp/slopus-appimage.XXXXXXXX)
+trap 'rm -rf -- "$extract"' EXIT
+(cd -- "$extract" && "$appimage" --appimage-extract >/dev/null)
+forbidden=$(find "$extract/squashfs-root" -type f \( -name 'libavcodec.so*' -o -name 'libavformat.so*' \
+  -o -name 'libavutil.so*' -o -name 'libavfilter.so*' -o -name 'libavdevice.so*' -o -name 'libswscale.so*' \
+  -o -name 'libswresample.so*' -o -name 'libpostproc.so*' -o -name 'libx264*.so*' -o -name 'libx265*.so*' -o -name 'libgstlibav.so' \
+  -o -name 'libcublas*.so*' \) -printf '%f\n')
+[[ -z $forbidden ]] || fail "the AppImage bundles libraries it must not ship: $(echo $forbidden)"
+[[ -f $extract/squashfs-root/usr/lib/Slopus/libslopfab.so ]] || fail 'the AppImage is missing libslopfab.so.'
 
 stem="Slopus-$version-linux-x64"
 mkdir -p -- "$artifacts"

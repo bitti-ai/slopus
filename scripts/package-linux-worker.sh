@@ -42,7 +42,8 @@ target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/linux-worker-target"}
 CARGO_TARGET_DIR=$target_dir cargo build --release --locked \
   --manifest-path "$root/src-tauri/Cargo.toml" -p slopus-worker
 
-cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$root/src-tauri/Cargo.toml")
+# A Windows checkout has CRLF line endings; keep the \r out of the comparison.
+cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$root/src-tauri/Cargo.toml" | tr -d '\r')
 if [[ $cargo_version != "$version" ]]; then
   printf 'package-linux-worker: version %s does not match src-tauri/Cargo.toml (%s).\n' "$version" "$cargo_version" >&2
   exit 1
