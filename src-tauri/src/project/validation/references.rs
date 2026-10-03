@@ -82,6 +82,16 @@ pub(super) fn validate_references(references: &mut [ReusableReference]) -> Resul
                 }
             }
         }
+        if let Some(audio) = &reference.audio {
+            if reference.kind != "audio"
+                || !audio.start_seconds.is_finite()
+                || audio.start_seconds < 0.0
+                || !audio.duration_seconds.is_finite()
+                || !(2.0..=15.0).contains(&audio.duration_seconds)
+            {
+                return Err(format!("Reference '{}' needs a nonnegative sound start and a duration of 2 to 15 seconds.", reference.id));
+            }
+        }
         for image in reference.images.iter_mut().chain(reference.video.iter_mut().flat_map(|video| video.frames.iter_mut().map(|frame| &mut frame.file))) {
             if image.id.trim().is_empty() || image.name.trim().is_empty() {
                 return Err(format!(

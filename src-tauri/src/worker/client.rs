@@ -177,12 +177,12 @@ impl Connection {
         self.send(self.request(reqwest::Method::POST, path).json(body))?.json().map_err(|error| format!("Worker {}: {error}", self.name))
     }
 
-    pub(crate) fn post_bytes(&self, path: &str, headers: &[(&str, String)], bytes: Vec<u8>) -> Result<(), String> {
+    pub(crate) fn post_bytes<T: DeserializeOwned>(&self, path: &str, headers: &[(&str, String)], bytes: Vec<u8>) -> Result<T, String> {
         let mut builder = self.request(reqwest::Method::POST, path).body(bytes);
         for (name, value) in headers {
             builder = builder.header(*name, value);
         }
-        self.send(builder).map(|_| ())
+        self.send(builder)?.json().map_err(|error| format!("Worker {}: {error}", self.name))
     }
 
     fn bytes(&self, path: &str) -> Result<Vec<u8>, String> {

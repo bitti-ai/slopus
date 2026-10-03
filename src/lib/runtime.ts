@@ -96,8 +96,10 @@ export interface SlopfabGenerationRequest {
   referencePaths: string[];
   refmods?: Array<{ path: string; strength: number; copies: number }>;
   referenceVideos?: Array<{ name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }>;
+  referenceAudios?: Array<{ name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds: number }>;
   /** Temporary native handles, populated by the work queue and never saved. */
   referenceVideoIds?: string[];
+  referenceAudioIds?: string[];
   /** Resolved by the app queue before native submission. */
   previousSceneId?: string;
   continuationRelativePath?: string;

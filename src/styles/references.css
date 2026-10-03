@@ -588,6 +588,11 @@
   border-radius: var(--radius-sm);
 }
 
+.reference-audio { display: grid; gap: var(--space-2); min-width: 0; }
+.reference-audio audio { width: 100%; }
+.reference-audio p { margin: 0; color: var(--text-muted); }
+.reference-video > p { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }
+
 .reference-trim { display: grid; gap: var(--space-2); min-width: 0; }
 .reference-trim__summary { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
 .reference-trim__summary span, .reference-trim__ticks { color: var(--text-muted); font-size: var(--text-xs); }

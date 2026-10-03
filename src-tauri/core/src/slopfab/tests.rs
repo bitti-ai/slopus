@@ -866,6 +866,63 @@ fn vulkan_video_references_prepare_and_attach_for_planning_and_generation() {
 }
 
 #[test]
+fn standalone_audio_references_attach_after_videos_and_need_visual_media() {
+    let references = ReferenceVideos::default();
+    let settings = BTreeMap::new();
+    let video = references.create_reference_video(2.0, &settings).unwrap();
+    let audio = references
+        .create_reference_audio(&vec![0; 32_000 * 2 * 4], 1, 32_000)
+        .unwrap();
+    let result = (|| -> Result<(), String> {
+        references.append_reference_video(&video, &vec![127; 64 * 64 * 4], 64, 64, 0.0)?;
+        let mut request = GenerationRequest {
+            job_id: "audio-reference-test".into(),
+            prompt: "A scene using <Video 1> and <Audio 1>.".into(),
+            frames: 120,
+            steps: 12,
+            seed: 1,
+            canvas_width: 736,
+            canvas_height: 416,
+            reference_video_ids: vec![video.clone()],
+            reference_audio_ids: vec![audio.clone()],
+            ..Default::default()
+        };
+        let configuration = Configuration::from_settings(&settings);
+        let api = ffi::Api::load(&configuration.dll_path)?;
+        let plan = |request: &GenerationRequest| -> Result<String, String> {
+            let handle = RequestHandle::new(&api)?;
+            configure_request(&api, &handle, request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Plan, &references)?;
+            api.resolve(&handle)?;
+            api.describe(&handle)
+        };
+        let description = plan(&request)?;
+        assert!(description.contains("reference audios    1"));
+        request.reference_video_ids.clear();
+        assert!(plan(&request).unwrap_err().contains("image or video reference"));
+        Ok(())
+    })();
+    references.release_reference_videos(&[video]).unwrap();
+    references.release_reference_audios(&[audio.clone()]).unwrap();
+    assert!(references.reference_audio(&audio).is_err());
+    result.unwrap();
+}
+
+#[test]
+fn reference_audio_registry_validates_pcm_layout() {
+    let references = ReferenceVideos::default();
+    assert!(references.create_reference_audio(&[0; 6], 1, 32_000).is_err());
+    assert!(references.create_reference_audio(&[0; 12], 2, 32_000).is_err());
+    assert!(references.create_reference_audio(&[0; 8], 3, 32_000).is_err());
+    assert!(references.create_reference_audio(&[0; 8], 1, 0).is_err());
+    let ids: Vec<String> = (0..3)
+        .map(|_| references.create_reference_audio(&[0; 8], 2, 48_000).unwrap())
+        .collect();
+    assert!(references.create_reference_audio(&[0; 8], 2, 48_000).is_err());
+    references.release_reference_audios(&ids).unwrap();
+    assert!(references.create_reference_audio(&[0; 8], 2, 48_000).is_ok());
+}
+
+#[test]
 fn video_reference_c_api_copies_inputs_and_retains_attached_snapshot() {
     let path = default_dll_path();
     let api = ffi::Api::load(&path).unwrap();

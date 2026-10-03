@@ -200,7 +200,7 @@ pub(crate) fn reference_attachment_kind(path: &Path) -> Result<&'static str, Str
     super::formats::lookup(&extension)
         .filter(|format| format.reference)
         .map(|format| format.kind)
-        .ok_or_else(|| "Choose an image, MP4/MOV video, or refmod safetensors file.".into())
+        .ok_or_else(|| "Choose an image, MP4/MOV video, audio file, or refmod safetensors file.".into())
 }
 
 pub(crate) fn import_reference_attachments(
@@ -217,9 +217,9 @@ pub(crate) fn import_reference_attachments(
             reference_attachment_kind(path)
         })
         .collect::<Result<Vec<_>, String>>()?;
-    if kinds.iter().filter(|kind| **kind == "video").count() > 1 {
+    if kinds.iter().filter(|kind| **kind == "video" || **kind == "audio").count() > 1 {
         return Err(
-            "Add one video per reference. Use another reference for additional videos.".into(),
+            "Add one video or sound per reference. Use another reference for additional clips.".into(),
         );
     }
     paths

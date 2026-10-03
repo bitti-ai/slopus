@@ -23,6 +23,8 @@ pub(crate) struct ReusableReference {
     pub(crate) refmods: Vec<ReferenceRefmod>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) video: Option<ReferenceVideoOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) audio: Option<ReferenceAudioOptions>,
     #[serde(default)]
     pub(crate) intended_use: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,6 +70,13 @@ pub(crate) struct ReferenceVideoFrame {
     #[serde(flatten)]
     pub(crate) file: ReferenceImage,
     pub(crate) time_seconds: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReferenceAudioOptions {
+    pub(crate) start_seconds: f64,
+    pub(crate) duration_seconds: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

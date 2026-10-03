@@ -31,6 +31,7 @@ pub(super) fn apply(
                 images: Vec::new(),
                 refmods: Vec::new(),
                 video: None,
+                audio: None,
                 intended_use: intended_use.clone(),
                 subcategory: None,
                 icon_relative_path: None,

@@ -159,6 +159,7 @@ pub(crate) fn create_project_at_with_references(
                 images: Vec::new(),
                 refmods: Vec::new(),
                 video: None,
+                audio: None,
                 intended_use: vec!["style".into()],
                 subcategory: None,
                 icon_relative_path: None,

@@ -1,4 +1,4 @@
-import { Add16, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
+import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -29,9 +29,11 @@ import { ReferenceIconGenerationDialog } from "../ReferenceIconGenerationDialog"
 import { builtinIconRevision, refreshBuiltinIcons, subscribeBuiltinIcons } from "../../lib/builtinReferenceIcons";
 import { builtinIconVisitAction, saveBuiltinIconChoice } from "../../lib/referenceIconSettings";
 import { ReferenceVideo } from "./ReferenceVideo";
+import { ReferenceAudio } from "./ReferenceAudio";
 import { ProjectStatus } from "./ProjectStatus";
 import { MediaThumbnail } from "./MediaThumbnail";
 import { inspectReferenceVideo } from "../../lib/referenceVideo";
+import { inspectReferenceAudio } from "../../lib/referenceAudio";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { loadDebugOptionsEnabled, subscribeDebugOptions } from "../../lib/settings";
@@ -56,7 +58,7 @@ const referenceKindLabel = (reference: ProjectReference) => {
 /** The file a reference is made of, for "Show in File Explorer". */
 const referenceFile = (folderPath: string, reference: ProjectReference): string | null => {
   const image = referenceImages(reference)[0];
-  if (reference.kind === "video") return projectItemPath(folderPath, reference);
+  if (reference.kind === "video" || reference.kind === "audio") return projectItemPath(folderPath, reference);
   if (image) return projectItemPath(folderPath, image);
   const refmod = reference.refmods?.[0];
   return refmod ? projectItemPath(folderPath, refmod) : null;
@@ -272,14 +274,26 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     try {
       const files = imagesOnly
         ? (await invoke<Array<{ name: string; relativePath: string }>>("choose_reference_images", { folderPath })).map((image) => ({ ...image, kind: "image" as const, sourcePath: null }))
-        : await invoke<Array<{ kind: "image" | "video" | "refmod"; name: string; relativePath?: string | null; sourcePath?: string | null }>>("choose_reference_files", { folderPath });
+        : await invoke<Array<{ kind: "image" | "video" | "audio" | "refmod"; name: string; relativePath?: string | null; sourcePath?: string | null }>>("choose_reference_files", { folderPath });
       if (!files.length) return;
+      // A sound is cited as <Audio N>, never as a subject, so pictures on the
+      // same reference would have nothing to belong to.
+      const sound = files.find((file) => file.kind === "audio");
+      if (sound && (files.length > 1 || chosen.kind === "video" || referenceImages(chosen).length)) {
+        throw new Error("Add a sound to its own reference, without images or a video.");
+      }
+      if (chosen.kind === "audio" && !sound) throw new Error("A sound reference can’t hold images or videos. Use another reference.");
       const clip = files.find((file) => file.kind === "video");
       const video = clip ? { startSeconds: 0, ...await inspectReferenceVideo(folderPath, clip.sourcePath!) } : undefined;
+      const audio = sound ? await inspectReferenceAudio(folderPath, sound.sourcePath!) : undefined;
       const current = configRef.current;
       const target = current.references.find((reference) => reference.id === chosen.id);
       if (!target) throw new Error("The reference was removed while the files were importing.");
       if (target.refmods?.length) throw new Error("Remove the refmods before adding more files.");
+      if (sound) {
+        update(target.id, { kind: "audio", relativePath: null, sourcePath: sound.sourcePath, audio, video: undefined, images: [] });
+        return;
+      }
       const images: ProjectReferenceImage[] = files.filter((file) => file.kind === "image").map((file) => ({
         id: `ref-image-${crypto.randomUUID()}`, name: file.name, relativePath: file.relativePath, sourcePath: file.sourcePath,
       }));
@@ -409,6 +423,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           asset={{ id: ref.id, kind: "video", name: ref.name, sourcePath: ref.sourcePath, relativePath: ref.relativePath, mimeType: "video/mp4", createdAt: ref.createdAt }}
           posterTimeSeconds={0}
         /></span>
+      : ref.kind === "audio"
+        ? <span className="reference-art reference-art--text"><Audio22 aria-hidden="true" /></span>
       : ref.refmods?.length && ref.iconRelativePath
         ? <span className="reference-art reference-art--photo"><ReferenceImage folderPath={folderPath} relativePath={ref.iconRelativePath} alt={`${ref.name} icon`} /></span>
       : cover
@@ -541,9 +557,17 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined, images: referenceImages(selected) })}><Delete16 aria-hidden="true" /> Remove video</button>
             </section>
           </PropSection>}
+          {selected.kind === "audio" && <PropSection title="Sound clip" persistKey="references.audio">
+            <section className="reference-video" aria-label="Sound reference">
+              <ReferenceAudio key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
+                onChange={(audio) => update(selected.id, { audio })} />
+              <p>Needs a Ref2VA generator and an image or video reference in the same scene. Cite it in a shot to place it.</p>
+              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, audio: undefined })}><Delete16 aria-hidden="true" /> Remove sound</button>
+            </section>
+          </PropSection>}
           {/* The picture at a readable size, where the chip is only a glance:
               paging through the images, removing one. The header regenerates the icon. */}
-          {(selected.kind !== "video" || showImages || hasRefmods) && <PropSection
+          {((selected.kind !== "video" && selected.kind !== "audio") || showImages || hasRefmods) && <PropSection
             title="Preview"
             persistKey="references.preview"
             summary={showImages ? `${currentImagePage + 1} of ${selectedImages.length}` : undefined}
@@ -592,6 +616,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
                 : !isReferenceDescribed(selected) && <p>{isVideoReference(selected)
                   ? "The clip is sent as a reference. Add a prompt to describe what to keep."
+                  : selected.kind === "audio"
+                    ? "The sound is sent as a reference. Describe its role, such as the voice timbre for a character."
                   : selectedImages.length > 0
                     ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
                     : "Not described yet — it won’t be used until you add a definition."}</p>}

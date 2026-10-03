@@ -469,6 +469,18 @@ impl Worker {
                 self.runtime.references.set_reference_video_audio(id, &samples, channels, rate)?;
                 json(&true)
             }
+            (Method::Post, ["reference-audios"]) => {
+                let channels = parsed_header(request, "x-reference-channels")?;
+                let rate = parsed_header(request, "x-reference-rate")?;
+                let mut samples = Vec::new();
+                request.as_reader().take(1024 * 1024 * 1024).read_to_end(&mut samples).map_err(|error| error.to_string())?;
+                json(&self.runtime.references.create_reference_audio(&samples, channels, rate)?)
+            }
+            (Method::Post, ["reference-audios", "release"]) => {
+                let ids: Vec<String> = body(request)?;
+                self.runtime.references.release_reference_audios(&ids)?;
+                json(&true)
+            }
             _ => Err(HttpError(404, "Unknown worker route.".into())),
         }
     }

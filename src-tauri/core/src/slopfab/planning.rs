@@ -69,12 +69,13 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
     let limits = crate::models::H3_CAPABILITIES;
     if request.reference_paths.len() > limits.max_image_references
         || request.reference_video_ids.len() > limits.max_video_references
+        || request.reference_audio_ids.len() > limits.max_audio_references
         || request.reference_count() > limits.max_references
     {
-        return Err("Use at most nine images and three videos per generation.".into());
+        return Err("Use at most nine images, three videos and three sounds per generation.".into());
     }
-    if request.still_image && !request.reference_video_ids.is_empty() {
-        return Err("Video references cannot be used for still-image generation.".into());
+    if request.still_image && (!request.reference_video_ids.is_empty() || !request.reference_audio_ids.is_empty()) {
+        return Err("Video and sound references cannot be used for still-image generation.".into());
     }
     if request.steps < limits.min_steps {
         return Err("Generation step count must be at least 2.".into());

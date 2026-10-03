@@ -38,6 +38,7 @@ fn another_model_supplies_its_own_policy_and_vocabulary() {
             min_steps: 1,
             max_image_references: 1,
             max_video_references: 0,
+            max_audio_references: 0,
             max_references: 1,
             continuation_overlap: 0,
             frame_stride: 1,

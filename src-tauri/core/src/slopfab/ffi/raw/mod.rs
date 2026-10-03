@@ -57,6 +57,7 @@ pub struct Output {
     pub steps_computed: i32,
     pub steps_skipped: i32,
 }
+type AddReferenceAudio = unsafe extern "C" fn(*mut Request, *const f32, usize, i32, i32) -> i32;
 pub type ProgressFn = Option<unsafe extern "C" fn(*const Progress, *mut c_void)>;
 type SetMotionCache =
     unsafe extern "C" fn(*mut Request, i32, f32, f32, i32, i32, f32, f32, i32, i32) -> i32;
@@ -92,6 +93,7 @@ pub struct Api {
     prepare_lora_grid: Option<unsafe extern "C" fn(*const c_char, i32, i32) -> i32>,
     add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
     add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
+    add_reference_audio: Option<AddReferenceAudio>,
     set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
     set_motion_cache: Option<SetMotionCache>,
     set_inference_backend: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -236,6 +238,10 @@ impl Api {
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(
                         b"slopfab_request_add_refmod\0",
                     )
+                    .ok()
+                    .map(|symbol| *symbol),
+                add_reference_audio: library
+                    .get::<AddReferenceAudio>(b"slopfab_request_add_reference_audio_f32\0")
                     .ok()
                     .map(|symbol| *symbol),
                 set_attention: symbol!(
@@ -507,6 +513,16 @@ impl Api {
         let add = self.add_refmod.ok_or("This slopfab.dll does not support refmods. Install a build with the refmod API (1.8 or later).")?;
         let path = path_cstring(path)?;
         self.error(unsafe { add(r, path.as_ptr(), strength, copies) })
+    }
+    pub fn add_reference_audio(
+        &self,
+        r: *mut Request,
+        samples: &[f32],
+        channels: i32,
+        sample_rate: i32,
+    ) -> Result<(), String> {
+        let add = self.add_reference_audio.ok_or("This slopfab.dll does not support audio references. Update the runtime.")?;
+        self.error(unsafe { add(r, samples.as_ptr(), samples.len(), channels, sample_rate) })
     }
     pub fn resolve(&self, request: *mut Request) -> Result<Plan, String> {
         let mut value = Plan {
