@@ -507,7 +507,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         if (source) replaceScene(createImageEditScene(source, scene));
       }) },
       ...(imageMenu.id ? [
-        { label: "Edit", icon: <Edit16 />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
+        { label: "Edit", icon: <Edit16 />, separator: true, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
         { label: "Create Scene", icon: <Film16 />, separator: true, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, true)) },
         { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },
         { label: "Remove", icon: <Delete16 />, danger: true,
