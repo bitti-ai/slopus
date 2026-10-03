@@ -83,42 +83,131 @@
   padding: var(--space-2) var(--space-3);
 }
 
-/* Direct children only: the empty state's own paragraphs keep its styles. */
-.agent-conversation > p {
+/* Messages are chat bubbles, as in a phone messenger: what you sent sits on
+   the right in the accent fill, Slop's side on the left in a neutral bubble.
+   The corner nearest the speaker is pinched to read as the bubble's tail. */
+.agent-message {
+  --bubble-radius: 16px;
+  max-width: 85%;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  align-self: flex-start;
   gap: 2px;
-  margin: 0;
   color: var(--text-primary);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
 }
 
-.agent-conversation > p > span {
+.agent-message__bubble {
+  max-width: 100%;
   min-width: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--bubble-radius) var(--bubble-radius) var(--bubble-radius) var(--space-1);
+  background: var(--fill-control);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 /* Speaker labels: 12px semibold, sentence case, secondary ink. */
-.agent-conversation > p > b {
+.agent-message__speaker {
+  padding-inline: var(--space-1);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
 }
 
-.agent-conversation__pending > span {
-  color: var(--text-secondary);
+/* Yours: right-aligned, filled accent. The side already says who sent it, so
+   "You" is kept for screen readers only. */
+.agent-conversation__user,
+.agent-conversation__pending {
+  align-self: flex-end;
+  align-items: flex-end;
 }
 
-.agent-conversation__validation > span {
+.agent-conversation__user > .agent-message__bubble,
+.agent-conversation__pending > .agent-message__bubble {
+  border-color: transparent;
+  border-radius: var(--bubble-radius) var(--bubble-radius) var(--space-1) var(--bubble-radius);
+  color: var(--on-accent);
+  background: var(--accent-fill);
+}
+
+.agent-conversation__user > .agent-message__speaker,
+.agent-conversation__pending > .agent-message__speaker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Sent, not answered yet. */
+.agent-conversation__pending > .agent-message__bubble {
+  opacity: 0.75;
+}
+
+.agent-conversation__validation > .agent-message__bubble {
+  border-color: var(--warning);
   color: var(--warning);
+  background: var(--warning-soft);
 }
 
-.agent-conversation__diagnostic > span,
-.agent-conversation__error > span {
+.agent-conversation__diagnostic > .agent-message__bubble,
+.agent-conversation__error > .agent-message__bubble {
+  border-color: var(--danger-line);
   color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* Slop's replies are formatted messages (MessageText): the blocks carry the
+   line breaks, so the bubble's pre-wrap is lifted. */
+.agent-conversation__assistant > .agent-message__bubble,
+.agent-conversation__output > .agent-message__bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  white-space: normal;
+}
+
+.agent-message__bubble :is(p, ul, ol, pre) {
+  margin: 0;
+}
+
+.agent-message__bubble :is(ul, ol) {
+  padding-left: 20px;
+}
+
+.agent-message__bubble li + li {
+  margin-top: 2px;
+}
+
+.agent-message__bubble .message-text__heading {
+  font-weight: var(--weight-semibold);
+}
+
+.agent-message__bubble code {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--fill-control-alt);
+}
+
+.agent-message__bubble pre {
+  padding: var(--space-2);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-well);
+  white-space: pre;
+}
+
+.agent-message__bubble pre code {
+  padding: 0;
+  background: none;
 }
 
 .agent-conversation__thinking {

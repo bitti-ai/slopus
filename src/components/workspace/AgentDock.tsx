@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { Agent32, Clear16, Dismiss16, Send16, Stop14 } from "../ui/icons";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
@@ -17,11 +17,12 @@ import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
 import { ComboBox, EmptyState, PaneHeader, ProgressRing, tooltipProps } from "../ui";
+import { MessageText } from "./MessageText";
 
 /** How tall the prompt box grows before it scrolls. */
 export const COMPOSER_MAX_LINES = 6;
 
-interface AgentActivity {
+export interface AgentActivity {
   kind: "output" | "diagnostic" | "validation";
   text: string;
 }
@@ -104,11 +105,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
       if (payload.requestId !== activeRequest.current) return;
       const item = activityFromEvent(payload.event);
       if (!item) return;
-      setActivity((current) => {
-        const previous = current.at(-1);
-        if (previous?.kind === item.kind && previous.text === item.text) return current;
-        return [...current, item].slice(-100);
-      });
+      setActivity((current) => mergeActivity(current, item));
     }).then((unlisten) => {
       if (disposed) unlisten();
       else stop = unlisten;
@@ -159,6 +156,9 @@ export function AgentDock({ context, record, mode = record.config.generationType
       const response = await runAgentTurn({ ...record, config: { ...record.config, generationType: mode } }, provider, clean, id, sessionMessages);
       if (response.result.kind === "commands") await onCommands(response.result.commands);
       setSessionMessages(response.messages);
+      // The finished reply is in the conversation now; the streamed drafts and
+      // correction notes that led to it would only repeat it.
+      setActivity([]);
       setPendingPrompt(null);
       setPrompt("");
     } catch (reason) {
@@ -221,15 +221,17 @@ export function AgentDock({ context, record, mode = record.config.generationType
           title="Nothing asked yet"
           description={`Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
         />}
-        {messages.map((message) => <p key={message.id} className={`agent-conversation__${message.role}`}><b>{message.role === "user" ? "You" : "Slop"}</b><span>{message.content}</span></p>)}
-        {pendingPrompt && <p className="agent-conversation__pending"><b>You</b><span>{pendingPrompt}</span></p>}
-        {activity.map((item, index) => <p key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`}>
-          <b>{activityLabel(item.kind)}</b><span>{item.text}</span>
-        </p>)}
-        {error && <p className="agent-conversation__error"><b>Slop</b><span>Couldn’t finish that request. {error}</span></p>}
-        {requestId && <p className="agent-conversation__waiting" aria-label="Waiting for the next agent response">
-          <b>Slop</b><span className="agent-conversation__thinking"><ProgressRing size={16} aria-label="Thinking" /><span aria-hidden="true">Thinking…</span></span>
-        </p>}
+        {messages.map((message) => message.role === "user"
+          ? <Bubble key={message.id} className="agent-conversation__user" speaker="You">{message.content}</Bubble>
+          : <Bubble key={message.id} className="agent-conversation__assistant" speaker="Slop"><MessageText text={message.content} /></Bubble>)}
+        {pendingPrompt && <Bubble className="agent-conversation__pending" speaker="You">{pendingPrompt}</Bubble>}
+        {activity.map((item, index) => <Bubble key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`} speaker={activityLabel(item.kind)}>
+          {item.kind === "output" ? <MessageText text={item.text} /> : item.text}
+        </Bubble>)}
+        {error && <Bubble className="agent-conversation__error" speaker="Slop">Couldn’t finish that request. {error}</Bubble>}
+        {requestId && <Bubble className="agent-conversation__waiting" speaker="Slop" aria-label="Waiting for the next agent response">
+          <span className="agent-conversation__thinking"><ProgressRing size={16} aria-label="Thinking" /><span aria-hidden="true">Thinking…</span></span>
+        </Bubble>}
       </div>
       <form className="agent-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>
         <textarea
@@ -264,7 +266,26 @@ export function AgentDock({ context, record, mode = record.config.generationType
   );
 }
 
-const activityLabel = (kind: AgentActivity["kind"]): string => {
+/** One chat bubble: the speaker's name, then what they said. Which side it
+ *  sits on (yours right, Slop's left) is the stylesheet's. */
+function Bubble({ className, speaker, children, "aria-label": label }: { className: string; speaker: string; children: ReactNode; "aria-label"?: string }) {
+  return <div className={`agent-message ${className}`} aria-label={label}>
+    <b className="agent-message__speaker">{speaker}</b>
+    <div className="agent-message__bubble">{children}</div>
+  </div>;
+}
+
+/** Providers repeat themselves: one reply arrives as a streamed record, again
+ *  in the CLI's final result record, and again on every validation round. Keep
+ *  one live draft and the latest correction note (each moved to the end, so the
+ *  log still reads in order) and each distinct diagnostic once. */
+export function mergeActivity(current: AgentActivity[], item: AgentActivity): AgentActivity[] {
+  if (current.some((existing) => existing.kind === item.kind && existing.text === item.text)) return current;
+  const kept = item.kind === "diagnostic" ? current : current.filter((existing) => existing.kind !== item.kind);
+  return [...kept, item].slice(-100);
+}
+
+const activityLabel =(kind: AgentActivity["kind"]): string => {
   switch (kind) {
     case "output": return "Slop";
     case "validation": return "Validator";

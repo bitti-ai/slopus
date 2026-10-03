@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, type ProjectRecord } from "../../lib/project";
 import { AGENT_TURN_EVENT, cancelAgentTurn, runAgentTurn, type AgentTurnEventPayload, type ProviderStatus } from "../../lib/runtime";
 import { AgentDock, COMPOSER_MAX_LINES, readableProviderOutput } from "./AgentDock";
+import { MessageText } from "./MessageText";
 
 let eventHandler: ((event: { payload: AgentTurnEventPayload }) => void) | undefined;
 
@@ -217,6 +218,47 @@ describe("Slop output panel", () => {
     expect(log).toHaveTextContent("Agent turn timed out after 300 seconds.");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(field).toHaveValue("Leonard and Penny, in live action");
+  });
+
+  it("shows one reply per turn: no repeated drafts while working, only the answer once done", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={() => undefined} onCommands={async () => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
+    const requestId = vi.mocked(runAgentTurn).mock.calls[0][3];
+    const log = screen.getByRole("log", { name: "Slop output" });
+
+    const send = (event: AgentTurnEventPayload["event"]) => act(() => eventHandler?.({ payload: { requestId, event } }));
+    send({ type: "message", text: "First draft." });
+    send({ type: "message", text: "First draft." });
+    send({ type: "validation", round: 1, maxRounds: 3, text: "Too short." });
+    send({ type: "message", text: "Second draft." });
+    send({ type: "validation", round: 2, maxRounds: 3, text: "Still short." });
+    expect(log.querySelectorAll(".agent-conversation__output")).toHaveLength(1);
+    expect(log.querySelectorAll(".agent-conversation__validation")).toHaveLength(1);
+    expect(log).toHaveTextContent("Second draft.");
+    expect(log).not.toHaveTextContent("First draft.");
+
+    await act(async () => finish({ result: { kind: "answer", content: "Hello **there**." }, events: [], messages: [
+      { id: "u", role: "user", content: "Hi", createdAt: "" },
+      { id: "a", role: "assistant", content: "Hello **there**.", createdAt: "" },
+    ] as never }));
+    expect(log.querySelectorAll(".agent-conversation__output, .agent-conversation__validation")).toHaveLength(0);
+    expect(log.querySelectorAll(".agent-conversation__assistant")).toHaveLength(1);
+    expect(within(log).getByText("there").tagName).toBe("STRONG");
+  });
+
+  it("formats Slop's replies as a message", () => {
+    const { container } = render(<MessageText text={"Plan:\n\n1. Open on the lamp\n2. Pan to `shot-2`\n\n- *warm* light\n- soft shadows\n\n```\nscene.set\n```"} />);
+    expect(container.querySelector("p")).toHaveTextContent("Plan:");
+    expect([...container.querySelectorAll("ol > li")].map((item) => item.textContent)).toEqual(["Open on the lamp", "Pan to shot-2"]);
+    expect(container.querySelector("ol code")).toHaveTextContent("shot-2");
+    expect(container.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(container.querySelector("ul em")).toHaveTextContent("warm");
+    expect(container.querySelector("pre")).toHaveTextContent("scene.set");
   });
 
   it("extracts model-authored content from provider transport records", () => {
