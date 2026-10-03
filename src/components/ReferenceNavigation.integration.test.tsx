@@ -11,7 +11,7 @@ it("shows only titles in Used by and opens the selected generation", () => {
   const config = createProjectConfig({ name: "Reference navigation", prompt: "A scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
   config.references = [{ id: "hero", kind: "text", name: "Hero", description: "", intendedUse: ["character"], createdAt: config.createdAt }];
   const first = { ...config.generationJobs[0], id: "first", title: "First scene", referenceIds: [] };
-  const target = { ...first, id: "target", title: "The forest encounter", referenceIds: ["hero"], status: "failed" as const, stage: "failed" as const };
+  const target = { ...first, id: "target", title: "The forest encounter", referenceIds: ["hero"], shots: [{ id: "shot", startSeconds: 0, action: "@[ref:hero] in the forest" }], status: "failed" as const, stage: "failed" as const };
   config.generationJobs = [first, target];
   const { container } = render(<ProjectWorkspace project={{ config, folderPath: "C:/Reference navigation" }} initialView="references" onBack={vi.fn()} onSave={async () => undefined} />);
   const usage = container.querySelector(".reference-used-by")! as HTMLElement;

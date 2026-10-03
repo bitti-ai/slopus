@@ -25,6 +25,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## Fixes and improvements
 
+- Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Reference chips now highlight when included in a prompt's text selection.
 - The Video scene list scrollbar no longer overlaps the Generate and Cancel buttons.
 - Timeline media thumbnails stay inside their preview area, keeping filenames clear in grid and list layouts.

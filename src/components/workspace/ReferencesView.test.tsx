@@ -447,6 +447,18 @@ describe("Reference type presets", () => {
 });
 
 describe("Reference library views and selection", () => {
+  it("does not count stale scene bindings as usage", () => {
+    const initial = project();
+    initial.generationJobs[0].referenceIds = ["ref-hero"];
+    setup(initial);
+    expect(screen.getByText("No scenes yet.")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("option", { name: /^Hero/ }));
+    expect(screen.getByRole("menuitem", { name: "Not used by any scene" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(within(screen.getByRole("grid", { name: "References" })).queryByText("1 scene")).not.toBeInTheDocument();
+  });
+
   const three = () => {
     const initial = project();
     const base = initial.references[0];
@@ -456,6 +468,7 @@ describe("Reference library views and selection", () => {
       { ...base, id: "ref-lamp", name: "Lamp", intendedUse: ["product"] },
     ];
     initial.generationJobs[0].referenceIds = ["ref-lamp"];
+    initial.generationJobs[0].shots![0].action = "@[ref:ref-lamp] on a table";
     return initial;
   };
 

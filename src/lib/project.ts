@@ -904,7 +904,7 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
   return anchored ? null : "Sound references need an image or video reference in the same scene.";
 }
 
-/** Opening and closing pictures come first, then bound references in project
+/** Opening and closing pictures come first, then prompt references in project
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
@@ -933,7 +933,10 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
   const end = references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
     .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
-  return [...anchors, ...references.filter((reference) => job.referenceIds.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
+  // Animate stores its dedicated motion/frame selections in referenceIds.
+  // Other scenes take guidance from their current prompts, never stale bindings.
+  const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap((shot) => actionReferenceIds(shot.action));
+  return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 
 /** Resolve the adjacent scene when preparing a request; queued work captures

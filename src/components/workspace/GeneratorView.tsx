@@ -167,16 +167,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) }, `scene:${id}`);
   };
 
-  /* An edit from the panel. Writing a reference into a line BINDS it to the
-     scene, because binding is what gives it a <Subject N> and puts its picture
-     in `reference_paths` — a citation the engine was never sent the reference
-     for would point at nothing. Nothing is ever auto-unbound: taking a name out
-     of one line is not a decision to stop steering the scene with it, and the
-     reference library is where those references themselves are managed. */
+  // Keep saved bindings in sync with all shots, including chip replacement,
+  // shot removal and moves between scenes. Animate has separate input pickers.
   const mergeSceneUpdates = (job: GenerationJob, updates: Partial<GenerationJob>): GenerationJob => {
     const next: Partial<GenerationJob> = { ...updates, updatedAt: new Date().toISOString() };
-    if (updates.shots) {
-      const referenceIds = [...job.referenceIds];
+    if (updates.shots && (updates.sceneType ?? job.sceneType) !== "animate") {
+      const referenceIds: string[] = [];
       for (const shot of updates.shots) {
         for (const id of actionReferenceIds(shot.action)) {
           if (!referenceIds.includes(id) && config.references.some((reference) => reference.id === id)) referenceIds.push(id);

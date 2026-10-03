@@ -64,7 +64,7 @@ export const citableReferences = (references: readonly ProjectReference[]): Proj
  *  The board and the panel both read this, because "Reference 2" on a card and
  *  "Reference 2" in the field have to be the same reference. */
 export function referenceOrder(job: GenerationJob, shots: readonly SceneShot[], references: readonly ProjectReference[]): string[] {
-  const boundIds = job.sceneType === "pose" ? sceneGenerationReferences(job, [...references]).map((reference) => reference.id) : job.referenceIds;
+  const boundIds = sceneGenerationReferences({ ...job, shots: [...shots] }, [...references]).map((reference) => reference.id);
   const order = citableReferences(references).filter((reference) => boundIds.includes(reference.id)).map((reference) => reference.id);
   for (const shot of shots) {
     for (const id of actionReferenceIds(shot.action)) if (!order.includes(id)) order.push(id);

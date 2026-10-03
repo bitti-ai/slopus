@@ -8,8 +8,9 @@ import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, scen
 import { cancelSlopfabGeneration, getEngineStatus, type SlopfabStatus } from "../../lib/runtime";
 import { askNative } from "../../lib/nativeShell";
 import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
+import { ReferencesView } from "./ReferencesView";
 import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
-import { insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
+import { changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
 import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
@@ -35,6 +36,47 @@ it("hides unfinished templates from the generator picker", () => {
   fireEvent.click(screen.getByRole("combobox", { name: /Video generator template/ }));
   expect(screen.getByRole("option", { name: "Default" })).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: "First/Last Frame" })).toBeNull();
+});
+
+it("unbinds a reference after its last prompt chip is removed and excludes it from generation and Used by", () => {
+  const initial = project();
+  initial.references = ["hero", "opening"].map((id) => ({ id, kind: "image", name: id, description: "", intendedUse: [],
+    relativePath: `references/${id}.png`, createdAt: initial.createdAt }));
+  initial.generationJobs[0].referenceIds = ["hero"];
+  initial.generationJobs[0].startFrameReferenceId = "opening";
+  initial.generationJobs[0].shots!.forEach((shot) => { shot.action = "@[ref:hero] walks."; });
+  const state = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+  changePromptChip(screen.getByLabelText("Describe shot 1"), 0, null);
+  expect(state.latest().generationJobs[0].referenceIds).toEqual(["hero"]);
+  fireEvent.click(screen.getByRole("button", { name: "Shot 2 of First scene" }));
+  typePrompt(screen.getByLabelText("Describe shot 2"), "A walk through the forest.");
+  expect(state.latest().generationJobs[0].referenceIds).toEqual([]);
+  fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+  const snapshot = JSON.parse(saved.generationJobs[0].generationSnapshot!);
+  expect(snapshot.referencePaths).toHaveLength(1);
+  expect(snapshot.referencePaths[0]).toContain("opening.png");
+  expect(snapshot.prompt).not.toContain("<Subject");
+  cleanup();
+  const { container } = render(<ReferencesView config={saved} folderPath="C:/project" onChange={vi.fn()} />);
+  expect(container.querySelector(".reference-used-by")).toHaveTextContent("No scenes yet.");
+  fireEvent.click(screen.getByRole("option", { name: /opening/ }));
+  expect(within(container.querySelector(".reference-used-by")! as HTMLElement).getByRole("button", { name: "First scene" })).toBeInTheDocument();
+});
+
+it("replaces a chip's binding and removes bindings when its shot is deleted", async () => {
+  const initial = project();
+  initial.references = ["Hero", "Forest"].map((name) => ({ id: name.toLowerCase(), kind: "image", name, description: "", intendedUse: [],
+    relativePath: `references/${name}.png`, createdAt: initial.createdAt }));
+  initial.generationJobs[0].referenceIds = ["hero"];
+  initial.generationJobs[0].shots![1].action = "@[ref:hero] walks.";
+  const state = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "Shot 2 of First scene" }));
+  changePromptChip(screen.getByLabelText("Describe shot 2"), 0, "Forest");
+  expect(state.latest().generationJobs[0].referenceIds).toEqual(["forest"]);
+  fireEvent.click(screen.getByRole("button", { name: "Delete shot 2" }));
+  await waitFor(() => expect(state.latest().generationJobs[0].referenceIds).toEqual([]));
 });
 
 it("has no selected generator when all templates still need downloads", () => {

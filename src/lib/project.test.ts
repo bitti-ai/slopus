@@ -499,6 +499,26 @@ describe("project schema", () => {
       .toContain("<Subject 1> is the content shown in <Picture 1> and <Picture 2>.");
   });
 
+  it("ignores stale saved bindings and uses only current citations and explicit frame inputs", () => {
+    const references = ["image", "video", "audio", "text"].map((kind) => projectReferenceSchema.parse({
+      id: kind, kind, name: kind, description: "Guidance", intendedUse: [], createdAt: createdFixture.createdAt,
+      ...(kind === "text" ? { refmods: [{ id: "mod", name: "Style", sourcePath: "C:/style.safetensors", strength: 1, copies: 1 }] }
+        : { sourcePath: `C:/reference.${kind === "image" ? "png" : kind === "video" ? "mp4" : "wav"}` }),
+    }));
+    const job = createDraftGenerationJob(references.map(({ id }) => referenceToken(id)).join(" "), {
+      referenceIds: references.map(({ id }) => id),
+    });
+    expect(sceneGenerationReferences(job, references)).toEqual(references);
+    job.shots![0].action = "A quiet landscape.";
+    expect(sceneGenerationReferences(job, references)).toEqual([]);
+    job.startFrameReferenceId = "image";
+    expect(sceneGenerationReferences(job, references).map(({ id }) => id)).toEqual(["image"]);
+    job.startFrameReferenceId = undefined;
+    job.referenceIds = [];
+    job.shots![0].action = referenceToken("video");
+    expect(sceneGenerationReferences(job, references).map(({ id }) => id)).toEqual(["video"]);
+  });
+
   it("uses a dedicated image as Picture 1 and the scene's first frame", () => {
     const image = (id: string, name: string, path: string): ProjectReference => projectReferenceSchema.parse({
       id, kind: "image", name, description: "", relativePath: path,
@@ -506,7 +526,7 @@ describe("project schema", () => {
     });
     const opening = image("opening", "Opening still", "references/opening.jpg");
     const subject = image("subject", "Product", "references/product.jpg");
-    const job = createDraftGenerationJob("The product turns towards camera.", {
+    const job = createDraftGenerationJob("@[ref:subject] turns towards camera.", {
       id: "scene-with-frame",
       references: [opening, subject],
       referenceIds: ["subject"],
@@ -529,7 +549,7 @@ describe("project schema", () => {
       images: [1, 2].map((n) => ({ id: `${id}-${n}`, name: id, relativePath: `references/${id}-${n}.png` })),
     });
     const references = [image("subject"), image("end"), image("start")];
-    const job = createDraftGenerationJob("The subject turns.", { startFrameReferenceId: "start", endFrameReferenceId: "end", referenceIds: ["subject", "start", "end"] });
+    const job = createDraftGenerationJob("@[ref:subject] turns.", { startFrameReferenceId: "start", endFrameReferenceId: "end", referenceIds: ["subject", "start", "end"] });
     const ordered = sceneGenerationReferences(job, references);
     expect(usableReferenceImages(ordered).map((image) => image.relativePath)).toEqual([
       "references/start-1.png", "references/end-1.png", "references/subject-1.png", "references/subject-2.png",
@@ -542,7 +562,7 @@ describe("project schema", () => {
     expect(prompt).toContain("The closing frame matches <Picture 2>.");
     const endOnly = { ...job, startFrameReferenceId: undefined, referenceIds: [] };
     expect(compileGenerationJobPrompt(endOnly, sceneGenerationReferences(endOnly, references))).toContain("<Picture 1> is the last frame of the video.");
-    const same = { ...job, endFrameReferenceId: "start", referenceIds: [] };
+    const same = { ...job, shots: [{ id: "shot", startSeconds: 0, action: "The subject turns." }], endFrameReferenceId: "start", referenceIds: [] };
     expect(usableReferenceImages(sceneGenerationReferences(same, references))).toHaveLength(1);
     expect(compileGenerationJobPrompt(same, sceneGenerationReferences(same, references))).toContain("<Picture 1> is the last frame of the video.");
   });

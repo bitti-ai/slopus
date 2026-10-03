@@ -130,6 +130,10 @@ describe("MiniMax H3 still-image prompts", () => {
     scene.nodes.at(-1)!.description = "@[ref:hero] waving";
     config.imageScene = { ...scene, background: "A @[ref:sky] over the hills" };
     expect(compileImagePrompt(config).references.map((reference) => reference.id)).toEqual(["hero", "sky"]);
+    config.imageScene.nodes.at(-1)!.description = "A traveler waving";
+    expect(compileImagePrompt(config).references.map((reference) => reference.id)).toEqual(["sky"]);
+    config.imageScene.background = "Hills";
+    expect(compileImagePrompt(config).references).toEqual([]);
     config.imageScene.background = "@[ref:clip]";
     expect(() => compileImagePrompt(config)).toThrow("the prompt cites the video reference 'Clip'");
   });

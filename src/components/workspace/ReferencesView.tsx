@@ -1,7 +1,7 @@
 import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, Copy16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
-import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
+import { isReferenceDescribed, projectItemPath, referenceImages, sceneFrameInputs, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
 import { activeReferenceRefmods, isVideoReference } from "../../lib/project";
 import {
   composeLocationPrompt,
@@ -136,8 +136,11 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     ? clothingSelectionFromPrompt(selected.description)
     : undefined, [selected]);
   const selectedPresetIcon = selectedImages.length === 0 && hasPresetIcon(selectedPreset) ? selectedPreset : undefined;
-  const usedBy = (id: string | undefined) => config.generationJobs.filter((job) => job.referenceIds.includes(id ?? ""));
-  const jobs = useMemo(() => usedBy(selectedId), [config.generationJobs, selectedId]);
+  const referenceUsage = useMemo(() => config.generationJobs.map((job) => ({
+    job, ids: new Set(sceneFrameInputs(job, config).references.map((reference) => reference.id)),
+  })), [config.generationJobs, config.references]);
+  const usedBy = (id: string | undefined) => referenceUsage.filter(({ ids }) => ids.has(id ?? "")).map(({ job }) => job);
+  const jobs = usedBy(selectedId);
   const selection = [...selectedIds].filter((id) => config.references.some((reference) => reference.id === id));
 
   /* Details view order. Icons keep the project's own order. */
@@ -148,7 +151,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         case "name": return reference.name.toLocaleLowerCase();
         case "type": return referenceTypeLabel(referenceType(reference)).toLocaleLowerCase();
         case "contents": return referenceKindLabel(reference).toLocaleLowerCase();
-        case "usedBy": return config.generationJobs.filter((job) => job.referenceIds.includes(reference.id)).length;
+        case "usedBy": return usedBy(reference.id).length;
       }
     };
     const sorted = [...config.references].sort((a, b) => {
@@ -157,7 +160,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       return typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
     });
     return sort.descending ? sorted.reverse() : sorted;
-  }, [config.references, config.generationJobs, view, sort]);
+  }, [config.references, referenceUsage, view, sort]);
 
   const update = (id: string, patch: Partial<ProjectReference>) => {
     const current = configRef.current;

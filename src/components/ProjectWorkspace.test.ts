@@ -427,6 +427,7 @@ describe("project workspace timecode", () => {
       { id: "ref-score", kind: "text", name: "Score idea", description: "Sparse piano.", content: "Sparse piano.", intendedUse: ["audio"], createdAt },
     ];
     const config = parseProjectConfig({ ...fresh, references, generationJobs: [{ ...fresh.generationJobs[0], referenceIds: ["ref-lamp", "ref-blank", "ref-score"] }] });
+    config.generationJobs[0].shots![0].action = "@[ref:ref-lamp] @[ref:ref-blank] @[ref:ref-score]";
     render(createElement(GeneratorView, { config, folderPath: "C:\\Ceramic Lamp", onChange: () => undefined, onOpenTimeline: () => undefined, selectedJobId: config.generationJobs[0].id }));
     expect(document.querySelector(".debug-prompt-dialog .compiled-prompt__text")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Debug prompt" }));
@@ -983,7 +984,8 @@ describe("project workspace timecode", () => {
     show(next);
     expect(next.generationJobs[0].shots[0].action).toBe("@[ref:ref-street] walks towards the camera on @[ref:ref-street]");
     openScene();
-    expect(compiled()).toContain("<Subject 2> walks towards the camera on <Subject 2>");
+    expect(compiled()).toContain("<Subject 1> walks towards the camera on <Subject 1>");
+    expect(compiled()).not.toContain("Dark red hair");
 
     // A reference that can no longer be cited stays on its chip, marked.
     openShot(1);
@@ -1161,7 +1163,7 @@ describe("project workspace timecode", () => {
     show();
     scene();
     expect(document.querySelector(".compiled-prompt__text")!.textContent)
-      .toContain("[Shot 1] <Subject 2> walks towards the camera on <Subject 2>.");
+      .toContain("[Shot 1] <Subject 1> walks towards the camera on <Subject 1>.");
   });
 
   it("labels a cancelled scene as cancelled instead of queued, on the card and on its line", () => {
