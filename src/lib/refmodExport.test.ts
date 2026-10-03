@@ -12,7 +12,7 @@ const images = (count: number) => Array.from({ length: count }, (_, index) => ({
 describe("refmod export", () => {
   it("needs raw media, at most nine images and no attached refmods", () => {
     expect(refmodExportBlocker(reference())).toBe("Add an image, video or sound to export a refmod.");
-    expect(refmodExportBlocker(reference({ kind: "video", video: { startSeconds: 0, includeAudio: true } }))).toContain("Add an image");
+    expect(refmodExportBlocker(reference({ kind: "video", video: { startSeconds: 0, durationSeconds: 2, includeAudio: true } }))).toContain("Add an image");
     expect(refmodExportBlocker(reference({ images: images(10) }))).toBe("Refmod export supports up to nine images.");
     expect(refmodExportBlocker(reference({ images: images(1), refmods: [{ id: "mod", name: "Mod", sourcePath: "D:/mod.safetensors", strength: 1, copies: 1 }] })))
       .toBe("This reference already uses refmods.");
@@ -34,7 +34,7 @@ describe("refmod export", () => {
     expect(sound).toMatchObject({ referencePaths: [], referenceAudios: [{ sourcePath: "D:/voice.wav", startSeconds: 2, durationSeconds: 6 }] });
     expect(sound.referenceVideos).toBeUndefined();
     // Frames mode exports the selected stills rather than the clip.
-    const frames = refmodExportRequest("C:/project", reference({ kind: "video", sourcePath: "D:/walk.mp4", video: { startSeconds: 0, includeAudio: true, mode: "frames", frames: images(1) } }), "refmod-3");
+    const frames = refmodExportRequest("C:/project", reference({ kind: "video", sourcePath: "D:/walk.mp4", video: { startSeconds: 0, durationSeconds: 2, includeAudio: true, mode: "frames", frames: images(1).map((image) => ({ ...image, timeSeconds: 0 })) } }), "refmod-3");
     expect(frames.referencePaths).toEqual(["C:/project/references/0.png"]);
     expect(frames.referenceVideos).toBeUndefined();
   });
