@@ -6,7 +6,7 @@ import { promptValue, typePrompt } from "./promptTestUtils";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
-import { imageGenerationSnapshotSchema, parseProjectConfig, type ProjectConfig } from "../../lib/project";
+import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
 import { createGeneratorTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, imageScenePrompt } from "../../lib/imageScene";
@@ -31,6 +31,53 @@ function setup(initial = parseProjectConfig(fixture)) {
 
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
+
+it.each(["Create Scene", "Create Reference"])("%s uses the right-clicked image without changing the viewed image", (action) => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = ["Viewed", "Chosen"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.png`, mimeType: "image/png", createdAt: initial.createdAt }));
+  initial.imageScene!.outputAssetId = "Viewed";
+  const current = setup(initial);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Chosen" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(reopened.references).toHaveLength(initial.references.length + 1);
+  const reference = reopened.references[0];
+  expect(reference.name).toBe("Chosen");
+  expect(referenceImages(reference)[0].relativePath).toBe("media/generated/Chosen.png");
+  expect(reopened.imageScene).toEqual(initial.imageScene);
+  expect(reopened.assets).toEqual(initial.assets);
+  expect(reopened.timeline).toEqual(initial.timeline);
+  if (action === "Create Scene") {
+    const job = reopened.generationJobs.at(-1)!;
+    expect(job).toMatchObject({ title: "Chosen", status: "draft", sceneType: "first-last-frame", startFrameReferenceId: reference.id });
+    expect(sceneFrameInputs(job, reopened).references.map((item) => item.id)).toContain(reference.id);
+  } else expect(reopened.generationJobs).toEqual(initial.generationJobs);
+});
+
+it("creates a reference from an external image variant using the keyboard menu", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [
+    { id: "original", name: "Original", kind: "image", relativePath: "media/original.png", mimeType: "image/png", createdAt: initial.createdAt },
+    { id: "variant", name: "Variant", parentAssetId: "original", kind: "image", sourcePath: "D:/Pictures/variant.png", mimeType: "image/png", createdAt: initial.createdAt },
+  ];
+  initial.imageScene!.outputAssetId = "original";
+  const current = setup(initial);
+  fireEvent.keyDown(screen.getByRole("button", { name: "View Variant" }), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Create Reference" }));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(referenceImages(reopened.references[0])[0]).toMatchObject({ name: "Variant", sourcePath: "D:/Pictures/variant.png" });
+});
+
+it("disables image reuse for empty drafts and omits it on the empty bar", () => {
+  setup();
+  fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  expect(screen.queryByRole("menuitem", { name: "Create Scene" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "Create Reference" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View New image" }));
+  expect(screen.getByRole("menuitem", { name: "Create Scene" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Create Reference" })).toBeDisabled();
+});
 
 it.each([false, true])("shows and copies the selected result's exact seed as read-only (image edits: %s)", async (imageRoot) => {
   const writeText = vi.fn().mockResolvedValue(undefined);

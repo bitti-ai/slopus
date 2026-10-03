@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
-import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
+import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
@@ -7,7 +7,7 @@ import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
-import { isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
+import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
@@ -38,9 +38,11 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
   </PropRow>;
 }
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, workItems = [] }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
+  onOpenGenerator?: (jobId: string) => void;
+  onOpenReferences?: () => void;
 }) {
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
   const root = scene.nodes.find((node) => node.kind === "root")!;
@@ -136,6 +138,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const images = config.assets.filter((asset) => asset.kind === "image");
+  const menuImage = images.find((asset) => asset.id === imageMenu?.id);
+  const canUseMenuImage = Boolean(menuImage?.relativePath || menuImage?.sourcePath);
   // Generated assets retain the dimensions returned by the native encoder.
   // Project settings size only the empty canvas and future generation requests.
   const { width, height } = imageRoot && scene.sourceImage ? scene.sourceImage : output?.width && output?.height
@@ -190,6 +194,23 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const selectImage = (id: string) => {
     resetImageEditing(id);
     onChange((current) => restoreGeneratedImage(current, id));
+  };
+  const createFromImage = (id: string, asScene: boolean) => {
+    const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
+    if (!asset || (!asset.relativePath && !asset.sourcePath)) return;
+    const referenceId = `ref-${crypto.randomUUID()}`;
+    const reference: ProjectReference = {
+      id: referenceId, kind: "text", name: asset.name, description: "", intendedUse: [], createdAt: new Date().toISOString(),
+      images: [{ id: `${referenceId}-image`, name: asset.name, relativePath: asset.relativePath, sourcePath: asset.sourcePath }],
+    };
+    const job = asScene ? createDraftGenerationJob("", {
+      title: asset.name, sceneType: "first-last-frame", startFrameReferenceId: referenceId,
+      steps: defaultGeneratorTemplate().defaultSteps,
+    }) : null;
+    onChange((current) => ({ ...current, references: [reference, ...current.references],
+      generationJobs: job ? [...current.generationJobs, job] : current.generationJobs }));
+    if (job) onOpenGenerator?.(job.id);
+    else onOpenReferences?.();
   };
   const replaceScene = (next: ImageScene) => {
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
@@ -487,7 +508,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       }) },
       ...(imageMenu.id ? [
         { label: "Edit", icon: <Edit16 />, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
+        { label: "Create Scene", icon: <Film16 />, separator: true, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, true)) },
+        { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },
         { label: "Remove", icon: <Delete16 />, danger: true,
+          separator: true,
           disabled: workItems.some((item) => isWorkActive(item) && item.imageAssetId === imageMenu.id) || (!imageMenu.inFamily && imageFamily(images, imageMenu.id).length > 1),
           action: () => removeImage(imageMenu.id!) },
       ] : []),

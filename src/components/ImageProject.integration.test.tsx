@@ -23,6 +23,30 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
+it.each(["Create Scene", "Create Reference"])("opens and saves the item created by %s in the image bar", async (action) => {
+  const project = record();
+  project.config.assets = [{ id: "poster", name: "Poster", kind: "image", relativePath: "media/generated/poster.png", mimeType: "image/png", createdAt: project.config.createdAt }];
+  project.config.imageScene!.outputAssetId = "poster";
+  const save = vi.fn(async (_record: ProjectRecord) => undefined);
+  render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={save} />);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Poster" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+  const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
+  expect(navigation.getByRole("tab", { name: action === "Create Scene" ? "Video" : "References" })).toHaveAttribute("aria-selected", "true");
+  if (action === "Create Scene") expect(screen.getByRole("combobox", { name: "Start frame for this scene" })).toHaveTextContent("Poster");
+  else expect(screen.getByLabelText("Reference name")).toHaveValue("Poster");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(save.mock.calls[0][0].config)));
+  expect(saved.references[0].images?.[0].relativePath).toBe("media/generated/poster.png");
+  if (action === "Create Scene") expect(saved.generationJobs.at(-1)?.startFrameReferenceId).toBe(saved.references[0].id);
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1][0].config.references).toEqual(project.config.references);
+  expect(save.mock.calls[1][0].config.generationJobs).toEqual(project.config.generationJobs);
+});
+
 it.each([false, true])("scopes generation controls to each image and queues others (draft: %s)", async (imageDraft) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
