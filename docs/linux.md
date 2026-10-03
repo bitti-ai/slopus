@@ -41,9 +41,12 @@ On Linux `libslopfab.so` is installed in Tauri's resource folder,
 executable first, as on Windows and in development builds, and then in
 `../lib/Slopus/`.
 
-Generation has the same requirements as the Linux worker: an NVIDIA GPU with its
-driver and CUDA 13 cuBLAS (`libcublas.so.13`), found in `/usr/local/cuda*` when
-the system linker does not.
+The bundled `libslopfab.so` directly links NVIDIA's driver library
+(`libcuda.so.1`) and CUDA 13 cuBLAS (`libcublas.so.13`). Both must be installed
+for the runtime to load, even when generation uses Vulkan. The Linux worker
+supports `--backend vulkan`; this selects Vulkan for computation but does not
+remove those library dependencies. Slopus also searches `/usr/local/cuda*` for
+cuBLAS when the system linker cannot find it.
 
 ## WebKitGTK
 
