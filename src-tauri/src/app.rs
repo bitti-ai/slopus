@@ -114,6 +114,7 @@ pub fn run() {
         .manage(slopfab::SlopfabRuntime::default())
         .manage(weights::WeightDownloads::default())
         .manage(worker::Workers::default())
+        .manage(commands::generation::RefmodExportTargets::default())
         .manage(ExitGuard::default())
         .manage(native_shell::Backdrop::default())
         .manage(native_shell::SystemAccent::default())
@@ -217,6 +218,8 @@ pub fn run() {
             commands::generation::release_reference_videos,
             commands::generation::create_reference_audio,
             commands::generation::release_reference_audios,
+            commands::generation::choose_refmod_export_path,
+            commands::generation::export_reference_refmod,
             commands::media::import_media_files,
             commands::media::read_project_file,
             commands::media::read_external_media_file,

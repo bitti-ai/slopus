@@ -1,4 +1,4 @@
-import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, Copy16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
+import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, Copy16, CursorClick32, Delete14, Delete16, Export16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, sceneFrameInputs, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -35,6 +35,7 @@ import { ProjectStatus } from "./ProjectStatus";
 import { MediaThumbnail } from "./MediaThumbnail";
 import { inspectReferenceVideo } from "../../lib/referenceVideo";
 import { inspectReferenceAudio } from "../../lib/referenceAudio";
+import { chooseRefmodExportPath, refmodExportBlocker } from "../../lib/refmodExport";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { referenceIconPrompt } from "../../lib/referenceIcons";
 import { loadDebugOptionsEnabled, subscribeDebugOptions } from "../../lib/settings";
@@ -72,12 +73,14 @@ const readView = (): LibraryView => {
   try { return localStorage.getItem(VIEW_KEY) === "details" ? "details" : "icons"; } catch { return "icons"; }
 };
 
-export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onExportRefmod, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
   config: ProjectConfig;
   folderPath: string;
   /** `key` groups rapid edits of one reference into one undo step. */
   onChange: (next: ProjectConfig, key?: string) => void;
   onRegenerateIcon?: (referenceId: string) => void;
+  /** Queues the export; throws when the reference cannot be exported. */
+  onExportRefmod?: (referenceId: string, outputPath: string) => void;
   onGenerateBuiltinIcons?: () => void;
   onRegenerateBuiltinIcon?: (presetId: string) => void;
   pendingBuiltinIconIds?: ReadonlySet<string>;
@@ -100,6 +103,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const [importError, setImportError] = useState<string | null>(null);
   const [importingFiles, setImportingFiles] = useState(false);
   const [iconError, setIconError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [presetDialog, setPresetDialog] = useState(false);
   const catalogVisit = useRef(0);
   useEffect(() => () => { catalogVisit.current += 1; }, []);
@@ -334,6 +338,15 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     } catch (reason) { setImportError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setImportingFiles(false); }
   };
+  const exportBlocker = (reference: ProjectReference | undefined) =>
+    !reference ? "Select a reference to export." : !onExportRefmod || !isTauri() ? "Refmod export is available in the desktop app." : refmodExportBlocker(reference);
+  const exportRefmod = async (reference: ProjectReference) => {
+    setExportError(null);
+    try {
+      const outputPath = await chooseRefmodExportPath(reference.name);
+      if (outputPath) onExportRefmod?.(reference.id, outputPath);
+    } catch (reason) { setExportError(reason instanceof Error ? reason.message : String(reason)); }
+  };
   const createEmptyReference = () => {
     addTextReference(`New ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`, "", pickerType, pickerSubcategory === "all" ? "" : pickerSubcategory);
     setPresetDialog(false);
@@ -423,6 +436,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: many, onSelect: () => rename(reference.id) },
       { id: "add-file", label: "Add file…", icon: <ImageAdd16 />, disabled: many || Boolean(reference.refmods?.length) || importingFiles, onSelect: () => { selectOnly(reference.id); void addFiles(reference.id); } },
       { id: "reveal", label: `Show in ${fileManagerName()}`, icon: <FolderOpen16 />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
+      { id: "export-refmod", label: "Export as refmod…", icon: <Export16 />, disabled: many || Boolean(exportBlocker(reference)), onSelect: () => void exportRefmod(reference) },
       { separator: true },
       ...(users.length
         ? users.map((job): MenuEntry => ({ id: `open-${job.id}`, label: `Open ${job.title}`, icon: <OpenExternal16 />, disabled: !onOpenGenerator, onSelect: () => onOpenGenerator?.(job.id) }))
@@ -495,10 +509,12 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         <CommandBarButton icon={<TextFile16 />} label="Add Empty" showLabel onClick={() => addTextReference("Uncategorized", "", "custom")} />
         <CommandBarSeparator />
         <CommandBarButton icon={<ImageAdd16 />} label="Add file" showLabel disabled={!selected || importingFiles || hasRefmods || selection.length > 1} onClick={() => void addFiles()} />
+        <CommandBarButton icon={<Export16 />} label="Export refmod" tooltip={exportBlocker(selected) ?? "Export as a refmod .safetensors file"} showLabel disabled={selection.length > 1 || Boolean(exportBlocker(selected))} onClick={() => { if (selected) void exportRefmod(selected); }} />
         <CommandBarButton icon={<Delete16 />} label="Delete" shortcut="Delete" disabled={!selection.length} onClick={() => remove()} />
       </CommandBar>
       {importError && <InfoBar severity="error" title="Couldn’t add reference" message={importError} onClose={() => setImportError(null)} />}
       {iconError && <InfoBar severity="error" title="Couldn’t regenerate icon" message={iconError} onClose={() => setIconError(null)} />}
+      {exportError && <InfoBar severity="error" title="Couldn’t export refmod" message={exportError} onClose={() => setExportError(null)} />}
       <section ref={library} className="reference-library" aria-labelledby="reference-library-heading">
         <h2 className="sr-only" id="reference-library-heading">Reference library</h2>
         {config.references.length === 0

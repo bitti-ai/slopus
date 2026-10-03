@@ -571,6 +571,25 @@ impl Workers {
         result
     }
 
+    /// Encodes a refmod on the worker and saves the file it returns.
+    pub(crate) fn export_refmod(&self, connection: &Connection, request: &GenerationRequest, settings: &BTreeMap<String, ProviderSetting>, name: &str, description: &str, destination: &Path) -> Result<(), String> {
+        // Export needs the VAEs only; keep the other weights off the network.
+        let mut settings = settings.clone();
+        if let Some(slopfab) = settings.get_mut("slopfab") {
+            slopfab.options.retain(|option, _| matches!(option.as_str(), "videoVae" | "audioVae"));
+        }
+        let (job, sources) = build_job(request, &settings)?;
+        let cancel = self.register(&request.job_id, connection)?;
+        let result = self.send_files(connection, &job, &sources, &cancel).and_then(|_| {
+            let export = RefmodExport { job, name: name.into(), description: description.into() };
+            let response = connection.send(connection.request(reqwest::Method::POST, "/v1/refmods").json(&export))
+                .map_err(|error| if error.contains("Unknown worker route") { format!("Update worker {} to export refmods.", connection.name) } else { error })?;
+            save_response(response, destination, "the refmod")
+        });
+        self.unregister(&request.job_id);
+        result
+    }
+
     /// Starts a job on the worker and follows it on a background thread. The
     /// webview receives the same queued/progress/framesReady events, and the
     /// frames wait in this process's render store like a local render.
@@ -645,18 +664,8 @@ impl Workers {
     /// demand as the webview encodes them.
     fn collect(&self, connection: &Connection, id: &str, latents: Option<&Path>) -> Result<Option<String>, String> {
         if let Some(destination) = latents {
-            let mut response = connection.send(connection.request(reqwest::Method::GET, &format!("/v1/jobs/{id}/latents")))?;
-            let temporary = destination.with_extension("safetensors.part");
-            let copied = File::create(&temporary)
-                .and_then(|mut file| io::copy(&mut response, &mut file).and_then(|bytes| file.sync_all().map(|_| bytes)))
-                .map_err(|error| format!("Could not save latents from the worker: {error}"));
-            match copied {
-                Ok(_) => fs::rename(&temporary, destination).map_err(|error| error.to_string())?,
-                Err(error) => {
-                    let _ = fs::remove_file(&temporary);
-                    return Err(error);
-                }
-            }
+            let response = connection.send(connection.request(reqwest::Method::GET, &format!("/v1/jobs/{id}/latents")))?;
+            save_response(response, destination, "latents")?;
         }
         let summary: rendered::RenderedSummary = connection.get(&format!("/v1/jobs/{id}/summary"))?;
         let audio: Vec<f32> = connection.bytes(&format!("/v1/jobs/{id}/audio"))?
@@ -683,6 +692,21 @@ impl Workers {
 
     pub(crate) fn status(&self, connection: &Connection, settings: &BTreeMap<String, ProviderSetting>) -> slopfab::SlopfabStatus {
         slopfab::worker_status(settings, &connection.info.runtime, format!("Worker {} ({})", connection.name, connection.address))
+    }
+}
+
+/// Streams a worker's file beside its destination, then moves it into place.
+fn save_response(mut response: Response, destination: &Path, what: &str) -> Result<(), String> {
+    let temporary = destination.with_extension("safetensors.part");
+    let copied = File::create(&temporary)
+        .and_then(|mut file| io::copy(&mut response, &mut file).and_then(|bytes| file.sync_all().map(|_| bytes)))
+        .map_err(|error| format!("Could not save {what} from the worker: {error}"));
+    match copied {
+        Ok(_) => fs::rename(&temporary, destination).map_err(|error| error.to_string()),
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            Err(error)
+        }
     }
 }
 
@@ -957,6 +981,51 @@ mod tests {
             assert!(started.elapsed() < Duration::from_secs(5), "the worker copy was not released");
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    #[test]
+    fn refmod_exports_send_only_vaes_and_save_the_worker_file() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap().to_string();
+        let posted = Arc::new(Mutex::new(None::<RefmodExport>));
+        let seen = posted.clone();
+        std::thread::spawn(move || {
+            for mut request in server.incoming_requests() {
+                let url = request.url().to_string();
+                let body: Vec<u8> = match url.as_str() {
+                    "/v1/uploads/missing" => br#"{"missing":[]}"#.to_vec(),
+                    "/v1/refmods" => {
+                        *seen.lock().unwrap() = serde_json::from_reader(request.as_reader()).ok();
+                        b"refmod bytes".to_vec()
+                    }
+                    _ => { let _ = request.respond(tiny_http::Response::empty(404)); continue; }
+                };
+                let _ = request.respond(tiny_http::Response::from_data(body));
+            }
+        });
+        let info = WorkerInfo {
+            id: "00112233aabbccdd".into(), name: "Stub".into(), version: "0".into(), protocol: PROTOCOL_VERSION,
+            requires_token: false, gpus: Vec::new(),
+            runtime: WorkerRuntime { state: "ready".into(), version: None, platform: None, cuda_available: false, cuda_device_names: Vec::new(), detail: String::new() },
+        };
+        let connection = Connection { base: format!("http://{address}"), token: None, name: "Stub".into(), address, info, http: http_client(None) };
+        let folder = tempfile::tempdir().unwrap();
+        let file = |name: &str| {
+            let path = folder.path().join(name);
+            fs::write(&path, name).unwrap();
+            path.to_string_lossy().into_owned()
+        };
+        let options = ["transformer", "videoVae", "audioVae"].into_iter()
+            .map(|name| (name.to_string(), ProviderOption::String(file(&format!("{name}.safetensors"))))).collect();
+        let settings = BTreeMap::from([("slopfab".to_string(), ProviderSetting { enabled: true, model: None, options })]);
+        let request = GenerationRequest { job_id: "refmod-export".into(), reference_paths: vec![file("hero.png")], ..Default::default() };
+        let destination = folder.path().join("hero.safetensors");
+        Workers::default().export_refmod(&connection, &request, &settings, "Hero", "A hero", &destination).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"refmod bytes");
+        let export = posted.lock().unwrap().take().unwrap();
+        assert_eq!((export.name.as_str(), export.description.as_str()), ("Hero", "A hero"));
+        assert_eq!(export.job.files.len(), 3, "the transformer stays on this computer");
+        assert!(!export.job.settings["slopfab"].options.contains_key("transformer"));
     }
 
     /// Drives a running worker through the same path as the app. Needs

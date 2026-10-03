@@ -81,6 +81,15 @@ pub struct StartJob {
     pub save_latents: bool,
 }
 
+/// A refmod export. The job carries raw references and the VAEs only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefmodExport {
+    pub job: RemoteJob,
+    pub name: String,
+    pub description: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WireEvent {

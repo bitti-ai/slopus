@@ -406,6 +406,18 @@ impl Worker {
                 let (request, settings) = self.materialize(job)?;
                 json(&slopfab::resolve_plan(&request, &settings, &self.runtime.references)?)
             }
+            (Method::Post, ["refmods"]) => {
+                let export: RefmodExport = body(request)?;
+                let id = generated_file_stem(&export.job.request.job_id)?;
+                let (request, settings) = self.materialize(export.job)?;
+                let directory = self.data.join("refmods");
+                fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+                let path = directory.join(format!("{id}.safetensors"));
+                let refmod = slopfab::export_refmod(&request, &settings, &self.runtime.references, &path, &export.name, &export.description)
+                    .and_then(|_| fs::read(&path).map_err(|error| error.to_string()));
+                let _ = fs::remove_file(&path);
+                Ok(bytes(refmod?, "application/octet-stream"))
+            }
             (Method::Post, ["jobs", id]) => {
                 let start: StartJob = body(request)?;
                 self.start_job(id, start)?;

@@ -1,5 +1,25 @@
 # Slopfab compatibility
 
+## API 1.18: refmod export
+
+The bundled runtime comes from SlopFab commit `9d45da8`, built with
+`SLOPFAB_WITH_FFMPEG=OFF`. API 1.18 adds `slopfab_export_refmod`, which encodes
+a request's raw image, video and audio references into a refmod file using only
+the VAEs. API 1.17 added version-5 refmod bundles, which `add_refmod` loads.
+
+Slopus calls the export from the work queue for **Export refmod** in References
+(see [refmods](refmods.md)). It reuses the existing reference image paths,
+prepared video handles and sound PCM, so video and audio are still decoded with
+mp4box.js/WebCodecs. Both backends are supported, locally or through the
+worker's `/v1/refmods` route. Older runtimes keep working and report that API
+1.18 is needed; an older worker asks to be updated.
+
+Tests cover the missing-media, missing-VAE and older-runtime errors, the worker
+round trip against a stub, queue ordering and the References UI. An ignored
+test (`SLOPUS_E2E_WEIGHTS`) encodes an image, a clip and a sound with real VAEs
+and reloads the resulting bundle; it was run once locally. Generation quality
+with exported refmods was not evaluated.
+
 ## API 1.16: DMAD
 
 The bundled runtime comes from SlopFab commit `017d2b6`, built with

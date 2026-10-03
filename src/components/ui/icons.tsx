@@ -16,6 +16,7 @@ export { Add16Regular as Add16, Add20Regular as Add20 } from "@fluentui/react-ic
 export { ArrowCounterclockwise12Regular as Reset12, ArrowCounterclockwise16Regular as Reset16, ArrowCounterclockwise32Regular as Reset32 } from "@fluentui/react-icons/headless/svg/arrow-counterclockwise";
 export { ArrowDown12Regular as ArrowDown12, ArrowDown16Regular as ArrowDown16 } from "@fluentui/react-icons/headless/svg/arrow-down";
 export { ArrowDownload16Regular as Download16, ArrowDownload16Filled as Download16Filled, ArrowDownload20Regular as Download20, ArrowDownload32Regular as Download32 } from "@fluentui/react-icons/headless/svg/arrow-download";
+export { ArrowExportUp16Regular as Export16 } from "@fluentui/react-icons/headless/svg/arrow-export-up";
 export { ArrowLeft16Regular as Back16 } from "@fluentui/react-icons/headless/svg/arrow-left";
 export { ArrowRedo16Regular as Redo16 } from "@fluentui/react-icons/headless/svg/arrow-redo";
 export { ArrowSync16Regular as Refresh16, ArrowSync16Filled as Refresh16Filled, ArrowSync20Regular as Refresh20 } from "@fluentui/react-icons/headless/svg/arrow-sync";

@@ -637,6 +637,76 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
 }
 
 #[test]
+fn refmod_export_needs_raw_media_and_vaes_or_reports_an_older_dll() {
+    let references = ReferenceVideos::default();
+    let settings = BTreeMap::new();
+    let root = tempfile::tempdir().unwrap();
+    let output = root.path().join("voice.safetensors");
+    let mut request = GenerationRequest { job_id: "refmod-export-test".into(), ..Default::default() };
+    let empty = export_refmod(&request, &settings, &references, &output, "Voice", "").unwrap_err();
+    assert!(empty.contains("Add an image, video or sound"), "{empty}");
+    let audio = references
+        .create_reference_audio(&vec![0; 32_000 * 2 * 4], 1, 32_000)
+        .unwrap();
+    request.reference_audio_ids = vec![audio.clone()];
+    // The runtime refuses a request without VAEs before any GPU work.
+    let missing = export_refmod(&request, &settings, &references, &output, "Voice", "A voice").unwrap_err();
+    assert!(missing.contains("VAE path is missing"), "{missing}");
+    assert!(!output.exists());
+    let configuration = Configuration::from_settings(&settings);
+    let mut api = ffi::Api::load(&configuration.dll_path).unwrap();
+    api.disable_refmod_export_for_test();
+    let older = refmod_export::export_with(&api, &request, &configuration, &references, &output, "Voice", "").unwrap_err();
+    assert!(older.contains("API 1.18"), "{older}");
+    references.release_reference_audios(&[audio]).unwrap();
+}
+
+/// Encodes real media on the GPU. Needs SLOPUS_E2E_WEIGHTS: a folder holding
+/// floating-point H3 video and audio VAEs.
+#[test]
+#[ignore]
+fn refmod_export_encodes_an_image_a_clip_and_a_sound_into_a_loadable_bundle() {
+    let weights = std::path::PathBuf::from(std::env::var("SLOPUS_E2E_WEIGHTS").expect("SLOPUS_E2E_WEIGHTS"));
+    let find = |part: &str| std::fs::read_dir(&weights).unwrap().filter_map(Result::ok).map(|entry| entry.path())
+        .find(|path| path.to_string_lossy().contains(part) && path.extension().is_some_and(|ext| ext == "safetensors"))
+        .unwrap_or_else(|| panic!("no {part} weights")).to_string_lossy().into_owned();
+    let options = BTreeMap::from([
+        ("videoVae".to_string(), ProviderOption::String(find("video_vae_fp16"))),
+        ("audioVae".to_string(), ProviderOption::String(find("audio_vae_fp32"))),
+    ]);
+    let settings = BTreeMap::from([("slopfab".to_string(), ProviderSetting { enabled: true, model: None, options })]);
+    let root = tempfile::tempdir().unwrap();
+    let picture = root.path().join("hero.png");
+    image::RgbImage::from_fn(256, 384, |x, y| image::Rgb([x as u8, y as u8, 128])).save(&picture).unwrap();
+    let references = ReferenceVideos::default();
+    let video = references.create_reference_video(2.0, &settings).unwrap();
+    for frame in 0..48_u8 {
+        references.append_reference_video(&video, &vec![frame * 5; 320 * 192 * 4], 320, 192, f64::from(frame) / 24.0).unwrap();
+    }
+    let tone: Vec<u8> = (0..32_000 * 2).flat_map(|index| ((index as f32 * 0.05).sin() * 0.25).to_le_bytes()).collect();
+    let audio = references.create_reference_audio(&tone, 1, 32_000).unwrap();
+    let request = GenerationRequest {
+        job_id: "refmod-export-e2e".into(),
+        reference_paths: vec![picture.to_string_lossy().into_owned()],
+        reference_video_ids: vec![video],
+        reference_audio_ids: vec![audio],
+        ..Default::default()
+    };
+    let output = root.path().join("hero.safetensors");
+    export_refmod(&request, &settings, &references, &output, "Hero", "A traveler").unwrap();
+    let bytes = std::fs::read(&output).unwrap();
+    let length = u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize;
+    let header: serde_json::Value = serde_json::from_slice(&bytes[8..8 + length]).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(header["__metadata__"]["refmod_meta"].as_str().unwrap()).unwrap();
+    assert_eq!((meta["kind"].as_str(), meta["name"].as_str()), (Some("bundle"), Some("Hero")));
+    let kinds: Vec<_> = meta["members"].as_array().unwrap().iter().map(|member| member["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["image", "video", "audio"]);
+    assert_eq!(header["ref_0"]["shape"], serde_json::json!([1, 24, 1, 72, 48]));
+    let api = ffi::Api::load(&Configuration::from_settings(&settings).dll_path).unwrap();
+    api.add_refmod(&RequestHandle::new(&api).unwrap(), &output, 1.0, 1).unwrap();
+}
+
+#[test]
 fn motion_cache_reaches_cuda_and_vulkan_requests_and_changes_timing_profile() {
     let mut configuration = Configuration::from_settings(&BTreeMap::from([(
         "slopfab".into(),

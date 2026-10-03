@@ -2,6 +2,7 @@ use crate::media::artifacts::*;
 use crate::project::{validation::validate_and_normalize_config, *};
 use crate::{diagnostics, slopfab, worker::Workers};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_dialog::DialogExt;
 /// Generation commands run on the native queue here, or on the LAN worker
 /// selected in Settings → Workers. The webview cannot tell the difference.
 async fn blocking<T: Send + 'static>(
@@ -276,6 +277,71 @@ pub(crate) async fn enqueue_slopfab_generation(
                 error,
                 serde_json::json!({ "jobId": job_id }),
             );
+        }
+        result
+    })
+    .await
+}
+
+/// Refmod destinations picked in the save dialog during this run. An export
+/// writes only to one of these, so the webview cannot name its own target.
+#[derive(Clone, Default)]
+pub(crate) struct RefmodExportTargets(std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>);
+
+#[tauri::command]
+pub(crate) async fn choose_refmod_export_path(
+    app: AppHandle,
+    targets: tauri::State<'_, RefmodExportTargets>,
+    name: String,
+) -> Result<Option<String>, String> {
+    let targets = targets.inner().clone();
+    blocking(move || {
+        let Some(destination) = app.dialog().file()
+            .set_title("Export refmod")
+            .add_filter("Refmod", &["safetensors"])
+            .set_file_name(format!("{}.safetensors", paths::safe_folder_name(&name)))
+            .blocking_save_file() else {
+            return Ok(None);
+        };
+        let destination = destination.into_path().map_err(|_| "Choose a local refmod destination.")?;
+        let destination = if destination.extension().is_some_and(|value| value.eq_ignore_ascii_case("safetensors")) {
+            destination
+        } else {
+            destination.with_extension("safetensors")
+        };
+        let destination = paths::display_path(&destination);
+        targets.0.lock().map_err(|_| "Refmod export lock failed.")?.insert(destination.clone());
+        Ok(Some(destination))
+    })
+    .await
+}
+
+/// Encodes a reference's prepared images, video and sound into a refmod file.
+#[tauri::command]
+pub(crate) async fn export_reference_refmod(
+    state: tauri::State<'_, slopfab::SlopfabRuntime>,
+    workers: tauri::State<'_, Workers>,
+    targets: tauri::State<'_, RefmodExportTargets>,
+    request: slopfab::GenerationRequest,
+    config: ProjectConfig,
+    output_path: String,
+    name: String,
+    description: String,
+) -> Result<(), String> {
+    let (runtime, workers, targets) = (state.inner().clone(), workers.inner().clone(), targets.inner().clone());
+    blocking(move || {
+        if !targets.0.lock().map_err(|_| "Refmod export lock failed.")?.remove(&output_path) {
+            return Err("Choose where to save the refmod before exporting it.".into());
+        }
+        let output = std::path::Path::new(&output_path);
+        let context = serde_json::json!({ "jobId": request.job_id, "referenceCount": request.reference_count() });
+        let result = validate_and_normalize_config(config).and_then(|config| match workers.active()? {
+            Some(worker) => workers.export_refmod(&worker, &request, &config.provider_settings, &name, &description, output),
+            None => slopfab::export_refmod(&request, &config.provider_settings, &runtime.references, output, &name, &description),
+        });
+        match &result {
+            Ok(()) => diagnostics::info("slopfab", "refmod.exported", "Reference exported as a refmod.", context),
+            Err(error) => diagnostics::error("slopfab", "refmod.export_failed", error, context),
         }
         result
     })

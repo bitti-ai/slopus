@@ -20,6 +20,7 @@ mod icons;
 mod planning;
 mod platform;
 mod references;
+mod refmod_export;
 mod runtime;
 mod status;
 mod types;
@@ -29,6 +30,7 @@ pub use types::*;
 pub use events::NativeEvent;
 pub use icons::{generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 pub use planning::resolve_plan;
+pub use refmod_export::export_refmod;
 pub use platform::{probe_backend, BackendProbe};
 pub use status::{status, worker_status};
 #[cfg(windows)]

@@ -30,4 +30,29 @@ Refmods require a Ref2VA generator and a SlopFab DLL exposing the 1.8 refmod API
 Both CUDA and Vulkan use the same attachment path. SlopFab validates the tensors
 and metadata, reporting incompatible files or bundles. Older DLLs remain usable
 without refmods and give an explicit compatibility error when an enabled refmod
-is submitted. Slopus does not encode, train, or optimize refmods.
+is submitted. Slopus does not train, pool, or optimize refmods.
+
+## Exporting a reference as a refmod
+
+Select a reference in References and choose **Export refmod** in the command
+bar, or **Export as refmod…** in its context menu, then pick where to save the
+`.safetensors` file. The export encodes the reference's own media with the
+selected generator's video and audio VAEs: up to nine images, its video clip
+(using the saved trim, with the soundtrack when **Include sound** is on), or
+its sound clip. Text-only references and references that already use refmods
+cannot be exported. The prompt is stored only as the file's description.
+
+One image, a silent clip or a sound gives a standalone refmod. Several items
+give a version-5 bundle: images first, then the clip and its soundtrack.
+Frames-mode video references export their selected stills. Latents are saved
+as F32 at SlopFab's native reference size (768-pixel short edge), without
+pooling or refinement.
+
+The export is a work queue item, so it waits behind running generations. It
+cannot be cancelled once encoding starts. It needs SlopFab API 1.18, a
+floating-point video VAE for images and video, and a floating-point audio VAE
+for sound; no transformer or text encoder is loaded. With a LAN worker
+selected, the worker encodes and the file is saved on this computer. Only the
+VAEs and the reference's media are sent to it.
+
+Attach the exported file to any reference with **Add file**.

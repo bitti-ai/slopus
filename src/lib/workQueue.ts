@@ -6,7 +6,7 @@ import { compileImagePrompt } from "./imagePrompt";
 import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
-import { projectItemPath, referenceImages, referenceRefmodInputs } from "./project";
+import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
 import { engineProviderSetting, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
@@ -23,6 +23,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
 import { joinedSceneSegments, sceneArchiveSegments } from "./continuationMedia";
 import type { SceneMediaSegment } from "./project";
+import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
@@ -37,7 +38,7 @@ function imageGenerationSeed(seed: number): number {
 export interface WorkItem {
   imageAssetId?: string | null;
   imageDraftId?: string;
-  kind?: "reference-icons" | "image";
+  kind?: "reference-icons" | "image" | "refmod";
   id: string;
   projectKey: string;
   folderPath: string;
@@ -62,6 +63,7 @@ interface PendingWork {
   imageParentId?: string;
   image?: boolean;
   imageGeneration?: ImageGenerationSnapshot;
+  refmod?: RefmodExportTarget;
   id: string;
   session: ProjectSession;
   sceneId: string;
@@ -255,8 +257,31 @@ export class WorkQueue {
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
+  /** Queues encoding one reference's images, video or sound into a refmod file. */
+  exportReferenceRefmod(session: ProjectSession, referenceId: string, outputPath: string) {
+    if (!isTauri()) throw new Error("Refmod export is available in the desktop app.");
+    const config = structuredClone(withEngineSettings(session.getSnapshot().config));
+    const reference = config.references.find((candidate) => candidate.id === referenceId);
+    if (!reference) throw new Error("The reference no longer exists.");
+    const blocker = refmodExportBlocker(reference);
+    if (blocker) throw new Error(blocker);
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "refmod" && item.sceneId === referenceId && isWorkActive(item))) {
+      throw new Error("This reference is already being exported.");
+    }
+    const id = `refmod-${crypto.randomUUID()}`;
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const request = refmodExportRequest(session.record.folderPath, reference, id);
+    this.work.set(id, { id, session, sceneId: referenceId, request, config, snapshot: "", cancelled: false, submitted: false, done, finish,
+      refmod: { outputPath, name: reference.name, description: referenceDefinition(reference) } });
+    this.items = [...this.items, { id, kind: "refmod", projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: referenceId,
+      title: "Refmod · " + reference.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to export refmod", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 0, steps: 0, seed: 0, canvasWidth: 0, canvasHeight: 0 } }];
+    this.publish(); this.icons.yieldToVideo(); void this.pump();
+  }
   private updateScene(work: PendingWork, patch: Partial<GenerationJob>, dirty = true) {
-    if (work.image) return;
+    if (work.image || work.refmod) return;
     work.session.update((current) => ({
       ...current, generationJobs: current.generationJobs.map((job) => job.id === work.sceneId ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job),
     }), dirty);
@@ -273,10 +298,11 @@ export class WorkQueue {
           continue;
         }
         const work = this.work.get(next.id)!;
-        this.patch(work.id, { status: "preparing", detail: "Preparing generation" });
+        this.patch(work.id, { status: "preparing", detail: work.refmod ? "Preparing refmod" : "Preparing generation" });
         try {
           await this.ready;
           if (work.cancelled) continue;
+          if (work.refmod) { await this.exportRefmod(work, next.folderPath); continue; }
           // Newly created scenes/references must exist on disk before any
           // background result can be attached to this project.
           await work.session.save();
@@ -295,14 +321,7 @@ export class WorkQueue {
           }
           if (!work.image) await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
           if (work.cancelled) continue;
-          if (work.request.referenceVideos?.length) {
-            work.request.referenceVideoIds = await prepareReferenceVideos(next.folderPath, work.request, work.config,
-              () => work.cancelled, (detail) => this.patch(work.id, { detail }));
-          }
-          if (work.request.referenceAudios?.length) {
-            work.request.referenceAudioIds = await prepareReferenceAudios(next.folderPath, work.request,
-              () => work.cancelled, (detail) => this.patch(work.id, { detail }));
-          }
+          await this.prepareReferences(work, next.folderPath);
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
@@ -324,6 +343,24 @@ export class WorkQueue {
         }
       }
     } finally { this.pumping = false; }
+  }
+  private async prepareReferences(work: PendingWork, folderPath: string) {
+    const report = (detail: string) => this.patch(work.id, { detail });
+    if (work.request.referenceVideos?.length) {
+      work.request.referenceVideoIds = await prepareReferenceVideos(folderPath, work.request, work.config, () => work.cancelled, report);
+    }
+    if (work.request.referenceAudios?.length) {
+      work.request.referenceAudioIds = await prepareReferenceAudios(folderPath, work.request, () => work.cancelled, report);
+    }
+  }
+  private async exportRefmod(work: PendingWork, folderPath: string) {
+    await this.prepareReferences(work, folderPath);
+    if (work.cancelled) return;
+    // The runtime's export call is synchronous, so it cannot be cancelled.
+    this.patch(work.id, { status: "encoding", progress: 0.5, detail: "Encoding refmod" });
+    await exportReferenceRefmod(work.request, work.config, work.refmod!);
+    this.patch(work.id, { status: "completed", progress: 1, detail: "Refmod saved" });
+    work.finish();
   }
   async cancel(id: string): Promise<void> {
     if (this.icons.owns(id)) { await this.icons.cancel(); return; }
@@ -365,7 +402,7 @@ export class WorkQueue {
     }
     const detail = describeDiagnosticError(reason);
     this.timing.clear(work.id);
-    this.patch(work.id, { status: "failed", detail: "Generation failed", error: detail, completionAt: null, cancelling: false });
+    this.patch(work.id, { status: "failed", detail: work.refmod ? "Refmod export failed" : "Generation failed", error: detail, completionAt: null, cancelling: false });
     this.updateScene(work, { status: "failed", stage: "failed", error: detail });
     writeDiagnostic("error", "work-queue", "generation.failed", detail, { workId: work.id, sceneId: work.sceneId, folderPath: work.session.record.folderPath });
     void work.session.save().catch(() => undefined);
@@ -375,7 +412,8 @@ export class WorkQueue {
     if (this.icons.progressEvent(event)) return;
     const work = this.work.get(event.jobId);
     const item = this.items.find((candidate) => candidate.id === event.jobId);
-    if (!work || !item || !["preparing", "generating"].includes(item.status)) return;
+    // A refmod export sends its files to a LAN worker while it is encoding.
+    if (!work || !item || !(["preparing", "generating"].includes(item.status) || (work.refmod && item.status === "encoding" && isWorkerTransfer(event)))) return;
     if (isWorkerTransfer(event)) {
       // Files moving to a LAN worker: say what is happening without moving
       // the generation bar or the time estimate.
