@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
+import { completeImageDraft, imageFamily, imageFamilyRoot, imageGenerationSnapshot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { imageGenerationSnapshotSchema, parseProjectConfig } from "./project";
 import fixture from "../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
@@ -106,5 +106,23 @@ describe("generated image history", () => {
     const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: config.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
     const assets = removeImageAsset([image("a"), image("b", "a"), image("c", "a"), image("d")], "a");
     expect(assets.map((asset) => [asset.id, asset.parentAssetId])).toEqual([["b", undefined], ["c", "b"], ["d", undefined]]);
+  });
+
+  it("promotes an image in place, keeps the family flat, and attaches future edits to its new primary", () => {
+    const config = parseProjectConfig(fixture);
+    const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/${id}.png`, mimeType: "image/png", width: 640, height: 480, createdAt: config.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+    config.assets = [image("before"), image("original"), image("after"), image("retry", "original"), image("chosen", "original")];
+    const promoted = makeImagePrimary(config.assets, "chosen");
+    expect(promoted.filter((asset) => !asset.parentAssetId).map((asset) => asset.id)).toEqual(["before", "chosen", "after"]);
+    expect(imageFamily(promoted, "original").map((asset) => [asset.id, asset.parentAssetId])).toEqual([
+      ["chosen", undefined], ["original", "chosen"], ["retry", "chosen"],
+    ]);
+    expect(config.assets[1].parentAssetId).toBeUndefined();
+    expect(makeImagePrimary(promoted, "chosen")).toBe(promoted);
+    const reopened = parseProjectConfig(JSON.parse(JSON.stringify({ ...config, assets: promoted })));
+    expect(imageFamilyRoot(reopened.assets, "retry")).toBe("chosen");
+    reopened.imageScene = createImageEditScene({ relativePath: "media/original.png", name: "original", width: 640, height: 480 });
+    expect(saveImageDraft(reopened).assets.at(-1)?.parentAssetId).toBe("chosen");
+    expect(imageFamily(removeImageAsset(promoted, "chosen"), "retry").map((asset) => asset.id)).toEqual(["original", "retry"]);
   });
 });

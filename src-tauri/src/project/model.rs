@@ -98,8 +98,8 @@ pub(crate) struct ProjectAsset {
     pub(crate) image_generation: Option<super::image::ImageGenerationSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_draft: Option<bool>,
-    /// The original image this one was regenerated or edited from; the image
-    /// bar shows a family as the original followed by these.
+    /// The family's primary image; the image bar shows it first, followed by
+    /// the other versions. Choosing a primary keeps the family one level deep.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) parent_asset_id: Option<String>,
     pub(crate) created_at: String,

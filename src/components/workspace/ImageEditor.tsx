@@ -5,7 +5,7 @@ import { addImageNode, createImageEditScene, createImageScene, duplicateImageNod
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
@@ -515,6 +515,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         if (source) replaceScene(createImageEditScene(source, scene));
       }) },
       ...(imageMenu.id ? [
+        ...(imageMenu.inFamily ? [{ label: "Make Primary", icon: <Image16 />, disabled: !canUseMenuImage || imageFamilyRoot(images, imageMenu.id) === imageMenu.id,
+          action: () => onChange((current) => ({ ...current, assets: makeImagePrimary(current.assets, imageMenu.id!) })) }] : []),
         { label: "Edit", icon: <Edit16 />, separator: true, action: () => attempt(() => menuImage?.imageDraft || !menuImage?.width || !menuImage?.height ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
         { label: "Create Scene", icon: <Film16 />, separator: true, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, true)) },
         { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },

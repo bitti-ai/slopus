@@ -14,7 +14,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { createEmptyImage, restoreGeneratedImage } from "./imageHistory";
+import { createEmptyImage, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -123,6 +123,27 @@ describe("image generation work", () => {
     expect([first, second].map((item) => result.assets.find((asset) => asset.relativePath === `media/${item.id}.jpg`)!.parentAssetId))
       .toEqual(imageDraft ? [undefined, undefined] : ["first", "second"]);
   });
+  it("finishes regeneration in the current primary's family after promotion and undo", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.assets = ["original", "chosen"].map((id) => ({ id, name: id, kind: "image", relativePath: `media/${id}.jpg`, mimeType: "image/jpeg",
+      createdAt: record.config.createdAt, ...(id === "chosen" ? { parentAssetId: "original" } : {}) }));
+    record.config.imageScene!.outputAssetId = "original";
+    const session = queue.project(record);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/result.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    session.edit((current) => ({ ...current, assets: makeImagePrimary(current.assets, "chosen") }));
+    const work = queue.getSnapshot()[0];
+    await finish(queue, work.id);
+    expect(session.getSnapshot().config.assets.find((asset) => asset.id === work.id)?.parentAssetId).toBe("chosen");
+    session.undo();
+    expect(session.getSnapshot().config.assets.find((asset) => asset.id === "chosen")?.parentAssetId).toBe("original");
+    expect(session.getSnapshot().config.assets.find((asset) => asset.id === work.id)?.parentAssetId).toBe("original");
+    session.redo();
+    expect(session.getSnapshot().config.assets.find((asset) => asset.id === work.id)?.parentAssetId).toBe("chosen");
+  });
+
   it("submits whole-image and local edits with separate reference pictures and refmods", async () => {
     const { queue } = setup();
     const record = imageProject();

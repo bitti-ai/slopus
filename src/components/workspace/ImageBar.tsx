@@ -13,9 +13,9 @@ import "../../styles/image-editor.css";
    whether the bar is showing a family; without it the bar has no menu.
 
    An image regenerated or edited from another joins that image's family. The
-   bar lists the originals; while an image with a family is selected it shows
-   just that family — the original first, then the images made from it — with
-   a back button at its leading edge that returns to the originals. */
+   bar lists the primary images; while an image with a family is selected it
+   shows just that family — the primary first, then the other versions — with
+   a back button at its leading edge that returns to all primary images. */
 export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
@@ -28,13 +28,13 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
 
   const root = imageFamilyRoot(images, selectedId);
   const family = imageFamily(images, selectedId);
-  // Selecting an image opens its family; Back shows the originals until the
+  // Selecting an image opens its family; Back shows the primaries until the
   // next selection.
   const [showAll, setShowAll] = useState(false);
   useEffect(() => setShowAll(false), [selectedId]);
   const inFamily = !showAll && family.length > 1;
-  const originals = images.filter((asset) => imageFamilyRoot(images, asset.id) === asset.id);
-  const shown = inFamily ? family : originals;
+  const primaries = images.filter((asset) => imageFamilyRoot(images, asset.id) === asset.id);
+  const shown = inFamily ? family : primaries;
   const pressed = inFamily ? selectedId : root;
   const childCount = (id: string) => images.filter((asset) => asset.id !== id && imageFamilyRoot(images, asset.id) === id).length;
 

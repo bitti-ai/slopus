@@ -682,6 +682,32 @@ it("shows an image's family behind a back button, the original first", () => {
   expect(bar()).toEqual(["View Original, 3 versions", "View Other"]);
 });
 
+it.each(["Create Scene", "Create Reference"])("uses the chosen primary for %s from the main image bar", (action) => {
+  const initial = parseProjectConfig(fixture);
+  const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/${id}.png`, mimeType: "image/png", createdAt: initial.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });
+  initial.assets = [image("Original"), image("Other"), image("Retry", "Original"), image("Chosen", "Original")];
+  initial.imageScene!.outputAssetId = "Original";
+  const current = setup(initial);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Original" }));
+  expect(screen.getByRole("menuitem", { name: "Make Primary" })).toBeDisabled();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "View Chosen" }), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Make Primary" }));
+  expect(current().imageScene).toEqual(initial.imageScene);
+  expect(screen.getByRole("button", { name: "View Original" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Back to all images" }));
+  expect(within(screen.getByLabelText("Generated images")).getAllByRole("button").map((button) => button.getAttribute("aria-label")))
+    .toEqual(["View Chosen, 3 versions", "View Other"]);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Chosen, 3 versions" }));
+  expect(screen.queryByRole("menuitem", { name: "Make Primary" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(referenceImages(reopened.references[0])[0].relativePath).toBe("media/Chosen.png");
+  if (action === "Create Scene") expect(reopened.generationJobs.at(-1)?.startFrameReferenceId).toBe(reopened.references[0].id);
+  expect(reopened.assets.find((asset) => asset.id === "Original")?.parentAssetId).toBe("Chosen");
+  expect(reopened.assets.find((asset) => asset.id === "Chosen")?.parentAssetId).toBeUndefined();
+});
+
 it("removes an original with a family only from inside the family, and the leftmost image takes its place", () => {
   const initial = parseProjectConfig(fixture);
   const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const, relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, ...(parentAssetId ? { parentAssetId } : {}) });

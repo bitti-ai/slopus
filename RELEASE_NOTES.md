@@ -4,6 +4,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Choose Make Primary on an image version to show it in the main image bar and use it when creating scenes or references from that family.
 - Images imported through Timeline or References, including selected video reference frames, appear in the image bar and open for editing.
 - Duplicate references from their context menu, including multiple selected references with their prompts, attachments, and media settings.
 - Create a video scene with an image as its first frame, or create an image reference, directly from the Image tab's image bar context menu.

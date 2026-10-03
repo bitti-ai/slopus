@@ -18,20 +18,33 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
   });
 }
 
-/** The first image of `id`'s family: its parent, or itself when it is an
- *  original (or its parent has since been removed). */
+/** The primary image of `id`'s family: its parent, or itself when it is the
+ *  primary (or its parent has since been removed). */
 export function imageFamilyRoot(assets: readonly ProjectAsset[], id: string | null | undefined): string | undefined {
   const asset = assets.find((candidate) => candidate.id === id && candidate.kind === "image");
   if (!asset) return undefined;
   return asset.parentAssetId && assets.some((candidate) => candidate.id === asset.parentAssetId && candidate.kind === "image") ? asset.parentAssetId : asset.id;
 }
 
-/** An image's family in the bar's order: the original, then the images made
- *  from it. An image with no family is a family of one. */
+/** An image's family in the bar's order: the primary, then its other versions.
+ *  An image with no family is a family of one. */
 export function imageFamily(assets: readonly ProjectAsset[], id: string | null | undefined): ProjectAsset[] {
   const root = imageFamilyRoot(assets, id);
   if (!root) return [];
   return [assets.find((asset) => asset.id === root)!, ...assets.filter((asset) => asset.id !== root && imageFamilyRoot(assets, asset.id) === root)];
+}
+
+/** Promote a version without moving its family in the main bar or changing
+ *  any image's contents. All other versions point directly to the new primary. */
+export function makeImagePrimary(assets: ProjectAsset[], id: string): ProjectAsset[] {
+  const primary = assets.find((asset) => asset.id === id && asset.kind === "image");
+  const root = imageFamilyRoot(assets, id);
+  if (!primary || !root || root === id || (!primary.relativePath && !primary.sourcePath)) return assets;
+  const family = new Set(imageFamily(assets, id).map((asset) => asset.id));
+  return assets.flatMap((asset) => asset.id === root
+    ? [{ ...primary, parentAssetId: undefined }, { ...asset, parentAssetId: id }]
+    : asset.id === id ? []
+    : family.has(asset.id) ? [{ ...asset, parentAssetId: id }] : [asset]);
 }
 
 /** Removes an image. Its children stay a family: the leftmost of them — the

@@ -181,8 +181,8 @@ export const projectAssetSchema = z.object({
   hasAudio: z.boolean().nullish(),
   imageGeneration: imageGenerationSnapshotSchema.nullish(),
   imageDraft: z.boolean().nullish(),
-  /** The original image this one was regenerated or edited from. Always the
-   *  family's first image, never another child, so a family is one level. */
+  /** The family's primary image. Always its first image, never another child,
+   *  so a family is one level even after choosing a different primary. */
   parentAssetId: idSchema.nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {

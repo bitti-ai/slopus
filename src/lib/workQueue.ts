@@ -449,7 +449,7 @@ export class WorkQueue {
           thumbnail: saved.relativePath,
           imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
         } : {}),
-        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId && current.assets.some((asset) => asset.id === work.imageParentId) ? { parentAssetId: work.imageParentId } : {}), createdAt: new Date().toISOString() }],
+        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, work.imageParentId) } : {}), createdAt: new Date().toISOString() }],
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
