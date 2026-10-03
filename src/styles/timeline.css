@@ -350,8 +350,13 @@
 /* A flat plate with a glyph until a real frame arrives. */
 .media-thumb {
   height: 64px;
+  min-width: 0;
   display: grid;
+  /* Intrinsic image dimensions must not expand the thumbnail's grid track. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
+  overflow: hidden;
   color: var(--text-faint);
   background: var(--panel-3);
 }

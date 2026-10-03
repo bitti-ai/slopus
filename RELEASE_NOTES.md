@@ -19,6 +19,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## Fixes and improvements
 
+- Timeline media thumbnails stay inside their preview area, keeping filenames clear in grid and list layouts.
 - Portable builds show available updates and open GitHub releases for manual updating instead of running an installer.
 
 - Simplified image edits and added references for individual edits. Still-image generation receives only the references mentioned in its prompt, with clear image and RefMod identifiers.
