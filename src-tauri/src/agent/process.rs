@@ -30,6 +30,7 @@ pub(super) struct CommandSpec {
 pub(super) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(super) fn quiet_command(executable: &Path) -> Command {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut command = Command::new(executable);
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);

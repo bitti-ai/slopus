@@ -62,7 +62,8 @@ fn enable_features(settings: &webkit2gtk::Settings) -> Result<FeatureReport, Str
         let get_enabled: GetFeatureEnabled = std::mem::transmute(symbol(b"webkit_settings_get_feature_enabled\0").map_err(missing)?);
         let set_enabled: SetFeatureEnabled = std::mem::transmute(symbol(b"webkit_settings_set_feature_enabled\0").map_err(missing)?);
 
-        let settings_ptr: *mut c_void = settings.to_glib_none().0.cast();
+        let settings_ptr: *mut webkit2gtk::ffi::WebKitSettings = settings.to_glib_none().0;
+        let settings_ptr: *mut c_void = settings_ptr.cast();
         let list = get_all();
         if list.is_null() {
             return Err("WebKitGTK returned no feature list.".into());

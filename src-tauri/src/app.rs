@@ -41,10 +41,14 @@ pub fn run() {
                the window is created) never shows as a jump. */
             let mut builder = tauri::WebviewWindowBuilder::from_config(app, window_config)?
                 .data_directory(data_directory)
-                .visible(false)
-                /* Needs WebView2 125+; older runtimes keep the classic bars. */
-                .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
-                .general_autofill_enabled(false);
+                .visible(false);
+            #[cfg(windows)]
+            {
+                builder = builder
+                    /* Needs WebView2 125+; older runtimes keep the classic bars. */
+                    .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
+                    .general_autofill_enabled(false);
+            }
             if native_shell::window_state_missing(app.handle()) {
                 if let Ok(Some(monitor)) = app.primary_monitor() {
                     let area = monitor.work_area();

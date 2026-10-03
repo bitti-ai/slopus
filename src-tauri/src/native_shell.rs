@@ -11,9 +11,10 @@ tests never have to care which host they are in.
 -------------------------------------------------------------------------- */
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
+use tauri::{AppHandle, Manager as _, Runtime};
 
 /// Event the page listens to for a changed accent (src/lib/nativeShell.ts).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const ACCENT_EVENT: &str = "system-accent-changed";
 
 /// Global the page's boot script reads to learn that Mica is behind it. Set
@@ -182,6 +183,7 @@ pub(crate) struct AccentColors {
     pub(crate) dark3: String,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn hex(r: u8, g: u8, b: u8) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
@@ -220,6 +222,7 @@ fn read_accent(
 pub(crate) fn watch_accent<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(windows)]
     {
+        use tauri::Emitter as _;
         use windows::Foundation::TypedEventHandler;
         use windows::UI::ViewManagement::UISettings;
         let Ok(settings) = UISettings::new() else { return };
