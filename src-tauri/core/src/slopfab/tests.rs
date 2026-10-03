@@ -452,7 +452,7 @@ fn animate_reports_missing_runtime_api() {
 }
 
 #[test]
-fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
+fn continuation_uses_22_overlap_frames_and_preserves_the_joined_output() {
     let references = ReferenceVideos::default();
     // An independent 39-frame, 64x32 archive exercises the real DLL without
     // loading model weights. Its sampling window should be 22 + 34 frames.
@@ -504,12 +504,12 @@ fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
         assert_eq!(raw.latent_frames, 17); // 56-frame window, including 22 overlap.
         assert_eq!(
             scene_frame_window(&request, raw.aligned_frames).unwrap(),
-            (39, 34)
+            (0, 73)
         );
     }
     let plan = resolve_plan(&request, &settings, &references).unwrap();
-    assert_eq!(plan.aligned_frames, 34);
-    assert!((plan.duration_seconds - 34.0 / 24.0).abs() < 1e-6);
+    assert_eq!(plan.aligned_frames, 73);
+    assert!((plan.duration_seconds - 73.0 / 24.0).abs() < 1e-6);
     assert!(!request.save_latents_path.as_ref().unwrap().exists()); // Planning never writes.
     request.canvas_width = 128;
     assert!(resolve_plan(&request, &settings, &references).is_err());
@@ -519,25 +519,14 @@ fn continuation_uses_22_frames_and_plans_only_the_new_scene() {
 }
 
 #[test]
-fn continuation_video_and_audio_skip_the_cumulative_source() {
+fn continuation_frame_window_keeps_the_cumulative_source() {
     let mut request = GenerationRequest {
         frames: 119,
         continuation_path: Some("source".into()),
         ..Default::default()
     };
-    assert_eq!(scene_frame_window(&request, 243).unwrap(), (124, 119));
-    // A further continuation skips the full joined source, not just its last scene.
-    assert_eq!(scene_frame_window(&request, 362).unwrap(), (243, 119));
-    assert_eq!(
-        scene_audio_offset(124, 24.0, 2, 48_000, 972_000).unwrap(),
-        496_000
-    );
-    assert_eq!(
-        scene_audio_offset(243, 24.0, 2, 44_100, 2_000_000).unwrap(),
-        893_026
-    );
-    assert_eq!(scene_audio_offset(124, 24.0, 0, 0, 0).unwrap(), 0);
-    assert!(scene_audio_offset(124, 24.0, 2, 48_000, 100).is_err());
+    assert_eq!(scene_frame_window(&request, 243).unwrap(), (0, 243));
+    assert_eq!(scene_frame_window(&request, 362).unwrap(), (0, 362));
     assert!(scene_frame_window(&request, 120).is_err());
     request.continuation_path = None;
     assert_eq!(scene_frame_window(&request, 124).unwrap(), (0, 124));

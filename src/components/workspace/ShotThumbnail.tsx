@@ -261,7 +261,7 @@ export function formatEstimatedTimeLeft(milliseconds: number): string {
   return `${minutes}m ${seconds}s left`;
 }
 
-export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), shotNumber, estimatedCompletionAt = null, cancelling = false, onPlay }: {
+export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDurationSeconds(job), sourceOffsetSeconds = 0, shotNumber, estimatedCompletionAt = null, cancelling = false, onPlay }: {
   folderPath: string;
   /** The scene this shot belongs to: it owns the file and the status. */
   job: GenerationJob;
@@ -269,6 +269,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   seconds: number;
   /** The next cut (or scene end). Playback never crosses this point. */
   endSeconds?: number;
+  sourceOffsetSeconds?: number;
   shotNumber: number;
   /** Live rendering estimate derived from slopfab timing; never persisted. */
   estimatedCompletionAt?: number | null;
@@ -278,7 +279,8 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   onPlay?: () => void;
 }) {
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
-  const at = seconds;
+  const at = seconds + sourceOffsetSeconds;
+  const endAt = endSeconds + sourceOffsetSeconds;
   const playbackId = `${job.id}@${seconds}`;
   const [result, setResult] = useState<PosterResult>(() =>
     relativePath ? { poster: POSTERS.get(posterKey(fileKey(folderPath, relativePath), at)) ?? null, failed: false } : NOTHING);
@@ -311,7 +313,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       await video.play();
       setPlaying(true);
       const rate = video.playbackRate > 0 ? video.playbackRate : 1;
-      cutTimerRef.current = window.setTimeout(finishPlayback, Math.max(0, (endSeconds - video.currentTime) * 1_000 / rate));
+      cutTimerRef.current = window.setTimeout(finishPlayback, Math.max(0, (endAt - video.currentTime) * 1_000 / rate));
     } catch {
       setPlayFailed(true);
     }
@@ -355,7 +357,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
 
   const stopAtCut = () => {
     const video = videoRef.current;
-    if (!video || video.currentTime + 0.02 < endSeconds) return;
+    if (!video || video.currentTime + 0.02 < endAt) return;
     finishPlayback();
   };
 
@@ -371,7 +373,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       } else {
         onPlay?.();
         window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
-        if (video.currentTime < seconds || video.currentTime >= endSeconds) video.currentTime = seconds;
+        if (video.currentTime < at || video.currentTime >= endAt) video.currentTime = at;
         await playToCut(video);
       }
       return;
@@ -416,7 +418,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
           src={playbackUrl}
           playsInline
           onLoadedMetadata={(event) => {
-            event.currentTarget.currentTime = Math.min(seconds, Math.max(0, event.currentTarget.duration - 0.01));
+            event.currentTarget.currentTime = Math.min(at, Math.max(0, event.currentTarget.duration - 0.01));
             void playToCut(event.currentTarget);
           }}
           onTimeUpdate={stopAtCut}

@@ -47,6 +47,8 @@ pub(super) fn apply(
                         true,
                     )?
                     .max(frame_ms.max(1));
+                    let scene_ms = existing.and_then(|index| project.assets[index].scene_segments.as_ref()
+                        .and_then(|segments| segments.last()).map(|part| (f64::from(part.frame_count) * 1000.0 / 24.0).round() as u64)).unwrap_or(scene_ms);
                     let asset_id = if let Some(index) = existing {
                         project.assets[index].id.clone()
                     } else {
@@ -62,6 +64,7 @@ pub(super) fn apply(
                             height: None,
                             has_audio: None,
                             image_generation: None,
+                            scene_segments: None,
                             image_draft: None,
                             parent_asset_id: None,
                             created_at: job.created_at.clone(),
@@ -90,7 +93,7 @@ pub(super) fn apply(
                     (
                         media.id.clone(),
                         media.name.clone(),
-                        media.duration_ms.unwrap_or(5_000).max(1),
+                        media.clip_duration_ms().unwrap_or(5_000).max(1),
                         "approved",
                         false,
                     )
@@ -307,7 +310,7 @@ pub(super) fn validate_source_range(
     if asset.kind == "image" {
         return Ok(());
     }
-    if let Some(source_duration_ms) = asset.duration_ms {
+    if let Some(source_duration_ms) = asset.clip_duration_ms() {
         let end = source_start_ms
             .checked_add(duration_ms)
             .ok_or_else(|| "clip source range is too large".to_string())?;

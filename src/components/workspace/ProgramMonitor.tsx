@@ -10,6 +10,7 @@ import { PreviewSources } from "../../lib/exportPipeline";
 import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
 import { PreviewMedia } from "../../lib/previewPresentation";
 import { PLAYBACK_SAMPLE_MS, previewEngine } from "../../lib/previewEngine";
+import { continuationPlaybackTracks } from "../../lib/continuationMedia";
 
 /* The monitor owns a continuous timeline clock. Each visible or upcoming clip
  * owns a persistent media element: loading, decoding the first frame and seeking
@@ -69,7 +70,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   onSelectClip?: (clipId: string) => void;
   onTransformChange?: (clipId: string, transform: ClipTransform) => void;
 }) {
-  const tracks = config.timeline.tracks;
+  const tracks = useMemo(() => continuationPlaybackTracks(config), [config.timeline.tracks, config.assets, config.generationJobs]);
   const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
   const segments = useMemo(() => previewSegments(tracks, assetsById), [tracks, assetsById]);
   const segmentIndex = previewSegmentIndex(segments, playheadMs);

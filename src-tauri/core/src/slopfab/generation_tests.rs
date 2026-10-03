@@ -6,6 +6,29 @@ struct Pixels(u8);
 impl rendered::FrameSource for Pixels {
     fn frame_rgba(&self, _: u32, _: u32, _: u32) -> Result<Vec<u8>, String> { Ok(vec![self.0, 20, 30, 255]) }
 }
+
+#[test]
+fn continuation_handoff_keeps_every_joined_frame_and_audio_sample() {
+    struct IndexedFrames;
+    impl rendered::FrameSource for IndexedFrames {
+        fn frame_rgba(&self, index: u32, _: u32, _: u32) -> Result<Vec<u8>, String> { Ok(vec![index as u8, 0, 0, 255]) }
+    }
+    let mut item = item();
+    item.request.frames = 119;
+    item.request.continuation_path = Some("source.safetensors".into());
+    item.request.image_edit = None;
+    let audio: Vec<f32> = (0..486).map(|n| n as f32).collect();
+    let expected_audio: Vec<u8> = audio.iter().flat_map(|n| n.to_le_bytes()).collect();
+    let output = ffi::Output { frames: 243, video_float_count: 243 * 3, width: 1, height: 1, channels: 3,
+        fps: 24.0, audio, audio_channels: 2, audio_sample_rate: 24, seconds_conditioning: 0.0, seconds_denoise: 0.0,
+        seconds_video_decode: 0.0, seconds_audio_decode: 0.0, seconds_total: 0.0, steps_computed: 2, steps_skipped: 0 };
+    let (metadata, video) = collect_output(&item, output, Box::new(IndexedFrames), "test".into()).unwrap();
+    assert_eq!(metadata.frames, 243);
+    assert_eq!(metadata.audio_samples, 486);
+    assert_eq!(video.frame_count, 243);
+    for index in [0, 123, 124, 242] { assert_eq!(video.frame(index).unwrap().unwrap()[0], index as u8); }
+    assert_eq!(video.audio_bytes(), expected_audio);
+}
 fn result(value: u8) -> (OutputMetadata, rendered::RenderedVideo) {
     let metadata = OutputMetadata { frames: 1, width: 1, height: 1, fps: 1.0, audio_channels: 0, audio_sample_rate: 0, audio_samples: 0,
         reference_count: 0, timing_profile: "test".into(), seconds_conditioning: 0.0, seconds_denoise: 1.0, seconds_video_decode: 0.0,

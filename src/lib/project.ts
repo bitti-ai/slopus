@@ -156,6 +156,14 @@ export const imageGenerationSnapshotSchema = z.object({
 });
 export type ImageGenerationSnapshot = z.infer<typeof imageGenerationSnapshotSchema>;
 
+export const sceneMediaSegmentSchema = z.object({
+  sceneId: idSchema,
+  latentRelativePath: projectRelativePathSchema,
+  startFrame: z.number().int().nonnegative(),
+  frameCount: z.number().int().positive(),
+});
+export type SceneMediaSegment = z.infer<typeof sceneMediaSegmentSchema>;
+
 export const projectAssetSchema = z.object({
   id: idSchema,
   kind: z.enum(["video", "audio", "image", "caption", "generated"]),
@@ -179,6 +187,9 @@ export const projectAssetSchema = z.object({
   height: z.number().int().positive().nullish(),
   /** Whether the container has an audio stream. */
   hasAudio: z.boolean().nullish(),
+  /** Ranges in a joined 24 fps decode; the final range is this asset's scene.
+   * Latent paths identify the exact source generations, including branches. */
+  sceneSegments: z.array(sceneMediaSegmentSchema).min(1).nullish(),
   imageGeneration: imageGenerationSnapshotSchema.nullish(),
   imageDraft: z.boolean().nullish(),
   /** The family's primary image. Always its first image, never another child,
@@ -187,6 +198,15 @@ export const projectAssetSchema = z.object({
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
+  if (asset.sceneSegments) {
+    let end = 0;
+    for (const segment of asset.sceneSegments) {
+      if (asset.kind !== "generated" || segment.startFrame < end || (asset.durationMs != null && segment.startFrame + segment.frameCount > asset.durationMs * 24 / 1000 + 1)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["sceneSegments"], message: "Invalid joined scene ranges." });
+      }
+      end = segment.startFrame + segment.frameCount;
+    }
+  }
   if (asset.imageDraft && (asset.kind !== "image" || !asset.imageGeneration || (asset.imageGeneration.scene.rootType === "image" && !asset.imageGeneration.scene.sourceImage))) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "Image drafts require a scene snapshot and image roots require a source." });
   }
@@ -979,6 +999,8 @@ export function continuationBlocker(job: GenerationJob, jobs: readonly Generatio
 /** The saved scene's output length, not the current editable duration. */
 export function sceneOutputFrames(job: GenerationJob, config: ProjectConfig): number | undefined {
   const asset = config.assets.find((candidate) => candidate.id === generationAssetId(job.id));
+  const segment = asset?.sceneSegments?.at(-1);
+  if (segment?.sceneId === job.id) return segment.frameCount;
   if (asset?.durationMs) return Math.round(asset.durationMs * GENERATION_FRAME_RATE / 1000);
   try {
     const snapshot = JSON.parse(job.generationSnapshot ?? "null");
@@ -1130,7 +1152,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.refmods?.length ? { refmods: input.refmods } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
-    ...(input.previousSceneId ? { continuationOverlapFrames: input.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+    ...(input.previousSceneId ? { continuationOutput: "joined", continuationOverlapFrames: input.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
       continuationFrom: input.continuationFrom ?? "end", ...(input.continuationSourceFrames ? { continuationSourceFrames: input.continuationSourceFrames } : {}) } : {}),
     shots,
   });

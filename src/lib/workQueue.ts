@@ -21,6 +21,8 @@ import { purgeTimelineThumbnails } from "./timelineThumbnails";
 import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
+import { joinedSceneSegments, sceneArchiveSegments } from "./continuationMedia";
+import type { SceneMediaSegment } from "./project";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
@@ -53,6 +55,8 @@ export interface WorkItem {
   settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  outputFrames?: number;
+  continuationSegments?: SceneMediaSegment[];
   imageDraftId?: string;
   /** The family a regenerated image joins. */
   imageParentId?: string;
@@ -284,6 +288,7 @@ export class WorkQueue {
             }
             work.request.continuationRelativePath = previous.latentRelativePath;
             work.request.continuationSourceFrames = sceneOutputFrames(previous, work.session.getSnapshot().config);
+            work.continuationSegments = sceneArchiveSegments(work.session.getSnapshot().config, previous);
             const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });
@@ -301,6 +306,7 @@ export class WorkQueue {
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
+          work.outputFrames = plan.alignedFrames;
           this.patch(work.id, { status: "generating", detail: `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}` });
           this.updateScene(work, { status: "generating", stage: "preparing" }, false);
           await enqueueSlopfabGeneration(work.request, work.config, next.folderPath);
@@ -411,7 +417,14 @@ export class WorkQueue {
         },
       });
       const assetId = generationAssetId(work.sceneId);
-      const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(work.request.frames / GENERATION_FRAME_RATE * 1000) };
+      const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
+      const sceneSegments = joinedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames,
+        Math.ceil(work.request.frames / 17) * 17, work.request.previousSceneId ? {
+          sceneId: work.request.previousSceneId, latentRelativePath: work.request.continuationRelativePath!,
+          frameCount: work.request.continuationSourceFrames ?? totalFrames - Math.ceil(work.request.frames / 17) * 17,
+          segments: work.continuationSegments, from: work.request.continuationFrom,
+        } : undefined);
+      const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(totalFrames / GENERATION_FRAME_RATE * 1000), sceneSegments };
       work.session.update((current) => ({
         ...current,
         generationJobs: current.generationJobs.map((job) => job.id === work.sceneId ? { ...job, status: "completed", stage: "completed", progress: 1, generationSnapshot: work.snapshot, outputRelativePath: saved.relativePath, latentRelativePath: generationLatentPath(work.id), error: saved.note, updatedAt: new Date().toISOString() } : job),

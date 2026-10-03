@@ -3,6 +3,22 @@ use crate::project::paths::*;
 use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
+        if let Some(segments) = &mut asset.scene_segments {
+            if asset.kind != "generated" || segments.is_empty() {
+                return Err("Scene ranges require a generated video.".into());
+            }
+            let mut end = 0u64;
+            for segment in segments {
+                if segment.scene_id.trim().is_empty() || segment.frame_count == 0 || u64::from(segment.start_frame) < end {
+                    return Err("Invalid joined scene ranges.".into());
+                }
+                segment.latent_relative_path = normalize_project_path(&segment.latent_relative_path)?;
+                end = u64::from(segment.start_frame) + u64::from(segment.frame_count);
+                if asset.duration_ms.is_some_and(|duration| end as f64 > duration as f64 * 24.0 / 1000.0 + 1.0) {
+                    return Err("Joined scene range exceeds its video.".into());
+                }
+            }
+        }
         if asset.image_draft == Some(true) && (asset.kind != "image" || !asset.image_generation.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() != Some("image") || snapshot.scene.source_image.is_some())) {
             return Err("Image drafts require a scene snapshot and image roots require a source.".into());
         }

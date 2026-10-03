@@ -570,6 +570,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       <div className="generator-board">
         {jobs.length > 0
           ? <SceneBoard
+            assets={config.assets}
             jobs={jobs}
             folderPath={folderPath}
             generationCompletionTimes={generationCompletionTimes}

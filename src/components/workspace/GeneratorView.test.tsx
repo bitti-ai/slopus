@@ -555,6 +555,15 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
     expect(screen.getByRole("button", { name: "Generate all" })).toHaveAttribute("data-tooltip", "Every fixed-seed scene is already up to date.");
+    // Suffix-only renders from older versions must regenerate even with an
+    // unchanged seed and prompt, so the source side of the join is recovered.
+    const legacy = JSON.parse(state.latest().generationJobs[1].generationSnapshot!);
+    delete legacy.continuationOutput;
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 1 ? { ...job, generationSnapshot: JSON.stringify(legacy) } : job) });
+    expect(within(screen.getByRole("region", { name: "Second scene" })).getByText("Changed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+    expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["completed", "queued"]);
+    state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });
     fireEvent.change(screen.getByRole("textbox", { name: "The sound of this scene" }), { target: { value: "Rain" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);

@@ -4,6 +4,7 @@ import { applyImageCommand, type ImageCommand } from "./imageCommands";
 import { isTauri } from "./persistence";
 import type { TemplateLora } from "./loras";
 import { refreshDownloadedLoras, refreshDownloadedWeights } from "./weightDownloads";
+import { sceneArchiveSegments, sceneMediaDurationMs } from "./continuationMedia";
 import {
   actionReferenceIds, createDraftGenerationJob, GENERATION_FRAME_RATE, parseProjectConfig,
   sceneBriefText, type AgentMessage, type GenerationJob, type ProjectAsset, type ProjectConfig,
@@ -235,7 +236,11 @@ export async function cancelAgentTurn(requestId: string): Promise<boolean> {
 export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, config: ProjectConfig, folderPath?: string): Promise<ResolvedPlan> {
   request = { ...request, steps: generationStepsWithLoras(request.steps, config) };
   if (isTauri()) return invoke<ResolvedPlan>("resolve_slopfab_plan", { request, config, folderPath });
-  const alignedFrames = request.continuationRelativePath ? Math.ceil(request.frames / 17) * 17
+  const source = config.generationJobs.find((job) => job.latentRelativePath === request.continuationRelativePath);
+  const tail = source && sceneArchiveSegments(config, source)?.at(-1);
+  const prefix = request.continuationFrom === "start" ? request.continuationOverlapFrames ?? 22
+    : tail ? tail.startFrame + tail.frameCount : request.continuationSourceFrames ?? 22;
+  const alignedFrames = request.continuationRelativePath ? prefix + Math.ceil(request.frames / 17) * 17
     : Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
     canvasWidth: request.canvasWidth,
@@ -311,7 +316,8 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   const validateSource = (clip: TimelineClip) => {
     const asset = next.assets.find((candidate) => candidate.id === clip.assetId);
     if (!asset) throw new Error(`Asset '${clip.assetId}' was not found.`);
-    if (asset.kind !== "image" && asset.durationMs && clip.sourceStartMs + clip.durationMs > asset.durationMs) {
+    const durationMs = sceneMediaDurationMs(asset);
+    if (asset.kind !== "image" && durationMs && clip.sourceStartMs + clip.durationMs > durationMs) {
       throw new Error(`Clip source range extends past asset '${asset.id}'.`);
     }
   };
@@ -455,6 +461,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
           const existing = next.assets.find((candidate) => candidate.id === plannedId)
             ?? next.assets.find((candidate) => Boolean(job.outputRelativePath) && candidate.kind === "generated" && candidate.relativePath === job.outputRelativePath);
           defaultDurationMs = Math.max(Math.round(1000 / next.settings.frameRate), Math.round((job.durationSeconds ?? 6) * 1000));
+          if (existing?.sceneSegments?.length) defaultDurationMs = sceneMediaDurationMs(existing)!;
           asset = existing ?? {
             id: plannedId,
             kind: "generated",
@@ -474,7 +481,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
           if (!existing) throw new Error(`Asset '${command.asset}' was not found.`);
           asset = existing;
           if (asset.kind === "caption") throw new Error(`Asset '${asset.id}' cannot be placed on an audiovisual track.`);
-          defaultDurationMs = Math.max(1, asset.durationMs ?? 5_000);
+          defaultDurationMs = Math.max(1, sceneMediaDurationMs(asset) ?? 5_000);
           status = "approved";
         }
         const track = targetTrack(command.track);

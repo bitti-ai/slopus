@@ -27,6 +27,7 @@ import {
   type TimelineClip,
   type TimelineTrack,
 } from "./project";
+import { continuationPlaybackTracks } from "./continuationMedia";
 
 export type FrameRate = ProjectConfig["settings"]["frameRate"];
 export type OutputCodecId = "h264" | "vp9" | "av1";
@@ -482,6 +483,7 @@ export function videoDurationMs(config: ProjectConfig): number {
 }
 
 export function buildExportPlan(config: ProjectConfig, settings: ExportSettings): ExportPlan {
+  config = { ...config, timeline: { tracks: continuationPlaybackTracks(config) } };
   const { width, height } = settings;
   const frameRate = settings.frameRate;
   const tracks = config.timeline.tracks;

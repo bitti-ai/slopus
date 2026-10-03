@@ -100,6 +100,23 @@ const rendered = (folder: string): GenerationJob => {
 };
 
 describe("a shot's picture", () => {
+  it("previews the new scene inside its joined file and stops at the offset cut", async () => {
+    const folder = "C:\\Joined scene playback";
+    const job = rendered(folder);
+    await withFakeFile({ seconds: 20 }, async (seen) => {
+      render(<ShotThumbnail folderPath={folder} job={job} seconds={0} endSeconds={2} sourceOffsetSeconds={5} shotNumber={1} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Play shot 1 of First scene" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull());
+      expect(seen.seeks).toContain(5);
+      const video = document.querySelector("video")!;
+      video.currentTime = 6;
+      fireEvent.timeUpdate(video);
+      expect(screen.getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull();
+      video.currentTime = 7;
+      fireEvent.timeUpdate(video);
+      expect(screen.getByRole("button", { name: "Play shot 1 of First scene" })).not.toBeNull();
+    });
+  });
   it("can draw the exact first frame for a scene card", async () => {
     const folder = "C:\\Exact first frame";
     const job = rendered(folder);

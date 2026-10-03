@@ -41,6 +41,25 @@ fn fixture() -> ProjectConfig {
 }
 
 #[test]
+fn joined_video_clip_commands_use_scene_relative_lengths_and_trims() {
+    let mut config = fixture();
+    let mut asset = config.assets[0].clone();
+    asset.id = "joined-video".into();
+    asset.kind = "generated".into();
+    asset.duration_ms = Some(10125);
+    asset.scene_segments = Some(vec![SceneMediaSegment { scene_id: "continued".into(),
+        latent_relative_path: "latents/continued.safetensors".into(), start_frame: 124, frame_count: 119 }]);
+    config.assets.push(asset);
+    let command: ProjectCommand = serde_json::from_value(serde_json::json!({ "op": "clip.add", "id": "joined-clip", "asset": "joined-video" })).unwrap();
+    let next = execute_commands_at(&config, &[command], "2026-10-03T00:00:00.000Z").unwrap();
+    let clip = next.timeline.tracks.iter().flat_map(|track| &track.clips).find(|clip| clip.id == "joined-clip").unwrap();
+    assert_eq!(clip.source_start_ms, 0);
+    assert_eq!(clip.duration_ms, 4958);
+    let invalid: ProjectCommand = serde_json::from_value(serde_json::json!({ "op": "clip.set", "id": "joined-clip", "seconds": 6 })).unwrap();
+    assert!(execute_commands_at(&next, &[invalid], "2026-10-03T00:00:00.000Z").is_err());
+}
+
+#[test]
 fn parses_jsonl_and_preserves_explicit_null_patches() {
     let batch = parse_jsonl_commands(
         r#"```jsonl

@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn joined_scene_ranges_survive_save_and_validate_bounds() {
+    let mut value = serde_json::to_value(fixture()).unwrap();
+    value["assets"][0]["kind"] = serde_json::json!("generated");
+    value["assets"][0]["durationMs"] = serde_json::json!(10125);
+    value["assets"][0]["sceneSegments"] = serde_json::json!([
+        { "sceneId": "a", "latentRelativePath": "latents/a.safetensors", "startFrame": 0, "frameCount": 124 },
+        { "sceneId": "b", "latentRelativePath": "latents/b.safetensors", "startFrame": 124, "frameCount": 119 }
+    ]);
+    let config: ProjectConfig = serde_json::from_value(value).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    let mut restored = read_project(folder.path()).unwrap().config;
+    assert_eq!(restored.assets[0].scene_segments, config.assets[0].scene_segments);
+    restored.assets[0].scene_segments.as_mut().unwrap()[1].frame_count = 1200;
+    assert!(validate_and_normalize_config(restored).is_err());
+}
+
+#[test]
 fn continuation_settings_migrate_and_survive_reordering_and_save() {
     let mut config = fixture();
     let source = config.generation_jobs[0].id.clone();

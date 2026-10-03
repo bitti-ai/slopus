@@ -15,6 +15,8 @@ import { useContextMenu, type MenuEntry } from "../ui";
 import { referenceOrder, STEP_SECONDS } from "./SceneEditor";
 import { statusIcon, STATUS_BADGE } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
+import { sceneMediaStartSeconds } from "../../lib/continuationMedia";
+import { generationAssetId, type ProjectAsset } from "../../lib/project";
 
 export interface GeneratorSelection {
   jobId: string;
@@ -62,6 +64,7 @@ export const isMenuKey = (event: KeyboardEvent): boolean =>
  *  targets, and both carry a right-click menu. */
 export function SceneBoard({
   jobs,
+  assets = [],
   folderPath,
   generationCompletionTimes,
   references,
@@ -81,6 +84,7 @@ export function SceneBoard({
   onRemoveShot,
 }: {
   jobs: GenerationJob[];
+  assets?: ProjectAsset[];
   folderPath: string;
   generationCompletionTimes?: Readonly<Record<string, number>>;
   references: ProjectReference[];
@@ -419,6 +423,7 @@ export function SceneBoard({
               }}
             >
               <ShotCard
+                sourceOffsetSeconds={sceneMediaStartSeconds(assets.find((asset) => asset.id === generationAssetId(job.id)))}
                 job={job}
                 shot={shot}
                 index={index}
@@ -476,11 +481,12 @@ function HeaderButton({ label, tooltip, className = "", disabled, onClick, child
   ><span aria-hidden="true">{children}</span></button>;
 }
 
-function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt, order, named, density, cancelling, open, dragSource, tabbable, onOpen, onMenu, onDragStart, onDragEnd }: {
+function ShotCard({ job, shot, index, endsAt, sourceOffsetSeconds, folderPath, estimatedCompletionAt, order, named, density, cancelling, open, dragSource, tabbable, onOpen, onMenu, onDragStart, onDragEnd }: {
   job: GenerationJob;
   shot: SceneShot;
   index: number;
   endsAt: number;
+  sourceOffsetSeconds: number;
   folderPath: string;
   estimatedCompletionAt: number | null;
   order: string[];
@@ -514,7 +520,7 @@ function ShotCard({ job, shot, index, endsAt, folderPath, estimatedCompletionAt,
     onDragEnd={onDragEnd}
     onContextMenu={onMenu}
   >
-    {density === "tiles" && <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} shotNumber={index + 1} estimatedCompletionAt={estimatedCompletionAt} cancelling={cancelling} onPlay={onOpen} />}
+    {density === "tiles" && <ShotThumbnail folderPath={folderPath} job={job} seconds={shot.startSeconds} endSeconds={endsAt} sourceOffsetSeconds={sourceOffsetSeconds} shotNumber={index + 1} estimatedCompletionAt={estimatedCompletionAt} cancelling={cancelling} onPlay={onOpen} />}
     <button
       type="button"
       className="shot-card__open-control"

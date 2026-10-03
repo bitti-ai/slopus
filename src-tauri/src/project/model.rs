@@ -67,6 +67,15 @@ pub(crate) struct GenerationBrief {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct SceneMediaSegment {
+    pub(crate) scene_id: String,
+    pub(crate) latent_relative_path: String,
+    pub(crate) start_frame: u32,
+    pub(crate) frame_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectAsset {
     pub(crate) id: String,
     pub(crate) kind: String,
@@ -95,6 +104,8 @@ pub(crate) struct ProjectAsset {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) has_audio: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) scene_segments: Option<Vec<SceneMediaSegment>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_generation: Option<super::image::ImageGenerationSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_draft: Option<bool>,
@@ -108,6 +119,14 @@ pub(crate) struct ProjectAsset {
 pub(crate) struct AgentConversation {
     #[serde(default)]
     pub(crate) messages: Vec<AgentMessage>,
+}
+
+impl ProjectAsset {
+    pub(crate) fn clip_duration_ms(&self) -> Option<u64> {
+        self.scene_segments.as_ref().and_then(|segments| segments.last())
+            .map(|segment| (f64::from(segment.frame_count) * 1000.0 / 24.0).round() as u64)
+            .or(self.duration_ms)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

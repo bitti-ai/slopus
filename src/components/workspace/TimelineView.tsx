@@ -1,4 +1,5 @@
 import { clipEffectCount, ClipEffects } from "./ClipEffects";
+import { continuationPlaybackTracks, sceneMediaDurationMs, sceneMediaStartSeconds } from "../../lib/continuationMedia";
 import { ProjectStatus } from "./ProjectStatus";
 import { PreviewEngineStatus } from "./PreviewEngineStatus";
 import {
@@ -311,6 +312,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const generatedJobsByAssetId = useMemo(() => new Map(
     config.generationJobs.map((job) => [generationAssetId(job.id), job]),
   ), [config.generationJobs]);
+  const playbackClips = useMemo(() => new Map(continuationPlaybackTracks(config).flatMap((track) => track.clips).map((clip) => [clip.id, clip])), [config.timeline.tracks, config.assets, config.generationJobs]);
   /* V1, V2… and A1, A2… — the track's kind and its place among its kind, the
      label every NLE puts on a track header. */
   const trackLabels = useMemo(() => {
@@ -791,7 +793,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      is only bounded from below. */
   const selectedAsset = selected ? assetById(selected.assetId) : undefined;
   const sourceLimitMs = selected && selectedAsset?.kind !== "image" && selectedAsset?.durationMs
-    ? Math.max(1, selectedAsset.durationMs - selected.sourceStartMs)
+    ? Math.max(1, (sceneMediaDurationMs(selectedAsset) ?? selectedAsset.durationMs) - selected.sourceStartMs)
     : null;
   const minClipMs = Math.max(1, Math.round(1000 / fps));
   /** What the FILE has left at each end of a clip. A still image and a file
@@ -799,7 +801,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
    *  limit rather than a guessed one. */
   const roomFor = (clip: TimelineClip) => {
     const asset = assetById(clip.assetId);
-    return sourceRoom(clip, asset && asset.kind !== "image" ? asset.durationMs ?? null : null);
+    return sourceRoom(clip, asset && asset.kind !== "image" ? sceneMediaDurationMs(asset) ?? null : null);
   };
   /* Typing a length is trimming the tail, so it is the same operation the
      right-hand handle performs — same floor of one frame, same ceiling in the
@@ -891,7 +893,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
         assetId: asset.id,
         trackId,
         startMs,
-        durationMs: sceneLengthMs,
+        durationMs: existing?.sceneSegments?.length ? sceneMediaDurationMs(existing)! : sceneLengthMs,
         sourceStartMs: 0,
         label: currentJob.title,
         color: null,
@@ -1230,7 +1232,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   {...tooltipProps(`${job.title} · ${sceneShape(job)}. Drag onto a track to use it.`)}
                 >
                   <span className="scene-card__thumb">
-                    {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
+                    {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} sourceOffsetSeconds={sceneMediaStartSeconds(assetsById.get(generationAssetId(job.id)))} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
                       : <Film20 aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>
@@ -1534,6 +1536,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 folderPath={folderPath}
                 generatedJobsByAssetId={generatedJobsByAssetId}
                 assetsById={assetsById}
+                playbackClips={playbackClips}
                 selectedId={selectedId}
                 draggingId={dragging ? dragRef.current?.clipId : undefined}
                 dropActive={dropTrackId === track.id}
@@ -1641,7 +1644,7 @@ const TimeRuler = memo(function TimeRuler({ rulerRef, scrollRef, durationMs, lan
   </div>;
 });
 
-const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPath, generatedJobsByAssetId, assetsById, selectedId, draggingId, dropActive, dropBlocked, actions }: {
+const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPath, generatedJobsByAssetId, assetsById, playbackClips, selectedId, draggingId, dropActive, dropBlocked, actions }: {
   track: ProjectConfig["timeline"]["tracks"][number];
   /** Every other lane sits a step lighter on the well. */
   alt: boolean;
@@ -1651,6 +1654,7 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
   folderPath: string;
   generatedJobsByAssetId: ReadonlyMap<string, GenerationJob>;
   assetsById: ReadonlyMap<string, ProjectAsset>;
+  playbackClips: ReadonlyMap<string, TimelineClip>;
   selectedId: string;
   /** The clip currently being dragged, so it can be drawn as the thing under
    *  the pointer rather than as one more clip sitting on the lane. */
@@ -1692,9 +1696,10 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
       onContextMenu={(event) => { if (event.target === event.currentTarget) actions.current.laneMenu(event, track); }}
     >
       {track.clips.map((clip) => {
-        const asset = assetsById.get(clip.assetId);
+        const playbackClip = playbackClips.get(clip.id) ?? clip;
+        const asset = assetsById.get(playbackClip.assetId);
         const audioOnly = asset?.kind === "audio";
-        const generation = generatedJobsByAssetId.get(clip.assetId);
+        const generation = generatedJobsByAssetId.get(playbackClip.assetId);
         /* Current renders record this exactly. Completed files from projects
            saved before that metadata existed use the successful saved output
            as the compatibility signal; an explicit false always wins. */
@@ -1742,12 +1747,12 @@ const TrackRow = memo(function TrackRow({ track, alt, label, duration, folderPat
             {!audioOnly && generation && <TimelineClipThumbnails
               folderPath={folderPath}
               job={generation}
-              clip={clip}
+              clip={playbackClip}
             />}
             {hasAudio && asset && <TimelineClipWaveform
               folderPath={folderPath}
               asset={asset}
-              clip={clip}
+              clip={playbackClip}
               cacheVersion={generation?.updatedAt}
             />}
           </div>

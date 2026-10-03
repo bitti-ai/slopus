@@ -2,7 +2,7 @@ mod handles;
 mod raw;
 #[cfg(test)]
 mod tests;
-pub use handles::{FinishedGeneration, GenerationHandle, ProgressSink};
+pub use handles::{FinishedGeneration, GenerationHandle, ProgressSink, Output};
 pub use raw::{cuda_device_names, gpu_devices, has_cuda_device, Plan, Progress};
 use std::{
     path::{Path, PathBuf},

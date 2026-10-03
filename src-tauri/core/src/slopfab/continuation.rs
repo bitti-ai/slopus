@@ -296,8 +296,9 @@ mod tests {
                 };
                 let plan =
                     resolve_plan(&request, &BTreeMap::new(), &ReferenceVideos::default()).unwrap();
-                assert_eq!(plan.aligned_frames, 34);
-                assert!((plan.duration_seconds - 34.0 / 24.0).abs() < 0.0001);
+                let total = if edge == "start" { overlap + 34 } else { 124 + 34 };
+                assert_eq!(plan.aligned_frames, total);
+                assert!((plan.duration_seconds - total as f64 / 24.0).abs() < 0.0001);
                 let wire = serde_json::to_value(&request).unwrap();
                 assert_eq!(wire["continuationFrom"], edge);
                 assert_eq!(wire["continuationOverlapFrames"], overlap);

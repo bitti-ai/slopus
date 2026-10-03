@@ -2,7 +2,7 @@ use super::{
     events::{progress_sink, CallbackContext},
     ffi::{self, RequestHandle},
     h3::configure_request,
-    planning::{scene_audio_offset, scene_frame_window, RequestPurpose},
+    planning::{scene_frame_window, RequestPurpose},
     platform::detect_platform,
     runtime::QueueItem,
     types::OutputMetadata,
@@ -16,13 +16,9 @@ mod tests;
 
 struct FrameSource {
     generation: ffi::FinishedGeneration,
-    frame_offset: u32,
 }
 impl rendered::FrameSource for FrameSource {
     fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
-        let index = index
-            .checked_add(self.frame_offset)
-            .ok_or("Continuation frame index overflow.")?;
         self.generation.frame_rgba8(index, width, height)
     }
 }
@@ -156,20 +152,15 @@ fn run_single_generation(
     }
     let generation = generation.finish()?;
     let output = generation.output()?;
-    let (frame_offset, frames) = scene_frame_window(&item.request, output.frames)?;
-    let source = Box::new(FrameSource {
-        generation,
-        frame_offset: frame_offset as u32,
-    });
-    let audio_offset = scene_audio_offset(
-        frame_offset,
-        output.fps,
-        output.audio_channels,
-        output.audio_sample_rate,
-        output.audio.len(),
-    )?;
-    let mut audio = output.audio;
-    audio.drain(..audio_offset);
+    let source = Box::new(FrameSource { generation });
+    collect_output(item, output, source, timing_profile)
+}
+
+fn collect_output(item: &QueueItem, output: ffi::Output, source: Box<dyn rendered::FrameSource>, timing_profile: String) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    let (_, frames) = scene_frame_window(&item.request, output.frames)?;
+    // The VAE decoded both sides of the boundary together. Keep that complete
+    // output, including the source-side pixels and soundtrack near the join.
+    let audio = output.audio;
     let metadata = OutputMetadata {
         frames, width: output.width, height: output.height, fps: output.fps,
         audio_channels: output.audio_channels, audio_sample_rate: output.audio_sample_rate,
@@ -188,7 +179,7 @@ fn run_single_generation(
         } else {
             0.0
         },
-        boundary: "Latents are saved in the project. Decoded buffers remain owned by slopfab; the webview encodes the new scene's frames on demand.",
+        boundary: "Latents are saved in the project. Decoded buffers remain owned by slopfab; the webview encodes the full joined video and audio on demand.",
     };
     let pictures = rendered::from_source(
         &item.request.job_id,

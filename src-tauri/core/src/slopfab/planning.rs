@@ -101,8 +101,8 @@ pub(super) fn generation_seed(value: i64) -> Result<u64, String> {
     }
 }
 
-/// Continuation output is cumulative. Expose only the new scene to the editor,
-/// while the DLL saves the full archive for the next continuation.
+/// Keep the full joined decode. Timeline scene ranges are resolved by the
+/// editor; discarding the prefix here loses the source side of the VAE join.
 pub(super) fn scene_frame_window(
     request: &GenerationRequest,
     total: i32,
@@ -123,30 +123,9 @@ pub(super) fn scene_frame_window(
         .ok_or("Continuation frame count overflow.")?
         / limits.frame_stride
         * limits.frame_stride;
-    let offset = total
+    total
         .checked_sub(frames)
         .filter(|offset| *offset >= request.continuation_overlap_frames.unwrap_or(limits.continuation_overlap))
         .ok_or("Slopfab continuation output is missing its source frames.".to_string())?;
-    Ok((offset, frames))
-}
-
-pub(super) fn scene_audio_offset(
-    frame_offset: i32,
-    fps: f64,
-    channels: i32,
-    sample_rate: i32,
-    total: usize,
-) -> Result<usize, String> {
-    if total == 0 || frame_offset == 0 {
-        return Ok(0);
-    }
-    if !fps.is_finite() || fps <= 0.0 || channels <= 0 || sample_rate <= 0 {
-        return Err("Slopfab returned invalid continuation audio timing.".into());
-    }
-    let samples = (frame_offset as f64 * sample_rate as f64 / fps).round();
-    let offset = (samples as usize)
-        .checked_mul(channels as usize)
-        .filter(|offset| *offset <= total)
-        .ok_or("Slopfab continuation audio is shorter than its source scene.")?;
-    Ok(offset)
+    Ok((0, total))
 }

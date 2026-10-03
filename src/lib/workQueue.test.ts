@@ -32,7 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: unknown }) => void) => { handlers.set(name, handler); return () => { handlers.delete(name); }; }) as typeof listen);
-  vi.mocked(resolveSlopfabPlan).mockResolvedValue(plan as Awaited<ReturnType<typeof resolveSlopfabPlan>>);
+  vi.mocked(resolveSlopfabPlan).mockImplementation(async (request) => ({ ...plan,
+    alignedFrames: request.continuationRelativePath ? (request.continuationFrom === "start" ? request.continuationOverlapFrames ?? 22 : request.continuationSourceFrames ?? 120) + Math.ceil(request.frames / 17) * 17 : plan.alignedFrames,
+  }) as Awaited<ReturnType<typeof resolveSlopfabPlan>>);
   vi.mocked(enqueueSlopfabGeneration).mockResolvedValue(undefined);
   vi.mocked(cancelSlopfabGeneration).mockResolvedValue(true);
   vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/result.mp4", bytes: 100, hasAudio: true, note: null });
@@ -430,6 +432,30 @@ describe("application work queue", () => {
     await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("failed"));
     expect(queue.getSnapshot()[0].error).toContain("save its latents");
     expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+  });
+
+  it("saves the full End continuation and its exact scene ranges without replacing the original source", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "continued" }] }));
+    const source = submission(first);
+    vi.mocked(resolveSlopfabPlan).mockResolvedValueOnce({ ...plan, alignedFrames: 124 } as Awaited<ReturnType<typeof resolveSlopfabPlan>>);
+    vi.mocked(saveGeneratedScene).mockResolvedValueOnce({ relativePath: "media/source.mp4", durationMs: 5167, bytes: 10, hasAudio: true, note: null })
+      .mockResolvedValueOnce({ relativePath: "media/joined.mp4", durationMs: 10125, bytes: 20, hasAudio: true, note: null });
+    queue.enqueue(first, [source, { ...source, job: first.getSnapshot().config.generationJobs[1], request: {
+      ...source.request, frames: 119, previousSceneId: source.job.id, continuationFrom: "end", continuationOverlapFrames: 39,
+    } }]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+    await finish(queue, queue.getSnapshot()[0].id);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    const sourceLatents = `latents/${queue.getSnapshot()[0].id}.safetensors`;
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0]).toMatchObject({ continuationRelativePath: sourceLatents, continuationFrom: "end", continuationOverlapFrames: 39 });
+    await finish(queue, queue.getSnapshot()[1].id);
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config)));
+    expect(saved.assets[0]).toMatchObject({ relativePath: "media/source.mp4", durationMs: 5167 });
+    expect(saved.assets[1]).toMatchObject({ relativePath: "media/joined.mp4", durationMs: 10125, hasAudio: true, sceneSegments: [
+      { sceneId: source.job.id, latentRelativePath: sourceLatents, startFrame: 0, frameCount: 124 },
+      { sceneId: "continued", startFrame: 124, frameCount: 119 },
+    ] });
   });
 
   it("fails a dependent scene if the previous generation fails, even when an older video exists", async () => {
