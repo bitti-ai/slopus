@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import releaseNotes from "../../RELEASE_NOTES.md?raw";
 import { markReleaseNotesSeen } from "../lib/releaseNotes";
 import { APP_CHANNEL, APP_VERSION } from "../lib/version";
@@ -15,14 +15,13 @@ function inline(text: string): ReactNode {
 const blocks = releaseNotes.trim().replace(/^# [^\n]+\r?\n/, "").trim().split(/\r?\n\s*\r?\n/);
 
 export function ReleaseNotesDialog({ onClose }: { onClose: () => void }) {
-  const introduction = useRef<HTMLParagraphElement>(null);
   // Record only after the dialog actually mounts, including when opened manually.
   useEffect(() => { markReleaseNotesSeen(); }, []);
 
   return <ContentDialog
     title={`What's new in Slopus ${APP_VERSION}`}
     closeText="Done" onClose={onClose} defaultButton="close"
-    width={760} className="release-notes-dialog" initialFocus={introduction}
+    width={760} className="release-notes-dialog"
     aria-describedby=""
   >
     <p className="release-notes__channel">{APP_CHANNEL} release</p>
@@ -33,7 +32,7 @@ export function ReleaseNotesDialog({ onClose }: { onClose: () => void }) {
         if (/^- /m.test(block)) return <ul key={index}>
           {block.split(/\r?\n(?=- )/).map((item, itemIndex) => <li key={itemIndex}>{inline(item.replace(/^- /, ""))}</li>)}
         </ul>;
-        return <p key={index} ref={index === 0 ? introduction : undefined} tabIndex={index === 0 ? -1 : undefined}>{inline(block)}</p>;
+        return <p key={index}>{inline(block)}</p>;
       })}
     </article>
   </ContentDialog>;
