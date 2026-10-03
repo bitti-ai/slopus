@@ -4,8 +4,10 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { isTauri } from "./persistence";
 
 type Stage = "disabled" | "idle" | "checking" | "current" | "available" | "downloading" | "installing" | "restart";
+type UpdateMode = "disabled" | "installed" | "portable";
 interface UpdaterState {
   stage: Stage;
+  mode: UpdateMode;
   version: string | null;
   notes: string;
   downloaded: number;
@@ -16,13 +18,15 @@ interface UpdaterState {
 }
 type UpdateHandle = Pick<Update, "version" | "body" | "download" | "install" | "close">;
 interface UpdaterDependencies {
-  enabled: () => Promise<boolean>;
+  mode: () => Promise<UpdateMode>;
+  openReleases: () => Promise<void>;
   check: () => Promise<UpdateHandle | null>;
   relaunch: () => Promise<void>;
   now?: () => number;
 }
 const native: UpdaterDependencies = {
-  enabled: async () => isTauri() && await invoke<boolean>("app_updater_enabled"),
+  mode: async () => isTauri() ? invoke<UpdateMode>("app_updater_mode") : "disabled",
+  openReleases: () => invoke<void>("open_app_releases"),
   check: () => check({ timeout: 15_000 }),
   relaunch,
 };
@@ -30,7 +34,7 @@ const describe = (reason: unknown) => reason instanceof Error ? reason.message :
 
 /** App-owned state survives Settings closing and React StrictMode effects. */
 export class AppUpdater {
-  private state: UpdaterState = { stage: "disabled", version: null, notes: "", downloaded: 0, total: undefined, error: null, lastChecked: null };
+  private state: UpdaterState = { stage: "disabled", mode: "disabled", version: null, notes: "", downloaded: 0, total: undefined, error: null, lastChecked: null };
   private listeners = new Set<() => void>();
   private update: UpdateHandle | null = null;
   private started = false;
@@ -47,8 +51,9 @@ export class AppUpdater {
     if (this.started) return;
     this.started = true;
     try {
-      if (!await this.dependencies.enabled()) return;
-      this.publish({ stage: "idle" });
+      const mode = await this.dependencies.mode();
+      if (mode === "disabled") return;
+      this.publish({ stage: "idle", mode });
       await this.check();
     } catch (reason) {
       this.publish({ error: describe(reason) });
@@ -70,6 +75,10 @@ export class AppUpdater {
   };
   install = async (blockReason: () => string | null) => {
     if (this.busy || !this.update || this.state.stage !== "available") return;
+    if (this.state.mode === "portable") {
+      await this.openReleases();
+      return;
+    }
     const blocked = blockReason();
     if (blocked) { this.publish({ error: blocked }); return; }
     this.busy = true;
@@ -91,6 +100,14 @@ export class AppUpdater {
     } catch (reason) {
       this.publish({ stage: installed ? "restart" : "available", error: describe(reason) });
     } finally { this.busy = false; }
+  };
+  openReleases = async () => {
+    if (this.busy) return;
+    this.busy = true;
+    this.publish({ error: null });
+    try { await this.dependencies.openReleases(); }
+    catch (reason) { this.publish({ error: describe(reason) }); }
+    finally { this.busy = false; }
   };
   restart = async (blockReason: () => string | null) => {
     if (this.busy || this.state.stage !== "restart") return;

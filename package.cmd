@@ -106,11 +106,10 @@ echo        Folder:    %OUTPUT_STEM%-portable\
 
 echo.
 echo [5/5] Creating the portable archive...
-rem Archive without the marker so distributed copies can check for updates.
-powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
-rem Disable updates only in the unpacked folder used for local testing.
-> "%OUTPUT_DIR%\slopus-portable" echo Local test build - automatic updates disabled.
+rem Include the marker so portable copies offer manual updates from GitHub.
+> "%OUTPUT_DIR%\slopus-portable" echo Portable build - download updates from https://github.com/bitti-ai/slopus/releases
 if errorlevel 1 goto :fail
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
 
 echo.
 echo Package complete.
@@ -130,6 +129,10 @@ exit /b 0
 > "%~1" echo Slopus %APP_VERSION% ^(windows-%PACKAGE_ARCH%, portable^)
 >>"%~1" echo.
 >>"%~1" echo Run "Slopus.exe". Projects are folders you choose on disk.
+>>"%~1" echo.
+>>"%~1" echo UPDATES
+>>"%~1" echo   Download the latest portable ZIP from https://github.com/bitti-ai/slopus/releases
+>>"%~1" echo   Close Slopus, then replace Slopus.exe and slopfab.dll together in this folder.
 >>"%~1" echo.
 >>"%~1" echo REQUIREMENTS
 >>"%~1" echo   Microsoft Edge WebView2. Use the setup installer if it is missing.

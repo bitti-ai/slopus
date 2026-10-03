@@ -4,18 +4,18 @@ use crate::{
     slopfab, weights, window,
 };
 use std::io;
-/// Portable distributions carry a marker because Windows updates launch an
-/// installer and cannot replace a portable folder in place.
+/// Portable copies check for updates but open the release page for manual updates.
 #[tauri::command]
-fn app_updater_enabled() -> bool {
-    !cfg!(debug_assertions)
-        && std::env::current_exe()
-            .ok()
-            .and_then(|exe| {
-                exe.parent()
-                    .map(|dir| !dir.join("slopus-portable").exists())
-            })
-            .unwrap_or(false)
+fn app_updater_mode() -> Result<&'static str, String> {
+    if cfg!(debug_assertions) { return Ok("disabled"); }
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let directory = exe.parent().ok_or("Could not locate the application folder.")?;
+    Ok(if directory.join("slopus-portable").exists() { "portable" } else { "installed" })
+}
+
+#[tauri::command]
+fn open_app_releases() -> Result<(), String> {
+    crate::external_links::open_browser("https://github.com/bitti-ai/slopus/releases")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -174,7 +174,8 @@ pub fn run() {
             commands::artifacts::save_generated_image,
             commands::artifacts::open_image_source,
             commands::artifacts::export_generated_image,
-            app_updater_enabled,
+            app_updater_mode,
+            open_app_releases,
             weights::download_weight,
             weights::lora::prepare_lora,
             weights::cancel_weight_download,

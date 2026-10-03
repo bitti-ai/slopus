@@ -14,6 +14,8 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## Fixes and improvements
 
+- Portable builds show available updates and open GitHub releases for manual updating instead of running an installer.
+
 - Simplified image edits and added references for individual edits. Still-image generation receives only the references mentioned in its prompt, with clear image and RefMod identifiers.
 - Removed box coordinates and palettes from image prompts, and limited image controls to supported generator model types.
 - Improved image family deletion so removing a variant preserves its original. Selected image boxes can also be deleted from the canvas.

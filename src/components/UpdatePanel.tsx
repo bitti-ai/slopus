@@ -51,7 +51,7 @@ function statusTitle(state: UpdaterState): string {
 export function UpdatePanel({ updater, blockReason, onOpenReleaseNotes }: { updater: AppUpdater; blockReason: () => string | null; onOpenReleaseNotes?: () => void }) {
   const state = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
   const busy = ["checking", "downloading", "installing"].includes(state.stage);
-  const blocked = blockReason();
+  const blocked = state.mode === "portable" ? null : blockReason();
   const transferring = state.stage === "downloading" || state.stage === "installing";
 
   const glyph: ReactNode = state.stage === "checking" ? <ProgressRing size={32} aria-label="Checking for updates" />
@@ -64,7 +64,7 @@ export function UpdatePanel({ updater, blockReason, onOpenReleaseNotes }: { upda
     : state.stage === "restart"
       ? <button type="button" className="primary-button" disabled={Boolean(blocked)} onClick={() => void updater.restart(blockReason)}>Restart Slopus</button>
       : state.stage === "available"
-        ? <button type="button" className="primary-button" disabled={busy || Boolean(blocked)} onClick={() => void updater.install(blockReason)}>Install and restart</button>
+        ? <button type="button" className="primary-button" disabled={busy || Boolean(blocked)} onClick={() => void updater.install(blockReason)}>{state.mode === "portable" ? "Open releases" : "Install and restart"}</button>
         : <button type="button" className="secondary-button" disabled={busy} onClick={() => void updater.check()}>Check for updates</button>;
 
   return (
@@ -76,10 +76,11 @@ export function UpdatePanel({ updater, blockReason, onOpenReleaseNotes }: { upda
           <span className="update-card__caption">Current version {APP_VERSION} ({APP_CHANNEL})</span>
           <span className="update-card__caption">
             {state.stage === "disabled"
-              ? "Installed release builds update themselves. To update a portable copy, download the new version."
+              ? "Update checks are available in release builds."
               : state.stage === "installing" ? "Slopus restarts when the update is ready."
                 : lastCheckedLabel(state.lastChecked)}
           </span>
+          {state.mode === "portable" && <span className="update-card__caption">To update this portable copy, download the latest portable ZIP from GitHub, close Slopus, and replace its application files.</span>}
           {state.stage === "downloading" && <>
             <span className="update-card__caption update-card__progress-label">{downloadedLabel(state)}</span>
             <ProgressBar value={percentOf(state)} aria-label="Update download" className="update-card__progress" />
@@ -109,8 +110,9 @@ export function UpdatePanel({ updater, blockReason, onOpenReleaseNotes }: { upda
 export function UpdateInfoBar({ updater, onOpen, onDismiss }: { updater: AppUpdater; onOpen: () => void; onDismiss?: () => void }) {
   const state = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
   if (state.stage === "available") {
-    return <InfoBar severity="informational" title="Update available" message={`Slopus ${state.version} is ready to install.`}
-      action={<button type="button" className="secondary-button" onClick={onOpen}>View update</button>} onClose={onDismiss} />;
+    const portable = state.mode === "portable";
+    return <InfoBar severity="informational" title="Update available" message={portable ? `Slopus ${state.version} is available to download.` : `Slopus ${state.version} is ready to install.`}
+      action={<button type="button" className="secondary-button" onClick={portable ? () => void updater.openReleases() : onOpen}>{portable ? "Open releases" : "View update"}</button>} onClose={onDismiss} />;
   }
   if (state.stage === "downloading" || state.stage === "installing") {
     return <InfoBar severity="informational" title={state.stage === "downloading" ? "Downloading update" : "Installing update"}

@@ -7,6 +7,7 @@ mod conditioning;
 mod cuda_support;
 mod diagnostics;
 mod export;
+mod external_links;
 mod generation;
 mod media;
 mod native_shell;

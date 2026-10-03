@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { DownloadEvent } from "@tauri-apps/plugin-updater";
 import { AppUpdater } from "./updater";
 
-function setup(enabled = true) {
+function setup(mode: "disabled" | "installed" | "portable" = "installed") {
   const update = {
     version: "0.2.0", body: "A better editor",
     download: vi.fn(async (_listener?: (event: DownloadEvent) => void) => {}),
     install: vi.fn(async () => {}), close: vi.fn(async () => {}),
   };
-  const dependencies = { enabled: vi.fn(async () => enabled), check: vi.fn(async () => update as typeof update | null), relaunch: vi.fn(async () => {}) };
+  const dependencies = { mode: vi.fn(async () => mode), openReleases: vi.fn(async () => {}), check: vi.fn(async () => update as typeof update | null), relaunch: vi.fn(async () => {}) };
   return { updater: new AppUpdater(dependencies), update, dependencies };
 }
 
@@ -22,12 +22,39 @@ describe("app updates", () => {
     expect(dependencies.relaunch).not.toHaveBeenCalled();
   });
 
-  it("does not check in a browser, debug build or portable distribution", async () => {
-    const { updater, dependencies } = setup(false);
+  it("does not check in a browser or debug build", async () => {
+    const { updater, dependencies } = setup("disabled");
     await updater.start();
     await updater.check();
     expect(dependencies.check).not.toHaveBeenCalled();
     expect(updater.getSnapshot().stage).toBe("disabled");
+  });
+
+  it("checks portable copies and opens releases without downloading, installing or interrupting work", async () => {
+    const { updater, update, dependencies } = setup("portable");
+    await updater.start();
+    expect(dependencies.check).toHaveBeenCalledOnce();
+    expect(updater.getSnapshot()).toMatchObject({ stage: "available", mode: "portable", version: "0.2.0" });
+    const guard = vi.fn(() => "A project is open.");
+    await updater.install(guard);
+    expect(dependencies.openReleases).toHaveBeenCalledOnce();
+    expect(guard).not.toHaveBeenCalled();
+    expect(update.download).not.toHaveBeenCalled();
+    expect(update.install).not.toHaveBeenCalled();
+    expect(dependencies.relaunch).not.toHaveBeenCalled();
+    expect(updater.getSnapshot()).toMatchObject({ stage: "available", error: null });
+  });
+
+  it("allows retrying a failed browser launch for a portable update", async () => {
+    const { updater, update, dependencies } = setup("portable");
+    await updater.start();
+    dependencies.openReleases.mockRejectedValueOnce(new Error("Browser unavailable"));
+    await updater.install(() => null);
+    expect(updater.getSnapshot()).toMatchObject({ stage: "available", error: "Browser unavailable" });
+    await updater.install(() => null);
+    expect(dependencies.openReleases).toHaveBeenCalledTimes(2);
+    expect(updater.getSnapshot().error).toBeNull();
+    expect(update.download).not.toHaveBeenCalled();
   });
 
   it("reports no update and releases old native resources when checking again", async () => {

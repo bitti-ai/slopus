@@ -7,11 +7,39 @@ import { AppUpdater } from "../lib/updater";
 import { lastCheckedLabel, UpdateInfoBar, UpdatePanel } from "./UpdatePanel";
 
 afterEach(cleanup);
-function setup() {
+function setup(mode: "installed" | "portable" = "installed") {
   const update = { version: "0.2.0", body: "<b>Release notes</b>", download: vi.fn(async (_listener?: (event: DownloadEvent) => void) => {}), install: vi.fn(async () => {}), close: vi.fn(async () => {}) };
-  const updater = new AppUpdater({ enabled: async () => true, check: async () => update, relaunch: vi.fn(async () => {}) });
-  return { updater, update };
+  const openReleases = vi.fn(async () => {});
+  const updater = new AppUpdater({ mode: async () => mode, openReleases, check: async () => update, relaunch: vi.fn(async () => {}) });
+  return { updater, update, openReleases };
 }
+
+it("offers manual portable updates even while a project is open", async () => {
+  const { updater, update, openReleases } = setup("portable");
+  await updater.start();
+  render(<UpdatePanel updater={updater} blockReason={() => "Close your project first."} />);
+  expect(screen.getByRole("heading", { name: "Slopus 0.2.0 is available" })).toBeInTheDocument();
+  expect(screen.queryByText("Close your project first.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Install and restart" })).toBeNull();
+  expect(screen.getByText(/download the latest portable ZIP/)).toBeInTheDocument();
+  const button = screen.getByRole("button", { name: "Open releases" });
+  expect(button).toBeEnabled();
+  fireEvent.click(button);
+  await waitFor(() => expect(openReleases).toHaveBeenCalledOnce());
+  expect(update.download).not.toHaveBeenCalled();
+  expect(update.install).not.toHaveBeenCalled();
+});
+
+it("opens releases directly from the portable update notification", async () => {
+  const { updater, openReleases } = setup("portable");
+  await updater.start();
+  const onOpen = vi.fn();
+  render(<UpdateInfoBar updater={updater} onOpen={onOpen} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Slopus 0.2.0 is available to download.");
+  fireEvent.click(screen.getByRole("button", { name: "Open releases" }));
+  await waitFor(() => expect(openReleases).toHaveBeenCalledOnce());
+  expect(onOpen).not.toHaveBeenCalled();
+});
 
 it("shows the available version, release notes as text, and blocks installation when a project is open", async () => {
   const { updater, update } = setup();
