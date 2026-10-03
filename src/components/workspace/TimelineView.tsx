@@ -233,6 +233,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const viewRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
+  const playheadMarkerRef = useRef<HTMLDivElement>(null);
   const clipNameRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -384,11 +385,20 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
   useEffect(() => { if (clipCount === 0 && playing) setPlaying(false); }, [clipCount, playing]);
 
-  /* The playhead is driven by the program monitor's monotonic animation clock
-     while playing. These two are handed down rather than declared inline
-     because the monitor's animation loop depends on their identity: a new
-     closure per render would tear its clock down sixty times a second. */
-  const seek = useCallback((ms: number) => setPlayhead(ms), []);
+  /* Paint on the monitor's animation tick, before React schedules the larger
+     editor update. Native video keeps playing while that update is pending. */
+  const paintPlayhead = useCallback((ms: number) => {
+    const marker = playheadMarkerRef.current;
+    if (!marker) return;
+    const ratio = Math.max(0, Math.min(1, ms / duration));
+    marker.style.transform = `translateX(${ratio * (lanePx ?? rulerRef.current?.clientWidth ?? 0)}px)`;
+  }, [duration, lanePx]);
+  const seek = useCallback((ms: number) => {
+    paintPlayhead(ms);
+    setPlayhead(ms);
+  }, [paintPlayhead]);
+  // Paused seeks, zoom and resizing use the same positioning as playback.
+  useLayoutEffect(() => paintPlayhead(playhead), [paintPlayhead, playhead]);
   const setPlayingFromMonitor = useCallback((value: boolean) => { setPlaying(value); if (!value) setRate(1); }, []);
 
   // Another clip, another length: what was being typed belonged to the old one.
@@ -1138,7 +1148,6 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const onRulerPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => rulerHandlers.current.beginScrub(event), []);
   const onRulerMenu = useCallback((event: React.MouseEvent<HTMLElement>) => rulerHandlers.current.rulerMenu(event), []);
 
-  const playheadRatio = Math.max(0, Math.min(1, playhead / duration));
   const playheadTimecode = formatTimecode(playhead, fps);
   const framesAt = playheadTimecode.lastIndexOf(":");
   const panelsClass = `edit-panels${sourcesOpen ? "" : " edit-panels--no-sources"}${inspectorOpen ? "" : " edit-panels--no-inspector"}`;
@@ -1553,7 +1562,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               {/* The playhead: a pentagon head in the ruler that can be dragged,
                   and a line through every track. While it is being dragged it
                   carries a flag with the time it is at. */}
-              <div className="timeline-playhead" style={{ left: `calc(var(--track-column) + (100% - var(--track-column)) * ${playheadRatio})` }}>
+              <div ref={playheadMarkerRef} className="timeline-playhead">
                 <span className="timeline-playhead__head" onPointerDown={beginScrub} aria-hidden="true" />
                 {scrubbing && <span className="timeline-playhead__flag" aria-hidden="true">{formatTimecode(playhead, fps)}</span>}
               </div>

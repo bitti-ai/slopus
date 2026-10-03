@@ -1638,6 +1638,9 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 
 .timeline-playhead {
   position: absolute;
+  left: var(--track-column);
+  /* Composite movement independently of the playing video and track paint. */
+  will-change: transform;
   z-index: 9;
   top: 0;
   bottom: 0;

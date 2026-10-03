@@ -667,6 +667,51 @@ describe("editing commands", () => {
 });
 
 describe("the transport and the playhead", () => {
+  it("moves the playhead on playback ticks before React commits, and keeps paused seeks and zoom aligned", () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextId = 0;
+    let now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextId, callback); return nextId; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("timeline-grid-scroll") ? 1180 : 0;
+    });
+    try {
+      const { container } = render_(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+      const marker = container.querySelector<HTMLElement>(".timeline-playhead")!;
+      expect(marker.style.transform).toBe("translateX(0px)");
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      const advance = (ms: number, expectedOffset: number) => act(() => {
+        now += ms;
+        const callbacks = [...frames.values()];
+        frames.clear();
+        callbacks.forEach((callback) => callback(now));
+        // Inside act, React has not committed the scheduled state update yet.
+        expect(marker.style.transform).toBe(`translateX(${expectedOffset}px)`);
+      });
+      advance(1000, 25);
+      expect(toolbarTime(container)).toBe("00:00:01:00");
+      advance(1000, 50);
+      expect(screen.getByRole("button", { name: "Pause" })).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      advance(1000, 50);
+      press(container, "ArrowRight", { shiftKey: true });
+      expect(marker.style.transform).toBe("translateX(75px)");
+      press(container, "=");
+      expect(marker.style.transform).toBe("translateX(93.75px)");
+      press(container, "j");
+      advance(1000, 62.5);
+      press(container, "k");
+      press(container, "Home");
+      expect(marker.style.transform).toBe("translateX(0px)");
+    } finally {
+      cleanup();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is five flat controls in the NLE order, off with a reason when there is nothing to play", () => {
     const empty = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const { container, rerender } = render_(empty);
