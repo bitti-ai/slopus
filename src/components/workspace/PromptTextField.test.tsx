@@ -40,11 +40,52 @@ const selectRange = (start: Node, startOffset: number, end: Node, endOffset: num
   range.setEnd(end, endOffset);
   document.getSelection()!.removeAllRanges();
   document.getSelection()!.addRange(range);
+  fireEvent(document, new Event("selectionchange"));
 };
 const clipboard = () => {
   const data = new Map<string, string>();
   return { setData: (type: string, value: string) => data.set(type, value), getData: (type: string) => data.get(type) ?? "" };
 };
+
+it("highlights only the selected chip occurrences, including missing references, and clears on collapse", () => {
+  const initial = "Before @[ref:hero] between @[ref:hero] after @[ref:missing]";
+  const { field, value } = setup(initial);
+  const [first, second, missing] = field.querySelectorAll(".prompt-chip");
+  selectRange(field, 1, field, 2);
+  expect(first).toHaveClass("prompt-chip--selected");
+  expect(second).not.toHaveClass("prompt-chip--selected");
+  expect(missing).not.toHaveClass("prompt-chip--selected");
+  selectRange(field, 3, field, 6);
+  expect(first).not.toHaveClass("prompt-chip--selected");
+  expect(second).toHaveClass("prompt-chip--selected");
+  expect(missing).toHaveClass("prompt-chip--selected", "prompt-chip--missing");
+  expect(value()).toBe(initial);
+  expect(field.querySelectorAll(".prompt-chip")[0]).toBe(first);
+  caretAt(field, 3);
+  expect(field.querySelector(".prompt-chip--selected")).toBeNull();
+});
+
+it("highlights partial chip selections in either direction and clears when selection moves to another field", () => {
+  render(<>
+    <PromptTextField aria-label="First" value="@[ref:hero]" onChange={vi.fn()} references={references} />
+    <PromptTextField aria-label="Second" value="@[ref:castle]" onChange={vi.fn()} references={references} />
+  </>);
+  const first = screen.getByRole("textbox", { name: "First" });
+  const second = screen.getByRole("textbox", { name: "Second" });
+  const hero = first.querySelector(".prompt-chip")!;
+  const castle = second.querySelector(".prompt-chip")!;
+  selectRange(hero.firstChild!, 1, hero.firstChild!, 3);
+  expect(hero).toHaveClass("prompt-chip--selected");
+  document.getSelection()!.setBaseAndExtent(hero.firstChild!, 3, hero.firstChild!, 1);
+  fireEvent(document, new Event("selectionchange"));
+  expect(hero).toHaveClass("prompt-chip--selected");
+  selectRange(second, 0, second, 1);
+  expect(hero).not.toHaveClass("prompt-chip--selected");
+  expect(castle).toHaveClass("prompt-chip--selected");
+  document.getSelection()!.removeAllRanges();
+  fireEvent(document, new Event("selectionchange"));
+  expect(castle).not.toHaveClass("prompt-chip--selected");
+});
 
 it.each(["", "\n"])("copies multiline prompts with chip IDs into another field (ending: %j)", (ending) => {
   const initial = `Meet @[ref:hero]\n@[ref:castle] with @[ref:hero] and @[ref:missing]${ending}`;

@@ -74,6 +74,14 @@
 .prompt-chip--missing:hover { background: var(--danger-soft-strong); }
 .prompt-field--disabled .prompt-chip { cursor: default; opacity: 0.6; }
 
+/* Match the platform's selection colors, including in high-contrast mode. */
+.prompt-chip.prompt-chip--selected {
+  color: HighlightText;
+  background: Highlight;
+  border-color: Highlight;
+  opacity: 1;
+}
+
 .prompt-reference-picker { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); }
 .prompt-reference-picker__current { margin: 0; padding: var(--space-1) var(--space-2); color: var(--text-secondary); font-size: var(--text-xs); }
 .prompt-reference-picker__list { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }

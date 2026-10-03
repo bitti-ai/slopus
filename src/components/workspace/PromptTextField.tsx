@@ -116,6 +116,7 @@ export function PromptTextField({ value, onChange, references, format = REFERENC
       selection.current = { start: pendingCaret.current, end: pendingCaret.current };
       pendingCaret.current = null;
     }
+    highlightSelectedChips(root);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, chipsKey]);
 
@@ -126,6 +127,7 @@ export function PromptTextField({ value, onChange, references, format = REFERENC
       const root = field.current;
       const range = root && caretRange(root, format);
       if (range) selection.current = range;
+      if (root) highlightSelectedChips(root);
     };
     document.addEventListener("selectionchange", remember);
     return () => document.removeEventListener("selectionchange", remember);
@@ -350,6 +352,16 @@ function ReferencePicker({ picking, references, format, label, onChoose, onRemov
 
 /* --- The editable surface ------------------------------------------------ */
 
+/** Noneditable chips do not receive the browser's text-selection paint.
+ *  Update their appearance directly so selection changes never rebuild the DOM. */
+function highlightSelectedChips(root: HTMLElement) {
+  const selection = document.getSelection();
+  const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index)).filter((range) => !range.collapsed) : [];
+  root.querySelectorAll<HTMLElement>(`[${CHIP}]`).forEach((chip) => {
+    chip.classList.toggle("prompt-chip--selected", ranges.some((range) => range.intersectsNode(chip)));
+  });
+}
+
 function chipElement(key: string, chips: Chips, missingTooltip: string): HTMLElement {
   const reference = chips.byKey.get(key);
   const name = reference?.name ?? chips.missingLabel(key);
@@ -459,6 +471,7 @@ function placeCaret(root: HTMLElement, offset: number, format: PromptTokenFormat
   const selection = document.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+  highlightSelectedChips(root);
 }
 
 function wrap(node: Node): Node {
