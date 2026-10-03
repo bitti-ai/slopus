@@ -1,4 +1,4 @@
-import { Add16, ChevronDown12, FolderOpen14, More14, Reset14, Reset16 } from "../ui/icons";
+import { Add16, ChevronDown12, Copy16, FolderOpen14, More14, Paste16, Reset14, Reset16 } from "../ui/icons";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
 import { isEffectOn, parseCube } from "../../lib/effectSettings";
@@ -8,6 +8,9 @@ import { Checkbox, ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMe
 import { ColorSwatch } from "./ColorPicker";
 
 type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut";
+// Keep copied settings across clip selections and inspector remounts, like the
+// image-node clipboard. Snapshots include bypass and embedded LUT data.
+let effectClipboard: { id: EffectId; settings: NonNullable<TimelineClip[EffectId]> } | null = null;
 /** `key` names a run of edits to one parameter (a slider drag), so the
  *  project's undo stack folds it into one step. */
 type Update = (patch: Partial<TimelineClip>, key?: string) => void;
@@ -204,6 +207,7 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
      is one step rather than sixty. */
   const keyed: Update = (patch, key) => update(patch, key ?? effect.id);
   const menu = useContextMenu();
+  useEffect(() => menu.close(), [clip.id, disabled, menu.close]);
   const settings = clip[effect.id] as { enabled?: boolean | null } | null | undefined;
   const on = isEffectOn(settings);
   /* Reset puts the values back, not the bypass: a switched-off effect stays off. */
@@ -233,6 +237,14 @@ function EffectBlock({ effect, clip, disabled, update, onRemove }: {
         {...tooltipProps("More options")}
         disabled={disabled}
         onClick={() => more.current && menu.open(more.current, [
+          { label: "Copy settings", icon: <Copy16 />, onSelect: () => {
+            const values = clip[effect.id];
+            if (values) effectClipboard = { id: effect.id, settings: structuredClone(values) };
+          } },
+          { label: "Paste settings", icon: <Paste16 />, disabled: effectClipboard?.id !== effect.id, onSelect: () => {
+            if (effectClipboard?.id === effect.id) update({ [effect.id]: structuredClone(effectClipboard.settings) });
+          } },
+          { separator: true },
           { label: "Reset", icon: <Reset16 />, onSelect: reset },
           { separator: true },
           { label: "Remove", shortcut: "Delete", danger: true, onSelect: onRemove },

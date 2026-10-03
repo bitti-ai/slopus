@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testi
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineClipSchema, type TimelineClip } from "../../lib/project";
+import { parseCube } from "../../lib/effectSettings";
 import { ClipEffects } from "./ClipEffects";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -41,6 +42,87 @@ async function inTauri(answers: Record<string, (args: unknown) => unknown>, body
 const CUBE = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
 
 describe("clip effects", () => {
+  it("disables Paste settings until settings have been copied", () => {
+    render(<ClipEffects clip={{ ...original, sharpen: { amount: 50 } }} disabled={false} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));
+    expect((screen.getByRole("menuitem", { name: "Paste settings" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each([
+    { name: "Look", patch: { look: { opacity: 65, temperature: -30, enabled: false } } },
+    { name: "Transition", patch: { transition: { type: "wipe-left", durationMs: 1200 } } },
+    { name: "Chroma key", patch: { chromaKey: { color: "#123456", tolerance: 43 } } },
+    { name: "Sharpen", patch: { sharpen: { amount: 125 } } },
+    { name: "Gaussian blur", patch: { blur: { radius: 8.5 } } },
+    { name: "Colour correction", patch: { colorCorrection: { exposure: -1.2, contrast: 20, saturation: 75 } } },
+    { name: "Vignette", patch: { vignette: { amount: 75 } } },
+    { name: "3D LUT", patch: { lut: { intensity: 45, table: parseCube(CUBE, "identity.cube") } } },
+  ] satisfies { name: string; patch: Partial<TimelineClip> }[])("copies $name settings to another clip as one independent edit", ({ name, patch }) => {
+    const onChange = vi.fn();
+    const source = timelineClipSchema.parse({ ...original, ...patch });
+    const view = render(<ClipEffects clip={source} disabled={false} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: `${name} options` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    expect(onChange).not.toHaveBeenCalled();
+    // Clipboard survives leaving the inspector, including a different clip.
+    view.unmount();
+    const target = timelineClipSchema.parse({ ...source, id: "target", label: "Target clip", startMs: 3000 });
+    render(<ClipEffects clip={target} disabled={false} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: `${name} options` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Paste settings" }));
+    expect(onChange.mock.calls).toEqual([[patch, undefined]]);
+    const applied = timelineClipSchema.parse({ ...target, ...onChange.mock.calls[0][0] });
+    expect(applied).toMatchObject({ ...patch, id: "target", label: "Target clip", startMs: 3000 });
+    const key = Object.keys(patch)[0] as keyof TimelineClip;
+    expect(onChange.mock.calls[0][0][key]).not.toBe(source[key]);
+  });
+
+  it("does not paste settings into a different effect type", () => {
+    render(<Harness />);
+    add("Sharpen");
+    add("Gaussian blur");
+    fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Gaussian blur options" }));
+    const paste = screen.getByRole("menuitem", { name: "Paste settings" }) as HTMLButtonElement;
+    expect(paste.disabled).toBe(true);
+    fireEvent.click(paste);
+    expect(saved().blur).toEqual({ radius: 4 });
+  });
+
+  it("keeps LUT snapshots independent of the source and previous pastes", () => {
+    const lut = { intensity: 45, table: parseCube(CUBE, "identity.cube") };
+    const expected = structuredClone(lut);
+    const onChange = vi.fn();
+    const view = render(<ClipEffects clip={{ ...original, lut }} disabled={false} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "3D LUT options" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy settings" }));
+    lut.table.values[0] = 0.9;
+    view.rerender(<ClipEffects clip={{ ...original, id: "target", lut: { intensity: 100 } }} disabled={false} onChange={onChange} />);
+    for (let index = 0; index < 2; index++) {
+      fireEvent.click(screen.getByRole("button", { name: "3D LUT options" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Paste settings" }));
+      const pasted = onChange.mock.calls.at(-1)![0].lut;
+      expect(pasted).toEqual(expected);
+      pasted.table.values[0] = 0.5;
+    }
+  });
+
+  it("closes the settings menu when the clip changes or becomes locked", () => {
+    const clip = { ...original, sharpen: { amount: 50 } };
+    const onChange = vi.fn();
+    const view = render(<ClipEffects clip={clip} disabled={false} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));
+    view.rerender(<ClipEffects clip={{ ...clip, id: "target" }} disabled={false} onChange={onChange} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));
+    view.rerender(<ClipEffects clip={{ ...clip, id: "target" }} disabled onChange={onChange} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("bypasses an effect from its header checkbox, keeping its settings", () => {
     render(<Harness />);
     add("Sharpen");

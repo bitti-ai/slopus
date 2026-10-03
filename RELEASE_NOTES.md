@@ -25,6 +25,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## Fixes and improvements
 
+- Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Reference chips now highlight when included in a prompt's text selection.
