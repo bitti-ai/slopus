@@ -68,15 +68,17 @@ pub(crate) async fn append_reference_video(
     let bytes = bytes.clone();
     let (runtime, workers) = (state.inner().clone(), workers.inner().clone());
     blocking(move || match workers.active()? {
-        Some(worker) => worker.post_bytes(
-            &format!("/v1/reference-videos/{id}/frames"),
-            &[
-                ("x-reference-width", width.to_string()),
-                ("x-reference-height", height.to_string()),
-                ("x-reference-time", timestamp.to_string()),
-            ],
-            bytes,
-        ),
+        Some(worker) => worker
+            .post_bytes::<bool>(
+                &format!("/v1/reference-videos/{id}/frames"),
+                &[
+                    ("x-reference-width", width.to_string()),
+                    ("x-reference-height", height.to_string()),
+                    ("x-reference-time", timestamp.to_string()),
+                ],
+                bytes,
+            )
+            .map(|_| ()),
         None => runtime
             .references
             .append_reference_video(&id, &bytes, width, height, timestamp),
@@ -103,14 +105,16 @@ pub(crate) async fn set_reference_video_audio(
     let bytes = bytes.clone();
     let (runtime, workers) = (state.inner().clone(), workers.inner().clone());
     blocking(move || match workers.active()? {
-        Some(worker) => worker.post_bytes(
-            &format!("/v1/reference-videos/{id}/audio"),
-            &[
-                ("x-reference-channels", channels.to_string()),
-                ("x-reference-rate", rate.to_string()),
-            ],
-            bytes,
-        ),
+        Some(worker) => worker
+            .post_bytes::<bool>(
+                &format!("/v1/reference-videos/{id}/audio"),
+                &[
+                    ("x-reference-channels", channels.to_string()),
+                    ("x-reference-rate", rate.to_string()),
+                ],
+                bytes,
+            )
+            .map(|_| ()),
         None => runtime
             .references
             .set_reference_video_audio(&id, &bytes, channels, rate),
@@ -130,6 +134,55 @@ pub(crate) async fn release_reference_videos(
             .post::<bool>("/v1/reference-videos/release", &ids)
             .map(|_| ()),
         None => runtime.references.release_reference_videos(&ids),
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn create_reference_audio(
+    state: tauri::State<'_, slopfab::SlopfabRuntime>,
+    workers: tauri::State<'_, Workers>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("Reference audio requires a binary body.".into());
+    };
+    let channels: i32 = reference_video_header(&request, "x-reference-channels")?
+        .parse()
+        .map_err(|_| "Invalid audio channels.")?;
+    let rate: i32 = reference_video_header(&request, "x-reference-rate")?
+        .parse()
+        .map_err(|_| "Invalid sample rate.")?;
+    let bytes = bytes.clone();
+    let (runtime, workers) = (state.inner().clone(), workers.inner().clone());
+    blocking(move || match workers.active()? {
+        Some(worker) => worker.post_bytes(
+            "/v1/reference-audios",
+            &[
+                ("x-reference-channels", channels.to_string()),
+                ("x-reference-rate", rate.to_string()),
+            ],
+            bytes,
+        ),
+        None => runtime
+            .references
+            .create_reference_audio(&bytes, channels, rate),
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn release_reference_audios(
+    state: tauri::State<'_, slopfab::SlopfabRuntime>,
+    workers: tauri::State<'_, Workers>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    let (runtime, workers) = (state.inner().clone(), workers.inner().clone());
+    blocking(move || match workers.active()? {
+        Some(worker) => worker
+            .post::<bool>("/v1/reference-audios/release", &ids)
+            .map(|_| ()),
+        None => runtime.references.release_reference_audios(&ids),
     })
     .await
 }

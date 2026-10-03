@@ -132,6 +132,12 @@ pub(super) fn configure_request(
                 .attach(handle, &configuration.dll_path)?;
         }
     }
+    // Standalone audio follows the videos, so slopfab numbers it after every
+    // video soundtrack. The prompt compiler numbers <Audio N> the same way.
+    for id in &request.reference_audio_ids {
+        let audio = references.reference_audio(id)?;
+        api.add_reference_audio(handle, &audio.samples, audio.channels, audio.sample_rate)?;
+    }
     for refmod in &request.refmods {
         if refmod.path.trim().is_empty()
             || !refmod.strength.is_finite()

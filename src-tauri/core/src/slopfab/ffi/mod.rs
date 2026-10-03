@@ -160,6 +160,17 @@ impl Api {
         self.check(r)?;
         self.inner.add_reference(r.pointer.as_ptr(), path)
     }
+    pub fn add_reference_audio(
+        &self,
+        r: &RequestHandle,
+        samples: &[f32],
+        channels: i32,
+        sample_rate: i32,
+    ) -> Result<(), String> {
+        self.check(r)?;
+        self.inner
+            .add_reference_audio(r.pointer.as_ptr(), samples, channels, sample_rate)
+    }
     pub fn add_lora(&self, r: &RequestHandle, path: &Path, strength: f32) -> Result<(), String> {
         self.check(r)?;
         self.inner.add_lora(r.pointer.as_ptr(), path, strength)

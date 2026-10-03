@@ -63,6 +63,8 @@ pub struct GenerationRequest {
     #[serde(default)]
     pub reference_video_ids: Vec<String>,
     #[serde(default)]
+    pub reference_audio_ids: Vec<String>,
+    #[serde(default)]
     pub refmods: Vec<RefmodInput>,
     #[serde(default)]
     pub continuation_relative_path: Option<String>,
@@ -102,7 +104,7 @@ pub struct RefmodInput {
 
 impl GenerationRequest {
     pub fn reference_count(&self) -> usize {
-        self.reference_paths.len() + self.reference_video_ids.len()
+        self.reference_paths.len() + self.reference_video_ids.len() + self.reference_audio_ids.len()
     }
     pub fn refmod_count(&self) -> usize {
         self.refmods.iter().filter(|refmod| refmod.strength > 0.0).count()

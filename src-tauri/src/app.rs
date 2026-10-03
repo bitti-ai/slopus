@@ -203,6 +203,8 @@ pub fn run() {
             commands::generation::append_reference_video,
             commands::generation::set_reference_video_audio,
             commands::generation::release_reference_videos,
+            commands::generation::create_reference_audio,
+            commands::generation::release_reference_audios,
             commands::media::import_media_files,
             commands::media::read_project_file,
             commands::media::read_external_media_file,

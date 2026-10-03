@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const DEFAULT_PORT: u16 = 47321;
 pub const TOKEN_HEADER: &str = "x-slopus-token";
 

@@ -111,8 +111,9 @@ impl Configuration {
                 || !request.refmods.is_empty()
                 || !request.reference_paths.is_empty()
                 || request.reference_video_ids.len() != expected
+                || !request.reference_audio_ids.is_empty()
             {
-                return Err("Extend/Bridge requires exactly one/two video references without frame anchors, Animate, continuation or refmods.".into());
+                return Err("Extend/Bridge requires exactly one/two video references without frame anchors, sound references, Animate, continuation or refmods.".into());
             }
         }
         if self.animate && self.motion_cache {
@@ -130,8 +131,8 @@ impl Configuration {
                     "Animate requires exactly one repainted frame of the driving scene.".into(),
                 );
             }
-            if request.continuation_path.is_some() || !request.refmods.is_empty() {
-                return Err("Animate does not support scene continuation or refmods.".into());
+            if request.continuation_path.is_some() || !request.refmods.is_empty() || !request.reference_audio_ids.is_empty() {
+                return Err("Animate does not support scene continuation, sound references or refmods.".into());
             }
         } else if request.prompt.trim().is_empty() {
             return Err("Generation prompt cannot be empty.".into());
