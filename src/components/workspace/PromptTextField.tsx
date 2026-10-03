@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { canTokenizeReference, referenceToken, splitActionText, type ActionPart } from "../../lib/project";
 import { Add14, Delete14 } from "../ui/icons";
 import { Flyout, TextField } from "../ui";
@@ -164,6 +164,18 @@ export function PromptTextField({ value, onChange, references, format = REFERENC
     replace(range.start, range.end, "\n");
   };
 
+  const copy = (event: ReactClipboardEvent<HTMLDivElement>, cut = false) => {
+    if (cut && disabled) { event.preventDefault(); return; }
+    const root = field.current!;
+    const range = caretRange(root, format);
+    if (!range || range.start === range.end) return;
+    // Copy the token IDs, not the chip labels the browser would put on the
+    // clipboard. Plain text also preserves citations through other text fields.
+    event.clipboardData.setData("text/plain", serialize(root, format).slice(range.start, range.end));
+    event.preventDefault();
+    if (cut) replace(range.start, range.end, "");
+  };
+
   const openPicker = (anchor: HTMLElement, start: number, end: number, current: string | null) => {
     if (disabled) return;
     setPicking({ anchor, start, end, current });
@@ -217,13 +229,21 @@ export function PromptTextField({ value, onChange, references, format = REFERENC
       style={{ "--prompt-rows": rows } as CSSProperties}
       onInput={(event) => input(event.nativeEvent)}
       onKeyDown={keyDown}
+      onCopy={copy}
+      onCut={(event) => copy(event, true)}
       onPaste={(event) => {
         // Only the characters: markup pasted from elsewhere would land as
         // elements the value has no way to say.
         event.preventDefault();
+        if (disabled) return;
         const text = event.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
         const range = caretRange(field.current!, format) ?? { start: value.length, end: value.length };
         replace(range.start, range.end, text);
+        const keys = new Set(format.split(text).filter((part) => part.kind === "reference").map((part) => part.value));
+        for (const key of keys) {
+          const reference = chips.byKey.get(key);
+          if (reference) onInsertReference?.(reference);
+        }
       }}
       onDrop={(event) => event.preventDefault()}
       onClick={(event) => {
@@ -398,8 +418,17 @@ function offsetBefore(root: HTMLElement, node: Node, format: PromptTokenFormat):
 function caretRange(root: HTMLElement, format: PromptTokenFormat): { start: number; end: number } | null {
   const selection = document.getSelection();
   if (!selection?.rangeCount) return null;
-  const range = selection.getRangeAt(0);
+  const range = selection.getRangeAt(0).cloneRange();
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  // A chip is one token even when a browser selection lands inside its label.
+  // Expand nonempty selections to its edges so copy, cut and paste stay atomic.
+  if (!range.collapsed) {
+    const chipAt = (node: Node) => (node instanceof Element ? node : node.parentElement)?.closest(`[${CHIP}]`);
+    const startChip = chipAt(range.startContainer);
+    const endChip = chipAt(range.endContainer);
+    if (startChip) range.setStartBefore(startChip);
+    if (endChip) range.setEndAfter(endChip);
+  }
   const measure = (container: Node, offset: number) => {
     const before = document.createRange();
     before.selectNodeContents(root);
