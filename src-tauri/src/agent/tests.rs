@@ -124,6 +124,7 @@ fn agent_scene_fixture() -> (ProjectConfig, ProjectConfig) {
         images: Vec::new(),
         refmods: Vec::new(),
             video: None,
+            audio: None,
         intended_use: vec!["character".into()],
         subcategory: None,
         icon_relative_path: None,

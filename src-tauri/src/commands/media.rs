@@ -232,7 +232,7 @@ pub(crate) fn choose_reference_files(
         .dialog()
         .file()
         .set_title("Add reference files")
-        .add_filter("Images, videos and refmods", &reference_extensions())
+        .add_filter("Images, videos, sounds and refmods", &reference_extensions())
         .blocking_pick_files()
         .unwrap_or_default();
     let paths = selected

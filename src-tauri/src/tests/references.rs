@@ -159,6 +159,7 @@ fn blank_text_references_never_block_a_project_save() {
         images: Vec::new(),
         refmods: Vec::new(),
         video: None,
+        audio: None,
         intended_use: Vec::new(),
         subcategory: None,
         icon_relative_path: None,
@@ -334,4 +335,51 @@ fn reference_frame_pngs_are_saved_inside_the_project() {
     assert_eq!(fs::read(root.path().join(relative)).unwrap(), png);
     assert!(crate::commands::artifacts::save_reference_frame(folder, "../escape", &png).is_err());
     assert!(crate::commands::artifacts::save_reference_frame(folder, "invalid", b"not an image").is_err());
+}
+
+#[test]
+fn audio_reference_clip_settings_survive_save_and_reopen() {
+    let mut config = fixture();
+    let reference = &mut config.references[0];
+    reference.kind = "audio".into();
+    reference.relative_path = Some("media/voice.wav".into());
+    reference.source_path = None;
+    reference.audio = Some(ReferenceAudioOptions {
+        start_seconds: 1.25,
+        duration_seconds: 6.0,
+    });
+    let config = validate_and_normalize_config(config).unwrap();
+    let value = serde_json::to_value(&config).unwrap();
+    assert_eq!(value["references"][0]["audio"]["startSeconds"], 1.25);
+    let reopened: ProjectConfig = serde_json::from_value(value).unwrap();
+    assert_eq!(reopened.references[0].audio, config.references[0].audio);
+    let mut too_long = reopened.clone();
+    too_long.references[0].audio.as_mut().unwrap().duration_seconds = 16.0;
+    assert!(validate_and_normalize_config(too_long).is_err());
+    let mut wrong_kind = reopened;
+    wrong_kind.references[0].kind = "video".into();
+    assert!(validate_and_normalize_config(wrong_kind).is_err());
+}
+
+#[test]
+fn audio_reference_import_keeps_the_source_and_allows_one_clip() {
+    let access = MediaAccess::default();
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    let voice = root.path().join("voice.mp3");
+    let motion = root.path().join("motion.mp4");
+    for path in [&voice, &motion] {
+        fs::write(path, b"source").unwrap();
+    }
+    let imported = import_reference_attachments(&access, &project, &[voice.clone()]).unwrap();
+    assert_eq!(imported[0].kind, "audio");
+    assert!(imported[0].relative_path.is_none());
+    assert_eq!(
+        imported[0].source_path.as_deref(),
+        Some(external_source_path(&voice).unwrap().as_str())
+    );
+    assert!(import_reference_attachments(&access, &project, &[voice, motion])
+        .unwrap_err()
+        .contains("one video or sound"));
 }
