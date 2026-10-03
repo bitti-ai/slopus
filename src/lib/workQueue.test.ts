@@ -623,6 +623,47 @@ describe("application work queue", () => {
     expect(releaseRendered).toHaveBeenCalledWith(id);
     expect(saveGeneratedScene).not.toHaveBeenCalled();
   });
+  it("exports a reference as a refmod after preparing its clip, without planning a generation", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, references: [{
+      id: "ref-walk", kind: "video", name: "Walk", description: "A brisk walk", intendedUse: [], createdAt: config.createdAt,
+      sourcePath: "D:/clips/walk.mp4", video: { startSeconds: 1, durationSeconds: 4, includeAudio: true },
+      images: [{ id: "front", name: "front", relativePath: "references/front.png" }],
+    }] }));
+    let exported: Record<string, unknown> | undefined;
+    vi.mocked(invoke).mockImplementation(async (command, payload) => {
+      if (command === "export_reference_refmod") exported = structuredClone(payload as Record<string, unknown>);
+    });
+    queue.exportReferenceRefmod(first, "ref-walk", "D:/out/walk.safetensors");
+    const item = () => queue.getSnapshot().find((candidate) => candidate.kind === "refmod")!;
+    expect(item()).toMatchObject({ title: "Refmod · Walk", sceneId: "ref-walk" });
+    await waitFor(() => expect(item()).toMatchObject({ status: "completed", detail: "Refmod saved" }));
+    expect(exported).toMatchObject({
+      outputPath: "D:/out/walk.safetensors", name: "Walk", description: "A brisk walk",
+      request: { jobId: item().id, referencePaths: ["C:/First/references/front.png"], referenceVideoIds: ["video-1"] },
+    });
+    expect(resolveSlopfabPlan).not.toHaveBeenCalled();
+    expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+    await waitFor(() => expect(releaseReferenceVideos).toHaveBeenCalledWith(["video-1"]));
+  });
+  it("refuses refmod exports without media and reports a failed export", async () => {
+    const { queue, first } = setup();
+    first.update((config) => ({ ...config, references: [
+      { id: "ref-text", kind: "text", name: "Mood", description: "Warm light", intendedUse: [], createdAt: config.createdAt },
+      { id: "ref-face", kind: "text", name: "Face", description: "", intendedUse: [], createdAt: config.createdAt, images: [{ id: "front", name: "front", relativePath: "references/front.png" }] },
+    ] }));
+    expect(() => queue.exportReferenceRefmod(first, "ref-gone", "D:/out/gone.safetensors")).toThrow("no longer exists");
+    expect(() => queue.exportReferenceRefmod(first, "ref-text", "D:/out/mood.safetensors")).toThrow("Add an image, video or sound");
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === "export_reference_refmod") throw new Error("refmod export: required video/audio VAE path is missing");
+    });
+    queue.exportReferenceRefmod(first, "ref-face", "D:/out/face.safetensors");
+    expect(() => queue.exportReferenceRefmod(first, "ref-face", "D:/out/again.safetensors")).toThrow("already being exported");
+    const item = () => queue.getSnapshot().find((candidate) => candidate.kind === "refmod")!;
+    await waitFor(() => expect(item()).toMatchObject({ status: "failed", detail: "Refmod export failed" }));
+    expect(item().error).toContain("VAE path is missing");
+    expect(prepareReferenceVideos).not.toHaveBeenCalled();
+  });
   it("makes interrupted scenes restartable after the application has closed", () => {
     const record = project("Interrupted");
     record.config.generationJobs[0].status = "generating";

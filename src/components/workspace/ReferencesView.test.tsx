@@ -457,6 +457,28 @@ describe("Reference library views and selection", () => {
     expect(within(usage).getByRole("button", { name: initial.generationJobs[0].title })).toBeInTheDocument();
   });
 
+  it("exports a reference with media as a refmod and reports why it could not", async () => {
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    const initial = project();
+    initial.references.push({ ...initial.references[0], id: "ref-face", name: "Face", images: [{ id: "front", name: "front", relativePath: "references/front.png" }] });
+    const onExportRefmod = vi.fn();
+    vi.mocked(invoke).mockImplementation(async (command) => command === "choose_refmod_export_path" ? "D:\\out\\Face.safetensors" : new Uint8Array());
+    render(<ReferencesView config={initial} folderPath="C:\\project" onChange={vi.fn()} onExportRefmod={onExportRefmod} />);
+    // The selected text reference has nothing to encode.
+    expect(screen.getByRole("button", { name: "Export refmod" })).toBeDisabled();
+    const exportFace = () => {
+      fireEvent.contextMenu(screen.getByRole("option", { name: /^Face/ }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Export as refmod…" }));
+    };
+    exportFace();
+    await waitFor(() => expect(onExportRefmod).toHaveBeenCalledWith("ref-face", "D:\\out\\Face.safetensors"));
+    expect(invoke).toHaveBeenCalledWith("choose_refmod_export_path", { name: "Face" });
+    expect(screen.getByRole("button", { name: "Export refmod" })).toBeEnabled();
+    onExportRefmod.mockImplementation(() => { throw new Error("This reference is already being exported."); });
+    exportFace();
+    expect(await screen.findByText("This reference is already being exported.")).toBeInTheDocument();
+  });
+
   it("does not count stale scene bindings as usage", () => {
     const initial = project();
     initial.generationJobs[0].referenceIds = ["ref-hero"];

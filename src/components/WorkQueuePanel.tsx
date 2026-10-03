@@ -14,7 +14,7 @@ import { Flyout, ProgressBar, ProgressRing } from "./ui";
    it runs, a 3px bar. The render settings a row was queued with sit in its
    tooltip rather than on a third line. */
 
-const settingsLine = (item: WorkItem) => `${item.settings.canvasWidth} × ${item.settings.canvasHeight} · ${item.kind === "reference-icons" ? "JPG icons" : item.kind === "image" ? "JPG image" : `${(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s`} · ${item.settings.steps} steps · ${item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}`;
+const settingsLine = (item: WorkItem) => item.kind === "refmod" ? "Safetensors refmod" : `${item.settings.canvasWidth} × ${item.settings.canvasHeight} · ${item.kind === "reference-icons" ? "JPG icons" : item.kind === "image" ? "JPG image" : `${(item.settings.frames / GENERATION_FRAME_RATE).toFixed(1)}s`} · ${item.settings.steps} steps · ${item.settings.seed === -1 ? "Random seed" : `Seed ${item.settings.seed}`}`;
 
 function StateGlyph({ item }: { item: WorkItem }) {
   if (item.status === "completed") return <Check16 />;
