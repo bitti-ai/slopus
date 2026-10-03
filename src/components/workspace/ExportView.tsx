@@ -511,6 +511,7 @@ export function ExportView({ config, folderPath, onClose }: {
               <ProgressBar value={percent} aria-label="Export progress" />
             </div>}
             {!progress && outcome?.kind === "saved" && <InfoBar
+              className="export-outcome"
               severity="success"
               title="Exported"
               message={`Exported to ${outcome.path}`}

@@ -387,6 +387,29 @@ img.export-image {
   display: none;
 }
 
+.export-outcome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "icon text close" ". actions .";
+  align-items: start;
+  row-gap: var(--space-2);
+  padding-block: var(--space-3);
+}
+
+.export-outcome > .ui-severity-glyph { grid-area: icon; }
+.export-outcome > .ui-infobar__close { grid-area: close; }
+
+.export-outcome > .ui-infobar__text {
+  grid-area: text;
+  flex-direction: column;
+  padding-block: 0;
+}
+
+.export-outcome > .ui-infobar__action {
+  grid-area: actions;
+  flex-wrap: wrap;
+}
+
 .export-settings__actions {
   display: flex;
   justify-content: flex-end;
