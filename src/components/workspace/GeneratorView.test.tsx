@@ -552,11 +552,11 @@ describe("Generator scene controls", () => {
 
     const speech = screen.getByRole("textbox", { name: "Speech for shot 1" });
     const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
-    expect(speech).toHaveValue("");
+    expect(speech).toHaveTextContent("");
     expect(comboValue(language)).toBe("English");
 
     chooseOption(language, "Korean");
-    fireEvent.change(speech, { target: { value: "문을 열어 주세요." } });
+    typePrompt(speech, "문을 열어 주세요.");
     expect(sceneShots(state.latest().generationJobs[0])[0]).toEqual(expect.objectContaining({
       speech: "문을 열어 주세요.",
       speechLanguage: "Korean",
@@ -577,6 +577,46 @@ describe("Generator scene controls", () => {
     const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
     expect(comboValue(language)).toBe("Klingon");
     expect(optionNames(language)).toContain("Klingon");
+  });
+
+  it("inserts a voice chip into Speech and removes its generation input when the chip is removed", () => {
+    const initial = project();
+    initial.references = [
+      { id: "voice", kind: "audio", name: "Narrator voice", description: "", intendedUse: [], sourcePath: "C:/voice.wav",
+        audio: { startSeconds: 2, durationSeconds: 4 }, createdAt: initial.createdAt },
+      { id: "hero", kind: "image", name: "Hero", description: "", intendedUse: [], sourcePath: "C:/hero.png", createdAt: initial.createdAt },
+    ];
+    initial.generationJobs[0].startFrameReferenceId = "hero";
+    let latest = initial;
+    const submitted = vi.fn();
+    function Harness() {
+      const [config, setConfig] = useState(initial);
+      latest = config;
+      return <GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime}
+        onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+    const speech = screen.getByRole("textbox", { name: "Speech for shot 1" });
+    typePrompt(speech, "Welcome home.");
+    placePromptCaret(speech);
+    fireEvent.click(screen.getByRole("button", { name: "Voice reference" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: /^Hero/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Narrator voice/ }));
+    expect(speech.querySelector(".prompt-chip")).toHaveTextContent("Narrator voice");
+    expect(latest.generationJobs[0].referenceIds).toEqual(["voice"]);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(latest))).generationJobs[0].shots![0].speech).toContain("@[ref:voice]");
+    const generate = within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" });
+    fireEvent.click(generate);
+    expect(submitted.mock.calls.at(-1)![0][0].request).toMatchObject({
+      prompt: expect.stringContaining("<d>[English] Welcome home.</d>"),
+      referenceAudios: [{ name: "Narrator voice", sourcePath: "C:/voice.wav", startSeconds: 2, durationSeconds: 4 }],
+    });
+    changePromptChip(speech, 0, null);
+    expect(latest.generationJobs[0].referenceIds).toEqual([]);
+    fireEvent.click(generate);
+    expect(submitted.mock.calls.at(-1)![0][0].request.referenceAudios).toEqual([]);
+    expect(submitted.mock.calls.at(-1)![0][0].request.prompt).not.toContain("<Audio");
   });
 
   it("reorders shots inside a scene while keeping its cut slots", () => {

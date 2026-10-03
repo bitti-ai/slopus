@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import {
   audioReferenceBlocker, compileMiniMaxH3Prompt, compileScenePromptSegments, createDraftGenerationJob, danglingReferenceTokens, isReferenceUsable,
-  projectReferenceSchema, referenceAudioNumbers, referenceToken, sceneGenerationSnapshot, usableAudioReferences, usableReferenceImages, type ProjectReference,
+  projectReferenceSchema, referenceAudioNumbers, referenceToken, sceneGenerationSnapshot, sceneGenerationReferences, compileGenerationJobPrompt, usableAudioReferences, usableReferenceImages, type ProjectReference,
 } from "./project";
 import { referenceAudioPcm, referenceAudioRange } from "./referenceAudio";
 
@@ -37,6 +37,43 @@ it("defines an undescribed sound without inventing its role and keeps it out of 
   expect(prompt).toContain("<Subject 1> is the content shown in <Picture 1>.\n<Audio 1> is a reference audio clip.");
   expect(prompt).not.toContain("<Subject 2>");
   expect(usableReferenceImages(references)).toHaveLength(1);
+});
+
+it("takes voice guidance from Speech chips while keeping only words inside dialogue tags", () => {
+  const refs = [reference("voice", "audio"), reference("video", "video")];
+  const job = createDraftGenerationJob("", { shots: [
+    { id: "a", startSeconds: 0, action: "@[ref:video]", speech: "@[ref:voice] Hello, world!", speechLanguage: "French" },
+    { id: "b", startSeconds: 3, action: "The camera pans.", speech: "Goodbye." },
+  ] });
+  const bound = sceneGenerationReferences(job, refs);
+  expect(bound).toEqual(refs);
+  const prompt = compileGenerationJobPrompt(job, bound);
+  expect(prompt).toContain("Use the voice characteristics of <Audio 2> for the scene's speaker (S1).");
+  expect(prompt).toContain("<d>[French] Hello, world!</d>");
+  expect(prompt).toContain("<d>[English] Goodbye.</d>");
+  expect(prompt.match(/Use the voice characteristics/g)).toHaveLength(1);
+  expect(prompt).not.toContain("@[ref:");
+  expect(prompt).not.toMatch(/<d>[^<]*<Audio/);
+  job.shots![0].speech = "Hello, world!";
+  expect(sceneGenerationReferences(job, refs).map(({ id }) => id)).toEqual(["video"]);
+});
+
+it("rejects missing or non-audio Speech references and deduplicates citations", () => {
+  const refs = [reference("voice", "audio"), reference("hero", "image")];
+  const shots = [{ id: "a", startSeconds: 0, action: "@[ref:hero]", speech: "@[ref:voice] @[ref:voice] Hello" }];
+  expect(danglingReferenceTokens(shots, refs)).toEqual([]);
+  const job = createDraftGenerationJob("", { shots });
+  expect(sceneGenerationReferences(job, refs)).toHaveLength(2);
+  expect(compileGenerationJobPrompt(job, refs).match(/Use the voice characteristics of <Audio 1>/g)).toHaveLength(1);
+  shots[0].speech = "@[ref:hero] @[ref:missing] Hello";
+  expect(danglingReferenceTokens(shots, refs)).toEqual(["hero", "missing"]);
+});
+
+it("keeps a voice-only chip as guidance without inventing dialogue", () => {
+  const job = createDraftGenerationJob("A speaker", { shots: [{ id: "a", startSeconds: 0, action: "A speaker", speech: "@[ref:voice]" }] });
+  const prompt = compileGenerationJobPrompt(job, [reference("voice", "audio"), reference("hero", "image")]);
+  expect(prompt).toContain("Use the voice characteristics of <Audio 1>");
+  expect(prompt).not.toContain("<d>");
 });
 
 it("lets shots cite sounds and blocks sounds without visual media", () => {

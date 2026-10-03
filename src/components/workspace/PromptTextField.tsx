@@ -69,11 +69,12 @@ interface Chips {
   missingLabel: (key: string) => string;
 }
 
-export function PromptTextField({ value, onChange, references, format = REFERENCE_TOKENS, missingLabel = () => "Deleted reference", missingTooltip = "Left out of the prompt — click to swap it for another reference or remove it", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
+export function PromptTextField({ value, onChange, references, referenceButtonLabel = "Reference", format = REFERENCE_TOKENS, missingLabel = () => "Deleted reference", missingTooltip = "Left out of the prompt — click to swap it for another reference or remove it", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
   value: string;
   onChange: (value: string) => void;
   /** The references the picker offers; a chip for any other key is missing. */
   references: readonly PromptReference[];
+  referenceButtonLabel?: string;
   format?: PromptTokenFormat;
   missingLabel?: (key: string) => string;
   missingTooltip?: string;
@@ -211,7 +212,7 @@ export function PromptTextField({ value, onChange, references, format = REFERENC
           const at = selection.current ?? { start: value.length, end: value.length };
           openPicker(addButton.current!, Math.min(at.start, value.length), Math.min(at.end, value.length), null);
         }}
-      ><Add14 aria-hidden="true" />Reference</button>
+      ><Add14 aria-hidden="true" />{referenceButtonLabel}</button>
     </div>
     <div
       ref={field}

@@ -10,7 +10,7 @@ import { useShortcut } from "../../lib/commands";
 import { askNative } from "../../lib/nativeShell";
 import { ProjectStatus } from "./ProjectStatus";
 import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, tooltipProps, usePaneSize } from "../ui";
-import { actionReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
+import { shotReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { generationDimensions } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
@@ -174,7 +174,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (updates.shots && (updates.sceneType ?? job.sceneType) !== "animate") {
       const referenceIds: string[] = [];
       for (const shot of updates.shots) {
-        for (const id of actionReferenceIds(shot.action)) {
+        for (const id of shotReferenceIds(shot)) {
           if (!referenceIds.includes(id) && config.references.some((reference) => reference.id === id)) referenceIds.push(id);
         }
       }

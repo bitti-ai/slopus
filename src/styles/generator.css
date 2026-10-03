@@ -780,8 +780,7 @@
   margin-top: var(--space-2);
 }
 
-.scene-settings__field textarea,
-.shot-speech > textarea {
+.scene-settings__field textarea {
   width: 100%;
   height: auto;
   min-height: 80px;

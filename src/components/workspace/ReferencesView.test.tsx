@@ -447,6 +447,16 @@ describe("Reference type presets", () => {
 });
 
 describe("Reference library views and selection", () => {
+  it("counts voice references cited only in Speech as usage", () => {
+    const initial = project();
+    initial.references[0] = { ...initial.references[0], kind: "audio", sourcePath: "C:/voice.wav", audio: { startSeconds: 0, durationSeconds: 4 } };
+    initial.generationJobs[0].shots![0].speech = "@[ref:ref-hero] Hello";
+    setup(initial);
+    expect(screen.queryByText("No scenes yet.")).toBeNull();
+    const usage = document.querySelector(".reference-used-by")! as HTMLElement;
+    expect(within(usage).getByRole("button", { name: initial.generationJobs[0].title })).toBeInTheDocument();
+  });
+
   it("does not count stale scene bindings as usage", () => {
     const initial = project();
     initial.generationJobs[0].referenceIds = ["ref-hero"];

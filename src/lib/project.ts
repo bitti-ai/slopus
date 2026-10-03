@@ -429,6 +429,7 @@ export const sceneShotSchema = z.object({
   action: z.string(),
   /** Dialogue is separate from the visual action so the compiler can guarantee
    * that every spoken character lands inside MiniMax H3's `<d>...</d>` syntax.
+   * Reference tokens select voice guidance outside the spoken dialogue.
    * Both fields are optional to preserve projects written before speech UI. */
   speech: z.string().nullish(),
   speechLanguage: speechLanguageSchema.nullish(),
@@ -480,6 +481,11 @@ export function actionReferenceIds(action: string): string[] {
     if (part.kind === "reference" && !seen.includes(part.value)) seen.push(part.value);
   }
   return seen;
+}
+
+/** References in either editable prompt of a shot. */
+export function shotReferenceIds(shot: Pick<SceneShot, "action" | "speech">): string[] {
+  return [...new Set([...actionReferenceIds(shot.action), ...actionReferenceIds(shot.speech ?? "")])];
 }
 
 export const generationJobSchema = z.object({
@@ -911,7 +917,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
   if (job.sceneType === "pose") {
     // Optional guidance is explicit in the prompt. Old bindings and frame
     // anchors belong to other modes and must not redefine the target scene.
-    const cited = sceneShots(job).flatMap((shot) => actionReferenceIds(shot.action));
+    const cited = sceneShots(job).flatMap(shotReferenceIds);
     return references.filter((reference) => reference.id === job.poseVideoReferenceId || cited.includes(reference.id))
       .map((reference) => reference.id === job.poseVideoReferenceId
         ? { ...reference, images: [], refmods: [], video: { startSeconds: 0, durationSeconds: 2, ...reference.video, includeAudio: false } }
@@ -935,7 +941,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
     .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
   // Animate stores its dedicated motion/frame selections in referenceIds.
   // Other scenes take guidance from their current prompts, never stale bindings.
-  const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap((shot) => actionReferenceIds(shot.action));
+  const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
   return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 
@@ -1229,6 +1235,7 @@ interface CompiledShot {
   citedIds: string[];
   tags: ShotTagClauses;
   speech: string | null;
+  voiceNumbers: number[];
   speechLanguage: SpeechLanguage;
 }
 
@@ -1270,6 +1277,15 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       body.push(frame(`<Subject ${number}>`));
       text += `<Subject ${number}>`;
     }
+    // Chips in Speech select voice guidance; they are not spoken words.
+    const speechParts = splitActionText(shot.speech ?? "");
+    const speechText = speechParts.some((part) => part.kind === "reference")
+      ? speechParts.filter((part) => part.kind === "text").map((part) => part.value).join("").trim()
+      : shot.speech ?? "";
+    const voiceNumbers = actionReferenceIds(shot.speech ?? "").flatMap((id) => {
+      const number = audioNumber.get(id);
+      return number ? [number] : [];
+    });
     return {
       index,
       startSeconds: shot.startSeconds,
@@ -1277,7 +1293,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       text,
       citedIds,
       tags: shotTagClauses(shot.settings ?? null),
-      speech: shot.speech?.trim().length ? shot.speech : null,
+      speech: speechText.trim().length ? speechText : null,
+      voiceNumbers,
       speechLanguage: shot.speechLanguage ?? DEFAULT_SPEECH_LANGUAGE,
     };
   });
@@ -1308,18 +1325,23 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
    * outside `<d>`, while only the language marker and the user's exact text are
    * inside. One scene-level speech track means the same (S1) voice is retained
    * across its shots. The pieces stay split so prompt provenance remains honest. */
-  const dialogue = (shot: CompiledShot, separate: boolean): PromptSegment[] => shot.speech === null ? [] : [
-    frame(`${separate ? " " : ""}The scene's speaker (S1) says, <d>[`),
-    tagged(shot.speechLanguage),
-    frame("] "),
-    own(shot.speech),
-    frame("</d>"),
-  ];
+  const dialogue = (shot: CompiledShot, separate: boolean): PromptSegment[] => {
+    const guidance = shot.voiceNumbers.length
+      ? `Use the voice characteristics of ${shot.voiceNumbers.map((number) => `<Audio ${number}>`).join(" and ")} for the scene's speaker (S1).`
+      : "";
+    return [
+      ...(guidance ? [frame(`${separate ? " " : ""}${guidance}`)] : []),
+      ...(shot.speech === null ? [] : [
+        frame(`${separate || guidance ? " " : ""}The scene's speaker (S1) says, <d>[`),
+        tagged(shot.speechLanguage), frame("] "), own(shot.speech), frame("</d>"),
+      ]),
+    ];
+  };
   /* A stop is added when something follows the line — another clause, or
      another shot. A lone untagged shot keeps whatever terminal punctuation the
      user gave it, so every prompt this app has ever produced is unchanged. */
   const stop = (shot: CompiledShot): PromptSegment[] =>
-    shot.tags.clauses.length > 0 || shot.speech !== null || shot.index < compiled.length - 1 ? addedStop(shot.text) : [];
+    shot.tags.clauses.length > 0 || shot.speech !== null || shot.voiceNumbers.length > 0 || shot.index < compiled.length - 1 ? addedStop(shot.text) : [];
 
   const sound = (scene.soundscape ?? "").trim();
   const music = (scene.music ?? "").trim();
@@ -1520,10 +1542,14 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
  *  why, and sending is blocked until they are re-pointed or removed. */
 export function danglingReferenceTokens(shots: readonly SceneShot[], references: ProjectReference[]): string[] {
   const usable = new Set(references.filter(isReferenceUsable).filter((reference) => isVisualReference(reference) || isAudioReference(reference)).map((reference) => reference.id));
+  const sounds = new Set(usableAudioReferences(references).map((reference) => reference.id));
   const missing: string[] = [];
   for (const shot of shots) {
     for (const id of actionReferenceIds(shot.action)) {
       if (!usable.has(id) && !missing.includes(id)) missing.push(id);
+    }
+    for (const id of actionReferenceIds(shot.speech ?? "")) {
+      if (!sounds.has(id) && !missing.includes(id)) missing.push(id);
     }
   }
   return missing;

@@ -2,7 +2,7 @@ import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
-  actionReferenceIds,
+  shotReferenceIds,
   danglingReferenceTokens,
   isAudioReference,
   isReferenceUsable,
@@ -67,7 +67,7 @@ export function referenceOrder(job: GenerationJob, shots: readonly SceneShot[], 
   const boundIds = sceneGenerationReferences({ ...job, shots: [...shots] }, [...references]).map((reference) => reference.id);
   const order = citableReferences(references).filter((reference) => boundIds.includes(reference.id)).map((reference) => reference.id);
   for (const shot of shots) {
-    for (const id of actionReferenceIds(shot.action)) if (!order.includes(id)) order.push(id);
+    for (const id of shotReferenceIds(shot)) if (!order.includes(id)) order.push(id);
   }
   return order;
 }
@@ -188,15 +188,17 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 
     {!promptOnly && <div className="shot-speech">
       <label className="shot-card__sublabel" htmlFor={`shot-speech-${shot.id}`}>Speech</label>
-      <textarea
+      <PromptTextField
         id={`shot-speech-${shot.id}`}
-        className="text-field"
         value={shot.speech ?? ""}
+        references={pickable.filter((reference) => referenceById.get(reference.id)?.kind === "audio")}
+        referenceButtonLabel="Voice reference"
+        missingLabel={(referenceId) => referenceById.get(referenceId)?.name ?? "Deleted reference"}
+        missingTooltip="Speech references must be sound clips — click to replace or remove"
         disabled={disabled}
         aria-label={`Speech for shot ${shotNumber}`}
         placeholder="Words spoken in this shot"
-        data-tooltip="Added to the prompt as MiniMax dialogue"
-        onChange={(event) => onChange({ speech: event.target.value || null })}
+        onChange={(speech) => onChange({ speech: speech || null })}
       />
       <PropRow label="Language" htmlFor={`shot-language-${shot.id}`}>
         <ComboBox
