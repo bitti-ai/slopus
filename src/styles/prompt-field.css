@@ -76,9 +76,9 @@
 
 /* Match the platform's selection colors, including in high-contrast mode. */
 .prompt-chip.prompt-chip--selected {
-  color: HighlightText;
-  background: Highlight;
-  border-color: Highlight;
+  color: var(--selection-text);
+  background: var(--selection-bg);
+  border-color: var(--selection-bg);
   opacity: 1;
 }
 

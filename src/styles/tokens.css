@@ -72,6 +72,10 @@
 :root {
   color-scheme: dark;
 
+  /* Match native text selection, including the OS high-contrast palette. */
+  --selection-text: HighlightText;
+  --selection-bg: Highlight;
+
   /* --- Font families ------------------------------------------------------
      The Windows system faces. Nothing is self-hosted any more: Segoe UI
      Variable and Cascadia Mono ship with Windows 11, which is the only
