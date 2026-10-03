@@ -32,6 +32,38 @@ function setup(initial = parseProjectConfig(fixture)) {
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
 
+it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.png"])("opens %s for editing after measuring its preview and preserves the original", async (relativePath) => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue("blob:imported");
+  vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "imported", name: "Imported", kind: "image", relativePath, mimeType: "image/png", createdAt: initial.createdAt }];
+  const current = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
+  const preview = await waitFor(() => {
+    const element = document.querySelector<HTMLImageElement>(".image-frame img");
+    expect(element).not.toBeNull();
+    return element!;
+  });
+  Object.defineProperties(preview, { naturalWidth: { value: 640 }, naturalHeight: { value: 480 } });
+  fireEvent.load(preview);
+  expect(current().imageScene).toMatchObject({ rootType: "image", outputAssetId: "imported", sourceImage: { relativePath, width: 640, height: 480 } });
+  expect(current().assets).toHaveLength(1);
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
+  typePrompt(screen.getByLabelText("Edit prompt"), "Make the sky pink");
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 640, height: 480 });
+  expect(current().assets[0]).toMatchObject({ id: "imported", relativePath, width: 640, height: 480 });
+  expect(current().assets[0].imageGeneration).toBeUndefined();
+  expect(current().assets[1]).toMatchObject({ imageDraft: true, parentAssetId: "imported" });
+  const draftId = current().assets[1].id;
+  fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
+  expect(current().imageScene?.outputAssetId).toBe("imported");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
+  expect(current().imageScene?.outputAssetId).toBe(draftId);
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the sky pink");
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+});
+
 it.each(["Create Scene", "Create Reference"])("%s uses the right-clicked image without changing the viewed image", (action) => {
   const initial = parseProjectConfig(fixture);
   initial.assets = ["Viewed", "Chosen"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.png`, mimeType: "image/png", createdAt: initial.createdAt }));

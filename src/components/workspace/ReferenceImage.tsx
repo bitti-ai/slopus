@@ -22,7 +22,7 @@ const mimeFor = (path: string) => {
   }
 };
 
-export function ReferenceImage({ folderPath, relativePath, sourcePath = null, alt, className = "" }: {
+export function ReferenceImage({ folderPath, relativePath, sourcePath = null, alt, className = "", onMeasured }: {
   folderPath: string;
   /** Set for a file copied into the project. */
   relativePath?: string | null;
@@ -30,6 +30,7 @@ export function ReferenceImage({ folderPath, relativePath, sourcePath = null, al
   sourcePath?: string | null;
   alt: string;
   className?: string;
+  onMeasured?: (size: { width: number; height: number }) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -59,7 +60,10 @@ export function ReferenceImage({ folderPath, relativePath, sourcePath = null, al
   }, [folderPath, relativePath, sourcePath]);
 
   if (url) {
-    return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
+    return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} onLoad={(event) => {
+      const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+      if (width && height) onMeasured?.({ width, height });
+    }} />;
   }
   /* Two different states, said plainly rather than with one ambiguous
      placeholder: still loading, or the file is not where the project says. */

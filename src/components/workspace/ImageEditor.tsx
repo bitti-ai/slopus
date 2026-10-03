@@ -193,8 +193,16 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const selectImage = (id: string) => {
     resetImageEditing(id);
-    onChange((current) => restoreGeneratedImage(current, id));
+    attempt(() => onChange((current) => restoreGeneratedImage(current, id)));
   };
+  const measureImportedImage = (id: string, size: { width: number; height: number }) => attempt(() => {
+    onChange((current) => {
+      const asset = current.assets.find((item) => item.id === id);
+      if (!asset?.relativePath || asset.imageGeneration || current.imageScene?.outputAssetId !== id || current.imageScene.rootType === "image") return current;
+      const next = { ...current, assets: current.assets.map((item) => item.id === id ? { ...item, ...size } : item) };
+      return restoreGeneratedImage(next, id);
+    });
+  });
   const createFromImage = (id: string, asScene: boolean) => {
     const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
     if (!asset || (!asset.relativePath && !asset.sourcePath)) return;
@@ -507,7 +515,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         if (source) replaceScene(createImageEditScene(source, scene));
       }) },
       ...(imageMenu.id ? [
-        { label: "Edit", icon: <Edit16 />, separator: true, action: () => attempt(() => config.assets.find((asset) => asset.id === imageMenu.id)?.imageDraft ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
+        { label: "Edit", icon: <Edit16 />, separator: true, action: () => attempt(() => menuImage?.imageDraft || !menuImage?.width || !menuImage?.height ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
         { label: "Create Scene", icon: <Film16 />, separator: true, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, true)) },
         { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },
         { label: "Remove", icon: <Delete16 />, danger: true,
@@ -589,7 +597,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
+        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;

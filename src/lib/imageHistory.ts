@@ -1,4 +1,4 @@
-import { createImageEditScene, createImageScene, imageSceneReferenceIds, imageScenePromptText } from "./imageScene";
+import { createImageEditScene, createImageScene, imageSceneReferenceIds, imageScenePromptText, imageSourceSchema } from "./imageScene";
 import { actionReferenceIds, type ImageGenerationSnapshot, type ProjectAsset, type ProjectConfig } from "./project";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
@@ -92,6 +92,11 @@ export function restoreGeneratedImage(config: ProjectConfig, id: string): Projec
   const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
   if (!asset) return config;
   const snapshot = asset.imageGeneration;
+  const source = !snapshot && imageSourceSchema.safeParse(asset);
+  if (source && source.success) {
+    return { ...config, thumbnail: asset.relativePath ?? null,
+      imageScene: { ...createImageEditScene(source.data, config.imageScene ?? undefined), outputAssetId: id } };
+  }
   if (!snapshot) return { ...config, thumbnail: asset.relativePath ?? null,
     imageScene: { ...(config.imageScene?.rootType === "image" ? createImageScene() : config.imageScene ?? createImageScene(config.brief.prompt)), outputAssetId: id } };
   const restored = structuredClone(snapshot);

@@ -1,6 +1,7 @@
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import type { ProjectConfig, ProjectRecord } from "./project";
 import { saveImageDraft } from "./imageHistory";
+import { addReferenceImageAssets } from "./referenceImageAssets";
 import { createUndoStack, type UndoStack } from "./undo";
 
 export type ProjectUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
@@ -102,7 +103,7 @@ export class ProjectSession {
 
   /** A change the person made: recorded for undo. Same `key` within 500ms = one step. */
   edit = (next: ProjectUpdate, key = "edit") => {
-    const config = saveImageDraft(typeof next === "function" ? next(this.state.config) : next);
+    const config = saveImageDraft(addReferenceImageAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config.references));
     if (config === this.state.config) return;
     this.history.record({ config: this.state.config, mark: this.backgroundSeq }, key);
     this.apply(config, true);

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { addReferenceImageAssets } from "./referenceImageAssets";
 import {
   createProjectConfig,
   parseProjectConfig,
@@ -245,6 +246,8 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
     });
     if (!value) return null;
     const record = { ...value, config: parseProjectConfig(value.config) };
+    const withImages = addReferenceImageAssets(record.config);
+    if (withImages !== record.config) return saveProject({ ...record, config: withImages });
     rememberPath(record.folderPath);
     return record;
   }
