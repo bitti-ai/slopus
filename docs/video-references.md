@@ -105,3 +105,23 @@ Prepared native handles exist only during queued work. Completion, failure,
 and cancellation release them; handles and decoded media are never written
 into project JSON. Old DLLs fail with an explicit update message when their
 video-reference symbols are absent.
+
+## Sound references
+
+A reference can instead hold one sound file (MP3, M4A, AAC, WAV, FLAC or Ogg).
+The inspector selects a 2 to 15 second range. Sound references need a Ref2VA
+generator, at most three per scene totalling 15 seconds, and an image, video,
+refmod or continued scene alongside them, because SlopFab refuses standalone
+audio otherwise. Animate, Extend, Bridge and still images reject them.
+
+The webview decodes the file, folds surround to stereo, trims the range and
+sends interleaved float32 PCM through `create_reference_audio` (or the worker's
+`/v1/reference-audios` route). Prepared sounds are released with the job's
+video handles. SlopFab adds them with `slopfab_request_add_reference_audio_f32`
+after every video and resamples to 32 kHz itself.
+
+Shots cite a sound as `<Audio N>`. SlopFab numbers video soundtracks and
+standalone sounds with one counter in insertion order, so enabled soundtracks
+take the low numbers and standalone sounds follow. The prompt defines each
+sound with the user's description and marks it as a `reference`, not a copy,
+in `retention_analysis`.
