@@ -32,7 +32,7 @@ export function ReferenceIconGenerationDialog({ count, onAnswer, builtins = fals
         checked={remember}
         onChange={setRemember}
         label="Don't ask again"
-        description={builtins ? "Remember the answer when you open Add a reference." : "Start turns on automatic generation; Cancel turns it off."}
+        description={builtins ? "Remember the answer when you open Add reference." : "Start turns on automatic generation; Cancel turns it off."}
       />
     </ContentDialog>
   );

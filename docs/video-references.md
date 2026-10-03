@@ -47,7 +47,7 @@ it does not resolve or validate the remaining conditioning/transformer failure.
 
 ## Adding video references
 
-In **References**, choose **Add a reference → Other → New** to create an
+In **References**, choose **Add reference → Other → New** to create an
 **Uncategorized** reference, then choose **Add file** in its details. Video
 can also be attached to an existing reference. The reference card shows the
 video's first source frame, including after reopening the project; replacing

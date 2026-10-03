@@ -452,7 +452,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
           <CommandBarButton icon={view === "details" ? <ListView16Filled /> : <ListView16 />} label="Details" pressed={view === "details"} onClick={() => chooseView("details")} />
         </>}
       >
-        <CommandBarButton icon={<Add16 />} label="Add a reference" tooltip="Add reference" showLabel onClick={openNewReference} />
+        <CommandBarButton icon={<Add16 />} label="Add reference" tooltip="Add reference" showLabel onClick={openNewReference} />
         <CommandBarSeparator />
         <CommandBarButton icon={<ImageAdd16 />} label="Add file" showLabel disabled={!selected || importingFiles || hasRefmods || selection.length > 1} onClick={() => void addFiles()} />
         <CommandBarButton icon={<Delete16 />} label="Delete" shortcut="Delete" disabled={!selection.length} onClick={() => remove()} />
@@ -707,7 +707,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       }
     }} />}
     {presetDialog && builtinConfirmationCount === 0 && <ContentDialog
-      title="Add a reference"
+      title="Add reference"
       className="reference-preset-dialog"
       width={920}
       primaryText="New"

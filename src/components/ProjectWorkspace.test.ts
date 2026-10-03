@@ -552,8 +552,8 @@ describe("project workspace timecode", () => {
     const onChange = vi.fn();
     await asDesktopApp([{ kind: "image", name: "IMG_4821", relativePath: "references/IMG_4821.jpg" }], async () => {
       const view = render(createElement(ReferencesView, { config, folderPath: "C:\\Ceramic Lamp", onChange }));
-      fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
-      const dialog = screen.getByRole("dialog", { name: "Add a reference" });
+      fireEvent.click(screen.getByRole("button", { name: /Add reference/ }));
+      const dialog = screen.getByRole("dialog", { name: "Add reference" });
       fireEvent.click(within(dialog).getByRole("button", { name: "Product" }));
       fireEvent.click(within(dialog).getByRole("button", { name: "New" }));
       const withReference = onChange.mock.calls[0][0];
@@ -604,7 +604,7 @@ describe("project workspace timecode", () => {
     const view = container.querySelector(".references-view")!;
     expect(Array.from(view.children).map((element) => element.className.split(" ")[0])).toEqual(["references-main", "ui-splitter", "reference-inspector"]);
     expect(container.querySelector(".references-heading__actions")).toBeNull();
-    expect(screen.getByRole("button", { name: /Add a reference/ })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Add reference/ })).not.toBeNull();
     expect(container.querySelector(".reference-inspector__scroll")).not.toBeNull();
     expect(container.querySelector(".reference-layout")).toBeNull();
     expect(container.querySelector(".reference-library__toolbar")).toBeNull();

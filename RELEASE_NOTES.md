@@ -23,7 +23,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 - Removed box coordinates and palettes from image prompts, and limited image controls to supported generator model types.
 - Improved image family deletion so removing a variant preserves its original. Selected image boxes can also be deleted from the canvas.
 - Long prompts scroll inside their fields. Smart chips align with surrounding text and no longer overlap on adjacent lines.
-- Moved the Add a reference scrollbar clear of reference cards, and made the image bar scrollbar appear while scrolling.
+- Moved the Add reference scrollbar clear of reference cards, and made the image bar scrollbar appear while scrolling.
 - Agent-generated shots use full language names, such as English.
 - Removed the opening-frame helper caption and made the release-note introduction render as normal text.
 - Updated the bundled SlopFab runtime to API 1.16 and adapted LoRA preparation to preserve companion-grid downloads for older adapters.

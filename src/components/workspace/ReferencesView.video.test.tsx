@@ -126,8 +126,8 @@ it("imports a video, edits its saved trim and soundtrack, then removes its attac
   }
   render(<Harness />);
   expect(screen.queryByRole("button", { name: "Import video" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
-  const picker = screen.getByRole("dialog", { name: "Add a reference" });
+  fireEvent.click(screen.getByRole("button", { name: /Add reference/ }));
+  const picker = screen.getByRole("dialog", { name: "Add reference" });
   fireEvent.click(within(picker).getByRole("button", { name: "Other" }));
   expect(within(picker).queryByRole("textbox")).not.toBeInTheDocument();
   expect(within(picker).queryByRole("group")).not.toBeInTheDocument();
