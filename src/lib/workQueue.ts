@@ -20,6 +20,7 @@ import { remoteWorkerSelected } from "./workers";
 import { purgeTimelineThumbnails } from "./timelineThumbnails";
 import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
+import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
@@ -293,6 +294,10 @@ export class WorkQueue {
             work.request.referenceVideoIds = await prepareReferenceVideos(next.folderPath, work.request, work.config,
               () => work.cancelled, (detail) => this.patch(work.id, { detail }));
           }
+          if (work.request.referenceAudios?.length) {
+            work.request.referenceAudioIds = await prepareReferenceAudios(next.folderPath, work.request,
+              () => work.cancelled, (detail) => this.patch(work.id, { detail }));
+          }
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
@@ -307,6 +312,9 @@ export class WorkQueue {
           await releaseReferenceVideos(work.request.referenceVideoIds ?? []).catch((reason) =>
             writeDiagnostic("error", "work-queue", "references.release_failed", describeDiagnosticError(reason), { workId: work.id }));
           delete work.request.referenceVideoIds;
+          await releaseReferenceAudios(work.request.referenceAudioIds ?? []).catch((reason) =>
+            writeDiagnostic("error", "work-queue", "references.release_failed", describeDiagnosticError(reason), { workId: work.id }));
+          delete work.request.referenceAudioIds;
         }
       }
     } finally { this.pumping = false; }

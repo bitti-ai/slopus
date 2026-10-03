@@ -1,9 +1,10 @@
-import { Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
+import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
 import {
   actionReferenceIds,
   danglingReferenceTokens,
+  isAudioReference,
   isReferenceUsable,
   isVisualReference,
   isVideoReference,
@@ -51,7 +52,7 @@ const seconds = (value: number): string => `${value.toFixed(1)}s`;
 /** Everything that COULD be cited: the same filter pair the compiler applies,
  *  over the whole project. See the lockstep note on `usableImageReferences`. */
 export const citableReferences = (references: readonly ProjectReference[]): ProjectReference[] =>
-  references.filter((reference) => isReferenceUsable(reference) && isVisualReference(reference));
+  references.filter((reference) => isReferenceUsable(reference) && (isVisualReference(reference) || isAudioReference(reference)));
 
 /** The reference ids of a scene in the order it NUMBERS them, which is the
  *  order the compiler numbers them in: project order, filtered by what this
@@ -130,7 +131,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
     const number = numbered.findIndex((item) => item.id === reference.id) + 1;
     return {
       id: reference.id, name: reference.name, detail: `${number > 0 ? `Reference ${number}` : "Not in this scene yet"} · ${referenceTypeLabel(reference)}`,
-      icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={isVideoReference(reference) ? <Video16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
+      icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={isVideoReference(reference) ? <Video16 /> : reference.kind === "audio" ? <Audio16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
     };
   }), [citable, numbered, folderPath]);
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);

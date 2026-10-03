@@ -1,7 +1,7 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableVideoReferences, type SceneType } from "../../lib/project";
+import { audioReferenceBlocker, characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableAudioReferences, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
@@ -361,6 +361,11 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         startSeconds: reference.video?.startSeconds ?? 0,
         durationSeconds: reference.video?.durationSeconds ?? 2,
         includeAudio: isVideoTransition(job) ? false : reference.video?.includeAudio ?? true,
+      })),
+      referenceAudios: usableAudioReferences(bound).map((reference) => ({
+        name: reference.name, relativePath: reference.relativePath, sourcePath: reference.sourcePath,
+        startSeconds: reference.audio?.startSeconds ?? 0,
+        durationSeconds: reference.audio?.durationSeconds ?? 15,
       })),
     };
   };
@@ -736,6 +741,10 @@ function sendBlocker(job: GenerationJob, references: ProjectReference[]): string
     if (job.usePreviousSceneLastFrame || bound.some((reference) => reference.refmods?.some((refmod) => refmod.strength > 0))) {
       return "Animate can’t continue a scene or use refmods.";
     }
+    if (usableAudioReferences(bound).length) return "Animate can’t use sound references.";
+  } else {
+    const blocker = audioReferenceBlocker(job, sceneGenerationReferences(job, references));
+    if (blocker) return blocker;
   }
   if (!animate && !characterReplace && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
     return "Write a description or speech in at least one shot.";

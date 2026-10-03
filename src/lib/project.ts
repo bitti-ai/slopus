@@ -332,6 +332,10 @@ export const projectReferenceSchema = z.object({
     durationSeconds: z.number().finite().min(2).max(15),
     includeAudio: z.boolean(),
   }).optional(),
+  audio: z.object({
+    startSeconds: z.number().finite().min(0),
+    durationSeconds: z.number().finite().min(2).max(15),
+  }).optional(),
   intendedUse: z.array(z.enum(["character", "animal", "clothing", "accessory", "product", "location", "style", "audio"])).default([]),
   subcategory: z.string().optional(),
   // Generated library artwork is not an image conditioning attachment.
@@ -341,6 +345,9 @@ export const projectReferenceSchema = z.object({
   checkOneLocation(reference, context, `Reference '${reference.id}'`);
   if (reference.video && reference.kind !== "video") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["video"], message: "Clip settings require a video reference." });
+  }
+  if (reference.audio && reference.kind !== "audio") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["audio"], message: "Sound settings require a sound reference." });
   }
   const imageIds = new Set<string>();
   const refmodIds = new Set<string>();
@@ -732,7 +739,12 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  An image qualifies on its file alone: it can be sent to the engine and cited
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
-  return referenceImages(reference).length > 0 || (isVideoReference(reference) && Boolean(reference.sourcePath || reference.relativePath)) || activeReferenceRefmods(reference).length > 0 || isReferenceDescribed(reference);
+  return referenceImages(reference).length > 0 || (isVideoReference(reference) && Boolean(reference.sourcePath || reference.relativePath)) || isAudioReference(reference) || activeReferenceRefmods(reference).length > 0 || isReferenceDescribed(reference);
+}
+
+/** A standalone sound file. It is cited as <Audio N>, never as a subject. */
+export function isAudioReference(reference: ProjectReference): boolean {
+  return reference.kind === "audio" && Boolean(reference.sourcePath || reference.relativePath);
 }
 
 export const activeReferenceRefmods = (reference: ProjectReference): ProjectReferenceRefmod[] =>
@@ -758,13 +770,15 @@ export const referenceRefmodInputs = (folderPath: string, references: ProjectRef
  *  no tag at all, is visible content as before. */
 /** The kind a picker names a reference by. A refmod reference steers the
  *  model with its encoded conditioning, whatever else it holds. */
-export function referenceTypeLabel(reference: ProjectReference): "Refmod" | "Video" | "Image" | "Text" {
+export function referenceTypeLabel(reference: ProjectReference): "Refmod" | "Video" | "Audio" | "Image" | "Text" {
   if (reference.refmods?.length) return "Refmod";
   if (isVideoReference(reference)) return "Video";
+  if (reference.kind === "audio") return "Audio";
   return reference.kind === "image" || referenceImages(reference).length ? "Image" : "Text";
 }
 
 export function isVisualReference(reference: ProjectReference): boolean {
+  if (reference.kind === "audio") return false;
   return reference.kind === "video" || reference.intendedUse.length === 0 || reference.intendedUse.some((use) => use !== "audio");
 }
 
@@ -863,6 +877,31 @@ export function usableReferenceImages(references: ProjectReference[]): ProjectRe
 /** Video numbering is independent of pictures and follows native insertion order. */
 export function usableVideoReferences(references: ProjectReference[]): ProjectReference[] {
   return references.filter((reference) => isVideoReference(reference) && Boolean(reference.sourcePath || reference.relativePath)).filter(isVisualReference);
+}
+
+/** Standalone sounds, in the order SlopFab receives them: after every video. */
+export function usableAudioReferences(references: ProjectReference[]): ProjectReference[] {
+  return references.filter(isAudioReference);
+}
+
+/** SlopFab gives video soundtracks and standalone sounds one shared <Audio N>
+ * counter in insertion order. Videos are attached first, so their enabled
+ * soundtracks take the low numbers and standalone sounds follow. */
+export function referenceAudioNumbers(references: ProjectReference[], soundtracks = true): Map<string, number> {
+  const tracks = soundtracks ? usableVideoReferences(references).filter((reference) => reference.video?.includeAudio ?? true).length : 0;
+  return new Map(usableAudioReferences(references).map((reference, index) => [reference.id, tracks + index + 1]));
+}
+
+/** Standalone sounds condition the target audio only alongside a picture,
+ * a video, a refmod or a continued scene; SlopFab refuses them otherwise. */
+export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReference[]): string | null {
+  const sounds = usableAudioReferences(bound);
+  if (!sounds.length) return null;
+  if (sounds.length > 3) return "Use at most three sound references per scene.";
+  if (sounds.reduce((total, reference) => total + (reference.audio?.durationSeconds ?? 15), 0) > 15) return "Sound references must total no more than 15 seconds. Shorten them in References.";
+  const anchored = usableReferenceImages(bound).length > 0 || usableVideoReferences(bound).length > 0
+    || bound.some((reference) => activeReferenceRefmods(reference).length > 0) || Boolean(job.usePreviousSceneLastFrame);
+  return anchored ? null : "Sound references need an image or video reference in the same scene.";
 }
 
 /** Opening and closing pictures come first, then bound references in project
@@ -1003,6 +1042,7 @@ export interface SceneGenerationInput {
   canvasHeight: number;
   referencePaths: readonly string[];
   referenceVideos?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }[];
+  referenceAudios?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds: number }[];
   refmods?: readonly { path: string; strength: number; copies: number }[];
   previousSceneId?: string;
   continuationRelativePath?: string;
@@ -1028,6 +1068,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
     ...(input.referenceVideos?.length ? { referenceVideos: input.referenceVideos } : {}),
+    ...(input.referenceAudios?.length ? { referenceAudios: input.referenceAudios } : {}),
     ...(input.refmods?.length ? { refmods: input.refmods } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
@@ -1198,6 +1239,8 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const endFrame = references.find((reference) => reference.id === scene.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference)) ?? null;
   const usable = references.filter(isReferenceUsable).filter(isVisualReference).filter((reference) => reference.id !== startFrame?.id && reference.id !== endFrame?.id);
   const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
+  const sounds = usableAudioReferences(references);
+  const audioNumber = referenceAudioNumbers(references, !scene.videoTransition);
 
   const compiled: CompiledShot[] = shots.map((shot, index) => {
     const body: PromptSegment[] = [];
@@ -1212,6 +1255,12 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       // A token whose reference is gone, undescribed or tagged as sound only
       // has no <Subject N> to become. It is left out rather than guessed at,
       // and the editor says so in words above the field — see `danglingTokens`.
+      const sound = audioNumber.get(part.value);
+      if (sound) {
+        body.push(frame(`<Audio ${sound}>`));
+        text += `<Audio ${sound}>`;
+        continue;
+      }
       const number = subjectNumber.get(part.value);
       if (!number) continue;
       if (!citedIds.includes(part.value)) citedIds.push(part.value);
@@ -1274,7 +1323,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
   const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
 
-  if (usable.length === 0 && !startFrame && !endFrame) {
+  if (usable.length === 0 && sounds.length === 0 && !startFrame && !endFrame) {
     // T2VA — base guide §2.2 field list and order.
     return [
       frame("integrated_multimodal_description: "),
@@ -1319,7 +1368,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // present an app-generated string to the model as the user's own words.
   // An image with no definition still belongs in the prompt — the picture is
   // real payload — so it is cited without any claim about what it contains.
-  const definitions = usable.flatMap((reference, index): PromptSegment[] => {
+  const subjectDefinitions = usable.flatMap((reference, index): PromptSegment[] => {
     const detail = referenceDefinition(reference).replace(/\s+/g, " ");
     const pictures = pictureNumbers.get(reference.id) ?? [];
     const video = videoNumbers.get(reference.id);
@@ -1338,6 +1387,16 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),
     ];
   });
+  // Ref guide §2.4: a sound is its own <Audio N> item, defined by its role.
+  // Only the user knows that role, so without a description the line says no
+  // more than that the clip exists.
+  const audioDefinitions = sounds.flatMap((reference, index): PromptSegment[] => {
+    const detail = referenceDefinition(reference).replace(/\s+/g, " ");
+    const label = `<Audio ${audioNumber.get(reference.id)}>`;
+    const lead = usable.length + index === 0 ? "" : "\n";
+    return detail ? [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)] : [frame(`${lead}${label} is a reference audio clip.`)];
+  });
+  const definitions = [...subjectDefinitions, ...audioDefinitions];
   const startPicture = startFrame ? pictureNumbers.get(startFrame.id)?.[0] ?? null : null;
   const endPicture = endFrame ? pictureNumbers.get(endFrame.id)?.[0] ?? null : null;
   const startDefinition = startPicture
@@ -1365,9 +1424,11 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // §3: task-type prefix. Subject references provide generation guidance; an
   // optional opening picture additionally anchors the first frame. The summary
   // reuses existing labels only and carries the user's lines through in order.
+  // §3: a sound that is referenced rather than copied adds `audio reference`.
+  const audioTask = sounds.length ? " + audio reference" : "";
   const summary: PromptSegment[] = [
     frame(scene.videoTransition === "extend" ? "[video continuation] Continue from the final frame of <Video 1>. "
-      : scene.videoTransition === "bridge" ? "[video continuation + reference generation] Generate the missing segment after <Video 1> and before <Video 2>. " : "[reference generation] "),
+      : scene.videoTransition === "bridge" ? "[video continuation + reference generation] Generate the missing segment after <Video 1> and before <Video 2>. " : `[reference generation${audioTask}] `),
     ...(poseDirection ? [frame(poseDirection)] : []),
     ...compiled.flatMap((shot) => [
       ...(shot.index === 0 ? [] : [frame(" ")]),
@@ -1396,6 +1457,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const where = appearances.length > 0 ? ` (appears in ${appearances.join(", ")})` : "";
     return `${referenceLabel(reference, index)}${where}: fully_preserved - the referenced characteristics are retained.`;
   });
+  // §4.2: `reference`, not a copy marker. The clip guides the target sound;
+  // copying a signal 1:1 would need the user to say which layer and where.
+  retention.push(...sounds.map((reference) => `<Audio ${audioNumber.get(reference.id)}>: reference - its audible characteristics guide the target audio without copying the original signal.`));
   if (startPicture) retention.unshift(`<Picture ${startPicture}>: first_frame - used as the opening frame.`);
   if (endPicture) retention.push(`<Picture ${endPicture}>: last_frame - used as the closing frame.`);
 
@@ -1452,7 +1516,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
  *  left OUT of the compiled prompt, so the editor has to say which ones and
  *  why, and sending is blocked until they are re-pointed or removed. */
 export function danglingReferenceTokens(shots: readonly SceneShot[], references: ProjectReference[]): string[] {
-  const usable = new Set(references.filter(isReferenceUsable).filter(isVisualReference).map((reference) => reference.id));
+  const usable = new Set(references.filter(isReferenceUsable).filter((reference) => isVisualReference(reference) || isAudioReference(reference)).map((reference) => reference.id));
   const missing: string[] = [];
   for (const shot of shots) {
     for (const id of actionReferenceIds(shot.action)) {
