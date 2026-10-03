@@ -249,6 +249,7 @@ describe("Reference type presets", () => {
     expect(state.latest().references).toHaveLength(1);
     expect(within(dialog).queryByRole("button", { name: "Text" })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Image" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Other" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Character" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(within(dialog).getByRole("button", { name: "New" }));
     expect(state.latest().references[0]).toMatchObject({ name: "New character", description: "", intendedUse: ["character"] });

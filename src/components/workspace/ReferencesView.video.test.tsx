@@ -126,14 +126,9 @@ it("imports a video, edits its saved trim and soundtrack, then removes its attac
   }
   render(<Harness />);
   expect(screen.queryByRole("button", { name: "Import video" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /Add reference/ }));
-  const picker = screen.getByRole("dialog", { name: "Add reference" });
-  fireEvent.click(within(picker).getByRole("button", { name: "Other" }));
-  expect(within(picker).queryByRole("textbox")).not.toBeInTheDocument();
-  expect(within(picker).queryByRole("group")).not.toBeInTheDocument();
-  expect(within(picker).queryByText("No options match that search.")).not.toBeInTheDocument();
-  fireEvent.click(within(picker).getByRole("button", { name: "New" }));
-  expect(latest.references[0]).toMatchObject({ name: "Uncategorized", kind: "text", intendedUse: [] });
+  fireEvent.click(screen.getByRole("button", { name: "Add Empty" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(latest.references[0]).toMatchObject({ name: "Uncategorized", kind: "text", description: "", intendedUse: [] });
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
   fireEvent.click(await screen.findByRole("button", { name: "Edit video clip" }));
   const preview = await screen.findByLabelText("Uncategorized video preview");

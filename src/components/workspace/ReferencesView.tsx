@@ -41,10 +41,6 @@ import {
 } from "../ui";
 import { isMenuKey } from "./SceneBoard";
 
-const PICKER_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
-  ...REFERENCE_TYPES, { id: "custom", label: "Other" },
-];
-
 /** What a reference IS, in a word. This replaced the file path in both places
  *  it used to be printed: a path is a fact about the disk, not about the
  *  reference, and neither the card nor the inspector does anything with it. */
@@ -109,7 +105,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   useEffect(() => {
     if (onGenerateBuiltinIcons && isTauri()) void refreshBuiltinIcons().catch((reason) => setIconError(String(reason)));
   }, [folderPath, Boolean(onGenerateBuiltinIcons)]);
-  const [pickerType, setPickerType] = useState<ReferenceType>("character");
+  const [pickerType, setPickerType] = useState<PresetReferenceType>("character");
   const [pickerSubcategory, setPickerSubcategory] = useState("all");
   const [presetSearch, setPresetSearch] = useState("");
   const [view, setView] = useState<LibraryView>(readView);
@@ -299,7 +295,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     finally { setImportingFiles(false); }
   };
   const createEmptyReference = () => {
-    addTextReference(pickerType === "custom" ? "Uncategorized" : `New ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`, "", pickerType, pickerSubcategory === "all" ? "" : pickerSubcategory);
+    addTextReference(`New ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`, "", pickerType, pickerSubcategory === "all" ? "" : pickerSubcategory);
     setPresetDialog(false);
   };
   const choosePreset = (preset: ReferencePreset) => {
@@ -453,6 +449,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
         </>}
       >
         <CommandBarButton icon={<Add16 />} label="Add reference" tooltip="Add reference" showLabel onClick={openNewReference} />
+        <CommandBarButton icon={<TextFile16 />} label="Add Empty" showLabel onClick={() => addTextReference("Uncategorized", "", "custom")} />
         <CommandBarSeparator />
         <CommandBarButton icon={<ImageAdd16 />} label="Add file" showLabel disabled={!selected || importingFiles || hasRefmods || selection.length > 1} onClick={() => void addFiles()} />
         <CommandBarButton icon={<Delete16 />} label="Delete" shortcut="Delete" disabled={!selection.length} onClick={() => remove()} />
@@ -718,10 +715,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       <p className="reference-preset-dialog__lead">Choose a preset, or start a new reference and add a prompt, images or video.</p>
       <div className="reference-preset-dialog__body">
         <nav aria-label="Reference types">
-          {PICKER_TYPES.map((type) => <button key={type.id} type="button" className={pickerType === type.id ? "active" : ""} aria-pressed={pickerType === type.id} onClick={() => { setPickerType(type.id); setPickerSubcategory("all"); setPresetSearch(""); }}>{type.label}</button>)}
+          {REFERENCE_TYPES.map((type) => <button key={type.id} type="button" className={pickerType === type.id ? "active" : ""} aria-pressed={pickerType === type.id} onClick={() => { setPickerType(type.id); setPickerSubcategory("all"); setPresetSearch(""); }}>{type.label}</button>)}
         </nav>
         <section>
-          {pickerType !== "custom" && <>
             <label className="reference-preset-search"><Search16 aria-hidden="true" /><input value={presetSearch} onChange={(event) => setPresetSearch(event.target.value)} placeholder={`Search ${referenceTypeLabel(pickerType).toLocaleLowerCase()}`} aria-label="Search reference options" /></label>
             <SelectorBar
               className="reference-subcategories"
@@ -744,8 +740,6 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               </div>)}
               {visiblePresets.length === 0 && <p>No results for “{presetSearch.trim()}”.</p>}
             </div>
-          </>}
-          {pickerType === "custom" && <p className="reference-preset-dialog__lead">Start an uncategorized reference with New.</p>}
         </section>
       </div>
     </ContentDialog>}
