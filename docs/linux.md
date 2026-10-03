@@ -47,17 +47,32 @@ the system linker does not.
 
 ## WebKitGTK
 
-Tauri uses WebKitGTK on Linux. Unlike WebView2, it ships WebCodecs and WebGPU
-behind runtime feature flags. `src-tauri/src/linux_webview.rs` turns them on
-(`WebCodecsVideoEnabled`, `WebCodecsAudioEnabled`, `WebCodecsAV1Enabled`,
-`WebGPUEnabled`) with GPU compositing and WebGL, and reloads the page once so
-the first document has them. The feature API needs WebKitGTK 2.42 or later; it is
-looked up at run time, so older versions still start and the diagnostic log
-names the missing features.
+Tauri uses WebKitGTK on Linux. Unlike WebView2, it ships WebGPU switched off
+(WebKitGTK 2.52 has WebCodecs on, but older releases do not), so
+`src-tauri/src/linux_webview.rs` turns on the `WebCodecsVideo`,
+`WebCodecsAudio`, `WebCodecsAV1` and `WebGPU` feature flags, with GPU
+compositing and WebGL, and reloads the page once so the first document has
+them. The feature API needs WebKitGTK 2.42 or later; it is looked up at run
+time, so older versions still start. The diagnostic log records the result
+(`app webview`, listing every GPU and codec flag when one is missing), and the
+frontend's `webview ready` entry records whether `VideoDecoder`,
+`VideoEncoder`, `AudioDecoder` and `navigator.gpu` exist.
 
 WebKitGTK decodes and encodes through GStreamer. The .deb and .rpm depend on the
-base, good and bad plugin sets; `gstreamer1.0-libav` is recommended for H.264
-on systems without a hardware VA-API decoder. The AppImage bundles GStreamer.
+system's base, good and bad plugin sets (which include VA-API and NVIDIA
+hardware codecs) and recommend `gstreamer1.0-libav`, which the user's
+distribution provides.
+
+The AppImage bundles GStreamer, but only an allowlist of plugins:
+`scripts/linux/linuxdeploy-plugin-gstreamer.sh` replaces the plugin the Tauri
+CLI would download, which copies every plugin on the build machine, FFmpeg
+(gst-libav) and GPL encoders included. Hardware H.264/HEVC/AV1 goes through
+VA-API and NVIDIA's driver (`va`, `nvcodec`); VP8/VP9/AV1/Opus have software
+codecs. The same plugin removes NVIDIA cuBLAS, which linuxdeploy would otherwise
+copy in (over 500 MB) through `libslopfab.so`. After building,
+`package-linux-app.sh` fails if FFmpeg, x264/x265 or cuBLAS is in the AppImage.
+AAC audio needs a decoder the AppImage does not ship; the .deb and .rpm use the
+system's.
 
 ## Desktop integration
 

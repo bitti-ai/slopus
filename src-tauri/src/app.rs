@@ -84,8 +84,6 @@ pub fn run() {
             let window = builder.build()?;
             native_shell::round_corners(&window);
             native_shell::disable_browser_behaviour(&window);
-            #[cfg(target_os = "linux")]
-            crate::linux_webview::configure(&window);
             native_shell::watch_accent(app.handle());
             match diagnostics::initialize(app.handle()) {
                 Ok(info) => diagnostics::info(
@@ -101,6 +99,9 @@ pub fn run() {
                 ),
                 Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
             }
+            // After logging starts: it records which WebKit features came on.
+            #[cfg(target_os = "linux")]
+            crate::linux_webview::configure(&window);
             app.state::<worker::Workers>().start(app.handle(), &app_paths::data_directory(app.handle()));
             window::apply_theme(&window);
             window.show()?;

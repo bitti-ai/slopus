@@ -13,13 +13,9 @@ use std::ffi::{c_char, c_int, c_void, CStr};
 use tauri::Runtime;
 use webkit2gtk::{glib::translate::ToGlibPtr as _, HardwareAccelerationPolicy, SettingsExt as _, WebViewExt as _};
 
-/// WebKit preference keys (UnifiedWebPreferences.yaml) the page relies on.
-pub(crate) const REQUIRED_FEATURES: &[&str] = &[
-    "WebCodecsVideoEnabled",
-    "WebCodecsAudioEnabled",
-    "WebCodecsAV1Enabled",
-    "WebGPUEnabled",
-];
+/// WebKitFeature identifiers the page relies on: the preference keys from
+/// UnifiedWebPreferences.yaml without their "Enabled" suffix.
+pub(crate) const REQUIRED_FEATURES: &[&str] = &["WebCodecsVideo", "WebCodecsAudio", "WebCodecsAV1", "WebGPU"];
 
 type GetAllFeatures = unsafe extern "C" fn() -> *mut c_void;
 type ListLength = unsafe extern "C" fn(*mut c_void) -> usize;
@@ -36,13 +32,16 @@ pub(crate) struct FeatureReport {
     pub(crate) missing: Vec<&'static str>,
     /// A flag was off until now, so a page already loaded does not have it.
     pub(crate) changed: bool,
+    /// Every GPU and codec flag this WebKitGTK has, as `name=state`, so the
+    /// log shows what a renamed flag is called now.
+    pub(crate) related: Vec<String>,
 }
 
 /// The features from REQUIRED_FEATURES that `available` offers, and the rest.
 pub(crate) fn match_features<'a>(available: impl IntoIterator<Item = &'a str>) -> FeatureReport {
     let available: Vec<&str> = available.into_iter().collect();
     let (enabled, missing) = REQUIRED_FEATURES.iter().partition(|name| available.contains(name));
-    FeatureReport { enabled, missing, changed: false }
+    FeatureReport { enabled, missing, ..FeatureReport::default() }
 }
 
 /// Switches on the flags in REQUIRED_FEATURES that this WebKitGTK knows.
@@ -69,6 +68,7 @@ fn enable_features(settings: &webkit2gtk::Settings) -> Result<FeatureReport, Str
             return Err("WebKitGTK returned no feature list.".into());
         }
         let mut available = Vec::new();
+        let mut related = Vec::new();
         let mut changed = false;
         for index in 0..length(list) {
             let feature = get(list, index);
@@ -80,6 +80,9 @@ fn enable_features(settings: &webkit2gtk::Settings) -> Result<FeatureReport, Str
                 continue;
             }
             let name = CStr::from_ptr(name).to_string_lossy();
+            if name.contains("GPU") || name.contains("Codec") {
+                related.push(format!("{name}={}", get_enabled(settings_ptr, feature) != 0));
+            }
             if let Some(required) = REQUIRED_FEATURES.iter().find(|required| **required == name) {
                 if get_enabled(settings_ptr, feature) == 0 {
                     set_enabled(settings_ptr, feature, 1);
@@ -89,7 +92,7 @@ fn enable_features(settings: &webkit2gtk::Settings) -> Result<FeatureReport, Str
             }
         }
         unref(list);
-        Ok(FeatureReport { changed, ..match_features(available) })
+        Ok(FeatureReport { changed, related, ..match_features(available) })
     }
 }
 
@@ -125,7 +128,7 @@ pub(crate) fn configure<R: Runtime>(window: &tauri::WebviewWindow<R>) {
                 "app",
                 "webview",
                 "This WebKitGTK lacks some media or GPU features. Update WebKitGTK for video decoding, export and effects.",
-                serde_json::json!({ "enabled": report.enabled, "missing": report.missing }),
+                serde_json::json!({ "enabled": report.enabled, "missing": report.missing, "related": report.related }),
             ),
             Err(error) => crate::diagnostics::warn("app", "webview", &error, serde_json::json!({})),
         }
@@ -145,8 +148,8 @@ mod tests {
 
     #[test]
     fn reports_which_required_features_this_webkit_offers() {
-        let report = match_features(["WebGPUEnabled", "WebCodecsVideoEnabled", "SomethingElse"]);
-        assert_eq!(report.enabled, ["WebCodecsVideoEnabled", "WebGPUEnabled"]);
-        assert_eq!(report.missing, ["WebCodecsAudioEnabled", "WebCodecsAV1Enabled"]);
+        let report = match_features(["WebGPU", "WebCodecsVideo", "WebGPUHDR"]);
+        assert_eq!(report.enabled, ["WebCodecsVideo", "WebGPU"]);
+        assert_eq!(report.missing, ["WebCodecsAudio", "WebCodecsAV1"]);
     }
 }
