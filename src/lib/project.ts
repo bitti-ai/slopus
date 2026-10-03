@@ -406,8 +406,10 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "animate", "pose", "character-replace", "extend", "bridge"]);
+export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
+export const DEFAULT_CONTINUATION_OVERLAP = 22;
+export const MAX_CONTINUATION_OVERLAP = 362;
 export const isVideoTransition = (job: Pick<GenerationJob, "sceneType">): boolean => job.sceneType === "extend" || job.sceneType === "bridge";
 
 export const sceneShotSchema = z.object({
@@ -518,6 +520,10 @@ export const generationJobSchema = z.object({
   startFrameReferenceId: idSchema.nullish(),
   endFrameReferenceId: idSchema.nullish(),
   usePreviousSceneLastFrame: z.boolean().nullish(),
+  continuationSceneId: idSchema.nullish(),
+  continuationOverlapFrames: z.number().int().min(DEFAULT_CONTINUATION_OVERLAP).max(MAX_CONTINUATION_OVERLAP)
+    .refine((frames) => (frames - 5) % 17 === 0, "Overlap must be 22, 39, 56, … frames.").nullish(),
+  continuationFrom: z.enum(["start", "end"]).nullish(),
   latentRelativePath: projectRelativePathSchema.nullish(),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
@@ -906,7 +912,7 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
   if (sounds.length > 3) return "Use at most three sound references per scene.";
   if (sounds.reduce((total, reference) => total + (reference.audio?.durationSeconds ?? 15), 0) > 15) return "Sound references must total no more than 15 seconds. Shorten them in References.";
   const anchored = usableReferenceImages(bound).length > 0 || usableVideoReferences(bound).length > 0
-    || bound.some((reference) => activeReferenceRefmods(reference).length > 0) || Boolean(job.usePreviousSceneLastFrame);
+    || bound.some((reference) => activeReferenceRefmods(reference).length > 0) || job.sceneType === "continue" || Boolean(job.usePreviousSceneLastFrame);
   return anchored ? null : "Sound references need an image or video reference in the same scene.";
 }
 
@@ -935,8 +941,8 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
     const ids = sceneShots(job).flatMap((shot) => [shot.videoReferenceId, shot.characterReferenceId]);
     return references.filter((reference) => ids.includes(reference.id));
   }
-  const start = references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
-  const end = references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
+  const start = job.sceneType !== "continue" && references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
+  const end = job.sceneType !== "continue" && references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
     .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
   // Animate stores its dedicated motion/frame selections in referenceIds.
@@ -945,14 +951,54 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
   return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 
-/** Resolve the adjacent scene when preparing a request; queued work captures
- * its id so subsequent board edits cannot change the source of that run. */
+/** Legacy links are resolved only until the project is migrated on load. */
+export function continuationSceneId(job: GenerationJob, jobs: readonly GenerationJob[]): string | undefined {
+  if (job.sceneType === "continue") return job.continuationSceneId ?? undefined;
+  if ((!job.sceneType || job.sceneType === "first-last-frame") && job.usePreviousSceneLastFrame)
+    return jobs[jobs.findIndex((candidate) => candidate.id === job.id) - 1]?.id;
+  return undefined;
+}
+
+export function continuationBlocker(job: GenerationJob, jobs: readonly GenerationJob[]): string | null {
+  if (job.sceneType !== "continue" && !job.usePreviousSceneLastFrame) return null;
+  if (job.sceneType && !["continue", "first-last-frame"].includes(job.sceneType)) return null;
+  const seen = new Set([job.id]);
+  let current = job;
+  while (true) {
+    const id = continuationSceneId(current, jobs);
+    if (!id) return current === job ? "Select a source scene to continue." : "The source scene needs a continuation source.";
+    if (seen.has(id)) return "Continuation scenes cannot form a cycle or continue themselves.";
+    seen.add(id);
+    const source = jobs.find((candidate) => candidate.id === id);
+    if (!source) return "The selected source scene no longer exists.";
+    if (source.sceneType !== "continue" && !continuationSceneId(source, jobs)) return null;
+    current = source;
+  }
+}
+
+/** The saved scene's output length, not the current editable duration. */
+export function sceneOutputFrames(job: GenerationJob, config: ProjectConfig): number | undefined {
+  const asset = config.assets.find((candidate) => candidate.id === generationAssetId(job.id));
+  if (asset?.durationMs) return Math.round(asset.durationMs * GENERATION_FRAME_RATE / 1000);
+  try {
+    const snapshot = JSON.parse(job.generationSnapshot ?? "null");
+    if (Number.isInteger(snapshot?.frames) && snapshot.frames > 0)
+      return snapshot.continuationRelativePath ? Math.ceil(snapshot.frames / 17) * 17 : Math.max(22, Math.ceil((snapshot.frames - 5) / 17) * 17 + 5);
+  } catch { /* Older projects may not have a usable snapshot. */ }
+  return undefined;
+}
+
+/** Capture the selected source id so reordering the board cannot retarget work. */
 export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
-  if (isVideoTransition(job) || job.sceneType === "pose" || job.sceneType === "character-replace" || !job.usePreviousSceneLastFrame) return { job, references: sceneGenerationReferences(job, config.references) };
-  const previous = config.generationJobs[config.generationJobs.findIndex((candidate) => candidate.id === job.id) - 1];
-  const resolved = { ...job, startFrameReferenceId: undefined };
+  const sourceId = continuationSceneId(job, config.generationJobs);
+  if (job.sceneType !== "continue" && !sourceId) return { job, references: sceneGenerationReferences(job, config.references) };
+  const previous = config.generationJobs.find((candidate) => candidate.id === sourceId);
+  const resolved = { ...job, startFrameReferenceId: undefined, endFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
-    previousSceneId: previous?.id, continuationRelativePath: previous?.latentRelativePath ?? undefined };
+    previousSceneId: sourceId, continuationRelativePath: previous?.latentRelativePath ?? undefined,
+    continuationOverlapFrames: job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+    continuationFrom: job.continuationFrom ?? "end",
+    continuationSourceFrames: previous ? sceneOutputFrames(previous, config) : undefined };
 }
 
 export function generationLatentPath(jobId: string): string {
@@ -1055,6 +1101,9 @@ export interface SceneGenerationInput {
   refmods?: readonly { path: string; strength: number; copies: number }[];
   previousSceneId?: string;
   continuationRelativePath?: string;
+  continuationOverlapFrames?: number;
+  continuationFrom?: "start" | "end";
+  continuationSourceFrames?: number;
 }
 
 /** A stable record of everything sent to the renderer. Shot ids are retained
@@ -1081,6 +1130,8 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.refmods?.length ? { refmods: input.refmods } : {}),
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
+    ...(input.previousSceneId ? { continuationOverlapFrames: input.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+      continuationFrom: input.continuationFrom ?? "end", ...(input.continuationSourceFrames ? { continuationSourceFrames: input.continuationSourceFrames } : {}) } : {}),
     shots,
   });
 }
@@ -1115,6 +1166,9 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  if (job.sceneType === "continue") return compileScenePromptSegments({
+    shots: sceneShots(job), soundscape: job.soundscape, music: job.music,
+  }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "pose") return compileScenePromptSegments({
     shots: sceneShots(job), poseVideoReferenceId: job.poseVideoReferenceId, soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
@@ -1740,6 +1794,11 @@ export function seedProjectWorkspace(config: ProjectConfig, seed = 0): ProjectCo
 
 export function parseProjectConfig(value: unknown): ProjectConfig {
   const config = projectConfigSchema.parse(value);
+  config.generationJobs = config.generationJobs.map((job, index) =>
+    job.usePreviousSceneLastFrame && (!job.sceneType || job.sceneType === "first-last-frame")
+      ? { ...job, sceneType: "continue", continuationSceneId: config.generationJobs[index - 1]?.id,
+        continuationOverlapFrames: DEFAULT_CONTINUATION_OVERLAP, continuationFrom: "end", usePreviousSceneLastFrame: undefined }
+      : job);
   return { ...config, timeline: { tracks: normalizeTimelineTracks(config.timeline.tracks) } };
 }
 

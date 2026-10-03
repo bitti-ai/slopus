@@ -12,7 +12,7 @@ import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
-import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneGenerationSnapshot, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { generationStepsWithLoras, withEngineSettings } from "./settings";
@@ -280,9 +280,10 @@ export class WorkQueue {
           if (work.request.previousSceneId) {
             const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
             if (!previous?.latentRelativePath || previous.status !== "completed") {
-              throw new Error("Generate the previous scene successfully to save its latents before continuing it. You can also use Generate All.");
+              throw new Error("Generate the selected source scene successfully to save its latents before continuing it. You can also use Generate All.");
             }
             work.request.continuationRelativePath = previous.latentRelativePath;
+            work.request.continuationSourceFrames = sceneOutputFrames(previous, work.session.getSnapshot().config);
             const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });

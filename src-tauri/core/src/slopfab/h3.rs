@@ -78,10 +78,11 @@ pub(super) fn configure_request(
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;
     }
     if let Some(path) = &request.continuation_path {
+        let opening = super::continuation::opening_archive(request)?;
         api.set_continuation_file(
             handle,
-            path,
-            crate::models::H3_CAPABILITIES.continuation_overlap,
+            opening.as_ref().map_or(path.as_path(), |file| file.as_ref()),
+            request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap),
         )?;
     }
     if purpose == RequestPurpose::Generate {

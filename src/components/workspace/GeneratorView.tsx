@@ -1,7 +1,7 @@
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { audioReferenceBlocker, characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker, usableAudioReferences, usableVideoReferences, type SceneType } from "../../lib/project";
+import { audioReferenceBlocker, characterReplaceBlocker, continuationBlocker, continuationSceneId, poseBlocker, isVideoTransition, videoTransitionBlocker, usableAudioReferences, usableVideoReferences, type SceneType } from "../../lib/project";
 import { referenceRefmodInputs } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
@@ -342,6 +342,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       prompt: sceneTypeFor(job) === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, configRef.current.settings.defaultLook),
       ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
       ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
+      ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,
+        continuationFrom: inputs.continuationFrom, continuationSourceFrames: inputs.continuationSourceFrames } : {}),
       // The scene's own length, not a fixed six seconds.
       frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
       steps: sceneGenerationSteps(job, defaultGenerationSteps),
@@ -442,34 +444,41 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
    * reroll for random ones. A completed fixed-seed scene is current only when
    * both its output and the exact renderer-input snapshot still exist. */
   const batchScenesReady: GenerationJob[] = [];
-  for (const [index, job] of jobs.entries()) {
-    if (job.status === "queued" || job.status === "generating" || job.status === "ready") continue;
-    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && index === 0) continue;
-    if (templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) continue;
-    const previous = jobs[index - 1];
-    const previousWillRender = !isVideoTransition(job) && job.sceneType !== "pose" && job.usePreviousSceneLastFrame && previous &&
+  const visited = new Set<string>();
+  const visitForBatch = (job: GenerationJob): boolean => {
+    if (continuationBlocker(job, jobs) || templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) return false;
+    if (visited.has(job.id)) return true;
+    if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
+    const previous = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
+    if (previous && !visitForBatch(previous)) return false;
+    visited.add(job.id);
+    const previousWillRender = previous &&
       (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
-      || (!job.latentRelativePath && jobs[index + 1]?.usePreviousSceneLastFrame)
+      || (!job.latentRelativePath && jobs.some((candidate) => continuationSceneId(candidate, jobs) === job.id))
       || !job.generationSnapshot
       || job.generationSnapshot !== snapshotFor(job)) batchScenesReady.push(job);
-  }
+    return true;
+  };
+  jobs.forEach(visitForBatch);
 
   const generateAll = () => submit(batchScenesReady);
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "Saving this scene.";
-    if (!isVideoTransition(job) && job.sceneType !== "pose" && job.sceneType !== "character-replace" && job.usePreviousSceneLastFrame && jobs[0]?.id === job.id) return "Needs a previous scene to continue from.";
-    return templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
+    const source = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
+    return continuationBlocker(job, jobs)
+      ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first, or use Generate all." : null)
+      ?? templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
 
   const changedJobIds = new Set(jobs
-    .filter((job, index) => job.status === "completed"
+    .filter((job) => job.status === "completed"
       && Boolean(job.generationSnapshot)
       && (job.generationSnapshot !== snapshotFor(job)
-        || (job.usePreviousSceneLastFrame && ["queued", "generating", "ready"].includes(jobs[index - 1]?.status))))
+        || jobs.some((source) => source.id === continuationSceneId(job, jobs) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
 
@@ -685,7 +694,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               folderPath={folderPath}
               importAvailable={isTauri()}
               importError={startFrameError}
-              previousScene={jobs[jobs.findIndex((job) => job.id === selected.id) - 1]}
+              scenes={jobs}
               onAddStartFrame={() => void addFrame(selected, "start")}
               onAddEndFrame={() => void addFrame(selected, "end")}
               onChange={(updates) => changeSceneSettings(selected, updates)}

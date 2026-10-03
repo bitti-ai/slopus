@@ -57,6 +57,7 @@ pub fn resolve_plan(
 }
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    super::continuation::validate(request)?;
     if let Some(edit) = &request.image_edit {
         if !request.still_image || request.frames != 1 || request.continuation_relative_path.is_some() || request.continuation_path.is_some() || request.video_transition.is_some()
             || edit.edits.is_empty() || edit.edits.len() > 500 || request.canvas_width > 8192 || request.canvas_height > 8192
@@ -124,7 +125,7 @@ pub(super) fn scene_frame_window(
         * limits.frame_stride;
     let offset = total
         .checked_sub(frames)
-        .filter(|offset| *offset >= limits.continuation_overlap)
+        .filter(|offset| *offset >= request.continuation_overlap_frames.unwrap_or(limits.continuation_overlap))
         .ok_or("Slopfab continuation output is missing its source frames.".to_string())?;
     Ok((offset, frames))
 }

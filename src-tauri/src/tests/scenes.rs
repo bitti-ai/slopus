@@ -1,6 +1,37 @@
 use super::*;
 
 #[test]
+fn continuation_settings_migrate_and_survive_reordering_and_save() {
+    let mut config = fixture();
+    let source = config.generation_jobs[0].id.clone();
+    let mut next = config.generation_jobs[0].clone();
+    next.id = "continued".into();
+    next.use_previous_scene_last_frame = Some(true);
+    config.generation_jobs = vec![config.generation_jobs[0].clone(), next];
+    let mut config = validate_and_normalize_config(config).unwrap();
+    let next = &config.generation_jobs[1];
+    assert_eq!(next.scene_type.as_deref(), Some("continue"));
+    assert_eq!(next.continuation_scene_id.as_deref(), Some(source.as_str()));
+    assert_eq!(next.continuation_overlap_frames, Some(22));
+    assert_eq!(next.continuation_from.as_deref(), Some("end"));
+    assert_eq!(next.use_previous_scene_last_frame, None);
+    config.generation_jobs.reverse();
+    config.generation_jobs[0].continuation_from = Some("start".into());
+    config.generation_jobs[0].continuation_overlap_frames = Some(56);
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    let restored = read_project(folder.path()).unwrap().config;
+    assert_eq!(restored.generation_jobs[0].continuation_scene_id.as_deref(), Some(source.as_str()));
+    assert_eq!(restored.generation_jobs[0].continuation_from.as_deref(), Some("start"));
+    assert_eq!(restored.generation_jobs[0].continuation_overlap_frames, Some(56));
+    config.generation_jobs[0].continuation_overlap_frames = Some(23);
+    assert!(validate_and_normalize_config(config.clone()).is_err());
+    config.generation_jobs[0].continuation_overlap_frames = Some(22);
+    config.generation_jobs[0].continuation_from = Some("middle".into());
+    assert!(validate_and_normalize_config(config).is_err());
+}
+
+#[test]
 fn scene_frame_settings_survive_save_and_reopen_and_validate_images() {
     let mut config = fixture();
     let image_id = config
@@ -22,8 +53,8 @@ fn scene_frame_settings_survive_save_and_reopen_and_validate_images() {
         Some(image_id.as_str())
     );
     assert_eq!(
-        restored.generation_jobs[0].use_previous_scene_last_frame,
-        Some(true)
+        restored.generation_jobs[0].scene_type.as_deref(),
+        Some("continue")
     );
     config.generation_jobs[0].end_frame_reference_id = Some("missing".into());
     assert!(validate_and_normalize_config(config.clone())

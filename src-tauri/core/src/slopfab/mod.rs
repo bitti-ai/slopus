@@ -11,6 +11,7 @@ pub fn prepare_lora_grid(
     ffi::Api::load(&default_dll_path())?.prepare_lora_grid(path, width, allow_download)
 }
 mod config;
+mod continuation;
 mod events;
 mod ffi;
 mod generation;

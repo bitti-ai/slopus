@@ -466,16 +466,64 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();
   });
 
-  it("marks a linked scene yellow when its previous scene regenerates and clears it after regeneration", () => {
+  it("continues a later scene with selectable overlap and edge, ignoring hidden frame anchors", () => {
+    const initial = project();
+    initial.generationJobs[1] = { ...initial.generationJobs[1], status: "completed", latentRelativePath: "latents/later.safetensors" };
+    initial.references = [{ id: "still", kind: "image", name: "Still", description: "", intendedUse: [], sourcePath: "C:/still.png", createdAt: initial.createdAt }];
+    initial.generationJobs[0].startFrameReferenceId = "still";
+    initial.generationJobs[0].endFrameReferenceId = "still";
+    const state = setup(initial);
+    choose("Scene type", "Continue");
+    const generate = within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" });
+    expect(generate).toBeDisabled();
+    expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+    expect(screen.queryByLabelText("Last frame for this scene")).toBeNull();
+    expect(comboValue(screen.getByLabelText("Take continuation latents from"))).toBe("end");
+    expect(comboValue(screen.getByLabelText("Continuation overlap frames"))).toBe("22");
+    expect(optionNames(screen.getByLabelText("Source scene for continuation"))).not.toContain("First scene");
+    choose("Source scene for continuation", "Second scene");
+    choose("Take continuation latents from", "Beginning");
+    choose("Continuation overlap frames", "39");
+    expect(generate).toBeEnabled();
+    fireEvent.click(generate);
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+    expect(saved.generationJobs[0]).toMatchObject({ sceneType: "continue", continuationSceneId: "scene-second", continuationFrom: "start", continuationOverlapFrames: 39 });
+    expect(JSON.parse(saved.generationJobs[0].generationSnapshot!)).toMatchObject({
+      previousSceneId: "scene-second", continuationRelativePath: "latents/later.safetensors", continuationFrom: "start", continuationOverlapFrames: 39, referencePaths: [],
+    });
+  });
+
+  it("queues continuation dependencies before their dependents, regardless of board order", () => {
+    const initial = project();
+    initial.generationJobs = [
+      { ...initial.generationJobs[0], sceneType: "continue", continuationSceneId: "middle" },
+      { ...initial.generationJobs[1], id: "middle", sceneType: "continue", continuationSceneId: "source" },
+      createDraftGenerationJob("Original", { id: "source" }),
+      createDraftGenerationJob("Cycle A", { id: "cycle-a", sceneType: "continue" }),
+      createDraftGenerationJob("Cycle B", { id: "cycle-b", sceneType: "continue" }),
+    ];
+    initial.generationJobs[3].continuationSceneId = "cycle-b";
+    initial.generationJobs[4].continuationSceneId = "cycle-a";
+    const submitted = vi.fn();
+    render(<GeneratorView config={initial} folderPath="C:/project" runtime={readyRuntime}
+      onChange={vi.fn()} onGenerate={submitted} onOpenTimeline={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+    expect(submitted).toHaveBeenCalledOnce();
+    expect(submitted.mock.calls[0][0].map((item: { job: { id: string } }) => item.job.id)).toEqual(["source", "middle", "scene-first"]);
+    expect(submitted.mock.calls[0][0][2].request).toMatchObject({ previousSceneId: "middle", continuationFrom: "end", continuationOverlapFrames: 22 });
+  });
+
+  it("marks a linked scene yellow when its source regenerates and clears it after regeneration", () => {
     const initial = project();
     initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
     fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
-    expect(screen.getByRole("option", { name: "Previous scene" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("option", { name: "Previous scene" })).toBeNull();
     fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
     fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
-    chooseOption(screen.getByRole("combobox", { name: "Start frame for this scene" }), "Previous scene");
-    expect(state.latest().generationJobs[1].usePreviousSceneLastFrame).toBe(true);
+    choose("Scene type", "Continue");
+    choose("Source scene for continuation", "First scene");
+    expect(state.latest().generationJobs[1].continuationSceneId).toBe("scene-first");
     const generateSecond = () => fireEvent.click(within(screen.getByRole("region", { name: "Second scene" })).getByRole("button", { name: "Generate" }));
     const finishSecond = () => state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job, index) => index === 1 ? { ...job, status: "completed", outputRelativePath: "media/generated/work-second.mp4" } : job) });
     generateSecond();
@@ -502,6 +550,7 @@ describe("Generator scene controls", () => {
   it("includes fixed-seed linked scenes when Generate All regenerates their source", () => {
     const initial = project();
     initial.generationJobs = initial.generationJobs.map((job, index) => ({ ...job, seed: 42, outputRelativePath: `media/generated/work-${index}.mp4`, latentRelativePath: `latents/work-${index}.safetensors`, usePreviousSceneLastFrame: index === 1 }));
+    initial.assets.push({ id: "asset-scene-first", kind: "generated", mimeType: "video/mp4", name: "First scene", relativePath: "media/generated/work-0.mp4", durationMs: 6000, createdAt: initial.createdAt });
     const state = setup(initial);
     fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
     state.replace({ ...state.latest(), generationJobs: state.latest().generationJobs.map((job) => ({ ...job, status: "completed" })) });

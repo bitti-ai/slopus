@@ -39,6 +39,7 @@ import {
   type ShotTagSelection,
 } from "../../lib/shot-tags";
 import { CommittedNumberInput } from "./CommittedNumberInput";
+import { DEFAULT_CONTINUATION_OVERLAP, MAX_CONTINUATION_OVERLAP } from "../../lib/project";
 import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
 
@@ -262,6 +263,7 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
 
 const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "first-last-frame", label: "First & last frame" },
+  { value: "continue", label: "Continue" },
   { value: "animate", label: "Animate" },
   { value: "pose", label: "Pose" },
   { value: "character-replace", label: "Character replace" },
@@ -273,14 +275,14 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", previousScene, defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
   folderPath?: string;
-  previousScene?: GenerationJob;
+  scenes?: GenerationJob[];
   defaultSteps: number;
   disabled: boolean;
   importAvailable: boolean;
@@ -291,6 +293,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
   onShots: (next: SceneShot[]) => void;
 }) {
   const animate = sceneType === "animate";
+  const continuing = sceneType === "continue";
   const pose = sceneType === "pose";
   const characterReplace = sceneType === "character-replace";
   const transition = isVideoTransition({ sceneType });
@@ -321,6 +324,32 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
+        {continuing && <>
+          <PropRow label="Source scene" htmlFor={`${id}-source-scene`}>
+            <ComboBox id={`${id}-source-scene`} aria-label="Source scene for continuation" disabled={disabled}
+              value={job.continuationSceneId ?? ""}
+              options={[{ value: "", label: "None" },
+                ...(job.continuationSceneId && !scenes.some((scene) => scene.id === job.continuationSceneId)
+                  ? [{ value: job.continuationSceneId, label: "Unavailable scene", disabled: true }] : []),
+                ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
+              onChange={(value) => onChange({ continuationSceneId: value || null })} />
+          </PropRow>
+          <PropRow label="Take latents from" htmlFor={`${id}-continuation-from`}>
+            <ComboBox id={`${id}-continuation-from`} aria-label="Take continuation latents from" disabled={disabled}
+              value={job.continuationFrom ?? "end"} options={[{ value: "end", label: "End" }, { value: "start", label: "Beginning" }]}
+              onChange={(value) => onChange({ continuationFrom: value as "start" | "end" })} />
+          </PropRow>
+          <PropRow label="Overlap frames" htmlFor={`${id}-overlap`}>
+            <ComboBox id={`${id}-overlap`} aria-label="Continuation overlap frames" disabled={disabled}
+              value={String(job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP)}
+              options={Array.from({ length: (MAX_CONTINUATION_OVERLAP - DEFAULT_CONTINUATION_OVERLAP) / 17 + 1 }, (_, index) => {
+                const frames = DEFAULT_CONTINUATION_OVERLAP + index * 17;
+                return { value: String(frames), label: String(frames) };
+              })}
+              onChange={(value) => onChange({ continuationOverlapFrames: Number(value) })} />
+          </PropRow>
+          <p className="prop-caption">Uses the selected scene’s saved latents. Generate it first, or use Generate all. Overlap uses 22, 39, 56, … frames at 24 fps.</p>
+        </>}
         {pose && <>
           <PropRow label="Pose video" htmlFor={`${id}-pose`}>
             <ComboBox id={`${id}-pose`} aria-label="Pose video reference for this scene" value={job.poseVideoReferenceId ?? ""} disabled={disabled}
@@ -378,23 +407,22 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
             />
           </PropRow>}
           {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
-          {!transition && !pose && <>
+          {!transition && !pose && !continuing && <>
             <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`}>
               <ComboBox
                 id={`${id}-start`}
                 value={animate
                   ? job.startFrameReferenceId ?? imageReferences.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""
-                  : job.usePreviousSceneLastFrame ? "previous-scene" : job.startFrameReferenceId ?? ""}
+                  : job.startFrameReferenceId ?? ""}
                 disabled={disabled}
                 aria-label="Start frame for this scene"
                 options={[
                   { value: "", label: "None" },
-                  ...(!animate ? [{ value: "previous-scene", label: "Previous scene", disabled: !previousScene }] : []),
                   ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name })),
                 ]}
                 onChange={(value) => onChange({
-                  usePreviousSceneLastFrame: value === "previous-scene" || undefined,
-                  startFrameReferenceId: value === "previous-scene" ? undefined : value || undefined,
+                  usePreviousSceneLastFrame: undefined,
+                  startFrameReferenceId: value || undefined,
                   ...(animate ? {
                     endFrameReferenceId: undefined,
                     referenceIds: job.referenceIds.filter((referenceId) => !imageReferences.some((reference) => reference.id === referenceId)),
@@ -403,11 +431,9 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
               />
               {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
             </PropRow>
-            {(animate || job.usePreviousSceneLastFrame) && <p className="prop-caption">{animate
-              ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting."
-              : previousScene ? `Continues “${previousScene.title}” from its saved latents with 22 overlapping frames. Generate that scene first, or use Generate all.` : "Move this scene after another scene to continue it."}</p>}
+            {animate && <p className="prop-caption">A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting.</p>}
           </>}
-          {!animate && !transition && !pose && <PropRow label="Last frame" htmlFor={`${id}-end`}>
+          {!animate && !transition && !pose && !continuing && <PropRow label="Last frame" htmlFor={`${id}-end`}>
             <ComboBox id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
               options={[{ value: "", label: "None" }, ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name }))]}
               onChange={(value) => onChange({ endFrameReferenceId: value || undefined })} />

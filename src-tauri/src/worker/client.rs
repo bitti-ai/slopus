@@ -892,6 +892,9 @@ mod tests {
             job_id: "work-1".into(),
             reference_paths: vec![image.to_string_lossy().into_owned(), image.to_string_lossy().into_owned()],
             continuation_path: Some(image.clone()),
+            continuation_from: Some("start".into()),
+            continuation_overlap_frames: Some(39),
+            continuation_source_frames: Some(85),
             ..Default::default()
         };
         let (job, sources) = build_job(&request, &settings).unwrap();
@@ -902,6 +905,10 @@ mod tests {
         assert_eq!(entries.iter().map(|entry| entry.path.as_str()).collect::<Vec<_>>(), vec!["nested/merges.txt", "vocab.json"]);
         assert_eq!(job.request.reference_paths, vec![file_token(2), file_token(2)]);
         assert_eq!(job.continuation, Some(2));
+        let wire = serde_json::to_value(&job).unwrap();
+        assert_eq!(wire["request"]["continuationFrom"], "start");
+        assert_eq!(wire["request"]["continuationOverlapFrames"], 39);
+        assert_eq!(wire["request"]["continuationSourceFrames"], 85);
         assert_eq!(sources.len(), 2);
         assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new()).is_err());
     }

@@ -103,6 +103,9 @@ export interface SlopfabGenerationRequest {
   /** Resolved by the app queue before native submission. */
   previousSceneId?: string;
   continuationRelativePath?: string;
+  continuationOverlapFrames?: number;
+  continuationFrom?: "start" | "end";
+  continuationSourceFrames?: number;
 }
 
 export interface ResolvedPlan {
@@ -385,9 +388,11 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         if ("startFrame" in command) {
           job.startFrameReferenceId = command.startFrame;
           job.usePreviousSceneLastFrame = false;
+          if (job.sceneType === "continue") job.sceneType = "first-last-frame";
         }
         if ("endFrame" in command) job.endFrameReferenceId = command.endFrame;
         if ("usePreviousSceneLastFrame" in command) {
+          job.sceneType = "first-last-frame";
           job.usePreviousSceneLastFrame = command.usePreviousSceneLastFrame;
           if (command.usePreviousSceneLastFrame) job.startFrameReferenceId = undefined;
         }

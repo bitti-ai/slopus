@@ -394,25 +394,28 @@ describe("application work queue", () => {
     expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
   });
 
-  it("continues from the newly saved latents after the previous scene finishes", async () => {
+  it("keeps the captured source, overlap and edge after reordering, and uses freshly saved latents", async () => {
     const { queue, first } = setup();
-    first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "linked", usePreviousSceneLastFrame: true }] }));
+    first.update((config) => ({ ...config, generationJobs: [config.generationJobs[0], { ...config.generationJobs[0], id: "linked", sceneType: "continue", continuationSceneId: config.generationJobs[0].id }] }));
     const source = submission(first);
-    const linked = { ...submission(first), job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id, referencePaths: ["subject.png"] } };
+    const linked = { ...submission(first), job: first.getSnapshot().config.generationJobs[1], request: { ...source.request, previousSceneId: source.job.id, continuationFrom: "start" as const, continuationOverlapFrames: 39, referencePaths: ["subject.png"] } };
     queue.enqueue(first, [source, linked]);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+    first.update((config) => ({ ...config, generationJobs: [...config.generationJobs].reverse() }));
     expect(saveSceneLastFrame).not.toHaveBeenCalled();
     await finish(queue, queue.getSnapshot()[0].id);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
     expect(saveSceneLastFrame).not.toHaveBeenCalled();
     const latentPath = `latents/${queue.getSnapshot()[0].id}.safetensors`;
-    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0]).toMatchObject({ referencePaths: ["subject.png"], continuationRelativePath: latentPath });
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0]).toMatchObject({ referencePaths: ["subject.png"], continuationRelativePath: latentPath,
+      continuationFrom: "start", continuationOverlapFrames: 39, continuationSourceFrames: 120 });
     expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][2]).toBe("C:/First");
     await finish(queue, queue.getSnapshot()[1].id);
-    const snapshot = JSON.parse(first.getSnapshot().config.generationJobs[1].generationSnapshot!);
+    const snapshot = JSON.parse(first.getSnapshot().config.generationJobs[0].generationSnapshot!);
     expect(snapshot.previousSceneId).toBe(source.job.id);
     expect(snapshot.continuationRelativePath).toBe(latentPath);
-    expect(parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config))).generationJobs[1].latentRelativePath)
+    expect(snapshot).toMatchObject({ continuationFrom: "start", continuationOverlapFrames: 39, continuationSourceFrames: 120 });
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config))).generationJobs[0].latentRelativePath)
       .toBe(`latents/${queue.getSnapshot()[1].id}.safetensors`);
   });
 
@@ -437,7 +440,7 @@ describe("application work queue", () => {
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
     emit("slopfab-job", { jobId: queue.getSnapshot()[0].id, state: "failed", detail: "Render failed" });
     await waitFor(() => expect(queue.getSnapshot()[1].status).toBe("failed"));
-    expect(queue.getSnapshot()[1].error).toContain("previous scene");
+    expect(queue.getSnapshot()[1].error).toContain("selected source scene");
     expect(saveSceneLastFrame).not.toHaveBeenCalled();
     expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
   });

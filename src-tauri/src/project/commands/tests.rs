@@ -79,8 +79,8 @@ fn scene_frame_commands_accept_continuity_and_clear_the_last_frame() {
         Some(image.as_str())
     );
     assert_eq!(
-        updated.generation_jobs[0].use_previous_scene_last_frame,
-        Some(true)
+        updated.generation_jobs[0].scene_type.as_deref(),
+        Some("continue")
     );
     let clear: ProjectCommand = serde_json::from_value(serde_json::json!({
         "op": "scene.set", "id": id, "endFrame": null, "startFrame": image

@@ -1,4 +1,4 @@
-Set usePreviousSceneLastFrame to true to continue the preceding Generator scene using its saved audio/video latents with 22 overlapping frames. Slopus saves those latents on each generation; the preceding scene must be generated first, or queued earlier with Generate All. The continued scene's seconds describe its new segment. This option replaces startFrame image conditioning and requires the same canvas dimensions as the source.
+Set usePreviousSceneLastFrame to true to create a Continue scene linked to the preceding scene, using its final 22 frames of saved audio/video latents. The user can change the source, overlap, and beginning/end selection in the Continue scene panel. Slopus saves latents on each generation; generate the source first or use Generate All. The continued scene's seconds describe its new segment. Continue replaces frame image conditioning and requires the same canvas dimensions as the source.
 
 - Existing video references can guide movement, camera work, or appearance. Cite their reference IDs with the same @[ref:<reference-id>] tokens; Slopus supplies the <Video N> labels and the saved clip/soundtrack settings. A scene may use up to three video clips totaling 15 seconds. Do not invent video paths or add raw <Video N> labels to shot action.
 
@@ -19,4 +19,3 @@ Use shot.settings when a supported setting materially clarifies how an individua
 - visualStyle is scene-wide and belongs only on the earliest shot. Single-choice groups take one option; cameraMovement, lighting, and mood may take more than one only when the choices are compatible.
 - A non-static cameraMovement must also have one cameraSpeed and one cameraAmplitude. static-shot cannot be combined with another movement, speed, or amplitude.
 - Keep settings consistent with shot.action, references, scene Look, and adjacent shots. Do not over-specify a short shot or add mutually contradictory choices.
-

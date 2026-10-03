@@ -68,6 +68,12 @@ pub struct GenerationRequest {
     pub refmods: Vec<RefmodInput>,
     #[serde(default)]
     pub continuation_relative_path: Option<String>,
+    #[serde(default)]
+    pub continuation_overlap_frames: Option<i32>,
+    #[serde(default)]
+    pub continuation_from: Option<String>,
+    #[serde(default)]
+    pub continuation_source_frames: Option<i32>,
     // Only the project commands resolve paths; IPC cannot supply save targets.
     #[serde(skip)]
     pub continuation_path: Option<PathBuf>,

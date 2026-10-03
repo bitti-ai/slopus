@@ -3,11 +3,26 @@ use crate::project::paths::*;
 use crate::project::*;
 use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
+    let mut previous_id = None;
     for job in &mut config.generation_jobs {
+        if job.use_previous_scene_last_frame == Some(true)
+            && matches!(job.scene_type.as_deref(), None | Some("first-last-frame")) {
+            job.scene_type = Some("continue".into());
+            job.continuation_scene_id = previous_id.clone();
+            job.continuation_overlap_frames = Some(22);
+            job.continuation_from = Some("end".into());
+            job.use_previous_scene_last_frame = None;
+        }
+        previous_id = Some(job.id.clone());
+        if job.continuation_scene_id.as_deref() == Some("")
+            || job.continuation_from.as_deref().is_some_and(|value| !matches!(value, "start" | "end"))
+            || job.continuation_overlap_frames.is_some_and(|frames| !(22..=362).contains(&frames) || frames % 17 != 5) {
+            return Err(format!("Scene '{}' has invalid continuation settings. Overlap must be 22, 39, 56, … frames.", job.id));
+        }
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "first-last-frame" | "animate" | "pose" | "character-replace" | "extend" | "bridge"
+                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
