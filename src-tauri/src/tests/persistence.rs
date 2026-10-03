@@ -204,7 +204,7 @@ fn video_effects_survive_save_and_reopen() {
     let clip = &mut json["timeline"]["tracks"][0]["clips"][0];
     clip["sharpen"] = serde_json::json!({"amount": 60});
     clip["blur"] = serde_json::json!({"radius": 4});
-    clip["colorCorrection"] = serde_json::json!({"exposure": 1, "contrast": 20, "saturation": 80});
+    clip["colorCorrection"] = serde_json::json!({"exposure": 1, "brightness": -25, "contrast": 20, "saturation": 80});
     clip["vignette"] = serde_json::json!({"amount": 30});
     clip["lut"] = serde_json::json!({"intensity": 70, "table": {
         "name": "Identity", "size": 2, "domainMin": [0, 0, 0], "domainMax": [1, 1, 1],
@@ -218,6 +218,16 @@ fn video_effects_survive_save_and_reopen() {
     let folder = PathBuf::from(&created.folder_path);
     write_project(&folder, &config).unwrap();
     assert_eq!(read_project(&folder).unwrap().config, config);
+    assert_eq!(config.timeline.tracks[0].clips[0].color_correction.as_ref().unwrap().brightness, Some(-25.0));
+    for brightness in [-101.0, 101.0, f64::NAN, f64::INFINITY] {
+        let mut invalid = config.clone();
+        invalid.timeline.tracks[0].clips[0].color_correction.as_mut().unwrap().brightness = Some(brightness);
+        assert!(validate_and_normalize_config(invalid).unwrap_err().contains("video effects"));
+    }
+    let mut legacy = serde_json::to_value(&config).unwrap();
+    legacy["timeline"]["tracks"][0]["clips"][0]["colorCorrection"].as_object_mut().unwrap().remove("brightness");
+    let legacy = validate_and_normalize_config(serde_json::from_value(legacy).unwrap()).unwrap();
+    assert_eq!(legacy.timeline.tracks[0].clips[0].color_correction.as_ref().unwrap().brightness, None);
     let mut invalid = config.clone();
     invalid.timeline.tracks[0].clips[0]
         .lut

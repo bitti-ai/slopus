@@ -29,6 +29,7 @@ export const effectSchemas = {
   blur: z.object({ radius: z.number().finite().min(0).max(24), enabled: effectEnabledSchema }).nullish(),
   colorCorrection: z.object({
     exposure: z.number().finite().min(-4).max(4),
+    brightness: z.number().finite().min(-100).max(100).nullish(),
     contrast: z.number().finite().min(-100).max(100),
     saturation: z.number().finite().min(0).max(200),
     enabled: effectEnabledSchema,

@@ -77,6 +77,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                     .is_some_and(|v| !within(v.amount, 0.0, 100.0))
                 || clip.color_correction.as_ref().is_some_and(|v| {
                     !within(v.exposure, -4.0, 4.0)
+                        || v.brightness.is_some_and(|value| !within(value, -100.0, 100.0))
                         || !within(v.contrast, -100.0, 100.0)
                         || !within(v.saturation, 0.0, 200.0)
                 })

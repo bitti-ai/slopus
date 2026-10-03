@@ -153,12 +153,13 @@ const EFFECTS: readonly EffectDefinition[] = [
     editor: ({ clip, update, disabled }) => <Param label="Radius" ariaLabel="Blur radius" value={clip.blur!.radius} max={24} step={0.5} suffix=" px" defaultValue={4} disabled={disabled} onChange={(radius) => update({ blur: { ...clip.blur!, radius } })} />,
   },
   {
-    id: "colorCorrection", name: "Colour correction", description: "Adjust exposure, contrast and saturation",
-    defaults: { colorCorrection: { exposure: 0, contrast: 0, saturation: 100 } },
+    id: "colorCorrection", name: "Colour correction", description: "Adjust exposure, brightness, contrast and saturation",
+    defaults: { colorCorrection: { exposure: 0, brightness: 0, contrast: 0, saturation: 100 } },
     editor: ({ clip, update, disabled }) => {
       const color = clip.colorCorrection!;
       return <>
         <Param label="Exposure" value={color.exposure} min={-4} max={4} step={0.1} suffix=" stops" defaultValue={0} disabled={disabled} onChange={(exposure) => update({ colorCorrection: { ...color, exposure } })} />
+        <Param label="Brightness" value={color.brightness ?? 0} min={-100} defaultValue={0} disabled={disabled} onChange={(brightness) => update({ colorCorrection: { ...color, brightness } })} />
         <Param label="Contrast" value={color.contrast} min={-100} defaultValue={0} disabled={disabled} onChange={(contrast) => update({ colorCorrection: { ...color, contrast } })} />
         <Param label="Saturation" value={color.saturation} max={200} defaultValue={100} disabled={disabled} onChange={(saturation) => update({ colorCorrection: { ...color, saturation } })} />
       </>;

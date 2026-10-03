@@ -101,6 +101,8 @@ pub(crate) struct ClipBlur {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipColorCorrection {
     pub(crate) exposure: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) brightness: Option<f64>,
     pub(crate) contrast: f64,
     pub(crate) saturation: f64,
     /// Effect bypass: `Some(false)` keeps the settings but renders without

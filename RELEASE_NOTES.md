@@ -27,6 +27,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## Fixes and improvements
 
+- Colour correction includes a Brightness control for preview and export.
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.
 - The timeline playhead follows playback without waiting for editor updates.
 - Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.

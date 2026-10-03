@@ -88,6 +88,7 @@ fn straight(color: vec4f) -> vec3f { return color.rgb / max(color.a, .00001); }
     rgb += (rgb - straight(neighbors)) * params.detail.x;
   }
   rgb *= exp2(params.grade.x);
+  rgb += vec3f(params.domainMax.w);
   rgb = (rgb - vec3f(.5)) * params.grade.y + vec3f(.5);
   let luma = dot(rgb, vec3f(.2126, .7152, .0722));
   rgb = mix(vec3f(luma), rgb, params.grade.z);
@@ -153,7 +154,8 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
         ...(effects.chromaKey ? keyColor(effects.chromaKey.color) : [0, 0, 0]), (effects.chromaKey?.tolerance ?? 0) / 100,
         grade?.exposure ?? 0, 1 + (grade?.contrast ?? 0) / 100, (grade?.saturation ?? 100) / 100, (effects.vignette?.amount ?? 0) / 100,
         (effects.sharpen?.amount ?? 0) / 100, table?.size ?? 0, (effects.lut?.intensity ?? 0) / 100, effects.chromaKey ? 1 : 0,
-        ...(table?.domainMin ?? [0, 0, 0]), (effects.look?.temperature ?? 0) / 100, ...(table?.domainMax ?? [1, 1, 1]), 0,
+        // Pack temperature and brightness into the unused domain vector lanes.
+        ...(table?.domainMin ?? [0, 0, 0]), (effects.look?.temperature ?? 0) / 100, ...(table?.domainMax ?? [1, 1, 1]), (grade?.brightness ?? 0) / 100,
         effects.blur?.radius ?? 0, 0, 0, 0,
       ]);
       device.queue.writeBuffer(uniforms[0], 0, data);

@@ -54,7 +54,7 @@ describe("clip effects", () => {
     { name: "Chroma key", patch: { chromaKey: { color: "#123456", tolerance: 43 } } },
     { name: "Sharpen", patch: { sharpen: { amount: 125 } } },
     { name: "Gaussian blur", patch: { blur: { radius: 8.5 } } },
-    { name: "Colour correction", patch: { colorCorrection: { exposure: -1.2, contrast: 20, saturation: 75 } } },
+    { name: "Colour correction", patch: { colorCorrection: { exposure: -1.2, brightness: 35, contrast: 20, saturation: 75 } } },
     { name: "Vignette", patch: { vignette: { amount: 75 } } },
     { name: "3D LUT", patch: { lut: { intensity: 45, table: parseCube(CUBE, "identity.cube") } } },
   ] satisfies { name: string; patch: Partial<TimelineClip> }[])("copies $name settings to another clip as one independent edit", ({ name, patch }) => {
@@ -152,11 +152,15 @@ describe("clip effects", () => {
     fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
     fireEvent.change(screen.getByLabelText("Blur radius"), { target: { value: "6.5" } });
     fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "-1.2" } });
+    expect((screen.getByLabelText("Brightness") as HTMLInputElement).value).toBe("0");
+    fireEvent.change(screen.getByLabelText("Brightness"), { target: { value: "-25" } });
     fireEvent.change(screen.getByLabelText("Saturation"), { target: { value: "0" } });
     fireEvent.change(screen.getByLabelText("Vignette amount"), { target: { value: "75" } });
     expect(saved()).toMatchObject({
-      sharpen: { amount: 120 }, blur: { radius: 6.5 }, colorCorrection: { exposure: -1.2, saturation: 0 }, vignette: { amount: 75 },
+      sharpen: { amount: 120 }, blur: { radius: 6.5 }, colorCorrection: { exposure: -1.2, brightness: -25, saturation: 0 }, vignette: { amount: 75 },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Reset brightness" }));
+    expect(saved().colorCorrection).toEqual({ exposure: -1.2, brightness: 0, contrast: 0, saturation: 0 });
     remove("Gaussian blur");
     expect(saved().blur).toBeUndefined();
     expect(screen.getByLabelText("Sharpen amount")).toBeTruthy();

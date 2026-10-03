@@ -44,7 +44,7 @@ it("retains effects through project parsing and export frame planning", () => {
   const clip = timelineClipSchema.parse({
     id: "clip", assetId: "asset", trackId: "track", label: "Test", startMs: 0, durationMs: 1000,
     sharpen: { amount: 60 }, blur: { radius: 4 }, vignette: { amount: 30 },
-    colorCorrection: { exposure: 1, contrast: 20, saturation: 80 },
+    colorCorrection: { exposure: 1, brightness: -25, contrast: 20, saturation: 80 },
     lut: { intensity: 70, table: parseCube(identityCube, "identity.cube") },
   });
   const reopened = timelineClipSchema.parse(JSON.parse(JSON.stringify(clip)));
@@ -52,6 +52,11 @@ it("retains effects through project parsing and export frame planning", () => {
     sharpen: clip.sharpen, blur: clip.blur, vignette: clip.vignette, colorCorrection: clip.colorCorrection, lut: clip.lut,
   });
   expect(timelineClipSchema.safeParse({ ...clip, blur: { radius: 25 } }).success).toBe(false);
+  for (const brightness of [-101, 101, NaN, Infinity]) {
+    expect(timelineClipSchema.safeParse({ ...clip, colorCorrection: { ...clip.colorCorrection, brightness } }).success).toBe(false);
+  }
+  const legacyGrade = { exposure: 1, contrast: 20, saturation: 80 };
+  expect(timelineClipSchema.parse({ ...clip, colorCorrection: legacyGrade }).colorCorrection).toEqual(legacyGrade);
   expect(timelineClipSchema.safeParse({ ...clip, lut: { ...clip.lut, table: { ...clip.lut!.table, values: [] } } }).success).toBe(false);
 });
 
@@ -95,7 +100,7 @@ describe("effect bypass", () => {
       transition: { type: "fade", durationMs: 500, enabled: false },
       sharpen: { amount: 40, enabled: false },
       blur: { radius: 3, enabled: false },
-      colorCorrection: { exposure: 1, contrast: 0, saturation: 100, enabled: false },
+      colorCorrection: { exposure: 1, brightness: 40, contrast: 0, saturation: 100, enabled: false },
       vignette: { amount: 30, enabled: false },
       lut: { intensity: 50, enabled: false },
     });
