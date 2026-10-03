@@ -63,6 +63,7 @@ type SetMotionCache =
     unsafe extern "C" fn(*mut Request, i32, f32, f32, i32, i32, f32, f32, i32, i32) -> i32;
 type SetImageEditPath = unsafe extern "C" fn(*mut Request, *const c_char, i32, i32, i32, i32, f32, i32) -> i32;
 type SetImageEditRgb = unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize, i32, i32, i32, i32, f32, i32) -> i32;
+type ExportRefmod = unsafe extern "C" fn(*const Request, *const c_char, *const c_char, *const c_char, i32) -> i32;
 
 pub struct Api {
     _library: Library,
@@ -92,6 +93,7 @@ pub struct Api {
     add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
     prepare_lora_grid: Option<unsafe extern "C" fn(*const c_char, i32, i32) -> i32>,
     add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
+    export_refmod: Option<ExportRefmod>,
     add_reference: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
     add_reference_audio: Option<AddReferenceAudio>,
     set_attention: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
@@ -240,6 +242,7 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                export_refmod: library.get::<ExportRefmod>(b"slopfab_export_refmod\0").ok().map(|symbol| *symbol),
                 add_reference_audio: library
                     .get::<AddReferenceAudio>(b"slopfab_request_add_reference_audio_f32\0")
                     .ok()
@@ -513,6 +516,19 @@ impl Api {
         let add = self.add_refmod.ok_or("This slopfab.dll does not support refmods. Install a build with the refmod API (1.8 or later).")?;
         let path = path_cstring(path)?;
         self.error(unsafe { add(r, path.as_ptr(), strength, copies) })
+    }
+    pub fn export_refmod(&self, r: *mut Request, output: &Path, name: &str, description: &str) -> Result<(), String> {
+        let export = self.export_refmod.ok_or("Refmod export requires slopfab.dll API 1.18 or later. Update the runtime.")?;
+        let output = path_cstring(output)?;
+        let name = CString::new(name).map_err(|_| "Refmod name contains a null byte.".to_string())?;
+        let description = CString::new(description).map_err(|_| "Refmod description contains a null byte.".to_string())?;
+        let description = if description.is_empty() { ptr::null() } else { description.as_ptr() };
+        // short_edge 0 selects the runtime's native 768-pixel reference size.
+        self.error(unsafe { export(r, output.as_ptr(), name.as_ptr(), description, 0) })
+    }
+    #[cfg(test)]
+    pub fn disable_refmod_export_for_test(&mut self) {
+        self.export_refmod = None;
     }
     pub fn add_reference_audio(
         &self,

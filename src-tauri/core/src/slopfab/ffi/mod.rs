@@ -57,6 +57,12 @@ impl Api {
             .disable_animate_for_test();
     }
     #[cfg(test)]
+    pub fn disable_refmod_export_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner)
+            .expect("configure API before creating handles")
+            .disable_refmod_export_for_test();
+    }
+    #[cfg(test)]
     pub fn disable_motion_cache_for_test(&mut self) {
         Arc::get_mut(&mut self.inner)
             .expect("configure API before creating handles")
@@ -185,6 +191,10 @@ impl Api {
         self.check(r)?;
         self.inner
             .add_refmod(r.pointer.as_ptr(), path, strength, copies)
+    }
+    pub fn export_refmod(&self, r: &RequestHandle, output: &Path, name: &str, description: &str) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.export_refmod(r.pointer.as_ptr(), output, name, description)
     }
     pub fn resolve(&self, request: &RequestHandle) -> Result<Plan, String> {
         self.check(request)?;

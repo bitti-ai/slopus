@@ -648,6 +648,31 @@ fn refmods_attach_for_plans_and_icons_or_report_an_older_dll() {
 }
 
 #[test]
+fn refmod_export_needs_raw_media_and_vaes_or_reports_an_older_dll() {
+    let references = ReferenceVideos::default();
+    let settings = BTreeMap::new();
+    let root = tempfile::tempdir().unwrap();
+    let output = root.path().join("voice.safetensors");
+    let mut request = GenerationRequest { job_id: "refmod-export-test".into(), ..Default::default() };
+    let empty = export_refmod(&request, &settings, &references, &output, "Voice", "").unwrap_err();
+    assert!(empty.contains("Add an image, video or sound"), "{empty}");
+    let audio = references
+        .create_reference_audio(&vec![0; 32_000 * 2 * 4], 1, 32_000)
+        .unwrap();
+    request.reference_audio_ids = vec![audio.clone()];
+    // The runtime refuses a request without VAEs before any GPU work.
+    let missing = export_refmod(&request, &settings, &references, &output, "Voice", "A voice").unwrap_err();
+    assert!(missing.contains("VAE path is missing"), "{missing}");
+    assert!(!output.exists());
+    let configuration = Configuration::from_settings(&settings);
+    let mut api = ffi::Api::load(&configuration.dll_path).unwrap();
+    api.disable_refmod_export_for_test();
+    let older = refmod_export::export_with(&api, &request, &configuration, &references, &output, "Voice", "").unwrap_err();
+    assert!(older.contains("API 1.18"), "{older}");
+    references.release_reference_audios(&[audio]).unwrap();
+}
+
+#[test]
 fn motion_cache_reaches_cuda_and_vulkan_requests_and_changes_timing_profile() {
     let mut configuration = Configuration::from_settings(&BTreeMap::from([(
         "slopfab".into(),

@@ -118,6 +118,35 @@ pub(super) fn configure_request(
             api.set_model(handle, *id, path)?;
         }
     }
+    attach_references(api, handle, request, configuration, references)?;
+    for refmod in &request.refmods {
+        if refmod.path.trim().is_empty()
+            || !refmod.strength.is_finite()
+            || !(0.0..=1.0).contains(&refmod.strength)
+            || !(1..=10).contains(&refmod.copies)
+        {
+            return Err("Refmods need a path, strength 0 to 1 and copies 1 to 10.".into());
+        }
+        if refmod.strength == 0.0 {
+            continue;
+        }
+        api.add_refmod(
+            handle,
+            Path::new(&refmod.path),
+            refmod.strength,
+            refmod.copies as i32,
+        )?;
+    }
+    Ok(())
+}
+
+pub(super) fn attach_references(
+    api: &ffi::Api,
+    handle: &RequestHandle,
+    request: &GenerationRequest,
+    configuration: &Configuration,
+    references: &ReferenceVideos,
+) -> Result<(), String> {
     for path in &request.reference_paths {
         api.add_reference(handle, Path::new(path))?;
     }
@@ -138,24 +167,6 @@ pub(super) fn configure_request(
     for id in &request.reference_audio_ids {
         let audio = references.reference_audio(id)?;
         api.add_reference_audio(handle, &audio.samples, audio.channels, audio.sample_rate)?;
-    }
-    for refmod in &request.refmods {
-        if refmod.path.trim().is_empty()
-            || !refmod.strength.is_finite()
-            || !(0.0..=1.0).contains(&refmod.strength)
-            || !(1..=10).contains(&refmod.copies)
-        {
-            return Err("Refmods need a path, strength 0 to 1 and copies 1 to 10.".into());
-        }
-        if refmod.strength == 0.0 {
-            continue;
-        }
-        api.add_refmod(
-            handle,
-            Path::new(&refmod.path),
-            refmod.strength,
-            refmod.copies as i32,
-        )?;
     }
     Ok(())
 }
