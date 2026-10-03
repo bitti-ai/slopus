@@ -262,14 +262,16 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     const remaining = list.filter((id) => !gone.has(id));
     selectOnly(remaining[Math.min(Number.isFinite(at) ? at : 0, remaining.length - 1)]);
   };
-  const addFiles = async (id = selected?.id) => {
+  const addFiles = async (id = selected?.id, imagesOnly = false) => {
     const chosen = configRef.current.references.find((reference) => reference.id === id);
     if (!chosen || chosen.refmods?.length || importingFiles) return;
     setImportError(null);
     if (!isTauri()) { setImportError("File import is available in the desktop app."); return; }
     setImportingFiles(true);
     try {
-      const files = await invoke<Array<{ kind: "image" | "video" | "refmod"; name: string; relativePath?: string | null; sourcePath?: string | null }>>("choose_reference_files", { folderPath });
+      const files = imagesOnly
+        ? (await invoke<Array<{ name: string; relativePath: string }>>("choose_reference_images", { folderPath })).map((image) => ({ ...image, kind: "image" as const, sourcePath: null }))
+        : await invoke<Array<{ kind: "image" | "video" | "refmod"; name: string; relativePath?: string | null; sourcePath?: string | null }>>("choose_reference_files", { folderPath });
       if (!files.length) return;
       const clip = files.find((file) => file.kind === "video");
       const video = clip ? { startSeconds: 0, ...await inspectReferenceVideo(folderPath, clip.sourcePath!) } : undefined;
@@ -543,7 +545,14 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             title="Preview"
             persistKey="references.preview"
             summary={showImages ? `${currentImagePage + 1} of ${selectedImages.length}` : undefined}
-            actions={!showImages && onRegenerateIcon && <button
+            actions={showImages ? <button
+              type="button"
+              className="icon-button prop-row__button"
+              aria-label="Add images"
+              {...tooltipProps("Add images")}
+              disabled={importingFiles}
+              onClick={() => void addFiles(selected.id, true)}
+            ><Add16 aria-hidden="true" /></button> : onRegenerateIcon && <button
               type="button"
               className="icon-button prop-row__button"
               aria-label="Regenerate reference icon"
