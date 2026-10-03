@@ -28,7 +28,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Reference chips now highlight when included in a prompt's text selection.
-- The Video scene list scrollbar no longer overlaps the Generate and Cancel buttons.
+- The Video scene list scrollbar stays clear of Generate and Cancel, while scene header backgrounds extend to the edge.
 - Timeline media thumbnails stay inside their preview area, keeping filenames clear in grid and list layouts.
 - Portable builds show available updates and open GitHub releases for manual updating instead of running an installer.
 
