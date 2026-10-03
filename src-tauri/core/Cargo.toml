@@ -1,0 +1,32 @@
+[package]
+name = "slopus-core"
+version.workspace = true
+description = "Slopus generation runtime shared by the desktop app and the LAN worker. No UI framework."
+authors = ["Slopus"]
+edition = "2021"
+rust-version = "1.87"
+
+[lib]
+name = "slopus_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libloading = "0.8"
+getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+# Verifies the downloaded legacy LoRA timestep grid.
+sha2 = "0.10"
+jpeg-encoder = "0.6"
+# Keep image decoding compatible with the package's Rust 1.87 minimum.
+image = { version = "=0.25.8", default-features = false, features = ["jpeg", "png"] }
+tiny_http = "0.12"
+mdns-sd = "0.21"
+
+[target.'cfg(windows)'.dependencies]
+# DXGI reads GPU memory for weight selection without a CUDA toolkit.
+windows = { version = "0.61", features = ["Win32_Graphics_Dxgi", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"

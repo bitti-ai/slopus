@@ -3,7 +3,6 @@ mod app;
 mod app_paths;
 mod app_settings;
 mod commands;
-mod conditioning;
 mod cuda_support;
 mod diagnostics;
 mod export;
@@ -12,17 +11,15 @@ mod generation;
 mod media;
 mod native_shell;
 mod project;
-mod reference_icons;
-mod rendered;
-mod slopfab;
-mod storage;
 mod weights;
 mod window;
+mod worker;
+
+// The generation runtime is shared with the LAN worker through slopus-core.
+use slopus_core::{conditioning, reference_icons, rendered, slopfab, storage};
 
 pub use app::run;
-pub use slopfab::{
-    default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec,
-};
+pub use slopus_core::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};
 
 #[cfg(test)]
 mod tests;

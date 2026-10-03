@@ -6,3 +6,4 @@ pub(crate) mod generation;
 pub(crate) mod media;
 pub(crate) mod project;
 pub(crate) mod runtime;
+pub(crate) mod workers;

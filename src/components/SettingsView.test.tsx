@@ -220,7 +220,7 @@ describe("the settings screen", () => {
     open();
     const items = within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("button").filter((item) => item.id.startsWith("settings-tab-"));
     expect(items.map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Generator", "Agents", "Appearance", "Diagnostics", "Updates",
+      "Generator", "Workers", "Agents", "Appearance", "Diagnostics", "Updates",
     ]);
     fireEvent.click(tab("Appearance"));
     expect(combo("App theme")).toBeTruthy();

@@ -1,5 +1,5 @@
 use crate::project::{paths::*, *};
-use crate::{agent, diagnostics, slopfab};
+use crate::{agent, diagnostics, slopfab, worker::Workers};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use tauri::AppHandle;
@@ -14,11 +14,29 @@ pub(crate) struct RuntimeStatus {
 /// Probes the video engine from provider settings alone. The settings screen
 /// has no project in hand — engine paths belong to the machine, not to a
 /// project file — so it cannot go through `runtime_status`.
+/// The selected worker's engine when one is chosen in Settings → Workers.
+fn engine_status(workers: &Workers, settings: &BTreeMap<String, ProviderSetting>) -> slopfab::SlopfabStatus {
+    match workers.active() {
+        Ok(Some(worker)) => workers.status(&worker, settings),
+        Ok(None) => slopfab::status(settings),
+        Err(error) => {
+            let mut status = slopfab::status(settings);
+            status.state = "runtimeMissing";
+            status.detail = error;
+            status
+        }
+    }
+}
+
 #[tauri::command]
-pub(crate) fn slopfab_status(
+pub(crate) async fn slopfab_status(
+    workers: tauri::State<'_, Workers>,
     settings: BTreeMap<String, ProviderSetting>,
-) -> slopfab::SlopfabStatus {
-    let status = slopfab::status(&settings);
+) -> Result<slopfab::SlopfabStatus, String> {
+    let workers = workers.inner().clone();
+    let status = tauri::async_runtime::spawn_blocking(move || engine_status(&workers, &settings))
+        .await
+        .map_err(|error| error.to_string())?;
     diagnostics::info(
         "runtime",
         "slopfab.probed",
@@ -32,7 +50,7 @@ pub(crate) fn slopfab_status(
             })).collect::<Vec<_>>(),
         }),
     );
-    status
+    Ok(status)
 }
 
 /// One OS picker for one engine path. `directory` picks a folder (the
@@ -76,12 +94,14 @@ pub(crate) fn choose_engine_path(
 #[tauri::command]
 pub(crate) async fn runtime_status(
     discovery: tauri::State<'_, agent::ProviderDiscovery>,
+    workers: tauri::State<'_, Workers>,
     settings: BTreeMap<String, ProviderSetting>,
 ) -> Result<RuntimeStatus, String> {
     let discovery = discovery.inner().clone();
+    let workers = workers.inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || RuntimeStatus {
         providers: agent::provider_statuses(&discovery, &settings),
-        slopfab: slopfab::status(&settings),
+        slopfab: engine_status(&workers, &settings),
     })
     .await
     .map_err(|error| format!("Could not probe this computer: {error}"));

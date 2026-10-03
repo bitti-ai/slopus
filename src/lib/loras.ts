@@ -90,12 +90,21 @@ export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[
     && (lora.needsPreparation || !lora.path.trim() || /^https?:\/\//i.test(lora.path)));
 }
 
-export function resolveTemplateLoras(selection: TemplateLora[] = []) {
+/** `worker`: generation runs on a LAN worker, which downloads and prepares
+ *  URL adapters itself, so only adapters with neither a file nor a URL fail. */
+export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = false) {
   const library = loadLoras();
   return selection.filter((entry) => entry.enabled && entry.strength !== 0).flatMap((entry) => {
     const lora = library.find(({ id }) => id === entry.loraId);
     const strength = entry.strength;
     if (!isLoraStrength(strength)) throw new Error(`Strength for LoRA ${lora?.name ?? entry.loraId} is outside the supported range.`);
+    if (worker) {
+      const local = lora?.path.trim() && !/^https?:\/\//i.test(lora.path) && !lora.needsPreparation ? lora.path.trim() : undefined;
+      const path = local ?? lora?.url;
+      if (!path) throw new Error(lora?.needsPreparation ? `Prepare LoRA ${lora.name} in Settings before using it.`
+        : `Locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
+      return [{ path, strength, stepOverride: lora?.stepOverride, samplingPreset: lora?.samplingPreset }];
+    }
     if (lora?.needsPreparation) throw new Error(`Prepare LoRA ${lora.name} in Settings before using it.`);
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);

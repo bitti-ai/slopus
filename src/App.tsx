@@ -6,6 +6,7 @@ import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { hasSeenReleaseNotes } from "./lib/releaseNotes";
 import { missingCudaDownload } from "./lib/cudaSupport";
 import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
+import { startWorkerDiscovery } from "./lib/workers";
 import { Add16, FolderOpen16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, Search16, Search32, Settings16, WorkQueue16 } from "./components/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { DeleteProjectDialog, canConfirmNatively, confirmProjectDeletionNatively } from "./components/DeleteProjectDialog";
@@ -58,6 +59,7 @@ function App() {
   const iconConfirmationCount = useSyncExternalStore(workQueue.subscribe, workQueue.getIconConfirmationCount);
   const [workQueueOpen, setWorkQueueOpen] = useState(false);
   useEffect(() => workQueue.start(), [workQueue]);
+  useEffect(() => startWorkerDiscovery(), []);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
   const [activeProjectInitialView, setActiveProjectInitialView] = useState<ProjectView>("timeline");
   const [loading, setLoading] = useState(true);

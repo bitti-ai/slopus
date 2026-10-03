@@ -9,13 +9,14 @@
  * disk layout into a file the user is invited to move, copy, and share.
  *
  * The option names below are the contract with `Configuration::from_settings`
- * in src-tauri/src/slopfab/config.rs. Renaming one here without renaming it there
+ * in src-tauri/core/src/slopfab/config.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
 import { downloadableTemplateLoras, highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
+import { remoteWorkerSelected, selectedWorker, WORKERS_EVENT } from "./workers";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
  * ./theme.ts, which is separate only because index.html has to read the same
@@ -110,6 +111,40 @@ export function generatorPathFields(template: Pick<GeneratorTemplate, "mode">): 
 
 export const isDownloadUrl = (value: string): boolean => /^https?:\/\//i.test(value.trim());
 
+export interface WeightGpu { name: string; memoryBytes: number }
+
+export function chooseWeightSource(sources: WeightSource[], devices: WeightGpu[]): WeightSource | null {
+  // Prefer an explicit GPU match, then the highest memory tier that fits.
+  // Equal-ranked alternatives keep the author's order. Unknown hardware only
+  // qualifies for universal variants with no minimum memory requirement.
+  const matches = sources.filter((source) => !source.gpuModel.trim() && source.minVramGb === 0
+    || devices.some((gpu) => gpu.name.toLowerCase().includes(source.gpuModel.trim().toLowerCase())
+      // Drivers reserve part of VRAM (a 32 GB card may report 31.4 GiB).
+      && Math.ceil(gpu.memoryBytes / 1024 ** 3) >= source.minVramGb));
+  return matches.sort((a, b) => Number(Boolean(b.gpuModel.trim())) - Number(Boolean(a.gpuModel.trim())) || b.minVramGb - a.minVramGb)[0] ?? null;
+}
+
+/** Whether a generator can run where generation currently happens. A LAN
+ *  worker downloads URL weights itself, so a template only needs a source or
+ *  a local file for each model; this computer needs everything downloaded. */
+export function templateUsable(template: GeneratorTemplate): boolean {
+  if (!remoteWorkerSelected()) return !templateNeedsDownload(template);
+  if (!generatorPathFields(template).every(({ id, required }) => !required || template.paths[id].trim() || (template.sources?.[id]?.length ?? 0) > 0)) return false;
+  try {
+    resolveTemplateLoras(template.loras, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The weight a LAN worker should use: a local file is sent (or, if it was
+ *  downloaded, its URL is), otherwise the download variant for its GPU. */
+function workerWeight(value: string, sources: WeightSource[] | undefined): string {
+  if (value && !isDownloadUrl(value)) return value;
+  return chooseWeightSource(sources ?? [], selectedWorker()?.gpus ?? [])?.url ?? value;
+}
+
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
   return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
@@ -122,10 +157,13 @@ export function subscribeGeneratorTemplates(listener: () => void) {
   const unsubscribeLoras = subscribeLoras(listener);
   const storage = (event: StorageEvent) => { if (event.key === GENERATOR_TEMPLATES_KEY || event.key === null) listener(); };
   window.addEventListener(GENERATOR_TEMPLATES_EVENT, listener);
+  // Choosing a LAN worker changes which templates are usable.
+  window.addEventListener(WORKERS_EVENT, listener);
   window.addEventListener("storage", storage);
   return () => {
     unsubscribeLoras();
     window.removeEventListener(GENERATOR_TEMPLATES_EVENT, listener);
+    window.removeEventListener(WORKERS_EVENT, listener);
     window.removeEventListener("storage", storage);
   };
 }
@@ -302,8 +340,8 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
   const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
   return {
     templates,
-    defaultTemplateId: templates.find((template) => template.id === requestedDefault && !templateNeedsDownload(template))?.id
-      ?? templates.find((template) => !templateNeedsDownload(template))?.id ?? "",
+    defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
+      ?? templates.find(templateUsable)?.id ?? "",
     catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
@@ -439,8 +477,8 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
 }
 
 export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
-  return settings.templates.find((template) => template.id === settings.defaultTemplateId && !templateNeedsDownload(template))
-    ?? settings.templates.find((template) => !templateNeedsDownload(template))
+  return settings.templates.find((template) => template.id === settings.defaultTemplateId && templateUsable(template))
+    ?? settings.templates.find(templateUsable)
     ?? { id: "", name: "No downloaded generators", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
 }
 
@@ -467,7 +505,9 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources): ProviderSetting {
+  // A LAN worker receives URLs for weights it should download itself.
+  const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
@@ -480,10 +520,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (motionCache && mode !== "animate") options.motionCache = true;
   if (mode === "animate") options.generationMode = "animate";
   if (mode === "animate") {
-    const path = additionalSafetensors?.find((file) => file.role === "promptEmbedding")?.downloadedPath;
-    if (path && !isDownloadUrl(path)) options.promptEmbedding = path;
+    const file = additionalSafetensors?.find((entry) => entry.role === "promptEmbedding");
+    const path = file?.downloadedPath && !isDownloadUrl(file.downloadedPath) ? file.downloadedPath : remote ? file?.url : undefined;
+    if (path) options.promptEmbedding = path;
   }
-  const loras = resolveTemplateLoras(selection);
+  const loras = resolveTemplateLoras(selection, remote);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
   const stepOverride = highestLoraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
@@ -498,8 +539,8 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
       delete options[field.id];
       continue;
     }
-    const value = settings[field.id].trim();
-    if (value && !isDownloadUrl(value)) options[field.id] = value;
+    const value = remote ? workerWeight(settings[field.id].trim(), sources?.[field.id]) : settings[field.id].trim();
+    if (value && (remote || !isDownloadUrl(value))) options[field.id] = value;
     else if (isDownloadUrl(value)) delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };

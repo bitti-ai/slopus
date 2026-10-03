@@ -11,6 +11,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 - Higher image and video generation resolutions, plus standard image and video export sizes.
 - Downloadable DMAD 4-Step LoRA for MiniMax H3, with its re-noising sampling recipe applied automatically. Its fixed four-step schedule overrides step counts and turns off MotionCache.
 - Bundled release notes appear once per app version.
+- LAN workers: run the Slopus worker package on another Windows or Linux computer and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves and use CUDA when available, with a Vulkan fallback; local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
 
 ## Fixes and improvements
 

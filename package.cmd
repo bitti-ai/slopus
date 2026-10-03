@@ -6,6 +6,7 @@ pushd "%~dp0" || exit /b 1
 set "ROOT_DIR=%CD%"
 set "ARTIFACTS_DIR=%ROOT_DIR%\artifacts"
 set "RELEASE_EXE=%ROOT_DIR%\src-tauri\target\release\slopus.exe"
+set "WORKER_EXE=%ROOT_DIR%\src-tauri\target\release\slopus-worker.exe"
 
 set "SLOPFAB_DIR=%ROOT_DIR%\lib\slopfab"
 
@@ -54,6 +55,9 @@ set "OUTPUT_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable.zip"
 rem The portable layout is staged straight into the folder the zip is named
 rem after, and kept there afterwards so the build is runnable without unpacking.
 set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
+set "WORKER_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker.zip"
+set "WORKER_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker"
+set "LINUX_WORKER_NAME=Slopus-%APP_VERSION%-linux-x64-worker.tar.gz"
 
 echo.
 echo [1/5] Installing locked frontend dependencies...
@@ -74,6 +78,9 @@ if not exist "%RELEASE_EXE%" (
   echo        %RELEASE_EXE%
   goto :fail
 )
+
+rem The LAN worker is its own crate on slopus-core, without Tauri, so plain cargo is right.
+"%CARGO_EXE%" build --release --manifest-path "%ROOT_DIR%\src-tauri\Cargo.toml" -p slopus-worker || goto :fail
 
 rem Guard against silently shipping the dev-mode binary again: a production
 rem build embeds the hashed frontend assets, a dev-mode one does not.
@@ -110,11 +117,16 @@ rem Include the marker so portable copies offer manual updates from GitHub.
 > "%OUTPUT_DIR%\slopus-portable" echo Portable build - download updates from https://github.com/bitti-ai/slopus/releases
 if errorlevel 1 goto :fail
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
+call :package_worker || goto :fail
+call :package_linux_worker || goto :fail
 
 echo.
 echo Package complete.
 echo   %OUTPUT_ZIP%
 echo   %OUTPUT_DIR%\
+echo   %WORKER_ZIP%
+echo   %WORKER_DIR%\
+if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" echo   %ARTIFACTS_DIR%\%LINUX_WORKER_NAME%
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
@@ -123,6 +135,45 @@ echo The portable app requires WebView2 to be installed already.
 echo Run release.cmd to also build the setup executable and MSI installer.
 echo.
 popd
+exit /b 0
+
+:package_worker
+rem The LAN worker ships as its own package: the headless worker and the
+rem runtime it loads, nothing else. Copy it to the computer that generates.
+if exist "%WORKER_DIR%" rd /s /q "%WORKER_DIR%"
+if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" del /q "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%"
+if exist "%WORKER_DIR%" (
+  echo ERROR: could not clear %WORKER_DIR%.
+  echo        Close anything running out of that folder and retry.
+  exit /b 1
+)
+mkdir "%WORKER_DIR%" || exit /b 1
+copy /Y "%WORKER_EXE%" "%WORKER_DIR%\slopus-worker.exe" >nul || exit /b 1
+copy /Y "%SLOPFAB_DIR%\slopfab.dll" "%WORKER_DIR%\slopfab.dll" >nul || exit /b 1
+> "%WORKER_DIR%\README.txt" echo Slopus worker %APP_VERSION% ^(windows-%PACKAGE_ARCH%^)
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo Run "slopus-worker.exe" to let Slopus generate on this computer over the local network.
+>>"%WORKER_DIR%\README.txt" echo Slopus finds it automatically; choose it in Settings, Workers. Allow it through Windows Firewall when asked.
+>>"%WORKER_DIR%\README.txt" echo Keep slopfab.dll beside slopus-worker.exe.
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo WEIGHTS
+>>"%WORKER_DIR%\README.txt" echo   Weights with download links are downloaded here on first use. Add folders that already
+>>"%WORKER_DIR%\README.txt" echo   hold Slopus downloads with --weights. Other model files are sent from Slopus.
+>>"%WORKER_DIR%\README.txt" echo.
+>>"%WORKER_DIR%\README.txt" echo Run "slopus-worker.exe --help" for options such as --port, --token and --weights.
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:WORKER_DIR '*') -DestinationPath $env:WORKER_ZIP -CompressionLevel Optimal -Force" || exit /b 1
+echo        Worker:    %OUTPUT_STEM%-worker\
+exit /b 0
+
+:package_linux_worker
+rem The Linux worker is built inside WSL, which has the Linux toolchain, and
+rem packed with lib\slopfab\libslopfab.so. See scripts\package-linux-worker.sh.
+where.exe wsl.exe >nul 2>nul || (
+  echo        Linux:     skipped - WSL was not found. Releases require it.
+  exit /b 0
+)
+wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
+echo        Linux:     %LINUX_WORKER_NAME%
 exit /b 0
 
 :write_readme
@@ -140,6 +191,9 @@ exit /b 0
 >>"%~1" echo VIDEO GENERATION
 >>"%~1" echo   The runtime is included. Keep slopfab.dll beside Slopus.exe. Download generator weights in Settings.
 >>"%~1" echo   Model weights are not included. Set their paths in Settings.
+>>"%~1" echo.
+>>"%~1" echo LAN WORKER
+>>"%~1" echo   To generate on another computer, run the separate Slopus worker package there.
 exit /b 0
 
 :fail

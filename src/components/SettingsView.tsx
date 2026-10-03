@@ -3,8 +3,9 @@ import {
   Add20, Agent16, Agent16Filled, Agent20, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
   Diagnostics16Filled, Download16, Download20, Error16, Error20, Flash20, Folder20, Gauge20, Gpu20, Image20, ModelFile20, More16,
   Options20, Palette16, Palette16Filled, Palette20, Refresh16, Refresh16Filled, Rename20, Reset16, Sparkle20, Spinner16,
-  Spinner20, Steps20, TextFile20, Video16, Video16Filled, Video20,
+  Spinner20, Steps20, TextFile20, Video16, Video16Filled, Video20, Worker16, Worker16Filled,
 } from "./ui/icons";
+import { WorkersSetting } from "./WorkersSettings";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 import { revealDiagnosticLog } from "../lib/diagnostics";
 import { isTauri } from "../lib/persistence";
@@ -253,6 +254,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
 
 const TABS = [
   { id: "engine", label: "Generator", icon: Video16, selectedIcon: Video16Filled },
+  { id: "workers", label: "Workers", icon: Worker16, selectedIcon: Worker16Filled },
   { id: "llms", label: "Agents", icon: Agent16, selectedIcon: Agent16Filled },
   { id: "appearance", label: "Appearance", icon: Palette16, selectedIcon: Palette16Filled },
   { id: "diagnostics", label: "Diagnostics", icon: Diagnostics16, selectedIcon: Diagnostics16Filled },
@@ -323,7 +325,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false).then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false, selectedTemplate.sources).then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
@@ -664,6 +666,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           {error && <InfoBar severity="error" title="Couldn’t update generator settings" message={error} onClose={() => setError(null)} closeLabel="Dismiss" />}
 
           {tab === "engine" && (editingTemplate ? generatorEditor : generatorList)}
+          {tab === "workers" && <WorkersSetting desktop={desktop} />}
           {tab === "llms" && <PromptLlmSetting desktop={desktop} />}
           {tab === "appearance" && <AppearanceSetting />}
           {tab === "diagnostics" && <DiagnosticsSetting desktop={desktop} status={status} onBackendChange={() => probe(settings)} />}

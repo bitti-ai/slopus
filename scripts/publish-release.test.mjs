@@ -31,6 +31,8 @@ function fixture() {
     writeFileSync(`${path}.sig`, 'signature\n');
   }
   writeFileSync(join(root, 'artifacts/Slopus-0.2.0-windows-x64-portable.zip'), 'zip');
+  writeFileSync(join(root, 'artifacts/Slopus-0.2.0-windows-x64-worker.zip'), 'zip');
+  writeFileSync(join(root, 'artifacts/Slopus-0.2.0-linux-x64-worker.tar.gz'), 'tar');
   // Unrelated artifacts and secrets must never be included by a wildcard upload.
   writeFileSync(join(root, 'artifacts/private.key'), 'secret');
   writeFileSync(join(root, 'artifacts/Slopus-0.1.0-windows-x64-setup.exe'), 'old');

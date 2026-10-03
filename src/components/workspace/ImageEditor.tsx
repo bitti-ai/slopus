@@ -8,7 +8,7 @@ import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
-import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateNeedsDownload, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -72,7 +72,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
-  const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => !templateNeedsDownload(candidate)) ?? imageTemplates[0];
+  const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
   const onChange = (update: ConfigUpdate) => changeConfig((current) => {
     const next = typeof update === "function" ? update(current) : update;
@@ -497,7 +497,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {/* Three columns: Generate and the generator lead, the canvas tools
             sit in the middle, the view controls at the trailing edge. */}
         <div className="image-tools__start">
-          <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || templateNeedsDownload(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
+          <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
           <ComboBox
             className="image-generator"
             aria-label="Generator"
@@ -505,7 +505,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             value={template?.id ?? ""}
             disabled={Boolean(active) || !imageTemplates.length}
             placeholder="No MiniMax H3 templates"
-            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: templateNeedsDownload(item), description: templateNeedsDownload(item) ? "Download in Settings" : undefined }))}
+            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item), description: !templateUsable(item) ? "Download in Settings" : undefined }))}
             onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
         </div>

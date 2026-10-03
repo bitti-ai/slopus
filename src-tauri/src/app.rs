@@ -1,7 +1,7 @@
 use crate::window::{CloseDecision, ExitGuard};
 use crate::{
     agent, app_paths, app_settings, commands, cuda_support, diagnostics, export, native_shell,
-    slopfab, weights, window,
+    slopfab, weights, window, worker,
 };
 use std::io;
 /// Portable copies check for updates but open the release page for manual updates.
@@ -90,6 +90,7 @@ pub fn run() {
                 ),
                 Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
             }
+            app.state::<worker::Workers>().start(app.handle(), &app_paths::data_directory(app.handle()));
             window::apply_theme(&window);
             window.show()?;
             let _ = window.set_focus();
@@ -100,6 +101,7 @@ pub fn run() {
         .manage(agent::AgentRuntime::default())
         .manage(slopfab::SlopfabRuntime::default())
         .manage(weights::WeightDownloads::default())
+        .manage(worker::Workers::default())
         .manage(ExitGuard::default())
         .manage(native_shell::Backdrop::default())
         .manage(native_shell::SystemAccent::default())
@@ -216,6 +218,11 @@ pub fn run() {
             commands::generation::resolve_slopfab_plan,
             commands::generation::enqueue_slopfab_generation,
             commands::generation::cancel_slopfab_generation,
+            commands::workers::list_workers,
+            commands::workers::select_worker,
+            commands::workers::add_worker,
+            commands::workers::remove_worker,
+            commands::workers::set_worker_token,
             window::set_generation_active,
             window::answer_app_close,
             native_shell::system_accent_colors,

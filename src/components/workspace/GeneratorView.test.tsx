@@ -651,7 +651,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("option", { name: "Fast draft" }));
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
-    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true);
+    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true, expect.anything());
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
     expect(within(screen.getByRole("region", { name: "Generator status" })).getByText("Video model files missing")).toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();

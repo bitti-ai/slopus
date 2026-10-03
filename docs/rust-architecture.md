@@ -1,25 +1,41 @@
 # Rust architecture
 
-The four former files over 1,000 lines (`lib.rs`, `slopfab.rs`, `agent.rs`, and
-`agent_commands.rs`) are split by responsibility. Existing IPC names, project
-JSON, JSONL commands, event payloads, and reference import policies are preserved.
+`src-tauri` is a Cargo workspace of three crates:
 
-| Area | Responsibilities |
-| --- | --- |
-| `app.rs`, `window.rs`, `commands/` | Tauri setup, window lifecycle, dialogs, IPC and event delivery |
-| `project/` | Document types, compatibility migrations, ordered validation, persistence and lifecycle |
-| `project/commands/` | Restricted command vocabulary, JSONL parsing, transactional batches and domain handlers |
-| `media/`, `storage/` | Format catalog, session access, confined project artifacts and atomic replacement |
-| `agent/` | Turn protocol, correction budget, semantic policy, cancellation and provider discovery |
-| `agent/providers/` | Claude/Codex CLI adapters and compatible HTTP endpoints behind one turn interface |
-| `generation/models/` | Model defaults, capabilities, authoring instructions and shot-setting validation |
-| `slopfab/` | Native runtime configuration, planning, serial generation queue, icons and references |
-| `slopfab/ffi/` | Private ABI bindings, library ownership, handles, callbacks and output access |
+| Crate | Path | Contents |
+| --- | --- | --- |
+| `slopus-core` | `src-tauri/core` | Generation runtime, weights, render store, diagnostics and the LAN worker protocol and server. No UI framework. |
+| `slopus` | `src-tauri` | The desktop app: Tauri setup, IPC commands, projects, agents and the worker client. Depends on `slopus-core`. |
+| `slopus-worker` | `src-tauri/worker` | The headless LAN worker binary. Depends only on `slopus-core`. |
+
+The app re-exports core modules at its crate root (`crate::slopfab`,
+`crate::rendered`, ...), so app code uses the same paths as before. Code that the
+worker needs must live in `slopus-core` and must not depend on Tauri. Existing IPC
+names, project JSON, JSONL commands, event payloads, and reference import
+policies are preserved.
+
+| Area | Crate | Responsibilities |
+| --- | --- | --- |
+| `app.rs`, `window.rs`, `commands/` | app | Tauri setup, window lifecycle, dialogs, IPC and event delivery |
+| `project/` | app | Document types, compatibility migrations, ordered validation, persistence and lifecycle |
+| `project/commands/` | app | Restricted command vocabulary, JSONL parsing, transactional batches and domain handlers |
+| `media/` | app | Format catalog, session access and confined project artifacts |
+| `agent/` | app | Turn protocol, correction budget, semantic policy, cancellation and provider discovery |
+| `agent/providers/` | app | Claude/Codex CLI adapters and compatible HTTP endpoints behind one turn interface |
+| `generation/models/` | app | Model defaults, authoring instructions and shot-setting validation |
+| `weights.rs`, `worker/` | app | Weight download commands, and the client that sends generations to a LAN worker |
+| `models.rs`, `settings.rs` | core | Model generation limits; provider settings passed to the engine |
+| `slopfab/` | core | Native runtime configuration, planning, serial generation queue, icons and references |
+| `slopfab/ffi/` | core | Private ABI bindings, library ownership, handles, callbacks and output access |
+| `rendered.rs`, `weights.rs`, `storage/` | core | Finished-render store, weight downloader, atomic replacement |
+| `diagnostics.rs` | core | Log files for both the app and the worker |
+| `worker/` | core | Worker protocol, HTTP server, upload/download store and mDNS discovery |
 
 ## Adding a generation model
 
 1. Define a `ModelDefinition` under `generation/models/` and register its persisted
-   ID in `find`. Specify scene defaults, generation limits, authoring instructions,
+   ID in `find`. Generation limits (`ModelCapabilities`) live in
+   `slopus-core`'s `models.rs`. Specify scene defaults, generation limits, authoring instructions,
    vocabulary and shot-setting validation. Unknown IDs remain readable data and
    do not acquire H3 authoring instructions; unregistered documents retain the
    existing v1 validation limits.
@@ -62,7 +78,7 @@ removed from model context; credentials remain in the selected transport session
 
 ## Verification
 
-Run `cargo test --manifest-path src-tauri/Cargo.toml`, `npm test`, and `npm run build`.
+Run `cargo test --workspace --manifest-path src-tauri/Cargo.toml`, `npm test`, and `npm run build`.
 Native tests exercise the bundled DLL's ABI, planning, reference snapshots and
 handle ownership without loading model weights. They do not verify a full GPU
 render; that requires installed weights and suitable hardware.
