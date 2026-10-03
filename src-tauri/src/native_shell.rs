@@ -11,9 +11,10 @@ tests never have to care which host they are in.
 -------------------------------------------------------------------------- */
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter as _, Manager as _, Runtime};
+use tauri::{AppHandle, Manager as _, Runtime};
 
 /// Event the page listens to for a changed accent (src/lib/nativeShell.ts).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const ACCENT_EVENT: &str = "system-accent-changed";
 
 /// Global the page's boot script reads to learn that Mica is behind it. Set
@@ -182,6 +183,7 @@ pub(crate) struct AccentColors {
     pub(crate) dark3: String,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn hex(r: u8, g: u8, b: u8) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
@@ -220,6 +222,7 @@ fn read_accent(
 pub(crate) fn watch_accent<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(windows)]
     {
+        use tauri::Emitter as _;
         use windows::Foundation::TypedEventHandler;
         use windows::UI::ViewManagement::UISettings;
         let Ok(settings) = UISettings::new() else { return };
@@ -311,17 +314,34 @@ pub(crate) fn show_text_context_menu(
         .map_err(|error| format!("Could not show the text menu: {error}"))
 }
 
+/// The text menu's items: the Ctrl shortcut Windows replays, and the editing
+/// command WebKitGTK runs for the same item.
+fn text_menu_item(id: &str) -> Option<(u8, &'static str)> {
+    match id {
+        MENU_CUT => Some((b'X', "Cut")),
+        MENU_COPY => Some((b'C', "Copy")),
+        MENU_PASTE => Some((b'V', "Paste")),
+        MENU_SELECT_ALL => Some((b'A', "SelectAll")),
+        _ => None,
+    }
+}
+
 /// Routes a click on one of the text menu's items. Returns false for any other
 /// menu, so the caller can keep one global handler.
-pub(crate) fn handle_menu_event(id: &str) -> bool {
-    let key = match id {
-        MENU_CUT => b'X',
-        MENU_COPY => b'C',
-        MENU_PASTE => b'V',
-        MENU_SELECT_ALL => b'A',
-        _ => return false,
-    };
-    send_ctrl_shortcut(key);
+pub(crate) fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) -> bool {
+    let Some((key, command)) = text_menu_item(id) else { return false };
+    #[cfg(target_os = "linux")]
+    {
+        let _ = key;
+        if let Some(window) = app.get_webview_window("main") {
+            crate::linux_webview::execute_editing_command(&window, command);
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, command);
+        send_ctrl_shortcut(key);
+    }
     true
 }
 
@@ -352,7 +372,7 @@ fn send_ctrl_shortcut(key: u8) {
     unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn send_ctrl_shortcut(_key: u8) {}
 
 /* ── Files ────────────────────────────────────────────────────────────────── */
@@ -379,11 +399,50 @@ pub(crate) fn reveal_in_explorer(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("Could not reveal the file: {error}"))?;
     #[cfg(all(unix, not(target_os = "macos")))]
-    std::process::Command::new("xdg-open")
-        .arg(path.parent().unwrap_or(&path))
-        .spawn()
-        .map_err(|error| format!("Could not open the folder: {error}"))?;
+    {
+        /* Files, Dolphin and most other file managers implement the
+           FileManager1 interface and select the item; xdg-open can only open
+           the folder around it. */
+        let selected = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--print-reply",
+                "--reply-timeout=5000",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+            ])
+            .arg(format!("array:string:{}", file_uri(&path)))
+            .arg("string:")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if !selected {
+            std::process::Command::new("xdg-open")
+                .arg(path.parent().unwrap_or(&path))
+                .spawn()
+                .map_err(|error| format!("Could not open the folder: {error}"))?;
+        }
+    }
     Ok(())
+}
+
+/// A `file://` URI for an absolute path, percent-encoding everything but
+/// unreserved characters and separators. dbus-send splits arrays on commas,
+/// so those are encoded too.
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+pub(crate) fn file_uri(path: &std::path::Path) -> String {
+    let mut uri = String::from("file://");
+    for byte in path.to_string_lossy().bytes() {
+        if byte.is_ascii_alphanumeric() || b"/-_.~".contains(&byte) {
+            uri.push(char::from(byte));
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
 }
 
 #[derive(Debug, Deserialize)]
@@ -442,6 +501,14 @@ mod tests {
     }
 
     #[test]
+    fn file_uris_encode_spaces_commas_and_unicode() {
+        assert_eq!(
+            file_uri(std::path::Path::new("/home/me/My Videos/a,b ä.mp4")),
+            "file:///home/me/My%20Videos/a%2Cb%20%C3%A4.mp4"
+        );
+    }
+
+    #[test]
     fn colours_are_lowercase_hash_hex() {
         assert_eq!(hex(0x00, 0x78, 0xd4), "#0078d4");
         assert_eq!(hex(255, 255, 255), "#ffffff");
@@ -449,7 +516,8 @@ mod tests {
 
     #[test]
     fn only_the_text_menu_ids_are_claimed() {
-        assert!(!handle_menu_event("something-else"));
+        assert!(text_menu_item("something-else").is_none());
+        assert_eq!(text_menu_item(MENU_SELECT_ALL), Some((b'A', "SelectAll")));
     }
 
     #[test]

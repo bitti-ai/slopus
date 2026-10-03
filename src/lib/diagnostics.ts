@@ -62,8 +62,14 @@ export function installGlobalDiagnostics(): void {
   window.addEventListener("unhandledrejection", (event) => {
     writeDiagnostic("error", "webview", "unhandled_rejection", describeDiagnosticError(event.reason), errorContext(event.reason));
   });
+  /* The media pipeline's engine features, which WebKitGTK only has when
+     src-tauri/src/linux_webview.rs managed to switch them on. */
   writeDiagnostic("info", "webview", "ready", "Frontend diagnostics installed.", {
     userAgent: navigator.userAgent,
+    videoDecoder: typeof globalThis.VideoDecoder === "function",
+    videoEncoder: typeof globalThis.VideoEncoder === "function",
+    audioDecoder: typeof globalThis.AudioDecoder === "function",
+    webGpu: "gpu" in navigator,
   });
 }
 

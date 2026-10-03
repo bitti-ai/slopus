@@ -8,6 +8,8 @@ mod diagnostics;
 mod export;
 mod external_links;
 mod generation;
+#[cfg(target_os = "linux")]
+mod linux_webview;
 mod media;
 mod native_shell;
 mod project;

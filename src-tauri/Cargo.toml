@@ -21,6 +21,17 @@ rust-version = "1.87"
 name = "slopus_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# The reference icon generator (scripts/generate-reference-icons.mjs) is a
+# development tool. Behind a feature, the Tauri CLI leaves it out of installers
+# and packages, where it would otherwise land on PATH as /usr/bin/reference_icons.
+reference-icon-tool = []
+
+[[bin]]
+name = "reference_icons"
+path = "src/bin/reference_icons.rs"
+required-features = ["reference-icon-tool"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -63,6 +74,11 @@ windows = { version = "0.61", features = [
     "Win32_System_SystemInformation",
 ] }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Must stay on wry's major: with_webview hands back its WebKitGTK view. Turns
+# on WebCodecs and WebGPU, which WebKitGTK ships behind feature flags.
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -35,7 +35,8 @@ const DLL_FILE_NAME: &str = "slopfab.dll";
 #[cfg(not(windows))]
 const DLL_FILE_NAME: &str = "libslopfab.so";
 /// Tauri stages the repository's runtime resources in development and release
-/// builds. Installers and portable folders use the same relative layout.
+/// builds. Windows installers, portable folders and the worker keep it beside
+/// the executable; Linux packages keep it in Tauri's resource folder.
 pub fn default_dll_path() -> PathBuf {
     let executable = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Slopus.exe"));
     let directory = executable.parent().unwrap_or_else(|| Path::new("."));
@@ -46,7 +47,18 @@ pub fn default_dll_path() -> PathBuf {
     } else {
         directory
     };
-    directory.join(DLL_FILE_NAME)
+    runtime_beside(directory)
+}
+
+/// The runtime beside the executable, else in a Linux package's resources.
+fn runtime_beside(directory: &Path) -> PathBuf {
+    let beside = directory.join(DLL_FILE_NAME);
+    if cfg!(windows) || beside.is_file() {
+        return beside;
+    }
+    // .deb, .rpm and AppImage: /usr/bin/slopus with /usr/lib/Slopus/.
+    let packaged = directory.join("../lib/Slopus").join(DLL_FILE_NAME);
+    if packaged.is_file() { packaged } else { beside }
 }
 const EXPECTED_CAPI_MAJOR: u32 = 1;
 const NOT_READY: i32 = -7;

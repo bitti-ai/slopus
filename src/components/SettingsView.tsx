@@ -31,6 +31,7 @@ import {
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { availableReferenceIconGenerators, loadReferenceIconAutomation, loadReferenceIconGeneratorId, referenceIconGenerator, saveReferenceIconAutomation, saveReferenceIconGeneratorId, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "../lib/theme";
+import { runtimeLocationHint } from "../lib/platform";
 import {
   ComboBox, ContextMenu, InfoBadge, InfoBar, NavItem, NavPane, ProgressBar, SettingsCard, SettingsExpander, SettingsGroup, SettingsRow,
   TextField, ToggleSwitch, type InfoBarSeverity,
@@ -695,7 +696,7 @@ const engineHeadline = (status: SlopfabStatus | null, desktop: boolean) => {
 const engineDetail = (status: SlopfabStatus | null, desktop: boolean, missing: number) => {
   if (!desktop) return "Only the desktop app can check paths and render.";
   if (!status) return "Looking for the engine and model files.";
-  if (status.state === "runtimeMissing") return `${status.detail} slopfab.dll should be next to Slopus.exe.`;
+  if (status.state === "runtimeMissing") return `${status.detail} ${runtimeLocationHint()}`;
   if (status.state === "ready") return "All required model files found.";
   if (missing > 0) return `${status.detail} ${missing === 1 ? "1 path" : `${missing} paths`} still to set.`;
   return status.detail;

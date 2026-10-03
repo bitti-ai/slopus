@@ -237,7 +237,7 @@ try {
     await run(settings.cargo, [
       "build", "--quiet",
       "--manifest-path", join(repository, "src-tauri", "Cargo.toml"),
-      "--bin", "reference_icons",
+      "--bin", "reference_icons", "--features", "reference-icon-tool",
     ], { cwd: repository });
     const workerCount = Math.max(1, Math.min(specs.length, Number.isFinite(requestedWorkers) ? Math.floor(requestedWorkers) : 2));
     const batches = Array.from({ length: workerCount }, () => []);

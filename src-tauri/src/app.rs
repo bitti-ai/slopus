@@ -8,6 +8,11 @@ use std::io;
 #[tauri::command]
 fn app_updater_mode() -> Result<&'static str, String> {
     if cfg!(debug_assertions) { return Ok("disabled"); }
+    /* On Linux the updater replaces only an AppImage (whose runtime sets
+       APPIMAGE); .deb and .rpm installs belong to the package manager. */
+    if cfg!(target_os = "linux") {
+        return Ok(if std::env::var_os("APPIMAGE").is_some() { "installed" } else { "portable" });
+    }
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let directory = exe.parent().ok_or("Could not locate the application folder.")?;
     Ok(if directory.join("slopus-portable").exists() { "portable" } else { "installed" })
@@ -36,10 +41,14 @@ pub fn run() {
                the window is created) never shows as a jump. */
             let mut builder = tauri::WebviewWindowBuilder::from_config(app, window_config)?
                 .data_directory(data_directory)
-                .visible(false)
-                /* Needs WebView2 125+; older runtimes keep the classic bars. */
-                .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
-                .general_autofill_enabled(false);
+                .visible(false);
+            #[cfg(windows)]
+            {
+                builder = builder
+                    /* Needs WebView2 125+; older runtimes keep the classic bars. */
+                    .scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay)
+                    .general_autofill_enabled(false);
+            }
             if native_shell::window_state_missing(app.handle()) {
                 if let Ok(Some(monitor)) = app.primary_monitor() {
                     let area = monitor.work_area();
@@ -90,6 +99,9 @@ pub fn run() {
                 ),
                 Err(error) => eprintln!("Could not initialize diagnostic logging: {error}"),
             }
+            // After logging starts: it records which WebKit features came on.
+            #[cfg(target_os = "linux")]
+            crate::linux_webview::configure(&window);
             app.state::<worker::Workers>().start(app.handle(), &app_paths::data_directory(app.handle()));
             window::apply_theme(&window);
             window.show()?;
@@ -105,8 +117,8 @@ pub fn run() {
         .manage(ExitGuard::default())
         .manage(native_shell::Backdrop::default())
         .manage(native_shell::SystemAccent::default())
-        .on_menu_event(|_app, event| {
-            native_shell::handle_menu_event(event.id().as_ref());
+        .on_menu_event(|app, event| {
+            native_shell::handle_menu_event(app, event.id().as_ref());
         })
         .on_window_event(|window, event| {
             use tauri::Manager as _;

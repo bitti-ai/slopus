@@ -45,6 +45,10 @@ Slopus brings an AI assistant, a scene generator, reusable references, a timelin
 
 Local video generation requires separately installed model weights and GPU support. In **Settings → Generator**, configure a generator's model paths and check that its status reads **Ready**. Configure OpenRouter or a local model endpoint in **Settings → Agents** to make it available in the assistant's agent list.
 
+### Linux
+
+Slopus runs on x86_64 Linux. Install `Slopus-<version>-linux-x64.deb` (Debian, Ubuntu) or `Slopus-<version>-linux-x64.rpm` (Fedora, openSUSE), or make `Slopus-<version>-linux-x64.AppImage` executable and run it; the AppImage updates itself. The app needs WebKitGTK 2.42 or later for video decoding, export and GPU effects. Local generation has the same requirements as the Linux worker below. See [docs/linux.md](docs/linux.md).
+
 ### Generating on another computer
 
 Workers run on Windows or Linux. On a computer with a capable GPU on the same network, unpack the worker package and start it:

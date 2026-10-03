@@ -44,10 +44,12 @@ export function releaseFiles(root, version) {
   const target = generic[0][0];
   const arch = { 'windows-x86_64': 'x64', 'windows-aarch64': 'arm64', 'windows-i686': 'x86' }[target];
   const stem = `Slopus-${version}-windows-${arch}`;
+  const linuxStem = `Slopus-${version}-linux-x64`;
+  const linuxTargets = ['linux-x86_64', 'linux-x86_64-appimage'];
   const names = new Set();
   for (const [key, entry] of platforms) {
-    if (![target, `${target}-nsis`, `${target}-msi`].includes(key)) throw new Error(`Unexpected updater target: ${key}`);
-    const name = key.endsWith('-msi') ? `${stem}.msi` : `${stem}-setup.exe`;
+    if (![target, `${target}-nsis`, `${target}-msi`, ...linuxTargets].includes(key)) throw new Error(`Unexpected updater target: ${key}`);
+    const name = linuxTargets.includes(key) ? `${linuxStem}.AppImage` : key.endsWith('-msi') ? `${stem}.msi` : `${stem}-setup.exe`;
     const expected = `https://github.com/${repository}/releases/download/v${version}/${encodeURIComponent(name)}`;
     if (entry.url !== expected) throw new Error(`Updater URL does not match this release: ${key}`);
     const signature = readFileSync(resolve(directory, `${name}.sig`), 'utf8').trim();
@@ -56,8 +58,11 @@ export function releaseFiles(root, version) {
     names.add(name);
   }
   if (!manifest.platforms[`${target}-nsis`]) throw new Error('Missing NSIS updater target.');
+  if (!manifest.platforms['linux-x86_64']) throw new Error('Missing Linux AppImage updater target.');
   names.add(`${stem}-portable.zip`);
   names.add(`${stem}-worker.zip`);
+  names.add(`${linuxStem}.deb`);
+  names.add(`${linuxStem}.rpm`);
   names.add(`Slopus-${version}-linux-x64-worker.tar.gz`);
   // Upload the manifest last. Only this explicit list can become release assets.
   names.add('latest.json');

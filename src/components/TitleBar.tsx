@@ -3,6 +3,7 @@ import icon from "../../marketing/icon.png";
 import {
   closeWindow, minimizeWindow, onMaximizedChange, onWindowFocusChange, toggleMaximizeWindow,
 } from "../lib/nativeShell";
+import { hostPlatform } from "../lib/platform";
 
 /* The window's title bar. The window is frameless (tauri.conf.json
    `decorations: false`), so this row IS the caption: it drags the window,
@@ -45,6 +46,26 @@ const GLYPH = {
   restore: "",
   close: "",
 } as const;
+
+/* Other desktops have neither font: the same four shapes drawn as 10px
+   hairlines, so the buttons look alike everywhere. */
+const SVG_GLYPH: Record<keyof typeof GLYPH, ReactNode> = {
+  minimize: <path d="M0 5.5h10" />,
+  maximize: <rect x="0.5" y="0.5" width="9" height="9" />,
+  restore: <><rect x="0.5" y="2.5" width="7" height="7" /><path d="M2.5 2.5V0.5h7v7h-2" /></>,
+  close: <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />,
+};
+
+const fontGlyphs = hostPlatform() === "windows";
+
+function CaptionGlyph({ kind }: { kind: keyof typeof GLYPH }) {
+  if (fontGlyphs) return <span aria-hidden="true">{GLYPH[kind]}</span>;
+  return (
+    <svg aria-hidden="true" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1">
+      {SVG_GLYPH[kind]}
+    </svg>
+  );
+}
 
 /** Follows the native maximized state. False outside Tauri. */
 export function useWindowMaximized(): boolean {
@@ -93,7 +114,7 @@ export function TitleBar({
           Alt+Space, Win+Up/Down and Alt+F4. */}
       <div className="titlebar__captions" role="group" aria-label="Window controls">
         <button type="button" className="titlebar__caption" tabIndex={-1} aria-label="Minimize" data-tooltip="Minimize" onClick={run(minimizeWindow)}>
-          <span aria-hidden="true">{GLYPH.minimize}</span>
+          <CaptionGlyph kind="minimize" />
         </button>
         <button
           type="button"
@@ -103,10 +124,10 @@ export function TitleBar({
           data-tooltip={maximized ? "Restore Down" : "Maximize"}
           onClick={run(toggleMaximizeWindow)}
         >
-          <span aria-hidden="true">{maximized ? GLYPH.restore : GLYPH.maximize}</span>
+          <CaptionGlyph kind={maximized ? "restore" : "maximize"} />
         </button>
         <button type="button" className="titlebar__caption titlebar__caption--close" tabIndex={-1} aria-label="Close" data-tooltip="Close" onClick={run(closeWindow)}>
-          <span aria-hidden="true">{GLYPH.close}</span>
+          <CaptionGlyph kind="close" />
         </button>
       </div>
     </header>

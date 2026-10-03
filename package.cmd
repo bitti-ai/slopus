@@ -58,6 +58,7 @@ set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
 set "WORKER_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker.zip"
 set "WORKER_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker"
 set "LINUX_WORKER_NAME=Slopus-%APP_VERSION%-linux-x64-worker.tar.gz"
+set "LINUX_APP_STEM=Slopus-%APP_VERSION%-linux-x64"
 
 echo.
 echo [1/5] Installing locked frontend dependencies...
@@ -119,6 +120,7 @@ if errorlevel 1 goto :fail
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
 call :package_worker || goto :fail
 call :package_linux_worker || goto :fail
+call :package_linux_app || goto :fail
 
 echo.
 echo Package complete.
@@ -127,6 +129,9 @@ echo   %OUTPUT_DIR%\
 echo   %WORKER_ZIP%
 echo   %WORKER_DIR%\
 if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" echo   %ARTIFACTS_DIR%\%LINUX_WORKER_NAME%
+if exist "%ARTIFACTS_DIR%\%LINUX_APP_STEM%.deb" echo   %ARTIFACTS_DIR%\%LINUX_APP_STEM%.deb
+if exist "%ARTIFACTS_DIR%\%LINUX_APP_STEM%.rpm" echo   %ARTIFACTS_DIR%\%LINUX_APP_STEM%.rpm
+if exist "%ARTIFACTS_DIR%\%LINUX_APP_STEM%.AppImage" echo   %ARTIFACTS_DIR%\%LINUX_APP_STEM%.AppImage
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
@@ -174,6 +179,17 @@ where.exe wsl.exe >nul 2>nul || (
 )
 wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
 echo        Linux:     %LINUX_WORKER_NAME%
+exit /b 0
+
+:package_linux_app
+rem The Linux desktop app, built in WSL around the frontend in dist\ and
+rem packed unsigned as .deb, .rpm and AppImage. See scripts\package-linux-app.sh.
+where.exe wsl.exe >nul 2>nul || (
+  echo        Linux app: skipped - WSL was not found. Releases require it.
+  exit /b 0
+)
+wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
+echo        Linux app: %LINUX_APP_STEM%.deb, .rpm and .AppImage
 exit /b 0
 
 :write_readme
