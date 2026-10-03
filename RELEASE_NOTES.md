@@ -4,6 +4,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Duplicate references from their context menu, including multiple selected references with their prompts, attachments, and media settings.
 - Create a video scene with an image as its first frame, or create an image reference, directly from the Image tab's image bar context menu.
 - Every project now includes Video and Image tabs. Older video and image projects keep their saved content, and Export supports both output types.
 - Clothes and Accessories reference categories include common wearable items. Clothes offer optional color and fabric settings.

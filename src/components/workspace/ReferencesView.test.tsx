@@ -514,6 +514,59 @@ describe("Reference library views and selection", () => {
     expect(open).toHaveBeenCalledWith(initial.generationJobs[0].id);
   });
 
+  it.each(["Icons", "Details"])("duplicates the context-menu target with independently editable attachments in %s view", async (view) => {
+    const initial = three();
+    const source = initial.references[2];
+    Object.assign(source, {
+      subcategory: "Lighting",
+      iconRelativePath: "references/lamp-icon.png",
+      images: [{ id: "lamp-image", name: "Lamp image", relativePath: "references/lamp.png" }],
+      refmods: [{ id: "lamp-refmod", name: "Lamp refmod", sourcePath: "C:\\models\\lamp.refmod", strength: 0.7, copies: 2 }],
+    });
+    const state = setup(initial);
+    fireEvent.click(screen.getByRole("button", { name: view }));
+    // Opening an unselected item's menu must duplicate that item, not the inspector's selection.
+    const role = view === "Icons" ? "option" : "row";
+    fireEvent.contextMenu(screen.getByRole(role, { name: /^Lamp / }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+
+    const copy = state.latest().references[3];
+    expect(copy).toEqual({ ...source, id: expect.any(String), name: "Lamp copy", createdAt: expect.any(String) });
+    expect(copy.id).not.toBe(source.id);
+    expect(copy.images).not.toBe(source.images);
+    expect(copy.refmods![0]).not.toBe(source.refmods![0]);
+    expect(copy.intendedUse).not.toBe(source.intendedUse);
+    expect(state.latest().generationJobs).toEqual(initial.generationJobs);
+    expect(state.latest().imageScene).toEqual(initial.imageScene);
+    expect(screen.getByRole("textbox", { name: "Reference name" })).toHaveValue("Lamp copy");
+    const tile = screen.getByRole(role, { name: /^Lamp copy / });
+    expect(tile).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(tile).toHaveFocus());
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Lamp refmod strength" }), { target: { value: "0.4" } });
+    expect(state.latest().references[3].refmods![0].strength).toBe(0.4);
+    expect(state.latest().references[2].refmods![0].strength).toBe(0.7);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).references).toEqual(state.latest().references);
+  });
+
+  it("duplicates a selection from the keyboard context menu and gives repeated copies unique names", () => {
+    const state = setup(three());
+    const hero = () => screen.getByRole("option", { name: /^Hero Text/ });
+    fireEvent.contextMenu(hero());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+    fireEvent.click(hero());
+    fireEvent.click(screen.getByRole("option", { name: /^Cat / }), { ctrlKey: true });
+    fireEvent.keyDown(hero(), { key: "ContextMenu" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate 2 references" }));
+
+    expect(state.latest().references.map((reference) => reference.name)).toEqual([
+      "Hero", "Hero copy 2", "Hero copy", "Cat", "Cat copy", "Lamp",
+    ]);
+    const ids = state.latest().references.map((reference) => reference.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(screen.getAllByRole("option", { selected: true }).map((option) => option.textContent)).toEqual(["Hero copy 2", "Cat copy"]);
+    expect(screen.getByRole("region", { name: "References status" })).toHaveTextContent("2 selected");
+  });
+
   it("shows the shared empty state when nothing is selected", () => {
     setup({ ...project(), references: [] });
     expect(screen.getByText("Nothing selected")).toBeInTheDocument();

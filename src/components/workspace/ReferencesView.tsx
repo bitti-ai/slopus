@@ -1,4 +1,4 @@
-import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
+import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, Copy16, CursorClick32, Delete14, Delete16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
@@ -86,8 +86,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
 }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   /* Ctrl/Shift multi-select. `selectedId` stays the one reference the
-     inspector edits (the last one clicked); `selectedIds` is what Delete acts
-     on. A plain click makes them the same single reference again. */
+     inspector edits (the last one clicked); `selectedIds` is what Delete and
+     Duplicate act on. A plain click makes them the same single reference again. */
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set(config.references[0] ? [config.references[0].id] : []));
   const anchorId = useRef<string | undefined>(selectedId);
   const [imagePage, setImagePage] = useState(0);
@@ -244,6 +244,28 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
       else if (action === "generate") onGenerateBuiltinIcons();
     }).catch((reason) => setIconError(String(reason)));
   };
+  const duplicate = (ids: readonly string[]) => {
+    const current = configRef.current;
+    const sources = new Set(ids);
+    const names = new Set(current.references.map((reference) => reference.name));
+    const copies: ProjectReference[] = [];
+    const references = current.references.flatMap((reference) => {
+      if (!sources.has(reference.id)) return [reference];
+      const baseName = `${reference.name} copy`;
+      let name = baseName;
+      for (let suffix = 2; names.has(name); suffix++) name = `${baseName} ${suffix}`;
+      names.add(name);
+      // Keep the media files, but give each copy independently editable settings.
+      const copy = { ...structuredClone(reference), id: `ref-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString() };
+      copies.push(copy);
+      return [reference, copy];
+    });
+    if (!copies.length) return;
+    onChange({ ...current, references });
+    selectOnly(copies[0].id);
+    setSelectedIds(new Set(copies.map((copy) => copy.id)));
+    focusItem(copies[0].id);
+  };
   /** Delete references (the selection by default) and every place that points
    *  at them: scene bindings, start/end frames and the image scene. */
   const remove = (ids: readonly string[] = selection.length ? selection : selected ? [selected.id] : []) => {
@@ -394,6 +416,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     const file = referenceFile(folderPath, reference);
     const many = selection.length > 1 && selection.includes(reference.id);
     return [
+      { id: "duplicate", label: many ? `Duplicate ${selection.length} references` : "Duplicate", icon: <Copy16 />, onSelect: () => duplicate(many ? selection : [reference.id]) },
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: many, onSelect: () => rename(reference.id) },
       { id: "add-file", label: "Add file…", icon: <ImageAdd16 />, disabled: many || Boolean(reference.refmods?.length) || importingFiles, onSelect: () => { selectOnly(reference.id); void addFiles(reference.id); } },
       { id: "reveal", label: `Show in ${fileManagerName()}`, icon: <FolderOpen16 />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
