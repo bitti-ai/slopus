@@ -8,6 +8,8 @@ export const REFERENCE_ICON_STEPS = 20;
 const COMPOSITIONS = {
   character: "A clear head-and-shoulders character portrait. Emphasize recognizable facial features, hair, clothing, and personality against a simple background.",
   animal: "A clear portrait of the animal with its whole body visible. Emphasize species-accurate anatomy, distinctive markings, fur, feathers, or scales and a recognizable silhouette against a simple natural background.",
+  clothing: "A clear view of the complete clothing item against a simple background. Emphasize its silhouette, cut, color, fabric texture, seams, and defining details.",
+  accessory: "A clear close view of the complete wearable accessory against a simple background. Emphasize its shape, materials, finish, and defining details.",
   product: "A clean hero view of the product. Show its complete silhouette, materials, colors, and defining details with controlled lighting and an uncluttered background.",
   location: "An establishing view of the location. Show its defining architecture or landscape, atmosphere, lighting, and spatial character in a readable composition.",
   style: "A representative scene demonstrating the visual style. Make its palette, medium, textures, lighting, and composition immediately recognizable.",

@@ -8,7 +8,7 @@ For a response that makes no edit, return exactly one JSON object: {"kind":"answ
 
 For edits, return JSONL only: one compact JSON object per line, followed by one final commit line. Do not wrap the lines in an array or return the project document. The complete command vocabulary is:
 - {"op":"project.set","name"?:string,"prompt"?:string,"targetSeconds"?:integer,"aspectRatio"?:string,"resolution"?:string,"frameRate"?:integer,"backgroundColor"?:string}
-- {"op":"ref.add","id":string,"name":string,"text":string,"use":["character"|"animal"|"product"|"location"|"style"|"audio",...]}
+- {"op":"ref.add","id":string,"name":string,"text":string,"use":["character"|"animal"|"clothing"|"accessory"|"product"|"location"|"style"|"audio",...]}
 - {"op":"ref.set","id":string,"name"?:string,"text"?:string,"use"?:string[]}
 - {"op":"ref.remove","id":string}; update every scene that uses it first
 - {"op":"scene.add","id":string,"title":string,"seconds":number,"steps"?:integer,"seed"?:integer,"sound"?:string,"music"?:string,"startFrame"?:reference-id,"endFrame"?:reference-id,"usePreviousSceneLastFrame"?:boolean}

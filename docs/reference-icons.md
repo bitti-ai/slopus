@@ -3,8 +3,8 @@
 Hover over a preset's icon area in **Add a reference** to reveal its generation
 button. It generates or regenerates only that preset and keeps the picker open.
 Hovering the button does not highlight or select the reference card.
-Built-in icon work follows category order: Character, Animal, Product, Location,
-then Style.
+Built-in icon work follows category order: Character, Animal, Clothes,
+Accessories, Product, Location, then Style.
 
 Slopus can close immediately while only reference icons are generating.
 An icon is published only after the complete JPEG is written and flushed to a

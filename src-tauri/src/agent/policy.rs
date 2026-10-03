@@ -206,7 +206,7 @@ pub(super) fn validate_scene_policy(
                 && reference.intended_use.iter().any(|usage| {
                     matches!(
                         usage.as_str(),
-                        "character" | "animal" | "location" | "product"
+                        "character" | "animal" | "clothing" | "accessory" | "location" | "product"
                     )
                 })
         }) {

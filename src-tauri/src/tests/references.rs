@@ -37,6 +37,8 @@ fn reference_categories_and_subcategories_survive_project_save() {
     for (category, subcategory) in [
         ("character", "Animation"),
         ("animal", "Pets"),
+        ("clothing", "Tops"),
+        ("accessory", "Jewelry"),
         ("product", "Technology"),
         ("location", "Urban"),
         ("style", "Cinematic"),

@@ -332,7 +332,7 @@ export const projectReferenceSchema = z.object({
     durationSeconds: z.number().finite().min(2).max(15),
     includeAudio: z.boolean(),
   }).optional(),
-  intendedUse: z.array(z.enum(["character", "animal", "product", "location", "style", "audio"])).default([]),
+  intendedUse: z.array(z.enum(["character", "animal", "clothing", "accessory", "product", "location", "style", "audio"])).default([]),
   subcategory: z.string().optional(),
   // Generated library artwork is not an image conditioning attachment.
   iconRelativePath: projectRelativePathSchema.optional(),

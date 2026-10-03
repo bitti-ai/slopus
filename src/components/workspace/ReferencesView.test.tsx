@@ -192,6 +192,8 @@ describe("Reference type presets", () => {
   it.each([
     ["Character", "character", "Animation"],
     ["Animal", "animal", "Pets"],
+    ["Clothes", "clothing", "Tops"],
+    ["Accessories", "accessory", "Jewelry"],
     ["Product", "product", "Technology"],
     ["Location", "location", "Urban"],
     ["Style", "style", "Cinematic"],
@@ -329,6 +331,47 @@ describe("Reference type presets", () => {
     expect(state.latest().references[0].intendedUse).toEqual(["location"]);
     expect(screen.queryByRole("region", { name: "Location settings" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("A lunar research outpost in winter.");
+  });
+
+  it("adds clothes and restores, updates, and clears their color and fabric settings", () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const picker = screen.getByRole("dialog", { name: "Add a reference" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Clothes" }));
+    fireEvent.click(within(picker).getByRole("tab", { name: "Tops" }));
+    fireEvent.click(within(picker).getByRole("button", { name: /T-shirt/ }));
+    const settings = screen.getByRole("region", { name: "Clothing settings" });
+    expect(settings.closest("aside")).not.toBeNull();
+    chooseOption(within(settings).getByRole("combobox", { name: "Color" }), "Navy blue");
+    chooseOption(within(settings).getByRole("combobox", { name: "Fabric" }), "Cotton");
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+    expect(saved.references[0]).toMatchObject({ intendedUse: ["clothing"], subcategory: "Tops", description: "T-shirt, in navy blue, made of cotton.", content: "T-shirt, in navy blue, made of cotton." });
+    cleanup();
+    const restored = setup(saved);
+    expect(comboValue(screen.getByRole("combobox", { name: "Color" }))).toBe("navy-blue");
+    expect(comboValue(screen.getByRole("combobox", { name: "Fabric" }))).toBe("cotton");
+    choose("Color", "Red");
+    choose("Fabric", "Linen");
+    expect(restored.latest().references[0].description).toBe("T-shirt, in red, made of linen.");
+    choose("Color", "None");
+    expect(restored.latest().references[0].description).toBe("T-shirt, made of linen.");
+    choose("Fabric", "None");
+    expect(restored.latest().references[0].description).toBe("T-shirt.");
+    fireEvent.change(screen.getByRole("textbox", { name: "Prompt" }), { target: { value: "A hand-painted concert shirt." } });
+    expect(screen.queryByRole("region", { name: "Clothing settings" })).not.toBeInTheDocument();
+    expect(restored.latest().references[0].description).toBe("A hand-painted concert shirt.");
+  });
+
+  it("finds wearable accessories by subcategory and search", () => {
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: /Add a reference/ }));
+    const picker = screen.getByRole("dialog", { name: "Add a reference" });
+    fireEvent.click(within(picker).getByRole("button", { name: "Accessories" }));
+    fireEvent.click(within(picker).getByRole("tab", { name: "Eyewear" }));
+    fireEvent.change(within(picker).getByRole("textbox", { name: "Search reference options" }), { target: { value: "aviator" } });
+    fireEvent.click(within(picker).getByRole("button", { name: /Aviator sunglasses/ }));
+    expect(parseProjectConfig(state.latest()).references[0]).toMatchObject({ intendedUse: ["accessory"], subcategory: "Eyewear", name: "Aviator sunglasses", description: "Aviator sunglasses." });
+    expect(screen.queryByRole("region", { name: "Clothing settings" })).not.toBeInTheDocument();
   });
 
   it("creates locations directly and restores, updates, and clears their saved settings in the inspector", () => {

@@ -1,9 +1,9 @@
 import { KNOWN_CHARACTERS } from "./known-characters";
-import { ANIMAL_GROUPS, LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
+import { ACCESSORY_GROUPS, ANIMAL_GROUPS, CLOTHING_GROUPS, CLOTHING_SETTING_GROUPS, LOCATION_GROUPS, LOCATION_SETTING_GROUPS, PRODUCT_GROUPS, STYLE_GROUPS, type OptionGroup } from "./expanded-reference-options";
 import type { ProjectReference } from "./project";
 import { hasBuiltinIcon } from "./builtinReferenceIcons";
 
-export type ReferenceType = "custom" | "character" | "animal" | "product" | "location" | "style";
+export type ReferenceType = "custom" | "character" | "animal" | "clothing" | "accessory" | "product" | "location" | "style";
 export type PresetReferenceType = Exclude<ReferenceType, "custom">;
 
 export interface ReferencePreset {
@@ -34,6 +34,8 @@ export const hasPresetIcon = (preset: ReferencePreset | undefined): boolean => B
 export const REFERENCE_TYPES: ReadonlyArray<{ id: PresetReferenceType; label: string }> = [
   { id: "character", label: "Character" },
   { id: "animal", label: "Animal" },
+  { id: "clothing", label: "Clothes" },
+  { id: "accessory", label: "Accessories" },
   { id: "product", label: "Product" },
   { id: "location", label: "Location" },
   { id: "style", label: "Style" },
@@ -100,19 +102,24 @@ const optionsAsPresets = (type: PresetReferenceType, groups: readonly OptionGrou
   })));
 
 const animalPresets = optionsAsPresets("animal", ANIMAL_GROUPS).map(withIcon);
+const clothingPresets = optionsAsPresets("clothing", CLOTHING_GROUPS).map(withIcon);
+const accessoryPresets = optionsAsPresets("accessory", ACCESSORY_GROUPS).map(withIcon);
 const productPresets = optionsAsPresets("product", PRODUCT_GROUPS).map(withIcon);
 const locationPresets = optionsAsPresets("location", LOCATION_GROUPS).map(withIcon);
 const stylePresets = optionsAsPresets("style", STYLE_GROUPS).map(withIcon);
 
 export type LocationSettings = Partial<Record<(typeof LOCATION_SETTING_GROUPS)[number]["id"], string>>;
+export type ClothingSettings = Partial<Record<(typeof CLOTHING_SETTING_GROUPS)[number]["id"], string>>;
 
 export interface LocationSelection {
   preset: ReferencePreset;
   settings: LocationSettings;
 }
 
-export function composeLocationPrompt(preset: ReferencePreset, settings: LocationSettings): string {
-  const qualifiers = LOCATION_SETTING_GROUPS.flatMap((group) => {
+type SettingGroup<K extends string> = { id: K; options: ReadonlyArray<{ id: string; prompt: string }> };
+
+function composePresetPrompt<K extends string>(preset: ReferencePreset, settings: Partial<Record<K, string>>, groups: readonly SettingGroup<K>[]): string {
+  const qualifiers = groups.flatMap((group) => {
     const option = group.options.find((candidate) => candidate.id === settings[group.id]);
     return option ? [option.prompt] : [];
   });
@@ -121,26 +128,35 @@ export function composeLocationPrompt(preset: ReferencePreset, settings: Locatio
 
 /** Recovers picker state from its prompt, avoiding UI-only fields in portable
  * project JSON. Only a prompt this picker itself can compose is recognized. */
-export function locationSelectionFromPrompt(prompt: string): LocationSelection | undefined {
-  for (const preset of [...locationPresets].sort((left, right) => right.name.length - left.name.length)) {
+function selectionFromPrompt<K extends string>(prompt: string, presets: ReferencePreset[], groups: readonly SettingGroup<K>[]): { preset: ReferencePreset; settings: Partial<Record<K, string>> } | undefined {
+  for (const preset of [...presets].sort((left, right) => right.name.length - left.name.length)) {
     const base = preset.name;
     if (prompt === `${base}.`) return { preset, settings: {} };
     if (!prompt.startsWith(`${base}, `) || !prompt.endsWith(".")) continue;
     const qualifiers = prompt.slice(base.length + 2, -1).split(", ");
-    const settings: LocationSettings = {};
+    const settings: Partial<Record<K, string>> = {};
     let lastGroup = -1;
     let valid = true;
     for (const qualifier of qualifiers) {
-      const groupIndex = LOCATION_SETTING_GROUPS.findIndex((group) => group.options.some((option) => option.prompt === qualifier));
-      const option = groupIndex >= 0 ? LOCATION_SETTING_GROUPS[groupIndex].options.find((candidate) => candidate.prompt === qualifier) : undefined;
+      const groupIndex = groups.findIndex((group) => group.options.some((option) => option.prompt === qualifier));
+      const option = groupIndex >= 0 ? groups[groupIndex].options.find((candidate) => candidate.prompt === qualifier) : undefined;
       if (!option || groupIndex <= lastGroup) { valid = false; break; }
-      settings[LOCATION_SETTING_GROUPS[groupIndex].id] = option.id;
+      settings[groups[groupIndex].id] = option.id;
       lastGroup = groupIndex;
     }
-    if (valid && composeLocationPrompt(preset, settings) === prompt) return { preset, settings };
+    if (valid && composePresetPrompt(preset, settings, groups) === prompt) return { preset, settings };
   }
   return undefined;
 }
+
+export const composeLocationPrompt = (preset: ReferencePreset, settings: LocationSettings): string =>
+  composePresetPrompt(preset, settings, LOCATION_SETTING_GROUPS);
+export const locationSelectionFromPrompt = (prompt: string): LocationSelection | undefined =>
+  selectionFromPrompt(prompt, locationPresets, LOCATION_SETTING_GROUPS);
+export const composeClothingPrompt = (preset: ReferencePreset, settings: ClothingSettings): string =>
+  composePresetPrompt(preset, settings, CLOTHING_SETTING_GROUPS);
+export const clothingSelectionFromPrompt = (prompt: string) =>
+  selectionFromPrompt(prompt, clothingPresets, CLOTHING_SETTING_GROUPS);
 
 const curatedCharacterPresets: ReferencePreset[] = ([
   { id: "character-alice", type: "character", subcategory: "Literature & legend", name: "Alice in Wonderland", prompt: "Alice in her blue dress and white apron." },
@@ -155,6 +171,8 @@ const curatedCharacterPresets: ReferencePreset[] = ([
 export const REFERENCE_PRESETS: readonly ReferencePreset[] = [
   ...knownCharacterPresets,
   ...animalPresets,
+  ...clothingPresets,
+  ...accessoryPresets,
   ...productPresets,
   ...locationPresets,
   ...stylePresets,
@@ -164,7 +182,8 @@ export const REFERENCE_PRESETS: readonly ReferencePreset[] = [
 const presetForReference = (reference: ProjectReference): ReferencePreset | undefined => {
   const intended = reference.intendedUse.length === 1 ? reference.intendedUse[0] : undefined;
   return REFERENCE_PRESETS.find((preset) => preset.type === intended && preset.prompt === reference.description)
-    ?? (intended === "location" ? locationSelectionFromPrompt(reference.description)?.preset : undefined);
+    ?? (intended === "location" ? locationSelectionFromPrompt(reference.description)?.preset : undefined)
+    ?? (intended === "clothing" ? clothingSelectionFromPrompt(reference.description)?.preset : undefined);
 };
 
 export function referenceType(reference: ProjectReference): ReferenceType {

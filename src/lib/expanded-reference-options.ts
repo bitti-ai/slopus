@@ -27,6 +27,52 @@ export const PRODUCT_GROUPS: readonly OptionGroup[] = [
   { subcategory: "Packaging", options: ["Shipping box", "Gift box", "Paper pouch", "Glass jar", "Metal tin", "Pump bottle", "Cardboard tube", "Takeaway cup", "Resealable bag", "Display carton"] },
 ];
 
+export const CLOTHING_GROUPS: readonly OptionGroup[] = [
+  { subcategory: "Tops", options: ["T-shirt", "Polo shirt", "Button-up shirt", "Blouse", "Tank top", "Crop top", "Sweater", "Cardigan", "Hoodie", "Sweatshirt", "Turtleneck", "Vest"] },
+  { subcategory: "Bottoms", options: ["Jeans", "Trousers", "Chinos", "Cargo pants", "Shorts", "Skirt", "Pleated skirt", "Leggings", "Joggers"] },
+  { subcategory: "Dresses & one-pieces", options: ["Casual dress", "Sundress", "Maxi dress", "Cocktail dress", "Evening gown", "Wedding dress", "Jumpsuit", "Romper", "Overalls"] },
+  { subcategory: "Outerwear", options: ["Jacket", "Bomber jacket", "Biker jacket", "Blazer", "Trench coat", "Overcoat", "Parka", "Puffer jacket", "Raincoat", "Windbreaker", "Poncho"] },
+  { subcategory: "Suits & uniforms", options: ["Two-piece suit", "Three-piece suit", "Tuxedo", "School uniform", "Military uniform", "Police uniform", "Medical scrubs", "Chef's uniform", "Work coveralls"] },
+  { subcategory: "Activewear & swimwear", options: ["Tracksuit", "Sports jersey", "Sports bra", "Running shorts", "Yoga pants", "Leotard", "One-piece swimsuit", "Bikini", "Swimming trunks", "Wetsuit"] },
+  { subcategory: "Underwear & sleepwear", options: ["Pajamas", "Nightgown", "Bathrobe", "Undershirt", "Bra", "Briefs", "Boxer shorts", "Socks", "Tights"] },
+  { subcategory: "Footwear", options: ["Sneakers", "Running shoes", "Dress shoes", "Loafers", "Ankle boots", "Knee-high boots", "Hiking boots", "Sandals", "High heels", "Ballet flats", "Slippers", "Flip-flops"] },
+];
+
+export const ACCESSORY_GROUPS: readonly OptionGroup[] = [
+  { subcategory: "Eyewear", options: ["Glasses", "Reading glasses", "Round glasses", "Sunglasses", "Aviator sunglasses", "Cat-eye sunglasses", "Sports sunglasses", "Goggles"] },
+  { subcategory: "Jewelry", options: ["Necklace", "Pendant necklace", "Choker", "Chain necklace", "Stud earrings", "Hoop earrings", "Drop earrings", "Ring", "Wedding ring", "Bracelet", "Bangle", "Anklet", "Brooch", "Cufflinks", "Wristwatch"] },
+  { subcategory: "Headwear", options: ["Baseball cap", "Beanie", "Fedora", "Bucket hat", "Beret", "Sun hat", "Cowboy hat", "Visor", "Headscarf", "Hijab", "Turban"] },
+  { subcategory: "Bags", options: ["Handbag", "Shoulder bag", "Crossbody bag", "Tote bag", "Backpack", "Clutch bag", "Waist bag", "Messenger bag", "Briefcase", "Wallet"] },
+  { subcategory: "Belts & neckwear", options: ["Belt", "Suspenders", "Necktie", "Bow tie", "Scarf", "Bandana", "Shawl", "Pocket square"] },
+  { subcategory: "Hair accessories", options: ["Headband", "Hair clip", "Barrette", "Scrunchie", "Hair tie", "Hair ribbon", "Hairpin", "Tiara"] },
+  { subcategory: "Other accessories", options: ["Gloves", "Mittens", "Earmuffs", "Headphones", "Earbuds", "Umbrella", "Walking cane", "Pocket watch"] },
+];
+
+export interface ClothingSettingGroup {
+  id: "color" | "fabric";
+  label: string;
+  options: ReadonlyArray<{ id: string; label: string; prompt: string }>;
+}
+
+export const CLOTHING_SETTING_GROUPS: readonly ClothingSettingGroup[] = [
+  { id: "color", label: "Color", options: [
+    ["black", "Black"], ["white", "White"], ["gray", "Gray"], ["charcoal", "Charcoal"],
+    ["cream", "Cream"], ["beige", "Beige"], ["tan", "Tan"], ["brown", "Brown"],
+    ["red", "Red"], ["burgundy", "Burgundy"], ["orange", "Orange"], ["yellow", "Yellow"],
+    ["mustard", "Mustard"], ["green", "Green"], ["olive", "Olive"], ["teal", "Teal"],
+    ["blue", "Blue"], ["navy-blue", "Navy blue"], ["light-blue", "Light blue"],
+    ["purple", "Purple"], ["lavender", "Lavender"], ["pink", "Pink"], ["gold", "Gold"], ["silver", "Silver"],
+  ].map(([id, label]) => ({ id, label, prompt: `in ${label.toLowerCase()}` })) },
+  { id: "fabric", label: "Fabric", options: [
+    ["cotton", "Cotton"], ["linen", "Linen"], ["denim", "Denim"], ["wool", "Wool"],
+    ["cashmere", "Cashmere"], ["silk", "Silk"], ["satin", "Satin"], ["velvet", "Velvet"],
+    ["corduroy", "Corduroy"], ["tweed", "Tweed"], ["fleece", "Fleece"], ["jersey", "Jersey"],
+    ["chiffon", "Chiffon"], ["lace", "Lace"], ["tulle", "Tulle"], ["canvas", "Canvas"],
+    ["polyester", "Polyester"], ["nylon", "Nylon"], ["spandex", "Spandex"],
+    ["leather", "Leather"], ["faux-leather", "Faux leather"], ["suede", "Suede"],
+  ].map(([id, label]) => ({ id, label, prompt: `made of ${label.toLowerCase()}` })) },
+];
+
 export const LOCATION_GROUPS: readonly OptionGroup[] = [
   { subcategory: "Urban", options: ["City alley", "Downtown avenue", "Rooftop", "Subway platform", "Street market", "City square", "Parking garage", "Pedestrian bridge", "Apartment street", "Train station"] },
   { subcategory: "Interiors", options: ["Hotel lobby", "Modern kitchen", "Artist studio", "Library", "Corner café", "Penthouse", "Warehouse loft", "Recording studio", "Museum gallery", "Home office"] },

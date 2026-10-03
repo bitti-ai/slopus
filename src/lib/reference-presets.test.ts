@@ -1,11 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { KNOWN_CHARACTERS } from "./known-characters";
-import { LOCATION_GROUPS } from "./expanded-reference-options";
-import { composeLocationPrompt, hasPresetIcon, locationSelectionFromPrompt, REFERENCE_PRESETS, type PresetReferenceType } from "./reference-presets";
+import { CLOTHING_SETTING_GROUPS, LOCATION_GROUPS } from "./expanded-reference-options";
+import { clothingSelectionFromPrompt, composeClothingPrompt, composeLocationPrompt, hasPresetIcon, locationSelectionFromPrompt, REFERENCE_PRESETS, selectedReferencePreset, type PresetReferenceType } from "./reference-presets";
 
-const TYPES: PresetReferenceType[] = ["animal", "character", "product", "location", "style"];
+const TYPES: PresetReferenceType[] = ["animal", "character", "clothing", "accessory", "product", "location", "style"];
 
 describe("reference preset catalog", () => {
+  it("offers common clothing and accessories without multiplying items by color or fabric", () => {
+    const clothes = REFERENCE_PRESETS.filter((preset) => preset.type === "clothing");
+    const accessories = REFERENCE_PRESETS.filter((preset) => preset.type === "accessory");
+    expect(clothes.map((preset) => preset.name)).toEqual(expect.arrayContaining(["T-shirt", "Jeans", "Casual dress", "Jacket", "Two-piece suit", "Sneakers"]));
+    expect(accessories.map((preset) => preset.name)).toEqual(expect.arrayContaining(["Glasses", "Sunglasses", "Necklace", "Ring", "Wristwatch", "Handbag"]));
+    for (const presets of [clothes, accessories]) {
+      expect(new Set(presets.map((preset) => preset.name)).size).toBe(presets.length);
+      expect(presets.every((preset) => preset.prompt === `${preset.name}.`)).toBe(true);
+    }
+  });
+
+  it("restores clothing colors and fabrics from saved prompts and keeps the base preset for icons", () => {
+    const shirt = REFERENCE_PRESETS.find((preset) => preset.type === "clothing" && preset.name === "T-shirt")!;
+    expect(composeClothingPrompt(shirt, { color: "navy-blue", fabric: "cotton" })).toBe("T-shirt, in navy blue, made of cotton.");
+    for (const group of CLOTHING_SETTING_GROUPS) {
+      for (const option of group.options) {
+        const settings = { [group.id]: option.id };
+        expect(clothingSelectionFromPrompt(composeClothingPrompt(shirt, settings))).toEqual({ preset: shirt, settings });
+      }
+    }
+    const prompt = composeClothingPrompt(shirt, { color: "navy-blue", fabric: "cotton" });
+    expect(clothingSelectionFromPrompt(prompt)?.settings).toEqual({ color: "navy-blue", fabric: "cotton" });
+    expect(selectedReferencePreset({ id: "shirt", name: "My shirt", kind: "text", description: prompt, intendedUse: ["clothing"], createdAt: "2026-10-03T12:00:00Z" })).toEqual(shirt);
+    expect(composeClothingPrompt(shirt, {})).toBe("T-shirt.");
+    expect(clothingSelectionFromPrompt("T-shirt, with a hand-painted logo.")).toBeUndefined();
+    expect(clothingSelectionFromPrompt("T-shirt, in red, in blue.")).toBeUndefined();
+  });
   it("includes distinct animal presets with ready-to-use descriptions", () => {
     const animals = REFERENCE_PRESETS.filter((preset) => preset.type === "animal");
     expect(animals).toHaveLength(80);

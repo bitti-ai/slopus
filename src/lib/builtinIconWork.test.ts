@@ -94,7 +94,7 @@ it("regenerates existing icons on request and publishes only after the final fra
 it("generates all built-ins in category order even when enqueued in reverse order", async () => {
   const { work, session } = setup();
   await work.cancel();
-  const categories = ["character", "animal", "product", "location", "style"] as const;
+  const categories = ["character", "animal", "clothing", "accessory", "product", "location", "style"] as const;
   const reversed = [...categories].reverse().map((type) => ({ id: `ordered-${type}`, name: type, prompt: `A ${type}.`, type, subcategory: "Test" }));
   work.enqueueBuiltins(session, reversed);
   for (const type of categories) {

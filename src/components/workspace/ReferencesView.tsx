@@ -5,6 +5,8 @@ import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectCon
 import { activeReferenceRefmods, isVideoReference } from "../../lib/project";
 import {
   composeLocationPrompt,
+  composeClothingPrompt,
+  clothingSelectionFromPrompt,
   locationSelectionFromPrompt,
   REFERENCE_PRESETS,
   REFERENCE_TYPES,
@@ -17,7 +19,7 @@ import {
   type PresetReferenceType,
   type ReferenceType,
 } from "../../lib/reference-presets";
-import { LOCATION_SETTING_GROUPS } from "../../lib/expanded-reference-options";
+import { CLOTHING_SETTING_GROUPS, LOCATION_SETTING_GROUPS } from "../../lib/expanded-reference-options";
 import { isTauri } from "../../lib/persistence";
 import { useShortcut } from "../../lib/commands";
 import { revealInExplorer } from "../../lib/nativeShell";
@@ -130,6 +132,9 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   const selectedSubcategory = selected?.subcategory ?? selectedPreset?.subcategory ?? "";
   const selectedLocation = useMemo(() => selected && referenceType(selected) === "location"
     ? locationSelectionFromPrompt(selected.description)
+    : undefined, [selected]);
+  const selectedClothing = useMemo(() => selected && referenceType(selected) === "clothing"
+    ? clothingSelectionFromPrompt(selected.description)
     : undefined, [selected]);
   const selectedPresetIcon = selectedImages.length === 0 && hasPresetIcon(selectedPreset) ? selectedPreset : undefined;
   const usedBy = (id: string | undefined) => config.generationJobs.filter((job) => job.referenceIds.includes(id ?? ""));
@@ -626,6 +631,22 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
                   options={[{ value: "", label: "None" }, ...group.options.map((option) => ({ value: option.id, label: option.label }))]}
                   onChange={(value) => {
                     const prompt = composeLocationPrompt(selectedLocation.preset, { ...selectedLocation.settings, [group.id]: value || undefined });
+                    update(selected.id, { description: prompt, content: prompt });
+                  }}
+                />
+              </PropRow>)}
+            </section>
+          </PropSection>}
+          {selectedClothing && <PropSection title="Clothes" persistKey="references.clothing">
+            <section className="reference-location-settings" aria-label="Clothing settings">
+              {CLOTHING_SETTING_GROUPS.map((group) => <PropRow key={group.id} label={group.label}>
+                <ComboBox
+                  aria-label={group.label}
+                  disabled={hasRefmods}
+                  value={selectedClothing.settings[group.id] ?? ""}
+                  options={[{ value: "", label: "None" }, ...group.options.map((option) => ({ value: option.id, label: option.label }))]}
+                  onChange={(value) => {
+                    const prompt = composeClothingPrompt(selectedClothing.preset, { ...selectedClothing.settings, [group.id]: value || undefined });
                     update(selected.id, { description: prompt, content: prompt });
                   }}
                 />

@@ -148,7 +148,7 @@ pub(super) fn validate_references(references: &mut [ReusableReference]) -> Resul
         for intent in &reference.intended_use {
             if !matches!(
                 intent.as_str(),
-                "character" | "animal" | "product" | "location" | "style" | "audio"
+                "character" | "animal" | "clothing" | "accessory" | "product" | "location" | "style" | "audio"
             ) {
                 return Err(format!("Unsupported reference intended use '{intent}'."));
             }

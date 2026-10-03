@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, referenceImages, type ProjectRecord, type ProjectReference } from "./project";
-import { REFERENCE_PRESETS } from "./reference-presets";
+import { REFERENCE_PRESETS, REFERENCE_TYPES, type PresetReferenceType } from "./reference-presets";
 import { referenceIconPrompt } from "./referenceIcons";
 import { loadReferenceIconAutomation, saveReferenceIconAutomation, saveReferenceIconGeneratorId } from "./referenceIconSettings";
 import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "./settings";
@@ -17,7 +17,7 @@ vi.mock("./timelineThumbnails", () => ({ purgeTimelineThumbnails: vi.fn(async ()
 vi.mock("./runtime", () => ({ enqueueSlopfabGeneration: vi.fn(), resolveSlopfabPlan: vi.fn(), cancelSlopfabGeneration: vi.fn(), saveReferenceIcon: vi.fn() }));
 const handlers = new Map<string, (event: { payload: any }) => void>();
 let stop: () => void;
-const reference = (id: string, type: "character" | "animal" | "product" | "location" | "style" = "character"): ProjectReference => ({
+const reference = (id: string, type: PresetReferenceType = "character"): ProjectReference => ({
   id, kind: "text", name: id, description: `User description for ${id}.`, intendedUse: [type], createdAt: "2026-09-07T00:00:00.000Z",
 });
 const project = (name: string, references: ProjectReference[] = []): ProjectRecord => ({ folderPath: `C:/${name}`, config: {
@@ -322,8 +322,8 @@ it("continues after a failed icon and retries persistence without generating aga
 });
 
 it("uses a distinct composition for every reference type and preserves the user's prompt", () => {
-  const prompts = ["character", "animal", "product", "location", "style"].map((type) => referenceIconPrompt(reference("example", type as "character")));
-  expect(new Set(prompts).size).toBe(5);
+  const prompts = REFERENCE_TYPES.map(({ id }) => referenceIconPrompt(reference("example", id)));
+  expect(new Set(prompts).size).toBe(REFERENCE_TYPES.length);
   for (const prompt of prompts) expect(prompt).toContain("User description for example.");
 });
 
