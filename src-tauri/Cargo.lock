@@ -3435,6 +3435,7 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "tokio",
+ "webkit2gtk",
  "webview2-com",
  "windows",
  "windows-sys 0.59.0",

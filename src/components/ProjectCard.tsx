@@ -2,6 +2,7 @@ import { Delete16, Film32, FolderOpen16, Image32, More16, OpenExternal16 } from 
 import { forwardRef, type KeyboardEvent, type MouseEvent, type Ref } from "react";
 import { resolutionLabel, visibleClipAt } from "../lib/export";
 import type { ProjectRecord } from "../lib/project";
+import { fileManagerName } from "../lib/platform";
 import { MediaThumbnail } from "./workspace/MediaThumbnail";
 import { useContextMenu, type MenuEntry } from "./ui";
 
@@ -79,7 +80,7 @@ export const ProjectCard = forwardRef(function ProjectCard(
 
   const items: MenuEntry[] = [
     { id: "open", label: "Open", icon: <OpenExternal16 />, onSelect: () => onOpen(project) },
-    ...(onReveal ? [{ id: "reveal", label: "Show in File Explorer", icon: <FolderOpen16 />, onSelect: () => onReveal(project) }] : []),
+    ...(onReveal ? [{ id: "reveal", label: `Show in ${fileManagerName()}`, icon: <FolderOpen16 />, onSelect: () => onReveal(project) }] : []),
     ...(onDelete ? [{ separator: true } as const, { id: "delete", label: "Delete project…", icon: <Delete16 />, onSelect: () => onDelete(project) }] : []),
   ];
   const openMenu = (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => {

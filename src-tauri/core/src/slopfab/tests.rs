@@ -1127,3 +1127,18 @@ fn generation_seed_accepts_random_and_non_negative_values() {
     assert_eq!(generation_seed(482_091).unwrap(), 482_091);
     assert!(generation_seed(-2).is_err());
 }
+
+#[test]
+#[cfg(not(windows))]
+fn linux_packages_find_the_runtime_in_the_resource_folder() {
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("usr/bin");
+    let resources = temp.path().join("usr/lib/Slopus");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&resources).unwrap();
+    assert_eq!(super::runtime_beside(&bin), bin.join(super::DLL_FILE_NAME));
+    std::fs::write(resources.join(super::DLL_FILE_NAME), b"\x7fELF").unwrap();
+    assert_eq!(super::runtime_beside(&bin), bin.join("../lib/Slopus").join(super::DLL_FILE_NAME));
+    std::fs::write(bin.join(super::DLL_FILE_NAME), b"\x7fELF").unwrap();
+    assert_eq!(super::runtime_beside(&bin), bin.join(super::DLL_FILE_NAME));
+}

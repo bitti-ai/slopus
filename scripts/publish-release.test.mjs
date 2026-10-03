@@ -26,17 +26,20 @@ function fixture() {
   }));
   const setupPath = join(root, 'artifacts/Slopus-0.2.0-windows-x64-setup.exe');
   const msiPath = join(root, 'artifacts/Slopus-0.2.0-windows-x64.msi');
-  for (const path of [setupPath, msiPath]) {
+  const appImagePath = join(root, 'artifacts/Slopus-0.2.0-linux-x64.AppImage');
+  for (const path of [setupPath, msiPath, appImagePath]) {
     writeFileSync(path, 'installer');
     writeFileSync(`${path}.sig`, 'signature\n');
   }
   writeFileSync(join(root, 'artifacts/Slopus-0.2.0-windows-x64-portable.zip'), 'zip');
   writeFileSync(join(root, 'artifacts/Slopus-0.2.0-windows-x64-worker.zip'), 'zip');
   writeFileSync(join(root, 'artifacts/Slopus-0.2.0-linux-x64-worker.tar.gz'), 'tar');
+  writeFileSync(join(root, 'artifacts/Slopus-0.2.0-linux-x64.deb'), 'deb');
+  writeFileSync(join(root, 'artifacts/Slopus-0.2.0-linux-x64.rpm'), 'rpm');
   // Unrelated artifacts and secrets must never be included by a wildcard upload.
   writeFileSync(join(root, 'artifacts/private.key'), 'secret');
   writeFileSync(join(root, 'artifacts/Slopus-0.1.0-windows-x64-setup.exe'), 'old');
-  const manifest = createManifest({ version: '0.2.0', arch: 'x64', setupPath, msiPath, notes: 'First line\nSecond line `literal` $(literal)' });
+  const manifest = createManifest({ version: '0.2.0', arch: 'x64', setupPath, msiPath, appImagePath, notes: 'First line\nSecond line `literal` $(literal)' });
   const manifestPath = join(root, 'artifacts/latest.json');
   writeFileSync(manifestPath, JSON.stringify(manifest));
   const state = { releases: [], uploaded: [], dirty: false, sha: 'head', failUpload: false, failManifest: false, corrupt: false, private: false };
@@ -122,6 +125,18 @@ it('rejects missing artifacts', () => {
   const { root } = fixture();
   writeFileSync(join(root, 'artifacts/Slopus-0.2.0-windows-x64-portable.zip'), '');
   expect(() => releaseFiles(root, '0.2.0')).toThrow('empty');
+});
+
+it('publishes the Linux packages and requires the AppImage updater target', () => {
+  const { root, manifest, manifestPath } = fixture();
+  const names = releaseFiles(root, '0.2.0').files.map(({ name }) => name);
+  expect(names).toEqual(expect.arrayContaining([
+    'Slopus-0.2.0-linux-x64.AppImage', 'Slopus-0.2.0-linux-x64.deb', 'Slopus-0.2.0-linux-x64.rpm',
+  ]));
+  delete manifest.platforms['linux-x86_64'];
+  delete manifest.platforms['linux-x86_64-appimage'];
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  expect(() => releaseFiles(root, '0.2.0')).toThrow('Linux AppImage');
 });
 
 it.each(['dirty', 'tag', 'private', 'published'])('blocks %s releases before mutation', (failure) => {

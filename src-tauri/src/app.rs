@@ -8,6 +8,11 @@ use std::io;
 #[tauri::command]
 fn app_updater_mode() -> Result<&'static str, String> {
     if cfg!(debug_assertions) { return Ok("disabled"); }
+    /* On Linux the updater replaces only an AppImage (whose runtime sets
+       APPIMAGE); .deb and .rpm installs belong to the package manager. */
+    if cfg!(target_os = "linux") {
+        return Ok(if std::env::var_os("APPIMAGE").is_some() { "installed" } else { "portable" });
+    }
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let directory = exe.parent().ok_or("Could not locate the application folder.")?;
     Ok(if directory.join("slopus-portable").exists() { "portable" } else { "installed" })
@@ -75,6 +80,8 @@ pub fn run() {
             let window = builder.build()?;
             native_shell::round_corners(&window);
             native_shell::disable_browser_behaviour(&window);
+            #[cfg(target_os = "linux")]
+            crate::linux_webview::configure(&window);
             native_shell::watch_accent(app.handle());
             match diagnostics::initialize(app.handle()) {
                 Ok(info) => diagnostics::info(
@@ -105,8 +112,8 @@ pub fn run() {
         .manage(ExitGuard::default())
         .manage(native_shell::Backdrop::default())
         .manage(native_shell::SystemAccent::default())
-        .on_menu_event(|_app, event| {
-            native_shell::handle_menu_event(event.id().as_ref());
+        .on_menu_event(|app, event| {
+            native_shell::handle_menu_event(app, event.id().as_ref());
         })
         .on_window_event(|window, event| {
             use tauri::Manager as _;

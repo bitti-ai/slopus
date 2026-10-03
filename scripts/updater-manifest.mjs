@@ -15,7 +15,7 @@ export function releaseVersion(root) {
   return version;
 }
 
-export function createManifest({ version, arch, setupPath, msiPath, notes = '', repository = 'bitti-ai/slopus', date = new Date() }) {
+export function createManifest({ version, arch, setupPath, msiPath, appImagePath, notes = '', repository = 'bitti-ai/slopus', date = new Date() }) {
   const targetArch = { x64: 'x86_64', arm64: 'aarch64', x86: 'i686' }[arch];
   if (!targetArch) throw new Error(`Unsupported release architecture: ${arch}`);
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid release version.');
@@ -30,6 +30,12 @@ export function createManifest({ version, arch, setupPath, msiPath, notes = '', 
   const setup = artifact(setupPath);
   const platforms = { [`windows-${targetArch}`]: setup, [`windows-${targetArch}-nsis`]: setup };
   if (msiPath) platforms[`windows-${targetArch}-msi`] = artifact(msiPath);
+  // The Linux updater replaces an AppImage; .deb and .rpm installs update through the releases page.
+  if (appImagePath) {
+    const appImage = artifact(appImagePath);
+    platforms['linux-x86_64'] = appImage;
+    platforms['linux-x86_64-appimage'] = appImage;
+  }
   return { version, notes, pub_date: date.toISOString(), platforms };
 }
 
@@ -40,9 +46,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (process.argv.includes('--check')) {
       console.log(`Updater release configuration is ready for ${version}.`);
     } else {
-      const { PACKAGE_ARCH: arch, OUTPUT_SETUP: setupPath, OUTPUT_MSI: outputMsi, MSI_SRC: msiSource, ARTIFACTS_DIR: outputDir, UPDATE_NOTES_FILE: notesFile } = process.env;
+      const { PACKAGE_ARCH: arch, OUTPUT_SETUP: setupPath, OUTPUT_MSI: outputMsi, MSI_SRC: msiSource, OUTPUT_APPIMAGE: appImagePath, ARTIFACTS_DIR: outputDir, UPDATE_NOTES_FILE: notesFile } = process.env;
       if (!arch || !setupPath || !outputDir) throw new Error('Run this script through release.cmd.');
-      const manifest = createManifest({ version, arch, setupPath, msiPath: msiSource ? outputMsi : undefined, notes: notesFile ? readFileSync(notesFile, 'utf8') : '' });
+      const manifest = createManifest({ version, arch, setupPath, msiPath: msiSource ? outputMsi : undefined, appImagePath: appImagePath || undefined, notes: notesFile ? readFileSync(notesFile, 'utf8') : '' });
       const outputPath = resolve(outputDir, 'latest.json');
       writeFileSync(outputPath, JSON.stringify(manifest, null, 2) + '\n');
       console.log(`Updater manifest: ${outputPath}`);

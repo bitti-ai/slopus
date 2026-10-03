@@ -38,6 +38,19 @@ describe('GitHub updater manifest', () => {
     writeFileSync(msiPath + '.sig', 'signed msi');
     expect(createManifest({ ...input, msiPath }).platforms['windows-x86_64-msi'].signature).toBe('signed msi');
   });
+  it('offers the signed AppImage to Linux installs', () => {
+    const input = fixture();
+    const appImagePath = join(dirname(input.setupPath), 'Slopus-0.2.0-linux-x64.AppImage');
+    writeFileSync(appImagePath, 'appimage fixture');
+    writeFileSync(appImagePath + '.sig', 'signed appimage\n');
+    const { platforms } = createManifest({ ...input, appImagePath });
+    expect(platforms['linux-x86_64']).toEqual({
+      signature: 'signed appimage', url: 'https://github.com/bitti-ai/slopus/releases/download/v0.2.0/Slopus-0.2.0-linux-x64.AppImage',
+    });
+    expect(platforms['linux-x86_64-appimage']).toEqual(platforms['linux-x86_64']);
+    writeFileSync(appImagePath + '.sig', '');
+    expect(() => createManifest({ ...input, appImagePath })).toThrow('Empty signature');
+  });
   it('fails instead of publishing an unsigned installer or unknown architecture', () => {
     const input = fixture();
     writeFileSync(input.setupPath + '.sig', '');

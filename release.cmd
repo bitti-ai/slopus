@@ -81,6 +81,8 @@ set "OUTPUT_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-portable"
 set "WORKER_ZIP=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker.zip"
 set "WORKER_DIR=%ARTIFACTS_DIR%\%OUTPUT_STEM%-worker"
 set "LINUX_WORKER_NAME=Slopus-%APP_VERSION%-linux-x64-worker.tar.gz"
+set "LINUX_APP_STEM=Slopus-%APP_VERSION%-linux-x64"
+set "OUTPUT_APPIMAGE=%ARTIFACTS_DIR%\%LINUX_APP_STEM%.AppImage"
 
 echo.
 echo [1/6] Installing locked frontend dependencies...
@@ -144,6 +146,9 @@ if defined MSI_SRC (
   echo        MSI:       not produced - skipping.
 )
 
+rem The manifest offers the signed AppImage to Linux installs, so build it first.
+call :package_linux_app || goto :fail
+
 node scripts\updater-manifest.mjs || goto :fail
 
 rem Portable layout: the executable plus the generation runtime beside it. The
@@ -184,6 +189,10 @@ echo   %OUTPUT_DIR%\
 echo   %WORKER_ZIP%
 echo   %WORKER_DIR%\
 if exist "%ARTIFACTS_DIR%\%LINUX_WORKER_NAME%" echo   %ARTIFACTS_DIR%\%LINUX_WORKER_NAME%
+echo   %ARTIFACTS_DIR%\%LINUX_APP_STEM%.deb
+echo   %ARTIFACTS_DIR%\%LINUX_APP_STEM%.rpm
+echo   %OUTPUT_APPIMAGE%
+echo   %OUTPUT_APPIMAGE%.sig
 echo.
 echo The unpacked folder beside the zip is this build - run it straight from
 echo there. It is rebuilt from scratch on every package run.
@@ -250,6 +259,24 @@ where.exe wsl.exe >nul 2>nul || (
 )
 wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
 echo        Linux:     %LINUX_WORKER_NAME%
+exit /b 0
+
+:package_linux_app
+rem The Linux desktop app is built inside WSL around the frontend that the
+rem Windows build just wrote to dist\, as .deb, .rpm and a signed AppImage.
+rem WSLENV hands the signing key to WSL. See scripts\package-linux-app.sh.
+where.exe wsl.exe >nul 2>nul || (
+  echo ERROR: WSL was not found. Releases include the Linux app, which is built in WSL.
+  echo        Install WSL with Ubuntu and Rust, then retry.
+  exit /b 1
+)
+if defined WSLENV (
+  set "WSLENV=%WSLENV%:TAURI_SIGNING_PRIVATE_KEY:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+) else (
+  set "WSLENV=TAURI_SIGNING_PRIVATE_KEY:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+)
+wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
+echo        Linux app: %LINUX_APP_STEM%.deb, .rpm and .AppImage
 exit /b 0
 
 :write_readme

@@ -23,6 +23,7 @@ import { CLOTHING_SETTING_GROUPS, LOCATION_SETTING_GROUPS } from "../../lib/expa
 import { isTauri } from "../../lib/persistence";
 import { useShortcut } from "../../lib/commands";
 import { revealInExplorer } from "../../lib/nativeShell";
+import { fileManagerName } from "../../lib/platform";
 import { ReferenceImage } from "./ReferenceImage";
 import { PresetIcon } from "./PresetIcon";
 import { ReferenceIconGenerationDialog } from "../ReferenceIconGenerationDialog";
@@ -395,7 +396,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     return [
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: many, onSelect: () => rename(reference.id) },
       { id: "add-file", label: "Add file…", icon: <ImageAdd16 />, disabled: many || Boolean(reference.refmods?.length) || importingFiles, onSelect: () => { selectOnly(reference.id); void addFiles(reference.id); } },
-      { id: "reveal", label: "Show in File Explorer", icon: <FolderOpen16 />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
+      { id: "reveal", label: `Show in ${fileManagerName()}`, icon: <FolderOpen16 />, disabled: many || !file || !isTauri(), onSelect: () => { if (file) void revealInExplorer(file).catch((reason) => setImportError(String(reason))); } },
       { separator: true },
       ...(users.length
         ? users.map((job): MenuEntry => ({ id: `open-${job.id}`, label: `Open ${job.title}`, icon: <OpenExternal16 />, disabled: !onOpenGenerator, onSelect: () => onOpenGenerator?.(job.id) }))
