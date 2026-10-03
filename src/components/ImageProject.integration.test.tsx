@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
 import { choose } from "./workspace/comboTestUtils";
-import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "../lib/project";
+import { createProjectConfig, parseProjectConfig, type CreateProjectInput, type ProjectRecord } from "../lib/project";
 import { executeAgentCommands } from "../lib/runtime";
 import { imageScenePrompt } from "../lib/imageScene";
 import { EMPTY_ENGINE_SETTINGS, saveDebugOptionsEnabled, saveGeneratorTemplateSettings } from "../lib/settings";
@@ -14,6 +14,7 @@ import { imageGenerationSnapshot } from "../lib/imageHistory";
 import { WorkQueue } from "../lib/workQueue";
 import * as runtime from "../lib/runtime";
 import fixture from "../../fixtures/project-v1-image.json";
+import videoFixture from "../../fixtures/project-v1-complete.json";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../lib/persistence";
 
@@ -108,7 +109,7 @@ it("disables image export until a generated image is selected, and says why", ()
   expect(within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: /Export/ })).toHaveAttribute("aria-selected", "true");
   const button = screen.getByRole("button", { name: "Export…" });
   expect(button).toBeDisabled();
-  expect(button).toHaveAttribute("data-tooltip", "Generate an image in the Editor first.");
+  expect(button).toHaveAttribute("data-tooltip", "Generate an image in the Image tab first.");
   expect(screen.getByText("No image to export yet")).toBeInTheDocument();
 });
 
@@ -163,26 +164,23 @@ it("shows the full image prompt at the end of the inspector only when debug is e
   expect(screen.queryByRole("dialog", { name: "Debug prompt" })).not.toBeInTheDocument();
 });
 
-it("offers image and video projects when creating a folder project", async () => {
-  const submit = vi.fn(async () => undefined);
+it("creates one project without a separate image or video type", async () => {
+  const submit = vi.fn(async (_input: CreateProjectInput) => undefined);
   render(<PromptComposer busy={false} onCreate={submit} onClose={vi.fn()} />);
-  fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
-  expect(screen.getByLabelText("Project name")).toHaveValue("Untitled image");
-  choose("Resolution", "2720 × 1536");
-  // Video offers the same larger sizes, so switching keeps the choice.
-  fireEvent.click(screen.getByRole("radio", { name: "Video project" }));
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("2720 × 1536");
-  fireEvent.click(screen.getByRole("radio", { name: "Image project" }));
+  expect(screen.queryByRole("radiogroup", { name: "Project type" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Project name")).toHaveValue("Untitled project");
   choose("Resolution", "3648 × 2048");
   fireEvent.click(screen.getByRole("button", { name: /Create project/ }));
-  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ generationType: "image", resolution: "2048p" })));
+  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ resolution: "2048p" })));
+  expect(submit.mock.calls[0][0]).not.toHaveProperty("generationType");
 });
 
-it("opens the three-tab image workspace and saves hierarchy/inspector edits through the project session", async () => {
+it("opens a legacy image project on Image with all five tabs and saves composition edits", async () => {
   const save = vi.fn(async () => undefined);
   render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={save} />);
   const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
-  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Editor", "References", "Export"]);
+  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Timeline", "Video", "Image", "References", "Export"]);
+  expect(navigation.getByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
   fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "Hello world" } });
@@ -194,9 +192,9 @@ it("opens the three-tab image workspace and saves hierarchy/inspector edits thro
   expect(saved.config.imageScene?.nodes.at(-1)).toMatchObject({ kind: "text", text: "Hello world", description: "Large blue letters", parentId: "image-root" });
   expect(parseProjectConfig(saved.config).imageScene).toEqual(saved.config.imageScene);
   fireEvent.click(navigation.getByRole("tab", { name: /References/ }));
-  fireEvent.click(navigation.getByRole("tab", { name: /Editor/ }));
+  fireEvent.click(navigation.getByRole("tab", { name: "Image" }));
   expect(screen.getByRole("tree", { name: "Image nodes" })).toBeInTheDocument();
-  fireEvent.keyDown(document.body, { key: "3", code: "Digit3", ctrlKey: true });
+  fireEvent.keyDown(document.body, { key: "5", code: "Digit5", ctrlKey: true });
   expect(navigation.getByRole("tab", { name: /Export/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("region", { name: "Image preview" })).toBeInTheDocument();
 });
@@ -207,10 +205,43 @@ it("keeps the video tabs and applies image agent commands without changing gener
   const next = await executeAgentCommands(image, [{ op: "image.set", ...authored, background: "A moonlit ocean" }]);
   expect(next.imageScene?.background).toBe("A moonlit ocean");
   const video = createProjectConfig({ name: "Film", prompt: "", aspectRatio: "16:9", resolution: "768p", targetDurationSeconds: 60 });
-  await expect(executeAgentCommands(video, [{ op: "image.set", ...authored }])).rejects.toThrow("image project");
+  const mixed = await executeAgentCommands(video, [{ op: "image.set", ...authored }]);
+  expect(mixed.imageScene?.nodes).toEqual(authored.nodes);
+  expect(mixed.timeline).toEqual(video.timeline);
+  expect(mixed.generationJobs).toEqual(video.generationJobs);
   render(<ProjectWorkspace project={{ folderPath: "D:/Film", config: video }} onBack={vi.fn()} onSave={vi.fn()} />);
   const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
   expect(navigation.getByRole("tab", { name: /Timeline/ })).toBeInTheDocument();
-  expect(navigation.getByRole("tab", { name: /Generator/ })).toBeInTheDocument();
-  expect(navigation.queryByRole("tab", { name: /Editor/ })).not.toBeInTheDocument();
+  expect(navigation.getByRole("tab", { name: "Video" })).toBeInTheDocument();
+  expect(navigation.getByRole("tab", { name: "Image" })).toBeInTheDocument();
+});
+
+it("adds and reopens an image in an older video project while preserving its video content", async () => {
+  const project = { folderPath: "D:/Legacy film", config: parseProjectConfig(videoFixture) };
+  const save = vi.fn(async (_record: ProjectRecord) => undefined);
+  const workspace = render(<ProjectWorkspace project={project} onBack={vi.fn()} onSave={save} />);
+  const navigation = () => within(screen.getByRole("tablist", { name: "Project views" }));
+  expect(navigation().getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(document.body, { key: "3", code: "Digit3", ctrlKey: true });
+  expect(navigation().getByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));
+  fireEvent.change(screen.getByLabelText("Text to render"), { target: { value: "Film poster" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  const saved = save.mock.calls[0][0];
+  expect(saved.config.timeline).toEqual(project.config.timeline);
+  expect(saved.config.generationJobs).toEqual(project.config.generationJobs);
+  workspace.unmount();
+  render(<ProjectWorkspace project={{ ...saved, config: parseProjectConfig(JSON.parse(JSON.stringify(saved.config))) }} onBack={vi.fn()} onSave={save} />);
+  fireEvent.click(navigation().getByRole("tab", { name: "Image" }));
+  fireEvent.click(within(screen.getByRole("tree", { name: "Image nodes" })).getByRole("button", { name: "Text" }));
+  expect(screen.getByLabelText("Text to render")).toHaveValue("Film poster");
+  fireEvent.click(navigation().getByRole("tab", { name: "Export" }));
+  const exportTypes = within(screen.getByRole("tablist", { name: "Export type" }));
+  expect(exportTypes.getByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(exportTypes.getByRole("tab", { name: "Video" }));
+  expect(exportTypes.getByRole("tab", { name: "Video" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(exportTypes.getByRole("tab", { name: "Image" }));
+  expect(screen.getByRole("region", { name: "Image preview" })).toBeInTheDocument();
 });

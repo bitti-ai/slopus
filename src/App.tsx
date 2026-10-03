@@ -203,7 +203,7 @@ function App() {
 
   const showLibraryHeading = projects.length > 0;
 
-  const openProject = (project: ProjectRecord, view: ProjectView = "timeline") => {
+  const openProject = (project: ProjectRecord, view: ProjectView = project.config.generationType === "image" ? "editor" : "timeline") => {
     setWorkQueueOpen(false);
     setSelectedKey(projectQueueKey(project));
     setActiveProjectInitialView(view);

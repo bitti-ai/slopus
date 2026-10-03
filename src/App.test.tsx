@@ -83,15 +83,15 @@ describe("project library controls", () => {
     // One click selects, like a GridView item; it does not open.
     fireEvent.click(card);
     expect(card).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByRole("tab", { name: "Editor" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Image" })).toBeNull();
     fireEvent.doubleClick(card);
-    expect(await screen.findByRole("tab", { name: "Editor" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
     const again = await screen.findByRole("option", { name: "Saved illustration" });
     // The tile that was opened is still the selected one, and Enter opens it.
     expect(again).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(again, { key: "Enter" });
-    expect(await screen.findByRole("tab", { name: "Editor" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("uses a named New Project form with a default Look instead of a length", async () => {
@@ -99,7 +99,7 @@ describe("project library controls", () => {
     await screen.findByText("Northern Light — Brand Film");
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
     expect(screen.getByRole("dialog", { name: "New project" })).not.toBeNull();
-    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Untitled video");
+    expect(screen.getByRole("textbox", { name: "Project name" })).toHaveValue("Untitled project");
     expect(screen.queryByRole("textbox", { name: "Describe your video" })).toBeNull();
     expect(screen.queryByText("What do you want to make?")).toBeNull();
     expect(screen.queryByText(/Add reference images/)).toBeNull();
@@ -296,7 +296,7 @@ describe("project library controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
     expect(await screen.findByRole("complementary", { name: "Agent" })).toBeVisible();
-    expect(screen.getAllByText("Untitled video").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Untitled project").length).toBeGreaterThan(0);
     expect(screen.queryByText("First scene")).toBeNull();
   });
 

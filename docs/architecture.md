@@ -21,7 +21,7 @@ project-folder/
 
 The JSON document is versioned and includes project metadata, canvas settings, ordered timeline tracks and clips, reusable references, generation jobs, agent conversation, and provider settings. Runtime-only state never belongs in the file.
 
-The top-level `generationType` identifies the project's purpose independently of its media assets. Its values are `video`, `image`, `3d`, `music`, and `speech`. New projects currently write `"generationType": "video"`; the other values are reserved for future generation workflows and do not enable those workflows yet. Both the frontend and native storage preserve this field when reading and saving. Schema version 1 files without it default to `video` and gain the explicit field on their next save. Explicit null or unrecognized values are rejected.
+Every project provides Timeline, Video, Image, References, and Export tabs. Video scenes and the image composition coexist in one file, and Export offers both media types. The top-level `generationType` is a legacy preference retained for compatibility: older image projects initially open the Image tab; other projects open Timeline. New projects write `"generationType": "video"`, but this does not restrict image editing or generation. Both frontend and native storage preserve the field and its historical values (`video`, `image`, `3d`, `music`, `speech`). Schema version 1 files without it default to `video` and gain the explicit field on their next save. Explicit null or unrecognized values are rejected. Agent requests use the active Video/Image context to select instructions without changing the saved preference.
 
 ## Agent boundary
 

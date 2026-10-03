@@ -4,7 +4,7 @@ import { useShortcut } from "../lib/commands";
 import type { AspectRatio, CreateProjectInput, ProjectConfig, Resolution } from "../lib/project";
 import { PROJECT_RESOLUTIONS } from "../lib/project";
 import { SHOT_TAG_GROUPS } from "../lib/shot-tags";
-import { ComboBox, ContentDialog, InfoBar, RadioGroup } from "./ui";
+import { ComboBox, ContentDialog, InfoBar } from "./ui";
 
 interface PromptComposerProps {
   busy: boolean;
@@ -24,16 +24,15 @@ interface PromptComposerProps {
 const DEFAULT_RESOLUTION: Resolution = "768p";
 const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.options;
 
-const folderName = (path?: string) => path?.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || "Untitled video";
+const folderName = (path?: string) => path?.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || "Untitled project";
 
 /* New project, and the same form as Project settings for an open project.
-   A standard 548px ContentDialog on a solid layer: the project type as two
-   radio buttons, the folder as a read-only path with Browse…, the name, and
+   A standard 548px ContentDialog on a solid layer: the folder as a read-only
+   path with Browse…, the name, and
    the format. [Create] [Cancel] in the footer; Enter creates, Esc cancels.
    Errors — a folder that is not empty, a failed save — are an InfoBar in the
    body rather than red text beside the button. */
 export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, error, folderPath, folderError, checkingFolder, onChooseFolder }: PromptComposerProps) {
-  const [generationType, setGenerationType] = useState<"video" | "image">(project?.generationType === "image" ? "image" : "video");
   const [name, setName] = useState(project?.name ?? folderName(folderPath));
   const previousFolderName = useRef(folderName(folderPath));
   useEffect(() => {
@@ -63,7 +62,6 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
   const submit = async () => {
     if (blocked) return;
     await onSubmit({
-      generationType,
       name: name.trim(),
       prompt: project?.brief.prompt ?? "",
       aspectRatio,
@@ -88,22 +86,6 @@ export function PromptComposer({ busy, onCreate: onSubmit, onClose, project, err
       className="composer"
     >
       <div className="composer__form">
-        {!project && (
-          <RadioGroup
-            label="Project type"
-            orientation="horizontal"
-            value={generationType}
-            disabled={busy}
-            onChange={(type) => {
-              setGenerationType(type);
-              if (!folderPath && (name === "Untitled video" || name === "Untitled image")) setName(`Untitled ${type}`);
-            }}
-            options={[
-              { value: "video", label: "Video project" },
-              { value: "image", label: "Image project" },
-            ]}
-          />
-        )}
         {!project && folderPath && (
           <div className="composer__field">
             <label htmlFor={`${id}-folder`}>Project folder</label>

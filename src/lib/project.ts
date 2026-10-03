@@ -9,7 +9,7 @@ export const PROJECT_FILE_NAME = "slopus.json";
  *  ever written. */
 export const LEGACY_PROJECT_FILE_NAMES = ["polstudio.json", "pols.json", "polstudio.project.json"] as const;
 export const CURRENT_SCHEMA_VERSION = 1 as const;
-/** Project purpose, independent of the kinds of media it contains. */
+/** Legacy preference retained for old projects, not a restriction on media tools. */
 export const generationTypeSchema = z.enum(["video", "image", "3d", "music", "speech"]);
 export type GenerationType = z.infer<typeof generationTypeSchema>;
 export const DEFAULT_GENERATION_STEPS = 20;

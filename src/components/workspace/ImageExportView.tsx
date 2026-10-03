@@ -40,7 +40,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
   const desktop = isTauri();
 
   /* Why there is nothing to export, in the order the user can fix it. */
-  const blocker = !output?.relativePath ? "Generate an image in the Editor first."
+  const blocker = !output?.relativePath ? "Generate an image in the Image tab first."
     : draft ? "This image is still a draft. Generate it before exporting."
       : !desktop ? "Exporting is available in the Slopus desktop app."
         : null;

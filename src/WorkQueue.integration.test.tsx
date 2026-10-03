@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
+import { markReleaseNotesSeen } from "./lib/releaseNotes";
 import { saveGeneratedScene } from "./lib/generatedVideo";
 import { listRecentProjects, saveProject } from "./lib/persistence";
 import { createProjectConfig, type ProjectRecord } from "./lib/project";
@@ -27,6 +28,7 @@ vi.mock("./lib/runtime", async (original) => ({
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear(); handlers.clear();
+  markReleaseNotesSeen();
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: unknown }) => void) => { handlers.set(name, handler); return () => handlers.delete(name); }) as unknown as typeof listen);
   vi.mocked(saveProject).mockImplementation(async (record) => record);
@@ -74,7 +76,7 @@ it("keeps the application queue alive while switching projects and saves results
   vi.mocked(listRecentProjects).mockResolvedValue({ projects: [first, second], unreadable: [] });
   render(<App />);
   fireEvent.doubleClick(await screen.findByRole("option", { name: "First project" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
   fireEvent.click(screen.getByRole("button", { name: /^Generate all$/i }));
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
   const workId = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].jobId;
@@ -99,7 +101,7 @@ it("keeps the application queue alive while switching projects and saves results
   expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
   fireEvent.doubleClick(screen.getByRole("option", { name: "First project" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
   expect(screen.getByRole("region", { name: "First scene" })).toHaveTextContent(/finished/i);
 });
 

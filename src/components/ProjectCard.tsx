@@ -70,9 +70,9 @@ export const ProjectCard = forwardRef(function ProjectCard(
     })
     .reduce<number | null>((first, clip) => first === null ? clip.startMs : Math.min(first, clip.startMs), null);
   const firstClip = firstVisualMs === null ? null : visibleClipAt(config.timeline.tracks, firstVisualMs, assetsById);
-  const firstAsset = config.generationType === "image" ? config.assets.find((asset) => asset.id === config.imageScene?.outputAssetId) : firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : undefined;
+  const firstAsset = firstClip ? config.assets.find((asset) => asset.id === firstClip.assetId) : config.assets.find((asset) => asset.id === config.imageScene?.outputAssetId);
   const posterTimeMs = firstClip?.sourceStartMs ?? 0;
-  const image = config.generationType === "image";
+  const image = !firstClip && Boolean(config.imageScene);
   const Glyph = image ? Image32 : Film32;
   const meta = `Edited ${relativeDate(config.updatedAt)} · ${image ? "Image" : durationLabel(config.brief.targetDurationSeconds)}`;
   const prompt = config.brief.prompt.trim();

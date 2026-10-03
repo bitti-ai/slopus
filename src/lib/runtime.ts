@@ -313,7 +313,6 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   for (const command of commands) {
     switch (command.op) {
       case "image.set": case "image.configure": case "image.node.add": case "image.node.set": case "image.node.move": case "image.node.duplicate": case "image.node.remove": {
-        if (next.generationType !== "image") throw new Error(`${command.op} requires an image project.`);
         const scene = applyImageCommand(next.imageScene ?? createImageScene(next.brief.prompt), command);
         for (const id of scene.referenceIds) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`Image reference '${id}' must name an existing image or text reference.`);
         for (const id of actionReferenceIds(imageScenePromptText(scene))) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`The image cites '@[ref:${id}]', which must name an existing image or text reference.`);

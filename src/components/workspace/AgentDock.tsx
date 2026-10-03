@@ -34,9 +34,11 @@ interface AgentActivity {
  *  workspace. `onClose` wires the header's close button to it; without it the
  *  button is not shown. `expanded` is accepted for compatibility and no longer
  *  changes the layout: the pane is always the full conversation. */
-export function AgentDock({ context, record, providers, onPromptStart, onCommands, onClose, onBusyChange }: {
+export function AgentDock({ context, record, mode = record.config.generationType === "image" ? "image" : "video", providers, onPromptStart, onCommands, onClose, onBusyChange }: {
   context: string;
   record: ProjectRecord;
+  /** Active editor context; legacy project types no longer restrict capabilities. */
+  mode?: "video" | "image";
   providers: ProviderStatus[];
   /** @deprecated The dock is always a pane now; kept so callers need not change. */
   expanded?: boolean;
@@ -132,7 +134,7 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
   const placeholder = ready
-    ? record.config.generationType === "image" ? "Ask Slop to compose an image or refine the layout" : `Ask Slop about ${context}`
+    ? mode === "image" ? "Ask Slop to compose an image or refine the layout" : `Ask Slop about ${context}`
     : blockedDetail ?? "No agent provider is available";
   const providerStatusLabel = requestId && selected
     ? `${selected.label} status: Processing`
@@ -152,7 +154,9 @@ export function AgentDock({ context, record, providers, onPromptStart, onCommand
     setLastPrompt(clean);
     setActivity([]);
     try {
-      const response = await runAgentTurn(record, provider, clean, id, sessionMessages);
+      // The native agent uses this legacy field to select its instructions.
+      // Override only the request snapshot, never the saved project document.
+      const response = await runAgentTurn({ ...record, config: { ...record.config, generationType: mode } }, provider, clean, id, sessionMessages);
       if (response.result.kind === "commands") await onCommands(response.result.commands);
       setSessionMessages(response.messages);
       setPendingPrompt(null);

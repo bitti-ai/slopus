@@ -50,6 +50,18 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
+  it.each(["video", "image"] as const)("uses the active %s tab for agent instructions without changing the saved project type", async (mode) => {
+    const record = project();
+    record.config.generationType = mode === "image" ? "video" : "image";
+    const original = structuredClone(record.config);
+    vi.mocked(runAgentTurn).mockResolvedValue({ result: { kind: "commands", summary: "Done", commands: [] }, events: [], messages: [] });
+    render(<AgentDock context="this project" record={record} mode={mode} providers={providers} onPromptStart={vi.fn()} onCommands={async () => undefined} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Make it warmer" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledOnce());
+    expect(vi.mocked(runAgentTurn).mock.calls[0][0].config.generationType).toBe(mode);
+    expect(record.config).toEqual(original);
+  });
   it("grows the prompt box with its text up to six lines, then scrolls", async () => {
     // jsdom lays nothing out: report 20px per line of text as the content height.
     const spy = vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLTextAreaElement) {

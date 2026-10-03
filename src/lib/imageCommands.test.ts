@@ -41,11 +41,14 @@ describe("image agent commands", () => {
     expect(cleared.nodes[2].box).toEqual(scene.nodes[2].box);
   });
 
-  it("initializes an older image project without imageScene and rejects image edits in video projects", async () => {
+  it.each(["video", "image"] as const)("initializes an older %s project without imageScene", async (generationType) => {
     const project = parseProjectConfig(projectFixture);
+    project.generationType = generationType;
     project.imageScene = undefined;
     const updated = await executeAgentCommands(project, [{ op: "image.node.add", id: "subject", parent: "image-root", kind: "object", name: "Subject" }]);
     expect(updated.imageScene?.nodes[0]).toEqual(createImageScene(project.brief.prompt).nodes[0]);
-    for (const command of cases.commands) await expect(executeAgentCommands({ ...project, generationType: "video" }, [imageCommandSchema.parse(command)])).rejects.toThrow("image project");
+    expect(updated.imageScene?.nodes[1]).toMatchObject({ id: "subject", kind: "object" });
+    expect(updated.generationJobs).toEqual(project.generationJobs);
+    expect(updated.timeline).toEqual(project.timeline);
   });
 });

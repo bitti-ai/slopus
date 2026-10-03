@@ -46,7 +46,7 @@ export function removeImageAsset(assets: readonly ProjectAsset[], id: string): P
 /** Keep the editable version in history without creating another image file. */
 export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
   const scene = config.imageScene;
-  if (config.generationType !== "image" || !scene) return config;
+  if (!scene) return config;
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const source = scene.rootType === "image" ? scene.sourceImage : null;
   if (!source && !selected?.imageDraft) return config;

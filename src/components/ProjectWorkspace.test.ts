@@ -128,7 +128,7 @@ describe("project workspace timecode", () => {
 
     // The views are tabs in the title bar; the agent is not one of them.
     const tabs = screen.getByRole("tablist", { name: "Project views" });
-    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Timeline", "Generator", "References", "Export"]);
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Timeline", "Video", "Image", "References", "Export"]);
     expect(within(tabs).getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
     const panel = document.getElementById(within(tabs).getByRole("tab", { name: "Timeline" }).getAttribute("aria-controls")!);
     expect(panel).toHaveAttribute("role", "tabpanel");
@@ -152,7 +152,7 @@ describe("project workspace timecode", () => {
 
     // Ctrl+2 switches to the second view.
     fireEvent.keyDown(document.body, { key: "2", code: "Digit2", ctrlKey: true });
-    expect(within(tabs).getByRole("tab", { name: "Generator" })).toHaveAttribute("aria-selected", "true");
+    expect(within(tabs).getByRole("tab", { name: "Video" })).toHaveAttribute("aria-selected", "true");
     expect(within(pane).getByRole("textbox", { name: "Ask Slop about this generation queue" })).toBeInTheDocument();
   });
 
@@ -175,8 +175,8 @@ describe("project workspace timecode", () => {
     expect(bar).toHaveTextContent(/Saved/);
 
     const tabs = screen.getByRole("tablist", { name: "Project views" });
-    fireEvent.click(within(tabs).getByRole("tab", { name: "Generator" }));
-    const generatorBar = screen.getByRole("region", { name: "Generator status" });
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Video" }));
+    const generatorBar = screen.getByRole("region", { name: "Video status" });
     expect(generatorBar).toBe(bar);
     expect(within(generatorBar).getByRole("status")).toHaveTextContent(/scene/);
     expect(generatorBar).not.toHaveTextContent("references");
@@ -259,7 +259,7 @@ describe("project workspace timecode", () => {
     expect(screen.getByRole("dialog", { name: "Save changes to “Edited”?" })).toBeInTheDocument();
   });
 
-  it("counts running generations on the Generator tab, and returns to the library without a generation warning", () => {
+  it("counts running generations on the Video tab, and returns to the library without a generation warning", () => {
     const config = createProjectConfig({ name: "Ceramic lamp", prompt: "A quiet product film", aspectRatio: "16:9", resolution: "1080p", targetDurationSeconds: 30 });
     const now = new Date().toISOString();
     config.generationJobs = [
@@ -268,7 +268,7 @@ describe("project workspace timecode", () => {
     ];
     const onBack = vi.fn();
     render(createElement(ProjectWorkspace, { project: { folderPath: "C:\\Ceramic Lamp", config }, initialView: "export", onBack, onSave: async () => undefined }));
-    const generator = screen.getByRole("tab", { name: "Generator" });
+    const generator = within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: "Video" });
     expect(generator.querySelector(".ui-badge")?.textContent).toBe("3");
     fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
     expect(onBack).toHaveBeenCalledTimes(1);
@@ -516,7 +516,7 @@ describe("project workspace timecode", () => {
     typePrompt(line(), "a slow push across the launch pad");
     fireEvent.click(screen.getByRole("tab", { name: "Timeline" }));
     await screen.findByRole("heading", { name: "Timeline", level: 2 });
-    fireEvent.click(screen.getByRole("tab", { name: "Generator" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Video" }));
     await screen.findByRole("toolbar", { name: "Generator" });
     /* The trip unmounted the generator, so the panel is back on the scene and
        the card is where the words have to have survived. */

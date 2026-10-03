@@ -217,7 +217,6 @@ export class WorkQueue {
     if (template.mode === "animate") throw new Error("Choose a MiniMax H3 prompt template for images.");
     session.update((config) => saveImageDraft(config, template.id));
     const current = session.getSnapshot().config;
-    if (current.generationType !== "image") throw new Error("Open an image project to generate images.");
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
     const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");

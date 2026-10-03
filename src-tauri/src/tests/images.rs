@@ -166,6 +166,26 @@ fn image_tree_survives_folder_creation_save_and_reopen() {
 }
 
 #[test]
+fn image_and_video_content_coexist_after_save_and_reopen_for_both_legacy_types() {
+    for generation_type in [GenerationType::Video, GenerationType::Image] {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = created_fixture();
+        config.generation_type = generation_type;
+        config.image_scene = image_fixture().image_scene;
+        let created = create_project_in(root.path(), &config).unwrap();
+        let folder = Path::new(&created.folder_path);
+        let mut opened = read_project(folder).unwrap();
+        opened.config.image_scene.as_mut().unwrap().nodes[2].text = "Film poster".into();
+        write_project(folder, &opened.config).unwrap();
+        let reopened = read_project(folder).unwrap();
+        assert_eq!(reopened.config.image_scene, opened.config.image_scene);
+        assert_eq!(reopened.config.timeline, config.timeline);
+        assert_eq!(reopened.config.generation_jobs, opened.config.generation_jobs);
+        assert_eq!(reopened.config.generation_type, config.generation_type);
+    }
+}
+
+#[test]
 fn image_generation_history_survives_native_save_and_reopen_and_validates_snapshots() {
     let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
     snapshot["usedSeed"] = serde_json::json!(9_007_199_254_740_991_u64);
@@ -218,7 +238,7 @@ fn invalid_image_hierarchies_and_bounds_are_rejected() {
 }
 
 #[test]
-fn agent_image_edits_preserve_outputs_and_reject_video_projects_or_invalid_trees() {
+fn agent_image_edits_preserve_outputs_and_work_in_video_projects_but_reject_invalid_trees() {
     use crate::project::commands::{execute_commands_at, ProjectCommand};
     let mut config = image_fixture();
     config.image_scene.as_mut().unwrap().output_asset_id = Some("generated-picture".into());
@@ -240,7 +260,11 @@ fn agent_image_edits_preserve_outputs_and_reject_video_projects_or_invalid_trees
             .as_deref(),
         Some("generated-picture")
     );
-    assert!(execute_commands_at(&created_fixture(), &[parsed], &config.updated_at).is_err());
+    let video = created_fixture();
+    let mixed = execute_commands_at(&video, &[parsed], &config.updated_at).unwrap();
+    assert_eq!(mixed.image_scene.as_ref().unwrap().background, "A moonlit ocean");
+    assert_eq!(mixed.timeline, video.timeline);
+    assert_eq!(mixed.generation_jobs, video.generation_jobs);
     command["nodes"][1]["parentId"] = serde_json::json!("missing");
     let parsed: ProjectCommand = serde_json::from_value(command).unwrap();
     assert!(execute_commands_at(&config, &[parsed], &config.updated_at).is_err());
@@ -299,12 +323,12 @@ fn granular_image_commands_edit_subtrees_without_touching_generated_outputs() {
         scene.nodes.iter().find(|node| node.id == "title"),
         Some(&current.image_scene.as_ref().unwrap().nodes[2])
     );
-    for command in &commands {
-        assert!(
-            execute_commands_at(&created_fixture(), &[command.clone()], &current.updated_at)
-                .is_err()
-        );
-    }
+    let mut video = current.clone();
+    video.generation_type = GenerationType::Video;
+    let mixed = execute_commands_at(&video, &commands, &current.updated_at).unwrap();
+    assert_eq!(mixed.image_scene.as_ref(), Some(&scene));
+    assert_eq!(mixed.timeline, video.timeline);
+    assert_eq!(mixed.generation_jobs, video.generation_jobs);
 }
 
 #[test]

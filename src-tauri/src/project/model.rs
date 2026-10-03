@@ -1,7 +1,8 @@
 use super::{references::*, scenes::*, timeline::*};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-/// Project purpose, not the types of media it contains. Missing values are video.
+/// Legacy project preference. Both video and image tools are available for every
+/// project; keep reading and writing this field so old documents round-trip.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum GenerationType {

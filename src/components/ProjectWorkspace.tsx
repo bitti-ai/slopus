@@ -63,7 +63,7 @@ const writeAgentPane = (open: boolean) => {
 };
 
 const VIEW_LABELS: Record<ShownView, string> = {
-  timeline: "Timeline", generator: "Generator", references: "References", export: "Export", editor: "Editor",
+  timeline: "Timeline", generator: "Video", references: "References", export: "Export", editor: "Image",
 };
 
 const AGENT_PANE_MIN = 280;
@@ -84,7 +84,7 @@ function useWindowWidth(): number {
 
 /* The project window.
 
-     [←] [icon] Project name   Timeline Generator References Export   [↶][↷] [Save] [Agent][Queue][⚙] [– □ ×]
+     [←] [icon] Project name   Timeline Video Image References Export   [↶][↷] [Save] [Agent][Queue][⚙] [– □ ×]
      ─────────────────────────────────────────────────────────────────────────────────────────────────────
      InfoBars (save failed, export failed)
      ┌ the view ─────────────────────────────────────────┐┃┌ Agent ──────────┐
@@ -93,7 +93,7 @@ function useWindowWidth(): number {
 
    The title bar is the caption AND the app's header (i-frame-1): Back, the
    project name (click for project settings), Save, Undo/Redo, the view
-   switcher as a SelectorBar (tabs, not links; Ctrl+1…4), and the pane and
+   switcher as a SelectorBar (tabs, not links; Ctrl+1…5), and the pane and
    app buttons. The agent is a docked pane on the right with a Splitter;
    Ctrl+Shift+A or the title-bar button shows and hides it, and both its width
    and whether it is open are remembered.
@@ -103,7 +103,7 @@ function useWindowWidth(): number {
    through session.edit() and are undo steps; background work (generation
    results, icons, measurements) is not (see projectSession.ts). Text fields
    keep their own native undo — the shortcuts do not fire in them. */
-export function ProjectWorkspace({ project, initialView = "timeline", runtime = null, onBack, onSave, workQueue, onGeneratorRuntimeChange, titleBarActions, active = true }: {
+export function ProjectWorkspace({ project, initialView, runtime = null, onBack, onSave, workQueue, onGeneratorRuntimeChange, titleBarActions, active = true }: {
   project: ProjectRecord;
   initialView?: ProjectView;
   /** What is installed on this computer, probed once at startup by App. Null
@@ -128,11 +128,15 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const session = useMemo(() => queue.project(project), [queue, project.folderPath, project.config.id]);
   const { config, saving, dirty, saveError, canUndo, canRedo, savedAt } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const items = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
-  const imageProject = config.generationType === "image";
-  const [view, setView] = useState<ShownView>(() => {
-    if (imageProject) return initialView === "references" || initialView === "export" ? initialView : "editor";
-    return initialView === "agent" || initialView === "editor" ? "timeline" : initialView;
-  });
+  // Legacy project types choose only the initial view; every project has both editors.
+  const openingView = initialView === "agent" ? "timeline" : initialView ?? (config.generationType === "image" ? "editor" : "timeline");
+  const [view, setShownView] = useState<ShownView>(openingView);
+  const [mediaMode, setMediaMode] = useState<"video" | "image">(() => openingView === "editor" || ((openingView === "references" || openingView === "export") && config.generationType === "image") ? "image" : "video");
+  const setView = (next: ShownView) => {
+    if (next === "editor") setMediaMode("image");
+    else if (next === "generator" || next === "timeline") setMediaMode("video");
+    setShownView(next);
+  };
   const [agentOpen, setAgentOpenState] = useState(() => initialView === "agent" || readAgentPane());
   const [agentBusy, setAgentBusy] = useState(false);
   const setAgentOpen = (open: boolean) => { setAgentOpenState(open); writeAgentPane(open); };
@@ -190,7 +194,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   const lengthMs = useMemo(() => videoDurationMs(config), [config]);
   const sequenceFormat = `${frameWidth}×${frameHeight} · ${config.settings.frameRate} fps · ${formatSequenceLength(lengthMs)}`;
 
-  const views: ShownView[] = imageProject ? ["editor", "references", "export"] : ["timeline", "generator", "references", "export"];
+  const views: ShownView[] = ["timeline", "generator", "editor", "references", "export"];
   const running = config.generationJobs.filter(isGenerationOngoing).length;
   const toggleAgent = () => {
     const open = !agentOpen;
@@ -204,7 +208,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
   useShortcut("Ctrl+S", () => { if (dirty && !saving) void save(); }, { enabled: idle, allowInInput: true });
   useShortcut("Ctrl+Z", () => { session.undo(); }, { enabled: idle });
   useShortcut(["Ctrl+Y", "Ctrl+Shift+Z"], () => { session.redo(); }, { enabled: idle });
-  useShortcut(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4"], (event) => {
+  useShortcut(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5"], (event) => {
     const next = views[Number(event.code?.replace("Digit", "") || event.key) - 1];
     if (!next) return false;
     setView(next);
@@ -282,19 +286,23 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
     <ProjectStatusSlot.Provider value={statusSlot}>
     <div className={`project-body${agentOpen ? " project-body--agent" : ""}`} style={agentPane.style}>
       <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`}>
-        {view === "editor" && imageProject && <ImageEditor config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} />}
-        {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView(imageProject ? "editor" : "generator"); }} />}
+        {view === "editor" && <ImageEditor config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} />}
+        {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
-        {view === "export" && (imageProject
-          ? <ImageExportView config={config} folderPath={project.folderPath} />
-          : <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />)}
+        {view === "export" && <div className="project-export">
+          <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }]} />
+          {mediaMode === "image"
+            ? <ImageExportView config={config} folderPath={project.folderPath} />
+            : <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />}
+        </div>}
       </div>
       {agentOpen && <Splitter {...agentPane.splitterProps} reverse aria-label="Resize agent pane" aria-controls={`${panelId}-agent`} />}
       {/* Kept mounted while hidden, so a running turn and the conversation
           survive the pane being closed. */}
       <aside ref={agentPaneRef} id={`${panelId}-agent`} className="project-agent-pane" aria-label="Agent" hidden={!agentOpen}>
         <AgentDock
+          mode={mediaMode}
           context={view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : "this export"}
           record={{ ...project, config }}
           providers={runtime?.providers ?? CHECKING_PROVIDERS}
@@ -321,7 +329,7 @@ export function ProjectWorkspace({ project, initialView = "timeline", runtime = 
       aria-label={`${VIEW_LABELS[view]} status`}
       className="project-status"
       end={<>
-        {!imageProject && <span className="project-status__format" {...tooltipProps("Sequence format: frame size, frame rate and length")}>{sequenceFormat}</span>}
+        {mediaMode === "video" && <span className="project-status__format" {...tooltipProps("Sequence format: frame size, frame rate and length")}>{sequenceFormat}</span>}
         <span
           className={`project-status__save project-status__save--${saving ? "saving" : dirty ? "unsaved" : "saved"}`}
           {...tooltipProps(!saving && !dirty && savedAt !== null ? `Saved ${new Date(savedAt).toLocaleString()}` : undefined)}

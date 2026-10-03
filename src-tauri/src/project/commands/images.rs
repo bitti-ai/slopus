@@ -1,7 +1,7 @@
 use super::{batch::ensure_any, patch::Patch, types::ProjectCommand};
 use crate::project::{
     image::{ImageBox, ImageNode, ImageScene, ImageStyle},
-    GenerationType, ProjectConfig,
+    ProjectConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -136,9 +136,6 @@ pub(super) fn apply(
     command: &ProjectCommand,
     timestamp: &str,
 ) -> Result<(), String> {
-    if project.generation_type != GenerationType::Image {
-        return Err("Image commands require an image project.".into());
-    }
     let mut scene = project
         .image_scene
         .clone()
