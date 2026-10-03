@@ -68,7 +68,8 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                         job.id, start_frame_id
                     ));
                 };
-                if reference.kind != "image" && reference.images.is_empty() {
+                let has_frames = reference.video.as_ref().is_some_and(|video| video.mode == Some(ReferenceVideoMode::Frames) && !video.frames.is_empty());
+                if reference.kind != "image" && reference.images.is_empty() && !has_frames {
                     return Err(format!(
                         "Generation job '{}' {edge}-frame reference '{}' is not an image.",
                         job.id, start_frame_id

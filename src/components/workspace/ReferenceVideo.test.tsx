@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { projectReferenceSchema, type ProjectReference } from "../../lib/project";
 import { ReferenceVideo } from "./ReferenceVideo";
+import { captureReferenceVideoFrame } from "../../lib/referenceVideoFrame";
 
 vi.mock("../../lib/persistence", () => ({ readMediaFileUrl: vi.fn(async () => "blob:video") }));
+vi.mock("../../lib/referenceVideoFrame", () => ({ captureReferenceVideoFrame: vi.fn() }));
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
@@ -30,6 +32,75 @@ async function ready(duration = 120) {
   return video;
 }
 const saved = () => JSON.parse(screen.getByTestId("saved").textContent!);
+
+it("picks stills from the full source, preserves both modes on reopen, and removes selected frames", async () => {
+  render(<Harness />);
+  const video = await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Frames" }));
+  expect(screen.queryByLabelText("Include sound")).not.toBeInTheDocument();
+  expect(screen.queryByRole("slider", { name: "Selection start" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add current frame" })).toBeDisabled();
+  // Frame selection is independent of the 15-second video trim.
+  fireEvent.change(screen.getByRole("slider", { name: "Frame position" }), { target: { value: "70" } });
+  expect(video.currentTime).toBe(70);
+  Object.defineProperty(video, "readyState", { value: 2, configurable: true });
+  fireEvent.seeked(video);
+  vi.mocked(captureReferenceVideoFrame).mockResolvedValueOnce({ id: "frame-70", name: "Long video at 1:10.0", relativePath: "references/frames/70.png", timeSeconds: 70 });
+  fireEvent.click(screen.getByRole("button", { name: "Add current frame" }));
+  await screen.findByRole("button", { name: "Go to frame at 1:10.0" });
+  expect(captureReferenceVideoFrame).toHaveBeenCalledWith("C:/project", "Long video", video);
+  expect(saved()).toMatchObject({ mode: "frames", startSeconds: 0, durationSeconds: 15, frames: [{ timeSeconds: 70, relativePath: "references/frames/70.png" }] });
+  expect(screen.getByRole("button", { name: "Add current frame" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await ready();
+  expect(screen.getByRole("tab", { name: "Frames" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("button", { name: "Go to frame at 1:10.0" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Move selection" }), { key: "End" });
+  fireEvent.click(screen.getByLabelText("Include sound"));
+  expect(saved()).toMatchObject({ mode: "video", startSeconds: 105, includeAudio: false, frames: [{ timeSeconds: 70 }] });
+  fireEvent.click(screen.getByRole("tab", { name: "Frames" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove frame at 1:10.0" }));
+  expect(saved().frames).toEqual([]);
+});
+
+it("does not attach a frame when saving fails and allows retry", async () => {
+  render(<Harness />);
+  const video = await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Frames" }));
+  fireEvent.loadedData(video);
+  vi.mocked(captureReferenceVideoFrame).mockRejectedValueOnce(new Error("Disk full"));
+  fireEvent.click(screen.getByRole("button", { name: "Add current frame" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Disk full");
+  expect(saved().frames).toBeUndefined();
+  expect(screen.getByRole("button", { name: "Add current frame" })).toBeEnabled();
+});
+
+it("waits for a pending frame save before closing or changing mode", async () => {
+  render(<Harness />);
+  const video = await ready();
+  fireEvent.click(screen.getByRole("tab", { name: "Frames" }));
+  fireEvent.loadedData(video);
+  let finish!: (frame: Awaited<ReturnType<typeof captureReferenceVideoFrame>>) => void;
+  vi.mocked(captureReferenceVideoFrame).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  fireEvent.click(screen.getByRole("button", { name: "Add current frame" }));
+  expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+  expect(screen.getByRole("tab", { name: "Video" })).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  await act(async () => finish({ id: "picked", name: "Frame", relativePath: "references/frames/picked.png", timeSeconds: 0 }));
+  expect(saved().frames).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Done" })).toBeEnabled();
+});
+
+it("limits frame selections to nine", async () => {
+  render(<Harness initial={{ ...original, video: { ...original.video!, mode: "frames", frames: Array.from({ length: 9 }, (_, index) => ({ id: `frame-${index}`, name: `Frame ${index}`, timeSeconds: index + 1, relativePath: `references/frames/${index}.png` })) } }} />);
+  const video = await ready();
+  fireEvent.loadedData(video);
+  expect(screen.getByRole("button", { name: "Add current frame" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Remove frame at 0:01.0" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add current frame" })).toBeEnabled());
+});
 
 it("starts at 0–15 seconds and moves and resizes the selection without reloading the source", async () => {
   render(<Harness />);

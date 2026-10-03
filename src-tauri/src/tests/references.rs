@@ -245,6 +245,8 @@ fn video_reference_clip_settings_survive_save_and_reopen() {
     reference.relative_path = Some("media/reference.mp4".into());
     reference.source_path = None;
     reference.video = Some(ReferenceVideoOptions {
+        mode: None,
+        frames: Vec::new(),
         start_seconds: 3.5,
         duration_seconds: 4.0,
         include_audio: false,
@@ -288,4 +290,46 @@ fn reference_images_are_attachments_and_derived_state_is_not_serialized() {
     );
     assert!(value.get("agentConversation").is_none());
     assert!(value["generationJobs"][0].get("compiledPrompt").is_none());
+}
+
+#[test]
+fn selected_video_frames_survive_save_and_reopen_and_support_frame_anchors() {
+    let mut config = fixture();
+    let reference = &mut config.references[0];
+    reference.kind = "video".into();
+    reference.relative_path = Some("media/reference.mp4".into());
+    reference.source_path = None;
+    reference.video = Some(serde_json::from_value(serde_json::json!({
+        "mode": "frames", "startSeconds": 3.5, "durationSeconds": 4, "includeAudio": true,
+        "frames": [{"id": "picked", "name": "Picked frame", "relativePath": "references/frames/picked.png", "timeSeconds": 42.25}]
+    })).unwrap());
+    config.generation_jobs[0].start_frame_reference_id = Some(reference.id.clone());
+    let root = tempfile::tempdir().unwrap();
+    write_project(root.path(), &config).unwrap();
+    let reopened = read_project(root.path()).unwrap().config;
+    assert_eq!(reopened.references[0].video, config.references[0].video);
+    let mut invalid = reopened.clone();
+    invalid.references[0].video.as_mut().unwrap().frames[0].time_seconds = -1.0;
+    assert!(validate_and_normalize_config(invalid).is_err());
+    let mut invalid = reopened.clone();
+    invalid.references[0].video.as_mut().unwrap().frames[0].file.relative_path = Some("../escape.png".into());
+    assert!(validate_and_normalize_config(invalid).is_err());
+    let mut invalid = reopened;
+    invalid.references[0].video.as_mut().unwrap().mode = Some(ReferenceVideoMode::Video);
+    assert!(validate_and_normalize_config(invalid).is_err());
+}
+
+#[test]
+fn reference_frame_pngs_are_saved_inside_the_project() {
+    let root = tempfile::tempdir().unwrap();
+    write_project(root.path(), &fixture()).unwrap();
+    let folder = root.path().to_str().unwrap();
+    let mut png = Vec::new();
+    use ::image::ImageEncoder;
+    ::image::codecs::png::PngEncoder::new(&mut png).write_image(&[255, 0, 0, 255], 1, 1, ::image::ExtendedColorType::Rgba8).unwrap();
+    let relative = crate::commands::artifacts::save_reference_frame(folder, "picked", &png).unwrap();
+    assert_eq!(relative, "references/frames/picked.png");
+    assert_eq!(fs::read(root.path().join(relative)).unwrap(), png);
+    assert!(crate::commands::artifacts::save_reference_frame(folder, "../escape", &png).is_err());
+    assert!(crate::commands::artifacts::save_reference_frame(folder, "invalid", b"not an image").is_err());
 }

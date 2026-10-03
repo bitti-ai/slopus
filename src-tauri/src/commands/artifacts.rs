@@ -80,6 +80,27 @@ pub(crate) fn write_scene_last_frame(request: Request<'_>) -> Result<(), String>
     let directory = root.directory("cache/scene-last")?;
     crate::storage::atomic::write_atomically(&directory.join(format!("{stem}.png")), bytes)
 }
+
+#[tauri::command]
+pub(crate) fn write_reference_frame(request: Request<'_>) -> Result<String, String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("The reference frame must be sent as raw PNG bytes.".into());
+    };
+    let folder = super::binary::decoded_header(&request, "x-reference-folder")?;
+    let id = super::binary::decoded_header(&request, "x-reference-frame")?;
+    save_reference_frame(&folder, &id, bytes)
+}
+
+pub(crate) fn save_reference_frame(folder: &str, id: &str, bytes: &[u8]) -> Result<String, String> {
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("The reference frame is not a PNG image.".into());
+    }
+    let root = ProjectRoot::open(folder)?;
+    let stem = generated_file_stem(id)?;
+    let directory = root.directory("references/frames")?;
+    crate::storage::atomic::write_atomically(&directory.join(format!("{stem}.png")), bytes)?;
+    Ok(format!("references/frames/{stem}.png"))
+}
 /// Writes one small, derived timeline still. Its location is deterministic,
 /// so it never needs to enter slopus.json and can be rebuilt from the MP4.
 #[tauri::command]

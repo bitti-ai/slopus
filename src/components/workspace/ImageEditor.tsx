@@ -7,7 +7,7 @@ import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
-import { PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
+import { isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig } from "../../lib/project";
 import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
@@ -451,7 +451,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const rootField = (field: string) => `${editorId}-${field}`;
   const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
-  const promptReferences = config.references.filter((reference) => reference.kind === "image" || reference.kind === "text")
+  const promptReferences = config.references.filter((reference) => reference.kind !== "audio" && !isVideoReference(reference))
     .map((reference) => ({ id: reference.id, name: reference.name, detail: referenceTypeLabel(reference), icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";

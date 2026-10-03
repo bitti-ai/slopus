@@ -6,6 +6,7 @@ import {
   danglingReferenceTokens,
   isReferenceUsable,
   isVisualReference,
+  isVideoReference,
   isVideoTransition,
   referenceImages,
   referenceTypeLabel,
@@ -129,7 +130,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
     const number = numbered.findIndex((item) => item.id === reference.id) + 1;
     return {
       id: reference.id, name: reference.name, detail: `${number > 0 ? `Reference ${number}` : "Not in this scene yet"} · ${referenceTypeLabel(reference)}`,
-      icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "video" ? <Video16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
+      icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={isVideoReference(reference) ? <Video16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
     };
   }), [citable, numbered, folderPath]);
   const dangling = useMemo(() => danglingReferenceTokens(shots, references), [shots, references]);
@@ -232,7 +233,7 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
   onChange: (updates: Partial<SceneShot>) => void;
 }) {
   const videos = usableVideoReferences(references);
-  const characters = references.filter((reference) => reference.kind !== "video" && isVisualReference(reference)
+  const characters = references.filter((reference) => !isVideoReference(reference) && isVisualReference(reference)
     && isReferenceUsable(reference) && referenceImages(reference).length > 0);
   return <div className="scene-settings">
     <PropRow label="Video" htmlFor={`replace-video-${shot.id}`}>
@@ -350,7 +351,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", previo
                 value={videos.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
                 options={referenceOptions(videos, null, "None", "")}
                 onChange={(value) => onChange({ referenceIds: [
-                  ...job.referenceIds.filter((referenceId) => !references.some((reference) => reference.id === referenceId && reference.kind === "video")),
+                  ...job.referenceIds.filter((referenceId) => !references.some((reference) => reference.id === referenceId && isVideoReference(reference))),
                   ...(value ? [value] : []),
                 ] })} />
             </PropRow>

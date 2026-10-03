@@ -321,6 +321,13 @@ export const projectReferenceSchema = z.object({
   images: z.array(projectReferenceImageSchema).optional(),
   refmods: z.array(projectReferenceRefmodSchema).optional(),
   video: z.object({
+    mode: z.enum(["video", "frames"]).optional(),
+    frames: z.array(z.object({
+      id: idSchema,
+      name: z.string().min(1),
+      relativePath: projectRelativePathSchema,
+      timeSeconds: z.number().finite().min(0),
+    })).max(9).optional(),
     startSeconds: z.number().finite().min(0),
     durationSeconds: z.number().finite().min(2).max(15),
     includeAudio: z.boolean(),
@@ -341,7 +348,7 @@ export const projectReferenceSchema = z.object({
     if (refmodIds.has(refmod.id)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["refmods"], message: `Duplicate refmod id '${refmod.id}'.` });
     refmodIds.add(refmod.id);
   }
-  for (const image of reference.images ?? []) {
+  for (const image of [...(reference.images ?? []), ...(reference.video?.frames ?? [])]) {
     if (imageIds.has(image.id)) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["images"], message: `Reference '${reference.id}' has two images with the id '${image.id}'.` });
     }
@@ -704,7 +711,12 @@ export function referenceImages(reference: ProjectReference): ProjectReferenceIm
       sourcePath: reference.sourcePath ?? null,
     }]
     : [];
-  return [...legacy, ...(reference.images ?? [])];
+  return [...legacy, ...(reference.images ?? []), ...(reference.kind === "video" && reference.video?.mode === "frames" ? reference.video.frames ?? [] : [])];
+}
+
+/** A video attachment can supply either its clip or its selected stills. */
+export function isVideoReference(reference: ProjectReference): boolean {
+  return reference.kind === "video" && reference.video?.mode !== "frames";
 }
 
 /** Whether the user has said anything about this reference yet. An IMAGE is
@@ -720,7 +732,7 @@ export function isReferenceDescribed(reference: ProjectReference): boolean {
  *  An image qualifies on its file alone: it can be sent to the engine and cited
  *  as <Picture N> with nothing written about it. */
 export function isReferenceUsable(reference: ProjectReference): boolean {
-  return referenceImages(reference).length > 0 || (reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)) || activeReferenceRefmods(reference).length > 0 || isReferenceDescribed(reference);
+  return referenceImages(reference).length > 0 || (isVideoReference(reference) && Boolean(reference.sourcePath || reference.relativePath)) || activeReferenceRefmods(reference).length > 0 || isReferenceDescribed(reference);
 }
 
 export const activeReferenceRefmods = (reference: ProjectReference): ProjectReferenceRefmod[] =>
@@ -748,7 +760,7 @@ export const referenceRefmodInputs = (folderPath: string, references: ProjectRef
  *  model with its encoded conditioning, whatever else it holds. */
 export function referenceTypeLabel(reference: ProjectReference): "Refmod" | "Video" | "Image" | "Text" {
   if (reference.refmods?.length) return "Refmod";
-  if (reference.kind === "video") return "Video";
+  if (isVideoReference(reference)) return "Video";
   return reference.kind === "image" || referenceImages(reference).length ? "Image" : "Text";
 }
 
@@ -850,7 +862,7 @@ export function usableReferenceImages(references: ProjectReference[]): ProjectRe
 
 /** Video numbering is independent of pictures and follows native insertion order. */
 export function usableVideoReferences(references: ProjectReference[]): ProjectReference[] {
-  return references.filter((reference) => reference.kind === "video" && Boolean(reference.sourcePath || reference.relativePath)).filter(isVisualReference);
+  return references.filter((reference) => isVideoReference(reference) && Boolean(reference.sourcePath || reference.relativePath)).filter(isVisualReference);
 }
 
 /** Opening and closing pictures come first, then bound references in project
@@ -881,7 +893,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
   const start = references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const end = references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
-    .map((reference) => ({ ...reference, kind: "text" as const, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
+    .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
   return [...anchors, ...references.filter((reference) => job.referenceIds.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 
@@ -1089,7 +1101,7 @@ export function videoTransitionBlocker(job: GenerationJob, references: ProjectRe
 
 export function characterReplaceBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
   const videos = usableVideoReferences(references);
-  const characters = usableImageReferences(references).filter((reference) => reference.kind !== "video");
+  const characters = usableImageReferences(references).filter((reference) => !isVideoReference(reference));
   for (const [index, shot] of sceneShots(job).entries()) {
     if (!videos.some((reference) => reference.id === shot.videoReferenceId)) return `Select a video reference for shot ${index + 1}.`;
     if (!characters.some((reference) => reference.id === shot.characterReferenceId)) return `Select a character reference with an image for shot ${index + 1}.`;
@@ -1107,7 +1119,7 @@ export function characterReplaceBlocker(job: GenerationJob, references: ProjectR
 function compileCharacterReplaceSegments(job: GenerationJob, references: ProjectReference[]): PromptSegment[] {
   const bound = sceneGenerationReferences(job, references);
   const videos = usableVideoReferences(bound);
-  const characters = usableImageReferences(bound).filter((reference) => reference.kind !== "video");
+  const characters = usableImageReferences(bound).filter((reference) => !isVideoReference(reference));
   const pictures = usableImageReferences(bound).flatMap((reference) => referenceImages(reference).map(() => reference.id));
   const videoLabel = (id: string | null | undefined) => {
     const index = videos.findIndex((reference) => reference.id === id);

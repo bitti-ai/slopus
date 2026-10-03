@@ -1,5 +1,5 @@
 import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
-import { actionReferenceIds, activeReferenceRefmods, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
+import { actionReferenceIds, activeReferenceRefmods, isVideoReference, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
 import { SHOT_TAG_GROUPS } from "./shot-tags";
 
 /** Shared by generation and Debug Prompt. H3's base three-field / reference
@@ -10,7 +10,7 @@ export function compileImagePrompt(config: ProjectConfig) {
   const references = actionReferenceIds(imageScenePromptText(scene)).map((id) => {
     const reference = config.references.find((candidate) => candidate.id === id);
     if (!reference) throw new Error("The prompt cites a reference that no longer exists. Swap or remove it before generating.");
-    if (reference.kind === "video" || reference.kind === "audio") throw new Error(`Still images accept image and text references; the prompt cites the ${reference.kind} reference '${reference.name}'.`);
+    if (isVideoReference(reference) || reference.kind === "audio") throw new Error(`Still images accept image and text references; the prompt cites the ${reference.kind} reference '${reference.name}'.`);
     return reference;
   });
   // An inpainting source is also an explicit composition anchor. The caller

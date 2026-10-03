@@ -38,6 +38,7 @@ export interface ContentDialogProps {
   secondaryDisabled?: boolean;
   /** The dismiss button's label. Omit for a dialog that must be answered with primary/secondary (Esc still calls onClose). */
   closeText?: ReactNode;
+  closeDisabled?: boolean;
   /** Called by the Close button and by Esc. */
   onClose: () => void;
   /** Accent-styled, triggered by Enter (outside textareas and buttons). Default: none. */
@@ -66,6 +67,7 @@ export function ContentDialog({
   onSecondary,
   secondaryDisabled,
   closeText,
+  closeDisabled,
   onClose,
   defaultButton = "none",
   destructive,
@@ -92,7 +94,7 @@ export function ContentDialog({
   const run = (which: DialogButton) => {
     if (which === "primary" && !primaryDisabled) onPrimary?.();
     else if (which === "secondary" && !secondaryDisabled) onSecondary?.();
-    else if (which === "close") onClose();
+    else if (which === "close" && !closeDisabled) onClose();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -117,7 +119,7 @@ export function ContentDialog({
   const specs: { which: DialogButton; text: ReactNode; disabled?: boolean }[] = [];
   if (primaryText !== undefined) specs.push({ which: "primary", text: primaryText, disabled: primaryDisabled });
   if (secondaryText !== undefined) specs.push({ which: "secondary", text: secondaryText, disabled: secondaryDisabled });
-  if (closeText !== undefined) specs.push({ which: "close", text: closeText });
+  if (closeText !== undefined) specs.push({ which: "close", text: closeText, disabled: closeDisabled });
 
   return createPortal(
     <div className="ui-dialog-scrim" {...{ [LAYER_ATTR]: "dialog" }}>

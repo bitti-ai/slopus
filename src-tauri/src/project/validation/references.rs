@@ -62,7 +62,7 @@ pub(super) fn validate_references(references: &mut [ReusableReference]) -> Resul
                 file.source_path.as_ref(),
             )?;
         }
-        if let Some(video) = &reference.video {
+        if let Some(video) = &mut reference.video {
             if reference.kind != "video"
                 || !video.start_seconds.is_finite()
                 || video.start_seconds < 0.0
@@ -71,8 +71,18 @@ pub(super) fn validate_references(references: &mut [ReusableReference]) -> Resul
             {
                 return Err(format!("Reference '{}' needs a nonnegative clip start and a duration of 2 to 15 seconds.", reference.id));
             }
+            if video.frames.len() > 9 {
+                return Err("Select at most nine reference frames.".into());
+            }
+            for frame in &mut video.frames {
+                if !frame.time_seconds.is_finite() || frame.time_seconds < 0.0
+                    || frame.file.relative_path.is_none() || frame.file.source_path.is_some()
+                {
+                    return Err("Reference frames need a nonnegative time and a saved project image.".into());
+                }
+            }
         }
-        for image in &mut reference.images {
+        for image in reference.images.iter_mut().chain(reference.video.iter_mut().flat_map(|video| video.frames.iter_mut().map(|frame| &mut frame.file))) {
             if image.id.trim().is_empty() || image.name.trim().is_empty() {
                 return Err(format!(
                     "Reference '{}' has an image with an empty id or name.",

@@ -6,6 +6,15 @@ import fixture from "../../fixtures/project-v1-image.json";
 
 const photo = () => createProjectConfig({ name: "Portrait", generationType: "image", prompt: "A runner suspended mid-stride", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 });
 describe("MiniMax H3 still-image prompts", () => {
+  it("accepts frames selected from videos as still-image references", () => {
+    const config = photo();
+    config.references = [{ id: "video", name: "Runner", kind: "video", sourcePath: "C:/runner.mp4", description: "", intendedUse: [], createdAt: config.createdAt,
+      video: { mode: "frames", startSeconds: 0, durationSeconds: 5, includeAudio: true, frames: [{ id: "frame", name: "Runner frame", relativePath: "references/frames/runner.png", timeSeconds: 2 }] } }];
+    config.imageScene!.nodes[0].description = "Draw @[ref:video]";
+    expect(compileImagePrompt(config).prompt).toContain("<Picture 1>");
+    config.references[0].video!.mode = "video";
+    expect(() => compileImagePrompt(config)).toThrow("Still images accept image and text references");
+  });
   it("uses H3's three core fields with style inside the first shot and silent audio", () => {
     const config = photo();
     config.settings.defaultLook = "watercolor";

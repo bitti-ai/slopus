@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, projectReferenceSchema, sceneGenerationSnapshot, usableReferenceImages, usableVideoReferences, type ProjectReference } from "./project";
+import { compileMiniMaxH3Prompt, createDraftGenerationJob, isReferenceUsable, projectReferenceSchema, sceneGenerationReferences, sceneGenerationSnapshot, usableReferenceImages, usableVideoReferences, type ProjectReference } from "./project";
 
 const reference = (id: string, kind: ProjectReference["kind"], description = ""): ProjectReference => ({
   id, kind, name: id, description, intendedUse: [], createdAt: "2026-09-12T00:00:00.000Z",
@@ -33,4 +33,25 @@ it("records video paths and trims in generation snapshots without temporary hand
   expect(snapshot.referenceVideos).toEqual(request.referenceVideos);
   expect(snapshot.referenceVideoIds).toBeUndefined();
   expect(sceneGenerationSnapshot(job, { ...request, referenceVideos: [{ ...request.referenceVideos[0], startSeconds: 4 }] })).not.toBe(JSON.stringify(snapshot));
+});
+
+it("routes selected video frames as pictures and restores clip routing when switching modes", () => {
+  const video = projectReferenceSchema.parse({ ...reference("motion", "video"), video: {
+    mode: "frames", startSeconds: 3, durationSeconds: 5, includeAudio: true,
+    frames: [{ id: "frame", name: "Still", timeSeconds: 42, relativePath: "references/frames/still.png" }],
+  } });
+  expect(projectReferenceSchema.parse(JSON.parse(JSON.stringify(video)))).toEqual(video);
+  expect(usableVideoReferences([video])).toEqual([]);
+  expect(usableReferenceImages([video]).map((image) => image.relativePath)).toEqual(["references/frames/still.png"]);
+  expect(compileMiniMaxH3Prompt("A still", [video])).toContain("<Picture 1>");
+  expect(compileMiniMaxH3Prompt("A still", [video])).not.toContain("<Video 1>");
+  const job = { ...createDraftGenerationJob("Still"), startFrameReferenceId: video.id };
+  const anchors = sceneGenerationReferences(job, [video]);
+  expect(usableReferenceImages(anchors)).toHaveLength(1);
+  expect(projectReferenceSchema.safeParse(anchors[0]).success).toBe(true);
+  const clip = { ...video, video: { ...video.video!, mode: "video" as const } };
+  expect(usableVideoReferences([clip])).toHaveLength(1);
+  expect(usableReferenceImages([clip])).toEqual([]);
+  expect(isReferenceUsable({ ...video, video: { ...video.video!, frames: [] } })).toBe(false);
+  expect(projectReferenceSchema.safeParse({ ...video, video: { ...video.video, frames: [{ ...video.video!.frames![0], timeSeconds: -1 }] } }).success).toBe(false);
 });

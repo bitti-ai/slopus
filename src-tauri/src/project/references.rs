@@ -46,9 +46,28 @@ pub(crate) struct ReferenceImage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReferenceVideoOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mode: Option<ReferenceVideoMode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) frames: Vec<ReferenceVideoFrame>,
     pub(crate) start_seconds: f64,
     pub(crate) duration_seconds: f64,
     pub(crate) include_audio: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ReferenceVideoMode {
+    Video,
+    Frames,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReferenceVideoFrame {
+    #[serde(flatten)]
+    pub(crate) file: ReferenceImage,
+    pub(crate) time_seconds: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

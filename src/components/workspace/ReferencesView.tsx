@@ -2,7 +2,7 @@ import { Add16, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, CursorCli
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
-import { activeReferenceRefmods } from "../../lib/project";
+import { activeReferenceRefmods, isVideoReference } from "../../lib/project";
 import {
   composeLocationPrompt,
   locationSelectionFromPrompt,
@@ -49,7 +49,8 @@ const PICKER_TYPES: ReadonlyArray<{ id: ReferenceType; label: string }> = [
 const referenceKindLabel = (reference: ProjectReference) => {
   const count = referenceImages(reference).length;
   if (reference.refmods?.length) return `${reference.refmods.length} refmod${reference.refmods.length === 1 ? "" : "s"}`;
-  if (reference.kind === "video") return `Video clip${count ? ` + ${count} image${count === 1 ? "" : "s"}` : ""}`;
+  if (isVideoReference(reference)) return `Video clip${count ? ` + ${count} image${count === 1 ? "" : "s"}` : ""}`;
+  if (reference.kind === "video" && count === 0) return "No frames selected";
   if (count === 0) return reference.kind === "audio" ? "Sound" : "Text definition";
   return `${count} image${count === 1 ? "" : "s"}${isReferenceDescribed(reference) ? " + text" : ""}`;
 };
@@ -156,7 +157,14 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
 
   const update = (id: string, patch: Partial<ProjectReference>) => {
     const current = configRef.current;
-    onChange({ ...current, references: current.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref) }, `reference:${id}`);
+    const references = current.references.map((ref) => ref.id === id ? { ...ref, ...patch } : ref);
+    const changed = references.find((ref) => ref.id === id);
+    const lostImages = changed && !referenceImages(changed).length;
+    onChange({ ...current, references, generationJobs: lostImages ? current.generationJobs.map((job) => ({
+      ...job,
+      startFrameReferenceId: job.startFrameReferenceId === id ? undefined : job.startFrameReferenceId,
+      endFrameReferenceId: job.endFrameReferenceId === id ? undefined : job.endFrameReferenceId,
+    })) : current.generationJobs }, `reference:${id}`);
   };
   const selectOnly = (id: string | undefined) => {
     setSelectedId(id);
@@ -194,7 +202,12 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     if (!selected || !selectedImage) return;
     const current = configRef.current.references.find((ref) => ref.id === selected.id);
     if (!current) return;
-    const images = referenceImages(current).filter((image) => image.id !== selectedImage.id);
+    if (current.video?.frames?.some((frame) => frame.id === selectedImage.id)) {
+      update(current.id, { video: { ...current.video, frames: current.video.frames.filter((frame) => frame.id !== selectedImage.id) } });
+      setImagePage(Math.max(0, currentImagePage - 1));
+      return;
+    }
+    const images = referenceImages({ ...current, video: undefined }).filter((image) => image.id !== selectedImage.id);
     update(current.id, {
       images,
       // Move any remaining legacy image into attachments before clearing its path.
@@ -386,7 +399,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
     const cover = images[0];
     const matchedPreset = selectedReferencePreset(ref);
     const presetIcon = hasPresetIcon(matchedPreset) ? matchedPreset : undefined;
-    return ref.kind === "video"
+    return isVideoReference(ref)
       ? <span className="reference-art reference-art--photo"><MediaThumbnail
           key={JSON.stringify([folderPath, ref.sourcePath, ref.relativePath])}
           folderPath={folderPath}
@@ -521,7 +534,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             <section className="reference-video" aria-label="Video reference">
               <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
                 onChange={(video) => update(selected.id, { video })} />
-              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined })}><Delete16 aria-hidden="true" /> Remove video</button>
+              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined, images: referenceImages(selected) })}><Delete16 aria-hidden="true" /> Remove video</button>
             </section>
           </PropSection>}
           {/* The picture at a readable size, where the chip is only a glance:
@@ -566,7 +579,7 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               {/* The section header names the field on screen. */}
               <label><span className="sr-only">Prompt</span><textarea className="text-field" disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
               {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
-                : !isReferenceDescribed(selected) && <p>{selected.kind === "video"
+                : !isReferenceDescribed(selected) && <p>{isVideoReference(selected)
                   ? "The clip is sent as a reference. Add a prompt to describe what to keep."
                   : selectedImages.length > 0
                     ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."

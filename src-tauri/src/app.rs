@@ -231,6 +231,7 @@ pub fn run() {
             native_shell::pick_file,
             commands::artifacts::write_generated_video,
             commands::artifacts::write_scene_last_frame,
+            commands::artifacts::write_reference_frame,
             commands::artifacts::write_timeline_thumbnail,
             commands::artifacts::purge_timeline_thumbnails,
             commands::artifacts::generated_summary,

@@ -1,6 +1,8 @@
-import { Cut16, Pause14, Play14 } from "../ui/icons";
+import { Add16, Cut16, Delete14, Pause14, Play14 } from "../ui/icons";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { ContentDialog } from "../ui";
+import { ContentDialog, SelectorBar } from "../ui";
+import { ReferenceImage } from "./ReferenceImage";
+import { captureReferenceVideoFrame } from "../../lib/referenceVideoFrame";
 import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectReference } from "../../lib/project";
 import { editReferenceVideoTrim, initialReferenceVideoTrim, normalizeReferenceVideoTrim, referenceTime, type ReferenceVideoTrim, type TrimAction } from "../../lib/referenceVideoTrim";
@@ -14,7 +16,9 @@ export function ReferenceVideo(props: ReferenceVideoProps) {
   const start = props.reference.video?.startSeconds ?? 0;
   const length = props.reference.video?.durationSeconds ?? 15;
   return <>
-    {!open && <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>}
+    {!open && (props.reference.video?.mode === "frames"
+      ? <div className="reference-trim__summary"><strong>Frames</strong><span>{props.reference.video.frames?.length ?? 0} frames selected</span></div>
+      : <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>)}
     <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Cut16 /> Edit video clip</button>
     {open && <ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />}
   </>;
@@ -23,16 +27,23 @@ export function ReferenceVideo(props: ReferenceVideoProps) {
 /** Clip settings in a ContentDialog: the preview is large, so it is a modal
  *  rather than something squeezed into the inspector. */
 function ReferenceVideoDialog({ onClose, ...props }: ReferenceVideoProps & { onClose: () => void }) {
-  return <ContentDialog title={`${props.reference.name} — Video clip`} closeText="Done" onClose={onClose} width={1100} className="reference-video-dialog">
-    <div className="reference-video"><ReferenceVideoEditor {...props} /></div>
+  const [saving, setSaving] = useState(false);
+  return <ContentDialog title={`${props.reference.name} — Video clip`} closeText="Done" closeDisabled={saving} disableEscape={saving} onClose={onClose} width={1100} className="reference-video-dialog">
+    <div className="reference-video"><ReferenceVideoEditor {...props} onSavingChange={setSaving} /></div>
   </ContentDialog>;
 }
 
-function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVideoProps) {
+function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange }: ReferenceVideoProps & { onSavingChange: (saving: boolean) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceDuration, setSourceDuration] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [frameReady, setFrameReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const capturePending = useRef(false);
+  const mode = reference.video?.mode ?? "video";
+  const frames = reference.video?.frames ?? [];
   const video = useRef<HTMLVideoElement>(null);
   const latest = useRef({ reference, onChange });
   latest.current = { reference, onChange };
@@ -45,7 +56,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
   useEffect(() => {
     let disposed = false;
     let owned: string | null = null;
-    setUrl(null); setError(null); setSourceDuration(null); setPreviewing(false);
+    setUrl(null); setError(null); setSourceDuration(null); setPreviewing(false); setFrameReady(false); setPosition(0);
     selectionPlayback.current = false;
     previewEdge.current = "start";
     gesture.current = null;
@@ -83,9 +94,10 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
   }, [url]);
   useEffect(() => {
     stop();
+    if (mode === "frames") return;
     const time = previewEdge.current === "end" ? end : start;
     if (video.current && sourceDuration !== null && video.current.currentTime !== time) video.current.currentTime = time;
-  }, [start, length]);
+  }, [start, length, mode]);
 
   const previewTrim = (action: TrimAction, selection: ReferenceVideoTrim) => {
     stop();
@@ -97,7 +109,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
     if (!original || sourceDuration === null) return;
     const next = editReferenceVideoTrim(original, sourceDuration, action, value);
     previewTrim(action, next);
-    onChange({ ...next, includeAudio: reference.video?.includeAudio ?? true });
+    onChange({ ...reference.video, ...next, includeAudio: reference.video?.includeAudio ?? true });
   };
   const checkPlayback = () => {
     const element = video.current;
@@ -133,11 +145,42 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
     if (next !== null) { event.preventDefault(); change(action, Math.round(next * 1000) / 1000); }
   };
 
+  const seekFrame = (time: number) => {
+    if (!video.current || !sourceDuration || !Number.isFinite(time)) return;
+    stop();
+    const next = Math.max(0, Math.min(sourceDuration, time));
+    setPosition(next);
+    if (video.current.currentTime !== next) {
+      setFrameReady(false);
+      video.current.currentTime = next;
+    }
+  };
+  const addFrame = async () => {
+    if (!video.current || !reference.video || capturePending.current || frames.length >= 9) return;
+    const time = video.current.currentTime;
+    if (frames.some((frame) => Math.abs(frame.timeSeconds - time) < .001)) return;
+    capturePending.current = true;
+    setCapturing(true); onSavingChange(true); setError(null);
+    try {
+      stop();
+      const frame = await captureReferenceVideoFrame(folderPath, reference.name, video.current);
+      const current = latest.current.reference.video;
+      if (current) latest.current.onChange({ ...current, frames: [...(current.frames ?? []), frame].sort((a, b) => a.timeSeconds - b.timeSeconds) });
+    } catch (reason) { setError(`Could not save the frame: ${String(reason)}`); }
+    finally { capturePending.current = false; setCapturing(false); onSavingChange(false); }
+  };
+
   return <>
+    <SelectorBar aria-label="Reference mode" value={mode} items={[
+      { value: "video", label: "Video", disabled: capturing }, { value: "frames", label: "Frames", disabled: capturing },
+    ]} onChange={(next) => {
+      stop();
+      onChange({ startSeconds: 0, durationSeconds: 15, includeAudio: true, ...reference.video, mode: next });
+    }} />
     {error && <p role="alert">{error}</p>}
     {!url && !error && <p>Loading video preview…</p>}
     {url && <video ref={video} className="reference-video-preview" src={url} controls preload="metadata" aria-label={`${reference.name} video preview`}
-      muted={reference.video?.includeAudio === false}
+      muted={mode === "frames" || reference.video?.includeAudio === false}
       onLoadedMetadata={(event) => {
         const duration = event.currentTarget.duration;
         try {
@@ -145,17 +188,47 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
           const normalized = normalizeReferenceVideoTrim(settings ?? initialReferenceVideoTrim(duration), duration);
           setSourceDuration(duration);
           event.currentTarget.currentTime = normalized.startSeconds;
+          setPosition(normalized.startSeconds);
           if (!settings || settings.startSeconds !== normalized.startSeconds || settings.durationSeconds !== normalized.durationSeconds) {
-            latest.current.onChange({ ...normalized, includeAudio: settings?.includeAudio ?? true });
+            latest.current.onChange({ ...settings, ...normalized, includeAudio: settings?.includeAudio ?? true });
           }
         } catch (reason) { setError(String(reason)); }
       }}
       onTimeUpdate={(event) => {
+        setPosition(event.currentTarget.currentTime);
         if (selectionPlayback.current && event.currentTarget.currentTime >= end) { stop(); event.currentTarget.currentTime = end; }
       }}
+      onSeeking={() => setFrameReady(false)}
+      onSeeked={(event) => { setPosition(event.currentTarget.currentTime); setFrameReady(event.currentTarget.readyState >= 2); }}
+      onLoadedData={() => setFrameReady(true)}
       onPause={() => { selectionPlayback.current = false; setPreviewing(false); }}
-      onError={() => setError("This computer cannot preview this video codec.")} />}
-    {trim && sourceDuration !== null && <div className="reference-trim" aria-label="Reference segment editor">
+      onError={() => { setFrameReady(false); setError("This computer cannot preview this video codec."); }} />}
+    {mode === "frames" && <section className="reference-frames" aria-label="Reference frames">
+      <p>Scrub the video and add the frames you want to use as image references. Select up to 9 frames.</p>
+      {sourceDuration !== null && <>
+        <input type="range" min={0} max={sourceDuration} step={.001} value={position} aria-label="Frame position" disabled={capturing}
+          onChange={(event) => seekFrame(Number(event.target.value))} />
+        <div className="reference-frames__actions">
+          <label>Time (seconds)<input type="number" className="text-field" aria-label="Frame time in seconds" min={0} max={sourceDuration} step={.001} value={Number(position.toFixed(3))} disabled={capturing}
+            onChange={(event) => seekFrame(event.target.valueAsNumber)} /></label>
+          <button type="button" className="secondary-button" disabled={!frameReady || capturing || frames.length >= 9 || frames.some((frame) => Math.abs(frame.timeSeconds - position) < .001)} onClick={() => void addFrame()}>
+            <Add16 />{capturing ? "Saving frame…" : "Add current frame"}
+          </button>
+          <span aria-live="polite">{frames.length} / 9 selected</span>
+        </div>
+      </>}
+      {frames.length > 0 && <ul className="reference-frames__list">
+        {frames.map((frame) => <li key={frame.id}>
+          <button type="button" className="reference-frames__preview" disabled={capturing || sourceDuration === null} onClick={() => seekFrame(frame.timeSeconds)} aria-label={`Go to frame at ${referenceTime(frame.timeSeconds)}`}>
+            <ReferenceImage folderPath={folderPath} relativePath={frame.relativePath} alt={frame.name} />
+            <span>{referenceTime(frame.timeSeconds)}</span>
+          </button>
+          <button type="button" className="icon-button" disabled={capturing} aria-label={`Remove frame at ${referenceTime(frame.timeSeconds)}`}
+            onClick={() => onChange({ ...reference.video!, frames: frames.filter((item) => item.id !== frame.id) })}><Delete14 /></button>
+        </li>)}
+      </ul>}
+    </section>}
+    {mode === "video" && trim && sourceDuration !== null && <div className="reference-trim" aria-label="Reference segment editor">
       <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(end)}</strong><span>{Number(length.toFixed(2))} s selected · 15 s max</span></div>
       <div ref={scroller} className="reference-trim__scroll" role="region" aria-label="Video trim timeline">
         <div className="reference-trim__track" style={{ minWidth: `${sourceDuration * 24}px` }}>
@@ -199,7 +272,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange }: ReferenceVide
         <button type="button" className="secondary-button" onClick={() => void playSelection()}>{previewing ? <Pause14 /> : <Play14 />}{previewing ? "Pause selection" : "Play selection"}</button>
       </div>
       <label><input type="checkbox" checked={reference.video?.includeAudio ?? true}
-        onChange={(event) => onChange({ ...trim, includeAudio: event.target.checked })} /> Include sound</label>
+        onChange={(event) => onChange({ ...reference.video, ...trim, includeAudio: event.target.checked })} /> Include sound</label>
     </div>}
   </>;
 }

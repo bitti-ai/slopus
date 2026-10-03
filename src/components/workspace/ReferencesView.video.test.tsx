@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createProjectConfig, parseProjectConfig } from "../../lib/project";
+import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, referenceImages, usableVideoReferences } from "../../lib/project";
 import { inspectReferenceVideo } from "../../lib/referenceVideo";
 import { ReferencesView } from "./ReferencesView";
 
@@ -15,6 +15,33 @@ vi.mock("./MediaThumbnail", () => ({ MediaThumbnail: ({ asset, posterTimeSeconds
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   URL.revokeObjectURL = vi.fn();
+});
+
+it("shows picked frames as images, keeps unrelated attachments on removal, and clears invalid frame anchors", async () => {
+  let latest = createProjectConfig({ name: "Frames", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
+  latest.references = [{ id: "ref", name: "Runner", kind: "video", sourcePath: "C:/runner.mp4", description: "", intendedUse: [], createdAt: latest.createdAt,
+    images: [{ id: "photo", name: "Photo", relativePath: "references/photo.png" }],
+    video: { mode: "frames", startSeconds: 0, durationSeconds: 5, includeAudio: true, frames: [{ id: "picked", name: "Picked frame", relativePath: "references/frames/picked.png", timeSeconds: 45 }] } }];
+  latest.generationJobs = [{ ...createDraftGenerationJob("Runner"), startFrameReferenceId: "ref" }];
+  function Harness() {
+    const [config, setConfig] = useState(latest); latest = config;
+    return <ReferencesView folderPath="C:/project" config={config} onChange={setConfig} />;
+  }
+  render(<Harness />);
+  expect(usableVideoReferences(latest.references)).toEqual([]);
+  expect(screen.queryByRole("img", { name: "Frame from Runner" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next reference image" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove reference image" }));
+  expect(latest.references[0].video!.frames).toEqual([]);
+  expect(referenceImages(latest.references[0])).toHaveLength(1);
+  expect(latest.generationJobs[0].startFrameReferenceId).toBe("ref");
+  fireEvent.click(screen.getByRole("button", { name: "Remove reference image" }));
+  expect(latest.generationJobs[0].startFrameReferenceId).toBeUndefined();
+  expect(referenceImages(latest.references[0])).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Edit video clip" }));
+  await screen.findByLabelText("Runner video preview");
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  expect(usableVideoReferences(parseProjectConfig(latest).references)).toHaveLength(1);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; });
 

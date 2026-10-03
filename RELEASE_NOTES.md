@@ -4,6 +4,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Video references now offer a Frames mode: select still frames from a clip and use them as image references.
 - Interrupted weight and LoRA downloads retain their progress and can resume on retry, including after reopening the app.
 - Reference smart chips in image prompts and video shot descriptions, with reference artwork in the picker.
 - Queue still-image generation for individual images. Regenerated and edited images are grouped under their original in the image bar.
