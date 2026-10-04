@@ -313,7 +313,7 @@ export function ClipEffects({ clip, disabled, onChange }: {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const available = EFFECTS.filter((effect) => !clip[effect.id]);
+  const available = EFFECTS.filter((effect) => !clip[effect.id]).sort((a, b) => a.name.localeCompare(b.name));
   const update: Update = (patch, key) => { if (!disabled) onChange(patch, key); };
   useEffect(() => setOpen(false), [clip.id, disabled]);
   const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {

@@ -307,9 +307,9 @@ describe("clip effects", () => {
     render(<ClipEffects clip={{ ...original, transition: { type: "wipe-left", durationMs: 800 } }} disabled={false} onChange={vi.fn()} />);
     expect(screen.getByRole("combobox", { name: "Clip transition" }).textContent).toContain("Wipe from left");
     fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
-    expect(document.activeElement?.textContent).toBe("Look");
+    expect(document.activeElement?.textContent).toBe("3D LUT");
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
-    expect(document.activeElement?.textContent).toBe("Chroma key");
+    expect(document.activeElement?.textContent).toBe("Basic Corrections");
   });
 
   it("disables effects for locked or nonvisual clips and closes the picker when selection changes", () => {
