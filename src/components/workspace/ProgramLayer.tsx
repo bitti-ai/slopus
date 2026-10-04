@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../lib/export";
 import { PreviewSources } from "../../lib/exportPipeline";
-import { clipChromaKey, clipLook, type ProjectAsset, type TimelineClip } from "../../lib/project";
+import { clipChromaKey, type ProjectAsset, type TimelineClip } from "../../lib/project";
 import { ChromaKeyPreview } from "./ChromaKeyPreview";
 import { VideoEffectsPreview } from "./VideoEffectsPreview";
 import { activeVideoEffects, hasVideoEffects } from "../../lib/effectSettings";
@@ -10,12 +10,10 @@ import { isTauri } from "../../lib/persistence";
 import type { PreviewMedia } from "../../lib/previewPresentation";
 
 export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
-  const { transform, look, opacity, revealStart, revealEnd } = frame;
-  const warmth = look.temperature / 100;
+  const { transform, opacity, revealStart, revealEnd } = frame;
   return {
     transform: `translate(${transform.positionX}%, ${transform.positionY}%) scale(${transform.scale / 100}) rotate(${transform.rotation}deg)`,
     opacity,
-    filter: warmth === 0 || hasVideoEffects(frame) ? "none" : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`,
     clipPath: `inset(0 ${(1 - revealEnd) * 100}% 0 ${revealStart * 100}%)`,
   };
 }
@@ -96,7 +94,7 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
   const style = previewMediaStyle(clipFrameStyle(clipVisualSettings(clip), playheadMs - clip.startMs));
   /* Bypassed effects are dropped here, the way the export drops them. Kept
      per clip object so the effect canvases only redraw when the clip does. */
-  const gpuEffects = useMemo<GpuEffects>(() => ({ ...activeVideoEffects(clip), chromaKey: clipChromaKey(clip), look: clipLook(clip) }), [clip]);
+  const gpuEffects = useMemo<GpuEffects>(() => ({ ...activeVideoEffects(clip), chromaKey: clipChromaKey(clip) }), [clip]);
   const chromaKey = gpuEffects.chromaKey;
   const effects = hasVideoEffects(gpuEffects);
   const sourceStyle: CSSProperties = composited || chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;

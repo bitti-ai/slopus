@@ -707,8 +707,8 @@ describe("running an export of external media", () => {
       const track = config.timeline.tracks.find((track) => track.kind === "video" && track.clips.length)!;
       track.clips[0].durationMs = Math.floor(frames * 1000 / 30);
       if (layered) {
-        track.clips[0].look = { opacity: 50, temperature: 0 };
-        config.timeline.tracks.push({ ...track, id: "lower", clips: [{ ...track.clips[0], id: "lower-clip", trackId: "lower", look: { opacity: 100, temperature: 0 } }] });
+        track.clips[0].look = { opacity: 50 };
+        config.timeline.tracks.push({ ...track, id: "lower", clips: [{ ...track.clips[0], id: "lower-clip", trackId: "lower", look: { opacity: 100 } }] });
       }
       const settings = defaultExportSettings(config);
       const plan = buildExportPlan(config, settings);

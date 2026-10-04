@@ -36,10 +36,8 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             if let Some(look) = &clip.look {
                 if !look.opacity.is_finite()
                     || !(0.0..=100.0).contains(&look.opacity)
-                    || !look.temperature.is_finite()
-                    || !(-100.0..=100.0).contains(&look.temperature)
                 {
-                    return Err(format!("Clip '{}' has an invalid look.", clip.id));
+                    return Err(format!("Clip '{}' has an invalid opacity.", clip.id));
                 }
             }
             if let Some(key) = &clip.chroma_key {

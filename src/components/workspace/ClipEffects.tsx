@@ -96,19 +96,12 @@ function LutEditor({ clip, update, disabled }: EditorProps) {
 }
 
 // One catalogue drives the picker, defaults and editors. Missing settings mean
-// the effect is absent; older projects with Look/Transition keep their edits.
+// the effect is absent; opacity retains the legacy `look` project key.
 const EFFECTS: readonly EffectDefinition[] = [
   {
-    id: "look", name: "Look", description: "Opacity and colour temperature",
+    id: "look", name: "Opacity", description: "Control clip transparency",
     defaults: { look: DEFAULT_CLIP_LOOK },
-    editor: ({ clip, update, disabled }) => {
-      const look = clip.look!;
-      return <>
-        <Param label="Opacity" ariaLabel="Clip opacity" value={look.opacity} defaultValue={DEFAULT_CLIP_LOOK.opacity} disabled={disabled} onChange={(opacity) => update({ look: { ...look, opacity } })} />
-        <Param label="Temperature" ariaLabel="Clip temperature" value={look.temperature} min={-100} max={100} defaultValue={DEFAULT_CLIP_LOOK.temperature} disabled={disabled}
-          format={(value) => `${value > 0 ? "+" : ""}${value}`} onChange={(temperature) => update({ look: { ...look, temperature } })} />
-      </>;
-    },
+    editor: ({ clip, update, disabled }) => <Param label="Opacity" ariaLabel="Clip opacity" value={clip.look!.opacity} defaultValue={DEFAULT_CLIP_LOOK.opacity} disabled={disabled} onChange={(opacity) => update({ look: { ...clip.look!, opacity } })} />,
   },
   {
     id: "transition", name: "Transition", description: "Fade or wipe into the clip",

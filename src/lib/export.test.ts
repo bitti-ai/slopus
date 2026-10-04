@@ -255,7 +255,7 @@ describe("the plan", () => {
   it("carries clip transforms, looks, and transitions into every rendered segment", () => {
     const treated = clip("a", "track-story", 0, 2_000, {
       transform: { scale: 125, rotation: 8, positionX: -12, positionY: 6 },
-      look: { opacity: 80, temperature: 35 },
+      look: { opacity: 80 },
       transition: { type: "fade", durationMs: 500 },
     });
     const plan = buildExportPlan(project([treated], [asset("asset-a")]), settings());

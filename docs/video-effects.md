@@ -5,6 +5,7 @@ Each effect can be adjusted or removed independently. Locked tracks cannot be ed
 
 | Effect | Controls |
 | --- | --- |
+| Opacity | Clip opacity, 0–100%. Temperature is available in Basic Corrections. |
 | Sharpen | Edge enhancement, 0–200%; zero bypasses sharpening. |
 | Gaussian Blur | Radius, 0–24 source pixels; zero bypasses blur. |
 | Basic Corrections | Temperature, tint, highlights, shadows, whites and blacks −100 to +100%; exposure −4 to +4 stops; contrast −100 to +100%; saturation 0–200%. The existing brightness control remains available. |
@@ -14,7 +15,7 @@ Each effect can be adjusted or removed independently. Locked tracks cannot be ed
 | Vignette | Amount −100 to +100% (positive darkens, negative lightens), midpoint 0–100%, roundness −100 to +100%, and feather 0–100%. |
 | 3D LUT | Import or replace a `.cube` file and blend it at 0–100% intensity. |
 
-The render order is Chroma Key → Gaussian Blur → Sharpen (standalone + Creative) → Basic Corrections → Creative look / faded film / vibrance → Curves → Color Wheels → LUT → Vignette → Look temperature. Transform, opacity, and transitions composite the result into the timeline. This order is fixed; the inspector is not a reorderable effect stack. Blur radii refer to source resolution, so preview and export use the same radius even at different output sizes.
+The render order is Chroma Key → Gaussian Blur → Sharpen (standalone + Creative) → Basic Corrections → Creative look / faded film / vibrance → Curves → Color Wheels → LUT → Vignette. Transform, opacity, and transitions composite the result into the timeline. This order is fixed; the inspector is not a reorderable effect stack. Blur radii refer to source resolution, so preview and export use the same radius even at different output sizes.
 
 Creative includes **Teal & Orange**, **Warm Film**, **Cool Blue**, **Bleach Bypass**, **Faded Matte**, **Monochrome**, **Golden Hour**, and **Night**. These are shader colour transforms, not LUT files. None and zero look intensity leave the look unchanged; faded film, sharpening and vibrance remain independently adjustable. Vibrance gives less saturated colours more weight.
 

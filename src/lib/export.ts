@@ -52,7 +52,7 @@ export interface ClipVisualSettings extends VideoEffects {
 }
 
 export interface ClipFrameStyle extends ClipVisualSettings {
-  /** Opacity after both Look and the transition at this moment are applied. */
+  /** Opacity after both the Opacity effect and the transition at this moment are applied. */
   opacity: number;
   /** Horizontal source reveal, used by wipe transitions. */
   revealStart: number;

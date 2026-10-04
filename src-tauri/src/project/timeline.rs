@@ -71,7 +71,6 @@ pub(crate) struct ClipTransform {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipLook {
     pub(crate) opacity: f64,
-    pub(crate) temperature: f64,
     /// Effect bypass: `Some(false)` keeps the settings but renders without
     /// them. Absent in every project written before bypass existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]

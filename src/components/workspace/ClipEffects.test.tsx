@@ -49,7 +49,7 @@ describe("clip effects", () => {
   });
 
   it.each([
-    { name: "Look", patch: { look: { opacity: 65, temperature: -30, enabled: false } } },
+    { name: "Opacity", patch: { look: { opacity: 65, enabled: false } } },
     { name: "Transition", patch: { transition: { type: "wipe-left", durationMs: 1200 } } },
     { name: "Chroma key", patch: { chromaKey: { color: "#123456", tolerance: 43 } } },
     { name: "Sharpen", patch: { sharpen: { amount: 125 } } },
@@ -129,7 +129,7 @@ describe("clip effects", () => {
   it("bypasses an effect from its header checkbox, keeping its settings", () => {
     render(<Harness />);
     add("Sharpen");
-    add("Look");
+    add("Opacity");
     fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
     const sharpenOn = screen.getByRole("checkbox", { name: "Sharpen on" }) as HTMLInputElement;
     expect(sharpenOn.checked).toBe(true);
@@ -145,7 +145,7 @@ describe("clip effects", () => {
     expect(saved().sharpen).toEqual({ amount: 50, enabled: false });
     fireEvent.click(sharpenOn);
     expect(saved().sharpen).toEqual({ amount: 50 });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Look on" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Opacity on" }));
     expect(saved().look).toMatchObject({ enabled: false });
   });
 
@@ -291,12 +291,12 @@ describe("clip effects", () => {
 
   it("adds only chosen effects, and removes them without changing other effects", () => {
     render(<Harness />);
-    expect(screen.queryByRole("heading", { name: "Look" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Opacity" })).toBeNull();
     add("Chroma key");
     fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
     const picker = screen.getByRole("group", { name: "Available effects" });
     expect(within(picker).queryByRole("button", { name: "Chroma key" })).toBeNull();
-    fireEvent.click(within(picker).getByRole("button", { name: "Look" }));
+    fireEvent.click(within(picker).getByRole("button", { name: "Opacity" }));
     fireEvent.change(screen.getByLabelText("Clip opacity"), { target: { value: "65" } });
     remove("Chroma key");
     expect(saved().chromaKey).toBeUndefined();

@@ -236,7 +236,7 @@ export const clipTransformSchema = z.object({
   positionY: z.number().min(-100).max(100),
 });
 
-/* Look, transition and chroma key are effects in the inspector too, so they
+/* Opacity, transition and chroma key are effects in the inspector too, so they
    take the same bypass flag as the GPU effects (see effectSettings.ts). */
 export const clipChromaKeySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
@@ -244,10 +244,9 @@ export const clipChromaKeySchema = z.object({
   enabled: effectEnabledSchema,
 });
 
+// Keep the legacy `look` key for opacity; retired temperature values are stripped on load.
 export const clipLookSchema = z.object({
   opacity: z.number().min(0).max(100),
-  /** Cool at -100, neutral at 0, warm at +100. */
-  temperature: z.number().min(-100).max(100),
   enabled: effectEnabledSchema,
 });
 
@@ -654,7 +653,7 @@ export type ClipChromaKey = z.infer<typeof clipChromaKeySchema>;
 export type ClipTransition = z.infer<typeof clipTransitionSchema>;
 
 export const DEFAULT_CLIP_TRANSFORM: ClipTransform = { scale: 100, rotation: 0, positionX: 0, positionY: 0 };
-export const DEFAULT_CLIP_LOOK: ClipLook = { opacity: 100, temperature: 0 };
+export const DEFAULT_CLIP_LOOK: ClipLook = { opacity: 100 };
 export const DEFAULT_CLIP_CHROMA_KEY: ClipChromaKey = { color: "#00ff00", tolerance: 20 };
 export const DEFAULT_CLIP_TRANSITION: ClipTransition = { type: "cut", durationMs: 500 };
 
@@ -669,7 +668,7 @@ export const roundClipTransform = (transform: ClipTransform): ClipTransform => (
   positionY: roundTransformValue(transform.positionY),
 });
 export const clipTransform = (clip: TimelineClip): ClipTransform => roundClipTransform(clip.transform ?? DEFAULT_CLIP_TRANSFORM);
-/* A bypassed Look or transition renders as if it were not there. */
+/* A bypassed Opacity or transition renders as if it were not there. */
 export const clipLook = (clip: TimelineClip): ClipLook => isEffectOn(clip.look) ? clip.look : DEFAULT_CLIP_LOOK;
 export const clipTransition = (clip: TimelineClip): ClipTransition => isEffectOn(clip.transition) ? clip.transition : DEFAULT_CLIP_TRANSITION;
 export const clipChromaKey = (clip: TimelineClip): ClipChromaKey | null => isEffectOn(clip.chromaKey) ? clip.chromaKey : null;

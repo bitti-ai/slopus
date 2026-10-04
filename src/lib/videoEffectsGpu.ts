@@ -5,7 +5,7 @@ import { compileCurves, CURVE_SAMPLES } from "./colorCurves";
 import { COLOR_GRADING_WGSL } from "./colorGradingShader";
 import type { ClipChromaKey } from "./project";
 
-export type GpuEffects = VideoEffects & { chromaKey?: ClipChromaKey | null; look?: { temperature: number } | null };
+export type GpuEffects = VideoEffects & { chromaKey?: ClipChromaKey | null };
 
 const VERTEX = /* wgsl */ `
 struct VertexOut { @builtin(position) position: vec4f, @location(0) uv: vec2f };
@@ -126,7 +126,6 @@ fn straight(color: vec4f) -> vec3f { return color.rgb / max(color.a, .00001); }
   let edge = smoothstep(start, start + max(params.vignette.z * .7, .001), distanceFromCenter);
   if (params.grade.w >= 0.) { rgb *= 1. - params.grade.w * edge; }
   else { rgb += (1. - rgb) * -params.grade.w * edge; }
-  rgb += vec3f(params.domainMin.w * .1, 0., -params.domainMin.w * .1);
   return vec4f(clamp(rgb, vec3f(0.), vec3f(1.)) * sampled.a, sampled.a);
 }
 `;
@@ -196,8 +195,8 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
         ...(effects.chromaKey ? keyColor(effects.chromaKey.color) : [0, 0, 0]), (effects.chromaKey?.tolerance ?? 0) / 100,
         grade?.exposure ?? 0, 1 + (grade?.contrast ?? 0) / 100, (grade?.saturation ?? 100) / 100, (effects.vignette?.amount ?? 0) / 100,
         ((effects.sharpen?.amount ?? 0) + (effects.creative?.sharpen ?? 0)) / 100, table?.size ?? 0, (effects.lut?.intensity ?? 0) / 100, effects.chromaKey ? 1 : 0,
-        // Pack temperature and brightness into the unused domain vector lanes.
-        ...(table?.domainMin ?? [0, 0, 0]), (effects.look?.temperature ?? 0) / 100, ...(table?.domainMax ?? [1, 1, 1]), (grade?.brightness ?? 0) / 100,
+        // Pack brightness into the unused domainMax vector lane.
+        ...(table?.domainMin ?? [0, 0, 0]), 0, ...(table?.domainMax ?? [1, 1, 1]), (grade?.brightness ?? 0) / 100,
         effects.blur?.radius ?? 0, 0, 0, 0,
         (grade?.temperature ?? 0) / 100, (grade?.tint ?? 0) / 100, (grade?.highlights ?? 0) / 100, (grade?.shadows ?? 0) / 100,
         (grade?.whites ?? 0) / 100, (grade?.blacks ?? 0) / 100, (effects.creative?.vibrance ?? 0) / 100, curveMask,

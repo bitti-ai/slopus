@@ -161,7 +161,7 @@ describe("the program monitor", () => {
         callbacks.forEach((callback) => callback(now));
       });
     };
-    const config = project([clip({ startMs: 0, sourceStartMs: 0, look: { opacity: 50, temperature: 0 } })]);
+    const config = project([clip({ startMs: 0, sourceStartMs: 0, look: { opacity: 50 } })]);
     config.assets.push({ ...config.assets[0], id: "asset-long", sourcePath: "D:/rushes/long.mp4" });
     config.timeline.tracks.push({
       ...config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)!,

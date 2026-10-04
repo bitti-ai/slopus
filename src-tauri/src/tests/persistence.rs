@@ -117,7 +117,6 @@ fn effect_bypass_round_trips_and_stays_absent_when_unset() {
     });
     clip.look = Some(ClipLook {
         opacity: 80.0,
-        temperature: 0.0,
         enabled: None,
     });
     let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
@@ -136,6 +135,7 @@ fn effect_bypass_round_trips_and_stays_absent_when_unset() {
     assert_eq!(parsed.enabled, Some(false));
     let legacy: ClipLook = serde_json::from_str(r#"{"opacity":50,"temperature":10}"#).unwrap();
     assert_eq!(legacy.enabled, None);
+    assert_eq!(serde_json::to_value(&legacy).unwrap(), serde_json::json!({"opacity":50.0}));
 }
 
 #[test]

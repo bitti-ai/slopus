@@ -163,7 +163,7 @@ struct VertexOut {
 
 // x0, y0, x1, y1 of the fitted and transformed picture in clip space.
 @group(0) @binding(0) var<uniform> rect: vec4f;
-// rotation, opacity, temperature, reveal start / reveal end.
+// rotation, opacity, reserved, reveal start / reveal end.
 struct Style {
   primary: vec4f,
   secondary: vec4f,
@@ -198,14 +198,12 @@ fn vs(@builtin(vertex_index) index: u32) -> VertexOut {
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   if (uv.x < style.primary.w || uv.x > style.secondary.x) { discard; }
   let sampled = textureSampleBaseClampToEdge(source, source_sampler, uv);
-  let temperature = style.primary.z;
-  let rgb = clamp(sampled.rgb + vec3f(temperature * 0.1, 0.0, -temperature * 0.1), vec3f(0.0), vec3f(1.0));
   var alpha = sampled.a * style.primary.y;
   if (style.secondary.y > 0.0) {
     let difference = distance(sampled.rgb, style.key.rgb) / ${RGB_DISTANCE_SCALE};
     alpha *= smoothstep(style.key.a, style.key.a + ${KEY_FEATHER}, difference);
   }
-  return vec4f(rgb, alpha);
+  return vec4f(sampled.rgb, alpha);
 }
 `;
 
@@ -326,7 +324,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
       device.queue.writeBuffer(styleUniform, 0, new Float32Array([
         (style.transform.rotation * Math.PI) / 180,
         style.opacity,
-        processed ? 0 : style.look.temperature / 100,
+        0,
         style.revealStart,
         style.revealEnd,
         style.chromaKey && !processed ? 1 : 0,
@@ -410,15 +408,11 @@ function createCanvasCompositor(width: number, height: number, background: strin
       const drawHeight = fitted.height * scale;
       const centreX = fitted.x + fitted.width / 2 + (style.transform.positionX / 100) * width;
       const centreY = fitted.y + fitted.height / 2 + (style.transform.positionY / 100) * height;
-      const warmth = style.look.temperature / 100;
       context.save();
       context.beginPath();
       context.rect(style.revealStart * width, 0, (style.revealEnd - style.revealStart) * width, height);
       context.clip();
       context.globalAlpha = style.opacity;
-      context.filter = warmth === 0
-        ? "none"
-        : `sepia(${Math.abs(warmth) * 0.22}) saturate(${1 + Math.abs(warmth) * 0.3}) hue-rotate(${warmth > 0 ? -8 : 172}deg)`;
       context.translate(centreX, centreY);
       context.rotate((style.transform.rotation * Math.PI) / 180);
       context.drawImage(picture, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);

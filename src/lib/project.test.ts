@@ -180,13 +180,13 @@ describe("project schema", () => {
       color: null,
       status: "approved",
       transform: { scale: 115, rotation: -4, positionX: 8, positionY: -3 },
-      look: { opacity: 72, temperature: 20 },
+      look: { opacity: 72 },
       transition: { type: "wipe-left", durationMs: 600 },
     });
 
     expect(parseProjectConfig(project).timeline.tracks[0].clips[0]).toMatchObject({
       transform: { scale: 115, rotation: -4, positionX: 8, positionY: -3 },
-      look: { opacity: 72, temperature: 20 },
+      look: { opacity: 72 },
       transition: { type: "wipe-left", durationMs: 600 },
     });
   });

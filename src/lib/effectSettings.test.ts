@@ -63,10 +63,10 @@ it("retains effects through project parsing and export frame planning", () => {
 describe("effect bypass", () => {
   const base = { id: "clip", assetId: "asset", trackId: "video", label: "Clip", startMs: 0, durationMs: 2000 };
 
-  it("loads projects written before bypass unchanged and keeps an explicit flag", () => {
+  it("loads legacy opacity settings, drops retired temperature and keeps an explicit bypass flag", () => {
     const legacy = timelineClipSchema.parse({ ...base, sharpen: { amount: 40 }, look: { opacity: 70, temperature: 5 } });
     expect(JSON.parse(JSON.stringify(legacy)).sharpen).toEqual({ amount: 40 });
-    expect(JSON.parse(JSON.stringify(legacy)).look).toEqual({ opacity: 70, temperature: 5 });
+    expect(JSON.parse(JSON.stringify(legacy)).look).toEqual({ opacity: 70 });
     const off = timelineClipSchema.parse({ ...base, sharpen: { amount: 40, enabled: false }, chromaKey: { color: "#00ff00", tolerance: 20, enabled: false } });
     expect(off.sharpen?.enabled).toBe(false);
     expect(off.chromaKey?.enabled).toBe(false);

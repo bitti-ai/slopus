@@ -30,6 +30,7 @@ This alpha update adds Linux support, LAN generation workers, expanded color gra
 ## Fixes and improvements
 
 - The Add effect menu lists effects alphabetically.
+- Renamed the Look effect to Opacity and removed its Temperature control. Temperature adjustment is available in Basic Corrections.
 - New empty images created while browsing child images stay in the same image family.
 - The Save button keeps its label while saving, preventing the top bar tabs from shifting.
 - The Image toolbar spans the workspace, with canvas tools and view controls grouped in the center.
