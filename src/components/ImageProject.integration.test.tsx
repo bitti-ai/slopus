@@ -62,28 +62,29 @@ it.each([false, true])("scopes generation controls to each image and queues othe
   const queue = new WorkQueue(vi.fn(async (record) => record));
   render(<ProjectWorkspace project={project} workQueue={queue} onBack={vi.fn()} onSave={vi.fn()} />);
   const panel = within(screen.getByRole("region", { name: "Image panel" }));
-  fireEvent.click(panel.getByRole("button", { name: "Generate" }));
+  const toolbar = within(screen.getByRole("toolbar", { name: "Image tools" }));
+  fireEvent.click(toolbar.getByRole("button", { name: "Generate" }));
   await waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
-  expect(panel.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  expect(toolbar.getByRole("button", { name: "Cancel" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "View Second" }));
-  expect(panel.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
-  expect(panel.getByRole("combobox", { name: "Generator" })).toBeEnabled();
-  fireEvent.click(panel.getByRole("button", { name: "Generate" }));
+  expect(toolbar.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  expect(toolbar.getByRole("combobox", { name: "Generator" })).toBeEnabled();
+  fireEvent.click(toolbar.getByRole("button", { name: "Generate" }));
   expect(queue.getSnapshot().map((item) => [item.imageAssetId, item.status])).toEqual([["First", "generating"], ["Second", "queued"]]);
   expect(enqueue).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "View Third" }));
-  expect(panel.getByRole("button", { name: "Generate" })).toBeEnabled();
+  expect(toolbar.getByRole("button", { name: "Generate" })).toBeEnabled();
   expect(panel.queryByRole("progressbar")).not.toBeInTheDocument();
   fireEvent.contextMenu(screen.getByRole("button", { name: "View First" }));
   expect(screen.getByRole("menuitem", { name: "Remove" })).toBeDisabled();
   fireEvent.keyDown(screen.getByRole("menu", { name: "Generated image actions" }), { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "View First" }));
-  fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(toolbar.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(cancel).toHaveBeenCalledWith(queue.getSnapshot()[0].id));
   fireEvent.click(screen.getByRole("button", { name: "View Second" }));
-  fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(toolbar.getByRole("button", { name: "Cancel" }));
   expect(queue.getSnapshot()[1].status).toBe("cancelled");
-  expect(panel.getByRole("button", { name: "Generate" })).toBeEnabled();
+  expect(toolbar.getByRole("button", { name: "Generate" })).toBeEnabled();
 });
 
 it("exports the selected image from the Export tab and handles cancellation and errors", async () => {
