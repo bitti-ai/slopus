@@ -10,6 +10,27 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
     let trimmed = trimmed.strip_suffix("```").unwrap_or(trimmed).trim();
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
         if let Some(kind) = value.get("kind").and_then(Value::as_str) {
+            if kind == "inspect" {
+                let requests: Vec<super::generators::GeneratorRead> =
+                    serde_json::from_value(value["requests"].clone()).map_err(|e| e.to_string())?;
+                if requests.is_empty() || requests.len() > 8 {
+                    return Err("Use 1 to 8 inspection requests per turn.".into());
+                }
+                return Ok(AgentTurnResult::Inspect { requests });
+            }
+            if kind == "generatorCommands" {
+                let summary = value["summary"]
+                    .as_str()
+                    .filter(|s| !s.trim().is_empty())
+                    .ok_or("Generator commands need a nonempty summary.")?
+                    .to_string();
+                let commands: Vec<super::generators::GeneratorCommand> =
+                    serde_json::from_value(value["commands"].clone()).map_err(|e| e.to_string())?;
+                if commands.is_empty() || commands.len() > 100 {
+                    return Err("Use 1 to 100 generator commands.".into());
+                }
+                return Ok(AgentTurnResult::GeneratorCommands { summary, commands });
+            }
             let content = value
                 .get("content")
                 .and_then(Value::as_str)
@@ -22,7 +43,7 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
                 "answer" => Ok(AgentTurnResult::Answer { content }),
                 "question" => Ok(AgentTurnResult::Question { content }),
                 _ => Err(format!(
-                    "Unknown agent response kind '{kind}'. Use answer, question, or a JSONL command stream."
+                    "Unknown agent response kind '{kind}'. Use answer, question, inspect, generatorCommands, or a project JSONL command stream."
                 )),
             };
         }

@@ -69,6 +69,13 @@ pub enum AgentEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentTurnResult {
+    Inspect {
+        requests: Vec<super::generators::GeneratorRead>,
+    },
+    GeneratorCommands {
+        summary: String,
+        commands: Vec<super::generators::GeneratorCommand>,
+    },
     Answer {
         content: String,
     },
@@ -91,6 +98,8 @@ pub struct AgentTurnRequest {
     pub config: ProjectConfig,
     #[serde(default)]
     pub conversation: Vec<AgentMessage>,
+    #[serde(default)]
+    pub generators: super::generators::GeneratorContext,
 }
 
 #[derive(Debug, Serialize)]

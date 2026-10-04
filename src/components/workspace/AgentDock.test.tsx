@@ -51,6 +51,16 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
+  it("applies generator commands through the editor callback", async () => {
+    const commands = [{ op: "generator.set" as const, id: "custom", settings: { name: "Renamed" } }];
+    vi.mocked(runAgentTurn).mockResolvedValue({ result: { kind: "generatorCommands", summary: "Updated generator", commands }, events: [], messages: [] });
+    const onCommands = vi.fn().mockResolvedValue(undefined);
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={vi.fn()} onCommands={onCommands} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Rename my generator" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await waitFor(() => expect(onCommands).toHaveBeenCalledWith(commands));
+    expect(readableProviderOutput(JSON.stringify({type:"result",result:JSON.stringify({kind:"generatorCommands",summary:"Updated generator",commands})}))).toBe("Updated generator");
+  });
   it.each(["video", "image"] as const)("uses the active %s tab for agent instructions without changing the saved project type", async (mode) => {
     const record = project();
     record.config.generationType = mode === "image" ? "video" : "image";

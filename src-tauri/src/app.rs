@@ -237,6 +237,7 @@ pub fn run() {
             commands::runtime::choose_engine_path,
             commands::agent::run_agent_turn,
             commands::agent::execute_agent_commands,
+            commands::agent::prepare_generator_commands,
             commands::agent::cancel_agent_turn,
             commands::generation::resolve_slopfab_plan,
             commands::generation::enqueue_slopfab_generation,

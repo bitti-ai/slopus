@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { executeGeneratorCommands, generatorContext, type GeneratorCommand } from "./agentGenerators";
 import { createImageScene, imageScenePromptText } from "./imageScene";
 import { applyImageCommand, type ImageCommand } from "./imageCommands";
 import { isTauri } from "./persistence";
@@ -62,7 +63,10 @@ export type ProjectCommand =
 export type AgentTurnResult =
   | { kind: "answer"; content: string }
   | { kind: "question"; content: string }
+  | { kind: "generatorCommands"; summary: string; commands: GeneratorCommand[] }
   | { kind: "commands"; summary: string; commands: ProjectCommand[] };
+
+export type AgentCommand = ProjectCommand | GeneratorCommand;
 
 export type AgentTurnEvent =
   | { type: "started"; provider: ProviderId }
@@ -193,9 +197,9 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
   if (isTauri()) {
     const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
       requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
-      conversation,
+      conversation, generators: generatorContext(),
     } });
-    const assistantContent = response.result.kind === "commands" ? response.result.summary : response.result.content;
+    const assistantContent = "summary" in response.result ? response.result.summary : response.result.content;
     return {
       ...response,
       messages: [
@@ -206,7 +210,7 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
     };
   }
   const result = demoTurn(record.config, prompt);
-  const assistantContent = result.kind === "commands" ? result.summary : result.content;
+  const assistantContent = "summary" in result ? result.summary : result.content;
   return {
     result,
     events: [{ type: "started", provider }, { type: "completed" }],
@@ -221,12 +225,20 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
 /** The provider plans against its request snapshot, then this applies the
  * accepted commands to the editor's latest state. Rust is authoritative in the
  * desktop app; this mirror keeps the deterministic browser preview useful. */
-export async function executeAgentCommands(config: ProjectConfig, commands: ProjectCommand[]): Promise<ProjectConfig> {
+export async function executeAgentCommands(config: ProjectConfig, commands: AgentCommand[]): Promise<ProjectConfig> {
+  const generatorCommands = commands.filter((command): command is GeneratorCommand => command.op.startsWith("generator."));
+  if (generatorCommands.length) {
+    if (generatorCommands.length !== commands.length) throw new Error("Generator and project edits must be separate command batches.");
+    if (!isTauri()) throw new Error("Generator commands require the desktop application.");
+    await executeGeneratorCommands(generatorCommands);
+    return config;
+  }
+  const projectCommands = commands as ProjectCommand[];
   if (isTauri()) {
-    const next = await invoke<ProjectConfig>("execute_agent_commands", { config, commands, executedAt: new Date().toISOString() });
+    const next = await invoke<ProjectConfig>("execute_agent_commands", { config, commands: projectCommands, executedAt: new Date().toISOString() });
     return parseProjectConfig(next);
   }
-  return executeDemoCommands(config, commands);
+  return executeDemoCommands(config, projectCommands);
 }
 
 export async function cancelAgentTurn(requestId: string): Promise<boolean> {

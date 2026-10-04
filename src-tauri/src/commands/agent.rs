@@ -3,6 +3,17 @@ use crate::project::commands as agent_commands;
 use crate::project::{validation::validate_and_normalize_config, *};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter as _};
+
+#[tauri::command]
+pub(crate) async fn prepare_generator_commands(
+    context: agent::generators::GeneratorContext,
+    commands: Vec<agent::generators::GeneratorCommand>,
+) -> Result<agent::generators::GeneratorContext, String> {
+    tauri::async_runtime::spawn_blocking(move || agent::generators::prepare(&context, &commands))
+        .await
+        .map_err(|e| format!("Generator validation failed: {e}"))?
+}
+
 #[tauri::command]
 pub(crate) async fn list_agent_models(
     provider: agent::ProviderId,

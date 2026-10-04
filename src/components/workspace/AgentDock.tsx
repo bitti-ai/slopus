@@ -9,7 +9,7 @@ import {
   runAgentTurn,
   type AgentTurnEvent,
   type AgentTurnEventPayload,
-  type ProjectCommand,
+  type AgentCommand,
   type ProviderId,
   type ProviderStatus,
 } from "../../lib/runtime";
@@ -44,7 +44,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
   /** @deprecated The dock is always a pane now; kept so callers need not change. */
   expanded?: boolean;
   onPromptStart: () => void;
-  onCommands: (commands: ProjectCommand[]) => Promise<void>;
+  onCommands: (commands: AgentCommand[]) => Promise<void>;
   /** Hide the pane (the header's × button). */
   onClose?: () => void;
   /** Told when a turn starts and ends, so the Agent toggle can show it. */
@@ -154,7 +154,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
       // The native agent uses this legacy field to select its instructions.
       // Override only the request snapshot, never the saved project document.
       const response = await runAgentTurn({ ...record, config: { ...record.config, generationType: mode } }, provider, clean, id, sessionMessages);
-      if (response.result.kind === "commands") await onCommands(response.result.commands);
+      if ("commands" in response.result) await onCommands(response.result.commands);
       setSessionMessages(response.messages);
       // The finished reply is in the conversation now; the streamed drafts and
       // correction notes that led to it would only repeat it.
@@ -326,7 +326,7 @@ export function readableProviderOutput(line: string): string | null {
     const text = candidate.trim();
     try {
       const turn = JSON.parse(text) as Record<string, unknown>;
-      const summary = turn.kind === "commands" ? turn.summary : turn.content;
+      const summary = "summary" in turn ? turn.summary : turn.content;
       if (typeof summary === "string" && summary.trim()) return summary.trim();
     } catch { /* A normal model message is already displayable text. */ }
     for (const line of text.split(/\r?\n/).reverse()) {

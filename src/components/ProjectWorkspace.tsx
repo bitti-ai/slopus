@@ -313,7 +313,9 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
              latest state—edits can continue while it thinks—as one undo step, then
              route the result through the same ordered save queue as the Save button. */
           onCommands={async (commands) => {
-            const next = await executeAgentCommands(session.getSnapshot().config, commands);
+            const current = session.getSnapshot().config;
+            const next = await executeAgentCommands(current, commands);
+            if (next === current) return;
             session.edit(next, "agent");
             session.sealHistory();
             await save();
