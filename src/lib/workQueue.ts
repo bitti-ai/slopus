@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
+import { compileExtendImage, type ExtendOptions } from "./extendImage";
 import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
 import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
@@ -57,6 +58,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  extend?: { sourceId: string; name: string; options: ExtendOptions };
   characterSheet?: {
     views: ReturnType<typeof compileCharacterSheet>; sourceId: string; name: string; index: number;
     dimensions: ReturnType<typeof characterSheetDimensions>;
@@ -263,6 +265,36 @@ export class WorkQueue {
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
+  enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
+    if (!isTauri()) throw new Error("Extend requires the desktop app.");
+    if (template.mode === "animate") throw new Error("Choose a prompt generator for Extend.");
+    const current = session.getSnapshot().config;
+    const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
+    if (!source || (!source.relativePath && !source.sourcePath)) throw new Error("Select a saved image to extend.");
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
+    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
+    const id = `extend-${crypto.randomUUID()}`;
+    const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
+    const compiled = compileExtendImage(config, source, sourceRelativePath, options);
+    const referencePaths = [projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!,
+      ...compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))];
+    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
+      canvasWidth: options.bounds.width, canvasHeight: options.bounds.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
+      referencePaths, refmods: referenceRefmodInputs(session.record.folderPath, compiled.references),
+      imageEdit: { sourceRelativePath, edits: compiled.edits } };
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    this.work.set(id, { id, image: true, extend: { sourceId, name: `Extended - ${source.name}`, options: structuredClone(options) }, imageParentId: sourceId,
+      imageGeneration: { ...imageGenerationSnapshot({ ...config, imageScene: compiled.scene }, compiled.prompt, template.id), usedSeed: request.seed },
+      session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene), request, submitted: false, cancelled: false, done, finish });
+    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+      sceneId: this.work.get(id)!.sceneId, title: `Extend · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+      detail: "Waiting to extend image", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight } }];
+    this.publish(); this.icons.yieldToVideo(); void this.pump();
+  }
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
     if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
@@ -351,6 +383,10 @@ export class WorkQueue {
           await work.session.save();
           if (work.cancelled) continue;
           if (work.characterSheet) { await this.generateCharacterSheet(work); continue; }
+          if (work.extend) {
+            await invoke("prepare_extend_image", { folderPath: next.folderPath, jobId: work.id, sourceId: work.extend.sourceId, bounds: work.extend.options.bounds });
+            if (work.cancelled) continue;
+          }
           if (work.request.previousSceneId) {
             const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
             if (!previous?.latentRelativePath || previous.status !== "completed") {
@@ -378,6 +414,8 @@ export class WorkQueue {
           await work.done;
         } catch (reason) { this.fail(work, reason); }
         finally {
+          if (work.extend) await invoke("discard_extend_image", { folderPath: next.folderPath, jobId: work.id }).catch((reason) =>
+            writeDiagnostic("error", "work-queue", "extend.cleanup_failed", describeDiagnosticError(reason), { workId: work.id }));
           await releaseReferenceVideos(work.request.referenceVideoIds ?? []).catch((reason) =>
             writeDiagnostic("error", "work-queue", "references.release_failed", describeDiagnosticError(reason), { workId: work.id }));
           delete work.request.referenceVideoIds;
@@ -608,17 +646,28 @@ export class WorkQueue {
   private async saveImage(work: PendingWork) {
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });
     try {
-      const saved = await invoke<{ relativePath: string; width: number; height: number }>("save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(work.request.imageEdit ? { format: "png" } : {}) });
-      work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {
-        id: work.imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
-        ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString(),
-      }) : ({ ...current,
-        ...(current.imageScene?.outputAssetId === work.config.imageScene?.outputAssetId ? {
-          thumbnail: saved.relativePath,
-          imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
-        } : {}),
-        assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, work.imageParentId) } : {}), createdAt: new Date().toISOString() }],
-      }));
+      const saved = await invoke<{ relativePath: string; width: number; height: number }>(work.extend ? "save_extended_image" : "save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(!work.extend && work.request.imageEdit ? { format: "png" } : {}) });
+      if (work.extend) {
+        const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed });
+        work.imageGeneration = { ...work.imageGeneration!, scene };
+        work.session.update((current) => ({ ...current,
+          ...(current.imageScene?.outputAssetId === work.extend!.sourceId && JSON.stringify(current.imageScene) === work.snapshot
+            ? { thumbnail: saved.relativePath, imageScene: { ...scene, outputAssetId: work.id } } : {}),
+          assets: [...current.assets, { id: work.id, kind: "image", name: work.extend!.name, ...saved, mimeType: "image/png",
+            parentAssetId: imageFamilyRoot(current.assets, work.extend!.sourceId), imageGeneration: work.imageGeneration, createdAt: new Date().toISOString() }],
+        }));
+      } else {
+        work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {
+          id: work.imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
+          ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString(),
+        }) : ({ ...current,
+          ...(current.imageScene?.outputAssetId === work.config.imageScene?.outputAssetId ? {
+            thumbnail: saved.relativePath,
+            imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
+          } : {}),
+          assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, work.imageParentId) } : {}), createdAt: new Date().toISOString() }],
+        }));
+      }
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
     } catch (reason) { this.fail(work, reason); }

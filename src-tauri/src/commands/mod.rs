@@ -2,6 +2,7 @@ pub(crate) mod agent;
 pub(crate) mod artifacts;
 pub(crate) mod binary;
 pub(crate) mod character_sheet;
+pub(crate) mod extend_image;
 pub(crate) mod diagnostics;
 pub(crate) mod generation;
 pub(crate) mod media;
