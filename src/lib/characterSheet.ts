@@ -31,7 +31,7 @@ export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsse
   let sourceReferenceId = "character-sheet-source";
   while (config.references.some((reference) => reference.id === sourceReferenceId)) sourceReferenceId += "-source";
   const reference: ProjectReference = {
-    id: sourceReferenceId, kind: "text", name: source.name,
+    id: sourceReferenceId, kind: "text", name: "the character",
     description: "Keep the same character and visual style.",
     intendedUse: ["character"], createdAt: source.createdAt,
     images: [{ id: "character-sheet-source-image", name: source.name, relativePath: source.relativePath, sourcePath: source.sourcePath }],
