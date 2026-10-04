@@ -6,6 +6,21 @@ import fixture from "../../fixtures/project-v1-image.json";
 
 const photo = () => createProjectConfig({ name: "Portrait", generationType: "image", prompt: "A runner suspended mid-stride", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 });
 describe("MiniMax H3 still-image prompts", () => {
+  it("limits a pose transformation to its named reference and preserves ordinary retention by default", () => {
+    const config = photo();
+    config.references = [
+      { id: "runner", kind: "image", name: "Runner", description: "Blue uniform", relativePath: "references/runner.png", intendedUse: ["character"], createdAt: config.createdAt },
+      { id: "coat", kind: "image", name: "Coat", description: "Red coat", relativePath: "references/coat.png", intendedUse: ["clothing"], createdAt: config.createdAt },
+    ];
+    config.imageScene!.nodes[0].description = "Show @[ref:runner] from behind wearing @[ref:coat].";
+    const ordinary = compileImagePrompt(config);
+    const transformed = compileImagePrompt(config, { referenceTransformations: { runner: "Keep identity and outfit; show the character from behind." } });
+    expect(transformed.prompt).toContain("<Subject 1> (appears in [Shot 1]): partially_preserved - Keep identity and outfit; show the character from behind.");
+    expect(transformed.prompt).toContain("<Subject 2> (appears in [Shot 1]): fully_preserved");
+    expect(ordinary.prompt).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved");
+    expect(transformed.references).toEqual(ordinary.references);
+    expect(compileImagePrompt(config)).toEqual(ordinary);
+  });
   it("accepts frames selected from videos as still-image references", () => {
     const config = photo();
     config.references = [{ id: "video", name: "Runner", kind: "video", sourcePath: "C:/runner.mp4", description: "", intendedUse: [], createdAt: config.createdAt,

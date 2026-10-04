@@ -8,7 +8,7 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue } from "./workQueue";
-import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions } from "./characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions, compileCharacterSheet } from "./characterSheet";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -71,6 +71,13 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
     expect(request.prompt).toContain(["frontal upper-body shot framed from the waist up", "full body front view", "full body side view", "full body back view"][viewIndex]);
     expect(request.prompt).toContain("clothing, footwear, accessories");
     expect(request.prompt).toContain("<Picture 1>");
+    expect(request.prompt).toContain("<Subject 1> (appears in [Shot 1]): partially_preserved");
+    if (viewIndex === 3) {
+      expect(request.prompt).toContain("The camera is directly behind the character");
+      expect(request.prompt).toContain("The face, eyes and front of the chest are hidden");
+      expect(request.prompt).toContain("Rotate the character 180 degrees from the wardrobe reference");
+      expect(request.prompt).not.toContain("requested side or back view");
+    }
     expect(request.prompt).not.toContain("A still photograph");
     expect(session.getSnapshot().config.assets).toEqual(original.assets);
     if (changed && index === 0) session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, nodes: current.imageScene!.nodes.map((node) => ({ ...node, description: "Changed during generation" })) } }));
@@ -124,6 +131,29 @@ it("rejects unsupported sheet heights before queueing generation", () => {
   const { queue, session } = setup();
   expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", height: 8192 })).toThrow("supported character sheet height");
   expect(queue.getSnapshot()).toHaveLength(0);
+});
+
+it("keeps the required rear orientation after template instructions and in reference retention", () => {
+  const { session } = setup();
+  const config = session.getSnapshot().config;
+  const snapshot = structuredClone(config);
+  const views = compileCharacterSheet(config, config.assets[0], "cache/front.png", {
+    prompt: "Wear a red coat with a chest badge, looking straight at the camera.",
+  });
+  const back = views[3].prompt;
+  const retention = back.split("retention_analysis:\n")[1].split("\n\ndetailed_description:")[0];
+  expect(retention).toContain("partially_preserved");
+  expect(retention).toContain("replace the reference pose, gaze, camera angle and framing");
+  expect(retention).toContain("A full body back view");
+  expect(retention).not.toContain("fully_preserved");
+  const afterTemplate = back.slice(back.indexOf("Template instructions:"));
+  expect(afterTemplate).toContain("takes precedence over reference poses and template pose or framing instructions");
+  expect(afterTemplate).toContain("The face, eyes and front of the chest are hidden");
+  expect(back).toContain("without moving front closures or front graphics onto its back");
+  expect(back).not.toContain("Retain the same facial features wherever visible");
+  expect(views[2].prompt).toContain("head, shoulders, torso, hips and feet all face left");
+  expect(views[1].prompt).toContain("Retain the same facial features wherever visible");
+  expect(config).toEqual(snapshot);
 });
 
 it.each([0, 12345, -1])("uses template steps and seed %s for every view and saved settings", async (seed) => {

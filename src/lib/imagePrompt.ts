@@ -4,7 +4,7 @@ import { SHOT_TAG_GROUPS } from "./shot-tags";
 
 /** Shared by generation and Debug Prompt. H3's base three-field / reference
  * six-section contracts still apply to a single silent image. */
-export function compileImagePrompt(config: ProjectConfig) {
+export function compileImagePrompt(config: ProjectConfig, options: { referenceTransformations?: Readonly<Record<string, string>> } = {}) {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
   // Only the references the prompt cites as @[ref:<id>] go to the generation.
   const references = actionReferenceIds(imageScenePromptText(scene)).map((id) => {
@@ -45,7 +45,12 @@ export function compileImagePrompt(config: ProjectConfig) {
     prompt: [`integrated_multimodal_description: [Shot 1] ${visual.style}\n${visual.composition}`, ...audio].join("\n\n"), references,
   };
   const definitions = subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`);
-  const retention = subjects.map((subject, index) => `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`);
+  const retention = subjects.map((subject, index) => {
+    const transformation = options.referenceTransformations?.[subject.id];
+    return transformation
+      ? `${label(index)} (appears in [Shot 1]): partially_preserved - ${transformation}`
+      : `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`;
+  });
   if (editing) {
     definitions.unshift("<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
     retention.unshift("<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.");
