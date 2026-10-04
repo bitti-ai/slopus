@@ -19,6 +19,7 @@ pub(in crate::agent) struct TurnInput<'a> {
     pub root: &'a Path,
     pub config: &'a ProjectConfig,
     pub prompt: &'a str,
+    pub images: &'a [crate::agent::capture::CapturedFrame],
     pub cancellation: Arc<AtomicBool>,
     pub timeout: Duration,
     pub on_event: &'a dyn Fn(&AgentEvent),
@@ -38,13 +39,16 @@ struct CliSession {
 }
 impl AgentProvider for CliSession {
     fn run_turn(&self, input: TurnInput<'_>) -> Result<(Vec<AgentEvent>, String), String> {
-        let spec = self.provider.command_spec(
+        let mut spec = self.provider.command_spec(
             input.root,
             &self.executable,
             input.config,
             input.prompt,
             self.setting.as_ref(),
         )?;
+        // Keep temporary Codex attachments alive until the child exits, including
+        // cancellation/error paths. Claude accepts image blocks over stdin.
+        let _attachments = super::images::attach_cli_images(self.id, &mut spec, input.images)?;
         run_subprocess(
             spec,
             self.id,
@@ -65,6 +69,7 @@ impl AgentProvider for EndpointSession {
             self.id,
             input.config,
             input.prompt,
+            input.images,
             &self.setting,
             input.cancellation,
             input.timeout,

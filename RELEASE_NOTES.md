@@ -15,6 +15,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.
 - Share URL-based generator templates using Import and Export in Generator settings. Versioned `.slop` JSON bundles include GPU download variants, LoRAs and additional safetensors, preserve existing templates on import, and leave local paths out of shared files.
 - The agent can inspect, create and edit generator templates, scan local weight folders to identify model components from filenames and safetensors metadata, and register LoRAs for preparation in Settings.
+- The agent can capture and inspect timeline frames with layers, transitions and effects, without moving the playhead or interrupting playback and editing. Captures are sent as images to the selected agent model.
 - Sound references: add an MP3, M4A, WAV, FLAC or Ogg file to a reference, choose a 2 to 15 second range, and cite it in a shot as `<Audio N>`, for example as a voice timbre. Sound references need a Ref2VA generator and an image or video reference in the same scene, and also work on LAN workers.
 - Video references now offer a Frames mode: select still frames from a clip and use them as image references.
 - Export any reference with images, a video or a sound as a refmod `.safetensors` file from References. Exported refmods can be attached to other references and projects.

@@ -1,5 +1,6 @@
 //! Agent turn orchestration; provider transports never mutate the project.
 mod cancellation;
+pub(crate) mod capture;
 mod discovery;
 pub(crate) mod generators;
 mod policy;
@@ -22,3 +23,5 @@ mod tests;
 mod tests_generators;
 #[cfg(test)]
 mod tests_transport;
+#[cfg(test)]
+mod tests_capture;

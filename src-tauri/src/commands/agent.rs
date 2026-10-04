@@ -33,18 +33,42 @@ pub(crate) async fn run_agent_turn(
     let runtime = state.inner().clone();
     let request_id = request.request_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        runtime.run(request, |event| {
-            let _ = app.emit(
-                "agent-turn-event",
-                AgentTurnEventPayload {
-                    request_id: request_id.clone(),
-                    event: event.clone(),
-                },
-            );
-        })
+        runtime.run_with_capture(
+            request,
+            |event| {
+                let _ = app.emit(
+                    "agent-turn-event",
+                    AgentTurnEventPayload {
+                        request_id: request_id.clone(),
+                        event: event.clone(),
+                    },
+                );
+            },
+            |at, cancel| {
+                runtime
+                    .captures
+                    .request(&request_id, at, cancel, |payload| {
+                        app.emit("agent-capture-request", payload)
+                            .map_err(|e| e.to_string())
+                    })
+            },
+        )
     })
     .await
     .map_err(|error| format!("Agent task failed: {error}"))?
+}
+
+#[tauri::command]
+pub(crate) fn complete_agent_capture(
+    state: tauri::State<'_, agent::AgentRuntime>,
+    request_id: String,
+    capture_id: String,
+    frame: Option<agent::capture::CapturedFrame>,
+    error: Option<String>,
+) -> Result<(), String> {
+    state
+        .captures
+        .complete(request_id, capture_id, frame, error)
 }
 
 #[derive(Clone, Serialize)]

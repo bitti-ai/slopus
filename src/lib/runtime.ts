@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { cancelAgentCaptures, listenForAgentCaptures } from "./agentCapture";
 import { executeGeneratorCommands, generatorContext, type GeneratorCommand } from "./agentGenerators";
 import { createImageScene, imageScenePromptText } from "./imageScene";
 import { applyImageCommand, type ImageCommand } from "./imageCommands";
@@ -195,19 +196,22 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
   const userMessageId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
   if (isTauri()) {
-    const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
-      requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
-      conversation, generators: generatorContext(),
-    } });
-    const assistantContent = "summary" in response.result ? response.result.summary : response.result.content;
-    return {
-      ...response,
-      messages: [
-        ...conversation,
-        { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
-        { id: assistantMessageId, role: "assistant", content: assistantContent, createdAt },
-      ],
-    };
+    const stopCaptures = await listenForAgentCaptures(record, requestId);
+    try {
+      const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
+        requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
+        conversation, generators: generatorContext(),
+      } });
+      const assistantContent = "summary" in response.result ? response.result.summary : response.result.content;
+      return {
+        ...response,
+        messages: [
+          ...conversation,
+          { id: userMessageId, role: "user", content: prompt.trim(), createdAt },
+          { id: assistantMessageId, role: "assistant", content: assistantContent, createdAt },
+        ],
+      };
+    } finally { stopCaptures(); }
   }
   const result = demoTurn(record.config, prompt);
   const assistantContent = "summary" in result ? result.summary : result.content;
@@ -242,6 +246,7 @@ export async function executeAgentCommands(config: ProjectConfig, commands: Agen
 }
 
 export async function cancelAgentTurn(requestId: string): Promise<boolean> {
+  cancelAgentCaptures(requestId);
   return isTauri() ? invoke<boolean>("cancel_agent_turn", { requestId }) : true;
 }
 

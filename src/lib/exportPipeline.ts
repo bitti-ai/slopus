@@ -374,6 +374,12 @@ export async function createPreviewCompositor(canvas: HTMLCanvasElement, width: 
   return attempt.compositor;
 }
 
+/** An independent device/canvas; never changes the monitor or its diagnostics. */
+export async function createCaptureCompositor(width: number, height: number, background: string): Promise<Compositor> {
+  const attempt = await createWebGpuCompositor(width, height, background).catch(() => null);
+  return attempt?.compositor ?? createCanvasCompositor(width, height, background);
+}
+
 function createCanvasCompositor(width: number, height: number, background: string): Compositor {
   const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext("2d", { alpha: false });
@@ -880,7 +886,7 @@ interface LayerFrameReader {
 
 /** One bounded decoder queue per visible layer. Decoded pictures stay in VRAM;
  * only compressed samples and the current/next pictures are held per source. */
-async function openLayerFrameReader(
+export async function openLayerFrameReader(
   folderPath: string, asset: ProjectAsset, startUs: number, stopIfCancelled: () => void,
 ): Promise<LayerFrameReader> {
   const bytes = await readAssetBytes(folderPath, asset);

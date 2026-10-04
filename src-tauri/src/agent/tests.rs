@@ -742,7 +742,7 @@ fn openai_compatible_responses_expose_assistant_content() {
 
     let config: ProjectConfig =
         serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap();
-    let body = compatible_chat_body(&config, "Create a scene", "test-model").unwrap();
+    let body = compatible_chat_body(&config, "Create a scene", "test-model", &[]).unwrap();
     let system = body
         .pointer("/messages/0/content")
         .and_then(Value::as_str)
@@ -796,6 +796,7 @@ fn http_turn_cancels_while_waiting_for_a_response() {
         ProviderId::Local,
         &config,
         "Hello",
+        &[],
         &endpoint_setting(&endpoint, "", Some("model")),
         cancel,
         Duration::from_secs(20),

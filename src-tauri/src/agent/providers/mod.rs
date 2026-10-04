@@ -33,6 +33,7 @@ pub(super) fn cli_provider_for(id: ProviderId) -> Option<&'static dyn CliProvide
 
 mod claude;
 mod codex;
+pub(super) mod images;
 pub(super) mod compatible;
 pub(super) mod options;
 use super::process::CommandSpec;

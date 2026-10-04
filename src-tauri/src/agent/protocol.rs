@@ -11,10 +11,22 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
         if let Some(kind) = value.get("kind").and_then(Value::as_str) {
             if kind == "inspect" {
-                let requests: Vec<super::generators::GeneratorRead> =
+                let requests: Vec<super::capture::InspectionRequest> =
                     serde_json::from_value(value["requests"].clone()).map_err(|e| e.to_string())?;
                 if requests.is_empty() || requests.len() > 8 {
                     return Err("Use 1 to 8 inspection requests per turn.".into());
+                }
+                for request in &requests {
+                    if let super::capture::InspectionRequest::Timeline(
+                        super::capture::TimelineRead::Capture { at },
+                    ) = request
+                    {
+                        if !at.is_finite() || *at < 0.0 {
+                            return Err(
+                                "timeline.capture at must be finite, nonnegative seconds.".into()
+                            );
+                        }
+                    }
                 }
                 return Ok(AgentTurnResult::Inspect { requests });
             }

@@ -70,7 +70,7 @@ pub enum AgentEvent {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentTurnResult {
     Inspect {
-        requests: Vec<super::generators::GeneratorRead>,
+        requests: Vec<super::capture::InspectionRequest>,
     },
     GeneratorCommands {
         summary: String,

@@ -130,12 +130,13 @@ pub(in crate::agent) fn compatible_chat_body(
     config: &ProjectConfig,
     prompt: &str,
     model: &str,
+    images: &[crate::agent::capture::CapturedFrame],
 ) -> Result<Value, String> {
     Ok(serde_json::json!({
         "model": model,
         "messages": [
             { "role": "system", "content": project_system_prompt(config) },
-            { "role": "user", "content": context_prompt(config, prompt)? }
+            { "role": "user", "content": super::images::compatible_image_content(context_prompt(config, prompt)?, images) }
         ],
         "temperature": 0
     }))
@@ -145,6 +146,7 @@ pub(in crate::agent) fn run_compatible_endpoint(
     provider: ProviderId,
     config: &ProjectConfig,
     prompt: &str,
+    images: &[crate::agent::capture::CapturedFrame],
     setting: &ProviderSetting,
     cancel: Arc<AtomicBool>,
     timeout: Duration,
@@ -161,7 +163,7 @@ pub(in crate::agent) fn run_compatible_endpoint(
         .model
         .as_deref()
         .expect("compatible setting validated");
-    let body = compatible_chat_body(config, prompt, model)?;
+    let body = compatible_chat_body(config, prompt, model, images)?;
     let client = reqwest::Client::builder()
         .timeout(timeout)
         .user_agent("Slopus/0.1")
