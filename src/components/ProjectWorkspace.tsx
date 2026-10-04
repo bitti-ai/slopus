@@ -252,7 +252,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
               the save state. Off means the file on disk already matches what is
               on screen. */}
           <button type="button" className="primary-button" onClick={() => void save()} disabled={saving || !dirty} data-tooltip={saving ? "Saving…" : dirty ? "Save" : "Everything is saved"} data-tooltip-shortcut="Ctrl+S" aria-keyshortcuts="Control+S">
-            <Save16 aria-hidden="true" /> {saving ? "Saving…" : "Save"}
+            <Save16 aria-hidden="true" /> Save
           </button>
         </div>
         <button type="button" className="icon-button" disabled={!canUndo} onClick={() => session.undo()} aria-label="Undo" data-tooltip="Undo" data-tooltip-shortcut="Ctrl+Z" aria-keyshortcuts="Control+Z"><Undo16 /></button>
