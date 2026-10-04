@@ -85,11 +85,34 @@
 }
 
 .work-queue__row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
   border-top: 1px solid var(--stroke-card);
+}
+
+.work-queue__open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.work-queue__open:hover { background: var(--fill-subtle-hover); }
+.work-queue__open:active { background: var(--fill-subtle-pressed); }
+.work-queue__open:focus-visible { outline-offset: -2px; }
+
+/* Let the row-wide navigation button receive clicks through its labels while
+   keeping Cancel and Retry independent keyboard and pointer targets. */
+.work-queue__row--navigable > :not(.work-queue__open) { pointer-events: none; }
+.work-queue__row--navigable button:not(.work-queue__open) {
+  position: relative;
+  pointer-events: auto;
 }
 
 .work-queue__list section:first-child > ul > .work-queue__row:first-child {

@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 import { markReleaseNotesSeen } from "./lib/releaseNotes";
@@ -12,9 +13,14 @@ import { enqueueSlopfabGeneration, type SlopfabStatus } from "./lib/runtime";
 import { loadReferenceIconAutomation } from "./lib/referenceIconSettings";
 import { reportGenerationJobs } from "./lib/nativeShell";
 import { getExportJob, resetExportJobForTests, setExportJobForTests } from "./lib/exportJob";
+import { EMPTY_ENGINE_SETTINGS, minimaxOriginalTemplate, saveGeneratorTemplateSettings } from "./lib/settings";
+import { getWeightDownloadState } from "./lib/weightDownloads";
+import { createImageScene } from "./lib/imageScene";
+import { saveLoras } from "./lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
+vi.mock("./lib/weightDownloads", async (original) => ({ ...await original<typeof import("./lib/weightDownloads")>(), getWeightDownloadState: vi.fn(() => null), subscribeWeightDownloads: () => () => undefined }));
 vi.mock("./lib/nativeShell", async (original) => ({ ...await original<typeof import("./lib/nativeShell")>(), reportGenerationJobs: vi.fn(async () => undefined) }));
 vi.mock("./lib/generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 vi.mock("./lib/timelineThumbnails", async (original) => ({ ...await original<typeof import("./lib/timelineThumbnails")>(), purgeTimelineThumbnails: vi.fn(async () => undefined) }));
@@ -28,6 +34,8 @@ vi.mock("./lib/runtime", async (original) => ({
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear(); handlers.clear();
+  vi.mocked(getWeightDownloadState).mockReturnValue(null);
+  vi.mocked(invoke).mockImplementation(async () => undefined);
   markReleaseNotesSeen();
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: unknown }) => void) => { handlers.set(name, handler); return () => handlers.delete(name); }) as unknown as typeof listen);
@@ -83,6 +91,8 @@ it("keeps the application queue alive while switching projects and saves results
   fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.doubleClick(screen.getByRole("option", { name: "Second project" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Rename First scene" }), { target: { value: "Unsaved second scene" } });
   // The title-bar button counts what is running or waiting.
   expect(screen.getByRole("button", { name: "Work queue" })).toHaveTextContent("2");
   fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
@@ -99,10 +109,92 @@ it("keeps the application queue alive while switching projects and saves results
   expect(saveGeneratedScene).toHaveBeenCalledWith(expect.objectContaining({ jobId: workId, folderPath: first.folderPath }));
   expect(vi.mocked(reportGenerationJobs).mock.calls.some(([jobs]) => jobs.some((job) => job.running && job.title.includes("First project")))).toBe(true);
   expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
-  fireEvent.doubleClick(screen.getByRole("option", { name: "First project" }));
-  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open First scene in First project" }));
+  expect(screen.queryByRole("dialog", { name: "Work queue" })).toBeNull();
+  expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
+  expect(document.querySelector(".project-title")?.textContent).toBe("First project");
   expect(screen.getByRole("region", { name: "First scene" })).toHaveTextContent(/finished/i);
+  expect(screen.getByRole("complementary", { name: "Scene: First scene" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Upcoming scene in First project" }));
+  expect(screen.getByRole("complementary", { name: "Scene: Upcoming scene" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+  fireEvent.doubleClick(screen.getByRole("option", { name: "Second project" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  expect(screen.getByRole("textbox", { name: "Rename Unsaved second scene" })).toHaveValue("Unsaved second scene");
+  expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+});
+
+it("opens a download's generator from the queue even while another Settings tab is open", async () => {
+  const template = minimaxOriginalTemplate();
+  vi.mocked(getWeightDownloadState).mockReturnValue({ templateId: template.id, active: true, field: "transformer", downloaded: 5, total: 10, files: 4, completed: 0, error: null });
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [], unreadable: [] });
+  render(<App />);
+  await screen.findByRole("heading", { name: "No projects yet" });
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: `Open ${template.name} download` }));
+  expect(screen.getByRole("textbox", { name: "Generator name" })).toHaveValue(template.name);
+  expect(screen.queryByRole("dialog", { name: "Work queue" })).toBeNull();
+});
+
+it("opens a pending image and its completed result without restarting generation", async () => {
+  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [{ id: "test", name: "Test", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } }] });
+  const config = createProjectConfig({ name: "Pictures", generationType: "image", prompt: "A forest", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
+  config.imageScene = { ...createImageScene("A forest"), outputAssetId: "source" };
+  config.assets = [{ id: "source", kind: "image", name: "Original", relativePath: "media/source.jpg", mimeType: "image/jpeg", createdAt: config.createdAt }];
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Pictures", config }], unreadable: [] });
+  vi.mocked(invoke).mockImplementation(async (command) => command === "save_generated_image" ? { relativePath: "media/result.jpg", width: 416, height: 416 } : undefined);
+  render(<App />);
+  fireEvent.doubleClick(await screen.findByRole("option", { name: "Pictures" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+  const workId = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].jobId;
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Image · Pictures in Pictures" }));
+  expect(screen.getByRole("button", { name: "View Original" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("tab", { name: "Video" }));
+  await act(async () => { handlers.get("slopfab-job")?.({ payload: { jobId: workId, state: "framesReady", detail: "Ready" } }); });
+  await waitFor(() => expect(saveProject).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ assets: expect.arrayContaining([expect.objectContaining({ id: workId })]) }) })));
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Image · Pictures in Pictures" }));
+  expect(document.querySelector(`[data-image-asset="${workId}"]`)).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Back to all images" })).toBeInTheDocument();
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1);
+});
+
+it("opens the matching LoRA for a standalone download", async () => {
+  saveLoras([{ id: "adapter", name: "My adapter", path: "", url: "https://example.com/adapter.safetensors" }]);
+  vi.mocked(getWeightDownloadState).mockReturnValue({ templateId: "", loraId: "adapter", name: "My adapter", active: true, field: null, downloaded: 5, total: 10, files: 1, completed: 0, error: null });
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [], unreadable: [] });
+  render(<App />);
+  await screen.findByRole("heading", { name: "No projects yet" });
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open My adapter download" }));
+  expect(screen.getByRole("dialog", { name: "Edit LoRA" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "LoRA name" })).toHaveValue("My adapter");
+});
+
+it("opens a running export's project and export tab from the library", async () => {
+  const config = createProjectConfig({ name: "Exported film", prompt: "A forest", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 15 });
+  vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Exported film", config }], unreadable: [] });
+  setExportJobForTests({ folderPath: "C:/Exported film", projectName: config.name, progress: { phase: "rendering", framesDone: 1, frameCount: 10, detail: "Rendering" } });
+  render(<App />);
+  await screen.findByRole("option", { name: "Exported film" });
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Export Exported film" }));
+  expect(screen.getByRole("tab", { name: "Export" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector(".project-title")?.textContent).toBe("Exported film");
+  expect(getExportJob().progress).not.toBeNull();
+  fireEvent.click(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: "Image" }));
+  fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Export Exported film" }));
+  expect(screen.getByRole("tab", { name: "Export" })).toHaveAttribute("aria-selected", "true");
+  expect(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: "Video" })).toHaveAttribute("aria-selected", "true");
 });
 
 it("opens an empty queue from the library and closes it with Escape", async () => {

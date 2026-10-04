@@ -1,5 +1,5 @@
 import { WorkQueue, isWorkActive, projectQueueKey } from "./lib/workQueue";
-import { WorkQueuePanel } from "./components/WorkQueuePanel";
+import { WorkQueuePanel, type WorkQueueTarget } from "./components/WorkQueuePanel";
 import { ReferenceIconGenerationDialog } from "./components/ReferenceIconGenerationDialog";
 import { CudaSetupDialog } from "./components/CudaSetupDialog";
 import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
@@ -11,9 +11,9 @@ import { Add16, FolderOpen16, FolderOpen48, GridView16, GridView16Filled, ListVi
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { DeleteProjectDialog, canConfirmNatively, confirmProjectDeletionNatively } from "./components/DeleteProjectDialog";
 import { ProjectCard } from "./components/ProjectCard";
-import { ProjectWorkspace, type ProjectView } from "./components/ProjectWorkspace";
+import { ProjectWorkspace, type ProjectView, type WorkspaceNavigation } from "./components/ProjectWorkspace";
 import { PromptComposer } from "./components/PromptComposer";
-import { SettingsView } from "./components/SettingsView";
+import { SettingsView, type SettingsNavigation } from "./components/SettingsView";
 import { TitleBar } from "./components/TitleBar";
 import { UpdateInfoBar, UpdatePanel, updateNeedsAttention } from "./components/UpdatePanel";
 import { CommandBar, CommandBarButton, EmptyState, InfoBadge, InfoBar, TextField } from "./components/ui";
@@ -62,6 +62,8 @@ function App() {
   useEffect(() => startWorkerDiscovery(), []);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
   const [activeProjectInitialView, setActiveProjectInitialView] = useState<ProjectView>("timeline");
+  const [workspaceNavigation, setWorkspaceNavigation] = useState<WorkspaceNavigation>();
+  const [settingsNavigation, setSettingsNavigation] = useState<SettingsNavigation>();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -115,6 +117,7 @@ function App() {
   const queueButton = useRef<HTMLButtonElement>(null);
   const settingsQueueButton = useRef<HTMLButtonElement>(null);
   const openSettings = (tab: "engine" | "updates" = "engine") => {
+    setSettingsNavigation(undefined);
     setWorkQueueOpen(false);
     setSettingsInitialTab(tab);
     setSettingsOpen(true);
@@ -204,10 +207,35 @@ function App() {
   const showLibraryHeading = projects.length > 0;
 
   const openProject = (project: ProjectRecord, view: ProjectView = project.config.generationType === "image" ? "editor" : "timeline") => {
+    setWorkspaceNavigation(undefined);
     setWorkQueueOpen(false);
     setSelectedKey(projectQueueKey(project));
     setActiveProjectInitialView(view);
     setActiveProject(project);
+  };
+
+  const navigateFromQueue = (target: WorkQueueTarget) => {
+    if (target.kind === "download") {
+      openSettings();
+      setSettingsNavigation({ templateId: target.download.templateId, loraId: target.download.loraId });
+      return;
+    }
+    const record = target.kind === "work" ? workQueue.projectRecord(target.item.projectKey)
+      : [activeProject, ...projects].find((record) => record?.folderPath === target.folderPath);
+    if (!record) return;
+    let navigation: WorkspaceNavigation = { view: "export" };
+    if (target.kind === "work") {
+      const item = target.item;
+      if (item.kind === "image") {
+        const imageId = [item.imageDraftId, item.id, item.imageAssetId].find((id) => record.config.assets.some((asset) => asset.kind === "image" && asset.id === id));
+        navigation = { view: "editor", imageId: imageId ?? undefined };
+      } else if (item.kind === "refmod" || item.kind === "reference-icons") {
+        navigation = { view: "references", referenceId: item.sceneId };
+      } else navigation = { view: "generator", sceneId: item.sceneId };
+    }
+    if (settingsOpen) { setSettingsOpen(false); setSettingsRevision((value) => value + 1); }
+    openProject(record, navigation.view);
+    setWorkspaceNavigation(navigation);
   };
 
   const openFromFolder = async () => {
@@ -306,7 +334,7 @@ function App() {
   useShortcut("Ctrl+F", () => { searchInput.current?.focus(); searchInput.current?.select(); }, { enabled: inLibrary, allowInInput: true });
   useShortcut("Alt+ArrowLeft", closeSettings, { enabled: settingsOpen });
 
-  const queueFlyout = <WorkQueuePanel queue={workQueue} items={workItems} open={workQueueOpen} anchor={settingsOpen ? settingsQueueButton : queueButton} onClose={() => setWorkQueueOpen(false)} />;
+  const queueFlyout = <WorkQueuePanel queue={workQueue} items={workItems} open={workQueueOpen} anchor={settingsOpen ? settingsQueueButton : queueButton} onClose={() => setWorkQueueOpen(false)} onNavigate={navigateFromQueue} />;
   const releaseNotesDialog = releaseNotesOpen ? <ReleaseNotesDialog onClose={() => setReleaseNotesOpen(false)} /> : null;
   const cudaNotice = cudaDownload && !releaseNotesOpen && !settingsOpen && !workQueueOpen && !projectToDelete && !newProjectOpen
     ? <CudaSetupDialog download={cudaDownload} onContinue={() => setCudaNoticeDismissed(true)} /> : null;
@@ -334,7 +362,7 @@ function App() {
      its unsaved edits, the agent its draft, and the library its search. */
   const settingsPage = settingsOpen ? (
     <div className="app-screen">
-      <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} titleBarActions={queueTrigger(settingsQueueButton)} />
+      <SettingsView onClose={closeSettings} updates={updatePanel} initialTab={settingsInitialTab} navigation={settingsNavigation} titleBarActions={queueTrigger(settingsQueueButton)} />
     </div>
   ) : null;
 
@@ -345,6 +373,8 @@ function App() {
           key={projectQueueKey(activeProject)}
           project={activeProject}
           initialView={activeProjectInitialView}
+          navigation={workspaceNavigation}
+          onNavigated={() => setWorkspaceNavigation(undefined)}
           runtime={runtime}
           workQueue={workQueue}
           active={!settingsOpen}

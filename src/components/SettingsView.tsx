@@ -14,7 +14,7 @@ import { WeightSourcesEditor } from "./WeightSourcesEditor";
 import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
 import { OpenableCard } from "./OpenableCard";
 import { TitleBar } from "./TitleBar";
-import { downloadableTemplateLoras } from "../lib/loras";
+import { downloadableTemplateLoras, loadLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -275,10 +275,13 @@ const engineSeverity = (status: SlopfabStatus | null, desktop: boolean): InfoBar
    a 280px navigation pane with Back at its top, and a content column that
    reads like Windows Settings — a 28px title (a breadcrumb on sub-pages) over
    groups of one-setting-per-row cards. */
-export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions }: {
+export interface SettingsNavigation { templateId: string; loraId?: string }
+
+export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions, navigation }: {
   onClose: () => void; updates?: ReactNode; initialTab?: TabId;
   /** App-wide title-bar buttons (the work queue), after Settings' own. */
   titleBarActions?: ReactNode;
+  navigation?: SettingsNavigation;
 }) {
   /* The engine first: this screen exists because those paths have to be set
      before anything can be rendered. */
@@ -295,6 +298,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!navigation) return;
+    setTab("engine");
+    setEditingTemplateId(loadGeneratorTemplateSettings().templates.some((template) => template.id === navigation.templateId) ? navigation.templateId : null);
+    setEditingLoraId(navigation.loraId && loadLoras().some((lora) => lora.id === navigation.loraId) ? navigation.loraId : null);
+  }, [navigation]);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [editingPath, setEditingPath] = useState<EnginePathId | null>(null);
   const [pathMenu, setPathMenu] = useState<{ field: EnginePathField; anchor: HTMLElement } | null>(null);

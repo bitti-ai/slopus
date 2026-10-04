@@ -24,6 +24,7 @@ import { outputDimensions, videoDurationMs } from "../lib/export";
  *  a project "on the agent" still means something: the pane opens with it. */
 export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 type ShownView = Exclude<ProjectView, "agent">;
+export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; referenceId?: string }
 
 /** The scene badge includes native generation and the final encoding step. */
 export const isGenerationOngoing = (job: GenerationJob) =>
@@ -104,9 +105,11 @@ function useWindowWidth(): number {
    through session.edit() and are undo steps; background work (generation
    results, icons, measurements) is not (see projectSession.ts). Text fields
    keep their own native undo — the shortcuts do not fire in them. */
-export function ProjectWorkspace({ project, initialView, runtime = null, onBack, onSave, workQueue, onGeneratorRuntimeChange, titleBarActions, active = true }: {
+export function ProjectWorkspace({ project, initialView, runtime = null, onBack, onSave, workQueue, onGeneratorRuntimeChange, titleBarActions, active = true, navigation, onNavigated }: {
   project: ProjectRecord;
   initialView?: ProjectView;
+  navigation?: WorkspaceNavigation;
+  onNavigated?: () => void;
   /** What is installed on this computer, probed once at startup by App. Null
    *  while that probe is still in flight — not "nothing is installed". */
   runtime?: RuntimeStatus | null;
@@ -155,6 +158,17 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const [editingProject, setEditingProject] = useState(false);
   const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
+  const [imageNavigation, setImageNavigation] = useState<{ id: string }>();
+  const [referenceNavigation, setReferenceNavigation] = useState<{ id: string }>();
+  useEffect(() => {
+    if (!navigation) return;
+    setView(navigation.view);
+    if (navigation.view === "export") setMediaMode("video");
+    if (navigation.sceneId) setSelectedGenerationJobId(navigation.sceneId);
+    if (navigation.imageId) setImageNavigation({ id: navigation.imageId });
+    if (navigation.referenceId) setReferenceNavigation({ id: navigation.referenceId });
+    onNavigated?.();
+  }, [navigation]);
   const knownSceneIds = useRef(new Set(project.config.generationJobs.map((job) => job.id)));
   const projectItems = items.filter((item) => item.projectKey === projectQueueKey(project));
   const generationCompletionTimes = Object.fromEntries(projectItems.filter((item) => item.completionAt !== null).map((item) => [item.sceneId, item.completionAt as number]));
@@ -287,10 +301,10 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
     <ProjectStatusSlot.Provider value={statusSlot}>
     <div className={`project-body${agentOpen ? " project-body--agent" : ""}`} style={agentPane.style}>
       <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`}>
-        {view === "editor" && <ImageEditor config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} onOpenReferences={() => setView("references")} />}
+        {view === "editor" && <ImageEditor openImage={imageNavigation} onImageOpened={() => setImageNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template) => queue.enqueueImage(session, template)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} onOpenReferences={() => setView("references")} />}
         {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
-        {view === "references" && <ReferencesView config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onExportRefmod={(id, outputPath) => queue.exportReferenceRefmod(session, id, outputPath)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
+        {view === "references" && <ReferencesView openReference={referenceNavigation} onReferenceOpened={() => setReferenceNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onExportRefmod={(id, outputPath) => queue.exportReferenceRefmod(session, id, outputPath)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "export" && <div className="project-export">
           <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }]} />
           {mediaMode === "image"

@@ -113,6 +113,10 @@ export class WorkQueue {
 
   constructor(private writer: ProjectWriter = saveProject) {}
   getSnapshot = () => this.items;
+  projectRecord(key: string): ProjectRecord | undefined {
+    const session = this.projects.get(key);
+    return session ? { ...session.record, config: session.getSnapshot().config } : undefined;
+  }
   updateBlockReason = (): string | null => {
     if (this.items.some(isWorkActive) || this.icons.confirmationCount() > 0) {
       return "Finish or cancel queued work before installing an update.";

@@ -4,7 +4,7 @@ import { GENERATION_FRAME_RATE } from "../lib/project";
 import { isWorkActive, type WorkItem, type WorkQueue } from "../lib/workQueue";
 import { loadGeneratorTemplateSettings } from "../lib/settings";
 import { cancelExportJob, exportFraction, useExportJob } from "../lib/exportJob";
-import { cancelWeightDownload, retryWeightDownload, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
+import { cancelWeightDownload, retryWeightDownload, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { Flyout, ProgressBar, ProgressRing } from "./ui";
 
 /* The work queue, as a flyout hanging from its title-bar button: no scrim, no
@@ -24,7 +24,11 @@ function StateGlyph({ item }: { item: WorkItem }) {
   return <ProgressRing size={16} />;
 }
 
-export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClose }: {
+export type WorkQueueTarget = { kind: "work"; item: WorkItem }
+  | { kind: "download"; download: DownloadState }
+  | { kind: "export"; folderPath: string };
+
+export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClose, onNavigate }: {
   queue: WorkQueue;
   items: readonly WorkItem[];
   /** Default true, so it can be rendered conditionally. */
@@ -32,6 +36,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
   /** The title-bar button it hangs from. */
   anchor?: RefObject<HTMLElement | null> | null;
   onClose: () => void;
+  onNavigate?: (target: WorkQueueTarget) => void;
 }) {
   // Downloads are observed here, never enqueued in the GPU generation scheduler.
   const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
@@ -46,10 +51,12 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
   const current = items.filter((item) => isWorkActive(item) && item.status !== "queued");
   const upcoming = items.filter((item) => item.status === "queued").sort((a, b) => Number(a.kind === "reference-icons") - Number(b.kind === "reference-icons"));
   const finished = items.filter((item) => !isWorkActive(item)).slice().reverse();
+  const openTarget = (target: WorkQueueTarget) => { onClose(); onNavigate?.(target); };
 
   const row = (item: WorkItem) => {
     const running = isWorkActive(item) && item.status !== "queued";
-    return <li className="work-queue__row" key={item.id}>
+    return <li className={`work-queue__row${onNavigate ? " work-queue__row--navigable" : ""}`} key={item.id}>
+      {onNavigate && <button type="button" className="work-queue__open" aria-label={`Open ${item.title} in ${item.projectName}`} data-tooltip={`${item.title} — ${settingsLine(item)}`} onClick={() => openTarget({ kind: "work", item })} />}
       <span className={`work-queue__state work-queue__state--${item.status}`} aria-hidden="true"><StateGlyph item={item} /></span>
       <div className="work-queue__text">
         <span className="work-queue__title" data-tooltip={`${item.title} — ${settingsLine(item)}`}>{item.title}</span>
@@ -73,7 +80,8 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
       <div className="work-queue__list">
         {items.length === 0 && !download && !exporting && <div className="work-queue__empty"><WorkQueue32 aria-hidden="true" /><strong>No work yet</strong><span>Generated scenes and images show up here.</span></div>}
         {current.length > 0 && <section aria-label="In progress"><ul>{current.map(row)}</ul></section>}
-        {exporting && <section aria-label="Export"><ul><li className="work-queue__row">
+        {exporting && <section aria-label="Export"><ul><li className={`work-queue__row${onNavigate && exportJob.folderPath ? " work-queue__row--navigable" : ""}`}>
+          {onNavigate && exportJob.folderPath && <button type="button" className="work-queue__open" aria-label={`Open ${exportTitle}`} onClick={() => openTarget({ kind: "export", folderPath: exportJob.folderPath! })} />}
           <span className="work-queue__state work-queue__state--preparing" aria-hidden="true"><Film16 /></span>
           <div className="work-queue__text">
             <span className="work-queue__title" data-tooltip={exportJob.destination ?? undefined}>{exportTitle}</span>
@@ -82,7 +90,8 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
           </div>
           <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${exportTitle}`} data-tooltip="Cancel" disabled={exportJob.cancelling} onClick={cancelExportJob}><Dismiss16 /></button>
         </li></ul></section>}
-        {download && <section aria-label="Weight downloads"><ul><li className="work-queue__row">
+        {download && <section aria-label="Weight downloads"><ul><li className={`work-queue__row${onNavigate ? " work-queue__row--navigable" : ""}`}>
+          {onNavigate && <button type="button" className="work-queue__open" aria-label={`Open ${downloadName} download`} onClick={() => openTarget({ kind: "download", download })} />}
           <span className={`work-queue__state work-queue__state--${download.active ? "preparing" : download.error ? "failed" : "completed"}`} aria-hidden="true">
             {download.active ? <Download16 /> : download.error ? <Warning16 /> : <Check16 />}
           </span>

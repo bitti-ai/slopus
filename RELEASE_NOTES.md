@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
 - Updated the bundled SlopFab runtime to API 1.18 for refmod export and support for version-5 refmod bundles.
 - LAN workers select weight downloads using their own GPU type and VRAM, even when a different variant is already downloaded on the client.
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.

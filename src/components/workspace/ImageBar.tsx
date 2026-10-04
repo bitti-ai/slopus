@@ -44,6 +44,10 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
     if (element && shown.length > previousCount.current) element.scrollLeft = element.scrollWidth;
     previousCount.current = shown.length;
   }, [shown.length]);
+  useLayoutEffect(() => {
+    const selected = [...(bar.current?.querySelectorAll<HTMLElement>("[data-image-asset]") ?? [])].find((element) => element.dataset.imageAsset === pressed);
+    selected?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [pressed, inFamily]);
   useEffect(() => {
     const element = bar.current;
     if (!element) return;

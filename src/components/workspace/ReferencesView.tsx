@@ -73,7 +73,7 @@ const readView = (): LibraryView => {
   try { return localStorage.getItem(VIEW_KEY) === "details" ? "details" : "icons"; } catch { return "icons"; }
 };
 
-export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onExportRefmod, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator }: {
+export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon, onExportRefmod, onGenerateBuiltinIcons, onRegenerateBuiltinIcon, pendingBuiltinIconIds = new Set<string>(), pendingIconIds = new Set<string>(), onOpenGenerator, openReference, onReferenceOpened }: {
   config: ProjectConfig;
   folderPath: string;
   /** `key` groups rapid edits of one reference into one undo step. */
@@ -86,6 +86,8 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
   pendingBuiltinIconIds?: ReadonlySet<string>;
   pendingIconIds?: ReadonlySet<string>;
   onOpenGenerator?: (jobId: string) => void;
+  openReference?: { id: string };
+  onReferenceOpened?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | undefined>(config.references[0]?.id);
   /* Ctrl/Shift multi-select. `selectedId` stays the one reference the
@@ -93,6 +95,13 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
      Duplicate act on. A plain click makes them the same single reference again. */
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set(config.references[0] ? [config.references[0].id] : []));
   const anchorId = useRef<string | undefined>(selectedId);
+  useEffect(() => {
+    if (!openReference) return;
+    if (config.references.some((reference) => reference.id === openReference.id)) {
+      setSelectedId(openReference.id); setSelectedIds(new Set([openReference.id])); anchorId.current = openReference.id;
+    }
+    onReferenceOpened?.();
+  }, [openReference]);
   const [imagePage, setImagePage] = useState(0);
   useEffect(() => setImagePage(0), [selectedId]);
   const configRef = useRef(config);

@@ -44,13 +44,15 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
   </PropRow>;
 }
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [], openImage, onImageOpened }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
   onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string, options: CharacterSheetOptions) => void;
   onGenerateExtend?: (template: GeneratorTemplate, sourceId: string, options: ExtendOptions) => void;
   onOpenGenerator?: (jobId: string) => void;
   onOpenReferences?: () => void;
+  openImage?: { id: string };
+  onImageOpened?: () => void;
 }) {
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
   const root = scene.nodes.find((node) => node.kind === "root")!;
@@ -218,6 +220,15 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     resetImageEditing(id);
     attempt(() => onChange((current) => restoreGeneratedImage(current, id)));
   };
+  useEffect(() => {
+    if (!openImage) return;
+    if (config.assets.some((asset) => asset.kind === "image" && asset.id === openImage.id)) {
+      if (scene.outputAssetId !== openImage.id) selectImage(openImage.id);
+      setTemplateSourceId(null); setExtendSourceId(null);
+      setView({ zoom: 1, x: 0, y: 0 });
+    }
+    onImageOpened?.();
+  }, [openImage]);
   const measureImportedImage = (id: string, size: { width: number; height: number }) => attempt(() => {
     onChange((current) => {
       const asset = current.assets.find((item) => item.id === id);

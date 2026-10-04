@@ -8,7 +8,7 @@ import { cancelSlopfabGeneration, enqueueSlopfabGeneration, saveReferenceIcon } 
 import { engineProviderSetting, generationStepsWithLoras } from "./settings";
 import { activeReferenceRefmods, referenceRefmodInputs } from "./project";
 import { loadReferenceIconAutomation, referenceIconGenerator, saveReferenceIconAutomation, subscribeReferenceIconAutomation } from "./referenceIconSettings";
-import type { WorkItem } from "./workQueue";
+import { projectQueueKey, type WorkItem } from "./workQueue";
 import { hasPresetIcon, REFERENCE_PRESETS, REFERENCE_TYPES, type ReferencePreset } from "./reference-presets";
 import { saveBuiltinIcon } from "./builtinReferenceIcons";
 
@@ -214,8 +214,10 @@ export class ReferenceIconWork {
     const queued = this.hasQueued();
     const failed = tasks.filter((task) => task.status === "failed");
     const projects = new Set(tasks.map((task) => task.session));
+    const target = this.active ?? tasks.find((task) => task.status === "queued") ?? tasks.at(-1);
     this.item = {
       ...this.item,
+      ...(target ? { projectKey: projectQueueKey(target.session.record), folderPath: target.session.record.folderPath, sceneId: target.referenceId } : {}),
       projectName: tasks.every((task) => task.preset) ? "Built-in references" : projects.size === 1 ? [...projects][0].getSnapshot().config.name : `${projects.size} projects`,
       status: this.active ? (this.active.status === "saving" ? "encoding" : "generating") : queued ? "queued" : failed.length ? "failed" : tasks.some((task) => task.status === "cancelled") ? "cancelled" : "completed",
       progress: tasks.length ? Math.min(1, (settled + (this.active ? this.progress : 0)) / tasks.length) : 1,
