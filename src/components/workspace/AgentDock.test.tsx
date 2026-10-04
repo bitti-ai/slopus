@@ -51,6 +51,35 @@ afterEach(() => {
 });
 
 describe("Slop output panel", () => {
+  it("shows generation progress, resumes automatically and applies the final edits without stealing editor focus", async () => {
+    const record = project();
+    const command = { op: "scene.generate" as const, scene: record.config.generationJobs[0].id, template: "chosen" };
+    const commands = [{ op: "project.set" as const, name: "Reviewed project" }];
+    vi.mocked(runAgentTurn).mockResolvedValueOnce({ result: { kind: "generation", summary: "Generate the scene", command }, events: [], messages: [] })
+      .mockResolvedValueOnce({ result: { kind: "commands", summary: "Reviewed and renamed", commands }, events: [], messages: [] });
+    let complete!: () => void;
+    const generation = { getRecord: () => record, generate: vi.fn(async (_command, _signal, onProgress) => {
+      onProgress("Encoding the generated video");
+      await new Promise<void>((resolve) => { complete = resolve; });
+      return { scene: command.scene, template: command.template, status: "completed" as const, detail: "Video saved" };
+    }) };
+    const onCommands = vi.fn().mockResolvedValue(undefined);
+    render(<><input aria-label="Scene editor" /><AgentDock context="this project" record={record} providers={providers}
+      onPromptStart={vi.fn()} onCommands={onCommands} generation={generation} /></>);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Generate and review" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await waitFor(() => expect(screen.getByLabelText("Waiting for the next agent response")).toHaveTextContent("Encoding the generated video"));
+    expect(runAgentTurn).toHaveBeenCalledOnce();
+    expect(onCommands).not.toHaveBeenCalled();
+    const editor = screen.getByRole("textbox", { name: "Scene editor" });
+    editor.focus();
+    await act(async () => complete());
+    await waitFor(() => expect(onCommands).toHaveBeenCalledWith(commands));
+    expect(runAgentTurn).toHaveBeenCalledTimes(2);
+    expect(editor).toHaveFocus();
+    expect(screen.getByText("Reviewed and renamed")).toBeInTheDocument();
+  });
+
   it("applies generator commands through the editor callback", async () => {
     const commands = [{ op: "generator.set" as const, id: "custom", settings: { name: "Renamed" } }];
     vi.mocked(runAgentTurn).mockResolvedValue({ result: { kind: "generatorCommands", summary: "Updated generator", commands }, events: [], messages: [] });

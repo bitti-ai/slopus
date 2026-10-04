@@ -101,6 +101,17 @@ impl AgentRuntime {
                         ValidationIssue::new("turn.contract", None, "response", message)
                     })
                     .and_then(|result| {
+                        if let AgentTurnResult::Generation { command, .. } = &result {
+                            super::generation::validate(command, &config, &request.generators)
+                                .map_err(|message| {
+                                    ValidationIssue::new(
+                                        "scene.generate",
+                                        None,
+                                        "generation",
+                                        message,
+                                    )
+                                })?;
+                        }
                         if let AgentTurnResult::GeneratorCommands { commands, .. } = &result {
                             super::generators::prepare(&request.generators, commands).map_err(
                                 |message| {
@@ -133,7 +144,8 @@ impl AgentRuntime {
                             );
                         }
                         let event = AgentEvent::Message {
-                            text: "Inspecting requested timeline frames or generator settings…".into(),
+                            text: "Inspecting requested timeline frames or generator settings…"
+                                .into(),
                         };
                         on_event(&event);
                         all_events.push(event);

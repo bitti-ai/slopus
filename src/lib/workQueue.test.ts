@@ -7,7 +7,8 @@ import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./project";
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
-import { saveEngineSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
+import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
+import { generateAgentScene } from "./agentGeneration";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -56,6 +57,96 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+describe("agent scene generation", () => {
+  const templates = () => {
+    const chosen: GeneratorTemplate = { id: "chosen", name: "Chosen engine", modelType: "minimax-h3", defaultSteps: 8, attention: "exact",
+      paths: { transformer: "C:/chosen.safetensors", textEncoder: "C:/text.safetensors", tokenizer: "C:/tokenizer", videoVae: "C:/video.safetensors", audioVae: "C:/audio.safetensors" } };
+    saveGeneratorTemplateSettings({ defaultTemplateId: "default", templates: [
+      { ...chosen, id: "default", name: "User selection", motionCache: true, paths: { ...chosen.paths, transformer: "C:/default.safetensors" } }, chosen,
+    ] });
+    return chosen;
+  };
+
+  it("uses the requested template without changing the default and waits through encoding and saving", async () => {
+    const chosen = templates();
+    const { queue, first, saved } = setup();
+    let encoded!: (value: Awaited<ReturnType<typeof saveGeneratedScene>>) => void;
+    vi.mocked(saveGeneratedScene).mockImplementationOnce(() => new Promise((resolve) => { encoded = resolve; }));
+    const command = { op: "scene.generate" as const, scene: first.getSnapshot().config.generationJobs[0].id, template: chosen.id };
+    const complete = vi.fn();
+    const pending = generateAgentScene(queue, first, command, new AbortController().signal, vi.fn()).then((result) => { complete(result); return result; });
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+    expect(config.providerSettings.slopfab.options).toMatchObject({ transformer: "C:/chosen.safetensors", attention: "exact" });
+    expect(config.providerSettings.slopfab.options.motionCache).toBeUndefined();
+    expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("default");
+    expect(first.getSnapshot().config.providerSettings.slopfab?.options.transformer).not.toBe("C:/chosen.safetensors");
+    first.edit((current) => ({ ...current, name: "User edit during generation" }));
+    emit("slopfab-job", { jobId: request.jobId, state: "framesReady" });
+    expect(complete).not.toHaveBeenCalled();
+    let persisted!: (record: ProjectRecord) => void;
+    saved.mockImplementationOnce(() => new Promise((resolve) => { persisted = resolve; }));
+    encoded({ relativePath: "media/generated/agent.mp4", bytes: 100, note: null });
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+    expect(complete).not.toHaveBeenCalled();
+    persisted({ ...first.record, config: first.getSnapshot().config });
+    await expect(pending).resolves.toMatchObject({ status: "completed", scene: command.scene, template: chosen.id, workId: request.jobId, outputRelativePath: "media/generated/agent.mp4" });
+    expect(first.getSnapshot().config.name).toBe("User edit during generation");
+  });
+
+  it.each(["failed", "cancelled"] as const)("returns terminal %s state instead of waiting forever", async (status) => {
+    templates();
+    const { queue, first } = setup();
+    const pending = generateAgentScene(queue, first, { op: "scene.generate", scene: first.getSnapshot().config.generationJobs[0].id, template: "chosen" }, new AbortController().signal, vi.fn());
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const id = queue.getSnapshot()[0].id;
+    emit("slopfab-job", { jobId: id, state: status, detail: "Generation stopped" });
+    await expect(pending).resolves.toMatchObject({ status, workId: id });
+  });
+
+  it("reports failed persistence separately from successfully rendered output", async () => {
+    templates();
+    const { queue, first, saved } = setup();
+    const pending = generateAgentScene(queue, first, { op: "scene.generate", scene: first.getSnapshot().config.generationJobs[0].id, template: "chosen" }, new AbortController().signal, vi.fn());
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    saved.mockRejectedValueOnce(new Error("Disk full"));
+    emit("slopfab-job", { jobId: queue.getSnapshot()[0].id, state: "framesReady" });
+    await expect(pending).resolves.toMatchObject({ status: "failed", needsSave: true, error: "Disk full", outputRelativePath: "media/generated/result.mp4" });
+  });
+
+  it("cancels only its own queued generation when the agent is stopped", async () => {
+    templates();
+    const { queue, first, second } = setup();
+    queue.enqueue(second, [submission(second)]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const controller = new AbortController();
+    const pending = generateAgentScene(queue, first, { op: "scene.generate", scene: first.getSnapshot().config.generationJobs[0].id, template: "chosen" }, controller.signal, vi.fn());
+    controller.abort(new Error("Agent stopped"));
+    await expect(pending).rejects.toThrow("Agent stopped");
+    expect(queue.getSnapshot().map((item) => item.status)).toEqual(["generating", "cancelled"]);
+    expect(cancelSlopfabGeneration).not.toHaveBeenCalled();
+    await finish(queue, queue.getSnapshot()[0].id);
+  });
+
+  it("rejects unknown targets, incompatible templates and duplicate active scenes before enqueueing", async () => {
+    const chosen = templates();
+    const { queue, first } = setup();
+    const scene = first.getSnapshot().config.generationJobs[0].id;
+    const run = (sceneId: string, template: string) => generateAgentScene(queue, first, { op: "scene.generate", scene: sceneId, template }, new AbortController().signal, vi.fn());
+    await expect(run("missing", "chosen")).rejects.toThrow("no longer exists");
+    await expect(run(scene, "missing")).rejects.toThrow("no longer exists");
+    saveGeneratorTemplateSettings({ defaultTemplateId: "chosen", templates: [{ ...chosen, mode: "animate" }] });
+    await expect(run(scene, "chosen")).rejects.toThrow("prompt generator");
+    expect(queue.getSnapshot()).toHaveLength(0);
+    templates();
+    queue.enqueue(first, [submission(first)]);
+    await expect(run(scene, "chosen")).rejects.toThrow("already has generation in progress");
+    expect(queue.getSnapshot()).toHaveLength(1);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    await finish(queue, queue.getSnapshot()[0].id);
+  });
+});
 
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };

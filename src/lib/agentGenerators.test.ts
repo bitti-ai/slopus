@@ -8,6 +8,7 @@ import { executeAgentCommands, runAgentTurn } from "./runtime";
 import { createProjectConfig } from "./project";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 
 beforeEach(() => {
   localStorage.clear();

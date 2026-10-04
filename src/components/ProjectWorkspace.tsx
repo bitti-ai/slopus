@@ -7,6 +7,7 @@ import { purgeTimelineThumbnails } from "../lib/timelineThumbnails";
 import { WorkQueue, projectQueueKey } from "../lib/workQueue";
 import { useShortcut } from "../lib/commands";
 import { AgentDock } from "./workspace/AgentDock";
+import { generateAgentScene } from "../lib/agentGeneration";
 import { ExportView } from "./workspace/ExportView";
 import { ImageExportView } from "./workspace/ImageExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -309,6 +310,10 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
           onClose={() => { setAgentOpen(false); agentToggle.current?.focus(); }}
           onPromptStart={() => { if (!agentOpen) setAgentOpen(true); }}
           onBusyChange={setAgentBusy}
+          generation={{
+            getRecord: () => ({ ...project, config: session.getSnapshot().config }),
+            generate: (command, signal, onProgress) => generateAgentScene(queue, session, command, signal, onProgress),
+          }}
           /* The provider only proposes typed commands. Apply them to the session's
              latest state—edits can continue while it thinks—as one undo step, then
              route the result through the same ordered save queue as the Save button. */

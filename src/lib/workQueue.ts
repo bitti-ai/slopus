@@ -201,14 +201,19 @@ export class WorkQueue {
     };
   };
 
-  enqueue(session: ProjectSession, submissions: GenerationSubmission[]) {
+  enqueue(session: ProjectSession, submissions: GenerationSubmission[], template?: GeneratorTemplate): string[] {
     const projectKey = projectQueueKey(session.record);
     // Take every setting before the first await, including the selected engine
     // template. Planning and native submission consume this same private copy.
-    const config = structuredClone(withEngineSettings(session.getSnapshot().config));
+    const current = session.getSnapshot().config;
+    const config = structuredClone(template ? { ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources ?? {}),
+    } } : withEngineSettings(current));
+    const ids: string[] = [];
     for (const submission of submissions) {
       if (this.items.some((item) => item.projectKey === projectKey && item.sceneId === submission.job.id && isWorkActive(item))) continue;
       const id = `work-${crypto.randomUUID()}`;
+      ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
       const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config) });
@@ -225,6 +230,27 @@ export class WorkQueue {
     this.publish();
     if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
     void this.pump();
+    return ids;
+  }
+
+  /** Wait for this exact run, including encoding and the project save. A saved
+   * scene status alone could belong to an older render of the same scene. */
+  waitFor(id: string, signal: AbortSignal, onProgress: (item: WorkItem) => void = () => {}): Promise<WorkItem> {
+    const work = this.work.get(id);
+    let latest = this.items.find((item) => item.id === id);
+    if (!work || !latest) return Promise.reject(new Error("Generation is no longer in the work queue."));
+    return new Promise((resolve, reject) => {
+      const stop = this.subscribe(() => {
+        const item = this.items.find((candidate) => candidate.id === id);
+        if (item && item !== latest) { latest = item; onProgress(item); }
+      });
+      const cleanup = () => { stop(); signal.removeEventListener("abort", abort); };
+      const abort = () => { cleanup(); reject(signal.reason ?? new Error("Agent request cancelled.")); };
+      signal.addEventListener("abort", abort, { once: true });
+      if (signal.aborted) { abort(); return; }
+      onProgress(latest!);
+      void work.done.then(() => { cleanup(); resolve(latest!); });
+    });
   }
 
   enqueueImage(session: ProjectSession, template: GeneratorTemplate) {

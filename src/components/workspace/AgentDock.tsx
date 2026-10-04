@@ -6,13 +6,13 @@ import { isTauri } from "../../lib/persistence";
 import {
   AGENT_TURN_EVENT,
   cancelAgentTurn,
-  runAgentTurn,
   type AgentTurnEvent,
   type AgentTurnEventPayload,
   type AgentCommand,
   type ProviderId,
   type ProviderStatus,
 } from "../../lib/runtime";
+import { runAgentWorkflow, type AgentGenerationHost } from "../../lib/agentWorkflow";
 import { loadAgentProvider, saveAgentProvider } from "../../lib/settings";
 import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
@@ -35,7 +35,7 @@ export interface AgentActivity {
  *  workspace. `onClose` wires the header's close button to it; without it the
  *  button is not shown. `expanded` is accepted for compatibility and no longer
  *  changes the layout: the pane is always the full conversation. */
-export function AgentDock({ context, record, mode = record.config.generationType === "image" ? "image" : "video", providers, onPromptStart, onCommands, onClose, onBusyChange }: {
+export function AgentDock({ context, record, mode = record.config.generationType === "image" ? "image" : "video", providers, onPromptStart, onCommands, onClose, onBusyChange, generation }: {
   context: string;
   record: ProjectRecord;
   /** Active editor context; legacy project types no longer restrict capabilities. */
@@ -45,6 +45,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
   expanded?: boolean;
   onPromptStart: () => void;
   onCommands: (commands: AgentCommand[]) => Promise<void>;
+  generation?: AgentGenerationHost;
   /** Hide the pane (the header's × button). */
   onClose?: () => void;
   /** Told when a turn starts and ends, so the Agent toggle can show it. */
@@ -63,6 +64,8 @@ export function AgentDock({ context, record, mode = record.config.generationType
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
   const activeRequest = useRef<string | null>(null);
+  const activeController = useRef<AbortController | null>(null);
+  const [workDetail, setWorkDetail] = useState<string | null>(null);
   const busy = requestId !== null;
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const conversation = useRef<HTMLDivElement | null>(null);
@@ -94,6 +97,11 @@ export function AgentDock({ context, record, mode = record.config.generationType
     setError(null);
     setPendingPrompt(null);
   }, [record.config.id]);
+
+  useEffect(() => () => {
+    activeController.current?.abort(new Error("Agent request cancelled."));
+    if (activeRequest.current) void cancelAgentTurn(activeRequest.current);
+  }, [record.config.id, record.folderPath]);
 
   /* One listener lives for the dock's lifetime. A request id filters out any
      delayed event from a turn the user already cancelled or replaced. */
@@ -153,7 +161,12 @@ export function AgentDock({ context, record, mode = record.config.generationType
     try {
       // The native agent uses this legacy field to select its instructions.
       // Override only the request snapshot, never the saved project document.
-      const response = await runAgentTurn({ ...record, config: { ...record.config, generationType: mode } }, provider, clean, id, sessionMessages);
+      const controller = new AbortController();
+      activeController.current = controller;
+      setWorkDetail(null);
+      const response = await runAgentWorkflow({ ...record, config: { ...record.config, generationType: mode } },
+        provider, clean, id, sessionMessages, controller.signal, generation, setWorkDetail);
+      controller.signal.throwIfAborted();
       if ("commands" in response.result) await onCommands(response.result.commands);
       setSessionMessages(response.messages);
       // The finished reply is in the conversation now; the streamed drafts and
@@ -162,16 +175,27 @@ export function AgentDock({ context, record, mode = record.config.generationType
       setPendingPrompt(null);
       setPrompt("");
     } catch (reason) {
-      const detail = describeDiagnosticError(reason);
-      writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
-      setError(detail);
+      if (activeController.current?.signal.aborted) {
+        setPendingPrompt(null);
+        setPrompt("");
+      } else {
+        const detail = describeDiagnosticError(reason);
+        writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
+        setError(detail);
+      }
     } finally {
+      const restoreFocus = document.activeElement === field.current || document.activeElement === cancelButton.current;
       activeRequest.current = null;
+      activeController.current = null;
+      setWorkDetail(null);
       setRequestId(null);
-      requestAnimationFrame(() => field.current?.focus());
+      if (restoreFocus) requestAnimationFrame(() => field.current?.focus());
     }
   };
-  const cancel = () => { if (requestId) void cancelAgentTurn(requestId); };
+  const cancel = () => {
+    activeController.current?.abort(new Error("Agent request cancelled."));
+    if (requestId) void cancelAgentTurn(requestId);
+  };
   const clear = () => {
     setSessionMessages([]);
     setActivity([]);
@@ -230,7 +254,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
         </Bubble>)}
         {error && <Bubble className="agent-conversation__error" speaker="Slop">Couldn’t finish that request. {error}</Bubble>}
         {requestId && <Bubble className="agent-conversation__waiting" speaker="Slop" aria-label="Waiting for the next agent response">
-          <span className="agent-conversation__thinking"><ProgressRing size={16} aria-label="Thinking" /><span aria-hidden="true">Thinking…</span></span>
+          <span className="agent-conversation__thinking"><ProgressRing size={16} aria-label={workDetail ? "Working" : "Thinking"} /><span aria-hidden="true">{workDetail ?? "Thinking…"}</span></span>
         </Bubble>}
       </div>
       <form className="agent-composer" onSubmit={(event) => { event.preventDefault(); void send(); }}>

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { cancelAgentCaptures, listenForAgentCaptures } from "./agentCapture";
+import type { SceneGenerateCommand } from "./agentGeneration";
 import { executeGeneratorCommands, generatorContext, type GeneratorCommand } from "./agentGenerators";
 import { createImageScene, imageScenePromptText } from "./imageScene";
 import { applyImageCommand, type ImageCommand } from "./imageCommands";
@@ -62,6 +63,7 @@ export type ProjectCommand =
   | { op: "clip.remove"; id: string };
 
 export type AgentTurnResult =
+  | { kind: "generation"; summary: string; command: SceneGenerateCommand }
   | { kind: "answer"; content: string }
   | { kind: "question"; content: string }
   | { kind: "generatorCommands"; summary: string; commands: GeneratorCommand[] }
@@ -191,13 +193,15 @@ export async function getAgentModels(provider: EndpointProviderId, settings: End
   return invoke<string[]>("list_agent_models", { provider, setting: endpointProviderSetting(settings) });
 }
 
-export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string, conversation: AgentMessage[] = []): Promise<AgentTurnResponse> {
+export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string, conversation: AgentMessage[] = [], signal?: AbortSignal): Promise<AgentTurnResponse> {
+  signal?.throwIfAborted();
   const createdAt = new Date().toISOString();
   const userMessageId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
   if (isTauri()) {
     const stopCaptures = await listenForAgentCaptures(record, requestId);
     try {
+      signal?.throwIfAborted();
       const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
         requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
         conversation, generators: generatorContext(),

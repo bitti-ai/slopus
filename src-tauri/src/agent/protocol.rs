@@ -10,6 +10,25 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
     let trimmed = trimmed.strip_suffix("```").unwrap_or(trimmed).trim();
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
         if let Some(kind) = value.get("kind").and_then(Value::as_str) {
+            if kind == "generation" {
+                #[derive(serde::Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Request {
+                    #[serde(rename = "kind")]
+                    _kind: String,
+                    summary: String,
+                    command: super::generation::GenerationCommand,
+                }
+                let request: Request =
+                    serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+                if request.summary.trim().is_empty() {
+                    return Err("Generation needs a nonempty summary.".into());
+                }
+                return Ok(AgentTurnResult::Generation {
+                    summary: request.summary,
+                    command: request.command,
+                });
+            }
             if kind == "inspect" {
                 let requests: Vec<super::capture::InspectionRequest> =
                     serde_json::from_value(value["requests"].clone()).map_err(|e| e.to_string())?;
@@ -55,7 +74,7 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
                 "answer" => Ok(AgentTurnResult::Answer { content }),
                 "question" => Ok(AgentTurnResult::Question { content }),
                 _ => Err(format!(
-                    "Unknown agent response kind '{kind}'. Use answer, question, inspect, generatorCommands, or a project JSONL command stream."
+                    "Unknown agent response kind '{kind}'. Use answer, question, inspect, generation, generatorCommands, or a project JSONL command stream."
                 )),
             };
         }

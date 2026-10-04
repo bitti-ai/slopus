@@ -1,8 +1,9 @@
+import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
+export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { audioReferenceBlocker, characterReplaceBlocker, continuationBlocker, continuationSceneId, poseBlocker, isVideoTransition, videoTransitionBlocker, usableAudioReferences, usableVideoReferences, type SceneType } from "../../lib/project";
-import { referenceRefmodInputs } from "../../lib/project";
+import { continuationBlocker, continuationSceneId, isVideoTransition, type SceneType } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -10,8 +11,7 @@ import { useShortcut } from "../../lib/commands";
 import { askNative } from "../../lib/nativeShell";
 import { ProjectStatus } from "./ProjectStatus";
 import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, tooltipProps, usePaneSize } from "../ui";
-import { shotReferenceIds, compileGenerationJobPrompt, compileGenerationJobSegments, createDraftGenerationJob, danglingReferenceTokens, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneGenerationSteps, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, projectItemPath, usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
-import { generationDimensions } from "../../lib/export";
+import { shotReferenceIds, compileGenerationJobSegments, createDraftGenerationJob, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
 import { selectedWorker } from "../../lib/workers";
@@ -20,7 +20,7 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { STATUS_BADGE, type SceneIndicatorStatus } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 
@@ -324,49 +324,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setSelection({ jobId: target.id, shotId });
   };
 
-  const requestFor = (job: GenerationJob): SlopfabGenerationRequest => {
-    // Only the references actually bound to this scene, in list order. The same
-    // ordered list drives the <Subject N> / <Picture N> numbering inside the
-    // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
-    // array index 0 must be the asset the prompt calls <Picture 1>.
-    const inputs = sceneFrameInputs(job, configRef.current);
-    const bound = inputs.references;
-    const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
-    return {
-      jobId: job.id,
-      ...(job.sceneType === "extend" || job.sceneType === "bridge" ? { videoTransition: job.sceneType } : {}),
-      // Recompiled from current state so edits to a bound reference or a
-      // retimed shot reach the engine, rather than sending a prompt frozen at
-      // draft-creation time. This is the ONE string slopfab is given, and it is
-      // the same string the compiled-prompt panel shows.
-      prompt: sceneTypeFor(job) === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, configRef.current.settings.defaultLook),
-      ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
-      ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
-      ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,
-        continuationFrom: inputs.continuationFrom, continuationSourceFrames: inputs.continuationSourceFrames } : {}),
-      // The scene's own length, not a fixed six seconds.
-      frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
-      steps: sceneGenerationSteps(job, defaultGenerationSteps),
-      seed: sceneGenerationSeed(job),
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      referencePaths: usableReferenceImages(bound)
-        .map((image) => projectItemPath(folderPath, image) ?? "")
-        .filter((path) => path.length > 0),
-      refmods: referenceRefmodInputs(folderPath, bound),
-      referenceVideos: usableVideoReferences(bound).map((reference) => ({
-        name: reference.name, relativePath: reference.relativePath, sourcePath: reference.sourcePath,
-        startSeconds: reference.video?.startSeconds ?? 0,
-        durationSeconds: reference.video?.durationSeconds ?? 2,
-        includeAudio: isVideoTransition(job) ? false : reference.video?.includeAudio ?? true,
-      })),
-      referenceAudios: usableAudioReferences(bound).map((reference) => ({
-        name: reference.name, relativePath: reference.relativePath, sourcePath: reference.sourcePath,
-        startSeconds: reference.audio?.startSeconds ?? 0,
-        durationSeconds: reference.audio?.durationSeconds ?? 15,
-      })),
-    };
-  };
+  const requestFor = (job: GenerationJob): SlopfabGenerationRequest =>
+    sceneGenerationRequest(job, configRef.current, folderPath, defaultGenerationSteps);
 
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
@@ -723,54 +682,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   </div>;
 }
 
-/** Validate the inputs required by the selected generator before submission. */
-function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
-  const shots = sceneShots(job);
-  const animate = job.sceneType === "animate";
-  const characterReplace = job.sceneType === "character-replace";
-  if (job.sceneType === "pose") {
-    const blocker = poseBlocker(job, references);
-    if (blocker) return blocker;
-  }
-  if (isVideoTransition(job)) {
-    const blocker = videoTransitionBlocker(job, references);
-    if (blocker) return blocker;
-  }
-  if (characterReplace) {
-    const blocker = characterReplaceBlocker(job, references);
-    if (blocker) return blocker;
-  }
-  if (animate) {
-    const bound = sceneGenerationReferences(job, references);
-    if (usableVideoReferences(bound).length !== 1) return "Choose one reference video.";
-    if (usableReferenceImages(bound).length !== 1) return "Choose one repainted frame.";
-    if (job.usePreviousSceneLastFrame || bound.some((reference) => reference.refmods?.some((refmod) => refmod.strength > 0))) {
-      return "Animate can’t continue a scene or use refmods.";
-    }
-    if (usableAudioReferences(bound).length) return "Animate can’t use sound references.";
-  } else {
-    const blocker = audioReferenceBlocker(job, sceneGenerationReferences(job, references));
-    if (blocker) return blocker;
-  }
-  if (!animate && !characterReplace && shots.every((shot) => shot.action.trim().length === 0 && !(shot.speech ?? "").trim())) {
-    return "Write a description or speech in at least one shot.";
-  }
-  if (sceneDurationSeconds(job) <= 0) {
-    return "Give the scene a length.";
-  }
-  const dangling = danglingReferenceTokens(shots, references);
-  if (!animate && !characterReplace && dangling.length > 0) {
-    return "A reference in a shot can’t be used. Replace it or remove it from the line.";
-  }
-  return null;
-}
-
-export function templateSceneBlocker(type: SceneType, template: GeneratorTemplate): string | null {
-  if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
-  if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
-  if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
-  return null;
-}
 
 const seconds = (value: number): string => `${value.toFixed(1)} s`;
 

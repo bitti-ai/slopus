@@ -19,7 +19,7 @@ Example: add a grouped title, then refine its typography without replacing other
 {"op":"image.node.set","id":"headline-text","colors":["#FF0000"],"description":"Bold red condensed lettering with subtle shadow"}
 {"op":"commit","summary":"Added a grouped red headline."}
 
-Use the actual root ID in the current document; image-root is the default. Commands apply transactionally: a missing target, cycle, invalid placement, duplicate ID, or invalid setting rejects the whole batch. Generated images, assets, outputAssetId, file paths and provider settings cannot be edited with these commands. There are no generation commands: the user controls Generate in the Image tab.
+Use the actual root ID in the current document; image-root is the default. Commands apply transactionally: a missing target, cycle, invalid placement, duplicate ID, or invalid setting rejects the whole batch. Generated images, assets, outputAssetId, file paths and provider settings cannot be edited with these commands. The user controls Generate in the Image tab; scene.generate only applies to video scenes when the user requests video generation.
 
 For an explicitly requested complete composition replacement, the older full-authoring command remains available:
 {"op":"image.set","nodes":[...],"background":"environment description","style":{"mode":"photo","aesthetics":"","lighting":"","medium":"","detail":"camera/lens or art style"},"steps":20,"seed":-1,"referenceIds":[]}

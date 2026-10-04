@@ -3,6 +3,7 @@ mod cancellation;
 pub(crate) mod capture;
 mod discovery;
 pub(crate) mod generators;
+mod generation;
 mod policy;
 mod process;
 mod prompt;

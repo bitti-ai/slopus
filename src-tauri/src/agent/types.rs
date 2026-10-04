@@ -69,6 +69,10 @@ pub enum AgentEvent {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AgentTurnResult {
+    Generation {
+        summary: String,
+        command: super::generation::GenerationCommand,
+    },
     Inspect {
         requests: Vec<super::capture::InspectionRequest>,
     },
