@@ -1,17 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { canTokenizeReference, referenceToken, splitActionText, type ActionPart } from "../../lib/project";
-import { Add14, Delete14 } from "../ui/icons";
-import { Flyout, TextField } from "../ui";
+import { Add14 } from "../ui/icons";
+import { ReferencePicker, type ReferenceOption } from "./ReferencePicker";
+import { filterReferenceOptions, type ReferenceMediaType } from "../../lib/referenceSelection";
 import "../../styles/prompt-field.css";
 
-export interface PromptReference {
-  id: string;
-  name: string;
-  /** A glyph or thumbnail shown beside the name in the picker. */
-  icon?: ReactNode;
-  /** A second line in the picker, e.g. the kind of reference. */
-  detail?: string;
-}
+export type PromptReference = ReferenceOption;
 
 /** How references are written into the value. Each chip stands for one token
  *  and carries its key: what `split` reads out of the token and `token` writes
@@ -69,11 +63,12 @@ interface Chips {
   missingLabel: (key: string) => string;
 }
 
-export function PromptTextField({ value, onChange, references, referenceButtonLabel = "Reference", format = REFERENCE_TOKENS, missingLabel = () => "Deleted reference", missingTooltip = "Left out of the prompt — click to swap it for another reference or remove it", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
+export function PromptTextField({ value, onChange, references: allReferences, accept, referenceButtonLabel = "Reference", format = REFERENCE_TOKENS, missingLabel = () => "Deleted reference", missingTooltip = "Left out of the prompt — click to swap it for another reference or remove it", onInsertReference, disabled = false, placeholder, rows = 4, id, className, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }: {
   value: string;
   onChange: (value: string) => void;
   /** The references the picker offers; a chip for any other key is missing. */
   references: readonly PromptReference[];
+  accept?: readonly ReferenceMediaType[];
   referenceButtonLabel?: string;
   format?: PromptTokenFormat;
   missingLabel?: (key: string) => string;
@@ -89,6 +84,7 @@ export function PromptTextField({ value, onChange, references, referenceButtonLa
   "aria-label"?: string;
   "aria-labelledby"?: string;
 }) {
+  const references = filterReferenceOptions(allReferences, accept);
   const field = useRef<HTMLDivElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const selection = useRef<{ start: number; end: number } | null>(null);
@@ -259,10 +255,13 @@ export function PromptTextField({ value, onChange, references, referenceButtonLa
       }}
     />
     <ReferencePicker
-      picking={picking}
+      anchor={picking?.anchor ?? null}
+      current={picking?.current ?? null}
+      currentLabel={picking?.current != null ? label(picking.current) : undefined}
+      title={picking?.current != null ? `Change reference ${label(picking.current)}` : "Insert a reference"}
       references={references}
-      format={format}
-      label={label}
+      referenceKey={format.key}
+      unavailableReason={format.uncitable}
       onChoose={choose}
       onRemove={() => {
         if (!picking) return;
@@ -272,83 +271,6 @@ export function PromptTextField({ value, onChange, references, referenceButtonLa
       onClose={() => setPicking(null)}
     />
   </div>;
-}
-
-function ReferencePicker({ picking, references, format, label, onChoose, onRemove, onClose }: {
-  picking: Picking | null;
-  references: readonly PromptReference[];
-  format: PromptTokenFormat;
-  label: (key: string) => string;
-  onChoose: (reference: PromptReference) => void;
-  onRemove: () => void;
-  onClose: () => void;
-}) {
-  const [filter, setFilter] = useState("");
-  const list = useRef<HTMLDivElement>(null);
-  const filterInput = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (picking) setFilter(""); }, [picking]);
-  const query = filter.trim().toLowerCase();
-  const shown = references.filter((reference) => !query || reference.name.toLowerCase().includes(query));
-  const current = picking?.current ?? null;
-  const missing = current !== null && !references.some((reference) => format.key(reference) === current);
-
-  const move = (event: ReactKeyboardEvent, step: number) => {
-    const options = [...(list.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
-    if (!options.length) return;
-    event.preventDefault();
-    const at = options.indexOf(document.activeElement as HTMLButtonElement);
-    options[at < 0 ? (step > 0 ? 0 : options.length - 1) : (at + step + options.length) % options.length].focus();
-  };
-
-  return <Flyout
-    open={Boolean(picking)}
-    anchor={picking?.anchor ?? null}
-    onClose={onClose}
-    aria-label={current !== null ? `Change reference ${label(current)}` : "Insert a reference"}
-    className="prompt-reference-picker"
-    initialFocus={filterInput}
-    width={280}
-  >
-    {current !== null && <p className="prompt-reference-picker__current">
-      {missing ? <><b>{label(current)}</b> can’t be used. Choose a reference to cite instead.</> : <>Cites <b>{label(current)}</b></>}
-    </p>}
-    {references.length > 6 && <TextField
-      inputRef={filterInput}
-      value={filter}
-      onChange={setFilter}
-      placeholder="Find a reference"
-      aria-label="Find a reference"
-      onKeyDown={(event) => {
-        if (event.key === "ArrowDown") move(event, 1);
-        if (event.key === "Enter" && shown.length) { event.preventDefault(); if (!format.uncitable?.(shown[0])) onChoose(shown[0]); }
-      }}
-    />}
-    <div ref={list} className="prompt-reference-picker__list" role="group" aria-label="References" onKeyDown={(event) => {
-      if (event.key === "ArrowDown") move(event, 1);
-      if (event.key === "ArrowUp") move(event, -1);
-    }}>
-      {shown.map((reference) => {
-        const why = format.uncitable?.(reference) ?? null;
-        return <button
-          key={reference.id}
-          type="button"
-          className="prompt-reference-picker__option ui-selectable"
-          aria-pressed={format.key(reference) === current}
-          disabled={why !== null}
-          data-tooltip={why ?? undefined}
-          onClick={() => onChoose(reference)}
-        >
-          {reference.icon && <span className="prompt-reference-picker__icon" aria-hidden="true">{reference.icon}</span>}
-          <span className="prompt-reference-picker__text"><span>{reference.name}</span>{reference.detail && <small>{reference.detail}</small>}</span>
-        </button>;
-      })}
-      {!references.length && <p className="prompt-reference-picker__empty">No references yet — add them under References.</p>}
-      {references.length > 0 && !shown.length && <p className="prompt-reference-picker__empty">No reference matches “{filter.trim()}”.</p>}
-    </div>
-    {current !== null && <button type="button" className="prompt-reference-picker__option prompt-reference-picker__remove" onClick={onRemove}>
-      <span className="prompt-reference-picker__icon" aria-hidden="true"><Delete14 /></span>Remove from the prompt
-    </button>}
-  </Flyout>;
 }
 
 /* --- The editable surface ------------------------------------------------ */

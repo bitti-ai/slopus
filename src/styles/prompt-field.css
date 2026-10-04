@@ -109,3 +109,11 @@
 .prompt-reference-picker__text small { color: var(--text-muted); font-size: var(--text-xs); }
 .prompt-reference-picker__empty { margin: 0; padding: var(--space-2); color: var(--text-muted); font-size: var(--text-xs); }
 .prompt-reference-picker__remove { border-top: 1px solid var(--line); border-radius: 0; color: var(--danger); }
+
+.reference-selector { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: var(--control-md); padding: var(--space-1) var(--space-2); border: 1px solid var(--stroke-control); border-radius: var(--radius-sm); background: var(--fill-control); color: var(--text-primary); text-align: left; font: inherit; }
+.reference-selector:hover:not(:disabled) { background: var(--fill-control-hover); }
+.reference-selector:disabled { color: var(--text-disabled); background: var(--fill-control-disabled); }
+.reference-selector--missing { color: var(--danger); }
+.reference-selector__name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reference-selector__icon { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; overflow: hidden; border-radius: var(--radius-sm); }
+.reference-selector__icon img { width: 100%; height: 100%; object-fit: cover; }

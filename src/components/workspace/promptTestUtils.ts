@@ -1,4 +1,10 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
+
+/** Choose a standalone reference using the same flyout as the prompt chips. */
+export const chooseReference = (label: string, name: string) => {
+  fireEvent.click(screen.getByRole("button", { name: label }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: label })).getByText(name, { exact: true }).closest("button")!);
+};
 
 /* PromptTextField is a contenteditable: typing into it is its text and an
    input event, and its value reads each chip back as the token it stands for. */

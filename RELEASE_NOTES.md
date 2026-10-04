@@ -4,6 +4,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- First and last scene frames use the searchable reference picker with image thumbnails. Reference selectors and prompt chips share configurable filters for images, audio, video, text, and RefMods.
 - Configure a character sheet from the Image toolbar's Template menu, with reference-enabled prompts for clothing and other details, then select Execute. A square portrait and three 9:16 full-body views are combined into one child image in the image bar. The front view provides a shared clothing reference for the other views.
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.
 - Export any reference with images, a video or a sound as a refmod `.safetensors` file from References. Exported refmods can be attached to other references and projects.

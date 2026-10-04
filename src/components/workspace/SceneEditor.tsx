@@ -42,6 +42,8 @@ import { CommittedNumberInput } from "./CommittedNumberInput";
 import { DEFAULT_CONTINUATION_OVERLAP, MAX_CONTINUATION_OVERLAP } from "../../lib/project";
 import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
+import { ReferenceSelector } from "./ReferenceSelector";
+import { referenceMediaTypes, selectReferences } from "../../lib/referenceSelection";
 
 /** The step the length slider and the cut handles move in. Half a second is the
  *  finest cut the timestamp format prints exactly (`formatSceneSeconds`), so
@@ -131,7 +133,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
   const pickable = useMemo(() => citable.map((reference) => {
     const number = numbered.findIndex((item) => item.id === reference.id) + 1;
     return {
-      id: reference.id, name: reference.name, detail: `${number > 0 ? `Reference ${number}` : "Not in this scene yet"} · ${referenceTypeLabel(reference)}`,
+      id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: `${number > 0 ? `Reference ${number}` : "Not in this scene yet"} · ${referenceTypeLabel(reference)}`,
       icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={isVideoReference(reference) ? <Video16 /> : reference.kind === "audio" ? <Audio16 /> : referenceImages(reference).length ? <Image16 /> : <Text16 />} />,
     };
   }), [citable, numbered, folderPath]);
@@ -303,7 +305,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   // is written. One place, never a second field that could disagree with it.
   const chosen = shots.map((shot) => shot.settings?.[look.id]?.[0]).find(Boolean) ?? "";
   const imageReferences = useMemo(
-    () => references.filter((reference) => referenceImages(reference).length > 0 && isReferenceUsable(reference)),
+    () => selectReferences(references, ["image"]),
     [references],
   );
   const videos = usableVideoReferences(references);
@@ -409,17 +411,14 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
           {!transition && !pose && !continuing && <>
             <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`}>
-              <ComboBox
+              <ReferenceSelector
                 id={`${id}-start`}
+                references={references} accept={["image"]} folderPath={folderPath}
                 value={animate
                   ? job.startFrameReferenceId ?? imageReferences.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""
                   : job.startFrameReferenceId ?? ""}
                 disabled={disabled}
                 aria-label="Start frame for this scene"
-                options={[
-                  { value: "", label: "None" },
-                  ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name })),
-                ]}
                 onChange={(value) => onChange({
                   usePreviousSceneLastFrame: undefined,
                   startFrameReferenceId: value || undefined,
@@ -434,8 +433,8 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             {animate && <p className="prop-caption">A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting.</p>}
           </>}
           {!animate && !transition && !pose && !continuing && <PropRow label="Last frame" htmlFor={`${id}-end`}>
-            <ComboBox id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
-              options={[{ value: "", label: "None" }, ...imageReferences.map((reference) => ({ value: reference.id, label: reference.name }))]}
+            <ReferenceSelector id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
+              references={references} accept={["image"]} folderPath={folderPath}
               onChange={(value) => onChange({ endFrameReferenceId: value || undefined })} />
             {addImageButton("Add last frame", onAddEndFrame)}
           </PropRow>}

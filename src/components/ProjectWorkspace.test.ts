@@ -482,7 +482,8 @@ describe("project workspace timecode", () => {
 
     expect(container.querySelector(".job-refs")).toBeNull();
     expect(container.querySelector(".scene-settings img, .scene-settings .reference-image-fallback")).toBeNull();
-    expect(optionNames(screen.getByRole("combobox", { name: "Start frame for this scene" }))).toContain("Lamp photograph");
+    fireEvent.click(screen.getByRole("button", { name: "Start frame for this scene" }));
+    expect(screen.getByRole("dialog", { name: "Start frame for this scene" })).toHaveTextContent("Lamp photograph");
   });
 
   it("keeps scene settings editable while a scene is running", () => {

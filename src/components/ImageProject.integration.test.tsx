@@ -73,7 +73,7 @@ it.each(["Create Scene", "Create Reference"])("opens and saves the item created 
   fireEvent.click(screen.getByRole("menuitem", { name: action }));
   const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
   expect(navigation.getByRole("tab", { name: action === "Create Scene" ? "Video" : "References" })).toHaveAttribute("aria-selected", "true");
-  if (action === "Create Scene") expect(screen.getByRole("combobox", { name: "Start frame for this scene" })).toHaveTextContent("Poster");
+  if (action === "Create Scene") expect(screen.getByRole("button", { name: "Start frame for this scene" })).toHaveTextContent("Poster");
   else expect(screen.getByLabelText("Reference name")).toHaveValue("Poster");
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(save).toHaveBeenCalledOnce());

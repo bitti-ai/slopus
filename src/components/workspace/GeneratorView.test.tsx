@@ -10,7 +10,7 @@ import { askNative } from "../../lib/nativeShell";
 import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
 import { ReferencesView } from "./ReferencesView";
 import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
-import { changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
+import { chooseReference, changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
 import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
@@ -112,16 +112,16 @@ it("animates a blank scene only with a video and repainted frame", () => {
   expect(screen.queryByLabelText("The sound of this scene")).toBeNull();
   choose("Reference video for this scene", "Motion");
   expect(generate).toBeDisabled();
-  choose("Start frame for this scene", "Repainted frame");
+  chooseReference("Start frame for this scene", "Repainted frame");
   expect(generate).toBeEnabled();
   fireEvent.click(generate);
   expect(submitted).toHaveBeenLastCalledWith([expect.objectContaining({ request: expect.objectContaining({
     prompt: "", referenceVideos: [{ name: "Motion", sourcePath: "C:/motion.mp4", startSeconds: 1, durationSeconds: 3, includeAudio: false }],
     referencePaths: ["C:/project/references/repainted.png"],
   }) })]);
-  choose("Start frame for this scene", "None");
+  chooseReference("Start frame for this scene", "None");
   expect(generate).toBeDisabled();
-  choose("Start frame for this scene", "Repainted frame");
+  chooseReference("Start frame for this scene", "Repainted frame");
   expect(generate).toBeEnabled();
   choose("Reference video for this scene", "None");
   expect(generate).toBeDisabled();
@@ -442,7 +442,7 @@ describe("Generator scene controls", () => {
     const state = setup(parseProjectConfig(initial));
 
     expect(optionNames(screen.getByRole("combobox", { name: "The look of this scene" }))).toContain("None");
-    chooseOption(screen.getByRole("combobox", { name: "Start frame for this scene" }), "Opening still");
+    chooseReference("Start frame for this scene", "Opening still");
     expect(state.latest().generationJobs[0].startFrameReferenceId).toBe("ref-opening");
 
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
@@ -456,13 +456,13 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.references = [{ id: "closing", kind: "image", name: "Closing still", description: "", relativePath: "references/closing.png", intendedUse: [], createdAt: initial.createdAt }];
     const state = setup(initial);
-    chooseOption(screen.getByRole("combobox", { name: "Last frame for this scene" }), "Closing still");
+    chooseReference("Last frame for this scene", "Closing still");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBe("closing");
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
     expect(snapshot.prompt).toContain("<Picture 1> is the last frame of the video.");
     expect(snapshot.referencePaths[0]).toContain("closing.png");
-    chooseOption(screen.getByRole("combobox", { name: "Last frame for this scene" }), "None");
+    chooseReference("Last frame for this scene", "None");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();
   });
 
@@ -517,9 +517,9 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
-    fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start frame for this scene" }));
     expect(screen.queryByRole("option", { name: "Previous scene" })).toBeNull();
-    fireEvent.click(screen.getByRole("combobox", { name: "Start frame for this scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start frame for this scene" }));
     fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
     choose("Scene type", "Continue");
     choose("Source scene for continuation", "First scene");

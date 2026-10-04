@@ -17,6 +17,7 @@ import { ReferenceIcon } from "./ReferenceIcon";
 import { ImageBar } from "./ImageBar";
 import { CharacterSheetSettings } from "./CharacterSheetSettings";
 import type { CharacterSheetOptions } from "../../lib/characterSheet";
+import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
 import styleSuggestions from "../../lib/imageStyleSuggestions.json";
@@ -491,7 +492,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const rootField = (field: string) => `${editorId}-${field}`;
   const promptLabel = imageRoot ? "Edit prompt" : selected.kind === "root" ? "Prompt (high-level description)" : "Description";
   const promptReferences = config.references.filter((reference) => reference.kind !== "audio" && !isVideoReference(reference))
-    .map((reference) => ({ id: reference.id, name: reference.name, detail: referenceTypeLabel(reference), icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
+    .map((reference) => ({ id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference), icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={reference.kind === "image" ? <Image16 /> : <Text16 />} /> }));
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
 
