@@ -13,6 +13,7 @@ mod linux_webview;
 mod media;
 mod native_shell;
 mod project;
+mod slop;
 mod weights;
 mod window;
 mod worker;

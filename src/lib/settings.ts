@@ -466,11 +466,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
   }
 }
 
-export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSettings): void {
+export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSettings, options: { strict?: boolean } = {}): void {
   const normalized = normalizeTemplateSettings(settings) ?? initialTemplateSettings();
   try {
     localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
-  } catch {
+  } catch (error) {
+    if (options.strict) throw error;
     /* The current React state remains usable for this session. */
   }
   queueMicrotask(() => window.dispatchEvent(new Event(GENERATOR_TEMPLATES_EVENT)));

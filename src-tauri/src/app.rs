@@ -249,6 +249,8 @@ pub fn run() {
             native_shell::show_text_context_menu,
             native_shell::reveal_in_explorer,
             native_shell::pick_file,
+            crate::slop::import_slop_file,
+            crate::slop::export_slop_file,
             commands::artifacts::write_generated_video,
             commands::artifacts::write_scene_last_frame,
             commands::artifacts::write_reference_frame,

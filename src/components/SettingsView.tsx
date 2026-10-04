@@ -1,4 +1,5 @@
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
+import { GeneratorSharing } from "./GeneratorSharing";
 import {
   Add20, Agent16, Agent16Filled, Agent20, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
   Diagnostics16Filled, Download16, Download20, Error16, Error20, Flash20, Folder20, Gauge20, Gpu20, Image20, ModelFile20, More16,
@@ -575,6 +576,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const generatorList = <>
     {downloadStatus}
+    <GeneratorSharing templates={templateSettings.templates} />
     <ReferenceIconSetting templates={templateSettings} />
     {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
       {section.id === "generators" && <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
