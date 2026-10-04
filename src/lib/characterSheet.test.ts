@@ -104,7 +104,7 @@ it.each(CHARACTER_SHEET_HEIGHTS)("generates all four views at the selected %s px
   const { queue, session } = setup();
   const saved = { ...result, width: height * 43 / 16, height };
   vi.mocked(invoke).mockImplementation(async (command) => command === "combine_character_sheet" ? saved : undefined);
-  const options = { prompt: "", clothing: "", height };
+  const options = { prompt: "", height };
   queue.enqueueCharacterSheet(session, template, "source", options);
   expect(queue.getSnapshot()[0].settings.canvasHeight).toBe(height);
   options.height = 512; // Queued dimensions must not follow later settings edits.
@@ -122,7 +122,7 @@ it.each(CHARACTER_SHEET_HEIGHTS)("generates all four views at the selected %s px
 
 it("rejects unsupported sheet heights before queueing generation", () => {
   const { queue, session } = setup();
-  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: "", height: 8192 })).toThrow("supported character sheet height");
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", height: 8192 })).toThrow("supported character sheet height");
   expect(queue.getSnapshot()).toHaveLength(0);
 });
 
@@ -172,16 +172,16 @@ it("conditions every view on prompt references and freezes the requested outfit 
   const { queue, session } = setup();
   session.update((current) => ({ ...current, references: [{ id: "coat", name: "Red coat", kind: "image", description: "A red wool coat", relativePath: "references/coat.png", intendedUse: [], createdAt: current.createdAt,
     refmods: [{ id: "coat-style", name: "Coat style", relativePath: "references/coat.safetensors", strength: 0.75, copies: 1 }] }] }));
-  const options = { prompt: "Soft studio lighting", clothing: "Wear @[ref:coat] with black boots" };
+  const options = { prompt: "Soft studio lighting. Wear @[ref:coat] with black boots" };
   queue.enqueueCharacterSheet(session, template, "source", options);
-  options.clothing = "Changed after execution";
+  options.prompt = "Changed after execution";
   const id = queue.getSnapshot()[0].id;
   for (let index = 0; index < 4; index++) {
     const request = await requestAt(index);
     expect(request.referencePaths).toEqual(["C:/Character/media/hero.png", ...(index > 0 ? [`C:/Character/cache/character-sheets/${id}/1.png`] : []), "C:/Character/references/coat.png"]);
     expect(request.refmods).toEqual([{ path: "C:/Character/references/coat.safetensors", strength: 0.75, copies: 1 }]);
     expect(request.prompt).toContain("Template instructions: Soft studio lighting");
-    expect(request.prompt).toContain("Clothing and accessories: Wear <Subject 2> with black boots");
+    expect(request.prompt).toContain("Wear <Subject 2> with black boots");
     expect(request.prompt).not.toContain("@[ref:");
     expect(request.prompt).not.toContain("Changed after execution");
     expect(request.prompt).toContain(`<Subject 2> is Red coat, providing appearance from <Picture ${index === 0 ? 2 : 3}>`);
@@ -196,9 +196,9 @@ it("conditions every view on prompt references and freezes the requested outfit 
 
 it("rejects missing or excessive prompt references before starting a template", () => {
   const { queue, session } = setup();
-  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: "@[ref:missing]" })).toThrow("no longer exists");
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "@[ref:missing]" })).toThrow("no longer exists");
   session.update((current) => ({ ...current, references: Array.from({ length: 8 }, (_, index) => ({ id: `ref-${index}`, name: `Outfit ${index}`, kind: "image" as const, description: "", relativePath: `references/${index}.png`, intendedUse: [], createdAt: current.createdAt })) }));
-  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: session.getSnapshot().config.references.map((reference) => `@[ref:${reference.id}]`).join(" ") })).toThrow("at most nine");
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: session.getSnapshot().config.references.map((reference) => `@[ref:${reference.id}]`).join(" ") })).toThrow("at most nine");
   expect(queue.getSnapshot()).toHaveLength(0);
   expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
 });

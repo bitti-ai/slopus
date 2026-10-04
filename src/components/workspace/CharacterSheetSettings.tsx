@@ -35,12 +35,9 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
           options={CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${height} px high` }))} onChange={(height) => update("height", height)} /></PropRow>
         <p className="image-inspector__caption">Sheet size: {dimensions.reduce((width, view) => width + view.width, 0)} × {dimensions[0].height} px. Width follows the four view proportions.</p>
         <div className="image-inspector__area"><span>Prompt</span>
-          <PromptTextField aria-label="Character sheet prompt" value={options.prompt} onChange={(value) => update("prompt", value)} references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe the character, style, lighting, or other details…" />
+          <PromptTextField aria-label="Character sheet prompt" value={options.prompt} onChange={(value) => update("prompt", value)} references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe the character, clothing, accessories, style, or lighting…" />
         </div>
-        <div className="image-inspector__area"><span>Clothing and accessories</span>
-          <PromptTextField aria-label="Clothing and accessories" value={options.clothing} onChange={(value) => update("clothing", value)} references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe the outfit or add clothing references…" />
-        </div>
-        <p className="image-inspector__caption">Leave these blank to keep the source appearance. Clothing instructions apply to the front view, then the same outfit is used for every angle.</p>
+        <p className="image-inspector__caption">Use the prompt and references for clothing and other details. Leave it blank to keep the source appearance. Clothing instructions apply to the front view, then the same outfit is used for every angle.</p>
         {(validation || error) && <InfoBar severity="error" title="Couldn't prepare the template" message={validation ?? error ?? ""} />}
       </div>
       <div className="image-template-settings__footer">
