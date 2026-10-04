@@ -138,11 +138,15 @@ export function templateUsable(template: GeneratorTemplate): boolean {
   }
 }
 
-/** The weight a LAN worker should use: a local file is sent (or, if it was
- *  downloaded, its URL is), otherwise the download variant for its GPU. */
+/** Downloaded client weights do not pin a worker to the client's GPU variant.
+ * Explicit local files without a matching download entry remain uploads. */
 function workerWeight(value: string, sources: WeightSource[] | undefined): string {
-  if (value && !isDownloadUrl(value)) return value;
-  return chooseWeightSource(sources ?? [], selectedWorker()?.gpus ?? [])?.url ?? value;
+  const pathKey = (path: string) => { const normalized = path.replaceAll("\\", "/").replace(/^\/\/\?\//, ""); return /^[a-z]:\//i.test(normalized) ? normalized.toLowerCase() : normalized; };
+  const downloaded = sources?.some((source) => source.downloadedPath && pathKey(source.downloadedPath) === pathKey(value));
+  if (value && !isDownloadUrl(value) && !downloaded) return value;
+  // The native job builder makes the authoritative choice from the connected
+  // worker's info; its GPU may differ from this UI's last discovery snapshot.
+  return chooseWeightSource(sources ?? [], selectedWorker()?.gpus ?? [])?.url ?? sources?.[0]?.url ?? value;
 }
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
@@ -518,6 +522,12 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.generationMode;
   delete options.promptEmbedding;
   delete options.motionCache;
+  delete options.workerWeightSources;
+  if (remote && sources) {
+    options.workerWeightSources = JSON.stringify(Object.fromEntries(Object.entries(sources)
+      .filter(([role, entries]) => entries?.length && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
+      .map(([role, entries]) => [role, entries!.map(({ url, gpuModel, minVramGb }) => ({ url, gpuModel, minVramGb }))])));
+  }
   if (motionCache && mode !== "animate") options.motionCache = true;
   if (mode === "animate") options.generationMode = "animate";
   if (mode === "animate") {

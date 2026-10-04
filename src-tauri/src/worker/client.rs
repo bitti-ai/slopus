@@ -563,7 +563,7 @@ impl Workers {
     }
 
     pub(crate) fn plan(&self, connection: &Connection, request: &GenerationRequest, settings: &BTreeMap<String, ProviderSetting>) -> Result<serde_json::Value, String> {
-        let (job, sources) = build_job(request, settings)?;
+        let (job, sources) = build_job(request, settings, &connection.info.gpus)?;
         let cancel = self.register(&request.job_id, connection)?;
         let result = self.send_files(connection, &job, &sources, &cancel)
             .and_then(|_| connection.post::<serde_json::Value>("/v1/plan", &job));
@@ -576,9 +576,9 @@ impl Workers {
         // Export needs the VAEs only; keep the other weights off the network.
         let mut settings = settings.clone();
         if let Some(slopfab) = settings.get_mut("slopfab") {
-            slopfab.options.retain(|option, _| matches!(option.as_str(), "videoVae" | "audioVae"));
+            slopfab.options.retain(|option, _| matches!(option.as_str(), "videoVae" | "audioVae" | "workerWeightSources"));
         }
-        let (job, sources) = build_job(request, &settings)?;
+        let (job, sources) = build_job(request, &settings, &connection.info.gpus)?;
         let cancel = self.register(&request.job_id, connection)?;
         let result = self.send_files(connection, &job, &sources, &cancel).and_then(|_| {
             let export = RefmodExport { job, name: name.into(), description: description.into() };
@@ -595,7 +595,7 @@ impl Workers {
     /// frames wait in this process's render store like a local render.
     pub(crate) fn enqueue(&self, connection: Connection, request: GenerationRequest, settings: &BTreeMap<String, ProviderSetting>) -> Result<(), String> {
         crate::media::artifacts::generated_file_stem(&request.job_id)?;
-        let (job, sources) = build_job(&request, settings)?;
+        let (job, sources) = build_job(&request, settings, &connection.info.gpus)?;
         let cancel = self.register(&request.job_id, &connection)?;
         let workers = self.clone();
         let latents = request.save_latents_path.clone();
@@ -851,10 +851,11 @@ fn file_ref(kind: PathKind, value: &str, sources: &mut HashMap<String, PathBuf>)
 }
 
 /// Replaces every path of a resolved local request with a token for the worker.
-pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String, ProviderSetting>) -> Result<(RemoteJob, HashMap<String, PathBuf>), String> {
+pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String, ProviderSetting>, gpus: &[GpuDevice]) -> Result<(RemoteJob, HashMap<String, PathBuf>), String> {
     let mut request = request.clone();
     let mut settings: BTreeMap<String, ProviderSetting> = settings.iter()
         .filter(|(name, _)| name.as_str() == "slopfab").map(|(name, value)| (name.clone(), value.clone())).collect();
+    super::variants::select(&mut settings, gpus)?;
     let mut files = Vec::new();
     let mut indices: HashMap<String, usize> = HashMap::new();
     let mut sources = HashMap::new();
@@ -921,7 +922,7 @@ mod tests {
             continuation_source_frames: Some(85),
             ..Default::default()
         };
-        let (job, sources) = build_job(&request, &settings).unwrap();
+        let (job, sources) = build_job(&request, &settings, &[]).unwrap();
         assert!(!job.settings.contains_key("openrouter"), "credentials never leave this computer");
         assert_eq!(job.files.len(), 3, "a repeated path is sent once");
         assert_eq!(job.files[0], FileRef::Url { url: "https://example.com/t.safetensors".into(), lora: false });
@@ -934,7 +935,7 @@ mod tests {
         assert_eq!(wire["request"]["continuationOverlapFrames"], 39);
         assert_eq!(wire["request"]["continuationSourceFrames"], 85);
         assert_eq!(sources.len(), 2);
-        assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new()).is_err());
+        assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new(), &[]).is_err());
     }
 
     #[test]
@@ -1062,7 +1063,7 @@ mod tests {
             reference_paths: vec![reference.to_string_lossy().into_owned()],
             ..Default::default()
         };
-        let (job, _) = build_job(&request, &settings).unwrap();
+        let (job, _) = build_job(&request, &settings, &connection.info.gpus).unwrap();
         assert!(job.files.iter().filter(|file| matches!(file, FileRef::Url { .. })).count() == 4, "downloads are sent as URLs");
         let plan = workers.plan(&connection, &request, &settings).unwrap();
         eprintln!("plan: {plan}");

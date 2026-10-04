@@ -84,6 +84,40 @@ describe("LAN generation workers", () => {
     expect(options).not.toHaveProperty("motionCache");
   });
 
+  it.each([12, 32])("selects worker variants with %s GB even when another variant is downloaded locally", async (vram) => {
+    const template = downloadable();
+    template.paths.transformer = "D:\\Models\\client.safetensors";
+    template.sources!.transformer![1].downloadedPath = "d:/models/client.safetensors";
+    const original = structuredClone(template);
+    await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker({ gpus: [{name:"RTX 4090",memoryBytes:vram * 1024 ** 3}] })] });
+    const options = engineProviderSetting(template.paths, undefined, "sage2", [], "prompt", [], false, template.sources).options;
+    expect(options.transformer).toBe(`https://example.com/${vram === 12 ? "small" : "large"}.safetensors`);
+    expect(JSON.parse(options.workerWeightSources as string).transformer).toHaveLength(2);
+    expect(options.workerWeightSources).not.toContain("downloadedPath");
+    expect(options.workerWeightSources).not.toContain("client.safetensors");
+    expect(template).toEqual(original);
+    // Local generation keeps the locally chosen file, with no stale worker metadata.
+    await choose({ selectedId: null, workers: [] });
+    const local = engineProviderSetting(template.paths, {enabled:true,model:null,options}, "sage2", [], "prompt", [], false, template.sources).options;
+    expect(local.transformer).toBe(template.paths.transformer);
+    expect(local).not.toHaveProperty("workerWeightSources");
+  });
+
+  it("keeps explicit custom files while passing variants for native worker validation", async () => {
+    const template = downloadable();
+    template.paths.transformer = "D:/custom/model.safetensors";
+    await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker()] });
+    const options = engineProviderSetting(template.paths, undefined, "sage2", [], "prompt", [], false, template.sources).options;
+    expect(options.transformer).toBe(template.paths.transformer);
+    expect(options.workerWeightSources).toBeDefined();
+  });
+
+  it("does not reuse one worker's hardware when switching to an unknown worker", async () => {
+    await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker()] });
+    await choose({ selectedId: "bbbbbbbbbbbbbbbb", workers: [] });
+    expect(selectedWorker()).toEqual({ id: "bbbbbbbbbbbbbbbb", name: "Worker", gpus: [] });
+  });
+
   it("still needs a source for every required model on a worker", async () => {
     await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker()] });
     const template = downloadable();

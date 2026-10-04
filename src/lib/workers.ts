@@ -63,9 +63,10 @@ export const remoteWorkerSelected = (): boolean => selectedWorker() !== null;
 
 function mirror(list: WorkerList) {
   const previous = selectedWorker();
+  const remembered = previous?.id === list.selectedId ? previous : null;
   const worker = list.workers.find((item) => item.id === list.selectedId);
   const next: SelectedWorker | null = list.selectedId
-    ? { id: list.selectedId, name: worker?.name ?? previous?.name ?? "Worker", gpus: worker?.online ? worker.gpus : previous?.gpus ?? [] }
+    ? { id: list.selectedId, name: worker?.name ?? remembered?.name ?? "Worker", gpus: worker?.online ? worker.gpus : remembered?.gpus ?? [] }
     : null;
   if (JSON.stringify(next) === JSON.stringify(previous)) return;
   try {
