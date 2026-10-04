@@ -518,10 +518,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   };
 
   const generatorEditor = editingTemplate && <>
-    <div className="settings-page__actions">
+    <GeneratorSharing key={`sharing:${selectedTemplate.id}`} templates={[selectedTemplate]}>{({ exportButton }) => <div className="settings-page__actions">
       {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download16 /> Download weights</button>}
       <button type="button" className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><Reset16 /> Clear generator paths</button>
-    </div>
+      <div className="settings-page__actions-end">{exportButton}</div>
+    </div>}</GeneratorSharing>
     {downloadStatus}
     <InfoBar severity={engineSeverity(status, desktop)} title={engineHeadline(status, desktop)} message={<>
       {engineDetail(status, desktop, missing.length)}
@@ -576,12 +577,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const generatorList = <>
     {downloadStatus}
-    <GeneratorSharing templates={templateSettings.templates} />
     <ReferenceIconSetting templates={templateSettings} />
     {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
-      {section.id === "generators" && <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
+      {section.id === "generators" && <GeneratorSharing templates={[]}>{({ importButton }) => <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
+        {importButton}
         <button type="button" className="secondary-button" onClick={addTemplate}>New generator</button>
-      </SettingsCard>}
+      </SettingsCard>}</GeneratorSharing>}
       <div className="settings-card-list" role="list" aria-label={section.title}>
         {section.templates.map((template) => {
           const needsDownload = templateNeedsDownload(template);

@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { Checkbox, ContentDialog, InfoBar, SettingsCard } from "./ui";
-import { Video20 } from "./ui/icons";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Checkbox, ContentDialog, InfoBar } from "./ui";
 import { inTauri } from "../lib/nativeShell";
 import { importGeneratorSlop, portableGenerator, serializeGeneratorSlop } from "../lib/slop";
 import { openSlopFile, readBrowserSlopFile, saveSlopFile } from "../lib/slopFiles";
 import type { GeneratorTemplate } from "../lib/settings";
 
-export function GeneratorSharing({ templates }: { templates: GeneratorTemplate[] }) {
+export function GeneratorSharing({ templates, children }: {
+  templates: GeneratorTemplate[];
+  children?: (actions: { importButton: ReactNode; exportButton: ReactNode }) => ReactNode;
+}) {
   const [choosing, setChoosing] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -47,13 +49,12 @@ export function GeneratorSharing({ templates }: { templates: GeneratorTemplate[]
       }
     } catch (reason) { fail(reason); } finally { finish(); }
   };
-  return <>
-    <SettingsCard icon={<Video20 />} header="Share generator templates" description="Share download URLs and generator settings in a .slop file.">
-      <button type="button" className="secondary-button" disabled={busy} onClick={() => void importFile()}>Import</button>
-      <button type="button" className="secondary-button" disabled={busy} onClick={() => {
+  const importButton = <button type="button" className="secondary-button" disabled={busy} onClick={() => void importFile()}>Import</button>;
+  const exportButton = <button type="button" className="secondary-button" disabled={busy} onClick={() => {
         setError(null); setMessage(null); setSelected(choices.filter((choice) => !choice.reason).slice(0, 100).map(({ template }) => template.id)); setChoosing(true);
-      }}>Export</button>
-    </SettingsCard>
+      }}>Export</button>;
+  return <>
+    {children ? children({ importButton, exportButton }) : <>{importButton}{exportButton}</>}
     <input ref={input} type="file" accept=".slop,application/json" hidden aria-label="Import .slop file" disabled={busy} onChange={(event) => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file || !begin()) return;
