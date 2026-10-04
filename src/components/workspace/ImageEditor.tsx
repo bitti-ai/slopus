@@ -22,7 +22,7 @@ import { applyImageCommand } from "../../lib/imageCommands";
 import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
 import { useShortcut } from "../../lib/commands";
-import { ComboBox, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
+import { ComboBox, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, useContextMenu, usePaneSize } from "../ui";
 import "../../styles/image-editor.css";
 
 const MIN_IMAGE_ZOOM = 0.1;
@@ -38,9 +38,10 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
   </PropRow>;
 }
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
+  onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string) => void;
   onOpenGenerator?: (jobId: string) => void;
   onOpenReferences?: () => void;
 }) {
@@ -62,6 +63,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean; source: "bar" | "canvas" } | null>(null);
+  const templateMenu = useContextMenu();
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -542,7 +544,17 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           onChange={(value) => { if (value === "fit") fit(); else zoomTo(Number(value)); }}
         />
       </div>
+      <div className="image-tools__end">
+        <button type="button" className="secondary-button" aria-haspopup="menu" aria-expanded={templateMenu.isOpen}
+          disabled={!isTauri() || !onGenerateCharacterSheet || !output || (!output.relativePath && !output.sourcePath) || Boolean(active) || !template || !templateUsable(template)}
+          onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
+            onSelect: () => attempt(() => onGenerateCharacterSheet?.(template!, output!.id)),
+          }], { "aria-label": "Image templates", placement: "bottom-end" })}>
+          Template <ChevronDown14 aria-hidden="true" />
+        </button>
+      </div>
     </div>
+    {templateMenu.element}
     <aside ref={hierarchy} className="image-tree" aria-label="Image hierarchy" onContextMenu={(event) => { if ((event.target as HTMLElement).closest("input, textarea, [contenteditable=true]")) return; event.preventDefault(); setSelection(root.id); setContextMenu({ x: event.clientX, y: event.clientY }); }} onKeyDown={treeKeys}>
       {/* Undo and Redo live in the title bar; Ctrl+Z / Ctrl+Y still step the image edits here. */}
       <PaneHeader title="Scene" />

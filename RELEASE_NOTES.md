@@ -4,6 +4,7 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Generate a character sheet from the Image toolbar's Template menu: four matching views of the selected image, combined into one PNG in the image bar.
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.
 - Export any reference with images, a video or a sound as a refmod `.safetensors` file from References. Exported refmods can be attached to other references and projects.
 - Copying or cutting prompts preserves reference chips when pasted into other prompt fields.

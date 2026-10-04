@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
+import { CHARACTER_SHEET_VIEWS, characterSheetPrompts } from "./characterSheet";
 import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
@@ -56,6 +57,10 @@ export interface WorkItem {
   settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  characterSheet?: {
+    prompts: string[]; sourceId: string; name: string; index: number;
+    ready?: { resolve: () => void; reject: (reason: Error) => void };
+  };
   outputFrames?: number;
   continuationSegments?: SceneMediaSegment[];
   imageDraftId?: string;
@@ -257,6 +262,38 @@ export class WorkQueue {
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
+  enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string) {
+    if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
+    if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
+    const current = session.getSnapshot().config;
+    const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image");
+    if (!source || (!source.relativePath && !source.sourcePath)) throw new Error("Select an image with a saved file first.");
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
+    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
+    const prompts = characterSheetPrompts(config, source);
+    // Portrait panels leave room for head-to-toe views. Bound each panel so
+    // the four-column PNG remains within the image editor's 8192px limit.
+    const size = outputDimensions(config.settings.resolution, "4:5");
+    const width = Math.min(2048, size.width);
+    const height = Math.round(width * size.height / size.width);
+    const id = `character-sheet-${crypto.randomUUID()}`;
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    const request: SlopfabGenerationRequest = { jobId: `${id}-view-1`, stillImage: true, frames: 1, prompt: prompts[0],
+      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(current.imageScene?.steps ?? template.defaultSteps, config),
+      seed: imageGenerationSeed(current.imageScene?.seed ?? -1), referencePaths: [projectItemPath(session.record.folderPath, source)!] };
+    this.work.set(id, { id, image: true, characterSheet: { prompts, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+      imageGeneration: { ...imageGenerationSnapshot(config, prompts.join("\n\n"), template.id), usedSeed: request.seed },
+      session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
+      request, submitted: false, cancelled: false, done, finish });
+    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+      sceneId: this.work.get(id)!.sceneId, title: `Character sheet · ${source.name}`, submittedAt: new Date().toISOString(),
+      status: "queued", progress: 0, detail: "Waiting to generate character sheet", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 4, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
+    this.publish(); this.icons.yieldToVideo(); void this.pump();
+  }
   /** Queues encoding one reference's images, video or sound into a refmod file. */
   exportReferenceRefmod(session: ProjectSession, referenceId: string, outputPath: string) {
     if (!isTauri()) throw new Error("Refmod export is available in the desktop app.");
@@ -307,6 +344,7 @@ export class WorkQueue {
           // background result can be attached to this project.
           await work.session.save();
           if (work.cancelled) continue;
+          if (work.characterSheet) { await this.generateCharacterSheet(work); continue; }
           if (work.request.previousSceneId) {
             const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
             if (!previous?.latentRelativePath || previous.status !== "completed") {
@@ -371,14 +409,14 @@ export class WorkQueue {
     if (item.status === "queued" || item.status === "preparing") {
       this.cancelled(work);
       // Stops files that are still being sent to a LAN worker for this job.
-      if (item.status === "preparing" && remoteWorkerSelected()) void cancelSlopfabGeneration(work.id).catch(() => undefined);
+      if (item.status === "preparing" && remoteWorkerSelected()) void cancelSlopfabGeneration(work.request.jobId).catch(() => undefined);
       return;
     }
     this.patch(id, { cancelling: true, detail: "Cancelling generation" });
     if (work.submitted) await this.requestNativeCancellation(work);
   }
   private async requestNativeCancellation(work: PendingWork) {
-    try { await cancelSlopfabGeneration(work.id); }
+    try { await cancelSlopfabGeneration(work.request.jobId); }
     catch (reason) {
       work.cancelled = false;
       this.patch(work.id, { cancelling: false, detail: work.image ? "Generating image" : "Generating video", error: `Could not cancel: ${describeDiagnosticError(reason)}` });
@@ -410,8 +448,8 @@ export class WorkQueue {
   }
   private progress(event: GenerationTimingProgress) {
     if (this.icons.progressEvent(event)) return;
-    const work = this.work.get(event.jobId);
-    const item = this.items.find((candidate) => candidate.id === event.jobId);
+    const work = this.nativeWork(event.jobId);
+    const item = this.items.find((candidate) => candidate.id === work?.id);
     // A refmod export sends its files to a LAN worker while it is encoding.
     if (!work || !item || !(["preparing", "generating"].includes(item.status) || (work.refmod && item.status === "encoding" && isWorkerTransfer(event)))) return;
     if (isWorkerTransfer(event)) {
@@ -420,17 +458,32 @@ export class WorkQueue {
       if (!item.cancelling) this.patch(work.id, { detail: workerTransferDetail(event) });
       return;
     }
+    if (work.characterSheet) {
+      const sheet = work.characterSheet;
+      const fraction = event.totalSteps > 0 ? Math.max(0, Math.min(1, event.step / event.totalSteps)) : 0;
+      this.patch(work.id, { progress: Math.max(item.progress, (sheet.index + fraction) / 4 * 0.9),
+        detail: item.cancelling ? "Cancelling generation" : `Character sheet ${sheet.index + 1}/4 · ${CHARACTER_SHEET_VIEWS[sheet.index].label}` });
+      return;
+    }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
     this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
     if (this.icons.event(event)) return;
-    const work = this.work.get(event.jobId);
-    const item = this.items.find((candidate) => candidate.id === event.jobId);
+    const work = this.nativeWork(event.jobId);
+    const item = this.items.find((candidate) => candidate.id === work?.id);
     if (!work || !item) return;
-    if (!isWorkActive(item)) { if (event.state === "framesReady") void releaseRendered(work.id); return; }
+    if (!isWorkActive(item)) { if (event.state === "framesReady") void releaseRendered(event.jobId); return; }
     if (item.status === "encoding") return;
+    if (work.characterSheet) {
+      if (event.state === "framesReady") work.characterSheet.ready?.resolve();
+      else if (event.state === "failed" || event.state === "cancelled") {
+        if (event.state === "cancelled") work.cancelled = true;
+        work.characterSheet.ready?.reject(new Error(event.detail));
+      }
+      return;
+    }
     if (event.state === "framesReady") {
       if (event.output) this.timing.record(event.output);
       this.timing.clear(work.id);
@@ -439,6 +492,56 @@ export class WorkQueue {
     } else if (event.state === "failed") this.fail(work, event.detail);
     else if (event.state === "cancelled") this.cancelled(work, event.detail);
     // A queued acknowledgement can arrive after progress. It must not rewind it.
+  }
+  private nativeWork(jobId: string) {
+    return [...this.work.values()].find((work) => work.request.jobId === jobId);
+  }
+  private async generateCharacterSheet(work: PendingWork) {
+    const sheet = work.characterSheet!;
+    const folderPath = work.session.record.folderPath;
+    try {
+      for (let index = 0; index < sheet.prompts.length; index++) {
+        if (work.cancelled) return;
+        sheet.index = index;
+        work.submitted = false;
+        work.request = { ...work.request, jobId: `${work.id}-view-${index + 1}`, prompt: sheet.prompts[index] };
+        this.patch(work.id, { status: "preparing", detail: `Preparing character sheet view ${index + 1}/4` });
+        await resolveSlopfabPlan(work.request, work.config, folderPath);
+        if (work.cancelled) return;
+        const ready = new Promise<void>((resolve, reject) => { sheet.ready = { resolve, reject }; });
+        // Events can arrive before native submission returns.
+        void ready.catch(() => undefined);
+        this.patch(work.id, { status: "generating", detail: `Character sheet ${index + 1}/4 · ${CHARACTER_SHEET_VIEWS[index].label}` });
+        await enqueueSlopfabGeneration(work.request, work.config, folderPath);
+        work.submitted = true;
+        if (work.cancelled) await this.requestNativeCancellation(work);
+        await ready;
+        sheet.ready = undefined;
+        if (work.cancelled) { this.cancelled(work); return; }
+        this.patch(work.id, { status: "encoding", detail: `Saving character sheet view ${index + 1}/4` });
+        await invoke("save_character_sheet_view", { folderPath, sheetId: work.id, jobId: work.request.jobId, index });
+        await releaseRendered(work.request.jobId);
+      }
+      this.patch(work.id, { status: "encoding", progress: 0.95, detail: "Combining character sheet", completionAt: null });
+      const saved = await invoke<{ relativePath: string; width: number; height: number }>("combine_character_sheet", { folderPath, sheetId: work.id });
+      const scene = createImageEditScene({ ...saved, name: sheet.name }, work.config.imageScene ?? undefined);
+      scene.referenceIds = [];
+      const generation = { ...work.imageGeneration!, scene };
+      work.session.update((current) => ({ ...current,
+        ...(current.imageScene?.outputAssetId === sheet.sourceId && JSON.stringify(current.imageScene) === work.snapshot
+          ? { thumbnail: saved.relativePath, imageScene: { ...scene, outputAssetId: work.id } } : {}),
+        assets: [...current.assets, { id: work.id, kind: "image", name: sheet.name, ...saved, mimeType: "image/png",
+          imageGeneration: generation, createdAt: new Date().toISOString() }],
+      }));
+      try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Character sheet saved" }); }
+      catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Character sheet created; project save failed", error: describeDiagnosticError(reason) }); }
+    } finally {
+      sheet.ready = undefined;
+      await releaseRendered(work.request.jobId).catch(() => undefined);
+      await invoke("discard_character_sheet_views", { folderPath, sheetId: work.id }).catch((reason) =>
+        writeDiagnostic("error", "work-queue", "character-sheet.cleanup_failed", describeDiagnosticError(reason), { workId: work.id }));
+      work.finish();
+    }
   }
   private async encode(work: PendingWork) {
     if (work.image) { await this.saveImage(work); return; }

@@ -187,6 +187,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::artifacts::save_generated_image,
+            commands::character_sheet::save_character_sheet_view,
+            commands::character_sheet::combine_character_sheet,
+            commands::character_sheet::discard_character_sheet_views,
             commands::artifacts::open_image_source,
             commands::artifacts::export_generated_image,
             app_updater_mode,

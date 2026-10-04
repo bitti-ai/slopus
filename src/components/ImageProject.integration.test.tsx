@@ -23,6 +23,27 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
+it("runs the character sheet template on the selected image and requires an image file", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const template = { id: "test", name: "Test", modelType: "minimax-h3" as const, defaultSteps: 20, attention: "sage2" as const, paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } };
+  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [template] });
+  const project = record();
+  project.config.assets = ["First", "Selected"].map((id) => ({ id, name: id, kind: "image", relativePath: `media/${id}.png`, mimeType: "image/png", createdAt: project.config.createdAt }));
+  const queue = new WorkQueue(vi.fn(async (record) => record));
+  const generate = vi.spyOn(queue, "enqueueCharacterSheet").mockImplementation(() => undefined);
+  render(<ProjectWorkspace project={project} workQueue={queue} onBack={vi.fn()} onSave={vi.fn()} />);
+  const toolbar = within(screen.getByRole("toolbar", { name: "Image tools" }));
+  expect(toolbar.getByRole("button", { name: "Template" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "View Selected" }));
+  toolbar.getByRole("button", { name: "Template" }).focus();
+  fireEvent.click(toolbar.getByRole("button", { name: "Template" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Character sheet" }));
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected");
+  expect(screen.queryByRole("menu", { name: "Image templates" })).not.toBeInTheDocument();
+  expect(toolbar.getByRole("button", { name: "Template" })).toHaveFocus();
+});
+
 it.each(["Create Scene", "Create Reference"])("opens and saves the item created by %s in the image bar", async (action) => {
   const project = record();
   project.config.assets = [{ id: "poster", name: "Poster", kind: "image", relativePath: "media/generated/poster.png", mimeType: "image/png", createdAt: project.config.createdAt }];
