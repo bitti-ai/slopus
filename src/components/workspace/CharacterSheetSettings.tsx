@@ -30,7 +30,7 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
     }}>
       <div className="image-inspector__fields image-template-settings__fields">
         <p className="image-inspector__caption">Source: {source.name}</p>
-        <p className="image-inspector__caption">A square portrait and three full-body views (front, side, back), combined into one image.</p>
+        <p className="image-inspector__caption">A square waist-up shot and three full-body views (front, side, back), combined into one image.</p>
         <PropRow label="Resolution" htmlFor="character-sheet-resolution"><ComboBox id="character-sheet-resolution" aria-label="Character sheet resolution" value={options.height} disabled={busy}
           options={CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${height} px high` }))} onChange={(height) => update("height", height)} /></PropRow>
         <p className="image-inspector__caption">Sheet size: {dimensions.reduce((width, view) => width + view.width, 0)} × {dimensions[0].height} px. Width follows the four view proportions.</p>

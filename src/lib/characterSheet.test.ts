@@ -68,7 +68,7 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
       expect(request.prompt).toContain("Do not add, remove, replace, restyle or recolor any clothing");
     }
     expect(request.imageEdit).toBeUndefined();
-    expect(request.prompt).toContain(["frontal close-up portrait", "full body front view", "full body side view", "full body back view"][viewIndex]);
+    expect(request.prompt).toContain(["frontal upper-body shot framed from the waist up", "full body front view", "full body side view", "full body back view"][viewIndex]);
     expect(request.prompt).toContain("clothing, footwear, accessories");
     expect(request.prompt).toContain("<Picture 1>");
     expect(request.prompt).not.toContain("A still photograph");
