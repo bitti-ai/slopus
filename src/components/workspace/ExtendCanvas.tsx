@@ -11,6 +11,24 @@ function cameraFor(width: number, height: number, box: ExtendBounds) {
   return { x: left - margin, y: top - margin, width: right - left + margin * 2, height: bottom - top + margin * 2 };
 }
 const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
+const SNAP_DISTANCE = 6; // CSS pixels, independent of the image/canvas scale.
+
+function snapAxis(start: number, size: number, sourceSize: number, tolerance: number, move: boolean, leading: boolean, trailing: boolean) {
+  const nearest = (deltas: number[]) => deltas.filter((delta) => Math.abs(delta) <= tolerance)
+    .sort((a, b) => Math.abs(a) - Math.abs(b))[0] ?? 0;
+  if (move) {
+    // Translate the whole box to the closest border without changing its size.
+    const delta = nearest([0, sourceSize].flatMap((edge) => [edge - start, edge - start - size])
+      .filter((delta) => Math.abs(start + delta) <= 8192));
+    return [start + delta, size];
+  }
+  let end = start + size;
+  if (leading) start += nearest([0, sourceSize].map((edge) => edge - start)
+    .filter((delta) => end - start - delta >= 1 && end - start - delta <= 8192));
+  if (trailing) end += nearest([0, sourceSize].map((edge) => edge - end)
+    .filter((delta) => end + delta - start >= 1 && end + delta - start <= 8192));
+  return [start, end - start];
+}
 
 export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }: {
   source: ProjectAsset; folderPath: string; bounds: ExtendBounds; onChange: (bounds: ExtendBounds) => void; disabled: boolean;
@@ -54,6 +72,7 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
         }} onPointerMove={(event) => {
           const start = drag.current; if (!start || disabled || start.pointerId !== event.pointerId) return;
           const at = point(event), dx = at.x - start.x, dy = at.y - start.y;
+          if (!Number.isFinite(dx + dy)) return;
           let { x, y, width: w, height: h } = start.box;
           if (start.mode === "move") { x += dx; y += dy; }
           else if (start.mode === "draw") { x = Math.min(start.x, at.x); y = Math.min(start.y, at.y); w = Math.max(1, Math.abs(dx)); h = Math.max(1, Math.abs(dy)); }
@@ -63,7 +82,13 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
             if (start.mode.includes("w")) { x = Math.min(x + dx, x + w - 1); w += start.box.x - x; }
             if (start.mode.includes("n")) { y = Math.min(y + dy, y + h - 1); h += start.box.y - y; }
           }
-          onChange({ x: Math.max(-8192, Math.min(8192, x)), y: Math.max(-8192, Math.min(8192, y)), width: Math.min(8192, w), height: Math.min(8192, h) });
+          const rect = event.currentTarget.getBoundingClientRect();
+          const move = start.mode === "move", draw = start.mode === "draw";
+          [x, w] = snapAxis(Math.max(-8192, Math.min(8192, x)), Math.min(8192, w), width,
+            SNAP_DISTANCE * camera.width / rect.width, move, draw || start.mode.includes("w"), draw || start.mode.includes("e"));
+          [y, h] = snapAxis(Math.max(-8192, Math.min(8192, y)), Math.min(8192, h), height,
+            SNAP_DISTANCE * camera.height / rect.height, move, draw || start.mode.includes("n"), draw || start.mode.includes("s"));
+          onChange({ x, y, width: w, height: h });
         }} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={(event) => finish(event)}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || !drag.current) return;

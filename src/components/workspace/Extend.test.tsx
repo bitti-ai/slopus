@@ -86,3 +86,53 @@ it("moves, resizes, redraws and cancels box drags in original pixel coordinates"
   fireEvent.keyDown(canvas, { key: "Escape" });
   expect(latest).toEqual({ x: -130, y: -100, width: 330, height: 300 });
 });
+
+it.each([0.5, 2])("snaps within six screen pixels at %sx scale without trapping the drag or resizing a moved box", (scale) => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  const original = { x: -100, y: -75, width: 600, height: 450 };
+  let latest: ExtendBounds = original;
+  function Harness() {
+    const [bounds, setBounds] = useState(original); latest = bounds;
+    return <ExtendCanvas source={source} folderPath="D:/Images" bounds={bounds} onChange={setBounds} disabled={false} />;
+  }
+  render(<Harness />);
+  const canvas = screen.getByLabelText("Extend bounding box tool");
+  const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp" | "pointerCancel", target: Element, x: number, y: number) => {
+    const view = canvas.getAttribute("viewBox")!.split(" ").map(Number);
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: view[2] * scale, height: view[3] * scale } as DOMRect);
+    const event = createEvent[type](target);
+    Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 1 }, clientX: { value: (x - view[0]) * scale }, clientY: { value: (y - view[1]) * scale } });
+    fireEvent(target, event);
+  };
+  // Resize only the active edge, leaving its opposite edge and vertical bounds fixed.
+  pointer("pointerDown", canvas.querySelector('[data-handle="e"]')!, 500, 150);
+  pointer("pointerMove", canvas, 400 + 4 / scale, 150);
+  expect(latest).toEqual({ ...original, width: 500 });
+  pointer("pointerMove", canvas, 400 + 8 / scale, 150);
+  expect(latest).toEqual({ ...original, width: 500 + 8 / scale });
+  pointer("pointerMove", canvas, 400 - 4 / scale, 150);
+  expect(latest).toEqual({ ...original, width: 500 });
+  pointer("pointerCancel", canvas, 400, 150);
+  expect(latest).toEqual(original);
+
+  // A corner snaps to both original borders while preserving the opposite corner.
+  pointer("pointerDown", canvas.querySelector('[data-handle="nw"]')!, -100, -75);
+  pointer("pointerMove", canvas, -4 / scale, 4 / scale);
+  expect(latest).toEqual({ x: 0, y: 0, width: 500, height: 375 });
+  fireEvent.keyDown(canvas, { key: "Escape" });
+  expect(latest).toEqual(original);
+
+  // Moving snaps by translation, never by stretching the box.
+  pointer("pointerDown", screen.getByRole("button", { name: "Move Extend box" }), 0, 0);
+  pointer("pointerMove", canvas, 100 - 4 / scale, 75 + 4 / scale);
+  expect(latest).toEqual({ ...original, x: 0, y: 0 });
+  pointer("pointerCancel", canvas, 100, 75);
+
+  // Both endpoints of a newly drawn box can align exactly with the source.
+  pointer("pointerDown", canvas, -4 / scale, -4 / scale);
+  pointer("pointerMove", canvas, 400 + 4 / scale, 300 + 4 / scale);
+  expect(latest).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  pointer("pointerUp", canvas, 400, 300);
+  fireEvent.keyDown(screen.getByRole("button", { name: "Move Extend box" }), { key: "ArrowLeft" });
+  expect(latest).toEqual({ x: -1, y: 0, width: 400, height: 300 });
+});

@@ -34,6 +34,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.
 - The timeline playhead follows playback without waiting for editor updates.
 - Character sheets give side and back views explicit orientation instructions, keeping reference identity and clothing without copying the front-facing pose.
+- Extend bounding box edges gently snap to nearby original image borders when drawing, moving or resizing.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.
