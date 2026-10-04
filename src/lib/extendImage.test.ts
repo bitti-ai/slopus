@@ -40,6 +40,29 @@ it("regenerates every new pixel to the outer edge in all directions", () => {
   }
 });
 
+it("uses the positioned canvas as context and reserves picture labels only for cited references", () => {
+  const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 15 });
+  const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 768, height: 768, createdAt: config.createdAt };
+  const options = { bounds: { x: 0, y: 0, width: 1152, height: 1152 }, prompt: "", steps: 20, seed: 0 };
+  const compile = (prompt: string) => compileExtendImage(config, source, "cache/canvas.png", { ...options, prompt });
+  const withoutReferences = compile("");
+  expect(withoutReferences.prompt).toMatch(/^integrated_multimodal_description:/);
+  expect(withoutReferences.prompt).not.toContain("<Picture");
+  expect(withoutReferences.prompt).toContain("Keep the existing scene at its current size and position");
+  expect(withoutReferences.edits.every((edit) => edit.prompt === withoutReferences.prompt)).toBe(true);
+  config.references = [{ id: "mood", name: "Mood", kind: "text", content: "Misty woodland", description: "", intendedUse: [], createdAt: config.createdAt }];
+  expect(compile("@[ref:mood]").prompt).not.toContain("<Picture");
+  for (let index = 1; index <= 9; index++) config.references.push({
+    id: `ref-${index}`, name: `Tree ${index}`, kind: "image", relativePath: `references/${index}.png`, description: "", intendedUse: [], createdAt: config.createdAt,
+  });
+  const withReferences = compile(config.references.map((reference) => `@[ref:${reference.id}]`).join(" "));
+  expect(withReferences.references).toHaveLength(10);
+  for (let index = 1; index <= 9; index++) {
+    expect(withReferences.prompt).toContain(`<Subject ${index + 1}> is Tree ${index}, providing appearance from <Picture ${index}>`);
+  }
+  expect(withReferences.prompt).not.toContain("<Picture 10>");
+});
+
 it("keeps selection and output on the generation grid without increasing the source pixel count", () => {
   const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "16:9", resolution: "2048p", targetDurationSeconds: 15 });
   for (const source of [{ width: 400, height: 300 }, { width: 3648, height: 2048 }, { width: 2048, height: 3648 }, { width: 8192, height: 8192 }]) {

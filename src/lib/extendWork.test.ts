@@ -55,10 +55,11 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   const request = await submitted();
   const { jobId } = request;
   expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
-    imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [`C:/Extend/cache/extend-images/${jobId}/original.png`] });
+    imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [] });
   expect(request.imageEdit!.edits).toHaveLength(4);
   expect(request.imageEdit!.edits.every((edit) => edit.feather === 0)).toBe(true);
-  expect(request.prompt).toContain("expands the scene in <Picture 1> beyond its original borders");
+  expect(request.prompt).toContain("Fill the masked area beyond the edges of the existing image in the canvas");
+  expect(request.prompt).not.toContain("<Picture");
   expect(request.prompt).not.toContain("composition anchor");
   expect(request.prompt).toContain("Continue the forest");
   expect(request.prompt).not.toContain("Changed");
@@ -84,8 +85,9 @@ it("passes prompt reference images and refmods to the extension", async () => {
     refmods: [{ id: "forest", name: "Forest", relativePath: "references/forest.safetensors", strength: 1, copies: 1 }] }] }));
   queue.enqueueExtendImage(session, template, "source", { ...options(), prompt: "More @[ref:trees]" });
   const request = await submitted();
-  expect(request.referencePaths).toHaveLength(2);
-  expect(request.referencePaths[1]).toBe("C:/Extend/references/trees.png");
+  expect(request.referencePaths).toEqual(["C:/Extend/references/trees.png"]);
+  expect(request.prompt).toContain("<Subject 1> is Trees, providing appearance from <Picture 1>");
+  expect(request.prompt).not.toContain("<Picture 2>");
   expect(request.refmods).toEqual([{ path: "C:/Extend/references/forest.safetensors", strength: 1, copies: 1 }]);
   expect(request.prompt).not.toContain("@[ref:");
   emit("framesReady", request.jobId);

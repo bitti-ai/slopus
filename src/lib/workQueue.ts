@@ -308,9 +308,10 @@ export class WorkQueue {
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
     const compiled = compileExtendImage(config, source, sourceRelativePath, options);
-    // Reference only real scene content, never the ungenerated canvas padding.
-    const referencePaths = [projectItemPath(session.record.folderPath, { relativePath: `cache/extend-images/${id}/original.png` })!,
-      ...compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))];
+    // The inpainting canvas already supplies the original at its selected size
+    // and position. A separate reference is resized independently by the model
+    // and can reproduce the whole original scene inside the extension.
+    const referencePaths = compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!));
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
       canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
       referencePaths, refmods: referenceRefmodInputs(session.record.folderPath, compiled.references),

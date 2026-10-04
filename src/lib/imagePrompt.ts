@@ -13,11 +13,13 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     if (isVideoReference(reference) || reference.kind === "audio") throw new Error(`Still images accept image and text references; the prompt cites the ${reference.kind} reference '${reference.name}'.`);
     return reference;
   });
-  // An inpainting source is also an explicit composition anchor. The caller
-  // submits it before the selected reference pictures, even with no subjects.
+  // Ordinary edits submit the source before the selected reference pictures.
+  // Outpainting uses only the positioned inpainting canvas for source context;
+  // submitting the original as a separate picture would lose that placement.
   const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
   const outpainting = editing && options.sourceTreatment === "outpaint";
-  let picture = editing ? 1 : 0;
+  const sourcePicture = editing && !outpainting;
+  let picture = sourcePicture ? 1 : 0;
   const subjects = references.flatMap((reference) => {
     const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
     const definition = referenceDefinition(reference);
@@ -41,9 +43,12 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     return index < 0 ? references.find((reference) => reference.id === part.value)!.name : label(index);
   }).join("");
   const visual = { style: cite(parts.style), composition: cite(parts.composition) };
+  const style = outpainting
+    ? "The still image continues the visual medium, lighting, palette and perspective of the existing image in the canvas."
+    : editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;
   const audio = ["overall_soundscape: N/A", "non_diegetic_music: N/A"];
-  if (!subjects.length && !editing) return {
-    prompt: [`integrated_multimodal_description: [Shot 1] ${visual.style}\n${visual.composition}`, ...audio].join("\n\n"), references,
+  if (!subjects.length && !sourcePicture) return {
+    prompt: [`integrated_multimodal_description: [Shot 1] ${style}\n${visual.composition}`, ...audio].join("\n\n"), references,
   };
   const definitions = subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`);
   const retention = subjects.map((subject, index) => {
@@ -52,20 +57,15 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
       ? `${label(index)} (appears in [Shot 1]): partially_preserved - ${transformation}`
       : `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`;
   });
-  if (editing) {
-    definitions.unshift(outpainting
-      ? "<Picture 1> shows the original scene before its field of view is expanded, providing the subject, environment, perspective, lighting and visual style. It does not show the complete output framing."
-      : "<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
-    retention.unshift(outpainting
-      ? "<Picture 1> ([Shot 1] expanded scene): partially_preserved - preserve the existing scene within its placed area and generate a natural continuation beyond it. Expand the framing with new objects and scene detail consistent with the original perspective and lighting."
-      : "<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.");
+  if (sourcePicture) {
+    definitions.unshift("<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
+    retention.unshift("<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.");
   }
   const summary = outpainting
-    ? "[reference generation] A single still image expands the scene in <Picture 1> beyond its original borders. The new space contains a coherent continuation of the scene."
+    ? "[keyframe completion + reference generation] A single still image fills the masked extension of the existing canvas with a coherent continuation of the scene."
     : editing
     ? `[keyframe completion${subjects.length ? " + reference generation" : ""}] The target is a single edited still keyframe based on <Picture 1>. Apply the described change while preserving all other content.${subjects.length ? ` Use ${subjects.map((_, index) => label(index)).join(", ")} for the specified reference attributes.` : ""}`
     : `[reference generation] A single still image uses ${subjects.map((_, index) => label(index)).join(", ")} in the requested composition.`;
-  const style = editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;
   return { prompt: [
     `subject_definitions:\n${definitions.join("\n")}`,
     `summary:\n${summary}`,

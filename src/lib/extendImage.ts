@@ -90,7 +90,7 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
-  scene.nodes[0].description = "Expand the field of view beyond the original image. Continue the environment, objects, textures, perspective and lighting into the new space with natural new detail. The original scene remains in its placed area within the larger composition. " + options.prompt.trim();
+  scene.nodes[0].description = "Fill the masked area beyond the edges of the existing image in the canvas. Continue the environment, objects, textures, perspective and lighting seamlessly into this new space with natural new detail. Keep the existing scene at its current size and position; do not repeat, enlarge or reframe it in the new area. " + options.prompt.trim();
   const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
   // The rectangular editor needs a little original context at each seam.
   // The native finalizer restores the downscaled source pixels after generation.
