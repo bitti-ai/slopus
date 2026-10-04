@@ -15,6 +15,8 @@ import { ReferenceImage } from "./ReferenceImage";
 import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
 import { ImageBar } from "./ImageBar";
+import { CharacterSheetSettings } from "./CharacterSheetSettings";
+import type { CharacterSheetOptions } from "../../lib/characterSheet";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { TagEditor } from "./TagEditor";
 import styleSuggestions from "../../lib/imageStyleSuggestions.json";
@@ -41,7 +43,7 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
 export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
-  onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string) => void;
+  onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string, options: CharacterSheetOptions) => void;
   onOpenGenerator?: (jobId: string) => void;
   onOpenReferences?: () => void;
 }) {
@@ -64,6 +66,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean; source: "bar" | "canvas" } | null>(null);
   const templateMenu = useContextMenu();
+  const [templateSourceId, setTemplateSourceId] = useState<string | null>(null);
+  useEffect(() => setTemplateSourceId(null), [scene.outputAssetId]);
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -546,9 +550,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       </div>
       <div className="image-tools__end">
         <button type="button" className="secondary-button" aria-haspopup="menu" aria-expanded={templateMenu.isOpen}
-          disabled={!isTauri() || !onGenerateCharacterSheet || !output || (!output.relativePath && !output.sourcePath) || Boolean(active) || !template || !templateUsable(template)}
+          disabled={!output || (!output.relativePath && !output.sourcePath)}
           onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
-            onSelect: () => attempt(() => onGenerateCharacterSheet?.(template!, output!.id)),
+            onSelect: () => setTemplateSourceId(output!.id),
           }], { "aria-label": "Image templates", placement: "bottom-end" })}>
           Template <ChevronDown14 aria-hidden="true" />
         </button>
@@ -640,7 +644,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
-    <aside className="image-inspector" aria-label="Image node inspector">
+    {output && templateSourceId === output.id ? <CharacterSheetSettings
+      config={config} source={output} references={promptReferences} missingLabel={missingReference} busy={Boolean(active)}
+      disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
+      onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
+    /> : <aside className="image-inspector" aria-label="Image node inspector">
       {/* The selected node heads the inspector, not an "Inspector" title. */}
       {/* The name is edited in place in the header, as a shot's or a clip's
           is; an image-edit root has no name of its own to change. */}
@@ -693,7 +701,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </PropSection>}
       </div>
       {debugEnabled && <div className="debug-prompt"><button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config).prompt))}>Debug prompt</button></div>}
-    </aside>
+    </aside>}
     {debugEnabled && debugPrompt !== null && <DebugPromptDialog sceneTitle={config.name} segments={[{ kind: "brief", value: debugPrompt }]} onClose={() => setDebugPrompt(null)} />}
   </div>;
 }

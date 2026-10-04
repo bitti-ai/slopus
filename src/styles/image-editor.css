@@ -101,3 +101,8 @@
 /* The editable name is the inspector's heading: an h2 around the input, laid
    out as the input alone would be (as .generator-panel__name). */
 .image-inspector__name { flex: 1; min-width: 0; display: flex; margin: 0; font: inherit; }
+
+.image-template-settings { overflow: hidden; }
+.image-template-settings__form { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.image-template-settings__fields { flex: 1; min-height: 0; overflow: auto; }
+.image-template-settings__footer { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--line); }

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
-import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetPrompts } from "./characterSheet";
+import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
 import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
@@ -58,7 +58,7 @@ export interface WorkItem {
 }
 interface PendingWork {
   characterSheet?: {
-    prompts: string[]; sourceId: string; name: string; index: number; frontRelativePath: string;
+    views: ReturnType<typeof compileCharacterSheet>; sourceId: string; name: string; index: number;
     ready?: { resolve: () => void; reject: (reason: Error) => void };
   };
   outputFrames?: number;
@@ -262,7 +262,7 @@ export class WorkQueue {
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
-  enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string) {
+  enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
     if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
     const current = session.getSnapshot().config;
@@ -274,16 +274,19 @@ export class WorkQueue {
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
-    const prompts = characterSheetPrompts(config, source, frontRelativePath);
+    const views = compileCharacterSheet(config, source, frontRelativePath, options);
     const firstView = CHARACTER_SHEET_ORDER[0];
     const { width, height } = characterSheetDimensions(config.settings.resolution)[firstView];
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: `${id}-view-${firstView + 1}`, stillImage: true, frames: 1, prompt: prompts[firstView],
+    const request: SlopfabGenerationRequest = { jobId: `${id}-view-${firstView + 1}`, stillImage: true, frames: 1, prompt: views[firstView].prompt,
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(current.imageScene?.steps ?? template.defaultSteps, config),
-      seed: imageGenerationSeed(current.imageScene?.seed ?? -1), referencePaths: [projectItemPath(session.record.folderPath, source)!] };
-    this.work.set(id, { id, image: true, characterSheet: { prompts, sourceId, name: `Character sheet - ${source.name}`, index: 0, frontRelativePath },
-      imageGeneration: { ...imageGenerationSnapshot(config, prompts.join("\n\n"), template.id), usedSeed: request.seed },
+      seed: imageGenerationSeed(current.imageScene?.seed ?? -1),
+      referencePaths: views[firstView].references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
+      refmods: referenceRefmodInputs(session.record.folderPath, views[firstView].references) };
+    this.work.set(id, { id, image: true, characterSheet: { views, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+      imageGeneration: { ...imageGenerationSnapshot(config, views.map((view) => view.prompt).join("\n\n"), template.id), usedSeed: request.seed,
+        references: [...new Map(views.flatMap((view) => view.references.slice(1)).map((reference) => [reference.id, reference])).values()] },
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
       request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, projectKey, folderPath: session.record.folderPath, projectName: config.name,
@@ -497,18 +500,19 @@ export class WorkQueue {
   private async generateCharacterSheet(work: PendingWork) {
     const sheet = work.characterSheet!;
     const folderPath = work.session.record.folderPath;
-    const sourcePath = work.request.referencePaths[0];
     const dimensions = characterSheetDimensions(work.config.settings.resolution);
     try {
-      for (let index = 0; index < sheet.prompts.length; index++) {
+      for (let index = 0; index < sheet.views.length; index++) {
         if (work.cancelled) return;
         sheet.index = index;
         const viewIndex = CHARACTER_SHEET_ORDER[index];
         const { width, height } = dimensions[viewIndex];
         work.submitted = false;
-        work.request = { ...work.request, jobId: `${work.id}-view-${viewIndex + 1}`, prompt: sheet.prompts[viewIndex],
+        const view = sheet.views[viewIndex];
+        work.request = { ...work.request, jobId: `${work.id}-view-${viewIndex + 1}`, prompt: view.prompt,
           canvasWidth: width, canvasHeight: height,
-          referencePaths: [sourcePath, ...(index > 0 ? [projectItemPath(folderPath, { relativePath: sheet.frontRelativePath })!] : [])] };
+          referencePaths: view.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(folderPath, image)!)),
+          refmods: referenceRefmodInputs(folderPath, view.references) };
         this.patch(work.id, { status: "preparing", detail: `Preparing character sheet view ${index + 1}/4` });
         await resolveSlopfabPlan(work.request, work.config, folderPath);
         if (work.cancelled) return;

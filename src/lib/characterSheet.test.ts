@@ -142,6 +142,41 @@ it("rejects an empty source without queuing work", () => {
   expect(queue.getSnapshot()).toHaveLength(0);
 });
 
+it("conditions every view on prompt references and freezes the requested outfit at execution", async () => {
+  const { queue, session } = setup();
+  session.update((current) => ({ ...current, references: [{ id: "coat", name: "Red coat", kind: "image", description: "A red wool coat", relativePath: "references/coat.png", intendedUse: [], createdAt: current.createdAt,
+    refmods: [{ id: "coat-style", name: "Coat style", relativePath: "references/coat.safetensors", strength: 0.75, copies: 1 }] }] }));
+  const options = { prompt: "Soft studio lighting", clothing: "Wear @[ref:coat] with black boots" };
+  queue.enqueueCharacterSheet(session, template, "source", options);
+  options.clothing = "Changed after execution";
+  const id = queue.getSnapshot()[0].id;
+  for (let index = 0; index < 4; index++) {
+    const request = await requestAt(index);
+    expect(request.referencePaths).toEqual(["C:/Character/media/hero.png", ...(index > 0 ? [`C:/Character/cache/character-sheets/${id}/1.png`] : []), "C:/Character/references/coat.png"]);
+    expect(request.refmods).toEqual([{ path: "C:/Character/references/coat.safetensors", strength: 0.75, copies: 1 }]);
+    expect(request.prompt).toContain("Template instructions: Soft studio lighting");
+    expect(request.prompt).toContain("Clothing and accessories: Wear <Subject 2> with black boots");
+    expect(request.prompt).not.toContain("@[ref:");
+    expect(request.prompt).not.toContain("Changed after execution");
+    expect(request.prompt).toContain(`<Subject 2> is Red coat, providing appearance from <Picture ${index === 0 ? 2 : 3}>`);
+    if (index === 0) expect(request.prompt).toContain("Apply the template's clothing instructions and references to establish the outfit");
+    emit("framesReady", request.jobId);
+  }
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  expect(reopened.assets[1].imageGeneration!.references.map((reference) => reference.id)).toEqual(["coat"]);
+  expect(reopened.assets[1].imageGeneration!.prompt).toContain("black boots");
+});
+
+it("rejects missing or excessive prompt references before starting a template", () => {
+  const { queue, session } = setup();
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: "@[ref:missing]" })).toThrow("no longer exists");
+  session.update((current) => ({ ...current, references: Array.from({ length: 8 }, (_, index) => ({ id: `ref-${index}`, name: `Outfit ${index}`, kind: "image" as const, description: "", relativePath: `references/${index}.png`, intendedUse: [], createdAt: current.createdAt })) }));
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: session.getSnapshot().config.references.map((reference) => `@[ref:${reference.id}]`).join(" ") })).toThrow("at most nine");
+  expect(queue.getSnapshot()).toHaveLength(0);
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+});
+
 it("does not publish a partial result when combining fails and lets the next job run", async () => {
   const { queue, session } = setup();
   vi.mocked(invoke).mockImplementation(async (command) => {

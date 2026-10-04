@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { typePrompt } from "./workspace/promptTestUtils";
+import { placePromptCaret, typePrompt } from "./workspace/promptTestUtils";
 import { afterEach, expect, it, vi } from "vitest";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { PromptComposer } from "./PromptComposer";
@@ -23,13 +23,14 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
-it("runs the character sheet template on the selected image and requires an image file", () => {
+it("opens template settings and executes only after configuring prompts and clothing references", () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   const template = { id: "test", name: "Test", modelType: "minimax-h3" as const, defaultSteps: 20, attention: "sage2" as const, paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } };
   saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [template] });
   const project = record();
   project.config.assets = ["First", "Selected"].map((id) => ({ id, name: id, kind: "image", relativePath: `media/${id}.png`, mimeType: "image/png", createdAt: project.config.createdAt }));
+  project.config.references = [{ id: "outfit", name: "Red coat", kind: "image", description: "A red wool coat", relativePath: "references/coat.png", intendedUse: [], createdAt: project.config.createdAt }];
   const queue = new WorkQueue(vi.fn(async (record) => record));
   const generate = vi.spyOn(queue, "enqueueCharacterSheet").mockImplementation(() => undefined);
   render(<ProjectWorkspace project={project} workQueue={queue} onBack={vi.fn()} onSave={vi.fn()} />);
@@ -39,9 +40,27 @@ it("runs the character sheet template on the selected image and requires an imag
   toolbar.getByRole("button", { name: "Template" }).focus();
   fireEvent.click(toolbar.getByRole("button", { name: "Template" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Character sheet" }));
-  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected");
+  expect(generate).not.toHaveBeenCalled();
   expect(screen.queryByRole("menu", { name: "Image templates" })).not.toBeInTheDocument();
-  expect(toolbar.getByRole("button", { name: "Template" })).toHaveFocus();
+  expect(screen.queryByRole("complementary", { name: "Image node inspector" })).not.toBeInTheDocument();
+  const panel = within(screen.getByRole("complementary", { name: "Character sheet settings" }));
+  const before = structuredClone(queue.project(project).getSnapshot().config);
+  typePrompt(panel.getByRole("textbox", { name: "Character sheet prompt" }), "Soft studio lighting");
+  const clothing = panel.getByRole("textbox", { name: "Clothing and accessories" });
+  typePrompt(clothing, "Wear");
+  placePromptCaret(clothing);
+  fireEvent.click(within(clothing.closest(".image-inspector__area") as HTMLElement).getByRole("button", { name: "Reference" }));
+  fireEvent.click(screen.getByRole("button", { name: /Red coat/ }));
+  expect(clothing.querySelector(".prompt-chip")).toHaveTextContent("Red coat");
+  expect(queue.project(project).getSnapshot().config).toEqual(before);
+  fireEvent.click(panel.getByRole("button", { name: "Execute" }));
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting", clothing: "Wear @[ref:outfit]" });
+  fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
+  expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
+  fireEvent.click(toolbar.getByRole("button", { name: "Template" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Character sheet" }));
+  fireEvent.click(screen.getByRole("button", { name: "View First" }));
+  expect(screen.queryByRole("complementary", { name: "Character sheet settings" })).not.toBeInTheDocument();
 });
 
 it.each(["Create Scene", "Create Reference"])("opens and saves the item created by %s in the image bar", async (action) => {
