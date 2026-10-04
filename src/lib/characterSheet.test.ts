@@ -8,7 +8,7 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue } from "./workQueue";
-import { characterSheetDimensions } from "./characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions } from "./characterSheet";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -98,6 +98,32 @@ it.each(["416p", "768p", "1080p", "2048p", "4k"] as const)("keeps exact aspect r
   expect(new Set(sizes.map(({ height }) => height)).size).toBe(1);
   expect(sizes.reduce((sum, { width }) => sum + width, 0)).toBeLessThanOrEqual(8192);
   for (const { width, height } of sizes) { expect(width % 32).toBe(0); expect(height % 32).toBe(0); }
+});
+
+it.each(CHARACTER_SHEET_HEIGHTS)("generates all four views at the selected %s px height", async (height) => {
+  const { queue, session } = setup();
+  const saved = { ...result, width: height * 43 / 16, height };
+  vi.mocked(invoke).mockImplementation(async (command) => command === "combine_character_sheet" ? saved : undefined);
+  const options = { prompt: "", clothing: "", height };
+  queue.enqueueCharacterSheet(session, template, "source", options);
+  expect(queue.getSnapshot()[0].settings.canvasHeight).toBe(height);
+  options.height = 512; // Queued dimensions must not follow later settings edits.
+  for (let index = 0; index < 4; index++) {
+    const request = await requestAt(index);
+    expect(request.canvasHeight).toBe(height);
+    expect(request.canvasWidth).toBe(index === 1 ? height : height * 9 / 16);
+    expect(request.canvasWidth % 32).toBe(0);
+    emit("framesReady", request.jobId);
+  }
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  expect(session.getSnapshot().config.assets.at(-1)).toMatchObject(saved);
+  expect(session.getSnapshot().config.settings.resolution).toBe("768p");
+});
+
+it("rejects unsupported sheet heights before queueing generation", () => {
+  const { queue, session } = setup();
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", clothing: "", height: 8192 })).toThrow("supported character sheet height");
+  expect(queue.getSnapshot()).toHaveLength(0);
 });
 
 it.each(["cancelled", "failed"])("discards partial views after the second render is %s", async (state) => {

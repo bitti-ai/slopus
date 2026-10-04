@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
-import { InfoBar, ItemHeader } from "../ui";
+import { ComboBox, InfoBar, ItemHeader, PropRow } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
 
@@ -10,13 +10,14 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
   disabledReason: string | null; busy: boolean;
   onExecute: (options: CharacterSheetOptions) => void; onClose: () => void;
 }) {
-  const [options, setOptions] = useState(emptyCharacterSheetOptions);
+  const [options, setOptions] = useState<CharacterSheetOptions>(() => ({ ...emptyCharacterSheetOptions(), height: characterSheetDimensions(config.settings.resolution)[0].height }));
+  const dimensions = characterSheetDimensions(config.settings.resolution, options.height);
   const [error, setError] = useState<string | null>(null);
   const validation = useMemo(() => {
     try { compileCharacterSheet(config, source, "cache/character-sheet-preview/1.png", options); return null; }
     catch (reason) { return reason instanceof Error ? reason.message : String(reason); }
   }, [config, source, options]);
-  const update = (field: keyof CharacterSheetOptions, value: string) => {
+  const update = <K extends keyof CharacterSheetOptions,>(field: K, value: CharacterSheetOptions[K]) => {
     setOptions((current) => ({ ...current, [field]: value })); setError(null);
   };
   return <aside className="image-inspector image-template-settings" aria-label="Character sheet settings">
@@ -30,6 +31,9 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
       <div className="image-inspector__fields image-template-settings__fields">
         <p className="image-inspector__caption">Source: {source.name}</p>
         <p className="image-inspector__caption">A square portrait and three full-body views (front, side, back), combined into one image.</p>
+        <PropRow label="Resolution" htmlFor="character-sheet-resolution"><ComboBox id="character-sheet-resolution" aria-label="Character sheet resolution" value={options.height} disabled={busy}
+          options={CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${height} px high` }))} onChange={(height) => update("height", height)} /></PropRow>
+        <p className="image-inspector__caption">Sheet size: {dimensions.reduce((width, view) => width + view.width, 0)} × {dimensions[0].height} px. Width follows the four view proportions.</p>
         <div className="image-inspector__area"><span>Prompt</span>
           <PromptTextField aria-label="Character sheet prompt" value={options.prompt} onChange={(value) => update("prompt", value)} references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe the character, style, lighting, or other details…" />
         </div>

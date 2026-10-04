@@ -13,13 +13,15 @@ export const CHARACTER_SHEET_VIEWS = [
 // Establish the complete outfit before asking for any other camera angle.
 export const CHARACTER_SHEET_ORDER = [1, 0, 2, 3] as const;
 
-export interface CharacterSheetOptions { prompt: string; clothing: string }
+export const CHARACTER_SHEET_HEIGHTS = [512, 1024, 1536, 2048] as const;
+export interface CharacterSheetOptions { prompt: string; clothing: string; height?: number }
 export const emptyCharacterSheetOptions = (): CharacterSheetOptions => ({ prompt: "", clothing: "" });
 
-export function characterSheetDimensions(resolution: ProjectConfig["settings"]["resolution"]) {
+export function characterSheetDimensions(resolution: ProjectConfig["settings"]["resolution"], requestedHeight?: number) {
   // A shared height divisible by 512 makes both 1:1 and 9:16 exact on H3's
   // 32px grid, and keeps the combined image below the editor's 8192px limit.
-  const height = Math.max(512, Math.min(2048, Math.round(outputDimensions(resolution, "1:1").height / 512) * 512));
+  if (requestedHeight !== undefined && !CHARACTER_SHEET_HEIGHTS.some((height) => height === requestedHeight)) throw new Error("Choose a supported character sheet height.");
+  const height = requestedHeight ?? Math.max(512, Math.min(2048, Math.round(outputDimensions(resolution, "1:1").height / 512) * 512));
   return CHARACTER_SHEET_VIEWS.map((_, index) => ({ width: index === 0 ? height : height * 9 / 16, height }));
 }
 

@@ -59,6 +59,7 @@ export interface WorkItem {
 interface PendingWork {
   characterSheet?: {
     views: ReturnType<typeof compileCharacterSheet>; sourceId: string; name: string; index: number;
+    dimensions: ReturnType<typeof characterSheetDimensions>;
     ready?: { resolve: () => void; reject: (reason: Error) => void };
   };
   outputFrames?: number;
@@ -275,8 +276,9 @@ export class WorkQueue {
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
     const views = compileCharacterSheet(config, source, frontRelativePath, options);
+    const dimensions = characterSheetDimensions(config.settings.resolution, options?.height);
     const firstView = CHARACTER_SHEET_ORDER[0];
-    const { width, height } = characterSheetDimensions(config.settings.resolution)[firstView];
+    const { width, height } = dimensions[firstView];
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: `${id}-view-${firstView + 1}`, stillImage: true, frames: 1, prompt: views[firstView].prompt,
@@ -284,7 +286,7 @@ export class WorkQueue {
       seed: imageGenerationSeed(current.imageScene?.seed ?? -1),
       referencePaths: views[firstView].references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, views[firstView].references) };
-    this.work.set(id, { id, image: true, characterSheet: { views, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+    this.work.set(id, { id, image: true, characterSheet: { views, dimensions, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
       imageGeneration: { ...imageGenerationSnapshot(config, views.map((view) => view.prompt).join("\n\n"), template.id), usedSeed: request.seed,
         references: [...new Map(views.flatMap((view) => view.references.slice(1)).map((reference) => [reference.id, reference])).values()] },
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
@@ -500,7 +502,7 @@ export class WorkQueue {
   private async generateCharacterSheet(work: PendingWork) {
     const sheet = work.characterSheet!;
     const folderPath = work.session.record.folderPath;
-    const dimensions = characterSheetDimensions(work.config.settings.resolution);
+    const dimensions = sheet.dimensions;
     try {
       for (let index = 0; index < sheet.views.length; index++) {
         if (work.cancelled) return;

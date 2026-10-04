@@ -45,6 +45,8 @@ it("opens template settings and executes only after configuring prompts and clot
   expect(screen.queryByRole("complementary", { name: "Image node inspector" })).not.toBeInTheDocument();
   const panel = within(screen.getByRole("complementary", { name: "Character sheet settings" }));
   const before = structuredClone(queue.project(project).getSnapshot().config);
+  choose("Character sheet resolution", "2048 px high");
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("5504 × 2048 px");
   typePrompt(panel.getByRole("textbox", { name: "Character sheet prompt" }), "Soft studio lighting");
   const clothing = panel.getByRole("textbox", { name: "Clothing and accessories" });
   typePrompt(clothing, "Wear");
@@ -54,7 +56,7 @@ it("opens template settings and executes only after configuring prompts and clot
   expect(clothing.querySelector(".prompt-chip")).toHaveTextContent("Red coat");
   expect(queue.project(project).getSnapshot().config).toEqual(before);
   fireEvent.click(panel.getByRole("button", { name: "Execute" }));
-  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting", clothing: "Wear @[ref:outfit]" });
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting", clothing: "Wear @[ref:outfit]", height: 2048 });
   fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
   expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
   fireEvent.click(toolbar.getByRole("button", { name: "Template" }));
