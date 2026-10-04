@@ -46,9 +46,15 @@ pub(crate) struct TimelineClip {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) color_correction: Option<ClipColorCorrection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) vignette: Option<ClipAmount>,
+    pub(crate) vignette: Option<ClipVignette>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) lut: Option<ClipLut>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) creative: Option<ClipCreative>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) curves: Option<ClipCurves>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_wheels: Option<ClipColorWheels>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) transition: Option<ClipTransition>,
 }
@@ -100,6 +106,18 @@ pub(crate) struct ClipBlur {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ClipColorCorrection {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) temperature: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tint: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) highlights: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) shadows: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) whites: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) blacks: Option<f64>,
     pub(crate) exposure: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) brightness: Option<f64>,
@@ -143,4 +161,73 @@ pub(crate) struct ClipTransition {
 
 pub(crate) fn default_clip_status() -> String {
     "approved".into()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipVignette {
+    pub(crate) amount: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) midpoint: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) roundness: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) feather: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipCreative {
+    pub(crate) look: String,
+    pub(crate) intensity: f64,
+    pub(crate) faded_film: f64,
+    pub(crate) sharpen: f64,
+    pub(crate) vibrance: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipCurves {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) rgb: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) red: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) green: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) blue: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hue_vs_sat: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hue_vs_hue: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) hue_vs_luma: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) luma_vs_sat: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) sat_vs_sat: Option<Vec<[f64; 2]>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipWheel {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) lightness: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipColorWheels {
+    pub(crate) shadows: ClipWheel,
+    pub(crate) midtones: ClipWheel,
+    pub(crate) highlights: ClipWheel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enabled: Option<bool>,
 }

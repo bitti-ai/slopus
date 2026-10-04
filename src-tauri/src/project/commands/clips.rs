@@ -152,6 +152,9 @@ pub(super) fn apply(
                     blur: None,
                     color_correction: None,
                     vignette: None,
+                    creative: None,
+                    curves: None,
+                    color_wheels: None,
                     lut: None,
                     transition: None,
                 });

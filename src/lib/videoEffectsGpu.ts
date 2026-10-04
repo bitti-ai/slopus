@@ -1,6 +1,8 @@
 /// <reference types="@webgpu/types" />
 import { keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
-import type { VideoEffects, LutTable } from "./effectSettings";
+import { activeVideoEffects, CREATIVE_LOOKS, type VideoEffects, type LutTable } from "./effectSettings";
+import { compileCurves, CURVE_SAMPLES } from "./colorCurves";
+import { COLOR_GRADING_WGSL } from "./colorGradingShader";
 import type { ClipChromaKey } from "./project";
 
 export type GpuEffects = VideoEffects & { chromaKey?: ClipChromaKey | null; look?: { temperature: number } | null };
@@ -21,6 +23,13 @@ struct Params {
   domainMin: vec4f,
   domainMax: vec4f,
   blur: vec4f,
+  balance: vec4f,
+  tonal: vec4f,
+  creative: vec4f,
+  vignette: vec4f,
+  shadows: vec4f,
+  midtones: vec4f,
+  highlights: vec4f,
 };
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(2) var linearSampler: sampler;
@@ -55,7 +64,7 @@ const BLUR = VERTEX + PARAMS + TEXTURE + /* wgsl */ `
   return total / weights;
 }
 `;
-const FINISH = VERTEX + PARAMS + TEXTURE + /* wgsl */ `
+const FINISH = VERTEX + PARAMS + TEXTURE + COLOR_GRADING_WGSL + /* wgsl */ `
 @group(0) @binding(3) var<storage, read> lut: array<f32>;
 fn lookup(p: vec3u) -> vec3f {
   let size = u32(params.detail.y);
@@ -88,13 +97,35 @@ fn straight(color: vec4f) -> vec3f { return color.rgb / max(color.a, .00001); }
     rgb += (rgb - straight(neighbors)) * params.detail.x;
   }
   rgb *= exp2(params.grade.x);
+  rgb *= vec3f(1. + .35 * params.balance.x, 1. - .3 * params.balance.y, 1. - .35 * params.balance.x);
   rgb += vec3f(params.domainMax.w);
+  let black = -params.tonal.y * .15;
+  let white = 1. - params.tonal.x * .15;
+  rgb = (rgb - black) / max(white - black, .001);
+  let toneLuma = luma(rgb);
+  let tone = clamp(toneLuma, 0., 1.);
+  let lift = params.balance.w * .35 * pow(1. - tone, 3.) + params.balance.z * .35 * pow(tone, 3.);
+  if (abs(lift) > .000001) {
+    if (toneLuma > .00001) { rgb *= max(toneLuma + lift, 0.) / toneLuma; }
+    else { rgb += max(lift, 0.); }
+  }
   rgb = (rgb - vec3f(.5)) * params.grade.y + vec3f(.5);
-  let luma = dot(rgb, vec3f(.2126, .7152, .0722));
-  rgb = mix(vec3f(luma), rgb, params.grade.z);
+  rgb = mix(vec3f(luma(rgb)), rgb, params.grade.z);
+  if (params.creative.x > 0. && params.creative.y > 0.) { rgb = mix(rgb, creativeLook(rgb), params.creative.y); }
+  rgb = rgb * (1. - .25 * params.creative.z) + .12 * params.creative.z;
+  let chroma = clamp(max(rgb.r, max(rgb.g, rgb.b)) - min(rgb.r, min(rgb.g, rgb.b)), 0., 1.);
+  rgb = mix(vec3f(luma(rgb)), rgb, 1. + params.tonal.z * (1. - chroma));
+  rgb = applyWheels(applyCurves(rgb));
   if (params.detail.y >= 2. && params.detail.z > 0.) { rgb = mix(rgb, applyLut(rgb), params.detail.z); }
-  let distanceFromCenter = length((uv - vec2f(.5)) * 1.41421356);
-  rgb *= 1. - params.grade.w * smoothstep(.3, 1., distanceFromCenter);
+  var position = abs((uv - vec2f(.5)) * 1.41421356);
+  let aspect = f32(textureDimensions(picture).x) / f32(textureDimensions(picture).y);
+  position *= mix(vec2f(1.), vec2f(max(aspect, 1.), max(1. / aspect, 1.)), max(params.vignette.y, 0.));
+  let power = 2. + max(-params.vignette.y, 0.) * 6.;
+  let distanceFromCenter = pow(pow(position.x, power) + pow(position.y, power), 1. / power);
+  let start = params.vignette.x * .6;
+  let edge = smoothstep(start, start + max(params.vignette.z * .7, .001), distanceFromCenter);
+  if (params.grade.w >= 0.) { rgb *= 1. - params.grade.w * edge; }
+  else { rgb += (1. - rgb) * -params.grade.w * edge; }
   rgb += vec3f(params.domainMin.w * .1, 0., -params.domainMin.w * .1);
   return vec4f(clamp(rgb, vec3f(0.), vec3f(1.)) * sampled.a, sampled.a);
 }
@@ -122,13 +153,24 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
   const blurPipeline = pipeline(device, BLUR, "rgba16float");
   const finishPipeline = pipeline(device, FINISH, "rgba16float");
   const sampler = device.createSampler({ minFilter: "linear", magFilter: "linear" });
-  const uniforms = Array.from({ length: 3 }, () => device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+  const uniforms = Array.from({ length: 3 }, () => device.createBuffer({ size: 208, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+  const curveBuffer = device.createBuffer({ size: 9 * CURVE_SAMPLES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  let curveKey: string | undefined;
+  let curveMask = 0;
   const emptyLut = device.createBuffer({ size: 12, usage: GPUBufferUsage.STORAGE });
   const luts: { table: LutTable; buffer: GPUBuffer }[] = [];
   let textures: GPUTexture[] = [];
   let dimensions = "";
   return {
     render(frame: VideoFrame, effects: GpuEffects): GPUTexture {
+      effects = { ...effects, ...activeVideoEffects(effects) };
+      const nextCurveKey = JSON.stringify(effects.curves ?? null);
+      if (nextCurveKey !== curveKey) {
+        const compiled = compileCurves(effects.curves);
+        device.queue.writeBuffer(curveBuffer, 0, compiled.values);
+        curveMask = compiled.mask;
+        curveKey = nextCurveKey;
+      }
       const width = frame.displayWidth, height = frame.displayHeight;
       if (dimensions !== `${width}x${height}`) {
         textures.forEach((texture) => texture.destroy());
@@ -153,10 +195,18 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
       const data = new Float32Array([
         ...(effects.chromaKey ? keyColor(effects.chromaKey.color) : [0, 0, 0]), (effects.chromaKey?.tolerance ?? 0) / 100,
         grade?.exposure ?? 0, 1 + (grade?.contrast ?? 0) / 100, (grade?.saturation ?? 100) / 100, (effects.vignette?.amount ?? 0) / 100,
-        (effects.sharpen?.amount ?? 0) / 100, table?.size ?? 0, (effects.lut?.intensity ?? 0) / 100, effects.chromaKey ? 1 : 0,
+        ((effects.sharpen?.amount ?? 0) + (effects.creative?.sharpen ?? 0)) / 100, table?.size ?? 0, (effects.lut?.intensity ?? 0) / 100, effects.chromaKey ? 1 : 0,
         // Pack temperature and brightness into the unused domain vector lanes.
         ...(table?.domainMin ?? [0, 0, 0]), (effects.look?.temperature ?? 0) / 100, ...(table?.domainMax ?? [1, 1, 1]), (grade?.brightness ?? 0) / 100,
         effects.blur?.radius ?? 0, 0, 0, 0,
+        (grade?.temperature ?? 0) / 100, (grade?.tint ?? 0) / 100, (grade?.highlights ?? 0) / 100, (grade?.shadows ?? 0) / 100,
+        (grade?.whites ?? 0) / 100, (grade?.blacks ?? 0) / 100, (effects.creative?.vibrance ?? 0) / 100, curveMask,
+        CREATIVE_LOOKS.indexOf(effects.creative?.look ?? "None"), (effects.creative?.intensity ?? 0) / 100, (effects.creative?.fadedFilm ?? 0) / 100, 0,
+        (effects.vignette?.midpoint ?? 50) / 100, (effects.vignette?.roundness ?? 0) / 100, (effects.vignette?.feather ?? 100) / 100, 0,
+        ...(["shadows", "midtones", "highlights"] as const).flatMap((name) => {
+          const wheel = effects.colorWheels?.[name];
+          return [wheel?.x ?? 0, wheel?.y ?? 0, (wheel?.lightness ?? 0) / 100, 0];
+        }),
       ]);
       device.queue.writeBuffer(uniforms[0], 0, data);
       const encoder = device.createCommandEncoder();
@@ -164,7 +214,7 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
         const entries: GPUBindGroupEntry[] = [
           { binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: source }, { binding: 2, resource: sampler },
         ];
-        if (lut) entries.push({ binding: 3, resource: { buffer: lut } });
+        if (lut) entries.push({ binding: 3, resource: { buffer: lut } }, { binding: 4, resource: { buffer: curveBuffer } });
         const group = device.createBindGroup({ layout: renderPipeline.getBindGroupLayout(0), entries });
         const render = encoder.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
         render.setPipeline(renderPipeline); render.setBindGroup(0, group); render.draw(3); render.end();
@@ -187,6 +237,7 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
       uniforms.forEach((buffer) => buffer.destroy());
       luts.forEach(({ buffer }) => buffer.destroy());
       emptyLut.destroy();
+      curveBuffer.destroy();
     },
   };
 }

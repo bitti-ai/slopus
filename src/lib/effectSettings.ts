@@ -24,17 +24,45 @@ export const effectEnabledSchema = z.boolean().nullish();
 export const isEffectOn = <T extends { enabled?: boolean | null }>(effect: T | null | undefined): effect is T =>
   effect !== null && effect !== undefined && effect.enabled !== false;
 
+const percent = z.number().finite().min(0).max(100);
+const signedPercent = z.number().finite().min(-100).max(100);
+const unit = z.number().finite().min(0).max(1);
+export const curveSchema = z.array(z.tuple([unit, unit])).min(2).max(32).superRefine((points, context) => {
+  if (points[0][0] !== 0 || points[points.length - 1][0] !== 1 || points.some((p, i) => i > 0 && p[0] - points[i - 1][0] < 0.001)) {
+    context.addIssue({ code: "custom", message: "Curves need endpoints at 0 and 1 and increasing inputs at least 0.001 apart." });
+  }
+});
+const hueCurveSchema = curveSchema.refine((p) => p[0][1] === p[p.length - 1][1], "Hue curve endpoints must match.");
+export const CREATIVE_LOOKS = ["None", "Teal & Orange", "Warm Film", "Cool Blue", "Bleach Bypass", "Faded Matte", "Monochrome", "Golden Hour", "Night"] as const;
+export const CURVE_CHANNELS = ["rgb", "red", "green", "blue", "hueVsSat", "hueVsHue", "hueVsLuma", "lumaVsSat", "satVsSat"] as const;
+export type CurveChannel = typeof CURVE_CHANNELS[number];
+export type CurvePoint = [number, number];
+export const defaultCurve = (channel: CurveChannel): CurvePoint[] => channel === "rgb" || channel === "red" || channel === "green" || channel === "blue" ? [[0, 0], [1, 1]] : [[0, 0.5], [1, 0.5]];
+const wheelSchema = z.object({ x: z.number().finite().min(-1).max(1), y: z.number().finite().min(-1).max(1), lightness: signedPercent })
+  .refine((v) => Math.hypot(v.x, v.y) <= 1.000001, "Wheel position must be inside the wheel.");
+export const DEFAULT_CREATIVE = { look: "None", intensity: 100, fadedFilm: 0, sharpen: 0, vibrance: 0 } as const;
+export const DEFAULT_WHEELS = { shadows: { x: 0, y: 0, lightness: 0 }, midtones: { x: 0, y: 0, lightness: 0 }, highlights: { x: 0, y: 0, lightness: 0 } };
+
 export const effectSchemas = {
   sharpen: z.object({ amount: z.number().finite().min(0).max(200), enabled: effectEnabledSchema }).nullish(),
   blur: z.object({ radius: z.number().finite().min(0).max(24), enabled: effectEnabledSchema }).nullish(),
   colorCorrection: z.object({
+    temperature: signedPercent.nullish(), tint: signedPercent.nullish(),
+    highlights: signedPercent.nullish(), shadows: signedPercent.nullish(), whites: signedPercent.nullish(), blacks: signedPercent.nullish(),
     exposure: z.number().finite().min(-4).max(4),
     brightness: z.number().finite().min(-100).max(100).nullish(),
     contrast: z.number().finite().min(-100).max(100),
     saturation: z.number().finite().min(0).max(200),
     enabled: effectEnabledSchema,
   }).nullish(),
-  vignette: z.object({ amount: z.number().finite().min(0).max(100), enabled: effectEnabledSchema }).nullish(),
+  creative: z.object({ look: z.enum(CREATIVE_LOOKS), intensity: percent, fadedFilm: percent, sharpen: z.number().finite().min(0).max(200), vibrance: signedPercent, enabled: effectEnabledSchema }).nullish(),
+  curves: z.object({
+    rgb: curveSchema.nullish(), red: curveSchema.nullish(), green: curveSchema.nullish(), blue: curveSchema.nullish(),
+    hueVsSat: hueCurveSchema.nullish(), hueVsHue: hueCurveSchema.nullish(), hueVsLuma: hueCurveSchema.nullish(),
+    lumaVsSat: curveSchema.nullish(), satVsSat: curveSchema.nullish(), enabled: effectEnabledSchema,
+  }).nullish(),
+  colorWheels: z.object({ shadows: wheelSchema, midtones: wheelSchema, highlights: wheelSchema, enabled: effectEnabledSchema }).nullish(),
+  vignette: z.object({ amount: signedPercent, midpoint: percent.nullish(), roundness: signedPercent.nullish(), feather: percent.nullish(), enabled: effectEnabledSchema }).nullish(),
   lut: z.object({ intensity: z.number().finite().min(0).max(100), table: lutTableSchema.nullish(), enabled: effectEnabledSchema }).nullish(),
 };
 export type VideoEffects = z.infer<z.ZodObject<typeof effectSchemas>>;
@@ -46,12 +74,15 @@ export const activeVideoEffects = (effects: VideoEffects): VideoEffects => ({
   sharpen: isEffectOn(effects.sharpen) ? effects.sharpen : null,
   blur: isEffectOn(effects.blur) ? effects.blur : null,
   colorCorrection: isEffectOn(effects.colorCorrection) ? effects.colorCorrection : null,
+  creative: isEffectOn(effects.creative) ? effects.creative : null,
+  curves: isEffectOn(effects.curves) ? effects.curves : null,
+  colorWheels: isEffectOn(effects.colorWheels) ? effects.colorWheels : null,
   vignette: isEffectOn(effects.vignette) ? effects.vignette : null,
   lut: isEffectOn(effects.lut) ? effects.lut : null,
 });
 
 export const hasVideoEffects = (effects: VideoEffects): boolean =>
-  isEffectOn(effects.sharpen) || isEffectOn(effects.blur) || isEffectOn(effects.colorCorrection) || isEffectOn(effects.vignette) || isEffectOn(effects.lut);
+  Object.keys(effectSchemas).some((key) => isEffectOn(effects[key as keyof VideoEffects]));
 
 export const MAX_LUT_FILE_BYTES = 16 * 1024 * 1024;
 

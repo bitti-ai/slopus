@@ -1,13 +1,15 @@
 import { Add16, ChevronDown12, Copy16, FolderOpen14, More14, Paste16, Reset14, Reset16 } from "../ui/icons";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from "../../lib/project";
-import { isEffectOn, parseCube } from "../../lib/effectSettings";
+import { CREATIVE_LOOKS, DEFAULT_CREATIVE, DEFAULT_WHEELS, isEffectOn, parseCube } from "../../lib/effectSettings";
 import { readLutFile } from "../../lib/exportPipeline";
 import { inTauri, pickFile } from "../../lib/nativeShell";
 import { Checkbox, ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMenu } from "../ui";
+import { CurveEditor } from "./CurveEditor";
+import { GradingWheel } from "./GradingWheel";
 import { ColorSwatch } from "./ColorPicker";
 
-type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut";
+type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut" | "creative" | "curves" | "colorWheels";
 // Keep copied settings across clip selections and inspector remounts, like the
 // image-node clipboard. Snapshots include bypass and embedded LUT data.
 let effectClipboard: { id: EffectId; settings: NonNullable<TimelineClip[EffectId]> } | null = null;
@@ -153,22 +155,68 @@ const EFFECTS: readonly EffectDefinition[] = [
     editor: ({ clip, update, disabled }) => <Param label="Radius" ariaLabel="Blur radius" value={clip.blur!.radius} max={24} step={0.5} suffix=" px" defaultValue={4} disabled={disabled} onChange={(radius) => update({ blur: { ...clip.blur!, radius } })} />,
   },
   {
-    id: "colorCorrection", name: "Colour correction", description: "Adjust exposure, brightness, contrast and saturation",
+    id: "colorCorrection", name: "Basic Corrections", description: "White balance, exposure, tonal ranges and saturation",
     defaults: { colorCorrection: { exposure: 0, brightness: 0, contrast: 0, saturation: 100 } },
     editor: ({ clip, update, disabled }) => {
       const color = clip.colorCorrection!;
       return <>
+        {(["temperature", "tint"] as const).map((key) => <Param key={key} label={key[0].toUpperCase() + key.slice(1)} value={color[key] ?? 0} min={-100} defaultValue={0} disabled={disabled} onChange={(value) => update({ colorCorrection: { ...color, [key]: value } })} />) }
         <Param label="Exposure" value={color.exposure} min={-4} max={4} step={0.1} suffix=" stops" defaultValue={0} disabled={disabled} onChange={(exposure) => update({ colorCorrection: { ...color, exposure } })} />
         <Param label="Brightness" value={color.brightness ?? 0} min={-100} defaultValue={0} disabled={disabled} onChange={(brightness) => update({ colorCorrection: { ...color, brightness } })} />
         <Param label="Contrast" value={color.contrast} min={-100} defaultValue={0} disabled={disabled} onChange={(contrast) => update({ colorCorrection: { ...color, contrast } })} />
+        {(["highlights", "shadows", "whites", "blacks"] as const).map((key) => <Param key={key} label={key[0].toUpperCase() + key.slice(1)} value={color[key] ?? 0} min={-100} defaultValue={0} disabled={disabled} onChange={(value) => update({ colorCorrection: { ...color, [key]: value } })} />)}
         <Param label="Saturation" value={color.saturation} max={200} defaultValue={100} disabled={disabled} onChange={(saturation) => update({ colorCorrection: { ...color, saturation } })} />
       </>;
     },
   },
   {
-    id: "vignette", name: "Vignette", description: "Darken the edges of the picture",
+    id: "creative", name: "Creative", description: "Eight built-in looks, faded film, sharpening and vibrance",
+    defaults: { creative: DEFAULT_CREATIVE },
+    editor: ({ clip, update, disabled }) => {
+      const creative = clip.creative!;
+      return <>
+        <PropRow label="Look"><ComboBox aria-label="Creative look" value={creative.look} disabled={disabled} options={CREATIVE_LOOKS.map((look) => ({ value: look, label: look }))}
+          onChange={(look) => update({ creative: { ...creative, look } })} /></PropRow>
+        <Param label="Intensity" ariaLabel="Creative intensity" value={creative.intensity} defaultValue={100} disabled={disabled} onChange={(intensity) => update({ creative: { ...creative, intensity } })} />
+        <Param label="Faded film" value={creative.fadedFilm} defaultValue={0} disabled={disabled} onChange={(fadedFilm) => update({ creative: { ...creative, fadedFilm } })} />
+        <Param label="Sharpen" ariaLabel="Creative sharpen" value={creative.sharpen} max={200} defaultValue={0} disabled={disabled} onChange={(sharpen) => update({ creative: { ...creative, sharpen } })} />
+        <Param label="Vibrance" value={creative.vibrance} min={-100} defaultValue={0} disabled={disabled} onChange={(vibrance) => update({ creative: { ...creative, vibrance } })} />
+      </>;
+    },
+  },
+  {
+    id: "curves", name: "Curves", description: "RGB and hue, saturation and luma curves",
+    defaults: { curves: {} },
+    editor: ({ clip, update, disabled }) => <CurveEditor key={clip.id} value={clip.curves!} disabled={disabled} onChange={(curves) => update({ curves })} />,
+  },
+  {
+    id: "colorWheels", name: "Color Wheels", description: "Tint and lightness for shadows, midtones and highlights",
+    defaults: { colorWheels: DEFAULT_WHEELS },
+    editor: ({ clip, update, disabled }) => {
+      const wheels = clip.colorWheels!;
+      return <>{(["shadows", "midtones", "highlights"] as const).map((key) => {
+        const label = key[0].toUpperCase() + key.slice(1), wheel = wheels[key];
+        return <div className="grading-wheel-section" key={key}>
+          <div className="grading-wheel-section__heading"><span>{label}</span><button type="button" className="clip-effect__action" aria-label={`Reset ${label} wheel`} disabled={disabled}
+            onClick={() => update({ colorWheels: { ...wheels, [key]: { x: 0, y: 0, lightness: 0 } } })}><Reset14 /></button></div>
+          <GradingWheel label={label} x={wheel.x} y={wheel.y} disabled={disabled} onChange={(x, y) => update({ colorWheels: { ...wheels, [key]: { ...wheel, x, y } } })} />
+          <Param label="Lightness" ariaLabel={`${label} lightness`} value={wheel.lightness} min={-100} defaultValue={0} disabled={disabled} onChange={(lightness) => update({ colorWheels: { ...wheels, [key]: { ...wheel, lightness } } })} />
+        </div>;
+      })}</>;
+    },
+  },
+  {
+    id: "vignette", name: "Vignette", description: "Shape and soften dark or light edges",
     defaults: { vignette: { amount: 35 } },
-    editor: ({ clip, update, disabled }) => <Param label="Amount" ariaLabel="Vignette amount" value={clip.vignette!.amount} defaultValue={35} disabled={disabled} onChange={(amount) => update({ vignette: { ...clip.vignette!, amount } })} />,
+    editor: ({ clip, update, disabled }) => {
+      const vignette = clip.vignette!;
+      return <>
+        <Param label="Amount" ariaLabel="Vignette amount" value={vignette.amount} min={-100} defaultValue={35} disabled={disabled} onChange={(amount) => update({ vignette: { ...vignette, amount } })} />
+        <Param label="Midpoint" ariaLabel="Vignette midpoint" value={vignette.midpoint ?? 50} defaultValue={50} disabled={disabled} onChange={(midpoint) => update({ vignette: { ...vignette, midpoint } })} />
+        <Param label="Roundness" ariaLabel="Vignette roundness" value={vignette.roundness ?? 0} min={-100} defaultValue={0} disabled={disabled} onChange={(roundness) => update({ vignette: { ...vignette, roundness } })} />
+        <Param label="Feather" ariaLabel="Vignette feather" value={vignette.feather ?? 100} defaultValue={100} disabled={disabled} onChange={(feather) => update({ vignette: { ...vignette, feather } })} />
+      </>;
+    },
   },
   {
     id: "lut", name: "3D LUT", description: "Apply a colour look from a .cube file",

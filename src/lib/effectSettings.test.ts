@@ -86,7 +86,7 @@ describe("effect bypass", () => {
 
   it("drops bypassed effects from what renders", () => {
     const effects = { sharpen: { amount: 40, enabled: false }, blur: { radius: 3 }, lut: { intensity: 50, enabled: false } };
-    expect(activeVideoEffects(effects)).toEqual({ sharpen: null, blur: { radius: 3 }, colorCorrection: null, vignette: null, lut: null });
+    expect(activeVideoEffects(effects)).toEqual({ sharpen: null, blur: { radius: 3 }, colorCorrection: null, creative: null, curves: null, colorWheels: null, vignette: null, lut: null });
     expect(hasVideoEffects(effects)).toBe(true);
     expect(hasVideoEffects({ sharpen: { amount: 40, enabled: false } })).toBe(false);
   });

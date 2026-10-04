@@ -74,15 +74,48 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                 || clip
                     .vignette
                     .as_ref()
-                    .is_some_and(|v| !within(v.amount, 0.0, 100.0))
+                    .is_some_and(|v| !within(v.amount, -100.0, 100.0)
+                        || v.midpoint.is_some_and(|n| !within(n, 0.0, 100.0))
+                        || v.roundness.is_some_and(|n| !within(n, -100.0, 100.0))
+                        || v.feather.is_some_and(|n| !within(n, 0.0, 100.0)))
                 || clip.color_correction.as_ref().is_some_and(|v| {
-                    !within(v.exposure, -4.0, 4.0)
+                    [v.temperature, v.tint, v.highlights, v.shadows, v.whites, v.blacks].iter().flatten().any(|n| !within(*n, -100.0, 100.0))
+                        || !within(v.exposure, -4.0, 4.0)
                         || v.brightness.is_some_and(|value| !within(value, -100.0, 100.0))
                         || !within(v.contrast, -100.0, 100.0)
                         || !within(v.saturation, 0.0, 200.0)
                 })
             {
                 return Err(format!("Clip '{}' has invalid video effects.", clip.id));
+            }
+            if let Some(v) = &clip.creative {
+                if !matches!(v.look.as_str(), "None" | "Teal & Orange" | "Warm Film" | "Cool Blue" | "Bleach Bypass" | "Faded Matte" | "Monochrome" | "Golden Hour" | "Night")
+                    || !within(v.intensity, 0.0, 100.0) || !within(v.faded_film, 0.0, 100.0)
+                    || !within(v.sharpen, 0.0, 200.0) || !within(v.vibrance, -100.0, 100.0) {
+                    return Err(format!("Clip '{}' has invalid Creative settings.", clip.id));
+                }
+            }
+            if let Some(v) = &clip.color_wheels {
+                for wheel in [&v.shadows, &v.midtones, &v.highlights] {
+                    if !within(wheel.x, -1.0, 1.0) || !within(wheel.y, -1.0, 1.0)
+                        || wheel.x.hypot(wheel.y) > 1.000001 || !within(wheel.lightness, -100.0, 100.0) {
+                        return Err(format!("Clip '{}' has invalid Color Wheels settings.", clip.id));
+                    }
+                }
+            }
+            if let Some(v) = &clip.curves {
+                for (curve, hue) in [(&v.rgb, false), (&v.red, false), (&v.green, false), (&v.blue, false),
+                    (&v.hue_vs_sat, true), (&v.hue_vs_hue, true), (&v.hue_vs_luma, true), (&v.luma_vs_sat, false), (&v.sat_vs_sat, false)] {
+                    if let Some(points) = curve {
+                        if !(2..=32).contains(&points.len())
+                            || points.iter().flatten().any(|n| !within(*n, 0.0, 1.0))
+                            || points[0][0] != 0.0 || points[points.len() - 1][0] != 1.0
+                            || points.windows(2).any(|p| p[1][0] - p[0][0] < 0.001)
+                            || (hue && points[0][1] != points[points.len() - 1][1]) {
+                            return Err(format!("Clip '{}' has invalid Curves settings.", clip.id));
+                        }
+                    }
+                }
             }
             if let Some(lut) = &clip.lut {
                 if !within(lut.intensity, 0.0, 100.0) {

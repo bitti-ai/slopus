@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within, waitFor } from "@testi
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineClipSchema, type TimelineClip } from "../../lib/project";
-import { parseCube } from "../../lib/effectSettings";
+import { DEFAULT_CREATIVE, DEFAULT_WHEELS, parseCube } from "../../lib/effectSettings";
 import { ClipEffects } from "./ClipEffects";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -54,8 +54,11 @@ describe("clip effects", () => {
     { name: "Chroma key", patch: { chromaKey: { color: "#123456", tolerance: 43 } } },
     { name: "Sharpen", patch: { sharpen: { amount: 125 } } },
     { name: "Gaussian blur", patch: { blur: { radius: 8.5 } } },
-    { name: "Colour correction", patch: { colorCorrection: { exposure: -1.2, brightness: 35, contrast: 20, saturation: 75 } } },
+    { name: "Basic Corrections", patch: { colorCorrection: { exposure: -1.2, brightness: 35, contrast: 20, saturation: 75 } } },
     { name: "Vignette", patch: { vignette: { amount: 75 } } },
+    { name: "Creative", patch: { creative: { ...DEFAULT_CREATIVE, look: "Night", intensity: 45 } } },
+    { name: "Curves", patch: { curves: { rgb: [[0, 0], [.4, .6], [1, 1]], enabled: false } } },
+    { name: "Color Wheels", patch: { colorWheels: { ...DEFAULT_WHEELS, shadows: { x: .2, y: -.4, lightness: 10 } } } },
     { name: "3D LUT", patch: { lut: { intensity: 45, table: parseCube(CUBE, "identity.cube") } } },
   ] satisfies { name: string; patch: Partial<TimelineClip> }[])("copies $name settings to another clip as one independent edit", ({ name, patch }) => {
     const onChange = vi.fn();
@@ -148,7 +151,7 @@ describe("clip effects", () => {
 
   it("adds, edits and removes effects independently", () => {
     render(<Harness />);
-    for (const name of ["Sharpen", "Gaussian blur", "Colour correction", "Vignette"]) add(name);
+    for (const name of ["Sharpen", "Gaussian blur", "Basic Corrections", "Vignette"]) add(name);
     fireEvent.change(screen.getByLabelText("Sharpen amount"), { target: { value: "120" } });
     fireEvent.change(screen.getByLabelText("Blur radius"), { target: { value: "6.5" } });
     fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "-1.2" } });
@@ -176,6 +179,62 @@ describe("clip effects", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(toggle);
     expect(screen.queryByLabelText("Vignette amount")).toBeNull();
+  });
+
+  it("edits new basic, Creative and vignette controls", () => {
+    render(<Harness />);
+    for (const name of ["Basic Corrections", "Creative", "Vignette"]) add(name);
+    for (const label of ["Temperature", "Tint", "Highlights", "Shadows", "Whites", "Blacks"]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "25" } });
+      expect(saved().colorCorrection[label.toLowerCase()]).toBe(25);
+    }
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Creative look" }), { key: "End" });
+    expect(saved().creative.look).toBe("Night");
+    for (const [label, key] of [["Creative intensity", "intensity"], ["Faded film", "fadedFilm"], ["Creative sharpen", "sharpen"], ["Vibrance", "vibrance"]]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "30" } });
+      expect(saved().creative[key]).toBe(30);
+    }
+    for (const key of ["amount", "midpoint", "roundness", "feather"]) {
+      fireEvent.change(screen.getByLabelText(`Vignette ${key}`), { target: { value: "20" } });
+      expect(saved().vignette[key]).toBe(20);
+    }
+    fireEvent.click(screen.getByRole("checkbox", { name: "Creative on" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset Creative" }));
+    expect(saved().creative).toEqual({ ...DEFAULT_CREATIVE, enabled: false });
+  });
+
+  it("adds, moves, removes and resets curve points with keyboard and numeric controls", () => {
+    render(<Harness />); add("Curves");
+    fireEvent.click(screen.getByRole("button", { name: "Add point" }));
+    expect(saved().curves.rgb).toEqual([[0, 0], [.5, .5], [1, 1]]);
+    fireEvent.change(screen.getByLabelText("Curve point output"), { target: { value: "75" } });
+    expect(saved().curves.rgb[1]).toEqual([.5, .75]);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "RGB point 2" }), { key: "ArrowLeft", shiftKey: true });
+    expect(saved().curves.rgb[1]).toEqual([.4, .75]);
+    fireEvent.click(screen.getByRole("button", { name: "Remove point" }));
+    expect(saved().curves.rgb).toEqual([[0, 0], [1, 1]]);
+    const combo = screen.getByRole("combobox", { name: "Curve channel" });
+    for (let i = 0; i < 4; i++) fireEvent.keyDown(combo, { key: "ArrowDown" });
+    fireEvent.change(screen.getByLabelText("Curve point output"), { target: { value: "70" } });
+    expect(saved().curves.hueVsSat).toEqual([[0, .7], [1, .7]]);
+    fireEvent.click(screen.getByRole("button", { name: "Reset curve" }));
+    expect(saved().curves.hueVsSat).toEqual([[0, .5], [1, .5]]);
+  });
+
+  it("edits each wheel independently and prevents locked wheel and curve changes", () => {
+    const view = render(<Harness />); add("Color Wheels");
+    for (const name of ["Shadows", "Midtones", "Highlights"]) {
+      fireEvent.keyDown(screen.getByRole("slider", { name: `${name} color` }), { key: "ArrowRight", shiftKey: true });
+      fireEvent.change(screen.getByLabelText(`${name} lightness`), { target: { value: "-25" } });
+      expect(saved().colorWheels[name.toLowerCase()]).toEqual({ x: .1, y: 0, lightness: -25 });
+    }
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Shadows color" }), { key: "Home" });
+    expect(saved().colorWheels.shadows).toEqual({ x: 0, y: 0, lightness: -25 });
+    const clip = saved(); view.unmount(); const change = vi.fn();
+    render(<ClipEffects clip={{ ...clip, curves: {} }} disabled onChange={change} />);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Shadows color" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: "RGB point 1" }), { key: "ArrowUp" });
+    expect(change).not.toHaveBeenCalled();
   });
 
   it("describes each effect in a tooltip rather than a second line", () => {
