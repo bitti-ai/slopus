@@ -61,7 +61,7 @@ export function GeneratorSharing({ templates }: { templates: GeneratorTemplate[]
     }} />
     {error && !choosing && <InfoBar severity="error" title="Couldn’t share generator templates" message={error} onClose={() => setError(null)} />}
     {message && <InfoBar severity="success" title={message} onClose={() => setMessage(null)} />}
-    {choosing && <ContentDialog title="Export generator templates" primaryText={busy ? "Exporting…" : "Export"} primaryDisabled={busy || selected.length === 0 || selected.length > 100}
+    {choosing && <ContentDialog title="Export generator templates" defaultButton="primary" primaryText={busy ? "Exporting…" : "Export"} primaryDisabled={busy || selected.length === 0 || selected.length > 100}
       onPrimary={() => void exportFile()} closeText="Cancel" closeDisabled={busy} disableEscape={busy} onClose={() => { setChoosing(false); setError(null); }}>
       <p>Choose up to 100 templates to share. Each model file and LoRA needs a download URL.</p>
       <div className="generator-sharing__choices">

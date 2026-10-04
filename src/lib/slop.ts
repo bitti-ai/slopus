@@ -34,7 +34,7 @@ export const portableGeneratorSchema = z.object({
   additionalSafetensors: z.array(z.object({ name, url, role: z.literal("promptEmbedding").optional() }).strict()).max(128).default([]),
 }).strict().superRefine((template, context) => {
   for (const field of generatorPathFields(template)) {
-    if (field.required && !template.sources[field.id]?.length) context.addIssue({ code: "custom", path: ["sources", field.id], message: `${field.label} needs a download URL.` });
+    if (field.required && !template.sources[field.id]?.length) context.addIssue({ code: "custom", path: ["sources", field.id], message: `Add a download URL for ${field.label}.` });
   }
   if (template.mode === "animate" && !template.additionalSafetensors.some((file) => file.role === "promptEmbedding")) {
     context.addIssue({ code: "custom", path: ["additionalSafetensors"], message: "Animate templates need a prompt embedding download URL." });
@@ -57,12 +57,12 @@ function validatedGenerator(value: unknown, label: string): PortableGenerator {
   const result = portableGeneratorSchema.safeParse(value);
   if (!result.success) {
     const issue = result.error.issues[0];
-    throw new Error(`${label}: ${issue.path.join(".") || "template"}: ${issue.message}`);
+    throw new Error(`${label}: ${issue.code === "custom" ? "" : `${issue.path.join(".") || "template"}: `}${issue.message}`);
   }
   return result.data;
 }
 
-/** Explicit projection is deliberate: machine paths, IDs, credentials and
+/** Explicit projection is deliberate: machine paths, IDs, API settings and
  * download/preparation state are never serialized into a shared template. */
 export function portableGenerator(template: GeneratorTemplate, library = loadLoras()): PortableGenerator {
   const sources: PortableGenerator["sources"] = {};
@@ -120,18 +120,20 @@ export function mergeGeneratorSlop(document: GeneratorSlop, current: GeneratorTe
     names.add(title.toLowerCase());
     const template = createGeneratorTemplate(title, data.modelType);
     const paths = { ...EMPTY_ENGINE_SETTINGS };
+    const usedLoraIds = new Set<string>();
     for (const field of ENGINE_PATH_FIELDS) paths[field.id] = data.sources[field.id]?.[0]?.url ?? "";
     return { ...template, defaultSteps: data.defaultSteps, attention: data.attention, mode: data.mode, motionCache: data.motionCache,
       paths, sources: structuredClone(data.sources),
       additionalSafetensors: data.additionalSafetensors.map((file) => ({ ...file, id: `additional-${crypto.randomUUID()}` })),
       loras: data.loras.map((entry) => {
-        let lora = loras.find((existing) => existing.url === entry.url && existing.stepOverride === entry.stepOverride && existing.samplingPreset === entry.samplingPreset);
+        let lora = loras.find((existing) => !usedLoraIds.has(existing.id) && existing.url === entry.url && existing.stepOverride === entry.stepOverride && existing.samplingPreset === entry.samplingPreset);
         if (!lora) {
           lora = { id: `lora-${crypto.randomUUID()}`, name: entry.name, path: "", url: entry.url,
             ...(entry.stepOverride !== undefined ? { stepOverride: entry.stepOverride } : {}),
             ...(entry.samplingPreset ? { samplingPreset: entry.samplingPreset } : {}) };
           loras.push(lora);
         }
+        usedLoraIds.add(lora.id);
         return { loraId: lora.id, enabled: entry.enabled, strength: entry.strength };
       }),
     } satisfies GeneratorTemplate;

@@ -34,7 +34,7 @@ Slopus brings an AI assistant, a scene generator, reusable references, a timelin
 - **RefMods.** Use pre-encoded H3 `.safetensors` references with Ref2VA generators for video, images, edits and icons. Set **Strength** and **Copies** per attachment.
 - **LoRAs.** Combine local or downloadable adapters in generator templates, with ordering, strength and step-count controls.
 - **LAN workers.** Generate on another Windows or Linux computer. Workers download available weights, receive local files as needed, and return results to your project.
-- **Generator templates.** Download weights or use local files. Save model and attention settings per template, with optional **MotionCache** for supported modes.
+- **Generator templates.** Download weights or use local files. Save model and attention settings per template, with optional **MotionCache** for supported modes. Import and export URL-based templates as portable [`.slop` bundles](docs/generator-weights.md#sharing-generator-templates).
 - **Timeline.** Video and audio tracks with thumbnails, waveforms, snapping, trimming, splitting, zoom and keyboard shortcuts. Transform, opacity, chroma key, fades and wipes, plus GPU effects (sharpen, blur, color correction, vignette, `.cube` LUTs) that can be bypassed.
 - **Image editor.** Generate images from prompts, objects and text, or open an image and describe whole-image or local edits. Keep originals, drafts and versions in the image bar.
 - **Export.** Video: MP4 in H.264, VP9 or AV1 (as your encoders allow) at a chosen resolution, frame rate and quality; exports keep running in the background. Images: pick one from the image bar and save it as JPG or PNG at a chosen size and quality.

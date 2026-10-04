@@ -13,6 +13,78 @@ the video default is used if eligible, otherwise the first available template.
 Icons use the selected template's steps, attention, MotionCache and LoRAs,
 including their step overrides.
 
+## Sharing generator templates
+
+Use **Export** in Settings → Generator to select one or more templates and save
+a `.slop` file. Each required model, configured optional file, and referenced
+LoRA must have an HTTP or HTTPS download URL. The export picker explains which
+templates need URLs before they can be shared. Downloaded templates retain their
+source URLs and GPU variants when exported; local paths and download state are
+excluded.
+
+Use **Import** to open a `.slop` file. Templates are added with new IDs; duplicate
+names receive numbered suffixes. Existing templates, the default generator, and
+unrelated settings are preserved. Custom LoRAs are included by URL, including
+their strength, activation, step override and sampling recipe. Matching LoRAs
+already in the recipient's library are reused. Import does not download weights;
+use the template's normal **Download** action when ready.
+
+### `.slop` version 1
+
+A `.slop` file is UTF-8 JSON, optionally with a BOM. It contains a versioned
+envelope and typed, independently versioned entries. This separates the file
+format from individual payloads so future entries can represent project
+templates, settings bundles, or other shareable data:
+
+```json
+{
+  "format": "slop",
+  "version": 1,
+  "items": [
+    {
+      "type": "generator-template",
+      "version": 1,
+      "data": {
+        "name": "Example generator",
+        "modelType": "minimax-h3",
+        "defaultSteps": 20,
+        "attention": "sage2",
+        "mode": "prompt",
+        "motionCache": false,
+        "sources": {
+          "transformer": [{ "url": "https://example.com/transformer.safetensors", "gpuModel": "", "minVramGb": 0 }],
+          "textEncoder": [{ "url": "https://example.com/text-encoder.safetensors", "gpuModel": "", "minVramGb": 0 }],
+          "videoVae": [{ "url": "https://example.com/video-vae.safetensors", "gpuModel": "", "minVramGb": 0 }],
+          "audioVae": [{ "url": "https://example.com/audio-vae.safetensors", "gpuModel": "", "minVramGb": 0 }]
+        },
+        "loras": [],
+        "additionalSafetensors": []
+      }
+    }
+  ]
+}
+```
+
+Version 1 supports 1–100 entries, with a 4 MB file limit. The current importer
+accepts only `generator-template` entries at payload version 1. Unsupported
+envelope versions, entry types, payload versions, and malformed entries reject
+the entire import before settings are changed. Unknown payload fields are
+rejected so settings from a newer version cannot silently disappear. Future
+payload changes must declare a supported version and migration explicitly.
+
+Generator payloads carry no machine IDs or paths. `sources` maps the existing
+weight roles (`transformer`, `textEncoder`, `videoVae`, `audioVae`, optional
+`tokenizer`) to ordered variant arrays. Each variant has `url`, optional
+`gpuModel` (default empty), and optional `minVramGb` (default zero). Prompt mode
+requires the four model roles; Animate requires transformer and both VAEs, plus
+an additional safetensor with `role: "promptEmbedding"`.
+
+LoRA entries embed `name`, `url`, `enabled`, and `strength`, plus optional
+`stepOverride` and `samplingPreset` (`"dmad-4step"`). Their array order is
+preserved. Additional safetensors carry `name`, `url`, and an optional
+`role: "promptEmbedding"`. Local download and preparation state is never shared.
+URLs must be HTTP(S) and cannot contain username/password credentials.
+
 ## LoRAs
 
 Settings → Generators includes a separate **LoRAs** library. **TaoMate 3-Step**

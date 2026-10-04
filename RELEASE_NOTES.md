@@ -4,6 +4,8 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Share URL-based generator templates using Import and Export in Generator settings. Versioned `.slop` JSON bundles include GPU download variants, LoRAs and additional safetensors, preserve existing templates on import, and leave local paths out of shared files.
+
 - Renamed Colour correction to Basic Corrections and added temperature, tint, highlights, shadows, whites and blacks alongside exposure, contrast and saturation.
 - Added Creative with eight built-in procedural looks and intensity, faded film, sharpen and vibrance controls; RGB and hue/saturation/luma curve editors; and shadow, midtone and highlight Color Wheels with individual lightness controls.
 - Vignette now includes midpoint, roundness and feather, plus negative amounts for lighter edges. Grading settings are saved with the project and applied consistently in preview and export.

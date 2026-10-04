@@ -79,6 +79,15 @@ describe("portable generator bundles", () => {
     expect(loadLoras()).toEqual(loras);
     expect(loadGeneratorTemplateSettings()).toEqual(before);
   });
+  it("preserves separate LoRA selections even when they share a URL and recipe", () => {
+    const template = minimaxOriginalTemplate();
+    template.loras = [{ loraId: "a", enabled: true, strength: .5 }, { loraId: "b", enabled: true, strength: .75 }];
+    const library = ["a", "b"].map((id) => ({ id, name: id, path: "", url: "https://example.com/adapter" }));
+    const [imported] = importGeneratorSlop(serializeGeneratorSlop([template], library));
+    const reopened = loadGeneratorTemplateSettings().templates.find(({ id }) => id === imported.id)!;
+    expect(reopened.loras?.map(({ strength }) => strength)).toEqual([.5, .75]);
+    expect(new Set(reopened.loras?.map(({ loraId }) => loraId)).size).toBe(2);
+  });
 });
 
 describe("slop validation", () => {

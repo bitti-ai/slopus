@@ -18,13 +18,13 @@ afterEach(() => { cleanup(); delete (window as unknown as Record<string, unknown
 it("exports only chosen URL templates through the native save dialog", async () => {
   const template = minimaxOriginalTemplate();
   render(<GeneratorSharing templates={[createGeneratorTemplate("Local setup"), template, { ...template, id: "other", name: "Other" }]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Export", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Export" }));
   const dialog = within(screen.getByRole("dialog", { name: "Export generator templates" }));
   expect((dialog.getByRole("checkbox", { name: "Export Local setup" }) as HTMLInputElement).disabled).toBe(true);
-  expect(dialog.getByText(/Transformer weights needs a download URL/)).toBeTruthy();
+  expect(dialog.getByText(/Add a download URL for Transformer weights/)).toBeTruthy();
   fireEvent.click(dialog.getByRole("checkbox", { name: "Export Other" }));
   vi.mocked(invoke).mockResolvedValue(true);
-  fireEvent.click(dialog.getByRole("button", { name: "Export", exact: true }));
+  fireEvent.click(dialog.getByRole("button", { name: "Export" }));
   await screen.findByText("Exported 1 generator template.");
   const [command, args] = vi.mocked(invoke).mock.calls[0];
   expect(command).toBe("export_slop_file");
@@ -38,7 +38,7 @@ it("imports from the Generators page and updates its list without downloading or
   vi.mocked(invoke).mockImplementation(async (command) => command === "import_slop_file" ? serializeGeneratorSlop([shared]) : null as never);
   const previous = loadGeneratorTemplateSettings();
   render(<SettingsView onClose={() => undefined} />);
-  fireEvent.click(screen.getByRole("button", { name: "Import", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Import" }));
   await screen.findByText("Added 1 generator template.");
   expect(screen.getByRole("button", { name: "Edit Shared generator generator" })).toBeTruthy();
   expect(loadGeneratorTemplateSettings().templates).toHaveLength(previous.templates.length + 1);
@@ -49,7 +49,7 @@ it("imports from the Generators page and updates its list without downloading or
 it("does not mutate on cancellation or malformed files, and reports native read errors", async () => {
   const before = loadGeneratorTemplateSettings();
   render(<GeneratorSharing templates={before.templates} />);
-  fireEvent.click(screen.getByRole("button", { name: "Import", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Import" }));
   await waitFor(() => expect((screen.getByRole("button", { name: "Import" }) as HTMLButtonElement).disabled).toBe(false));
   expect(screen.queryByText(/Added/)).toBeNull();
   expect(loadGeneratorTemplateSettings()).toEqual(before);
