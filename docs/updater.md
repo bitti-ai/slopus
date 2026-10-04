@@ -6,19 +6,22 @@ is explicit and restarts Slopus. Close the project and finish or cancel queued
 work first; unsaved project changes or videos also block installation. Failed
 checks and downloads can be retried from Settings.
 
-Browser previews and debug builds do not check for updates. Portable release
-builds include a `slopus-portable` marker beside `Slopus.exe`, both in the ZIP
-and in the unpacked build folder. They check on startup and in Settings, show
+Browser previews and debug builds do not check for updates. On Windows, release
+builds enable installer updates only when a Slopus NSIS or MSI uninstall entry
+registers the running executable's exact installation folder. Detection checks
+both user and machine registrations and both registry views, including custom
+installation folders and existing installations. Unregistered copies of
+`Slopus.exe` and `slopfab.dll` are portable automatically; no marker file is needed.
+They check on startup and in Settings, show
 available versions and release notes, and offer **Open releases** to open
 https://github.com/bitti-ai/slopus/releases in the default browser. They never
 download or run an installer, and opening the page does not require closing a
 project or stopping background work.
 
 To update a portable copy, download the newer portable ZIP, close Slopus, and
-replace `Slopus.exe` and `slopfab.dll` together in the existing folder. Keep the
-`slopus-portable` marker beside the executable. Settings, projects and downloaded
-models are preserved. Older portable ZIPs omitted this marker; update those
-copies manually once to receive the corrected update behavior.
+replace `Slopus.exe` and `slopfab.dll` together in the existing folder. Settings,
+projects and downloaded models are preserved. A portable copy remains portable
+even if another copy of Slopus is installed elsewhere on the same computer.
 
 ## Pre-release tests
 

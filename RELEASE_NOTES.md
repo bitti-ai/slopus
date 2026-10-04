@@ -41,7 +41,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.
-- Portable builds show available updates and open GitHub releases for manual updating instead of running an installer.
+- Loose Windows executables are automatically detected as portable without a marker file. Portable builds show available updates and open GitHub releases for manual updating; NSIS and MSI installations are recognized by their registered installation folder and can update in place.
 - Agent chat uses message bubbles with formatted replies and avoids repeating completed responses.
 - New empty images created while browsing child images stay in the same image family.
 - Renamed the Look effect to Opacity and removed its Temperature control. Temperature adjustment is available in Basic Corrections.

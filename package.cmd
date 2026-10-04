@@ -114,9 +114,7 @@ echo        Folder:    %OUTPUT_STEM%-portable\
 
 echo.
 echo [5/5] Creating the portable archive...
-rem Include the marker so portable copies offer manual updates from GitHub.
-> "%OUTPUT_DIR%\slopus-portable" echo Portable build - download updates from https://github.com/bitti-ai/slopus/releases
-if errorlevel 1 goto :fail
+rem Loose binaries are portable automatically; no marker file is needed.
 powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $env:OUTPUT_DIR '*') -DestinationPath $env:OUTPUT_ZIP -CompressionLevel Optimal -Force" || goto :fail
 call :package_worker || goto :fail
 call :package_linux_worker || goto :fail

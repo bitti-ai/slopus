@@ -14,6 +14,7 @@ mod media;
 mod native_shell;
 mod project;
 mod slop;
+mod updater_mode;
 mod weights;
 mod window;
 mod worker;

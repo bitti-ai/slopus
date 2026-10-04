@@ -7,15 +7,7 @@ use std::io;
 /// Portable copies check for updates but open the release page for manual updates.
 #[tauri::command]
 fn app_updater_mode() -> Result<&'static str, String> {
-    if cfg!(debug_assertions) { return Ok("disabled"); }
-    /* On Linux the updater replaces only an AppImage (whose runtime sets
-       APPIMAGE); .deb and .rpm installs belong to the package manager. */
-    if cfg!(target_os = "linux") {
-        return Ok(if std::env::var_os("APPIMAGE").is_some() { "installed" } else { "portable" });
-    }
-    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let directory = exe.parent().ok_or("Could not locate the application folder.")?;
-    Ok(if directory.join("slopus-portable").exists() { "portable" } else { "installed" })
+    crate::updater_mode::detect()
 }
 
 #[tauri::command]
