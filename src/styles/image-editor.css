@@ -41,8 +41,7 @@
 .image-center { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--layer); }
 .image-canvas-tools { grid-column: 1 / -1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); min-height: var(--space-7); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line); }
 .image-generate-button { flex-shrink: 0; white-space: nowrap; }
-.image-tools__start, .image-tools__end { min-width: 0; display: flex; align-items: center; gap: var(--space-1); }
-.image-tools__end { justify-content: flex-end; }
+.image-tools__start, .image-tools__center { min-width: 0; display: flex; align-items: center; gap: var(--space-1); }
 .image-generator { width: 160px; min-width: 0; flex-shrink: 1; }
 /* Editable: typed percentages up to "800%" plus the 32px drop-down button. */
 .image-zoom { width: 112px; min-width: 112px; }
