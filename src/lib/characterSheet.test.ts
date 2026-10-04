@@ -85,7 +85,7 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
   expect(reopened.assets).toHaveLength(2);
   expect(reopened.assets[0]).toEqual(original.assets[0]);
   expect(reopened.assets[1]).toMatchObject({ id, name: "Character sheet - Hero", mimeType: "image/png", ...result, imageGeneration: { usedSeed: seed } });
-  expect(reopened.assets[1].parentAssetId).toBeUndefined();
+  expect(reopened.assets[1].parentAssetId).toBe("source");
   expect(reopened.imageScene!.outputAssetId).toBe(changed ? "source" : id);
   expect(reopened.generationJobs).toEqual(original.generationJobs);
   expect(reopened.timeline).toEqual(original.timeline);

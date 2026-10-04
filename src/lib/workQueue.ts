@@ -535,7 +535,7 @@ export class WorkQueue {
         ...(current.imageScene?.outputAssetId === sheet.sourceId && JSON.stringify(current.imageScene) === work.snapshot
           ? { thumbnail: saved.relativePath, imageScene: { ...scene, outputAssetId: work.id } } : {}),
         assets: [...current.assets, { id: work.id, kind: "image", name: sheet.name, ...saved, mimeType: "image/png",
-          imageGeneration: generation, createdAt: new Date().toISOString() }],
+          parentAssetId: imageFamilyRoot(current.assets, sheet.sourceId), imageGeneration: generation, createdAt: new Date().toISOString() }],
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Character sheet saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Character sheet created; project save failed", error: describeDiagnosticError(reason) }); }
