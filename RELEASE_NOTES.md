@@ -4,6 +4,7 @@ This alpha update adds Linux support, LAN generation workers, expanded color gra
 
 ## What's new
 
+- Extend an image from the Image toolbar's Template menu. Draw, move or resize a bounding box to generate beyond any edge, with optional prompts and references, steps and seed controls. Original pixels inside the box stay unchanged, and the result is saved as a child image in lossless PNG format.
 - Share URL-based generator templates using Import and Export in Generator settings. Versioned `.slop` JSON bundles include GPU download variants, LoRAs and additional safetensors, preserve existing templates on import, and leave local paths out of shared files.
 - Renamed Colour correction to Basic Corrections and added temperature, tint, brightness, highlights, shadows, whites and blacks alongside exposure, contrast and saturation.
 - Added Creative with eight built-in procedural looks and intensity, faded film, sharpen and vibrance controls; RGB and hue/saturation/luma curve editors; and shadow, midtone and highlight Color Wheels with individual lightness controls.

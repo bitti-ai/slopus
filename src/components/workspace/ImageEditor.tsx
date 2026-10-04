@@ -16,6 +16,9 @@ import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
 import { ImageBar } from "./ImageBar";
 import { CharacterSheetSettings } from "./CharacterSheetSettings";
+import { ExtendSettings } from "./ExtendSettings";
+import { ExtendCanvas } from "./ExtendCanvas";
+import { initialExtendBounds, type ExtendOptions } from "../../lib/extendImage";
 import type { CharacterSheetOptions } from "../../lib/characterSheet";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { DebugPromptDialog } from "./DebugPromptDialog";
@@ -41,10 +44,11 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
   </PropRow>;
 }
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [] }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
   onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string, options: CharacterSheetOptions) => void;
+  onGenerateExtend?: (template: GeneratorTemplate, sourceId: string, options: ExtendOptions) => void;
   onOpenGenerator?: (jobId: string) => void;
   onOpenReferences?: () => void;
 }) {
@@ -68,7 +72,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean; source: "bar" | "canvas" } | null>(null);
   const templateMenu = useContextMenu();
   const [templateSourceId, setTemplateSourceId] = useState<string | null>(null);
-  useEffect(() => setTemplateSourceId(null), [scene.outputAssetId]);
+  const [extendSourceId, setExtendSourceId] = useState<string | null>(null);
+  const [extendOptions, setExtendOptions] = useState<ExtendOptions | null>(null);
+  const extendMode = extendSourceId !== null && extendSourceId === scene.outputAssetId;
+  useEffect(() => { setTemplateSourceId(null); setExtendSourceId(null); }, [scene.outputAssetId]);
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -134,7 +141,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     };
     window.addEventListener("blur", stopPan);
     return () => { element.removeEventListener("wheel", wheel); window.removeEventListener("blur", stopPan); };
-  }, []);
+  }, [extendMode]);
   const endPan = (event: PointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId !== event.pointerId) return;
     event.stopPropagation();
@@ -391,7 +398,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   useShortcut(["Ctrl+Z"], () => { if (!undo.current.length) return false; history(true); }, { scope: editorRoot });
   useShortcut(["Ctrl+Y", "Ctrl+Shift+Z"], () => { if (!redo.current.length) return false; history(false); }, { scope: editorRoot });
-  useShortcut("Delete", removeSelected, { scope: viewport });
+  useShortcut("Delete", removeSelected, { scope: viewport, enabled: !extendMode });
 
   /* Canvas tools: a radio group of icon toggles with one-letter keys. */
   const TOOLS = [
@@ -402,7 +409,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { id: "group", label: "Draw group", key: "G", icon: <Group16 />, onIcon: <Group16Filled /> },
     ] as const),
   ] as const;
-  const chooseTool = (id: typeof drawKind) => { setDrawKind(id); if (id) setBoxes(true); };
+  const chooseTool = (id: typeof drawKind) => { if (extendMode) return; setDrawKind(id); if (id) setBoxes(true); };
   useShortcut("V", () => chooseTool(null), { scope: editorRoot });
   useShortcut("E", () => chooseTool("object"), { scope: editorRoot, enabled: imageRoot });
   useShortcut("O", () => chooseTool("object"), { scope: editorRoot, enabled: !imageRoot });
@@ -501,7 +508,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {/* Generate and the generator lead; canvas tools and view controls
           share the centered group. */}
       <div className="image-tools__start">
-        <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>
+        {(!extendMode || active) && <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>}
         <ComboBox
           className="image-generator"
           aria-label="Generator"
@@ -514,6 +521,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         />
       </div>
       <div className="image-tools__center">
+        {extendMode ? <span className="extend-tool-active"><Boxes16Filled aria-hidden="true" /> Extend box</span> : <>
         <div className="image-tools__group" role="radiogroup" aria-label="Canvas tool" onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault();
@@ -548,12 +556,18 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           options={zoomOptions}
           onChange={(value) => { if (value === "fit") fit(); else zoomTo(Number(value)); }}
         />
+        </>}
       </div>
       <div className="image-tools__end">
         <button type="button" className="secondary-button" aria-haspopup="menu" aria-expanded={templateMenu.isOpen}
           disabled={!output || (!output.relativePath && !output.sourcePath)}
           onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
-            onSelect: () => setTemplateSourceId(output!.id),
+            onSelect: () => { setExtendSourceId(null); setTemplateSourceId(output!.id); },
+          }, { label: "Extend", icon: <Boxes16 />, disabled: !output?.width || !output?.height || Boolean(output?.imageDraft),
+            onSelect: () => {
+              setTemplateSourceId(null); setExtendSourceId(output!.id); setDrawKind(null); setContextMenu(null); setImageMenu(null);
+              setExtendOptions({ bounds: initialExtendBounds(output!.width!, output!.height!), prompt: "", steps: scene.steps, seed: scene.seed });
+            },
           }], { "aria-label": "Image templates", placement: "bottom-end" })}>
           Template <ChevronDown14 aria-hidden="true" />
         </button>
@@ -603,6 +617,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">
+      {extendMode && output && extendOptions ? <ExtendCanvas source={output} folderPath={folderPath} bounds={extendOptions.bounds}
+        onChange={(bounds) => setExtendOptions((current) => current ? { ...current, bounds } : current)} disabled={Boolean(active)} /> :
       <div ref={viewport} tabIndex={0} className={`image-viewport${panning ? " panning" : ""}`}
         onContextMenu={(event) => { event.preventDefault(); openCanvasMenu(event.clientX, event.clientY); }}
         onKeyDown={(event) => {
@@ -638,14 +654,18 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           {draftBox && !pointer.current?.id && <rect className="image-box-draft" {...{ x: draftBox.x, y: draftBox.y, width: draftBox.width, height: draftBox.height }} />}
         </svg>
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
-      </div></div>
+      </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendOptions.bounds.width || "-"} \u00d7 ${extendOptions.bounds.height || "-"} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
-    {output && templateSourceId === output.id ? <CharacterSheetSettings
+    {extendMode && output && extendOptions ? <ExtendSettings config={config} source={output} options={extendOptions} onChange={setExtendOptions}
+      references={promptReferences} missingLabel={missingReference} busy={Boolean(active)}
+      disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
+      onExecute={() => attempt(() => onGenerateExtend?.(template!, output.id, extendOptions))} onClose={() => setExtendSourceId(null)}
+    /> : output && templateSourceId === output.id ? <CharacterSheetSettings
       config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
       disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
       onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
