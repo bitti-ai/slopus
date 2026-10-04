@@ -276,14 +276,17 @@ export class WorkQueue {
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
     const views = compileCharacterSheet(config, source, frontRelativePath, options);
+    config.imageScene = { ...(config.imageScene ?? createImageScene()),
+      steps: generationStepsWithLoras(options?.steps ?? current.imageScene?.steps ?? template.defaultSteps, config),
+      seed: options?.seed ?? current.imageScene?.seed ?? -1 };
     const dimensions = characterSheetDimensions(config.settings.resolution, options?.height);
     const firstView = CHARACTER_SHEET_ORDER[0];
     const { width, height } = dimensions[firstView];
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { jobId: `${id}-view-${firstView + 1}`, stillImage: true, frames: 1, prompt: views[firstView].prompt,
-      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(current.imageScene?.steps ?? template.defaultSteps, config),
-      seed: imageGenerationSeed(current.imageScene?.seed ?? -1),
+      canvasWidth: width, canvasHeight: height, steps: config.imageScene.steps,
+      seed: imageGenerationSeed(config.imageScene.seed),
       referencePaths: views[firstView].references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, views[firstView].references) };
     this.work.set(id, { id, image: true, characterSheet: { views, dimensions, sourceId, name: `Character sheet - ${source.name}`, index: 0 },

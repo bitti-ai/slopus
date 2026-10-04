@@ -14,7 +14,7 @@ export const CHARACTER_SHEET_VIEWS = [
 export const CHARACTER_SHEET_ORDER = [1, 0, 2, 3] as const;
 
 export const CHARACTER_SHEET_HEIGHTS = [512, 1024, 1536, 2048] as const;
-export interface CharacterSheetOptions { prompt: string; height?: number }
+export interface CharacterSheetOptions { prompt: string; height?: number; steps?: number; seed?: number }
 export const emptyCharacterSheetOptions = (): CharacterSheetOptions => ({ prompt: "" });
 
 export function characterSheetDimensions(resolution: ProjectConfig["settings"]["resolution"], requestedHeight?: number) {
@@ -26,6 +26,8 @@ export function characterSheetDimensions(resolution: ProjectConfig["settings"]["
 }
 
 export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsset, frontRelativePath: string, options: CharacterSheetOptions = emptyCharacterSheetOptions()) {
+  if (options.steps !== undefined && (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000)) throw new Error("Steps must be a whole number from 2 to 1000.");
+  if (options.seed !== undefined && (!Number.isSafeInteger(options.seed) || options.seed < -1)) throw new Error("Seed must be -1 for random or a whole number from 0 to 9007199254740991.");
   let sourceReferenceId = "character-sheet-source";
   while (config.references.some((reference) => reference.id === sourceReferenceId)) sourceReferenceId += "-source";
   const reference: ProjectReference = {

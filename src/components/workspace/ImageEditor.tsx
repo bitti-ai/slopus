@@ -646,7 +646,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     {output && templateSourceId === output.id ? <CharacterSheetSettings
-      config={config} source={output} references={promptReferences} missingLabel={missingReference} busy={Boolean(active)}
+      config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
       disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
       onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
     /> : <aside className="image-inspector" aria-label="Image node inspector">

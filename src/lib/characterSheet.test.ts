@@ -126,6 +126,35 @@ it("rejects unsupported sheet heights before queueing generation", () => {
   expect(queue.getSnapshot()).toHaveLength(0);
 });
 
+it.each([0, 12345, -1])("uses template steps and seed %s for every view and saved settings", async (seed) => {
+  const { queue, session } = setup();
+  const original = structuredClone(session.getSnapshot().config.imageScene);
+  const options = { prompt: "", steps: 37, seed };
+  queue.enqueueCharacterSheet(session, template, "source", options);
+  options.steps = 10; options.seed = 999;
+  const usedSeed = queue.getSnapshot()[0].settings.seed;
+  expect(Number.isSafeInteger(usedSeed)).toBe(true);
+  expect(usedSeed).toBeGreaterThanOrEqual(0);
+  if (seed !== -1) expect(usedSeed).toBe(seed);
+  expect(queue.getSnapshot()[0].settings.steps).toBe(37);
+  for (let index = 0; index < 4; index++) {
+    const request = await requestAt(index);
+    expect(request).toMatchObject({ steps: 37, seed: usedSeed });
+    expect(session.getSnapshot().config.imageScene).toEqual(original);
+    emit("framesReady", request.jobId);
+  }
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  expect(reopened.assets.at(-1)?.imageGeneration).toMatchObject({ usedSeed, scene: { steps: 37, seed } });
+});
+
+it.each([{ steps: 1 }, { steps: 1001 }, { steps: 2.5 }, { steps: NaN }, { seed: -2 }, { seed: 0.5 }, { seed: Number.MAX_SAFE_INTEGER + 1 }])("rejects invalid template sampling settings %j", (settings) => {
+  const { queue, session } = setup();
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", ...settings })).toThrow();
+  expect(queue.getSnapshot()).toHaveLength(0);
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+});
+
 it.each(["cancelled", "failed"])("discards partial views after the second render is %s", async (state) => {
   const { queue, session } = setup();
   queue.enqueueCharacterSheet(session, template, "source");

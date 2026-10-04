@@ -47,6 +47,10 @@ it("opens template settings and executes only after configuring prompts and clot
   const before = structuredClone(queue.project(project).getSnapshot().config);
   choose("Character sheet resolution", "2048 px high");
   expect(panel.getByText(/Sheet size:/)).toHaveTextContent("5504 × 2048 px");
+  fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "" } });
+  expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
+  fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "37" } });
+  fireEvent.change(panel.getByRole("spinbutton", { name: "Seed" }), { target: { value: "0" } });
   expect(panel.queryByRole("textbox", { name: "Clothing and accessories" })).not.toBeInTheDocument();
   const prompt = panel.getByRole("textbox", { name: "Character sheet prompt" });
   typePrompt(prompt, "Soft studio lighting. Wear");
@@ -56,7 +60,7 @@ it("opens template settings and executes only after configuring prompts and clot
   expect(prompt.querySelector(".prompt-chip")).toHaveTextContent("Red coat");
   expect(queue.project(project).getSnapshot().config).toEqual(before);
   fireEvent.click(panel.getByRole("button", { name: "Execute" }));
-  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048 });
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048, steps: 37, seed: 0 });
   fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
   expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
   fireEvent.click(toolbar.getByRole("button", { name: "Template" }));
