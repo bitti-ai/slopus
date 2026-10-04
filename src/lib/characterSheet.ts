@@ -4,10 +4,10 @@ import { outputDimensions } from "./export";
 import type { ProjectAsset, ProjectConfig, ProjectReference } from "./project";
 
 export const CHARACTER_SHEET_VIEWS = [
-  { label: "Upper body front", description: "A frontal upper-body shot framed from the waist up, looking straight at the camera. Include the entire head, both shoulders, arms and torso down to the waist, clearly showing the upper-body clothing. Do not crop tightly around the face or shoulders." },
-  { label: "Full body front", description: "A full body front view, facing directly toward the camera, standing in a neutral pose. Show the entire figure from head to feet without cropping." },
-  { label: "Full body side", description: "A full body side view, in strict left-facing profile, standing in a neutral pose. The head, shoulders, torso, hips and feet all face left, perpendicular to the camera. Show only the profile, with no turn toward the camera or three-quarter angle. Show the entire figure from head to feet without cropping." },
-  { label: "Full body back", description: "A full body back view, facing directly away from the camera, standing in a neutral pose. The camera is directly behind the character: show the back of the head, back of the shoulders and outfit, and the heels. The head, torso, hips and feet all face away together. The face, eyes and front of the chest are hidden. No head turn, over-the-shoulder look, profile or three-quarter angle. Show the entire figure from head to feet without cropping." },
+  { label: "Upper body front", description: "Waist-up front view, facing the camera, entire head visible." },
+  { label: "Full body front", description: "Full body front view, facing the camera, neutral standing pose, head to feet visible." },
+  { label: "Full body side", description: "Full body side view, head and body in left-facing profile, neutral standing pose, head to feet visible." },
+  { label: "Full body back", description: "Full body back view, head and body facing away, face hidden, neutral standing pose, head to feet visible." },
 ] as const;
 
 // Establish the complete outfit before asking for any other camera angle.
@@ -32,25 +32,23 @@ export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsse
   while (config.references.some((reference) => reference.id === sourceReferenceId)) sourceReferenceId += "-source";
   const reference: ProjectReference = {
     id: sourceReferenceId, kind: "text", name: source.name,
-    description: "The character in the source image. Preserve the exact identity, body proportions, skin tone, hairstyle and hair color. Preserve clothing, footwear, accessories, materials and colors unless the template instructions explicitly change them. Preserve the source's visual medium and rendering style. The reference pose, gaze, camera angle and framing are not to be copied; use the required output view.",
+    description: "Keep the same character and visual style.",
     intendedUse: ["character"], createdAt: source.createdAt,
     images: [{ id: "character-sheet-source-image", name: source.name, relativePath: source.relativePath, sourcePath: source.sourcePath }],
   };
   return CHARACTER_SHEET_VIEWS.map((view, index) => {
     const wardrobe = index === 1
-      ? "Apply the template's clothing instructions and references to establish the outfit. Where no change is requested, copy visible garments from <Picture 1> exactly. For clothing outside its crop, complete one coherent outfit for this character; this full body front view will define the outfit for all other views."
-      : "<Picture 1> is the original identity reference. <Picture 2> is the full body front view of this same character and the fixed wardrobe reference. Use it for outfit design only, not its pose, gaze or camera angle. Reproduce that exact outfit from the requested camera angle. Keep identical garment types, layers, cuts, lengths, fit, seams, closures, patterns, colors, fabric, footwear, jewelry and accessories. Do not add, remove, replace, restyle or recolor any clothing. Preserve anatomical left/right placement of asymmetric details when turning the character. Infer hidden surfaces consistently with the same garments; details on the front stay on the front and need not be visible from other angles." + (index === 0 ? " Use frontal waist-up framing while retaining the exact visible upper-body clothing." : index === 2 ? " Rotate the character into the required strict left-facing profile." : " Rotate the character 180 degrees from the wardrobe reference into the required straight rear view. Show the back of the outfit, without moving front closures or front graphics onto its back.");
-    const orientation = `Required output view (takes precedence over reference poses and template pose or framing instructions): ${view.description}`;
+      ? "Keep the outfit from <Picture 1> unless the template instructions change it; complete any unseen clothing."
+      : "Use <Picture 1> for identity and match the outfit in <Picture 2> from the requested angle.";
     const selectedReference = { ...reference,
-      description: `${reference.description} ${index === 3 ? "Identity must remain recognizable from the rear silhouette, hair and outfit; facial features are out of view." : "Retain the same facial features wherever visible from the required angle."} ${orientation}`,
       images: index === 1 ? reference.images : [...reference.images!, { id: "character-sheet-front", name: "Full body front wardrobe reference", relativePath: frontRelativePath }],
     };
     const instructions = options.prompt.trim() ? `Template instructions: ${options.prompt.trim()}` : "";
-    const scene = createImageScene(`Create a character reference view of @[ref:${reference.id}]. ${view.description} ${wardrobe} Preserve the character's identity. Use a plain light gray background and soft even studio lighting unless the template instructions specify otherwise. Render no text, labels, borders, additional characters or multiple views. Match the source image's visual style.\n${instructions}\n${orientation}`);
+    const scene = createImageScene(`One character reference view of @[ref:${reference.id}]. ${wardrobe} Plain light gray background, soft even lighting, no text.\n${instructions}\nRequired view: ${view.description}`);
     scene.style = { mode: "art", medium: "the same visual medium and rendering style as <Picture 1>", aesthetics: "", lighting: "", detail: "" };
     return compileImagePrompt({
       ...config, settings: { ...config.settings, defaultLook: null }, references: [selectedReference, ...config.references],
       imageScene: scene,
-    }, { referenceTransformations: { [reference.id]: `Retain identity, body proportions, hair, clothing and visual style, but replace the reference pose, gaze, camera angle and framing. ${orientation}` } });
+    }, { referenceTransformations: { [reference.id]: "Keep the character's identity; use the requested outfit and view." } });
   });
 }

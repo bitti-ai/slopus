@@ -64,19 +64,15 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
     expect(request.canvasHeight).toBe(1024);
     if (index > 0) {
       expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: `${id}-view-2`, index: 1 });
-      expect(request.prompt).toContain("<Picture 2> is the full body front view of this same character and the fixed wardrobe reference");
-      expect(request.prompt).toContain("Do not add, remove, replace, restyle or recolor any clothing");
+      expect(request.prompt).toContain("match the outfit in <Picture 2> from the requested angle");
     }
     expect(request.imageEdit).toBeUndefined();
-    expect(request.prompt).toContain(["frontal upper-body shot framed from the waist up", "full body front view", "full body side view", "full body back view"][viewIndex]);
-    expect(request.prompt).toContain("clothing, footwear, accessories");
+    expect(request.prompt).toContain(["Waist-up front view", "Full body front view", "Full body side view", "Full body back view"][viewIndex]);
+    expect(request.prompt).toContain("Keep the same character and visual style");
     expect(request.prompt).toContain("<Picture 1>");
     expect(request.prompt).toContain("<Subject 1> (appears in [Shot 1]): partially_preserved");
     if (viewIndex === 3) {
-      expect(request.prompt).toContain("The camera is directly behind the character");
-      expect(request.prompt).toContain("The face, eyes and front of the chest are hidden");
-      expect(request.prompt).toContain("Rotate the character 180 degrees from the wardrobe reference");
-      expect(request.prompt).not.toContain("requested side or back view");
+      expect(request.prompt).toContain("head and body facing away, face hidden");
     }
     expect(request.prompt).not.toContain("A still photograph");
     expect(session.getSnapshot().config.assets).toEqual(original.assets);
@@ -133,7 +129,7 @@ it("rejects unsupported sheet heights before queueing generation", () => {
   expect(queue.getSnapshot()).toHaveLength(0);
 });
 
-it("keeps the required rear orientation after template instructions and in reference retention", () => {
+it("keeps the required view after template instructions without repeating orientation details", () => {
   const { session } = setup();
   const config = session.getSnapshot().config;
   const snapshot = structuredClone(config);
@@ -143,16 +139,11 @@ it("keeps the required rear orientation after template instructions and in refer
   const back = views[3].prompt;
   const retention = back.split("retention_analysis:\n")[1].split("\n\ndetailed_description:")[0];
   expect(retention).toContain("partially_preserved");
-  expect(retention).toContain("replace the reference pose, gaze, camera angle and framing");
-  expect(retention).toContain("A full body back view");
+  expect(retention).toContain("use the requested outfit and view");
   expect(retention).not.toContain("fully_preserved");
   const afterTemplate = back.slice(back.indexOf("Template instructions:"));
-  expect(afterTemplate).toContain("takes precedence over reference poses and template pose or framing instructions");
-  expect(afterTemplate).toContain("The face, eyes and front of the chest are hidden");
-  expect(back).toContain("without moving front closures or front graphics onto its back");
-  expect(back).not.toContain("Retain the same facial features wherever visible");
-  expect(views[2].prompt).toContain("head, shoulders, torso, hips and feet all face left");
-  expect(views[1].prompt).toContain("Retain the same facial features wherever visible");
+  expect(afterTemplate).toContain("Required view: Full body back view, head and body facing away, face hidden");
+  expect(views[2].prompt).toContain("head and body in left-facing profile");
   expect(config).toEqual(snapshot);
 });
 
@@ -244,7 +235,7 @@ it("conditions every view on prompt references and freezes the requested outfit 
     expect(request.prompt).not.toContain("@[ref:");
     expect(request.prompt).not.toContain("Changed after execution");
     expect(request.prompt).toContain(`<Subject 2> is Red coat, providing appearance from <Picture ${index === 0 ? 2 : 3}>`);
-    if (index === 0) expect(request.prompt).toContain("Apply the template's clothing instructions and references to establish the outfit");
+    if (index === 0) expect(request.prompt).toContain("Keep the outfit from <Picture 1> unless the template instructions change it");
     emit("framesReady", request.jobId);
   }
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));

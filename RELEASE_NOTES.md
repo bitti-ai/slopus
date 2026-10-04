@@ -38,7 +38,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - LAN workers select weight downloads using their own GPU type and VRAM, even when a different variant is already downloaded on the client.
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.
 - The timeline playhead follows playback without waiting for editor updates.
-- Character sheets give side and back views explicit orientation instructions, keeping reference identity and clothing without copying the front-facing pose.
+- Character sheet prompts focus on each view's essential framing and orientation, with concise instructions for consistent identity and clothing.
 - Extend bounding box edges gently snap to nearby original image borders when drawing, moving or resizing. Box dimensions use 32-pixel increments and stay within the maximum generation resolution.
 - Extend uses the placed original in its inpainting canvas without a separately resized copy as a reference, preventing a duplicate scene beneath the preserved image. New areas regenerate through the outer edges.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
