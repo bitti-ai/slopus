@@ -62,10 +62,13 @@ pub(super) fn configure_request(
         let step = edit.edits.first().ok_or("Add an image edit before generating.")?;
         api.set_prompt(handle, &step.prompt)?;
         let bounds = [step.x, step.y, step.width, step.height];
+        // Ordinary edits blend inward. Extend replaces padding all the way to
+        // the canvas edge; its finalizer restores the original intersection.
+        let feather = step.feather.unwrap_or(16);
         if let Some(pixels) = &request.image_edit_pixels {
-            api.set_image_edit_rgb(handle, pixels, request.canvas_width, request.canvas_height, bounds)?;
+            api.set_image_edit_rgb(handle, pixels, request.canvas_width, request.canvas_height, bounds, feather)?;
         } else {
-            api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds)?;
+            api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds, feather)?;
         }
     } else {
         api.set_resolution(handle, request.canvas_width, request.canvas_height)?;

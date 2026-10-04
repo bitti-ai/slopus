@@ -304,7 +304,8 @@ export class WorkQueue {
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
     const compiled = compileExtendImage(config, source, sourceRelativePath, options);
-    const referencePaths = [projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!,
+    // Reference only real scene content, never the ungenerated canvas padding.
+    const referencePaths = [projectItemPath(session.record.folderPath, { relativePath: `cache/extend-images/${id}/original.png` })!,
       ...compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))];
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
       canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),

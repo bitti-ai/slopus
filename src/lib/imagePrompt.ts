@@ -4,7 +4,7 @@ import { SHOT_TAG_GROUPS } from "./shot-tags";
 
 /** Shared by generation and Debug Prompt. H3's base three-field / reference
  * six-section contracts still apply to a single silent image. */
-export function compileImagePrompt(config: ProjectConfig, options: { referenceTransformations?: Readonly<Record<string, string>> } = {}) {
+export function compileImagePrompt(config: ProjectConfig, options: { referenceTransformations?: Readonly<Record<string, string>>; sourceTreatment?: "outpaint" } = {}) {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
   // Only the references the prompt cites as @[ref:<id>] go to the generation.
   const references = actionReferenceIds(imageScenePromptText(scene)).map((id) => {
@@ -16,6 +16,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
   // An inpainting source is also an explicit composition anchor. The caller
   // submits it before the selected reference pictures, even with no subjects.
   const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
+  const outpainting = editing && options.sourceTreatment === "outpaint";
   let picture = editing ? 1 : 0;
   const subjects = references.flatMap((reference) => {
     const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
@@ -52,10 +53,16 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
       : `${label(index)} (appears in [Shot 1]): fully_preserved - retain the referenced ${subject.role} of ${subject.name} while following the requested composition and styling.`;
   });
   if (editing) {
-    definitions.unshift("<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
-    retention.unshift("<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.");
+    definitions.unshift(outpainting
+      ? "<Picture 1> shows the original scene before its field of view is expanded, providing the subject, environment, perspective, lighting and visual style. It does not show the complete output framing."
+      : "<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.");
+    retention.unshift(outpainting
+      ? "<Picture 1> ([Shot 1] expanded scene): partially_preserved - preserve the existing scene within its placed area and generate a natural continuation beyond it. Expand the framing with new objects and scene detail consistent with the original perspective and lighting."
+      : "<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.");
   }
-  const summary = editing
+  const summary = outpainting
+    ? "[reference generation] A single still image expands the scene in <Picture 1> beyond its original borders. The new space contains a coherent continuation of the scene."
+    : editing
     ? `[keyframe completion${subjects.length ? " + reference generation" : ""}] The target is a single edited still keyframe based on <Picture 1>. Apply the described change while preserving all other content.${subjects.length ? ` Use ${subjects.map((_, index) => label(index)).join(", ")} for the specified reference attributes.` : ""}`
     : `[reference generation] A single still image uses ${subjects.map((_, index) => label(index)).join(", ")} in the requested composition.`;
   const style = editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;

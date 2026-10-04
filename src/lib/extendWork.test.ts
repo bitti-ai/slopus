@@ -55,8 +55,11 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   const request = await submitted();
   const { jobId } = request;
   expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
-    imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [`C:/Extend/cache/extend-images/${jobId}/canvas.png`] });
+    imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [`C:/Extend/cache/extend-images/${jobId}/original.png`] });
   expect(request.imageEdit!.edits).toHaveLength(4);
+  expect(request.imageEdit!.edits.every((edit) => edit.feather === 0)).toBe(true);
+  expect(request.prompt).toContain("expands the scene in <Picture 1> beyond its original borders");
+  expect(request.prompt).not.toContain("composition anchor");
   expect(request.prompt).toContain("Continue the forest");
   expect(request.prompt).not.toContain("Changed");
   expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds, output: { width: 128, height: 64 } });

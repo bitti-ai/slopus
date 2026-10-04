@@ -56,7 +56,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, reference_paths: None, refmods: None }
+            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -70,6 +70,19 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         }
     }
     let mut invalid = request;
+    for feather in [None, Some(0), Some(16)] {
+        invalid.image_edit.as_mut().unwrap().edits[0].feather = feather;
+        // Explicit zero must survive transfer to a LAN worker; old requests
+        // without a feather value keep the ordinary editing default.
+        let roundtrip: GenerationRequest = serde_json::from_value(serde_json::to_value(&invalid).unwrap()).unwrap();
+        assert_eq!(roundtrip.image_edit.as_ref().unwrap().edits[0].feather, feather);
+        validate_generation_controls(&roundtrip).unwrap();
+    }
+    for feather in [-1, 8193] {
+        invalid.image_edit.as_mut().unwrap().edits[0].feather = Some(feather);
+        assert!(validate_generation_controls(&invalid).is_err());
+    }
+    invalid.image_edit.as_mut().unwrap().edits[0].feather = None;
     invalid.image_edit.as_mut().unwrap().edits[0].width = 36;
     assert!(validate_generation_controls(&invalid).is_err());
 }

@@ -5,17 +5,18 @@ fn image_edit_setters_use_original_pixel_boxes_and_pad_the_plan() {
     let api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
     let request = RequestHandle::new(&api).unwrap();
     let pixels = vec![100; 65 * 41 * 3];
-    api.set_image_edit_rgb(&request, &pixels, 65, 41, [60, 35, 5, 6]).unwrap();
+    api.set_image_edit_rgb(&request, &pixels, 65, 41, [60, 35, 5, 6], 0).unwrap();
     let plan = api.resolve(&request).unwrap();
     assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (96, 64, 1));
-    assert!(api.set_image_edit_rgb(&request, &pixels, 65, 41, [60, 35, 6, 6]).is_err());
-    assert!(api.set_image_edit_rgb(&request, &pixels[..3], 65, 41, [0, 0, 5, 6]).is_err());
+    assert!(api.set_image_edit_rgb(&request, &pixels, 65, 41, [60, 35, 6, 6], 0).is_err());
+    assert!(api.set_image_edit_rgb(&request, &pixels[..3], 65, 41, [0, 0, 5, 6], 0).is_err());
+    assert!(api.set_image_edit_rgb(&request, &pixels, 65, 41, [60, 35, 5, 6], -1).is_err());
     assert_eq!(api.resolve(&request).unwrap().canvas_width, 96);
     let folder = tempfile::tempdir().unwrap();
     let path = folder.path().join("source.png");
     image::RgbImage::from_raw(65, 41, pixels).unwrap().save(&path).unwrap();
     let from_path = RequestHandle::new(&api).unwrap();
-    api.set_image_edit_path(&from_path, &path, [0, 0, 65, 41]).unwrap();
+    api.set_image_edit_path(&from_path, &path, [0, 0, 65, 41], 16).unwrap();
     std::fs::remove_file(path).unwrap(); // The setter snapshots pixels synchronously.
     assert_eq!(api.resolve(&from_path).unwrap().aligned_frames, 1);
 }

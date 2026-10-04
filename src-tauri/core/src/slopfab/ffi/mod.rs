@@ -103,13 +103,13 @@ impl Api {
         self.check(r)?;
         self.inner.set_still_image(r.pointer.as_ptr())
     }
-    pub fn set_image_edit_path(&self, r: &RequestHandle, path: &Path, bounds: [i32; 4]) -> Result<(), String> {
+    pub fn set_image_edit_path(&self, r: &RequestHandle, path: &Path, bounds: [i32; 4], feather: i32) -> Result<(), String> {
         self.check(r)?;
-        self.inner.set_image_edit_path(r.pointer.as_ptr(), path, bounds)
+        self.inner.set_image_edit_path(r.pointer.as_ptr(), path, bounds, feather)
     }
-    pub fn set_image_edit_rgb(&self, r: &RequestHandle, pixels: &[u8], width: i32, height: i32, bounds: [i32; 4]) -> Result<(), String> {
+    pub fn set_image_edit_rgb(&self, r: &RequestHandle, pixels: &[u8], width: i32, height: i32, bounds: [i32; 4], feather: i32) -> Result<(), String> {
         self.check(r)?;
-        self.inner.set_image_edit_rgb(r.pointer.as_ptr(), pixels, width, height, bounds)
+        self.inner.set_image_edit_rgb(r.pointer.as_ptr(), pixels, width, height, bounds, feather)
     }
     pub fn set_save_latents(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
         self.check(r)?;

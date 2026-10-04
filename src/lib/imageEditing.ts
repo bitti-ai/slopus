@@ -4,6 +4,7 @@ import type { ProjectConfig, ProjectReference } from "./project";
 
 export interface ImageEditStep {
   prompt: string; x: number; y: number; width: number; height: number;
+  feather?: number;
   referencePaths?: string[];
   refmods?: Array<{ path: string; strength: number; copies: number }>;
 }

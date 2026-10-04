@@ -96,6 +96,8 @@ pub struct ImageEditStep {
     pub width: i32,
     pub height: i32,
     #[serde(default)]
+    pub feather: Option<i32>,
+    #[serde(default)]
     pub reference_paths: Option<Vec<String>>,
     #[serde(default)]
     pub refmods: Option<Vec<RefmodInput>>,

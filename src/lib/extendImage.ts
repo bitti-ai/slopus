@@ -90,15 +90,15 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
-  scene.nodes[0].description = "Extend the scene naturally beyond its original framing. Continue the environment, objects, textures, perspective and lighting into the new space. Preserve the original scene and visual style. Replace the stretched edge placeholders with coherent new content. " + options.prompt.trim();
-  const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: scene });
+  scene.nodes[0].description = "Expand the field of view beyond the original image. Continue the environment, objects, textures, perspective and lighting into the new space with natural new detail. The original scene remains in its placed area within the larger composition. " + options.prompt.trim();
+  const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
   // The rectangular editor needs a little original context at each seam.
   // The native finalizer restores the downscaled source pixels after generation.
   const overlap = 32;
   const edits = regions.map((region) => {
     const x = Math.max(0, region.x - overlap), y = Math.max(0, region.y - overlap);
     return { x, y, width: Math.min(output.width, region.x + region.width + overlap) - x,
-      height: Math.min(output.height, region.y + region.height + overlap) - y, prompt: compiled.prompt };
+      height: Math.min(output.height, region.y + region.height + overlap) - y, prompt: compiled.prompt, feather: 0 };
   });
   return { ...compiled, scene, edits, layout };
 }

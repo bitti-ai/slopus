@@ -132,11 +132,15 @@ fn write_png(path: &std::path::Path, image: &RgbaImage) -> Result<(), String> {
 
 fn padded_source(source: &RgbaImage, bounds: ExtendBounds) -> RgbaImage {
     RgbaImage::from_fn(bounds.width, bounds.height, |x, y| {
-        // Edge replication gives inpainting color/texture context instead of black borders.
-        *source.get_pixel(
-            (x as i32 + bounds.x).clamp(0, source.width() as i32 - 1) as u32,
-            (y as i32 + bounds.y).clamp(0, source.height() as i32 - 1) as u32,
-        )
+        let sx = x as i32 + bounds.x;
+        let sy = y as i32 + bounds.y;
+        // Empty space must not contain replicated scene details for the model
+        // to copy. The inpainting mask regenerates this neutral padding.
+        if sx >= 0 && sy >= 0 && sx < source.width() as i32 && sy < source.height() as i32 {
+            *source.get_pixel(sx as u32, sy as u32)
+        } else {
+            image::Rgba([127, 127, 127, 255])
+        }
     })
 }
 
@@ -369,10 +373,18 @@ mod tests {
                 }
             }
             let padded = padded_source(&source, bounds);
-            assert_eq!(
-                padded.get_pixel(0, 0),
-                source.get_pixel(bounds.x.clamp(0, 6) as u32, bounds.y.clamp(0, 4) as u32)
-            );
+            for y in 0..bounds.height {
+                for x in 0..bounds.width {
+                    let sx = x as i32 + bounds.x;
+                    let sy = y as i32 + bounds.y;
+                    let expected = if sx >= 0 && sy >= 0 && sx < 7 && sy < 5 {
+                        source.get_pixel(sx as u32, sy as u32).0
+                    } else {
+                        [127, 127, 127, 255]
+                    };
+                    assert_eq!(padded.get_pixel(x, y).0, expected);
+                }
+            }
         }
     }
 
