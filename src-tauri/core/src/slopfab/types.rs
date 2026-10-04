@@ -97,6 +97,9 @@ pub struct ImageEditStep {
     pub height: i32,
     #[serde(default)]
     pub feather: Option<i32>,
+    /// Outpainting: preserve the box and generate all surrounding pixels together.
+    #[serde(default)]
+    pub invert_mask: bool,
     #[serde(default)]
     pub reference_paths: Option<Vec<String>>,
     #[serde(default)]

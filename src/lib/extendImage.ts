@@ -85,20 +85,19 @@ export function extendRegions(source: { width: number; height: number }, bounds:
 export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions) {
   if (!source.width || !source.height) throw new Error("Wait for the source image dimensions to load.");
   const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
-  const { regions, output } = layout;
+  const { preserved, output } = layout;
+  if (Math.ceil(preserved.x / 16) >= Math.floor((preserved.x + preserved.width) / 16)
+    || Math.ceil(preserved.y / 16) >= Math.floor((preserved.y + preserved.height) / 16)) {
+    throw new Error("Keep a larger area of the original image inside the Extend box.");
+  }
   if (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000) throw new Error("Steps must be a whole number from 2 to 1000.");
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
-  scene.nodes[0].description = "Fill the masked area beyond the edges of the existing image in the canvas. Continue the environment, objects, textures, perspective and lighting seamlessly into this new space with natural new detail. Keep the existing scene at its current size and position; do not repeat, enlarge or reframe it in the new area. " + options.prompt.trim();
+  scene.nodes[0].description = "A wider view of the source scene, as if the view were zoomed out. Continue the same surroundings beyond the visible edges, matching perspective, scale, lighting and textures. One continuous scene, with the original content in its existing position. " + options.prompt.trim();
   const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
-  // The rectangular editor needs a little original context at each seam.
-  // The native finalizer restores the downscaled source pixels after generation.
-  const overlap = 32;
-  const edits = regions.map((region) => {
-    const x = Math.max(0, region.x - overlap), y = Math.max(0, region.y - overlap);
-    return { x, y, width: Math.min(output.width, region.x + region.width + overlap) - x,
-      height: Math.min(output.height, region.y + region.height + overlap) - y, prompt: compiled.prompt, feather: 0 };
-  });
+  // Preserve the original throughout denoising while generating every new
+  // region together. Separate border passes break shared context at the seams.
+  const edits = [{ ...preserved, prompt: compiled.prompt, feather: 0, invertMask: true }];
   return { ...compiled, scene, edits, layout };
 }

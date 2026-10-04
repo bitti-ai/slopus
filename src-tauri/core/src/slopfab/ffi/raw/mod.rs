@@ -83,6 +83,7 @@ pub struct Api {
     set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_image_edit_path: Option<SetImageEditPath>,
     set_image_edit_rgb: Option<SetImageEditRgb>,
+    set_image_edit_invert_mask: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -199,6 +200,7 @@ impl Api {
                     .map(|symbol| *symbol),
                 set_image_edit_path: library.get::<SetImageEditPath>(b"slopfab_request_set_image_edit_path\0").ok().map(|symbol| *symbol),
                 set_image_edit_rgb: library.get::<SetImageEditRgb>(b"slopfab_request_set_image_edit_rgb24\0").ok().map(|symbol| *symbol),
+                set_image_edit_invert_mask: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_image_edit_invert_mask\0").ok().map(|symbol| *symbol),
                 set_steps: symbol!(
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -415,6 +417,10 @@ impl Api {
         }
         self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], 1.0, feather) })
     }
+    pub fn set_image_edit_invert_mask(&self, r: *mut Request) -> Result<(), String> {
+        let set = self.set_image_edit_invert_mask.ok_or("Seamless Extend requires SlopFab API 1.20 or later. Update the generation runtime.")?;
+        self.error(unsafe { set(r, 1) })
+    }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         let set = self.set_save_latents.ok_or(
             "Saving generation latents requires slopfab.dll API 1.9 or later. Update the runtime.",
@@ -501,6 +507,10 @@ impl Api {
         )?;
         let path = path_cstring(path)?;
         self.error(unsafe { prepare(path.as_ptr(), width, allow_download as i32) })
+    }
+    #[cfg(test)]
+    pub fn disable_outpainting_for_test(&mut self) {
+        self.set_image_edit_invert_mask = None;
     }
     #[cfg(test)]
     pub fn disable_lora_preparation_for_test(&mut self) {

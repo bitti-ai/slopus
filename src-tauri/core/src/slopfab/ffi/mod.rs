@@ -45,6 +45,12 @@ impl Api {
         self.inner.prepare_lora_grid(path, width, allow_download)
     }
     #[cfg(test)]
+    pub fn disable_outpainting_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner)
+            .expect("configure API before creating handles")
+            .disable_outpainting_for_test();
+    }
+    #[cfg(test)]
     pub fn disable_lora_preparation_for_test(&mut self) {
         Arc::get_mut(&mut self.inner)
             .expect("configure API before creating handles")
@@ -110,6 +116,10 @@ impl Api {
     pub fn set_image_edit_rgb(&self, r: &RequestHandle, pixels: &[u8], width: i32, height: i32, bounds: [i32; 4], feather: i32) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_image_edit_rgb(r.pointer.as_ptr(), pixels, width, height, bounds, feather)
+    }
+    pub fn set_image_edit_invert_mask(&self, r: &RequestHandle) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_image_edit_invert_mask(r.pointer.as_ptr())
     }
     pub fn set_save_latents(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
         self.check(r)?;

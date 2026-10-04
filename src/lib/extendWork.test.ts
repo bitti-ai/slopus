@@ -56,9 +56,8 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   const { jobId } = request;
   expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
     imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [] });
-  expect(request.imageEdit!.edits).toHaveLength(4);
-  expect(request.imageEdit!.edits.every((edit) => edit.feather === 0)).toBe(true);
-  expect(request.prompt).toContain("Fill the masked area beyond the edges of the existing image in the canvas");
+  expect(request.imageEdit!.edits).toEqual([{ x: 38, y: 13, width: 51, height: 38, invertMask: true, feather: 0, prompt: request.prompt }]);
+  expect(request.prompt).toContain("as if the view were zoomed out");
   expect(request.prompt).not.toContain("<Picture");
   expect(request.prompt).not.toContain("composition anchor");
   expect(request.prompt).toContain("Continue the forest");

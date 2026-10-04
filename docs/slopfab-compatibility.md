@@ -1,5 +1,33 @@
 # Slopfab compatibility
 
+## API 1.20: single-pass image outpainting
+
+The bundled Windows and Linux runtimes come from SlopFab commit `b7486be`,
+built with `SLOPFAB_WITH_FFMPEG=OFF`. The additive
+`slopfab_request_set_image_edit_invert_mask` setter makes an image-edit box
+identify the preserved original instead of a region to replace.
+
+Extend sends one inverted mask for the placed source rectangle. CUDA and
+Vulkan restore original latent context at every denoising step while generating
+the entire surround together. Fully contained 16-pixel latent cells are locked;
+unaligned boundary cells can generate the seam. Pixel compositing preserves the
+exact original rectangle, and Slopus's PNG finalizer retains its original alpha.
+The original crop is also shown to Qwen as `Source scene`, supplying visual
+meaning without a second, independently resized DiT reference anchor. User
+references retain their picture numbering. Source-dependent prompt embeddings
+are recomputed to prevent stale conditioning when the image changes.
+
+This replaces sequential, overlapping border edits, which could rewrite the
+source context and leave unrelated borders when the original was pasted back.
+Selections with too little original context are rejected before generation.
+
+LAN protocol 3 carries the inverted mask. Older workers must be updated because
+they would otherwise ignore inversion and repaint the original rectangle.
+An older local runtime reports the required API version; ordinary edits remain
+supported. Tests cover inverted latent masks, per-step source preservation,
+pixel compositing, request validation, serialization, preview and execution on
+both backends, and the older-runtime error.
+
 ## API 1.18: refmod export
 
 The bundled runtime comes from SlopFab commit `9d45da8`, built with

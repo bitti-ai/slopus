@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
-pub const PROTOCOL_VERSION: u32 = 2;
+// v3 carries inverted image masks; older workers would silently edit the
+// preserved original instead of the extension if they ignored this field.
+pub const PROTOCOL_VERSION: u32 = 3;
 pub const DEFAULT_PORT: u16 = 47321;
 pub const TOKEN_HEADER: &str = "x-slopus-token";
 

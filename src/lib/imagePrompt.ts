@@ -44,7 +44,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
   }).join("");
   const visual = { style: cite(parts.style), composition: cite(parts.composition) };
   const style = outpainting
-    ? "The still image continues the visual medium, lighting, palette and perspective of the existing image in the canvas."
+    ? "Match the source scene's visual style."
     : editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;
   const audio = ["overall_soundscape: N/A", "non_diegetic_music: N/A"];
   if (!subjects.length && !sourcePicture) return {

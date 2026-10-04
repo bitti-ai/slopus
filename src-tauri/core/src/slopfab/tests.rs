@@ -56,7 +56,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, reference_paths: None, refmods: None }
+            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, invert_mask: false, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -84,6 +84,49 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
     }
     invalid.image_edit.as_mut().unwrap().edits[0].feather = None;
     invalid.image_edit.as_mut().unwrap().edits[0].width = 36;
+    assert!(validate_generation_controls(&invalid).is_err());
+}
+
+#[test]
+fn outpainting_preserves_one_box_in_preview_execution_and_worker_requests() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.motion_cache = true;
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request: GenerationRequest = serde_json::from_value(serde_json::json!({
+        "jobId":"outpaint", "prompt":"Continue the scene", "stillImage":true, "frames":1,
+        "steps":4, "seed":0, "canvasWidth":128, "canvasHeight":64,
+        "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[{
+            "prompt":"Continue the scene", "x":38, "y":13, "width":51, "height":38,
+            "feather":0, "invertMask":true
+        }]}
+    })).unwrap();
+    // This is the same serialization boundary used by LAN workers.
+    let mut roundtrip: GenerationRequest = serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
+    assert!(roundtrip.image_edit.as_ref().unwrap().edits[0].invert_mask);
+    validate_generation_controls(&roundtrip).unwrap();
+    roundtrip.image_edit_pixels = Some(std::sync::Arc::new(vec![127; 128 * 64 * 3]));
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &roundtrip, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+            let plan = api.resolve(&handle).unwrap();
+            assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (128, 64, 1));
+            assert_eq!(plan.num_model_evaluations, 3);
+            assert!(api.describe(&handle).unwrap().contains("outpaint (preserve box)"));
+        }
+    }
+    for change in [
+        serde_json::json!({"feather":16}), serde_json::json!({"feather":null}),
+        serde_json::json!({"x":0,"y":0,"width":128,"height":64}),
+        serde_json::json!({"width":1}), serde_json::json!({"height":1}),
+    ] {
+        let mut value = serde_json::to_value(&request).unwrap();
+        value["imageEdit"]["edits"][0].as_object_mut().unwrap().extend(change.as_object().unwrap().clone());
+        assert!(validate_generation_controls(&serde_json::from_value(value).unwrap()).is_err());
+    }
+    let mut invalid = request.clone();
+    let edits = &mut invalid.image_edit.as_mut().unwrap().edits;
+    edits.push(edits[0].clone());
     assert!(validate_generation_controls(&invalid).is_err());
 }
 

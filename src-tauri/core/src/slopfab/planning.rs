@@ -67,6 +67,14 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
                 || i64::from(step.y) + i64::from(step.height) > i64::from(request.canvas_height)) {
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
+        for step in &edit.edits {
+            if step.invert_mask && (edit.edits.len() != 1 || step.feather != Some(0)
+                || (step.x == 0 && step.y == 0 && step.width == request.canvas_width && step.height == request.canvas_height)
+                || (i64::from(step.x) + 15) / 16 >= (i64::from(step.x) + i64::from(step.width)) / 16
+                || (i64::from(step.y) + 15) / 16 >= (i64::from(step.y) + i64::from(step.height)) / 16) {
+                return Err("Outpainting requires one preserved box with original context, room outside it and zero feather.".into());
+            }
+        }
     }
     let limits = crate::models::H3_CAPABILITIES;
     if request.reference_paths.len() > limits.max_image_references

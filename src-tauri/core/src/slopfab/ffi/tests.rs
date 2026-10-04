@@ -22,6 +22,17 @@ fn image_edit_setters_use_original_pixel_boxes_and_pad_the_plan() {
 }
 
 #[test]
+fn older_runtimes_reject_outpainting_instead_of_editing_the_original() {
+    let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+    api.disable_outpainting_for_test();
+    let request = RequestHandle::new(&api).unwrap();
+    api.set_image_edit_rgb(&request, &vec![127; 64 * 64 * 3], 64, 64, [16, 16, 32, 32], 0).unwrap();
+    assert!(api.set_image_edit_invert_mask(&request).unwrap_err().contains("API 1.20"));
+    // Ordinary image editing remains available on older runtimes.
+    assert!(api.resolve(&request).is_ok());
+}
+
+#[test]
 fn older_runtimes_report_missing_lora_preparation_without_breaking_planning() {
     let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
     api.disable_lora_preparation_for_test();

@@ -28,14 +28,17 @@ it("rejects boxes with no original context, no extension, fractional or excessiv
   expect(large.x).toBeLessThan(0);
 });
 
-it("regenerates every new pixel to the outer edge in all directions", () => {
+it("generates the entire surround in one pass while preserving the original in all directions", () => {
   const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
   const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 128, height: 96, createdAt: config.createdAt };
   for (const x of [-64, 0, 32]) for (const y of [-32, 0, 32]) {
     const { layout, edits } = compileExtendImage(config, source, "cache/canvas.png", { bounds: { x, y, width: 192, height: 128 }, prompt: "Forest", steps: 20, seed: 0 });
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({ ...layout.preserved, invertMask: true, feather: 0 });
     const contains = (r: { x: number; y: number; width: number; height: number }, px: number, py: number) => px >= r.x && py >= r.y && px < r.x + r.width && py < r.y + r.height;
     for (let py = 0; py < layout.output.height; py++) for (let px = 0; px < layout.output.width; px++) {
-      if (!contains(layout.preserved, px, py)) expect(edits.some((edit) => edit.feather === 0 && contains(edit, px, py))).toBe(true);
+      const generated = edits[0].invertMask && !contains(edits[0], px, py);
+      expect(generated).toBe(!contains(layout.preserved, px, py));
     }
   }
 });
@@ -48,7 +51,7 @@ it("uses the positioned canvas as context and reserves picture labels only for c
   const withoutReferences = compile("");
   expect(withoutReferences.prompt).toMatch(/^integrated_multimodal_description:/);
   expect(withoutReferences.prompt).not.toContain("<Picture");
-  expect(withoutReferences.prompt).toContain("Keep the existing scene at its current size and position");
+  expect(withoutReferences.prompt).toContain("as if the view were zoomed out");
   expect(withoutReferences.edits.every((edit) => edit.prompt === withoutReferences.prompt)).toBe(true);
   config.references = [{ id: "mood", name: "Mood", kind: "text", content: "Misty woodland", description: "", intendedUse: [], createdAt: config.createdAt }];
   expect(compile("@[ref:mood]").prompt).not.toContain("<Picture");
@@ -61,6 +64,14 @@ it("uses the positioned canvas as context and reserves picture labels only for c
     expect(withReferences.prompt).toContain(`<Subject ${index + 1}> is Tree ${index}, providing appearance from <Picture ${index}>`);
   }
   expect(withReferences.prompt).not.toContain("<Picture 10>");
+});
+
+it("rejects an extension with too little preserved image to condition the generation", () => {
+  const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 15 });
+  const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 128, height: 96, createdAt: config.createdAt };
+  expect(() => compileExtendImage(config, source, "cache/canvas.png", {
+    bounds: { x: 120, y: 0, width: 192, height: 192 }, prompt: "", steps: 20, seed: 0,
+  })).toThrow("Keep a larger area");
 });
 
 it("keeps selection and output on the generation grid without increasing the source pixel count", () => {

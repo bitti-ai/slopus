@@ -40,7 +40,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - The timeline playhead follows playback without waiting for editor updates.
 - Character sheet prompts focus on each view's essential framing and orientation, with concise instructions for consistent identity and clothing.
 - Extend bounding box edges gently snap to nearby original image borders when drawing, moving or resizing. Box dimensions use 32-pixel increments and stay within the maximum generation resolution.
-- Extend uses the placed original in its inpainting canvas without a separately resized copy as a reference, preventing a duplicate scene beneath the preserved image. New areas regenerate through the outer edges.
+- Extend generates all new space in one outpainting pass, holding the placed original as fixed context throughout generation so edges and corners can continue the same scene. It no longer repaints separate border strips and pastes the original over them.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.
