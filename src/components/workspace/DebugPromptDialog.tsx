@@ -1,21 +1,23 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import type { PromptSegment } from "../../lib/project";
 import { ContentDialog } from "../ui";
 
 /** The exact prompt the engine is sent, in a ContentDialog. Ctrl+A inside the
  *  prompt selects the prompt alone (not the whole window), so it can be
  *  copied in one go. */
-export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debug prompt", promptLabel = "The compiled MiniMax H3 prompt" }: {
+export function DebugPromptDialog({ sceneTitle, segments, onClose, title = "Debug prompt", promptLabel = "The compiled MiniMax H3 prompt", controls }: {
   sceneTitle: string;
   segments: PromptSegment[];
   onClose: () => void;
   title?: string;
   promptLabel?: string;
+  controls?: ReactNode;
 }) {
   const prompt = useRef<HTMLPreElement>(null);
 
   return <ContentDialog title={title} closeText="Close" onClose={onClose} width={880} className="debug-prompt-dialog" initialFocus={prompt}>
     <p className="debug-prompt-dialog__scene">{sceneTitle}</p>
+    {controls}
     {/* Render compiler segments directly to preserve the exact engine prompt. */}
     <pre
       ref={prompt}

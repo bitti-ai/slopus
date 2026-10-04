@@ -4,6 +4,7 @@ import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { InfoBar, ItemHeader, PropRow } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
+import { TemplateDebugPrompt } from "./TemplateDebugPrompt";
 
 export function ExtendSettings({ config, source, options, onChange, references, missingLabel, busy, disabledReason, onExecute, onClose }: {
   config: ProjectConfig; source: ProjectAsset; options: ExtendOptions; onChange: (options: ExtendOptions) => void;
@@ -11,8 +12,11 @@ export function ExtendSettings({ config, source, options, onChange, references, 
   onExecute: () => void; onClose: () => void;
 }) {
   const validation = useMemo(() => {
-    try { return { output: compileExtendImage(config, source, "cache/extend-preview.png", options).layout.output, message: null }; }
-    catch (reason) { return { output: null, message: reason instanceof Error ? reason.message : String(reason) }; }
+    try {
+      const compiled = compileExtendImage(config, source, "cache/extend-preview.png", options);
+      return { output: compiled.layout.output, prompt: compiled.prompt, message: null };
+    }
+    catch (reason) { return { output: null, prompt: null, message: reason instanceof Error ? reason.message : String(reason) }; }
   }, [config, source, options]);
   return <aside className="image-inspector image-template-settings" aria-label="Extend settings">
     <ItemHeader name="Extend" meta="Template" actions={<button type="button" className="icon-button" aria-label="Close template settings" data-tooltip="Back to image settings" onClick={onClose}><Dismiss16 aria-hidden="true" /></button>} />
@@ -40,6 +44,7 @@ export function ExtendSettings({ config, source, options, onChange, references, 
         {validation.message && <InfoBar severity="error" title="Adjust the Extend settings" message={validation.message} />}
       </div>
       <div className="image-template-settings__footer">
+        <TemplateDebugPrompt name="Extend" prompts={validation.prompt === null ? [] : [{ label: "Extend", prompt: validation.prompt }]} />
         {disabledReason && <p className="image-inspector__caption">{disabledReason}</p>}
         <button type="submit" className="primary-button" disabled={busy || Boolean(disabledReason || validation.message)}><Sparkle16 aria-hidden="true" />{busy ? "Executing…" : "Execute"}</button>
       </div>

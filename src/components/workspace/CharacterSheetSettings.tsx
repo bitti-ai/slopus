@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ItemHeader, PropRow } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
+import { TemplateDebugPrompt } from "./TemplateDebugPrompt";
 
 export function CharacterSheetSettings({ config, source, references, missingLabel, defaultSteps, disabledReason, busy, onExecute, onClose }: {
   config: ProjectConfig; source: ProjectAsset; references: PromptReference[]; missingLabel: (id: string) => string;
@@ -14,10 +15,11 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
     steps: config.imageScene?.steps ?? defaultSteps, seed: config.imageScene?.seed ?? -1 }));
   const dimensions = characterSheetDimensions(config.settings.resolution, options.height);
   const [error, setError] = useState<string | null>(null);
-  const validation = useMemo(() => {
-    try { compileCharacterSheet(config, source, "cache/character-sheet-preview/1.png", options); return null; }
-    catch (reason) { return reason instanceof Error ? reason.message : String(reason); }
+  const compiled = useMemo(() => {
+    try { return { views: compileCharacterSheet(config, source, "cache/character-sheet-preview/1.png", options), error: null }; }
+    catch (reason) { return { views: null, error: reason instanceof Error ? reason.message : String(reason) }; }
   }, [config, source, options]);
+  const validation = compiled.error;
   const update = <K extends keyof CharacterSheetOptions,>(field: K, value: CharacterSheetOptions[K]) => {
     setOptions((current) => ({ ...current, [field]: value })); setError(null);
   };
@@ -47,6 +49,7 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
         {(validation || error) && <InfoBar severity="error" title="Couldn't prepare the template" message={validation ?? error ?? ""} />}
       </div>
       <div className="image-template-settings__footer">
+        <TemplateDebugPrompt name="Character sheet" prompts={compiled.views ? CHARACTER_SHEET_ORDER.map((index) => ({ label: CHARACTER_SHEET_VIEWS[index].label, prompt: compiled.views![index].prompt })) : []} />
         {disabledReason && <p className="image-inspector__caption">{disabledReason}</p>}
         <button type="submit" className="primary-button" disabled={Boolean(disabledReason || validation || busy)}><Sparkle16 aria-hidden="true" />{busy ? "Executing…" : "Execute"}</button>
       </div>
