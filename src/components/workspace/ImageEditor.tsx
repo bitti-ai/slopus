@@ -61,7 +61,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const [treeDrop, setTreeDrop] = useState<{ id: string; placement: "before" | "inside" | "after" } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean } | null>(null);
+  const [imageMenu, setImageMenu] = useState<{ id: string | null; x: number; y: number; inFamily: boolean; source: "bar" | "canvas" } | null>(null);
   const imageResults = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const renameEnding = useRef(false);
@@ -178,7 +178,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const closeContextMenu = () => { setContextMenu(null); focusNode(selected.id); };
   const closeImageMenu = () => {
     const button = [...(imageResults.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((element) => element.dataset.imageAsset === imageMenu?.id);
-    setImageMenu(null); (button ?? imageResults.current)?.focus();
+    setImageMenu(null); (imageMenu?.source === "canvas" ? viewport.current : button ?? imageResults.current)?.focus();
+  };
+  const openCanvasMenu = (x: number, y: number) => {
+    setContextMenu(null);
+    setImageMenu(output ? { id: output.id, x, y, inFamily: imageFamily(images, output.id).length > 1, source: "canvas" } : null);
   };
   const resetImageEditing = (id: string) => {
     const snapshot = config.assets.find((asset) => asset.id === id)?.imageGeneration;
@@ -559,14 +563,16 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { label: "Delete", icon: <Delete16 />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
-      { label: "New empty image", icon: <Add16 />, action: () => attempt(() => {
-        undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
-        onChange((current) => createEmptyImage(current, template?.id));
-      }) },
-      { label: "Add image file", icon: <FolderOpen16 />, disabled: !isTauri(), action: () => attempt(async () => {
-        const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
-        if (source) replaceScene(createImageEditScene(source, scene));
-      }) },
+      ...(imageMenu.source === "bar" ? [
+        { label: "New empty image", icon: <Add16 />, action: () => attempt(() => {
+          undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
+          onChange((current) => createEmptyImage(current, template?.id));
+        }) },
+        { label: "Add image file", icon: <FolderOpen16 />, disabled: !isTauri(), action: () => attempt(async () => {
+          const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
+          if (source) replaceScene(createImageEditScene(source, scene));
+        }) },
+      ] : []),
       ...(imageMenu.id ? [
         ...(imageMenu.inFamily ? [{ label: "Make Primary", icon: <Image16 />, disabled: !canUseMenuImage || imageFamilyRoot(images, imageMenu.id) === imageMenu.id,
           action: () => onChange((current) => ({ ...current, assets: makeImagePrimary(current.assets, imageMenu.id!) })) }] : []),
@@ -580,7 +586,14 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ] : []),
     ]} />}
     <section className="image-center" aria-label="Image panel">
-      <div ref={viewport} tabIndex={-1} className={`image-viewport${panning ? " panning" : ""}`} data-tooltip="Scroll to zoom · drag with the middle button to pan"
+      <div ref={viewport} tabIndex={0} className={`image-viewport${panning ? " panning" : ""}`}
+        onContextMenu={(event) => { event.preventDefault(); openCanvasMenu(event.clientX, event.clientY); }}
+        onKeyDown={(event) => {
+          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+          event.preventDefault(); event.stopPropagation();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          openCanvasMenu(bounds.left, bounds.top);
+        }}
         onPointerDownCapture={(event) => {
           if (event.button !== 1 || pointer.current || pan.current) return;
           event.preventDefault(); event.stopPropagation();
@@ -612,7 +625,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
       <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
-        onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily }); }} />
+        onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
     <aside className="image-inspector" aria-label="Image node inspector">

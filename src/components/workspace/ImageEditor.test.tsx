@@ -64,12 +64,20 @@ it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.pn
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
 });
 
-it.each(["Create Scene", "Create Reference"])("%s uses the right-clicked image without changing the viewed image", (action) => {
+it.each([
+  ["Create Scene", "bar"], ["Create Reference", "bar"],
+  ["Create Scene", "canvas"], ["Create Reference", "canvas"],
+])("%s uses the target image from the %s menu without changing the viewed image", (action, source) => {
   const initial = parseProjectConfig(fixture);
   initial.assets = ["Viewed", "Chosen"].map((name) => ({ id: name, name, kind: "image", relativePath: `media/generated/${name}.png`, mimeType: "image/png", createdAt: initial.createdAt }));
-  initial.imageScene!.outputAssetId = "Viewed";
+  initial.imageScene!.outputAssetId = source === "canvas" ? "Chosen" : "Viewed";
   const current = setup(initial);
-  fireEvent.contextMenu(screen.getByRole("button", { name: "View Chosen" }));
+  fireEvent.contextMenu(source === "canvas" ? screen.getByLabelText("Image placement canvas") : screen.getByRole("button", { name: "View Chosen" }));
+  if (source === "canvas") {
+    expect(screen.queryByRole("menuitem", { name: "New empty image" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Add image file" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeEnabled();
+  }
   fireEvent.click(screen.getByRole("menuitem", { name: action }));
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.references).toHaveLength(initial.references.length + 1);
@@ -84,6 +92,43 @@ it.each(["Create Scene", "Create Reference"])("%s uses the right-clicked image w
     expect(job).toMatchObject({ title: "Chosen", status: "draft", sceneType: "first-last-frame", startFrameReferenceId: reference.id });
     expect(sceneFrameInputs(job, reopened).references.map((item) => item.id)).toContain(reference.id);
   } else expect(reopened.generationJobs).toEqual(initial.generationJobs);
+});
+
+it("makes the viewed variant primary and removes it from the canvas menu", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [
+    { id: "original", name: "Original", kind: "image", relativePath: "media/original.png", mimeType: "image/png", createdAt: initial.createdAt },
+    { id: "variant", name: "Variant", parentAssetId: "original", kind: "image", relativePath: "media/variant.png", mimeType: "image/png", createdAt: initial.createdAt },
+  ];
+  initial.imageScene!.outputAssetId = "variant";
+  const current = setup(initial);
+  const viewport = screen.getByLabelText("Image placement canvas").closest(".image-viewport")!;
+  expect(viewport).not.toHaveAttribute("data-tooltip");
+  fireEvent.contextMenu(viewport, { clientX: 80, clientY: 90 });
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(viewport).toHaveFocus();
+  fireEvent.keyDown(viewport, { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Make Primary" }));
+  expect(current().assets.find((asset) => asset.id === "variant")?.parentAssetId).toBeUndefined();
+  expect(current().assets.find((asset) => asset.id === "original")?.parentAssetId).toBe("variant");
+  fireEvent.contextMenu(viewport);
+  expect(screen.getByRole("menuitem", { name: "Make Primary" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+  expect(current().assets.map((asset) => asset.id)).toEqual(["original"]);
+  expect(current().imageScene!.outputAssetId).toBe("original");
+});
+
+it("opens no canvas menu without an image and disables reuse for empty drafts", () => {
+  setup();
+  const viewport = screen.getByLabelText("Image placement canvas").closest(".image-viewport")!;
+  fireEvent.contextMenu(viewport);
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  fireEvent.contextMenu(viewport);
+  expect(screen.getByRole("menuitem", { name: "Create Scene" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Create Reference" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Remove" })).toBeEnabled();
 });
 
 it("creates a reference from an external image variant using the keyboard menu", () => {
