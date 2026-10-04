@@ -76,12 +76,14 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   return { ...config, imageScene: { ...scene, outputAssetId: id }, assets: existing ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset] };
 }
 
-export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
+export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: string, familyAssetId?: string | null): ProjectConfig {
   config = saveImageDraft(config);
+  const parentAssetId = imageFamilyRoot(config.assets, familyAssetId);
   const id = `image-draft-${crypto.randomUUID()}`;
   const scene = { ...createImageScene(), steps: config.imageScene?.steps ?? 20, outputAssetId: id };
   const next = { ...config, imageScene: scene };
   const asset: ProjectAsset = { id, kind: "image", name: "New image", mimeType: "image/jpeg", imageDraft: true,
+    ...(parentAssetId ? { parentAssetId } : {}),
     imageGeneration: imageGenerationSnapshot(next, "", generatorTemplateId || "image-draft"), createdAt: new Date().toISOString() };
   return { ...next, assets: [...config.assets, asset] };
 }

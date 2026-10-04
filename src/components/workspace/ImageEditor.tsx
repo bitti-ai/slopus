@@ -583,7 +583,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ...(imageMenu.source === "bar" ? [
         { label: "New empty image", icon: <Add16 />, action: () => attempt(() => {
           undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
-          onChange((current) => createEmptyImage(current, template?.id));
+          onChange((current) => createEmptyImage(current, template?.id, imageMenu.inFamily ? imageMenu.id ?? current.imageScene?.outputAssetId : undefined));
         }) },
         { label: "Add image file", icon: <FolderOpen16 />, disabled: !isTauri(), action: () => attempt(async () => {
           const source = await invoke<ImageSource | null>("open_image_source", { folderPath });

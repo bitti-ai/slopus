@@ -309,9 +309,8 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
   expect(screen.getByLabelText("Prompt (high-level description)")).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: "Draw object" })).toBeInTheDocument();
-  // The edit is in Saved's family, which the bar opens from Saved.
-  expect(screen.queryByRole("button", { name: "Back to all images" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "View Saved, 2 versions" }));
+  // The empty image stays in Saved's family alongside the edit.
+  expect(screen.getByRole("button", { name: "Back to all images" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "View Editing Saved" }));
   expect(current().imageScene!.sourceImage?.name).toBe("Saved");
 });
@@ -751,6 +750,43 @@ it.each(["Create Scene", "Create Reference"])("uses the chosen primary for %s fr
   if (action === "Create Scene") expect(reopened.generationJobs.at(-1)?.startFrameReferenceId).toBe(reopened.references[0].id);
   expect(reopened.assets.find((asset) => asset.id === "Original")?.parentAssetId).toBe("Chosen");
   expect(reopened.assets.find((asset) => asset.id === "Chosen")?.parentAssetId).toBeUndefined();
+});
+
+it.each(["thumbnail", "bar", "keyboard"])("creates an empty child in the browsed family from the %s menu", (target) => {
+  const initial = parseProjectConfig(fixture);
+  const image = (id: string, parentAssetId?: string) => ({ id, name: id, kind: "image" as const,
+    relativePath: `media/generated/${id}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt, parentAssetId });
+  initial.assets = [image("Original"), image("Child", "Original"), image("Unrelated")];
+  initial.imageScene!.outputAssetId = "Child";
+  const current = setup(initial);
+  expect(screen.getByRole("button", { name: "Back to all images" })).toBeInTheDocument();
+  if (target === "thumbnail") fireEvent.contextMenu(screen.getByRole("button", { name: "View Child" }));
+  else if (target === "keyboard") fireEvent.keyDown(screen.getByLabelText("Generated images"), { key: "F10", shiftKey: true });
+  else fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  const draft = current().assets.at(-1)!;
+  expect(draft).toMatchObject({ imageDraft: true, parentAssetId: "Original" });
+  expect(current().imageScene).toMatchObject({ outputAssetId: draft.id });
+  expect(current().imageScene!.rootType ?? "prompt").toBe("prompt");
+  expect(current().imageScene!.sourceImage).toBeUndefined();
+  expect(current().imageScene!.nodes).toHaveLength(1);
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe("");
+  expect(screen.getByRole("button", { name: "View New image" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Back to all images" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "View Unrelated" })).not.toBeInTheDocument();
+  typePrompt(screen.getByLabelText("Prompt (high-level description)"), "A new variation");
+  fireEvent.click(screen.getByRole("button", { name: "View Child" }));
+  fireEvent.click(screen.getByRole("button", { name: "View New image" }));
+  expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe("A new variation");
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).assets.find(({ id }) => id === draft.id)?.parentAssetId).toBe("Original");
+
+  // Returning to the main bar makes New empty image create a new primary again.
+  fireEvent.click(screen.getByRole("button", { name: "Back to all images" }));
+  fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  expect(current().assets.at(-1)?.parentAssetId).toBeUndefined();
+  expect(screen.queryByRole("button", { name: "Back to all images" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "View Unrelated" })).toBeInTheDocument();
 });
 
 it("removes an original with a family only from inside the family, and the leftmost image takes its place", () => {
