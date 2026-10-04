@@ -1,11 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { completeImageDraft, imageFamily, imageFamilyRoot, imageGenerationSnapshot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
+import { completeImageDraft, createTemplateImageDraft, imageFamily, imageFamilyRoot, imageGenerationSnapshot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { imageGenerationSnapshotSchema, parseProjectConfig } from "./project";
 import fixture from "../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
-import { createImageEditScene } from "./imageScene";
+import { createImageEditScene, createImageScene } from "./imageScene";
 
 describe("generated image history", () => {
+  it("keeps a submitted template intact when editing its pending entry and completing in the background", () => {
+    const config = parseProjectConfig(fixture);
+    config.imageScene = createImageScene("Forest");
+    const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/original.png", width: 512, height: 512, mimeType: "image/png", createdAt: config.createdAt };
+    config.assets = [source];
+    const generation = { ...imageGenerationSnapshot(config, "Frozen prompt", "generator"), usedSeed: 12,
+      template: { kind: "extend" as const, sourceId: source.id, sourceName: source.name, generatorName: "Default", prompt: "Forest", steps: 20, seed: -1,
+        bounds: { x: -32, y: 0, width: 768, height: 512 } } };
+    const pending = createTemplateImageDraft(config, "job", "Extended image", generation, { width: 512, height: 320 });
+    const scene = structuredClone(pending.imageScene!);
+    scene.nodes[0].description = "A new idea";
+    const edited = saveImageDraft({ ...pending, imageScene: scene });
+    const draft = edited.assets.at(-1)!;
+    expect(draft).toMatchObject({ imageDraft: true, parentAssetId: "source", imageGeneration: { scene: { nodes: [{ description: "A new idea" }] } } });
+    expect(draft.id).not.toBe("job");
+    expect(draft.imageGeneration!.template).toBeUndefined();
+    expect(edited.assets[1]).toEqual(pending.assets[1]);
+    const result = { ...source, id: "job", name: "Extended image", relativePath: "media/extended.png" };
+    const done = completeImageDraft(edited, "job", { ...result, imageGeneration: { ...generation, scene: createImageEditScene(result) } });
+    expect(done.imageScene!.outputAssetId).toBe(draft.id);
+    expect(done.assets).toHaveLength(3);
+    expect(done.assets[1]).toMatchObject({ imageDraft: false, imageGeneration: { template: generation.template, usedSeed: 12 } });
+    expect(done.assets[2]).toEqual(draft);
+  });
   it("preserves a whole-image prompt and linked references as a new draft of a saved image", () => {
     const config = parseProjectConfig(fixture);
     const source = { relativePath: "media/generated/source.png", name: "Source", width: 101, height: 77 };

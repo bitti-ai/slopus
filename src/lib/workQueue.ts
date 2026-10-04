@@ -5,7 +5,7 @@ import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage, type ExtendOptions } from "./extendImage";
 import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
-import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
+import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
@@ -318,13 +318,19 @@ export class WorkQueue {
       imageEdit: { sourceRelativePath, edits: compiled.edits } };
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    this.work.set(id, { id, image: true, extend: { sourceId, name: `Extended - ${source.name}`, options: structuredClone(options) }, imageParentId: sourceId,
-      imageGeneration: { ...imageGenerationSnapshot({ ...config, imageScene: compiled.scene }, compiled.prompt, template.id), usedSeed: request.seed },
+    const imageGeneration: ImageGenerationSnapshot = {
+      ...imageGenerationSnapshot({ ...config, imageScene: { ...createImageScene(options.prompt), steps: request.steps, seed: options.seed } }, compiled.prompt, template.id),
+      usedSeed: request.seed,
+      template: { kind: "extend", sourceId, sourceName: source.name, generatorName: template.name, ...structuredClone(options), steps: request.steps },
+    };
+    this.work.set(id, { id, image: true, imageDraftId: id, extend: { sourceId, name: `Extended - ${source.name}`, options: structuredClone(options) }, imageParentId: sourceId,
+      imageGeneration,
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene), request, submitted: false, cancelled: false, done, finish });
-    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, imageDraftId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
       sceneId: this.work.get(id)!.sceneId, title: `Extend · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
       detail: "Waiting to extend image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight } }];
+    session.update((current) => createTemplateImageDraft(current, id, `Extended - ${source.name}`, imageGeneration, compiled.layout.output));
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
@@ -353,15 +359,23 @@ export class WorkQueue {
       seed: imageGenerationSeed(config.imageScene.seed),
       referencePaths: views[firstView].references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, views[firstView].references) };
-    this.work.set(id, { id, image: true, characterSheet: { views, dimensions, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
-      imageGeneration: { ...imageGenerationSnapshot(config, views.map((view) => view.prompt).join("\n\n"), template.id), usedSeed: request.seed,
-        references: [...new Map(views.flatMap((view) => view.references.slice(1)).map((reference) => [reference.id, reference])).values()] },
+    const imageGeneration: ImageGenerationSnapshot = {
+      ...imageGenerationSnapshot({ ...config, imageScene: { ...createImageScene(options?.prompt ?? ""), steps: request.steps, seed: config.imageScene.seed } }, views.map((view) => view.prompt).join("\n\n"), template.id),
+      usedSeed: request.seed,
+      references: [...new Map(views.flatMap((view) => view.references.slice(1)).map((reference) => [reference.id, reference])).values()],
+      template: { kind: "character-sheet", sourceId, sourceName: source.name, generatorName: template.name, prompt: options?.prompt ?? "",
+        height, steps: request.steps, seed: config.imageScene.seed },
+    };
+    this.work.set(id, { id, image: true, imageDraftId: id, characterSheet: { views, dimensions, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+      imageGeneration,
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
       request, submitted: false, cancelled: false, done, finish });
-    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+    this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, imageDraftId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
       sceneId: this.work.get(id)!.sceneId, title: `Character sheet · ${source.name}`, submittedAt: new Date().toISOString(),
       status: "queued", progress: 0, detail: "Waiting to generate character sheet", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 4, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
+    session.update((current) => createTemplateImageDraft(current, id, `Character sheet - ${source.name}`, imageGeneration,
+      { width: dimensions.reduce((total, view) => total + view.width, 0), height }));
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   /** Queues encoding one reference's images, video or sound into a refmod file. */
@@ -611,11 +625,9 @@ export class WorkQueue {
       const scene = createImageEditScene({ ...saved, name: sheet.name }, work.config.imageScene ?? undefined);
       scene.referenceIds = [];
       const generation = { ...work.imageGeneration!, scene };
-      work.session.update((current) => ({ ...current,
-        ...(current.imageScene?.outputAssetId === sheet.sourceId && JSON.stringify(current.imageScene) === work.snapshot
-          ? { thumbnail: saved.relativePath, imageScene: { ...scene, outputAssetId: work.id } } : {}),
-        assets: [...current.assets, { id: work.id, kind: "image", name: sheet.name, ...saved, mimeType: "image/png",
-          parentAssetId: imageFamilyRoot(current.assets, sheet.sourceId), imageGeneration: generation, createdAt: new Date().toISOString() }],
+      work.session.update((current) => completeImageDraft(current, work.id, {
+        id: work.id, kind: "image", name: sheet.name, ...saved, mimeType: "image/png",
+        parentAssetId: imageFamilyRoot(current.assets, sheet.sourceId), imageGeneration: generation, createdAt: new Date().toISOString(),
       }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Character sheet saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Character sheet created; project save failed", error: describeDiagnosticError(reason) }); }
@@ -683,11 +695,9 @@ export class WorkQueue {
       if (work.extend) {
         const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed });
         work.imageGeneration = { ...work.imageGeneration!, scene };
-        work.session.update((current) => ({ ...current,
-          ...(current.imageScene?.outputAssetId === work.extend!.sourceId && JSON.stringify(current.imageScene) === work.snapshot
-            ? { thumbnail: saved.relativePath, imageScene: { ...scene, outputAssetId: work.id } } : {}),
-          assets: [...current.assets, { id: work.id, kind: "image", name: work.extend!.name, ...saved, mimeType: "image/png",
-            parentAssetId: imageFamilyRoot(current.assets, work.extend!.sourceId), imageGeneration: work.imageGeneration, createdAt: new Date().toISOString() }],
+        work.session.update((current) => completeImageDraft(current, work.id, {
+          id: work.id, kind: "image", name: work.extend!.name, ...saved, mimeType: "image/png",
+          parentAssetId: imageFamilyRoot(current.assets, work.extend!.sourceId), imageGeneration: work.imageGeneration, createdAt: new Date().toISOString(),
         }));
       } else {
         work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {

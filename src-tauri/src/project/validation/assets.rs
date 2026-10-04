@@ -24,6 +24,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         }
         if let Some(snapshot) = &mut asset.image_generation {
             snapshot.scene.validate()?;
+            if let Some(template) = &snapshot.template { template.validate()?; }
             if asset.kind != "image"
                 || !is_supported_resolution(&snapshot.resolution)
                 || !is_supported_aspect_ratio(&snapshot.aspect_ratio)

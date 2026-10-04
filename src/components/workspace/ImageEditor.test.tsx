@@ -7,9 +7,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
-import { imageGenerationSnapshot } from "../../lib/imageHistory";
+import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage } from "../../lib/imageHistory";
 import { createGeneratorTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
-import { createImageEditScene, imageScenePrompt } from "../../lib/imageScene";
+import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
+import type { WorkItem } from "../../lib/workQueue";
 import { compileImageEdits } from "../../lib/imageEditing";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../../lib/persistence";
@@ -18,16 +19,91 @@ import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-function setup(initial = parseProjectConfig(fixture)) {
+function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []) {
   let latest: ProjectConfig = initial;
   function Harness() {
     const [config, setConfig] = useState(initial);
     latest = config;
-    return <ImageEditor config={config} folderPath="D:/Images" onChange={setConfig} onGenerate={vi.fn()} onCancel={vi.fn()} />;
+    return <ImageEditor config={config} folderPath="D:/Images" onChange={setConfig} onGenerate={vi.fn()} onCancel={vi.fn()} workItems={workItems} />;
   }
   render(<Harness />);
   return () => latest;
 }
+
+it.each([
+  ["extend", true], ["extend", false], ["character-sheet", true], ["character-sheet", false],
+] as const)("shows the existing %s panel only while the selected entry is generating (pending: %s)", (kind, pending) => {
+  const initial = parseProjectConfig(fixture);
+  const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
+  initial.assets = [source];
+  const name = kind === "extend" ? "Extend" : "Character sheet";
+  const generation = { ...imageGenerationSnapshot({ ...initial, imageScene: { ...createImageScene("Snowy forest"), steps: 28, seed: -1 } }, "Compiled prompt", "removed-generator"), usedSeed: 1234,
+    template: { sourceId: source.id, sourceName: source.name, generatorName: "Recorded generator", prompt: "Snowy forest", steps: 28, seed: -1,
+      ...(kind === "extend" ? { kind, bounds: { x: -64, y: -32, width: 768, height: 640 } } : { kind, height: 1024 }) } };
+  let saved = createTemplateImageDraft(initial, "template-result", `${name} result`, generation, { width: 512, height: 512 });
+  if (!pending) {
+    const result = { ...source, id: "template-result", name: `${name} result`, relativePath: "media/result.png" };
+    saved = completeImageDraft(saved, result.id, { ...result, imageGeneration: { ...generation, scene: createImageEditScene(result, generation.scene) } });
+  }
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(saved)));
+  const current = setup(restoreGeneratedImage(reopened, "source"), pending ? [{ id: "job", imageAssetId: "source", imageDraftId: "template-result", status: "generating", progress: 0.25, detail: "Generating template" } as WorkItem] : []);
+  fireEvent.click(screen.getByRole("button", { name: `View ${name} result` }));
+  if (pending) {
+    const panel = within(screen.getByRole("complementary", { name: `${name} settings` }));
+    expect(panel.getByLabelText("Steps")).toHaveValue(28);
+    expect(panel.getByLabelText("Seed")).toHaveValue(-1);
+    expect(panel.getByLabelText("Steps")).toBeDisabled();
+    expect(panel.getByLabelText("Seed")).toBeDisabled();
+    expect(promptValue(panel.getByLabelText(`${name} prompt`))).toBe("Snowy forest");
+    expect(panel.getByRole("button", { name: "Executing…" })).toBeDisabled();
+    if (kind === "extend") {
+      expect(panel.getByLabelText("Extend x")).toHaveValue(-64);
+      expect(panel.getByLabelText("Extend y")).toHaveValue(-32);
+      expect(panel.getByLabelText("Extend width")).toHaveValue(768);
+      expect(panel.getByLabelText("Extend height")).toHaveValue(640);
+    } else expect(comboValue(panel.getByLabelText("Character sheet resolution"))).toBe("1024");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(screen.getByRole("progressbar", { name: "Image generation progress" })).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: `View ${name} result` }));
+    expect(screen.getByRole("menuitem", { name: "Remove" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  } else {
+    expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Edit prompt")).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: `${name} settings` })).not.toBeInTheDocument();
+  }
+  fireEvent.click(screen.getByRole("button", { name: "View Original" }));
+  expect(screen.queryByRole("complementary", { name: `${name} settings` })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: `View ${name} result` }));
+  expect(current().assets).toEqual(reopened.assets);
+  if (!pending) {
+    fireEvent.contextMenu(screen.getByRole("button", { name: `View ${name} result` }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+    expect(screen.getByLabelText("Edit prompt")).toBeInTheDocument();
+    expect(current().assets.at(-1)?.imageDraft).toBe(true);
+  }
+});
+
+it.each(["extend", "character-sheet"] as const)("returns from %s settings to normal image editing as generation completes", (kind) => {
+  const config = parseProjectConfig(fixture);
+  const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: config.createdAt };
+  config.assets = [source];
+  const generation = { ...imageGenerationSnapshot({ ...config, imageScene: createImageScene() }, "Compiled prompt", "default"), usedSeed: 42,
+    template: { sourceId: source.id, sourceName: source.name, generatorName: "Default", prompt: "Forest", steps: 28, seed: 42,
+      ...(kind === "extend" ? { kind, bounds: { x: -64, y: -32, width: 768, height: 640 } } : { kind, height: 1024 }) } };
+  const pending = createTemplateImageDraft(config, "result", "Result", generation, { width: 512, height: 512 });
+  const work = { id: "job", imageAssetId: "source", imageDraftId: "result", status: "generating", progress: 0.25, detail: "Generating template" } as WorkItem;
+  const props = { folderPath: "D:/Images", onChange: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn() };
+  const { rerender } = render(<ImageEditor {...props} config={pending} workItems={[work]} />);
+  expect(screen.getByRole("complementary", { name: kind === "extend" ? "Extend settings" : "Character sheet settings" })).toBeInTheDocument();
+  const result = { ...source, id: "result", name: "Result", relativePath: "media/result.png" };
+  const completed = completeImageDraft(pending, result.id, { ...result, imageGeneration: { ...generation, scene: createImageEditScene(result, generation.scene) } });
+  rerender(<ImageEditor {...props} config={completed} workItems={[{ ...work, status: "completed", progress: 1 }]} />);
+  expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Edit prompt")).toBeInTheDocument();
+  expect(screen.getByLabelText("Used seed")).toHaveValue("42");
+  expect(screen.queryByRole("complementary", { name: /^(Extend|Character sheet) settings$/ })).not.toBeInTheDocument();
+});
 
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });

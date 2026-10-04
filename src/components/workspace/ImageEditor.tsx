@@ -150,9 +150,12 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     pan.current = null; setPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  const work = workItems.filter((item) => item.imageAssetId === scene.outputAssetId).at(-1);
+  const work = workItems.filter((item) => item.imageAssetId === scene.outputAssetId || item.imageDraftId === scene.outputAssetId || item.id === scene.outputAssetId).at(-1);
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
+  const templateSnapshot = output?.imageDraft ? output.imageGeneration?.template : undefined;
+  const runningTemplate = active ? templateSnapshot : undefined;
+  const templateSource = runningTemplate && config.assets.find((asset) => asset.id === runningTemplate.sourceId);
   let extendSize: { width: number; height: number } | null = null;
   if (extendMode && extendOptions && output?.width && output.height) {
     try { extendSize = extendOutputDimensions(config, { width: output.width, height: output.height }, extendOptions.bounds); }
@@ -524,7 +527,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {/* Generate and the generator lead; canvas tools and view controls
           share the centered group. */}
       <div className="image-tools__start">
-        {(!extendMode || active) && <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>}
+        {(!extendMode || active) && <button className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>}
         <ComboBox
           className="image-generator"
           aria-label="Generator"
@@ -628,7 +631,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },
         { label: "Remove", icon: <Delete16 />, danger: true,
           separator: true,
-          disabled: workItems.some((item) => isWorkActive(item) && item.imageAssetId === imageMenu.id) || (!imageMenu.inFamily && imageFamily(images, imageMenu.id).length > 1),
+          disabled: workItems.some((item) => isWorkActive(item) && (item.imageAssetId === imageMenu.id || item.imageDraftId === imageMenu.id || item.id === imageMenu.id)) || (!imageMenu.inFamily && imageFamily(images, imageMenu.id).length > 1),
           action: () => removeImage(imageMenu.id!) },
       ] : []),
     ]} />}
@@ -661,7 +664,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
+        {imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{templateSnapshot ? output!.name : imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{templateSnapshot ? active ? "The generated image will appear here." : "No generated image yet." : imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
@@ -672,7 +675,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Extend" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
@@ -685,6 +688,14 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
       disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
       onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
+    /> : runningTemplate && templateSource ? runningTemplate.kind === "extend" ? <ExtendSettings
+      config={config} source={templateSource} options={runningTemplate} onChange={() => {}}
+      references={promptReferences} missingLabel={missingReference} busy disabledReason={null}
+      onExecute={() => {}} onClose={() => selectImage(templateSource.id)}
+    /> : <CharacterSheetSettings key={output!.id}
+      config={config} source={templateSource} initialOptions={runningTemplate} defaultSteps={runningTemplate.steps}
+      references={promptReferences} missingLabel={missingReference} busy disabledReason={null}
+      onExecute={() => {}} onClose={() => selectImage(templateSource.id)}
     /> : <aside className="image-inspector" aria-label="Image node inspector">
       {/* The selected node heads the inspector, not an "Inspector" title. */}
       {/* The name is edited in place in the header, as a shot's or a clip's

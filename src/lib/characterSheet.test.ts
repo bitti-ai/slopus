@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { waitFor } from "@testing-library/react";
+import { restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -52,6 +53,14 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
   queue.enqueueCharacterSheet(session, template, "source");
   expect(queue.getSnapshot()).toHaveLength(1);
   const id = queue.getSnapshot()[0].id;
+  const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  expect(pending.assets).toHaveLength(2);
+  expect(pending.assets[1]).toMatchObject({ id, imageDraft: true, parentAssetId: "source", width: 2752, height: 1024,
+    imageGeneration: { template: { kind: "character-sheet", sourceId: "source", sourceName: "Hero", generatorName: template.name, prompt: "", height: 1024 } } });
+  expect(pending.assets[1].relativePath).toBeUndefined();
+  expect(pending.imageScene!.outputAssetId).toBe(id);
+  expect(queue.getSnapshot()[0].imageDraftId).toBe(id);
+  expect(saveImageDraft(restoreGeneratedImage(pending, id)).assets).toEqual(pending.assets);
   let seed: number | undefined;
   const order = [1, 0, 2, 3];
   for (let index = 0; index < 4; index++) {
@@ -75,8 +84,9 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
       expect(request.prompt).toContain("head and body facing away, face hidden");
     }
     expect(request.prompt).not.toContain("A still photograph");
-    expect(session.getSnapshot().config.assets).toEqual(original.assets);
-    if (changed && index === 0) session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, nodes: current.imageScene!.nodes.map((node) => ({ ...node, description: "Changed during generation" })) } }));
+    expect(session.getSnapshot().config.assets[0]).toEqual(original.assets[0]);
+    expect(session.getSnapshot().config.assets[1]).toMatchObject({ id, imageDraft: true });
+    if (changed && index === 0) session.update((current) => restoreGeneratedImage(current, "source"));
     emit("framesReady", request.jobId);
     if (index < 3) {
       await waitFor(() => expect(releaseRendered).toHaveBeenCalledWith(request.jobId));
@@ -89,6 +99,8 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
   expect(reopened.assets[0]).toEqual(original.assets[0]);
   expect(reopened.assets[1]).toMatchObject({ id, name: "Character sheet - Hero", mimeType: "image/png", ...result, imageGeneration: { usedSeed: seed } });
   expect(reopened.assets[1].parentAssetId).toBe("source");
+  expect(reopened.assets[1].imageDraft).toBe(false);
+  expect(reopened.assets[1].imageGeneration!.template).toEqual(pending.assets[1].imageGeneration!.template);
   expect(reopened.imageScene!.outputAssetId).toBe(changed ? "source" : id);
   expect(reopened.generationJobs).toEqual(original.generationJobs);
   expect(reopened.timeline).toEqual(original.timeline);
@@ -149,7 +161,6 @@ it("keeps the required view after template instructions without repeating orient
 
 it.each([0, 12345, -1])("uses template steps and seed %s for every view and saved settings", async (seed) => {
   const { queue, session } = setup();
-  const original = structuredClone(session.getSnapshot().config.imageScene);
   const options = { prompt: "", steps: 37, seed };
   queue.enqueueCharacterSheet(session, template, "source", options);
   options.steps = 10; options.seed = 999;
@@ -161,12 +172,12 @@ it.each([0, 12345, -1])("uses template steps and seed %s for every view and save
   for (let index = 0; index < 4; index++) {
     const request = await requestAt(index);
     expect(request).toMatchObject({ steps: 37, seed: usedSeed });
-    expect(session.getSnapshot().config.imageScene).toEqual(original);
+    expect(session.getSnapshot().config.imageScene).toMatchObject({ outputAssetId: queue.getSnapshot()[0].id, steps: 37, seed });
     emit("framesReady", request.jobId);
   }
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
-  expect(reopened.assets.at(-1)?.imageGeneration).toMatchObject({ usedSeed, scene: { steps: 37, seed } });
+  expect(reopened.assets.at(-1)?.imageGeneration).toMatchObject({ usedSeed, scene: { steps: 37, seed }, template: { steps: 37, seed } });
 });
 
 it.each([{ steps: 1 }, { steps: 1001 }, { steps: 2.5 }, { steps: NaN }, { seed: -2 }, { seed: 0.5 }, { seed: Number.MAX_SAFE_INTEGER + 1 }])("rejects invalid template sampling settings %j", (settings) => {
@@ -188,7 +199,8 @@ it.each(["cancelled", "failed"])("discards partial views after the second render
   }
   emit(state, second.jobId, "Stopped second view");
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(state));
-  expect(session.getSnapshot().config.assets).toHaveLength(1);
+  expect(session.getSnapshot().config.assets).toHaveLength(2);
+  expect(session.getSnapshot().config.assets[1]).toMatchObject({ id, imageDraft: true });
   expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2);
   expect(invoke).not.toHaveBeenCalledWith("combine_character_sheet", expect.anything());
   expect(invoke).toHaveBeenCalledWith("discard_character_sheet_views", { folderPath: "C:/Character", sheetId: id });
@@ -264,7 +276,8 @@ it("does not publish a partial result when combining fails and lets the next job
   queue.enqueueCharacterSheet(session, template, "another");
   for (let index = 0; index < 4; index++) emit("framesReady", (await requestAt(index)).jobId);
   await waitFor(() => expect(queue.getSnapshot()[0]).toMatchObject({ status: "failed", error: "Could not combine views" }));
-  expect(session.getSnapshot().config.assets.map((asset) => asset.id)).toEqual(["source", "another"]);
+  expect(session.getSnapshot().config.assets.map((asset) => asset.id)).toEqual(["source", id, "another", queue.getSnapshot()[1].id]);
+  expect(session.getSnapshot().config.assets.filter((asset) => asset.imageDraft)).toHaveLength(2);
   expect(invoke).toHaveBeenCalledWith("discard_character_sheet_views", { folderPath: "C:/Character", sheetId: id });
   const next = await requestAt(4);
   await queue.cancel(queue.getSnapshot()[1].id);

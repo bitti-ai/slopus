@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- Extend and Character Sheet create a selectable image-bar entry as soon as generation is queued. Selecting it while generation runs shows the template's existing settings panel with the submitted settings. Finished results open in the normal image editor.
 - LAN workers: run the Slopus worker package on another Windows or Linux computer and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves and use CUDA when available, with a Vulkan fallback; local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
 - Slopus for Linux (x86_64): install the .deb or .rpm package, or run the AppImage, which updates itself. Local generation on Linux needs an NVIDIA GPU with CUDA 13.
 - Every project now includes Video and Image tabs. Older video and image projects keep their saved content, and Export supports both output types.

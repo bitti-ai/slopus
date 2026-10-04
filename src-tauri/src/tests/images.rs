@@ -166,6 +166,33 @@ fn image_tree_survives_folder_creation_save_and_reopen() {
 }
 
 #[test]
+fn image_template_settings_survive_save_and_reopen() {
+    for template in [
+        serde_json::json!({"kind":"extend", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Continue the forest", "steps":28, "seed":-1, "bounds":{"x":-64,"y":-32,"width":768,"height":640}}),
+        serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Red coat", "steps":28, "seed":0, "height":1024}),
+    ] {
+        for pending in [true, false] {
+            let mut config = image_fixture();
+            let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+            snapshot["template"] = template.clone();
+            snapshot["usedSeed"] = serde_json::json!(1234);
+            config.assets.push(serde_json::from_value(serde_json::json!({
+                "id":"template-result", "kind":"image", "name":"Template result", "mimeType":"image/png",
+                "width":512, "height":512, "createdAt":config.created_at, "imageDraft":pending,
+                "relativePath":if pending { None } else { Some("media/result.png") }, "imageGeneration":snapshot
+            })).unwrap());
+            let root = tempfile::tempdir().unwrap();
+            let created = create_project_in(root.path(), &config).unwrap();
+            let reopened = read_project(Path::new(&created.folder_path)).unwrap();
+            assert_eq!(reopened.config.assets, config.assets);
+            let mut invalid = config;
+            invalid.assets.last_mut().unwrap().image_generation.as_mut().unwrap().template.as_mut().unwrap().kind = "unknown".into();
+            assert!(validate_and_normalize_config(invalid).is_err());
+        }
+    }
+}
+
+#[test]
 fn image_and_video_content_coexist_after_save_and_reopen_for_both_legacy_types() {
     for generation_type in [GenerationType::Video, GenerationType::Image] {
         let root = tempfile::tempdir().unwrap();

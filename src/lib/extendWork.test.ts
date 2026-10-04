@@ -9,6 +9,7 @@ import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan }
 import { EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue } from "./workQueue";
 import type { ExtendOptions } from "./extendImage";
+import { restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -52,6 +53,14 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   queue.enqueueExtendImage(session, template, "source", input);
   input.bounds.width = 999; input.prompt = "Changed";
   expect(queue.getSnapshot()).toHaveLength(1);
+  const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  const entry = pending.assets.at(-1)!;
+  expect(entry).toMatchObject({ id: queue.getSnapshot()[0].id, imageDraft: true, parentAssetId: "root", width: 128, height: 64,
+    imageGeneration: { template: { kind: "extend", sourceId: "source", sourceName: "source", generatorName: "H3", ...options() } } });
+  expect(entry.relativePath).toBeUndefined();
+  expect(pending.imageScene!.outputAssetId).toBe(entry.id);
+  expect(queue.getSnapshot()[0].imageDraftId).toBe(entry.id);
+  expect(saveImageDraft(restoreGeneratedImage(pending, entry.id)).assets).toEqual(pending.assets);
   const request = await submitted();
   const { jobId } = request;
   expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
@@ -63,7 +72,7 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(request.prompt).toContain("Continue the forest");
   expect(request.prompt).not.toContain("Changed");
   expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds, output: { width: 128, height: 64 } });
-  if (changed) session.update((config) => ({ ...config, imageScene: { ...config.imageScene!, nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "New prompt" })) } }));
+  if (changed) session.update((config) => restoreGeneratedImage(config, "source"));
   emit("framesReady", jobId);
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
@@ -71,6 +80,9 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(asset).toMatchObject({ id: jobId, name: "Extended - source", parentAssetId: "root", mimeType: "image/png", ...result,
     imageGeneration: { usedSeed: 0, scene: { steps: 25, seed: 0, sourceImage: { ...result } } } });
   expect(reopened.assets.slice(0, 2)).toEqual(initial.assets);
+  expect(reopened.assets).toHaveLength(3);
+  expect(asset.imageDraft).toBe(false);
+  expect(asset.imageGeneration!.template).toEqual(entry.imageGeneration!.template);
   expect(reopened.imageScene!.outputAssetId).toBe(changed ? "source" : jobId);
   expect(JSON.stringify(asset)).not.toContain("cache/extend-images");
   expect(invoke).toHaveBeenCalledWith("save_extended_image", { folderPath: "C:/Extend", jobId });
@@ -102,7 +114,8 @@ it.each(["failed", "cancelled"])("does not publish a result after generation is 
   emit(state, request.jobId);
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(state));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("discard_extend_image", { folderPath: "C:/Extend", jobId: request.jobId }));
-  expect(session.getSnapshot().config.assets).toHaveLength(2);
+  expect(session.getSnapshot().config.assets).toHaveLength(3);
+  expect(session.getSnapshot().config.assets.at(-1)).toMatchObject({ id: request.jobId, imageDraft: true });
   expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "save_extended_image")).toBe(false);
 });
 

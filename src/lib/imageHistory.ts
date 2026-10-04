@@ -61,13 +61,17 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   const scene = config.imageScene;
   if (!scene) return config;
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
+  // Template entries record a submitted job. Selecting one must not replace its
+  // recipe with the editor's generic image settings. Edits become another draft.
+  const templateDraft = selected?.imageDraft && selected.imageGeneration?.template;
+  if (templateDraft && JSON.stringify({ ...scene, outputAssetId: null }) === JSON.stringify(selected.imageGeneration!.scene)) return config;
   const source = scene.rootType === "image" ? scene.sourceImage : null;
   if (!source && !selected?.imageDraft) return config;
   if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
-  const existing = selected?.imageDraft ? selected : undefined;
+  const existing = selected?.imageDraft && !templateDraft ? selected : undefined;
   const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
   const edited = source && config.assets.find((asset) => asset.kind === "image" && !asset.imageDraft && asset.relativePath === source.relativePath);
-  const parentAssetId = existing ? existing.parentAssetId : imageFamilyRoot(config.assets, edited?.id);
+  const parentAssetId = existing ? existing.parentAssetId : imageFamilyRoot(config.assets, templateDraft ? selected.id : edited?.id);
   const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
   if (existing && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
   const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? (source ? `Editing ${source.name}` : "New image"),
@@ -88,10 +92,18 @@ export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: st
   return { ...next, assets: [...config.assets, asset] };
 }
 
+/** Publish the selectable entry before a template job starts using the engine. */
+export function createTemplateImageDraft(config: ProjectConfig, id: string, name: string, generation: ImageGenerationSnapshot, size: { width: number; height: number }): ProjectConfig {
+  const parentAssetId = imageFamilyRoot(config.assets, generation.template!.sourceId);
+  const asset: ProjectAsset = { id, kind: "image", name, mimeType: "image/png", ...size, imageDraft: true,
+    parentAssetId, imageGeneration: structuredClone(generation), createdAt: new Date().toISOString() };
+  return restoreGeneratedImage({ ...config, assets: [...config.assets, asset] }, id);
+}
+
 export function completeImageDraft(config: ProjectConfig, id: string, result: ProjectAsset): ProjectConfig {
   const draft = config.assets.find((asset) => asset.id === id && asset.imageDraft);
   const selected = config.imageScene?.outputAssetId === id;
-  const changed = draft && JSON.stringify({ ...draft.imageGeneration, prompt: "", usedSeed: undefined }) !== JSON.stringify({ ...result.imageGeneration, prompt: "", usedSeed: undefined });
+  const changed = draft && !draft.imageGeneration?.template && JSON.stringify({ ...draft.imageGeneration, prompt: "", usedSeed: undefined }) !== JSON.stringify({ ...result.imageGeneration, prompt: "", usedSeed: undefined });
   // Edits made during generation remain a separate draft on the original source.
   const pending = changed ? { ...draft, id: `image-draft-${crypto.randomUUID()}` } : null;
   const asset = { ...result, id, imageDraft: false, ...(draft?.parentAssetId ? { parentAssetId: draft.parentAssetId } : {}) };

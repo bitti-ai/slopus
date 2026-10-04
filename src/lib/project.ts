@@ -138,6 +138,17 @@ export const LEGACY_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
 
 export const resolutionSchema = z.enum([...PROJECT_RESOLUTIONS, ...LEGACY_RESOLUTIONS]);
 
+const imageTemplateFields = {
+  sourceId: z.string().min(1), sourceName: z.string().min(1), generatorName: z.string().min(1),
+  prompt: z.string(), steps: z.number().int().min(2).max(1000), seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER),
+};
+const imageTemplateSnapshotSchema = z.discriminatedUnion("kind", [
+  z.object({ ...imageTemplateFields, kind: z.literal("extend"), bounds: z.object({
+    x: z.number().finite(), y: z.number().finite(), width: z.number().positive().finite(), height: z.number().positive().finite(),
+  }) }),
+  z.object({ ...imageTemplateFields, kind: z.literal("character-sheet"), height: z.number().int().refine((height) => [512, 1024, 1536, 2048].includes(height), "Unsupported character sheet height.") }),
+]);
+
 export const imageGenerationSnapshotSchema = z.object({
   scene: imageSceneSchema,
   resolution: resolutionSchema,
@@ -147,6 +158,7 @@ export const imageGenerationSnapshotSchema = z.object({
   prompt: z.string(),
   generatorTemplateId: z.string().min(1),
   usedSeed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+  template: imageTemplateSnapshotSchema.optional(),
   references: z.array(z.lazy(() => projectReferenceSchema)).max(100),
 }).superRefine((snapshot, context) => {
   const ids = new Set(snapshot.references.map((reference) => reference.id));

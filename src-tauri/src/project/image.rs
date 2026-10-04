@@ -13,7 +13,41 @@ pub(crate) struct ImageGenerationSnapshot {
     pub generator_template_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_seed: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<ImageTemplateSnapshot>,
     pub references: Vec<super::references::ReusableReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ImageTemplateSnapshot {
+    pub kind: String,
+    pub source_id: String,
+    pub source_name: String,
+    pub generator_name: String,
+    pub prompt: String,
+    pub steps: u32,
+    pub seed: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<ImageBox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+}
+
+impl ImageTemplateSnapshot {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        let valid_options = match self.kind.as_str() {
+            "extend" => self.height.is_none() && self.bounds.as_ref().is_some_and(|b|
+                [b.x, b.y, b.width, b.height].iter().all(|v| v.is_finite()) && b.width > 0.0 && b.height > 0.0),
+            "character-sheet" => self.bounds.is_none() && matches!(self.height, Some(512 | 1024 | 1536 | 2048)),
+            _ => false,
+        };
+        if !valid_options || self.source_id.is_empty() || self.source_name.is_empty() || self.generator_name.is_empty()
+            || !(2..=1000).contains(&self.steps) || !(-1..=9_007_199_254_740_991).contains(&self.seed) {
+            return Err("Invalid image template snapshot settings.".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

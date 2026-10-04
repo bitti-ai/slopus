@@ -6,13 +6,14 @@ import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
 import { TemplateDebugPrompt } from "./TemplateDebugPrompt";
 
-export function CharacterSheetSettings({ config, source, references, missingLabel, defaultSteps, disabledReason, busy, onExecute, onClose }: {
+export function CharacterSheetSettings({ config, source, references, missingLabel, defaultSteps, disabledReason, busy, initialOptions, onExecute, onClose }: {
   config: ProjectConfig; source: ProjectAsset; references: PromptReference[]; missingLabel: (id: string) => string;
   defaultSteps: number; disabledReason: string | null; busy: boolean;
+  initialOptions?: CharacterSheetOptions;
   onExecute: (options: CharacterSheetOptions) => void; onClose: () => void;
 }) {
   const [options, setOptions] = useState<CharacterSheetOptions>(() => ({ ...emptyCharacterSheetOptions(), height: characterSheetDimensions(config.settings.resolution)[0].height,
-    steps: config.imageScene?.steps ?? defaultSteps, seed: config.imageScene?.seed ?? -1 }));
+    steps: config.imageScene?.steps ?? defaultSteps, seed: config.imageScene?.seed ?? -1, ...initialOptions }));
   const dimensions = characterSheetDimensions(config.settings.resolution, options.height);
   const [error, setError] = useState<string | null>(null);
   const compiled = useMemo(() => {
