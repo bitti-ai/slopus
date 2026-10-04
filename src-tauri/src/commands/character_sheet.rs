@@ -58,7 +58,7 @@ fn write_view(
     crate::storage::atomic::write_atomically(&directory.join(format!("{index}.png")), &png)
 }
 
-/// The four independent renders are assembled losslessly, in view order.
+/// Assemble a square portrait and three tall views without stretching or cropping.
 #[tauri::command]
 pub(crate) fn combine_character_sheet(
     folder_path: String,
@@ -66,23 +66,31 @@ pub(crate) fn combine_character_sheet(
 ) -> Result<super::artifacts::GeneratedImageFile, String> {
     let root = ProjectRoot::open(&folder_path)?;
     let directory = cache_directory(&sheet_id)?;
-    let mut sheet: Option<RgbaImage> = None;
+    let mut views = Vec::new();
+    let mut total_width = 0;
+    let mut common_height = 0;
     for index in 0..4 {
         let path = root.existing(&format!("{directory}/{index}.png"))?;
         let (width, height) = image::image_dimensions(&path).map_err(|error| error.to_string())?;
         if width == 0 || width > 2048 || height == 0 || height > 8192 {
             return Err("Invalid character sheet view dimensions.".into());
         }
-        let canvas = sheet.get_or_insert_with(|| RgbaImage::new(width * 4, height));
-        if canvas.width() != width * 4 || canvas.height() != height {
-            return Err("Character sheet views must have matching dimensions.".into());
+        if index > 0 && common_height != height {
+            return Err("Character sheet views must have matching heights.".into());
         }
+        common_height = height;
+        total_width += width;
+        views.push((path, width));
+    }
+    let mut sheet = RgbaImage::new(total_width, common_height);
+    let mut x = 0;
+    for (path, width) in views {
         let view = image::open(path)
             .map_err(|error| error.to_string())?
             .to_rgba8();
-        image::imageops::replace(canvas, &view, i64::from(index * width), 0);
+        image::imageops::replace(&mut sheet, &view, x, 0);
+        x += i64::from(width);
     }
-    let sheet = sheet.ok_or("The character sheet has no views.")?;
     super::artifacts::write_generated_png_frame(
         &folder_path,
         &sheet_id,
@@ -128,16 +136,29 @@ mod tests {
             [255, 255, 0, 255],
         ];
         for (index, color) in colors.iter().enumerate() {
-            write_view(&path, "sheet-test", index, 2, 3, &color.repeat(6)).unwrap();
+            let width = if index == 0 { 16 } else { 9 };
+            write_view(
+                &path,
+                "sheet-test",
+                index,
+                width,
+                16,
+                &color.repeat(width as usize * 16),
+            )
+            .unwrap();
         }
         write_view(&path, "other-sheet", 0, 2, 3, &colors[0].repeat(6)).unwrap();
         let saved = combine_character_sheet(path.clone(), "sheet-test".into()).unwrap();
-        assert_eq!((saved.width, saved.height), (8, 3));
+        assert_eq!((saved.width, saved.height), (43, 16));
         let image = image::open(folder.path().join(&saved.relative_path))
             .unwrap()
             .to_rgba8();
-        for (index, color) in colors.iter().enumerate() {
-            assert_eq!(image.get_pixel(index as u32 * 2, 1).0, *color);
+        for ((start, end), color) in [(0, 15), (16, 24), (25, 33), (34, 42)]
+            .iter()
+            .zip(colors.iter())
+        {
+            assert_eq!(image.get_pixel(*start, 0).0, *color);
+            assert_eq!(image.get_pixel(*end, 15).0, *color);
         }
         discard_character_sheet_views(path.clone(), "sheet-test".into()).unwrap();
         assert!(!folder
@@ -161,7 +182,7 @@ mod tests {
         write_view(&path, "sheet", 0, 1, 1, &[0; 4]).unwrap();
         assert!(combine_character_sheet(path.clone(), "sheet".into()).is_err());
         for index in 1..4 {
-            write_view(&path, "sheet", index, 2, 1, &[0; 8]).unwrap();
+            write_view(&path, "sheet", index, 2, 2, &[0; 16]).unwrap();
         }
         assert!(combine_character_sheet(path, "sheet".into()).is_err());
         assert!(!folder.path().join("media/generated/sheet.png").exists());

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
-import { CHARACTER_SHEET_VIEWS, characterSheetPrompts } from "./characterSheet";
+import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetPrompts } from "./characterSheet";
 import { completeImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
@@ -58,7 +58,7 @@ export interface WorkItem {
 }
 interface PendingWork {
   characterSheet?: {
-    prompts: string[]; sourceId: string; name: string; index: number;
+    prompts: string[]; sourceId: string; name: string; index: number; frontRelativePath: string;
     ready?: { resolve: () => void; reject: (reason: Error) => void };
   };
   outputFrames?: number;
@@ -272,19 +272,17 @@ export class WorkQueue {
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
-    const prompts = characterSheetPrompts(config, source);
-    // Portrait panels leave room for head-to-toe views. Bound each panel so
-    // the four-column PNG remains within the image editor's 8192px limit.
-    const size = outputDimensions(config.settings.resolution, "4:5");
-    const width = Math.min(2048, size.width);
-    const height = Math.round(width * size.height / size.width);
     const id = `character-sheet-${crypto.randomUUID()}`;
+    const frontRelativePath = `cache/character-sheets/${id}/1.png`;
+    const prompts = characterSheetPrompts(config, source, frontRelativePath);
+    const firstView = CHARACTER_SHEET_ORDER[0];
+    const { width, height } = characterSheetDimensions(config.settings.resolution)[firstView];
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: `${id}-view-1`, stillImage: true, frames: 1, prompt: prompts[0],
+    const request: SlopfabGenerationRequest = { jobId: `${id}-view-${firstView + 1}`, stillImage: true, frames: 1, prompt: prompts[firstView],
       canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(current.imageScene?.steps ?? template.defaultSteps, config),
       seed: imageGenerationSeed(current.imageScene?.seed ?? -1), referencePaths: [projectItemPath(session.record.folderPath, source)!] };
-    this.work.set(id, { id, image: true, characterSheet: { prompts, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+    this.work.set(id, { id, image: true, characterSheet: { prompts, sourceId, name: `Character sheet - ${source.name}`, index: 0, frontRelativePath },
       imageGeneration: { ...imageGenerationSnapshot(config, prompts.join("\n\n"), template.id), usedSeed: request.seed },
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
       request, submitted: false, cancelled: false, done, finish });
@@ -462,7 +460,7 @@ export class WorkQueue {
       const sheet = work.characterSheet;
       const fraction = event.totalSteps > 0 ? Math.max(0, Math.min(1, event.step / event.totalSteps)) : 0;
       this.patch(work.id, { progress: Math.max(item.progress, (sheet.index + fraction) / 4 * 0.9),
-        detail: item.cancelling ? "Cancelling generation" : `Character sheet ${sheet.index + 1}/4 · ${CHARACTER_SHEET_VIEWS[sheet.index].label}` });
+        detail: item.cancelling ? "Cancelling generation" : `Character sheet ${sheet.index + 1}/4 · ${CHARACTER_SHEET_VIEWS[CHARACTER_SHEET_ORDER[sheet.index]].label}` });
       return;
     }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
@@ -499,19 +497,25 @@ export class WorkQueue {
   private async generateCharacterSheet(work: PendingWork) {
     const sheet = work.characterSheet!;
     const folderPath = work.session.record.folderPath;
+    const sourcePath = work.request.referencePaths[0];
+    const dimensions = characterSheetDimensions(work.config.settings.resolution);
     try {
       for (let index = 0; index < sheet.prompts.length; index++) {
         if (work.cancelled) return;
         sheet.index = index;
+        const viewIndex = CHARACTER_SHEET_ORDER[index];
+        const { width, height } = dimensions[viewIndex];
         work.submitted = false;
-        work.request = { ...work.request, jobId: `${work.id}-view-${index + 1}`, prompt: sheet.prompts[index] };
+        work.request = { ...work.request, jobId: `${work.id}-view-${viewIndex + 1}`, prompt: sheet.prompts[viewIndex],
+          canvasWidth: width, canvasHeight: height,
+          referencePaths: [sourcePath, ...(index > 0 ? [projectItemPath(folderPath, { relativePath: sheet.frontRelativePath })!] : [])] };
         this.patch(work.id, { status: "preparing", detail: `Preparing character sheet view ${index + 1}/4` });
         await resolveSlopfabPlan(work.request, work.config, folderPath);
         if (work.cancelled) return;
         const ready = new Promise<void>((resolve, reject) => { sheet.ready = { resolve, reject }; });
         // Events can arrive before native submission returns.
         void ready.catch(() => undefined);
-        this.patch(work.id, { status: "generating", detail: `Character sheet ${index + 1}/4 · ${CHARACTER_SHEET_VIEWS[index].label}` });
+        this.patch(work.id, { status: "generating", detail: `Character sheet ${index + 1}/4 · ${CHARACTER_SHEET_VIEWS[viewIndex].label}` });
         await enqueueSlopfabGeneration(work.request, work.config, folderPath);
         work.submitted = true;
         if (work.cancelled) await this.requestNativeCancellation(work);
@@ -519,7 +523,7 @@ export class WorkQueue {
         sheet.ready = undefined;
         if (work.cancelled) { this.cancelled(work); return; }
         this.patch(work.id, { status: "encoding", detail: `Saving character sheet view ${index + 1}/4` });
-        await invoke("save_character_sheet_view", { folderPath, sheetId: work.id, jobId: work.request.jobId, index });
+        await invoke("save_character_sheet_view", { folderPath, sheetId: work.id, jobId: work.request.jobId, index: viewIndex });
         await releaseRendered(work.request.jobId);
       }
       this.patch(work.id, { status: "encoding", progress: 0.95, detail: "Combining character sheet", completionAt: null });

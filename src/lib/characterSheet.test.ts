@@ -8,6 +8,7 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue } from "./workQueue";
+import { characterSheetDimensions } from "./characterSheet";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -16,12 +17,12 @@ vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGe
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 let stop: (() => void) | undefined;
 const template: GeneratorTemplate = { id: "h3", name: "H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
-const result = { relativePath: "media/generated/sheet.png", width: 3072, height: 960 };
+const result = { relativePath: "media/generated/sheet.png", width: 2752, height: 1024 };
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks(); handlers.clear();
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: unknown }) => void) => { handlers.set(name, handler); return () => {}; }) as typeof listen);
-  vi.mocked(resolveSlopfabPlan).mockResolvedValue({ alignedFrames: 1, canvasWidth: 768, canvasHeight: 960 } as Awaited<ReturnType<typeof resolveSlopfabPlan>>);
+  vi.mocked(resolveSlopfabPlan).mockImplementation(async (request) => ({ alignedFrames: 1, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight } as Awaited<ReturnType<typeof resolveSlopfabPlan>>));
   vi.mocked(enqueueSlopfabGeneration).mockResolvedValue(undefined);
   vi.mocked(cancelSlopfabGeneration).mockResolvedValue(true);
   vi.mocked(releaseRendered).mockResolvedValue(true);
@@ -44,7 +45,7 @@ async function requestAt(index: number) {
   return vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0];
 }
 
-it.each([false, true])("generates four source-conditioned views and adds only the combined sheet (source changed: %s)", async (changed) => {
+it.each([false, true])("uses a shared front-view outfit with square portrait and tall body views (source changed: %s)", async (changed) => {
   const { queue, session } = setup();
   const original = structuredClone(session.getSnapshot().config);
   queue.enqueueCharacterSheet(session, template, "source");
@@ -52,12 +53,22 @@ it.each([false, true])("generates four source-conditioned views and adds only th
   expect(queue.getSnapshot()).toHaveLength(1);
   const id = queue.getSnapshot()[0].id;
   let seed: number | undefined;
+  const order = [1, 0, 2, 3];
   for (let index = 0; index < 4; index++) {
     const request = await requestAt(index);
     seed ??= request.seed;
-    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: ["C:/Character/media/hero.png"], seed });
+    const viewIndex = order[index];
+    const referencePaths = ["C:/Character/media/hero.png", ...(index > 0 ? [`C:/Character/cache/character-sheets/${id}/1.png`] : [])];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths, seed });
+    expect(request.canvasWidth / request.canvasHeight).toBe(viewIndex === 0 ? 1 : 9 / 16);
+    expect(request.canvasHeight).toBe(1024);
+    if (index > 0) {
+      expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: `${id}-view-2`, index: 1 });
+      expect(request.prompt).toContain("<Picture 2> is the full body front view of this same character and the fixed wardrobe reference");
+      expect(request.prompt).toContain("Do not add, remove, replace, restyle or recolor any clothing");
+    }
     expect(request.imageEdit).toBeUndefined();
-    expect(request.prompt).toContain(["frontal close-up portrait", "full body front view", "full body side view", "full body back view"][index]);
+    expect(request.prompt).toContain(["frontal close-up portrait", "full body front view", "full body side view", "full body back view"][viewIndex]);
     expect(request.prompt).toContain("clothing, footwear, accessories");
     expect(request.prompt).toContain("<Picture 1>");
     expect(request.prompt).not.toContain("A still photograph");
@@ -66,7 +77,7 @@ it.each([false, true])("generates four source-conditioned views and adds only th
     emit("framesReady", request.jobId);
     if (index < 3) {
       await waitFor(() => expect(releaseRendered).toHaveBeenCalledWith(request.jobId));
-      expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: request.jobId, index });
+      expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: request.jobId, index: viewIndex });
     }
   }
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
@@ -79,6 +90,14 @@ it.each([false, true])("generates four source-conditioned views and adds only th
   expect(reopened.generationJobs).toEqual(original.generationJobs);
   expect(reopened.timeline).toEqual(original.timeline);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("discard_character_sheet_views", { folderPath: "C:/Character", sheetId: id }));
+});
+
+it.each(["416p", "768p", "1080p", "2048p", "4k"] as const)("keeps exact aspect ratios and aligned dimensions at %s", (resolution) => {
+  const sizes = characterSheetDimensions(resolution);
+  expect(sizes.map(({ width, height }) => width / height)).toEqual([1, 9 / 16, 9 / 16, 9 / 16]);
+  expect(new Set(sizes.map(({ height }) => height)).size).toBe(1);
+  expect(sizes.reduce((sum, { width }) => sum + width, 0)).toBeLessThanOrEqual(8192);
+  for (const { width, height } of sizes) { expect(width % 32).toBe(0); expect(height % 32).toBe(0); }
 });
 
 it.each(["cancelled", "failed"])("discards partial views after the second render is %s", async (state) => {
