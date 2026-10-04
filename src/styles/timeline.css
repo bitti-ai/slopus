@@ -1731,24 +1731,22 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .program-picture > video, .program-picture > img, .program-keyed-picture { position: absolute; inset: 0; }
 
 /* Grading controls share the inspector's compact sizing. */
-.grading-curves { display: grid; gap: 10px; min-width: 0; }
-.grading-curves__graph { width: calc(100% - 12px); margin: 6px; aspect-ratio: 1; overflow: visible; touch-action: none; background: var(--fill-subtle-hover); border: 1px solid var(--stroke-default); color: var(--text-primary); }
+.grading-curves { display: grid; gap: var(--space-2); min-width: 0; color: var(--text-primary); }
+.grading-curves__graph { width: calc(100% - 16px); margin: var(--space-2); aspect-ratio: 1; overflow: visible; touch-action: none; background: var(--fill-subtle-hover); border: 1px solid var(--stroke-control); color: var(--text-primary); }
 .grading-curves__grid { stroke: currentColor; opacity: .12; fill: none; }
 .grading-curves__baseline { stroke: currentColor; opacity: .3; stroke-dasharray: 4 4; fill: none; }
 .grading-curves__line { stroke: currentColor; stroke-width: 2; fill: none; }
-.grading-curves__graph--red { color: #ed7373; }
-.grading-curves__graph--green { color: #73c88f; }
-.grading-curves__graph--blue { color: #81aaff; }
-.grading-curves__point { fill: currentColor; stroke: #222; stroke-width: 1; cursor: grab; }
-.grading-curves__point--selected, .grading-curves__point:focus { stroke: #fff; stroke-width: 2; outline: none; }
-.grading-curves__coordinates, .grading-curves__actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.grading-curves__coordinates label { display: flex; align-items: center; gap: 6px; flex: 1; font-size: 11px; }
-.grading-curves__coordinates input { width: 60px; min-width: 0; }
-.grading-curves__actions .secondary-button { padding: 4px 8px; min-height: 26px; font-size: 11px; }
-.grading-wheel-section { display: grid; gap: 8px; }
-.grading-wheel-section__heading { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
-.grading-wheel { position: relative; width: 128px; height: 128px; margin: 6px auto; border-radius: 50%; touch-action: none; cursor: crosshair; background: radial-gradient(circle, #999, transparent 70%), conic-gradient(from 90deg, #ff8080, #ff80ff, #8080ff, #80ffff, #80ff80, #ffff80, #ff8080); box-shadow: inset 0 0 0 1px #ffffff40; }
-.grading-wheel:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; }
+.grading-curves__point { fill: currentColor; stroke: var(--panel); stroke-width: 1; cursor: grab; }
+.grading-curves__point--selected, .grading-curves__point:focus { stroke: var(--focus-outer); stroke-width: 2; outline: none; }
+.grading-curves__coordinates, .grading-curves__actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.grading-curves__coordinates label { display: flex; align-items: center; gap: var(--space-1); flex: 1; font-size: var(--text-xs); }
+.grading-curves__coordinates .text-field { width: 64px; min-width: 0; height: var(--control-sm); padding: 0 var(--space-1); font-size: var(--text-xs); }
+.grading-curves__actions .secondary-button { padding: var(--space-1) var(--space-2); min-height: var(--control-sm); font-size: var(--text-xs); }
+.grading-curves .clip-effect__note { padding-left: 0; }
+.grading-wheel-section { display: grid; gap: var(--space-2); color: var(--text-primary); }
+.grading-wheel-section__heading { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-xs); }
+.grading-wheel { position: relative; width: 128px; height: 128px; margin: var(--space-2) auto; border-radius: 50%; touch-action: none; cursor: crosshair; box-shadow: inset 0 0 0 1px var(--stroke-control); }
+.grading-wheel:focus-visible { outline: 2px solid var(--focus-outer); outline-offset: 3px; }
 .grading-wheel[aria-disabled="true"] { opacity: .4; cursor: default; }
-.grading-wheel__center { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: #555; transform: translate(-50%, -50%); }
-.grading-wheel__handle { position: absolute; width: 10px; height: 10px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px #222; transform: translate(-50%, -50%); pointer-events: none; }
+.grading-wheel__center { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--text-secondary); transform: translate(-50%, -50%); }
+.grading-wheel__handle { position: absolute; width: 10px; height: 10px; border: 2px solid var(--focus-outer); border-radius: 50%; box-shadow: 0 0 0 1px var(--focus-inner); transform: translate(-50%, -50%); pointer-events: none; }

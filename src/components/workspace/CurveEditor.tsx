@@ -21,7 +21,9 @@ export function CurveEditor({ value, disabled, onChange }: { value: NonNullable<
   const move = (i: number, x: number, y: number) => {
     const next = latest.current.map((p) => [...p] as CurvePoint);
     const last = next.length - 1;
-    next[i] = [i === 0 ? 0 : i === last ? 1 : clamp(x, next[i - 1][0] + .002, next[i + 1][0] - .002), clamp(y)];
+    const lo = i > 0 ? next[i - 1][0] + .001001 : 0;
+    const hi = i < last ? next[i + 1][0] - .001001 : 1;
+    next[i] = [i === 0 ? 0 : i === last ? 1 : lo > hi ? next[i][0] : clamp(x, lo, hi), clamp(y)];
     if (periodic && (i === 0 || i === last)) next[i === 0 ? last : 0][1] = next[i][1];
     commit(next);
   };
@@ -39,6 +41,7 @@ export function CurveEditor({ value, disabled, onChange }: { value: NonNullable<
     <ComboBox aria-label="Curve channel" value={channel} disabled={disabled} options={CURVE_CHANNELS.map((c) => ({ value: c, label: LABELS[c] }))}
       onChange={(c) => { setChannel(c); setSelected(0); drag.current = null; }} />
     <svg ref={svg} className={`grading-curves__graph grading-curves__graph--${channel}`} viewBox="0 0 256 256" aria-label={`${LABELS[channel]} curve`} aria-describedby={hint}
+      style={{ color: ({ red: "#ed7373", green: "#73c88f", blue: "#81aaff" } as Partial<Record<CurveChannel, string>>)[channel] }}
       onPointerDown={(e) => {
         if (disabled || e.button !== 0) return;
         const [x, y] = position(e);
@@ -63,9 +66,9 @@ export function CurveEditor({ value, disabled, onChange }: { value: NonNullable<
         }} />)}
     </svg>
     <div className="grading-curves__coordinates">
-      <label>Input <input aria-label="Curve point input" type="number" min={0} max={100} step={1} value={+(points[index][0] * 100).toFixed(1)} disabled={disabled || index === 0 || index === points.length - 1}
+      <label>Input <input className="text-field" aria-label="Curve point input" type="number" min={0} max={100} step={1} value={+(points[index][0] * 100).toFixed(1)} disabled={disabled || index === 0 || index === points.length - 1}
         onChange={(e) => { if (Number.isFinite(e.target.valueAsNumber)) move(index, e.target.valueAsNumber / 100, points[index][1]); }} /></label>
-      <label>Output <input aria-label="Curve point output" type="number" min={0} max={100} step={1} value={+(points[index][1] * 100).toFixed(1)} disabled={disabled}
+      <label>Output <input className="text-field" aria-label="Curve point output" type="number" min={0} max={100} step={1} value={+(points[index][1] * 100).toFixed(1)} disabled={disabled}
         onChange={(e) => { if (Number.isFinite(e.target.valueAsNumber)) move(index, points[index][0], e.target.valueAsNumber / 100); }} /></label>
     </div>
     <div className="grading-curves__actions">

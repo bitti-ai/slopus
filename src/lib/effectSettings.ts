@@ -28,11 +28,11 @@ const percent = z.number().finite().min(0).max(100);
 const signedPercent = z.number().finite().min(-100).max(100);
 const unit = z.number().finite().min(0).max(1);
 export const curveSchema = z.array(z.tuple([unit, unit])).min(2).max(32).superRefine((points, context) => {
-  if (points[0][0] !== 0 || points[points.length - 1][0] !== 1 || points.some((p, i) => i > 0 && p[0] - points[i - 1][0] < 0.001)) {
+  if (points.length < 2 || points[0][0] !== 0 || points[points.length - 1][0] !== 1 || points.some((p, i) => i > 0 && p[0] - points[i - 1][0] < 0.001)) {
     context.addIssue({ code: "custom", message: "Curves need endpoints at 0 and 1 and increasing inputs at least 0.001 apart." });
   }
 });
-const hueCurveSchema = curveSchema.refine((p) => p[0][1] === p[p.length - 1][1], "Hue curve endpoints must match.");
+const hueCurveSchema = curveSchema.refine((p) => p.length >= 2 && p[0][1] === p[p.length - 1][1], "Hue curve endpoints must match.");
 export const CREATIVE_LOOKS = ["None", "Teal & Orange", "Warm Film", "Cool Blue", "Bleach Bypass", "Faded Matte", "Monochrome", "Golden Hour", "Night"] as const;
 export const CURVE_CHANNELS = ["rgb", "red", "green", "blue", "hueVsSat", "hueVsHue", "hueVsLuma", "lumaVsSat", "satVsSat"] as const;
 export type CurveChannel = typeof CURVE_CHANNELS[number];

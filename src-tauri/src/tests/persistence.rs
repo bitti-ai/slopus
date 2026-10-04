@@ -448,3 +448,40 @@ fn blank_brief_is_a_valid_empty_project() {
     config.generation_jobs.clear();
     assert!(validate_and_normalize_config(config).is_ok());
 }
+
+#[test]
+fn color_grading_round_trips_and_validates() {
+    let mut json = serde_json::to_value(fixture()).unwrap();
+    let clip = &mut json["timeline"]["tracks"][0]["clips"][0];
+    clip["colorCorrection"] = serde_json::json!({"exposure":1.0,"contrast":20.0,"saturation":80.0,"temperature":25.0,"tint":-15.0,"highlights":-20.0,"shadows":30.0,"whites":10.0,"blacks":-10.0});
+    clip["creative"] = serde_json::json!({"look":"Warm Film","intensity":65.0,"fadedFilm":10.0,"sharpen":35.0,"vibrance":-15.0,"enabled":false});
+    clip["curves"] = serde_json::json!({"rgb":[[0.0,0.0],[0.5,0.7],[1.0,1.0]],"red":[[0.0,0.1],[1.0,0.9]],"green":[[0.0,0.0],[1.0,1.0]],"blue":[[0.0,0.0],[1.0,1.0]],"hueVsSat":[[0.0,0.5],[0.2,0.8],[1.0,0.5]],"hueVsHue":[[0.0,0.5],[1.0,0.5]],"hueVsLuma":[[0.0,0.5],[1.0,0.5]],"lumaVsSat":[[0.0,0.2],[1.0,0.8]],"satVsSat":[[0.0,0.5],[1.0,0.5]]});
+    clip["colorWheels"] = serde_json::json!({"shadows":{"x":0.3,"y":-0.4,"lightness":10.0},"midtones":{"x":0.0,"y":0.0,"lightness":-20.0},"highlights":{"x":0.2,"y":0.1,"lightness":30.0}});
+    clip["vignette"] = serde_json::json!({"amount":-30.0,"midpoint":20.0,"roundness":-15.0,"feather":65.0});
+    let config = without_derived_project_state(validate_and_normalize_config(serde_json::from_value(json.clone()).unwrap()).unwrap());
+    // Compare serialized effects too: equality of two Rust structs alone would miss dropped fields.
+    let serialized = serde_json::to_value(&config).unwrap();
+    for effect in ["colorCorrection", "creative", "curves", "colorWheels", "vignette"] {
+        assert_eq!(serialized["timeline"]["tracks"][0]["clips"][0][effect], json["timeline"]["tracks"][0]["clips"][0][effect]);
+    }
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let folder = PathBuf::from(&created.folder_path);
+    write_project(&folder, &config).unwrap();
+    assert_eq!(read_project(&folder).unwrap().config, config);
+    for (effect, field, value) in [
+        ("colorCorrection", "temperature", serde_json::json!(101)),
+        ("colorCorrection", "shadows", serde_json::json!(-101)),
+        ("creative", "look", serde_json::json!("unknown")),
+        ("creative", "vibrance", serde_json::json!(101)),
+        ("vignette", "feather", serde_json::json!(-1)),
+        ("curves", "rgb", serde_json::json!([])),
+        ("curves", "rgb", serde_json::json!([[0,0],[0,1]])),
+        ("curves", "hueVsHue", serde_json::json!([[0,0.1],[1,0.9]])),
+        ("colorWheels", "shadows", serde_json::json!({"x":1,"y":1,"lightness":0})),
+    ] {
+        let mut invalid = json.clone();
+        invalid["timeline"]["tracks"][0]["clips"][0][effect][field] = value;
+        assert!(validate_and_normalize_config(serde_json::from_value(invalid).unwrap()).is_err(), "{effect}.{field}");
+    }
+}

@@ -37,8 +37,9 @@ describe("shape-preserving curves", () => {
     expect(compiled.values[2 * CURVE_SAMPLES - 1]).toBeCloseTo(.9);
     expect(compiled.values[4 * CURVE_SAMPLES + 500]).toBeCloseTo(.3);
   });
-  it.each([[], [[0, 0]], [[0, 0], [0, 1]], [[0, 0], [.5, 1], [.4, 0], [1, 1]], [[0, 0], [1, NaN]], [[.1, 0], [1, 1]], [[0, 0], [1, 1.1]]])("rejects malformed curve data", (points) => {
+  it.each([[], [[0, 0]], [[0, 0], [0, 1]], [[0, 0], [.5, 1], [.4, 0], [1, 1]], [[0, 0], [1, NaN]], [[.1, 0], [1, 1]], [[0, 0], [1, 1.1]]].map((points) => ({ points })))("rejects malformed curve data", ({ points }) => {
     expect(curveSchema.safeParse(points).success).toBe(false);
+    expect(effectSchemas.curves.safeParse({ hueVsSat: points }).success).toBe(false);
   });
 });
 

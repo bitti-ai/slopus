@@ -4,6 +4,10 @@ This alpha update adds DMAD LoRA support, resumable model downloads, and improve
 
 ## What's new
 
+- Renamed Colour correction to Basic Corrections and added temperature, tint, highlights, shadows, whites and blacks alongside exposure, contrast and saturation.
+- Added Creative with eight built-in procedural looks and intensity, faded film, sharpen and vibrance controls; RGB and hue/saturation/luma curve editors; and shadow, midtone and highlight Color Wheels with individual lightness controls.
+- Vignette now includes midpoint, roundness and feather, plus negative amounts for lighter edges. Grading settings are saved with the project and applied consistently in preview and export.
+
 - First and last scene frames use the searchable reference picker with image thumbnails. Reference selectors and prompt chips share configurable filters for images, audio, video, text, and RefMods.
 - Configure a character sheet from the Image toolbar's Template menu, with one reference-enabled prompt for clothing and other details, a resolution selection controlling sheet height (512–2048 px), and step count and seed controls, then select Execute. A square waist-up shot and three 9:16 full-body views are combined into one child image in the image bar. The front view provides a shared clothing reference for the other views; all four views share the selected step count and seed.
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.

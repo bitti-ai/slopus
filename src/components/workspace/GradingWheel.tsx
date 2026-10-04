@@ -11,7 +11,8 @@ export function GradingWheel({ label, x, y, disabled, onChange }: { label: strin
     const bounds = event.currentTarget.getBoundingClientRect();
     set((event.clientX - bounds.left) / bounds.width * 2 - 1, 1 - (event.clientY - bounds.top) / bounds.height * 2);
   };
-  return <div className="grading-wheel" role="slider" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`${label} color`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.hypot(x, y) * 100)}
+  // These are signal colours, independent of the application's light/dark palette.
+  return <div style={{ background: "radial-gradient(circle, #999, transparent 70%), conic-gradient(from 90deg, #ff8080, #ff80ff, #8080ff, #80ffff, #80ff80, #ffff80, #ff8080)" }} className="grading-wheel" role="slider" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`${label} color`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.hypot(x, y) * 100)}
     aria-valuetext={`Horizontal ${Math.round(x * 100)}, vertical ${Math.round(y * 100)}`} title="Drag to tint. Arrow keys adjust; Home resets color."
     onPointerDown={(event) => { if (disabled || event.button !== 0) return; dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.focus(); point(event); }}
     onPointerMove={(event) => { if (dragging.current) point(event); }} onPointerUp={() => { dragging.current = false; }} onPointerCancel={() => { dragging.current = false; }} onLostPointerCapture={() => { dragging.current = false; }}
