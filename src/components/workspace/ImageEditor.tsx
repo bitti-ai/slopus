@@ -18,7 +18,7 @@ import { ImageBar } from "./ImageBar";
 import { CharacterSheetSettings } from "./CharacterSheetSettings";
 import { ExtendSettings } from "./ExtendSettings";
 import { ExtendCanvas } from "./ExtendCanvas";
-import { initialExtendBounds, type ExtendOptions } from "../../lib/extendImage";
+import { extendOutputDimensions, initialExtendBounds, type ExtendOptions } from "../../lib/extendImage";
 import type { CharacterSheetOptions } from "../../lib/characterSheet";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { DebugPromptDialog } from "./DebugPromptDialog";
@@ -151,6 +151,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const work = workItems.filter((item) => item.imageAssetId === scene.outputAssetId).at(-1);
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
+  let extendSize: { width: number; height: number } | null = null;
+  if (extendMode && extendOptions && output?.width && output.height) {
+    try { extendSize = extendOutputDimensions(config, { width: output.width, height: output.height }, extendOptions.bounds); }
+    catch { /* Invalid bounds are explained in Extend settings. */ }
+  }
   const images = config.assets.filter((asset) => asset.kind === "image");
   const menuImage = images.find((asset) => asset.id === imageMenu?.id);
   const canUseMenuImage = Boolean(menuImage?.relativePath || menuImage?.sourcePath);
@@ -656,7 +661,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendOptions.bounds.width || "-"} \u00d7 ${extendOptions.bounds.height || "-"} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>

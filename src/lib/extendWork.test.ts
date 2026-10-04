@@ -17,7 +17,7 @@ vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGe
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 const template: GeneratorTemplate = { id: "h3", name: "H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
 const options = (): ExtendOptions => ({ bounds: { x: -64, y: -32, width: 256, height: 160 }, prompt: "Continue the forest", steps: 25, seed: 0 });
-const result = { relativePath: "media/generated/extended.png", width: 256, height: 160 };
+const result = { relativePath: "media/generated/extended.png", width: 128, height: 64 };
 let stop: (() => void) | undefined;
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks(); handlers.clear();
@@ -54,12 +54,12 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(queue.getSnapshot()).toHaveLength(1);
   const request = await submitted();
   const { jobId } = request;
-  expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 256, canvasHeight: 160,
+  expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
     imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [`C:/Extend/cache/extend-images/${jobId}/canvas.png`] });
   expect(request.imageEdit!.edits).toHaveLength(4);
   expect(request.prompt).toContain("Continue the forest");
   expect(request.prompt).not.toContain("Changed");
-  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds });
+  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds, output: { width: 128, height: 64 } });
   if (changed) session.update((config) => ({ ...config, imageScene: { ...config.imageScene!, nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "New prompt" })) } }));
   emit("framesReady", jobId);
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));

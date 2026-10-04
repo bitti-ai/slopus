@@ -11,6 +11,79 @@ pub(crate) struct ExtendBounds {
     height: u32,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub(crate) struct ExtendSize {
+    width: u32,
+    height: u32,
+}
+// Keep aligned with the largest current preset in src/lib/export.ts (2048p).
+const MAX_GENERATION_EDGE: u32 = 3648;
+const MAX_GENERATION_PIXELS: u64 = 3648 * 2048;
+
+fn source_dimensions(width: u32, height: u32) -> ExtendSize {
+    let scale = 1.0f64
+        .min(MAX_GENERATION_EDGE as f64 / (width as f64 * 1.5))
+        .min(MAX_GENERATION_EDGE as f64 / (height as f64 * 1.5))
+        .min((MAX_GENERATION_PIXELS as f64 / (width as f64 * height as f64)).sqrt() / 1.5);
+    ExtendSize {
+        width: ((width as f64 * scale).floor() as u32).max(1),
+        height: ((height as f64 * scale).floor() as u32).max(1),
+    }
+}
+
+fn scaled_layout(
+    width: u32,
+    height: u32,
+    bounds: ExtendBounds,
+    output: ExtendSize,
+) -> Result<(ExtendSize, ExtendBounds), String> {
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        return Err("Invalid Extend source dimensions.".into());
+    }
+    let workspace = source_dimensions(width, height);
+    bounds.validate(workspace.width, workspace.height)?;
+    if bounds.width % 32 != 0
+        || bounds.height % 32 != 0
+        || bounds.width > MAX_GENERATION_EDGE
+        || bounds.height > MAX_GENERATION_EDGE
+        || u64::from(bounds.width) * u64::from(bounds.height) > MAX_GENERATION_PIXELS
+    {
+        return Err("Extend box dimensions must be multiples of 32 within the maximum generation resolution.".into());
+    }
+    if output.width == 0
+        || output.height == 0
+        || output.width % 32 != 0
+        || output.height % 32 != 0
+        || output.width > bounds.width
+        || output.height > bounds.height
+        || u64::from(output.width) * u64::from(output.height) > u64::from(width) * u64::from(height)
+    {
+        return Err(
+            "Extend output must be aligned to 32 pixels and cannot increase the source resolution."
+                .into(),
+        );
+    }
+    let scale = (output.width as f64 / bounds.width as f64)
+        .min(output.height as f64 / bounds.height as f64);
+    let source = ExtendSize {
+        width: ((workspace.width as f64 * scale).round() as u32).max(1),
+        height: ((workspace.height as f64 * scale).round() as u32).max(1),
+    };
+    // Match JavaScript Math.round, including negative half-pixel positions.
+    let mapped = ExtendBounds {
+        x: (bounds.x as f64 * scale - (output.width as f64 - bounds.width as f64 * scale) / 2.0
+            + 0.5)
+            .floor() as i32,
+        y: (bounds.y as f64 * scale - (output.height as f64 - bounds.height as f64 * scale) / 2.0
+            + 0.5)
+            .floor() as i32,
+        width: output.width,
+        height: output.height,
+    };
+    mapped.validate(source.width, source.height)?;
+    Ok((source, mapped))
+}
+
 impl ExtendBounds {
     fn validate(self, width: u32, height: u32) -> Result<(), String> {
         if width == 0
@@ -73,6 +146,7 @@ pub(crate) fn prepare_extend_image(
     job_id: String,
     source_id: String,
     bounds: ExtendBounds,
+    output: ExtendSize,
 ) -> Result<(), String> {
     let root = ProjectRoot::open(&folder_path)?;
     let project = read_project(root.path())?;
@@ -90,17 +164,26 @@ pub(crate) fn prepare_extend_image(
         return Err("The Extend source has no saved file.".into());
     };
     let (width, height) = image::image_dimensions(&source_path).map_err(|e| e.to_string())?;
-    bounds.validate(width, height)?;
+    let (scaled, bounds) = scaled_layout(width, height, bounds, output)?;
     if asset.width != Some(width) || asset.height != Some(height) {
         return Err(
             "The source image dimensions changed. Reopen the image before extending it.".into(),
         );
     }
-    let source = image::open(source_path)
+    let mut source = image::open(source_path)
         .map_err(|e| e.to_string())?
         .to_rgba8();
+    if source.dimensions() != (scaled.width, scaled.height) {
+        source = image::imageops::resize(
+            &source,
+            scaled.width,
+            scaled.height,
+            image::imageops::FilterType::Lanczos3,
+        );
+    }
     let cache = root.directory(&directory(&job_id)?)?;
-    // Snapshot the original so file changes during generation cannot alter preservation.
+    // Snapshot the downscaled original. Generation and final preservation use
+    // exactly these pixels, with no second resampling or model changes to them.
     write_png(&cache.join("original.png"), &source)?;
     write_png(&cache.join("canvas.png"), &padded_source(&source, bounds))?;
     crate::storage::atomic::write_atomically(
@@ -175,6 +258,73 @@ mod tests {
     use super::*;
 
     #[test]
+    fn extend_layout_matches_the_scaled_generation_canvas_and_rejects_growth() {
+        let bounds = ExtendBounds {
+            x: -64,
+            y: -32,
+            width: 256,
+            height: 160,
+        };
+        let output = ExtendSize {
+            width: 128,
+            height: 64,
+        };
+        let (source, mapped) = scaled_layout(128, 96, bounds, output).unwrap();
+        assert_eq!(
+            (
+                source.width,
+                source.height,
+                mapped.x,
+                mapped.y,
+                mapped.width,
+                mapped.height
+            ),
+            (51, 38, -38, -13, 128, 64)
+        );
+        assert!(scaled_layout(
+            128,
+            96,
+            bounds,
+            ExtendSize {
+                width: 256,
+                height: 160
+            }
+        )
+        .is_err());
+        assert!(scaled_layout(
+            128,
+            96,
+            bounds,
+            ExtendSize {
+                width: 127,
+                height: 64
+            }
+        )
+        .is_err());
+        assert!(scaled_layout(
+            128,
+            96,
+            ExtendBounds {
+                width: 257,
+                ..bounds
+            },
+            output
+        )
+        .is_err());
+        assert!(scaled_layout(
+            8192,
+            8192,
+            ExtendBounds {
+                width: 3648,
+                height: 3648,
+                ..bounds
+            },
+            output
+        )
+        .is_err());
+    }
+
+    #[test]
     fn extend_preserves_original_pixels_including_alpha_and_cropped_intersections() {
         let source = RgbaImage::from_fn(7, 5, |x, y| {
             image::Rgba([x as u8, y as u8, 80, (x * 25) as u8])
@@ -232,28 +382,33 @@ mod tests {
         let mut config = crate::tests::created_fixture();
         config.assets.push(serde_json::from_value(serde_json::json!({
             "id":"extend-source", "kind":"image", "name":"Source", "relativePath":"media/source.png", "mimeType":"image/png",
-            "width":7, "height":5, "createdAt":config.created_at
+            "width":224, "height":160, "createdAt":config.created_at
         })).unwrap());
         crate::project::storage::write_project(folder.path(), &config).unwrap();
         let path = folder.path().to_string_lossy().into_owned();
         let root = ProjectRoot::open(&path).unwrap();
-        let source = RgbaImage::from_pixel(7, 5, image::Rgba([30, 60, 90, 123]));
+        let source = RgbaImage::from_pixel(224, 160, image::Rgba([30, 60, 90, 123]));
         write_png(
             &root.directory("media").unwrap().join("source.png"),
             &source,
         )
         .unwrap();
         let bounds = ExtendBounds {
-            x: -3,
+            x: -96,
             y: 0,
-            width: 10,
-            height: 5,
+            width: 320,
+            height: 160,
+        };
+        let output = ExtendSize {
+            width: 224,
+            height: 96,
         };
         prepare_extend_image(
             path.clone(),
             "extend-test".into(),
             "extend-source".into(),
             bounds,
+            output,
         )
         .unwrap();
         prepare_extend_image(
@@ -261,31 +416,34 @@ mod tests {
             "extend-other".into(),
             "extend-source".into(),
             bounds,
+            output,
         )
         .unwrap();
         let original_path = root
             .existing("cache/extend-images/extend-test/original.png")
             .unwrap();
-        assert_eq!(image::open(&original_path).unwrap().to_rgba8(), source);
+        let snapshot =
+            image::imageops::resize(&source, 134, 96, image::imageops::FilterType::Lanczos3);
+        assert_eq!(image::open(&original_path).unwrap().to_rgba8(), snapshot);
         assert_eq!(
             image::image_dimensions(
                 root.existing("cache/extend-images/extend-test/canvas.png")
                     .unwrap()
             )
             .unwrap(),
-            (10, 5)
+            (224, 96)
         );
         write_png(
             &root.existing("media/source.png").unwrap(),
-            &RgbaImage::new(7, 5),
+            &RgbaImage::new(224, 160),
         )
         .unwrap();
-        assert_eq!(image::open(original_path).unwrap().to_rgba8(), source);
+        assert_eq!(image::open(original_path).unwrap().to_rgba8(), snapshot);
         for invalid in [
-            ExtendBounds { x: 7, ..bounds },
+            ExtendBounds { x: 224, ..bounds },
             ExtendBounds {
                 x: 0,
-                width: 7,
+                width: 224,
                 ..bounds
             },
             ExtendBounds {
@@ -301,7 +459,8 @@ mod tests {
                 path.clone(),
                 "invalid".into(),
                 "extend-source".into(),
-                invalid
+                invalid,
+                output,
             )
             .is_err());
         }
@@ -309,7 +468,8 @@ mod tests {
             path.clone(),
             "../outside".into(),
             "extend-source".into(),
-            bounds
+            bounds,
+            output,
         )
         .is_err());
         assert!(discard_extend_image(path.clone(), "../outside".into()).is_err());
@@ -323,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn extend_finalizer_writes_a_lossless_png_using_the_source_snapshot() {
+    fn extend_finalizer_preserves_downscaled_source_pixels_in_a_bounded_png() {
         struct GeneratedPixels;
         impl crate::rendered::FrameSource for GeneratedPixels {
             fn frame_rgba(&self, _: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
@@ -331,23 +491,44 @@ mod tests {
             }
         }
         let folder = tempfile::tempdir().unwrap();
-        crate::project::storage::write_project(folder.path(), &crate::tests::created_fixture())
-            .unwrap();
+        let mut config = crate::tests::created_fixture();
+        config.assets.push(serde_json::from_value(serde_json::json!({
+            "id":"source", "kind":"image", "name":"Source", "relativePath":"media/source.png", "mimeType":"image/png",
+            "width":128, "height":96, "createdAt":config.created_at
+        })).unwrap());
+        crate::project::storage::write_project(folder.path(), &config).unwrap();
         let path = folder.path().to_string_lossy().into_owned();
         let root = ProjectRoot::open(&path).unwrap();
         let job = "extend-finalizer-test";
-        let cache = root.directory(&directory(job).unwrap()).unwrap();
         let bounds = ExtendBounds {
-            x: -2,
-            y: 1,
-            width: 9,
-            height: 6,
+            x: -64,
+            y: -32,
+            width: 256,
+            height: 160,
         };
-        let source = RgbaImage::from_fn(7, 5, |x, y| image::Rgba([x as u8, y as u8, 80, 123]));
-        write_png(&cache.join("original.png"), &source).unwrap();
-        std::fs::write(
-            cache.join("bounds.json"),
-            serde_json::to_vec(&bounds).unwrap(),
+        let source = RgbaImage::from_fn(128, 96, |x, y| image::Rgba([x as u8, y as u8, 80, 123]));
+        write_png(
+            &root.directory("media").unwrap().join("source.png"),
+            &source,
+        )
+        .unwrap();
+        prepare_extend_image(
+            path.clone(),
+            job.into(),
+            "source".into(),
+            bounds,
+            ExtendSize {
+                width: 128,
+                height: 64,
+            },
+        )
+        .unwrap();
+        let scaled =
+            image::imageops::resize(&source, 51, 38, image::imageops::FilterType::Lanczos3);
+        // The original file may change while the job runs; its prepared snapshot wins.
+        write_png(
+            &root.existing("media/source.png").unwrap(),
+            &RgbaImage::new(128, 96),
         )
         .unwrap();
         crate::rendered::keep(
@@ -356,10 +537,10 @@ mod tests {
                 Box::new(GeneratedPixels),
                 vec![],
                 1,
-                9,
-                6,
+                128,
+                64,
                 3,
-                9 * 6 * 3,
+                128 * 64 * 3,
                 24.0,
                 0,
                 0,
@@ -370,12 +551,13 @@ mod tests {
         let image = image::open(root.existing(&saved.relative_path).unwrap())
             .unwrap()
             .to_rgba8();
-        for y in 0..6 {
-            for x in 0..9 {
+        assert_eq!(image.dimensions(), (128, 64));
+        for y in 0..64 {
+            for x in 0..128 {
                 assert_eq!(
                     image.get_pixel(x, y).0,
-                    if x >= 2 && y < 4 {
-                        source.get_pixel(x - 2, y + 1).0
+                    if (38..89).contains(&x) && (13..51).contains(&y) {
+                        scaled.get_pixel(x - 38, y - 13).0
                     } else {
                         [210, 180, 150, 255]
                     }

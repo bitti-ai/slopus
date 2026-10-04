@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import type { ExtendBounds } from "../../lib/extendImage";
+import { alignExtendBounds, extendSourceDimensions, EXTEND_GRID, EXTEND_MAX_EDGE, EXTEND_MAX_PIXELS, type ExtendBounds } from "../../lib/extendImage";
 import type { ProjectAsset } from "../../lib/project";
 import { ReferenceImage } from "./ReferenceImage";
 
@@ -13,7 +13,7 @@ function cameraFor(width: number, height: number, box: ExtendBounds) {
 const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const;
 const SNAP_DISTANCE = 6; // CSS pixels, independent of the image/canvas scale.
 
-function snapAxis(start: number, size: number, sourceSize: number, tolerance: number, move: boolean, leading: boolean, trailing: boolean) {
+function snapAxis(start: number, size: number, sourceSize: number, tolerance: number, move: boolean, leading: boolean, trailing: boolean, maxSize: number) {
   const nearest = (deltas: number[]) => deltas.filter((delta) => Math.abs(delta) <= tolerance)
     .sort((a, b) => Math.abs(a) - Math.abs(b))[0] ?? 0;
   if (move) {
@@ -24,16 +24,16 @@ function snapAxis(start: number, size: number, sourceSize: number, tolerance: nu
   }
   let end = start + size;
   if (leading) start += nearest([0, sourceSize].map((edge) => edge - start)
-    .filter((delta) => end - start - delta >= 1 && end - start - delta <= 8192));
+    .filter((delta) => end - start - delta >= EXTEND_GRID && end - start - delta <= maxSize && (end - start - delta) % EXTEND_GRID === 0));
   if (trailing) end += nearest([0, sourceSize].map((edge) => edge - end)
-    .filter((delta) => end + delta - start >= 1 && end + delta - start <= 8192));
+    .filter((delta) => end + delta - start >= EXTEND_GRID && end + delta - start <= maxSize && (end + delta - start) % EXTEND_GRID === 0));
   return [start, end - start];
 }
 
 export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }: {
   source: ProjectAsset; folderPath: string; bounds: ExtendBounds; onChange: (bounds: ExtendBounds) => void; disabled: boolean;
 }) {
-  const width = source.width!, height = source.height!;
+  const { width, height } = extendSourceDimensions(source.width!, source.height!);
   const [camera, setCamera] = useState(() => cameraFor(width, height, bounds));
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ pointerId: number; x: number; y: number; box: ExtendBounds; mode: string } | null>(null);
@@ -42,6 +42,12 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: Math.round(camera.x + (event.clientX - rect.left) / rect.width * camera.width),
       y: Math.round(camera.y + (event.clientY - rect.top) / rect.height * camera.height) };
+  };
+  const snapPoint = (event: PointerEvent<SVGSVGElement>, at: { x: number; y: number }) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const snap = (value: number, edge: number, tolerance: number) => [0, edge]
+      .filter((border) => Math.abs(value - border) <= tolerance).sort((a, b) => Math.abs(a - value) - Math.abs(b - value))[0] ?? value;
+    return { x: snap(at.x, width, SNAP_DISTANCE * camera.width / rect.width), y: snap(at.y, height, SNAP_DISTANCE * camera.height / rect.height) };
   };
   const finish = (event: PointerEvent<SVGSVGElement>, cancel = false) => {
     if (drag.current?.pointerId !== event.pointerId) return;
@@ -63,15 +69,16 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
       <svg className="extend-overlay" viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} aria-label="Extend bounding box tool" aria-disabled={disabled}
         onPointerDown={(event) => {
           if (disabled || event.button !== 0) return;
-          const at = point(event); if (!Number.isFinite(at.x + at.y)) return;
+          let at = point(event); if (!Number.isFinite(at.x + at.y)) return;
           event.preventDefault();
           event.currentTarget.querySelector<SVGElement>('[data-handle="move"]')?.focus();
           const mode = (event.target as Element).getAttribute("data-handle") ?? "draw";
+          if (mode === "draw") at = snapPoint(event, at);
           drag.current = { pointerId: event.pointerId, ...at, box: { ...box }, mode };
           setDragging(true); event.currentTarget.setPointerCapture?.(event.pointerId);
         }} onPointerMove={(event) => {
           const start = drag.current; if (!start || disabled || start.pointerId !== event.pointerId) return;
-          const at = point(event), dx = at.x - start.x, dy = at.y - start.y;
+          const at = start.mode === "draw" ? snapPoint(event, point(event)) : point(event), dx = at.x - start.x, dy = at.y - start.y;
           if (!Number.isFinite(dx + dy)) return;
           let { x, y, width: w, height: h } = start.box;
           if (start.mode === "move") { x += dx; y += dy; }
@@ -82,12 +89,14 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
             if (start.mode.includes("w")) { x = Math.min(x + dx, x + w - 1); w += start.box.x - x; }
             if (start.mode.includes("n")) { y = Math.min(y + dy, y + h - 1); h += start.box.y - y; }
           }
+          const aligned = alignExtendBounds({ x, y, width: w, height: h }, start.mode);
+          ({ x, y, width: w, height: h } = aligned);
           const rect = event.currentTarget.getBoundingClientRect();
           const move = start.mode === "move", draw = start.mode === "draw";
-          [x, w] = snapAxis(Math.max(-8192, Math.min(8192, x)), Math.min(8192, w), width,
-            SNAP_DISTANCE * camera.width / rect.width, move, draw || start.mode.includes("w"), draw || start.mode.includes("e"));
-          [y, h] = snapAxis(Math.max(-8192, Math.min(8192, y)), Math.min(8192, h), height,
-            SNAP_DISTANCE * camera.height / rect.height, move, draw || start.mode.includes("n"), draw || start.mode.includes("s"));
+          [x, w] = snapAxis(Math.max(-8192, Math.min(8192, x)), w, width,
+            SNAP_DISTANCE * camera.width / rect.width, move, draw || start.mode.includes("w"), draw || start.mode.includes("e"), Math.min(EXTEND_MAX_EDGE, EXTEND_MAX_PIXELS / h));
+          [y, h] = snapAxis(Math.max(-8192, Math.min(8192, y)), h, height,
+            SNAP_DISTANCE * camera.height / rect.height, move, draw || start.mode.includes("n"), draw || start.mode.includes("s"), Math.min(EXTEND_MAX_EDGE, EXTEND_MAX_PIXELS / w));
           onChange({ x, y, width: w, height: h });
         }} onPointerUp={(event) => finish(event)} onPointerCancel={(event) => finish(event, true)} onLostPointerCapture={(event) => finish(event)}
         onKeyDown={(event) => {

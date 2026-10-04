@@ -281,7 +281,7 @@ export class WorkQueue {
     const referencePaths = [projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!,
       ...compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!))];
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
-      canvasWidth: options.bounds.width, canvasHeight: options.bounds.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
+      canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
       referencePaths, refmods: referenceRefmodInputs(session.record.folderPath, compiled.references),
       imageEdit: { sourceRelativePath, edits: compiled.edits } };
     let finish!: () => void;
@@ -384,7 +384,8 @@ export class WorkQueue {
           if (work.cancelled) continue;
           if (work.characterSheet) { await this.generateCharacterSheet(work); continue; }
           if (work.extend) {
-            await invoke("prepare_extend_image", { folderPath: next.folderPath, jobId: work.id, sourceId: work.extend.sourceId, bounds: work.extend.options.bounds });
+            await invoke("prepare_extend_image", { folderPath: next.folderPath, jobId: work.id, sourceId: work.extend.sourceId, bounds: work.extend.options.bounds,
+              output: { width: work.request.canvasWidth, height: work.request.canvasHeight } });
             if (work.cancelled) continue;
           }
           if (work.request.previousSceneId) {
