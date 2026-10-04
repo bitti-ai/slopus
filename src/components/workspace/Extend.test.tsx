@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
 import { ExtendCanvas } from "./ExtendCanvas";
-import { typePrompt } from "./promptTestUtils";
 import { parseProjectConfig } from "../../lib/project";
-import { EMPTY_ENGINE_SETTINGS, saveGeneratorTemplateSettings } from "../../lib/settings";
 import * as persistence from "../../lib/persistence";
 import fixture from "../../../fixtures/project-v1-image.json";
 import type { ExtendBounds } from "../../lib/extendImage";
@@ -15,49 +13,13 @@ import type { ExtendBounds } from "../../lib/extendImage";
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const source = { id: "source", name: "Source", kind: "image" as const, relativePath: "media/source.png", mimeType: "image/png", width: 400, height: 300, createdAt: "2026-10-04T00:00:00Z" };
 
-it("activates the box through Template, validates settings and executes without editing the source", () => {
-  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+it("temporarily hides Extend from Template while keeping Character sheet available", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  const template = { id: "test", name: "Test", modelType: "minimax-h3" as const, defaultSteps: 20, attention: "sage2" as const, paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } };
-  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [template] });
   const config = parseProjectConfig(fixture); config.assets = [source]; config.imageScene!.outputAssetId = source.id;
-  const generate = vi.fn(), change = vi.fn();
-  render(<ImageEditor config={config} folderPath="D:/Images" onChange={change} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={generate} />);
+  render(<ImageEditor config={config} folderPath="D:/Images" onChange={vi.fn()} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
-  expect(screen.getByLabelText("Extend bounding box tool")).toBeInTheDocument();
-  expect(screen.queryByLabelText("Image placement canvas")).not.toBeInTheDocument();
-  const panel = within(screen.getByRole("complementary", { name: "Extend settings" }));
-  expect(panel.getByLabelText("Extend x")).toHaveValue(-104);
-  expect(panel.getByLabelText("Extend width")).toHaveValue(608);
-  expect(panel.getByLabelText("Extend width")).toHaveAttribute("step", "32");
-  expect(panel.getByLabelText("Extend width")).toHaveAttribute("max", "3648");
-  fireEvent.change(panel.getByLabelText("Extend width"), { target: { value: "619" } });
-  expect(panel.getByLabelText("Extend width")).toHaveValue(608);
-  fireEvent.change(panel.getByLabelText("Extend width"), { target: { value: "9999" } });
-  expect(panel.getByLabelText("Extend width")).toHaveValue(3648);
-  fireEvent.click(panel.getByRole("button", { name: "Reset box" }));
-  fireEvent.keyDown(screen.getByRole("button", { name: "Move Extend box" }), { key: "ArrowLeft", shiftKey: true });
-  expect(panel.getByLabelText("Extend x")).toHaveValue(-114);
-  fireEvent.change(panel.getByLabelText("Extend x"), { target: { value: "400" } });
-  expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
-  expect(panel.getByText("The box must overlap the original image.")).toBeInTheDocument();
-  fireEvent.click(panel.getByRole("button", { name: "Reset box" }));
-  fireEvent.change(panel.getByLabelText("Steps"), { target: { value: "31" } });
-  fireEvent.change(panel.getByLabelText("Seed"), { target: { value: "0" } });
-  typePrompt(panel.getByRole("textbox", { name: "Extend prompt" }), "A forest clearing");
-  fireEvent.click(panel.getByRole("button", { name: "Execute" }));
-  expect(generate).toHaveBeenCalledWith(expect.objectContaining({ id: template.id }), source.id,
-    { bounds: { x: -104, y: -74, width: 608, height: 448 }, steps: 31, seed: 0, prompt: "A forest clearing" });
-  expect(screen.getByRole("status")).toHaveTextContent("Extend: 384 × 288 px");
-  expect(change).not.toHaveBeenCalled();
-  fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
-  expect(screen.queryByLabelText("Extend bounding box tool")).not.toBeInTheDocument();
-  const normal = screen.getByLabelText("Image placement canvas").closest(".image-viewport")!;
-  const frame = normal.querySelector<HTMLElement>(".image-frame")!;
-  const zoom = frame.style.getPropertyValue("--image-zoom");
-  fireEvent.wheel(normal, { deltaY: -100 });
-  expect(frame.style.getPropertyValue("--image-zoom")).not.toBe(zoom);
+  expect(screen.queryByRole("menuitem", { name: "Extend" })).not.toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeEnabled();
 });
 
 it("moves, resizes, redraws and cancels box drags in original pixel coordinates", () => {

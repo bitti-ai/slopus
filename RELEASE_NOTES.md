@@ -4,14 +4,13 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
-- Extend and Character Sheet create a selectable image-bar entry as soon as generation is queued. Selecting it while generation runs shows the template's existing settings panel with the submitted settings. Finished results open in the normal image editor.
+- Character Sheet creates a selectable image-bar entry as soon as generation is queued. Selecting it while generation runs shows the template's existing settings panel with the submitted settings. Finished results open in the normal image editor.
 - LAN workers: run the Slopus worker package on another Windows or Linux computer and pick it in the new **Settings → Workers** tab to generate there. Slopus finds workers on the local network automatically, or by address. Workers download generator weights from their download links themselves and use CUDA when available, with a Vulkan fallback; local-only files are sent from this computer, and finished videos, images and latents are saved in your project as usual.
 - Slopus for Linux (x86_64): install the .deb or .rpm package, or run the AppImage, which updates itself. Local generation on Linux needs an NVIDIA GPU with CUDA 13.
 - Every project now includes Video and Image tabs. Older video and image projects keep their saved content, and Export supports both output types.
 - Renamed Colour correction to Basic Corrections and added temperature, tint, brightness, highlights, shadows, whites and blacks alongside exposure, contrast and saturation.
 - Added Creative with eight built-in procedural looks and intensity, faded film, sharpen and vibrance controls; RGB and hue/saturation/luma curve editors; and shadow, midtone and highlight Color Wheels with individual lightness controls.
 - Vignette now includes midpoint, roundness and feather, plus negative amounts for lighter edges. Grading settings are saved with the project and applied consistently in preview and export.
-- Extend an image from the Image toolbar's Template menu. Draw, move or resize a bounding box to generate beyond any edge, with optional prompts and references, steps and seed controls. The original is downscaled to make room for the extension, and its scaled pixels are preserved in a child image saved as lossless PNG. Output stays within the source pixel count and selected generation resolution, with dimensions in multiples of 32.
 - Configure a character sheet from the Image toolbar's Template menu, with one reference-enabled prompt for clothing and other details, a resolution selection controlling sheet height (512–2048 px), and step count and seed controls, then select Execute. A square waist-up shot and three 9:16 full-body views are combined into one child image in the image bar. The front view provides a shared clothing reference for the other views; all four views share the selected step count and seed.
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.
 - Share URL-based generator templates using Import and Export in Generator settings. Versioned `.slop` JSON bundles include GPU download variants, LoRAs and additional safetensors, preserve existing templates on import, and leave local paths out of shared files.
@@ -34,14 +33,12 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 ## Fixes and improvements
 
 - Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
-- Character Sheet and Extend offer Debug prompt when debug options are enabled. Character Sheet exposes the separate compiled prompt for each of its four views.
+- Character Sheet offers Debug prompt when debug options are enabled, exposing the separate compiled prompt for each of its four views.
 - Updated the bundled SlopFab runtime to API 1.18 for refmod export and support for version-5 refmod bundles.
 - LAN workers select weight downloads using their own GPU type and VRAM, even when a different variant is already downloaded on the client.
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.
 - The timeline playhead follows playback without waiting for editor updates.
 - Character sheet prompts focus on each view's essential framing and orientation, with concise instructions for consistent identity and clothing.
-- Extend bounding box edges gently snap to nearby original image borders when drawing, moving or resizing. Box dimensions use 32-pixel increments and stay within the maximum generation resolution.
-- Extend generates all new space in one outpainting pass, holding the placed original as fixed context throughout generation so edges and corners can continue the same scene. It no longer repaints separate border strips and pastes the original over them.
 - Removing a reference from a scene's last prompt citation now removes it from generation inputs and “Used by.” References selected as frame or motion inputs remain active.
 - Copy and paste effect settings between matching effects from their **…** menus, including bypass state and LUT data.
 - Add voice reference chips directly in a shot's Speech field. Voice guidance stays separate from the words spoken.

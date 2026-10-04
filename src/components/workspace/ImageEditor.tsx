@@ -18,7 +18,7 @@ import { ImageBar } from "./ImageBar";
 import { CharacterSheetSettings } from "./CharacterSheetSettings";
 import { ExtendSettings } from "./ExtendSettings";
 import { ExtendCanvas } from "./ExtendCanvas";
-import { extendOutputDimensions, initialExtendBounds, type ExtendOptions } from "../../lib/extendImage";
+import { extendOutputDimensions, type ExtendOptions } from "../../lib/extendImage";
 import type { CharacterSheetOptions } from "../../lib/characterSheet";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { DebugPromptDialog } from "./DebugPromptDialog";
@@ -582,11 +582,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           disabled={!output || (!output.relativePath && !output.sourcePath)}
           onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
             onSelect: () => { setExtendSourceId(null); setTemplateSourceId(output!.id); },
-          }, { label: "Extend", icon: <Boxes16 />, disabled: !output?.width || !output?.height || Boolean(output?.imageDraft),
-            onSelect: () => {
-              setTemplateSourceId(null); setExtendSourceId(output!.id); setDrawKind(null); setContextMenu(null); setImageMenu(null);
-              setExtendOptions({ bounds: initialExtendBounds(output!.width!, output!.height!), prompt: "", steps: scene.steps, seed: scene.seed });
-            },
           }], { "aria-label": "Image templates", placement: "bottom-end" })}>
           Template <ChevronDown14 aria-hidden="true" />
         </button>
