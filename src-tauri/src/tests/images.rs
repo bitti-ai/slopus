@@ -190,6 +190,7 @@ fn image_template_settings_survive_save_and_reopen() {
     for template in [
         serde_json::json!({"kind":"extend", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Continue the forest", "steps":28, "seed":-1, "bounds":{"x":-64,"y":-32,"width":768,"height":640}}),
         serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Red coat", "steps":28, "seed":0, "height":1024}),
+        serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Red coat", "steps":28, "seed":0, "height":1024, "views":{"closeUp":false,"front":false,"side":true,"back":true}}),
     ] {
         for pending in [true, false] {
             let mut config = image_fixture();

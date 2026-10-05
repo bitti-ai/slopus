@@ -9,7 +9,7 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { WorkQueue } from "./workQueue";
-import { CHARACTER_SHEET_HEIGHTS, characterSheetDimensions, compileCharacterSheet } from "./characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, type CharacterSheetViews } from "./characterSheet";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -18,7 +18,7 @@ vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGe
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 let stop: (() => void) | undefined;
 const template: GeneratorTemplate = { id: "h3", name: "H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
-const result = { relativePath: "media/generated/sheet.png", width: 2752, height: 1024 };
+const result = { relativePath: "media/generated/sheet.png", width: 2176, height: 1024 };
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks(); handlers.clear();
   Object.assign(window, { __TAURI_INTERNALS__: {} });
@@ -55,15 +55,16 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
   const id = queue.getSnapshot()[0].id;
   const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
   expect(pending.assets).toHaveLength(2);
-  expect(pending.assets[1]).toMatchObject({ id, imageDraft: true, parentAssetId: "source", width: 2752, height: 1024,
+  expect(pending.assets[1]).toMatchObject({ id, imageDraft: true, parentAssetId: "source", width: 2176, height: 1024,
     imageGeneration: { template: { kind: "character-sheet", sourceId: "source", sourceName: "Hero", generatorName: template.name, prompt: "", height: 1024 } } });
   expect(pending.assets[1].relativePath).toBeUndefined();
   expect(pending.imageScene!.outputAssetId).toBe(id);
   expect(queue.getSnapshot()[0].imageDraftId).toBe(id);
   expect(saveImageDraft(restoreGeneratedImage(pending, id)).assets).toEqual(pending.assets);
   let seed: number | undefined;
-  const order = [1, 0, 2, 3];
-  for (let index = 0; index < 4; index++) {
+  const order = [1, 0, 3];
+  expect(queue.getSnapshot()[0].settings.frames).toBe(3);
+  for (let index = 0; index < 3; index++) {
     const request = await requestAt(index);
     seed ??= request.seed;
     const viewIndex = order[index];
@@ -88,12 +89,14 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
     expect(session.getSnapshot().config.assets[1]).toMatchObject({ id, imageDraft: true });
     if (changed && index === 0) session.update((current) => restoreGeneratedImage(current, "source"));
     emit("framesReady", request.jobId);
-    if (index < 3) {
+    if (index < 2) {
       await waitFor(() => expect(releaseRendered).toHaveBeenCalledWith(request.jobId));
       expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: request.jobId, index: viewIndex });
     }
   }
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  expect(invoke).toHaveBeenCalledWith("combine_character_sheet", { folderPath: "C:/Character", sheetId: id, indices: [0, 1, 3] });
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(3);
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
   expect(reopened.assets).toHaveLength(2);
   expect(reopened.assets[0]).toEqual(original.assets[0]);
@@ -115,11 +118,42 @@ it.each(["416p", "768p", "1080p", "2048p", "4k"] as const)("keeps exact aspect r
   for (const { width, height } of sizes) { expect(width % 32).toBe(0); expect(height % 32).toBe(0); }
 });
 
+it.each([[0], [1], [2], [3], [0, 2, 3]].map((indices) => ({ indices })))("generates only selected views $indices without an implicit front view", async ({ indices }) => {
+  const { queue, session } = setup();
+  const views = Object.fromEntries(CHARACTER_SHEET_VIEWS.map((view, index) => [view.id, indices.includes(index)])) as CharacterSheetViews;
+  queue.enqueueCharacterSheet(session, template, "source", { prompt: "Wear a red coat", views });
+  const frozen = { ...views };
+  views.front = !views.front;
+  const id = queue.getSnapshot()[0].id;
+  const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  expect(pending.assets[1].imageGeneration!.template).toMatchObject({ views: frozen });
+  expect(pending.assets[1].width).toBe(indices.reduce((width, index) => width + (index === 0 ? 1024 : 576), 0));
+  for (let index = 0; index < indices.length; index++) {
+    const request = await requestAt(index);
+    expect(request.jobId).toBe(`${id}-view-${indices[index] + 1}`);
+    expect(request.referencePaths).toEqual(["C:/Character/media/hero.png"]);
+    expect(request.prompt).not.toContain("<Picture 2>");
+    expect(request.prompt).toContain("Wear a red coat");
+    handlers.get("slopfab-progress")?.({ payload: { jobId: request.jobId, step: 1, totalSteps: 2 } });
+    expect(queue.getSnapshot()[0].progress).toBeCloseTo((index + 0.5) / indices.length * 0.9);
+    emit("framesReady", request.jobId);
+  }
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(indices.length);
+  expect(invoke).toHaveBeenCalledWith("combine_character_sheet", { folderPath: "C:/Character", sheetId: id, indices });
+});
+
+it("rejects a sheet with every view disabled before queueing", () => {
+  const { queue, session } = setup();
+  expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: "", views: { closeUp: false, front: false, side: false, back: false } })).toThrow("at least one");
+  expect(queue.getSnapshot()).toHaveLength(0);
+});
+
 it.each(CHARACTER_SHEET_HEIGHTS)("generates all four views at the selected %s px height", async (height) => {
   const { queue, session } = setup();
   const saved = { ...result, width: height * 43 / 16, height };
   vi.mocked(invoke).mockImplementation(async (command) => command === "combine_character_sheet" ? saved : undefined);
-  const options = { prompt: "", height };
+  const options = { prompt: "", height, views: { closeUp: true, front: true, side: true, back: true } };
   queue.enqueueCharacterSheet(session, template, "source", options);
   expect(queue.getSnapshot()[0].settings.canvasHeight).toBe(height);
   options.height = 512; // Queued dimensions must not follow later settings edits.
@@ -147,6 +181,7 @@ it("keeps the required view after template instructions without repeating orient
   const snapshot = structuredClone(config);
   const views = compileCharacterSheet(config, config.assets[0], "cache/front.png", {
     prompt: "Wear a red coat with a chest badge, looking straight at the camera.",
+    views: { closeUp: true, front: true, side: true, back: true },
   });
   const back = views[3].prompt;
   const retention = back.split("retention_analysis:\n")[1].split("\n\ndetailed_description:")[0];
@@ -169,7 +204,7 @@ it.each([0, 12345, -1])("uses template steps and seed %s for every view and save
   expect(usedSeed).toBeGreaterThanOrEqual(0);
   if (seed !== -1) expect(usedSeed).toBe(seed);
   expect(queue.getSnapshot()[0].settings.steps).toBe(37);
-  for (let index = 0; index < 4; index++) {
+  for (let index = 0; index < 3; index++) {
     const request = await requestAt(index);
     expect(request).toMatchObject({ steps: 37, seed: usedSeed });
     expect(session.getSnapshot().config.imageScene).toMatchObject({ outputAssetId: queue.getSnapshot()[0].id, steps: 37, seed });
@@ -211,16 +246,16 @@ it("keeps the finished sheet available when project saving fails and retries wit
   const { queue, session, writer } = setup();
   queue.enqueueCharacterSheet(session, template, "source");
   const id = queue.getSnapshot()[0].id;
-  for (let index = 0; index < 4; index++) {
+  for (let index = 0; index < 3; index++) {
     const request = await requestAt(index);
-    if (index === 3) writer.mockRejectedValueOnce(new Error("Disk full"));
+    if (index === 2) writer.mockRejectedValueOnce(new Error("Disk full"));
     emit("framesReady", request.jobId);
   }
   await waitFor(() => expect(queue.getSnapshot()[0]).toMatchObject({ status: "failed", needsSave: true }));
   expect(session.getSnapshot().config.assets).toHaveLength(2);
   await queue.retrySave(id);
   expect(queue.getSnapshot()[0]).toMatchObject({ status: "completed", needsSave: false });
-  expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(4);
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(3);
 });
 
 it("rejects an empty source without queuing work", () => {
@@ -238,7 +273,7 @@ it("conditions every view on prompt references and freezes the requested outfit 
   queue.enqueueCharacterSheet(session, template, "source", options);
   options.prompt = "Changed after execution";
   const id = queue.getSnapshot()[0].id;
-  for (let index = 0; index < 4; index++) {
+  for (let index = 0; index < 3; index++) {
     const request = await requestAt(index);
     expect(request.referencePaths).toEqual(["C:/Character/media/hero.png", ...(index > 0 ? [`C:/Character/cache/character-sheets/${id}/1.png`] : []), "C:/Character/references/coat.png"]);
     expect(request.refmods).toEqual([{ path: "C:/Character/references/coat.safetensors", strength: 0.75, copies: 1 }]);
@@ -274,12 +309,12 @@ it("does not publish a partial result when combining fails and lets the next job
   const id = queue.getSnapshot()[0].id;
   session.update((current) => ({ ...current, assets: [...current.assets, { ...current.assets[0], id: "another", name: "Another" }] }));
   queue.enqueueCharacterSheet(session, template, "another");
-  for (let index = 0; index < 4; index++) emit("framesReady", (await requestAt(index)).jobId);
+  for (let index = 0; index < 3; index++) emit("framesReady", (await requestAt(index)).jobId);
   await waitFor(() => expect(queue.getSnapshot()[0]).toMatchObject({ status: "failed", error: "Could not combine views" }));
   expect(session.getSnapshot().config.assets.map((asset) => asset.id)).toEqual(["source", id, "another", queue.getSnapshot()[1].id]);
   expect(session.getSnapshot().config.assets.filter((asset) => asset.imageDraft)).toHaveLength(2);
   expect(invoke).toHaveBeenCalledWith("discard_character_sheet_views", { folderPath: "C:/Character", sheetId: id });
-  const next = await requestAt(4);
+  const next = await requestAt(3);
   await queue.cancel(queue.getSnapshot()[1].id);
   emit("cancelled", next.jobId);
   await waitFor(() => expect(queue.getSnapshot()[1].status).toBe("cancelled"));

@@ -32,14 +32,26 @@ pub(crate) struct ImageTemplateSnapshot {
     pub bounds: Option<ImageBox>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub views: Option<CharacterSheetViews>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CharacterSheetViews {
+    pub close_up: bool,
+    pub front: bool,
+    pub side: bool,
+    pub back: bool,
 }
 
 impl ImageTemplateSnapshot {
     pub(crate) fn validate(&self) -> Result<(), String> {
         let valid_options = match self.kind.as_str() {
-            "extend" => self.height.is_none() && self.bounds.as_ref().is_some_and(|b|
+            "extend" => self.views.is_none() && self.height.is_none() && self.bounds.as_ref().is_some_and(|b|
                 [b.x, b.y, b.width, b.height].iter().all(|v| v.is_finite()) && b.width > 0.0 && b.height > 0.0),
-            "character-sheet" => self.bounds.is_none() && matches!(self.height, Some(512 | 1024 | 1536 | 2048)),
+            "character-sheet" => self.bounds.is_none() && matches!(self.height, Some(512 | 1024 | 1536 | 2048))
+                && self.views.as_ref().is_none_or(|views| views.close_up || views.front || views.side || views.back),
             _ => false,
         };
         if !valid_options || self.source_id.is_empty() || self.source_name.is_empty() || self.generator_name.is_empty()

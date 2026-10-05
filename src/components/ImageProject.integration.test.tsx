@@ -47,7 +47,15 @@ it("opens template settings and executes only after configuring prompts and clot
   const panel = within(screen.getByRole("complementary", { name: "Character sheet settings" }));
   const before = structuredClone(queue.project(project).getSnapshot().config);
   choose("Character sheet resolution", "2048 px high");
+  expect(panel.getByRole("switch", { name: "Side view" })).not.toBeChecked();
+  for (const name of ["Close up", "Front view", "Back view"]) expect(panel.getByRole("switch", { name })).toBeChecked();
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("4352 × 2048 px");
+  fireEvent.click(panel.getByRole("switch", { name: "Side view" }));
   expect(panel.getByText(/Sheet size:/)).toHaveTextContent("5504 × 2048 px");
+  for (const name of ["Close up", "Front view", "Side view", "Back view"]) fireEvent.click(panel.getByRole("switch", { name }));
+  expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
+  fireEvent.click(panel.getByRole("switch", { name: "Back view" }));
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("1152 × 2048 px");
   fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "" } });
   expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
   fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "37" } });
@@ -61,7 +69,8 @@ it("opens template settings and executes only after configuring prompts and clot
   expect(prompt.querySelector(".prompt-chip")).toHaveTextContent("Red coat");
   expect(queue.project(project).getSnapshot().config).toEqual(before);
   fireEvent.click(panel.getByRole("button", { name: "Execute" }));
-  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048, steps: 37, seed: 0 });
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048, steps: 37, seed: 0,
+    views: { closeUp: false, front: false, side: false, back: true } });
   fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
   expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
   fireEvent.click(toolbar.getByRole("button", { name: "Template" }));

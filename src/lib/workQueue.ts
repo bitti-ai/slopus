@@ -4,7 +4,7 @@ import { createImageEditScene, createImageScene, imageScenePrompt } from "./imag
 import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage, type ExtendOptions } from "./extendImage";
-import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
+import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
 import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
 import type { ImageGenerationSnapshot } from "./project";
 import { outputDimensions } from "./export";
@@ -62,6 +62,7 @@ interface PendingWork {
   characterSheet?: {
     views: ReturnType<typeof compileCharacterSheet>; sourceId: string; name: string; index: number;
     dimensions: ReturnType<typeof characterSheetDimensions>;
+    order: number[];
     ready?: { resolve: () => void; reject: (reason: Error) => void };
   };
   outputFrames?: number;
@@ -350,7 +351,9 @@ export class WorkQueue {
       steps: generationStepsWithLoras(options?.steps ?? current.imageScene?.steps ?? template.defaultSteps, config),
       seed: options?.seed ?? current.imageScene?.seed ?? -1 };
     const dimensions = characterSheetDimensions(config.settings.resolution, options?.height);
-    const firstView = CHARACTER_SHEET_ORDER[0];
+    const indices = characterSheetViewIndices(options);
+    const order = CHARACTER_SHEET_ORDER.filter((index) => indices.includes(index));
+    const firstView = order[0];
     const { width, height } = dimensions[firstView];
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
@@ -360,22 +363,22 @@ export class WorkQueue {
       referencePaths: views[firstView].references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
       refmods: referenceRefmodInputs(session.record.folderPath, views[firstView].references) };
     const imageGeneration: ImageGenerationSnapshot = {
-      ...imageGenerationSnapshot({ ...config, imageScene: { ...createImageScene(options?.prompt ?? ""), steps: request.steps, seed: config.imageScene.seed } }, views.map((view) => view.prompt).join("\n\n"), template.id),
+      ...imageGenerationSnapshot({ ...config, imageScene: { ...createImageScene(options?.prompt ?? ""), steps: request.steps, seed: config.imageScene.seed } }, indices.map((index) => views[index].prompt).join("\n\n"), template.id),
       usedSeed: request.seed,
-      references: [...new Map(views.flatMap((view) => view.references.slice(1)).map((reference) => [reference.id, reference])).values()],
+      references: [...new Map(indices.flatMap((index) => views[index].references.slice(1)).map((reference) => [reference.id, reference])).values()],
       template: { kind: "character-sheet", sourceId, sourceName: source.name, generatorName: template.name, prompt: options?.prompt ?? "",
-        height, steps: request.steps, seed: config.imageScene.seed },
+        height, steps: request.steps, seed: config.imageScene.seed, views: characterSheetViews(options) },
     };
-    this.work.set(id, { id, image: true, imageDraftId: id, characterSheet: { views, dimensions, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
+    this.work.set(id, { id, image: true, imageDraftId: id, characterSheet: { views, dimensions, order, sourceId, name: `Character sheet - ${source.name}`, index: 0 },
       imageGeneration,
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene),
       request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, imageDraftId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
       sceneId: this.work.get(id)!.sceneId, title: `Character sheet · ${source.name}`, submittedAt: new Date().toISOString(),
       status: "queued", progress: 0, detail: "Waiting to generate character sheet", error: null, completionAt: null, cancelling: false, needsSave: false,
-      settings: { frames: 4, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
+      settings: { frames: order.length, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     session.update((current) => createTemplateImageDraft(current, id, `Character sheet - ${source.name}`, imageGeneration,
-      { width: dimensions.reduce((total, view) => total + view.width, 0), height }));
+      { width: indices.reduce((total, index) => total + dimensions[index].width, 0), height }));
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   /** Queues encoding one reference's images, video or sound into a refmod file. */
@@ -552,8 +555,8 @@ export class WorkQueue {
     if (work.characterSheet) {
       const sheet = work.characterSheet;
       const fraction = event.totalSteps > 0 ? Math.max(0, Math.min(1, event.step / event.totalSteps)) : 0;
-      this.patch(work.id, { progress: Math.max(item.progress, (sheet.index + fraction) / 4 * 0.9),
-        detail: item.cancelling ? "Cancelling generation" : `Character sheet ${sheet.index + 1}/4 · ${CHARACTER_SHEET_VIEWS[CHARACTER_SHEET_ORDER[sheet.index]].label}` });
+      this.patch(work.id, { progress: Math.max(item.progress, (sheet.index + fraction) / sheet.order.length * 0.9),
+        detail: item.cancelling ? "Cancelling generation" : `Character sheet ${sheet.index + 1}/${sheet.order.length} · ${CHARACTER_SHEET_VIEWS[sheet.order[sheet.index]].label}` });
       return;
     }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
@@ -592,10 +595,10 @@ export class WorkQueue {
     const folderPath = work.session.record.folderPath;
     const dimensions = sheet.dimensions;
     try {
-      for (let index = 0; index < sheet.views.length; index++) {
+      for (let index = 0; index < sheet.order.length; index++) {
         if (work.cancelled) return;
         sheet.index = index;
-        const viewIndex = CHARACTER_SHEET_ORDER[index];
+        const viewIndex = sheet.order[index];
         const { width, height } = dimensions[viewIndex];
         work.submitted = false;
         const view = sheet.views[viewIndex];
@@ -603,25 +606,25 @@ export class WorkQueue {
           canvasWidth: width, canvasHeight: height,
           referencePaths: view.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(folderPath, image)!)),
           refmods: referenceRefmodInputs(folderPath, view.references) };
-        this.patch(work.id, { status: "preparing", detail: `Preparing character sheet view ${index + 1}/4` });
+        this.patch(work.id, { status: "preparing", detail: `Preparing character sheet view ${index + 1}/${sheet.order.length}` });
         await resolveSlopfabPlan(work.request, work.config, folderPath);
         if (work.cancelled) return;
         const ready = new Promise<void>((resolve, reject) => { sheet.ready = { resolve, reject }; });
         // Events can arrive before native submission returns.
         void ready.catch(() => undefined);
-        this.patch(work.id, { status: "generating", detail: `Character sheet ${index + 1}/4 · ${CHARACTER_SHEET_VIEWS[viewIndex].label}` });
+        this.patch(work.id, { status: "generating", detail: `Character sheet ${index + 1}/${sheet.order.length} · ${CHARACTER_SHEET_VIEWS[viewIndex].label}` });
         await enqueueSlopfabGeneration(work.request, work.config, folderPath);
         work.submitted = true;
         if (work.cancelled) await this.requestNativeCancellation(work);
         await ready;
         sheet.ready = undefined;
         if (work.cancelled) { this.cancelled(work); return; }
-        this.patch(work.id, { status: "encoding", detail: `Saving character sheet view ${index + 1}/4` });
+        this.patch(work.id, { status: "encoding", detail: `Saving character sheet view ${index + 1}/${sheet.order.length}` });
         await invoke("save_character_sheet_view", { folderPath, sheetId: work.id, jobId: work.request.jobId, index: viewIndex });
         await releaseRendered(work.request.jobId);
       }
       this.patch(work.id, { status: "encoding", progress: 0.95, detail: "Combining character sheet", completionAt: null });
-      const saved = await invoke<{ relativePath: string; width: number; height: number }>("combine_character_sheet", { folderPath, sheetId: work.id });
+      const saved = await invoke<{ relativePath: string; width: number; height: number }>("combine_character_sheet", { folderPath, sheetId: work.id, indices: [...sheet.order].sort((a, b) => a - b) });
       const scene = createImageEditScene({ ...saved, name: sheet.name }, work.config.imageScene ?? undefined);
       scene.referenceIds = [];
       const generation = { ...work.imageGeneration!, scene };

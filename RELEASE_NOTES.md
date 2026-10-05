@@ -11,7 +11,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - Renamed Colour correction to Basic Corrections and added temperature, tint, brightness, highlights, shadows, whites and blacks alongside exposure, contrast and saturation.
 - Added Creative with eight built-in procedural looks and intensity, faded film, sharpen and vibrance controls; RGB and hue/saturation/luma curve editors; and shadow, midtone and highlight Color Wheels with individual lightness controls.
 - Vignette now includes midpoint, roundness and feather, plus negative amounts for lighter edges. Grading settings are saved with the project and applied consistently in preview and export.
-- Configure a character sheet from the Image toolbar's Template menu, with one reference-enabled prompt for clothing and other details, a resolution selection controlling sheet height (512–2048 px), and step count and seed controls, then select Execute. A square waist-up shot and three 9:16 full-body views are combined into one child image in the image bar. The front view provides a shared clothing reference for the other views; all four views share the selected step count and seed.
+- Configure a character sheet from the Image toolbar's Template menu, with one reference-enabled prompt for clothing and other details, a resolution selection controlling sheet height (512–2048 px), and step count and seed controls, then select Execute. Selected close-up and 9:16 full-body views are combined into one child image in the image bar. When enabled, the front view provides a shared clothing reference for the other views; all selected views share the step count and seed.
 - Continue scenes from a selected scene's saved latents, with adjustable overlap and a choice of beginning or end. This replaces Previous scene in First & last frame.
 - Share URL-based generator templates using Import and Export in Generator settings. Versioned `.slop` JSON bundles include GPU download variants, LoRAs and additional safetensors, preserve existing templates on import, and leave local paths out of shared files.
 - The agent can inspect, create and edit generator templates, scan local weight folders to identify model components from filenames and safetensors metadata, and register LoRAs for preparation in Settings.
@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Character Sheet lets you enable Close up, Front view, Side view and Back view independently. Side view is off by default; generation and the combined image include only enabled views.
 - Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. SeedVR2 sends selected local files to the worker and downloads any missing components there.
 - Scene continuation offers a Lock Overlap toggle for local and worker generation, constraining overlapping video and audio to the source scene.
 - Image and video exports share a work queue with progress, cancellation, and retained results. SeedVR2 upscaling runs on the selected CUDA worker, which prepares its own models.
@@ -40,7 +41,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 - Image and video export offer None, Real-ESRGAN and SeedVR2 upscaling through SlopFab. Download their models from the new Other weights section in Settings → Generator.
 - Image export offers sizes closest to the selected image's actual aspect ratio, even when project or saved generation settings differ.
 - Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
-- Character Sheet offers Debug prompt when debug options are enabled, exposing the separate compiled prompt for each of its four views.
+- Character Sheet offers Debug prompt when debug options are enabled, exposing the separate compiled prompt for each enabled view.
 - Updated the bundled SlopFab runtime to API 1.18 for refmod export and support for version-5 refmod bundles.
 - LAN workers select weight downloads using their own GPU type and VRAM, even when a different variant is already downloaded on the client.
 - Continue preserves the full joined video and audio from Slopfab. Adjacent source and continuation scenes use that shared decode in preview and export, preserving context across the cut. Regenerate older Continue scenes to apply the fix.
