@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Image export offers sizes closest to the selected image's actual aspect ratio, even when project or saved generation settings differ.
 - Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
 - Character Sheet offers Debug prompt when debug options are enabled, exposing the separate compiled prompt for each of its four views.
 - Updated the bundled SlopFab runtime to API 1.18 for refmod export and support for version-5 refmod bundles.

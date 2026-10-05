@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
-import { exportSizeChoices } from "../../lib/export";
+import { closestExportAspectRatio, exportSizeChoices } from "../../lib/export";
 import type { ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
@@ -52,10 +52,10 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* remembered for this session only */ }
   };
 
-  /* Generation sizes use a 32-pixel grid; exports use standard exact ratios.
-     A saved image retains its authored aspect even if project settings change. */
+  /* Match presets to the selected image, including imported or resized images
+     whose dimensions differ from their saved generation settings. */
   const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
-  const aspectRatio = output?.imageGeneration?.aspectRatio ?? config.settings.aspectRatio;
+  const aspectRatio = original ? closestExportAspectRatio(original) : output?.imageGeneration?.aspectRatio ?? config.settings.aspectRatio;
   const sizes = exportSizeChoices(original, aspectRatio, "original")
     .map((size, index) => original && index === 0 ? { ...size, value: "original" } : size);
   const [chosenSize, setChosenSize] = useState<string | null>(null);

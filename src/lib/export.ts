@@ -235,6 +235,18 @@ export const STANDARD_EXPORT_SIZES: Record<AspectRatio, readonly (readonly [numb
 
 export const exportSizeKey = (width: number, height: number) => `${width}x${height}`;
 
+/** Compare proportional differences so portrait and landscape use the same scale. */
+export function closestExportAspectRatio({ width, height }: { width: number; height: number }): AspectRatio {
+  const ratio = width / height;
+  return (Object.keys(STANDARD_EXPORT_SIZES) as AspectRatio[]).reduce((closest, candidate) => {
+    const distance = (aspect: AspectRatio) => {
+      const [w, h] = STANDARD_EXPORT_SIZES[aspect][0];
+      return Math.abs(Math.log(ratio / (w / h)));
+    };
+    return distance(candidate) < distance(closest) ? candidate : closest;
+  });
+}
+
 /** The Resolution choices of an export: `own` (the project's or the image's
  *  size, named by `ownLabel`) first, then every standard size that differs. */
 export function exportSizeChoices(own: { width: number; height: number } | null, aspectRatio: AspectRatio, ownLabel: string) {

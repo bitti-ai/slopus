@@ -66,16 +66,16 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
 });
 
 it.each([
-  ["9:16", ["720 × 1280", "1080 × 1920", "1440 × 2560", "2160 × 3840"]],
-  ["1:1", ["512 × 512", "1024 × 1024", "1080 × 1080", "2048 × 2048", "4096 × 4096"]],
-  ["4:5", ["720 × 900", "1080 × 1350", "1440 × 1800", "2160 × 2700", "3072 × 3840"]],
-] as const)("offers export sizes in the saved image's %s aspect ratio", (aspectRatio, labels) => {
+  [768, 1376, ["720 × 1280", "1080 × 1920", "1440 × 2560", "2160 × 3840"]],
+  [1056, 1024, ["512 × 512", "1024 × 1024", "1080 × 1080", "2048 × 2048", "4096 × 4096"]],
+  [832, 1024, ["720 × 900", "1080 × 1350", "1440 × 1800", "2160 × 2700", "3072 × 3840"]],
+] as const)("offers the closest presets for a %s × %s image despite different saved and project ratios", (width, height, labels) => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  const config = withOutput({ width: 1376, height: 768 });
-  config.assets[0].imageGeneration = { ...imageGenerationSnapshot(config, "", "test"), aspectRatio };
+  const config = withOutput({ width, height });
+  config.assets[0].imageGeneration = { ...imageGenerationSnapshot(config, "", "test"), aspectRatio: "16:9" };
   render(<ImageExportView config={config} folderPath="D:/Images" />);
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
-  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["1376 × 768 (original)", ...labels]);
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([`${width} × ${height} (original)`, ...labels]);
 });
 
 it("keeps Original selected across images and omits duplicate presets", () => {
@@ -99,15 +99,22 @@ it("shows the image bar and exports the image picked in it, leaving the Editor's
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   vi.mocked(invoke).mockResolvedValue(true);
   const config = withOutput({ width: 2048, height: 1152 });
-  config.assets.push({ id: "second", name: "Second", kind: "image", relativePath: "media/generated/second.jpg", mimeType: "image/jpeg", width: 1024, height: 576, createdAt: config.createdAt } as ProjectConfig["assets"][number]);
+  config.assets.push({ id: "second", name: "Second", kind: "image", relativePath: "media/generated/second.jpg", mimeType: "image/jpeg", width: 768, height: 1376, createdAt: config.createdAt } as ProjectConfig["assets"][number]);
   render(<ImageExportView config={config} folderPath="D:/Images" />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  fireEvent.click(screen.getByRole("option", { name: "1920 × 1080" }));
   const bar = screen.getByLabelText("Generated images");
   expect(within(bar).getByRole("button", { name: "View Out" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(within(bar).getByRole("button", { name: "View Second" }));
   expect(within(bar).getByRole("button", { name: "View Second" })).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1024 × 576 (original)");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("768 × 1376 (original)");
+  fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
+  expect(screen.queryByRole("option", { name: "1920 × 1080" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("option", { name: "1080 × 1920" }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
-  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({ relativePath: "media/generated/second.jpg" })));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({
+    relativePath: "media/generated/second.jpg", options: { format: "jpg", width: 1080, height: 1920, quality: 90 },
+  })));
   expect(config.imageScene!.outputAssetId).toBe("out");
 });
 
