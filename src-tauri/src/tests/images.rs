@@ -125,25 +125,45 @@ fn image_export_resizes_and_reencodes_at_the_chosen_quality() {
     let source = folder.path().join(saved.relative_path);
     let original = fs::read(&source).unwrap();
     let half = folder.path().join("half.png");
-    export_image_file_with(&source, &half, ImageExportOptions { format: Some(ImageExportFormat::Png), width: Some(64), height: Some(40), quality: None }).unwrap();
+    export_image_file_with(&source, &half, ImageExportOptions { format: Some(ImageExportFormat::Png), width: Some(64), height: Some(40), quality: None, ..Default::default() }).unwrap();
     assert_eq!(::image::image_dimensions(&half).unwrap(), (64, 40));
     let enlarged = folder.path().join("enlarged.jpg");
-    export_image_file_with(&source, &enlarged, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: Some(1280), height: Some(720), quality: Some(90) }).unwrap();
+    export_image_file_with(&source, &enlarged, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: Some(1280), height: Some(720), quality: Some(90), ..Default::default() }).unwrap();
     let decoded = ::image::open(&enlarged).unwrap().to_rgb8();
     assert_eq!(decoded.dimensions(), (1280, 720));
     // Content fills the new canvas, including its far edge, rather than padding.
     assert!(decoded.get_pixel(1279, 719)[2] > 100);
     assert_eq!(fs::read(&source).unwrap(), original);
     let low = folder.path().join("low.jpg");
-    export_image_file_with(&source, &low, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(20) }).unwrap();
+    export_image_file_with(&source, &low, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(20), ..Default::default() }).unwrap();
     let low = fs::read(low).unwrap();
     assert_ne!(low, original);
     assert!(low.len() < original.len());
     let best = folder.path().join("best.jpg");
-    export_image_file_with(&source, &best, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(100) }).unwrap();
+    export_image_file_with(&source, &best, ImageExportOptions { format: Some(ImageExportFormat::Jpg), width: None, height: None, quality: Some(100), ..Default::default() }).unwrap();
     assert_eq!(fs::read(best).unwrap(), original);
     let zero = folder.path().join("zero.jpg");
-    assert!(export_image_file_with(&source, &zero, ImageExportOptions { format: None, width: Some(0), height: Some(40), quality: None }).is_err());
+    assert!(export_image_file_with(&source, &zero, ImageExportOptions { format: None, width: Some(0), height: Some(40), quality: None, ..Default::default() }).is_err());
+}
+
+#[test]
+fn image_export_does_not_silently_skip_a_selected_upscaler() {
+    use crate::commands::artifacts::{export_image_file_with, ImageExportOptions};
+    use crate::slopfab::upscale::{UpscaleConfig, UpscaleMethod};
+    let folder = tempfile::tempdir().unwrap();
+    let source = folder.path().join("source.png");
+    ::image::RgbaImage::from_pixel(32, 32, ::image::Rgba([40, 80, 120, 100])).save(&source).unwrap();
+    let original = fs::read(&source).unwrap();
+    for method in [UpscaleMethod::Realesrgan, UpscaleMethod::Seedvr2] {
+        let destination = folder.path().join("export.png");
+        let error = export_image_file_with(&source, &destination, ImageExportOptions {
+            upscale: Some(UpscaleConfig { method, model_path: folder.path().join("missing.safetensors").to_string_lossy().into(), vae_path: None }),
+            ..Default::default()
+        }).unwrap_err();
+        assert!(error.contains("weights are missing"));
+        assert!(!destination.exists());
+        assert_eq!(fs::read(&source).unwrap(), original);
+    }
 }
 
 #[test]

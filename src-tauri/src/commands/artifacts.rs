@@ -246,13 +246,14 @@ pub(crate) fn write_generated_image_frame(
 
 /// How the Export tab asks for the image: its file format, its pixel size
 /// (the generated size when absent) and, for JPEG, the quality 1–100.
-#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImageExportOptions {
     pub format: Option<ImageExportFormat>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub quality: Option<u8>,
+    pub upscale: Option<crate::slopfab::upscale::UpscaleConfig>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
@@ -362,6 +363,7 @@ pub(crate) fn export_image_file_with(
     }
     let resized = (width, height) != (source_width, source_height);
     let unchanged = source_format == target_format
+        && options.upscale.is_none()
         && !resized
         && (target_format == image::ImageFormat::Png || quality >= GENERATED_JPEG_QUALITY);
     let bytes = if unchanged {
@@ -369,7 +371,20 @@ pub(crate) fn export_image_file_with(
     } else {
         let mut image = image::load_from_memory_with_format(&bytes, source_format)
             .map_err(|error| format!("Could not decode image: {error}"))?;
-        if resized {
+        if let Some(config) = &options.upscale {
+            let original = image.to_rgba8();
+            let mut input = Some(original.clone().into_raw());
+            let mut output = None;
+            crate::slopfab::upscale::run(config, (source_width, source_height), (width, height),
+                1,
+                &std::sync::atomic::AtomicBool::new(false), &mut || Ok(input.take()),
+                &mut |bytes| { output = Some(bytes); Ok(()) })?;
+            let mut restored = image::RgbaImage::from_raw(width, height, output.ok_or("Upscaler returned no image.")?)
+                .ok_or("Upscaler returned invalid image dimensions.")?;
+            let alpha = image::imageops::resize(&original, width, height, image::imageops::FilterType::Lanczos3);
+            for (pixel, source) in restored.pixels_mut().zip(alpha.pixels()) { pixel[3] = source[3]; }
+            image = image::DynamicImage::ImageRgba8(restored);
+        } else if resized {
             image = image.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
         }
         let mut encoded = std::io::Cursor::new(Vec::new());

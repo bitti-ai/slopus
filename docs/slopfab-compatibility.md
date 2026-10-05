@@ -1,5 +1,30 @@
 # Slopfab compatibility
 
+## API 1.22: export upscaling
+
+The bundled Windows and Linux runtimes come from SlopFab commit `d4f423f`,
+built with `SLOPFAB_WITH_FFMPEG=OFF`. `slopfab_realesrgan_upscale` exposes
+Real-ESRGAN x4plus as a streaming RGB callback API; SeedVR2 uses
+`slopfab_seedvr2_upscale`. Models stay loaded for the export. The host retains
+the frame count, timestamps, audio, WebCodecs encoder and MP4 muxer.
+
+Image and video exports offer None, Real-ESRGAN and SeedVR2. The chosen export
+resolution is the final size: Real-ESRGAN produces 4x frames followed by final
+resampling, while SeedVR2 restores frames at the chosen output size. SeedVR2
+uses five-frame temporal segments for video and a single frame for images,
+and currently requires NVIDIA CUDA. Real-ESRGAN supports CUDA and Vulkan.
+Image export preserves the source alpha channel, resized to the output size.
+
+Native upscaling uses bounded input/output queues and raw RGBA IPC. These C
+APIs require host pixel buffers, so selecting an upscaler adds GPU readback
+and upload during export. None keeps the existing GPU export path; preview
+and scrubbing do not run the upscaler. Cancellation releases the stream and
+discards partial output. Model access is serialized against local generation.
+
+Settings → Generator → Other weights contains the Real-ESRGAN model and the
+SeedVR2 3B INT8 model plus its FP16 VAE. Files use the existing native download
+cache and progress/cancellation commands; paths remain machine-local.
+
 ## API 1.20: single-pass image outpainting
 
 The bundled Windows and Linux runtimes come from SlopFab commit `b7486be`,

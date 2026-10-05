@@ -24,6 +24,7 @@ mod refmod_export;
 mod runtime;
 mod status;
 mod types;
+pub mod upscale;
 pub use runtime::SlopfabRuntime;
 pub use types::*;
 

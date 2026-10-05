@@ -15,6 +15,7 @@ mod native_shell;
 mod project;
 mod slop;
 mod updater_mode;
+mod upscale;
 mod weights;
 mod window;
 mod worker;
