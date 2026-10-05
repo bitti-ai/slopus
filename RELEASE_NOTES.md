@@ -34,9 +34,9 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 - Video scenes offer a separate audio step count. Audio follows the video step count by default, with optional overrides for local and worker generation.
 - Character Sheet lets you enable Close up, Front view, Side view and Back view independently. Side view is off by default; generation and the combined image include only enabled views.
-- Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. SeedVR2 sends selected local files to the worker and downloads any missing components there.
+- Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. When using a worker, SeedVR2 sends selected local files and downloads any missing components there.
 - Scene continuation offers a Lock Overlap toggle for local and worker generation, constraining overlapping video and audio to the source scene.
-- Image and video exports share a work queue with progress, cancellation, and retained results. SeedVR2 upscaling runs on the selected CUDA worker, which prepares its own models.
+- Image and video exports share a work queue with progress, cancellation, and retained results. SeedVR2 upscaling runs locally when Local is selected, or on the selected CUDA worker, which prepares its own models.
 - Upscaler downloads share the generator and LoRA download queue, with progress in Work Queue and cancellation for waiting downloads.
 - Work queue activity indicators keep moving in the top bar and open queue when Windows interface animations are disabled.
 - Image and video export offer None, Real-ESRGAN and SeedVR2 upscaling through SlopFab. Download their models from the new Other weights section in Settings → Generator.

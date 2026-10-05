@@ -13,13 +13,13 @@ pub(crate) fn run(workers: &Workers, id: &str, config: &UpscaleConfig,
     read: &mut (dyn FnMut() -> Result<Option<Vec<u8>>, String> + Send),
     write: &mut (dyn FnMut(Vec<u8>) -> Result<(), String> + Send)) -> Result<u64, String> {
     if config.method == UpscaleMethod::Seedvr2 {
-        let worker = workers.active()?.ok_or("Select a worker in Settings → Workers to use SeedVR2 upscaling.")?;
-        let [model, vae] = workers.prepare_upscale_files(&worker, id, config, stop)?;
-        worker.upscale(id, &StartUpscale { input_width: input.0, input_height: input.1, width: output.0, height: output.1, segment_frames,
-            model: Some(model), vae: Some(vae) }, stop, read, write)
-    } else {
-        upscale::run(config, input, output, segment_frames as i32, stop, read, write)
+        if let Some(worker) = workers.active()? {
+            let [model, vae] = workers.prepare_upscale_files(&worker, id, config, stop)?;
+            return worker.upscale(id, &StartUpscale { input_width: input.0, input_height: input.1, width: output.0, height: output.1, segment_frames,
+                model: Some(model), vae: Some(vae) }, stop, read, write);
+        }
     }
+    upscale::run(config, input, output, segment_frames as i32, stop, read, write)
 }
 
 #[tauri::command]
@@ -64,10 +64,14 @@ pub(crate) fn cancel_export_upscale(id: String) -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
-    fn seedvr2_requires_a_worker_instead_of_running_locally() {
-        let config = UpscaleConfig { method: UpscaleMethod::Seedvr2, model_path: String::new(), vae_path: None };
+    fn seedvr2_uses_local_runtime_when_no_worker_is_selected() {
+        let model = tempfile::NamedTempFile::new().unwrap();
+        let vae = tempfile::NamedTempFile::new().unwrap();
+        let config = UpscaleConfig { method: UpscaleMethod::Seedvr2, model_path: model.path().to_string_lossy().into_owned(),
+            vae_path: Some(vae.path().to_string_lossy().into_owned()) };
+        // Cancellation is handled by the local runtime before loading weights or using the GPU.
         let result = run(&Workers::default(), "test", &config, (16, 16), (32, 32), 1,
-            &AtomicBool::new(false), &mut || Ok(None), &mut |_| Ok(()));
-        assert!(result.unwrap_err().contains("Select a worker"));
+            &AtomicBool::new(true), &mut || Ok(None), &mut |_| Ok(()));
+        assert_eq!(result.unwrap_err(), "Upscaling cancelled.");
     }
 }

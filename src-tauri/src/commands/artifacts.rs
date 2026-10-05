@@ -415,7 +415,7 @@ fn export_image_file_running(source: &std::path::Path, destination: &std::path::
             let original = image.to_rgba8();
             let mut input = Some(original.clone().into_raw());
             let mut output = None;
-            progress("rendering", if config.method == crate::slopfab::upscale::UpscaleMethod::Seedvr2 { "Upscaling with SeedVR2 on worker…" } else { "Upscaling with Real-ESRGAN…" });
+            progress("rendering", if config.method == crate::slopfab::upscale::UpscaleMethod::Seedvr2 { "Upscaling with SeedVR2…" } else { "Upscaling with Real-ESRGAN…" });
             crate::upscale::run(workers, id, config, (source_width, source_height), (width, height),
                 1,
                 stop, &mut || Ok(input.take()),

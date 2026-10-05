@@ -97,6 +97,7 @@ describe("the export view where nothing can encode", () => {
     expect(optionNames(upscaler)).toEqual(["None", "Real-ESRGAN", "SeedVR2"]);
     chooseOption(upscaler, "SeedVR2");
     expect(upscaler.textContent).toContain("SeedVR2");
+    expect(screen.queryByText(/Select a worker.*SeedVR2/)).toBeNull();
   });
 });
 

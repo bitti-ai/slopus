@@ -42,7 +42,6 @@ import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { ProjectStatus } from "./ProjectStatus";
 import { UPSCALERS, type Upscaler } from "../../lib/upscalers";
-import { remoteWorkerSelected } from "../../lib/workers";
 import type { ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
@@ -222,7 +221,6 @@ export function ExportView({ config, folderPath, onClose }: {
 
   const codecProbe = probes?.find((probe) => probe.id === settings.codec) ?? null;
   const blockers = [...plan.blockers];
-  if (settings.upscaler === "seedvr2" && !remoteWorkerSelected()) blockers.push("Select a worker in Settings → Workers to use SeedVR2 upscaling.");
   if (!support.desktop) {
     blockers.push(
       "This is the browser preview. There is no project folder to read media from and nowhere on disk to write a file, so exporting is only available in the Slopus desktop app.",

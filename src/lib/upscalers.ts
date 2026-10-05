@@ -50,8 +50,7 @@ export function subscribeOtherWeights(listener: () => void) {
 export interface UpscaleConfig { method: Exclude<Upscaler, "none">; modelPath: string; vaePath?: string }
 export function upscaleConfig(method: Upscaler): UpscaleConfig | undefined {
   if (method === "none") return undefined;
-  if (method === "seedvr2") {
-    if (!selectedWorker()) throw new Error("Select a worker in Settings → Workers to use SeedVR2 upscaling.");
+  if (method === "seedvr2" && selectedWorker()) {
     const local = localOtherWeightPaths();
     return { method, modelPath: local[OTHER_WEIGHT_TEMPLATES[1].files[0].url] ?? "",
       vaePath: local[OTHER_WEIGHT_TEMPLATES[1].files[1].url] };
@@ -59,7 +58,8 @@ export function upscaleConfig(method: Upscaler): UpscaleConfig | undefined {
   const template = OTHER_WEIGHT_TEMPLATES.find((item) => item.id === method)!;
   const paths = otherWeightPaths();
   if (template.files.some((file) => !paths[file.url])) throw new Error(`Download ${template.name} or choose a local weight file in Settings → Generator → Other weights first.`);
-  return { method, modelPath: paths[template.files[0].url] };
+  return { method, modelPath: paths[template.files[0].url],
+    ...(template.id === "seedvr2" ? { vaePath: paths[template.files[1].url] } : {}) };
 }
 export async function refreshOtherWeights() {
   if (!isTauri()) return;
