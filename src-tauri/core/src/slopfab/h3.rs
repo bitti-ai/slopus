@@ -78,7 +78,9 @@ pub(super) fn configure_request(
     }
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none())?;
+    let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
+    // SlopFab's overlap constraint cannot be combined with approximate caches.
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap)?;
     api.set_verbose(handle, false)?;
     if let Some(mode) = request.video_transition.as_deref() {
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;
@@ -90,6 +92,7 @@ pub(super) fn configure_request(
             opening.as_ref().map_or(path.as_path(), |file| file.as_ref()),
             request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap),
         )?;
+        api.set_continuation_lock_overlap(handle, lock_overlap)?;
     }
     if purpose == RequestPurpose::Generate {
         if let Some(path) = &request.save_latents_path {

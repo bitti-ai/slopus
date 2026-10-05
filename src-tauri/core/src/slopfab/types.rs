@@ -73,6 +73,8 @@ pub struct GenerationRequest {
     #[serde(default)]
     pub continuation_from: Option<String>,
     #[serde(default)]
+    pub continuation_lock_overlap: bool,
+    #[serde(default)]
     pub continuation_source_frames: Option<i32>,
     // Only the project commands resolve paths; IPC cannot supply save targets.
     #[serde(skip)]

@@ -1020,6 +1020,7 @@ mod tests {
             continuation_from: Some("start".into()),
             continuation_overlap_frames: Some(39),
             continuation_source_frames: Some(85),
+            continuation_lock_overlap: true,
             ..Default::default()
         };
         let (job, sources) = build_job(&request, &settings, &[]).unwrap();
@@ -1034,6 +1035,7 @@ mod tests {
         assert_eq!(wire["request"]["continuationFrom"], "start");
         assert_eq!(wire["request"]["continuationOverlapFrames"], 39);
         assert_eq!(wire["request"]["continuationSourceFrames"], 85);
+        assert_eq!(wire["request"]["continuationLockOverlap"], true);
         assert_eq!(sources.len(), 2);
         assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new(), &[]).is_err());
     }

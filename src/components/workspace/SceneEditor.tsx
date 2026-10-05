@@ -1,6 +1,6 @@
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { ComboBox, InfoBar, PropRow, PropSection } from "../ui";
+import { ComboBox, InfoBar, PropRow, PropSection, ToggleSwitch } from "../ui";
 import {
   shotReferenceIds,
   danglingReferenceTokens,
@@ -350,7 +350,11 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               })}
               onChange={(value) => onChange({ continuationOverlapFrames: Number(value) })} />
           </PropRow>
-          <p className="prop-caption">Uses the selected scene’s saved latents. Generate it first, or use Generate all. Overlap uses 22, 39, 56, … frames at 24 fps.</p>
+          <PropRow label="Lock Overlap" htmlFor={`${id}-lock-overlap`}>
+            <ToggleSwitch id={`${id}-lock-overlap`} aria-label="Lock Overlap" checked={job.continuationLockOverlap ?? false} disabled={disabled}
+              onChange={(checked) => onChange({ continuationLockOverlap: checked })} />
+          </PropRow>
+          <p className="prop-caption">Uses the selected scene’s saved latents. Generate it first, or use Generate all. Overlap uses 22, 39, 56, … frames at 24 fps. Lock Overlap constrains the overlapping video and audio to the source.</p>
         </>}
         {pose && <>
           <PropRow label="Pose video" htmlFor={`${id}-pose`}>

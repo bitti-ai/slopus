@@ -14,6 +14,7 @@ it("migrates previous-scene links to stable explicit sources with the old defaul
   expect(restored.generationJobs[1]).toMatchObject({ sceneType: "continue", continuationSceneId: "source", continuationOverlapFrames: 22, continuationFrom: "end" });
   restored.generationJobs.reverse();
   expect(sceneFrameInputs(restored.generationJobs[0], restored).previousSceneId).toBe("source");
+  expect(sceneFrameInputs(restored.generationJobs[0], restored).continuationLockOverlap).toBe(false);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(restored)))).toEqual(restored);
 });
 

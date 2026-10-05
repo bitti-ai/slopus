@@ -466,7 +466,7 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();
   });
 
-  it("continues a later scene with selectable overlap and edge, ignoring hidden frame anchors", () => {
+  it.each([false, true])("continues a later scene with selectable overlap and edge, with Lock Overlap %s", (lockOverlap) => {
     const initial = project();
     initial.generationJobs[1] = { ...initial.generationJobs[1], status: "completed", latentRelativePath: "latents/later.safetensors" };
     initial.references = [{ id: "still", kind: "image", name: "Still", description: "", intendedUse: [], sourcePath: "C:/still.png", createdAt: initial.createdAt }];
@@ -484,10 +484,14 @@ describe("Generator scene controls", () => {
     choose("Source scene for continuation", "Second scene");
     choose("Take continuation latents from", "Beginning");
     choose("Continuation overlap frames", "39");
+    expect(screen.getByRole("switch", { name: "Lock Overlap" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("switch", { name: "Lock Overlap" }));
+    if (!lockOverlap) fireEvent.click(screen.getByRole("switch", { name: "Lock Overlap" }));
     expect(generate).toBeEnabled();
     fireEvent.click(generate);
     const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
-    expect(saved.generationJobs[0]).toMatchObject({ sceneType: "continue", continuationSceneId: "scene-second", continuationFrom: "start", continuationOverlapFrames: 39 });
+    expect(saved.generationJobs[0]).toMatchObject({ sceneType: "continue", continuationSceneId: "scene-second", continuationFrom: "start", continuationOverlapFrames: 39, continuationLockOverlap: lockOverlap });
+    expect(JSON.parse(saved.generationJobs[0].generationSnapshot!).continuationLockOverlap ?? false).toBe(lockOverlap);
     expect(JSON.parse(saved.generationJobs[0].generationSnapshot!)).toMatchObject({
       previousSceneId: "scene-second", continuationRelativePath: "latents/later.safetensors", continuationFrom: "start", continuationOverlapFrames: 39, referencePaths: [],
     });

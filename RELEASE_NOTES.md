@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Scene continuation offers a Lock Overlap toggle for local and worker generation, constraining overlapping video and audio to the source scene.
 - Image and video exports share a work queue with progress, cancellation, and retained results. SeedVR2 upscaling runs on the selected CUDA worker, which prepares its own models.
 - Upscaler downloads share the generator and LoRA download queue, with progress in Work Queue and cancellation for waiting downloads.
 - Work queue activity indicators keep moving in the top bar and open queue when Windows interface animations are disabled.

@@ -139,6 +139,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_steps(r.pointer.as_ptr(), v)
     }
+    pub fn set_continuation_lock_overlap(&self, r: &RequestHandle, enabled: bool) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_continuation_lock_overlap(r.pointer.as_ptr(), enabled)
+    }
     pub fn set_seed(&self, r: &RequestHandle, v: u64) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_seed(r.pointer.as_ptr(), v)

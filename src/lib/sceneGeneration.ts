@@ -28,6 +28,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
     ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
     ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,
+      continuationLockOverlap: inputs.continuationLockOverlap,
       continuationFrom: inputs.continuationFrom, continuationSourceFrames: inputs.continuationSourceFrames } : {}),
     // The scene's own length, not a fixed six seconds.
     frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),

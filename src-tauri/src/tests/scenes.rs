@@ -36,12 +36,14 @@ fn continuation_settings_migrate_and_survive_reordering_and_save() {
     config.generation_jobs.reverse();
     config.generation_jobs[0].continuation_from = Some("start".into());
     config.generation_jobs[0].continuation_overlap_frames = Some(56);
+    config.generation_jobs[0].continuation_lock_overlap = Some(true);
     let folder = tempfile::tempdir().unwrap();
     write_project(folder.path(), &config).unwrap();
     let restored = read_project(folder.path()).unwrap().config;
     assert_eq!(restored.generation_jobs[0].continuation_scene_id.as_deref(), Some(source.as_str()));
     assert_eq!(restored.generation_jobs[0].continuation_from.as_deref(), Some("start"));
     assert_eq!(restored.generation_jobs[0].continuation_overlap_frames, Some(56));
+    assert_eq!(restored.generation_jobs[0].continuation_lock_overlap, Some(true));
     config.generation_jobs[0].continuation_overlap_frames = Some(23);
     assert!(validate_and_normalize_config(config.clone()).is_err());
     config.generation_jobs[0].continuation_overlap_frames = Some(22);

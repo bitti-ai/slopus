@@ -113,6 +113,7 @@ export interface SlopfabGenerationRequest {
   continuationRelativePath?: string;
   continuationOverlapFrames?: number;
   continuationFrom?: "start" | "end";
+  continuationLockOverlap?: boolean;
   continuationSourceFrames?: number;
 }
 

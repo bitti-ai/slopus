@@ -88,6 +88,8 @@ pub(crate) struct GenerationJob {
     pub(crate) continuation_overlap_frames: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) continuation_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) continuation_lock_overlap: Option<bool>,
     /// The H3 vocabulary tags this shot was built from: group id -> option ids.
     /// zod spells it `.nullish()` (src/lib/project.ts `shotTagSelectionSchema`),
     /// so `null` IS readable on the frontend — but the key is still skipped
@@ -168,6 +170,7 @@ impl GenerationJob {
             continuation_scene_id: None,
             continuation_overlap_frames: None,
             continuation_from: None,
+            continuation_lock_overlap: None,
             shot_tags: None,
             shots: Some(Vec::new()),
             duration_seconds: Some(defaults.duration_seconds),

@@ -1,6 +1,23 @@
 use super::*;
 
 #[test]
+fn continuation_lock_overlap_can_be_enabled_and_disabled() {
+    // Exercise the bundled runtime, including when a running app holds an older staged DLL.
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../lib/slopfab")
+        .join(crate::slopfab::DLL_FILE_NAME);
+    let api = Api::load(&path).unwrap();
+    let request = RequestHandle::new(&api).unwrap();
+    api.set_frames(&request, 48).unwrap();
+    api.set_resolution(&request, 64, 32).unwrap();
+    api.set_continuation_lock_overlap(&request, true).unwrap();
+    // Enabling the constraint requires an attached continuation source.
+    assert!(api.resolve(&request).err().unwrap().contains("continuation"));
+    api.set_continuation_lock_overlap(&request, false).unwrap();
+    assert!(api.resolve(&request).is_ok());
+}
+
+#[test]
 fn image_edit_setters_use_original_pixel_boxes_and_pad_the_plan() {
     let api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
     let request = RequestHandle::new(&api).unwrap();

@@ -555,6 +555,7 @@ export const generationJobSchema = z.object({
   continuationOverlapFrames: z.number().int().min(DEFAULT_CONTINUATION_OVERLAP).max(MAX_CONTINUATION_OVERLAP)
     .refine((frames) => (frames - 5) % 17 === 0, "Overlap must be 22, 39, 56, … frames.").nullish(),
   continuationFrom: z.enum(["start", "end"]).nullish(),
+  continuationLockOverlap: z.boolean().nullish(),
   latentRelativePath: projectRelativePathSchema.nullish(),
   // `.nullish()` because Rust holds it as an Option — see the note on
   // projectAssetSchema.durationMs. Every project written before shot tags
@@ -1031,6 +1032,7 @@ export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
     previousSceneId: sourceId, continuationRelativePath: previous?.latentRelativePath ?? undefined,
     continuationOverlapFrames: job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
     continuationFrom: job.continuationFrom ?? "end",
+    continuationLockOverlap: job.continuationLockOverlap ?? false,
     continuationSourceFrames: previous ? sceneOutputFrames(previous, config) : undefined };
 }
 
@@ -1136,6 +1138,7 @@ export interface SceneGenerationInput {
   continuationRelativePath?: string;
   continuationOverlapFrames?: number;
   continuationFrom?: "start" | "end";
+  continuationLockOverlap?: boolean;
   continuationSourceFrames?: number;
 }
 
@@ -1164,6 +1167,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.previousSceneId ? { previousSceneId: input.previousSceneId } : {}),
     ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
     ...(input.previousSceneId ? { continuationOutput: "joined", continuationOverlapFrames: input.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+      ...(input.continuationLockOverlap ? { continuationLockOverlap: true } : {}),
       continuationFrom: input.continuationFrom ?? "end", ...(input.continuationSourceFrames ? { continuationSourceFrames: input.continuationSourceFrames } : {}) } : {}),
     shots,
   });

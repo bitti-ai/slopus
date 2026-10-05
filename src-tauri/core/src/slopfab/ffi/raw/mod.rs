@@ -86,6 +86,7 @@ pub struct Api {
     set_image_edit_invert_mask: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
+    set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_sampling_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
@@ -238,6 +239,9 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                set_continuation_lock_overlap: library
+                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_continuation_lock_overlap\0")
+                    .ok().map(|symbol| *symbol),
                 add_refmod: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(
                         b"slopfab_request_add_refmod\0",
@@ -511,6 +515,12 @@ impl Api {
     #[cfg(test)]
     pub fn disable_outpainting_for_test(&mut self) {
         self.set_image_edit_invert_mask = None;
+    }
+    pub fn set_continuation_lock_overlap(&self, r: *mut Request, enabled: bool) -> Result<(), String> {
+        let Some(set) = self.set_continuation_lock_overlap else {
+            return if enabled { Err("Lock Overlap requires SlopFab API 1.23 or later. Update the generation runtime.".into()) } else { Ok(()) };
+        };
+        self.error(unsafe { set(r, i32::from(enabled)) })
     }
     #[cfg(test)]
     pub fn disable_lora_preparation_for_test(&mut self) {
