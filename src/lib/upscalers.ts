@@ -13,7 +13,7 @@ export const OTHER_WEIGHT_TEMPLATES = [
     { id: "model", name: "RealESRGAN x4plus", url: "https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged/resolve/main/RealESRGAN_x4plus.safetensors" },
   ] },
   { id: "seedvr2", name: "SeedVR2", files: [
-    { id: "model", name: "SeedVR2 3B INT8", url: "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors" },
+    { id: "model", name: "SeedVR2 3B FP16", url: "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_fp16.safetensors" },
     { id: "vae", name: "SeedVR2 VAE", url: "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors" },
   ] },
 ] as const;

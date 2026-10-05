@@ -22,7 +22,7 @@ pub struct StartUpscale {
     pub height: u32,
     pub segment_frames: u32,
 }
-pub const SEEDVR2_MODEL: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors";
+pub const SEEDVR2_MODEL: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_fp16.safetensors";
 pub const SEEDVR2_VAE: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors";
 pub const DEFAULT_PORT: u16 = 47321;
 pub const TOKEN_HEADER: &str = "x-slopus-token";
