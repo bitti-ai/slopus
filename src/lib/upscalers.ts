@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
 
 export type Upscaler = "none" | "realesrgan" | "seedvr2";
@@ -29,6 +28,7 @@ const savePaths = (paths: Record<string, string>) => {
   localStorage.setItem(KEY, JSON.stringify(paths));
   window.dispatchEvent(new Event(EVENT));
 };
+export const saveOtherWeightPath = (url: string, path: string) => savePaths({ ...otherWeightPaths(), [url]: path });
 export function subscribeOtherWeights(listener: () => void) {
   window.addEventListener(EVENT, listener);
   window.addEventListener("storage", listener);
@@ -47,41 +47,4 @@ export async function refreshOtherWeights() {
   const urls = OTHER_WEIGHT_TEMPLATES.flatMap((item) => item.files.map((file) => file.url));
   const found = await invoke<Record<string, string>>("find_downloaded_weights", { urls });
   if (found) savePaths(found);
-}
-export interface OtherDownload { templateId: string; file: string; progress: number; requestId: string; error?: string; active: boolean }
-let download: OtherDownload | null = null;
-let downloadCancelled = false;
-export const otherDownloadState = () => download;
-const publish = (value: OtherDownload) => { download = value; window.dispatchEvent(new Event(EVENT)); };
-export async function downloadOtherWeights(id: string) {
-  if (!isTauri() || download?.active) return;
-  const template = OTHER_WEIGHT_TEMPLATES.find((item) => item.id === id);
-  if (!template) return;
-  const requestId = crypto.randomUUID();
-  downloadCancelled = false;
-  publish({ templateId: id, file: "", progress: 0, requestId, active: true });
-  let unlisten: (() => void) | undefined;
-  try {
-    let completed = 0;
-    unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
-      if (payload.requestId === requestId && download?.active) publish({ ...download,
-        progress: (completed + (payload.total ? payload.downloaded / payload.total : 0)) / template.files.length * 100 });
-    });
-    for (const file of template.files) {
-      if (downloadCancelled) throw new Error("Download cancelled.");
-      publish({ ...download!, file: file.name });
-      const path = await invoke<string>("download_weight", { requestId, url: file.url });
-      if (!path || /^https?:/i.test(path)) throw new Error("The download did not return a local file.");
-      savePaths({ ...otherWeightPaths(), [file.url]: path });
-      completed++;
-    }
-    publish({ ...download!, progress: 100, active: false });
-  } catch (reason) { publish({ ...download!, active: false, error: String(reason) }); }
-  finally { unlisten?.(); }
-}
-export async function cancelOtherDownload() {
-  if (!download?.active) return;
-  const requestId = download.requestId;
-  downloadCancelled = true;
-  await invoke("cancel_weight_download", { requestId });
 }

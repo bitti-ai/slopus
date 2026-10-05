@@ -5,7 +5,7 @@ import { highestLoraStepOverride, isLoraStepOverride, loadLoras, saveLoras, subs
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath } from "../lib/runtime";
-import { downloadLora, getWeightDownloadState, prepareLora, refreshDownloadedLoras, removeLora, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
+import { getQueuedWeightDownloads, downloadLora, getWeightDownloadState, prepareLora, refreshDownloadedLoras, removeLora, subscribeWeightDownloads, weightDownloadProgress } from "../lib/weightDownloads";
 import { Checkbox, ComboBox, ContentDialog, InfoBar, ProgressBar, SettingsCard, SettingsGroup, ToggleSwitch } from "./ui";
 import { OpenableCard } from "./OpenableCard";
 
@@ -18,6 +18,7 @@ function useLoras() {
 export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: string) => void }) {
   const loras = useLoras();
   const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
+  const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
   useEffect(() => {
@@ -34,16 +35,17 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
     <div className="settings-card-list" role="list" aria-label="LoRAs">
       {loras.map((lora) => {
         const active = download?.active && download.loraId === lora.id;
+        const queued = queuedDownloads.some((item) => item.loraId === lora.id);
         const preparing = active && download?.phase === "preparing";
         const percent = download ? Math.floor(weightDownloadProgress(download)) : 0;
         return <OpenableCard key={lora.id} icon={<Lora20 />} header={lora.name} openLabel={`Edit ${lora.name} LoRA`} onOpen={() => onEdit(lora.id)}
-          description={<span data-tooltip={lora.path || undefined}>{active ? preparing ? "Preparing…" : `Downloading · ${percent}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</span>}
+          description={<span data-tooltip={lora.path || undefined}>{queued ? "Queued for download" : active ? preparing ? "Preparing…" : `Downloading · ${percent}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</span>}
           progress={active && !preparing && <ProgressBar className="settings-progress" value={weightDownloadProgress(download!)} aria-label={`Downloading ${lora.name}`} />}
           actions={<>
-            {lora.path && <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Prepare LoRA ${lora.name}`} data-tooltip="Prepare missing timestep grid"
+            {lora.path && <button className="icon-button" type="button" disabled={!desktop || active || queued} aria-label={`Prepare LoRA ${lora.name}`} data-tooltip="Prepare missing timestep grid"
               onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{preparing ? <Spinner16 className="spin" /> : <Wrench16 />}</button>}
             {lora.url && !lora.path
-              ? <button className="icon-button" type="button" disabled={!desktop || download?.active} aria-label={`Download LoRA ${lora.name}`} data-tooltip="Download" onClick={() => void downloadLora(lora.id)}><Download16 /></button>
+              ? <button className="icon-button" type="button" disabled={!desktop || active || queued} aria-label={`Download LoRA ${lora.name}`} data-tooltip="Download" onClick={() => void downloadLora(lora.id)}><Download16 /></button>
               : <button className="icon-button" type="button" disabled={Boolean(download?.active)} aria-label={`Remove LoRA ${lora.name}`} data-tooltip="Remove" onClick={() => void removeLora(lora.id).catch((reason) => setError(String(reason)))}><Delete16 /></button>}
           </>} />;
       })}

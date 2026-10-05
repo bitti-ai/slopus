@@ -4,7 +4,7 @@ import { GENERATION_FRAME_RATE } from "../lib/project";
 import { isWorkActive, type WorkItem, type WorkQueue } from "../lib/workQueue";
 import { loadGeneratorTemplateSettings } from "../lib/settings";
 import { cancelExportJob, exportFraction, useExportJob } from "../lib/exportJob";
-import { cancelWeightDownload, retryWeightDownload, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
+import { cancelQueuedWeightDownload, getQueuedWeightDownloads, cancelWeightDownload, retryWeightDownload, getWeightDownloadState, subscribeWeightDownloads, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { Flyout, ProgressBar, ProgressRing } from "./ui";
 
 /* The work queue, as a flyout hanging from its title-bar button: no scrim, no
@@ -40,6 +40,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
 }) {
   // Downloads are observed here, never enqueued in the GPU generation scheduler.
   const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
+  const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const downloadName = download ? download.name ?? loadGeneratorTemplateSettings().templates.find((template) => template.id === download.templateId)?.name ?? "Generator weights" : "";
   /* A running export lives in lib/exportJob.ts, not in the generation queue;
@@ -78,7 +79,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
         {finished.length > 0 && <button type="button" className="work-queue__link" onClick={() => queue.clearFinished()}>Clear finished</button>}
       </header>
       <div className="work-queue__list">
-        {items.length === 0 && !download && !exporting && <div className="work-queue__empty"><WorkQueue32 aria-hidden="true" /><strong>No work yet</strong><span>Generated scenes and images show up here.</span></div>}
+        {items.length === 0 && !download && !queuedDownloads.length && !exporting && <div className="work-queue__empty"><WorkQueue32 aria-hidden="true" /><strong>No work yet</strong><span>Generated scenes and images show up here.</span></div>}
         {current.length > 0 && <section aria-label="In progress"><ul>{current.map(row)}</ul></section>}
         {exporting && <section aria-label="Export"><ul><li className={`work-queue__row${onNavigate && exportJob.folderPath ? " work-queue__row--navigable" : ""}`}>
           {onNavigate && exportJob.folderPath && <button type="button" className="work-queue__open" aria-label={`Open ${exportTitle}`} onClick={() => openTarget({ kind: "export", folderPath: exportJob.folderPath! })} />}
@@ -99,20 +100,28 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
             <span className="work-queue__title">{downloadName}</span>
             <span className="work-queue__caption">
               {download.loraId ? "LoRA download" : "Weight download"} · {download.active
-                ? `${download.completed}/${download.files} files · ${(download.downloaded / 1024 ** 3).toFixed(2)} GB${download.total ? ` of ${(download.total / 1024 ** 3).toFixed(2)} GB` : ""} · ${Math.floor(weightDownloadProgress(download))}%`
+                ? download.phase === "preparing" ? "Preparing LoRA…" : `${download.currentFile ? `${download.currentFile} · ` : ""}${download.completed}/${download.files} files · ${(download.downloaded / 1024 ** 3).toFixed(2)} GB${download.total ? ` of ${(download.total / 1024 ** 3).toFixed(2)} GB` : ""} · ${Math.floor(weightDownloadProgress(download))}%`
                 : download.error ? "Failed" : "Download complete"}
             </span>
-            {download.active && <ProgressBar value={weightDownloadProgress(download)} aria-label={`${downloadName} download progress`} className="work-queue__progress" />}
+            {download.active && <ProgressBar value={download.phase === "preparing" ? undefined : weightDownloadProgress(download)} aria-label={`${downloadName} download progress`} className="work-queue__progress" />}
             {download.error && <span className="work-queue__error">{download.error}</span>}
             {download.error && <button type="button" className="work-queue__link" onClick={() => { setDownloadError(null); void retryWeightDownload(); }}>Retry download</button>}
             {downloadError && <span className="work-queue__error" role="alert">{downloadError}</span>}
           </div>
-          {download.active && <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${downloadName} download`} data-tooltip="Cancel" onClick={() => {
+          {download.active && download.phase !== "preparing" && <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${downloadName} download`} data-tooltip="Cancel" onClick={() => {
             setDownloadError(null);
             void cancelWeightDownload().catch((reason) => setDownloadError(String(reason)));
           }}><Dismiss16 /></button>}
         </li></ul></section>}
-        {upcoming.length > 0 && <section aria-label="Upcoming work"><h3 className="work-queue__group">Up next · {upcoming.length}</h3><ul>{upcoming.map(row)}</ul></section>}
+        {(upcoming.length > 0 || queuedDownloads.length > 0) && <section aria-label="Upcoming work"><h3 className="work-queue__group">Up next · {upcoming.length + queuedDownloads.length}</h3><ul>
+          {queuedDownloads.map((waiting) => <li key={waiting.templateId} className={`work-queue__row${onNavigate ? " work-queue__row--navigable" : ""}`}>
+            {onNavigate && <button type="button" className="work-queue__open" aria-label={`Open ${waiting.name} download`} onClick={() => openTarget({ kind: "download", download: waiting })} />}
+            <span className="work-queue__state work-queue__state--queued" aria-hidden="true"><Clock16 /></span>
+            <div className="work-queue__text"><span className="work-queue__title">{waiting.name ?? "Weights"}</span><span className="work-queue__caption">Queued for download</span></div>
+            <button type="button" className="icon-button work-queue__cancel" aria-label={`Cancel ${waiting.name} download`} data-tooltip="Cancel" onClick={() => cancelQueuedWeightDownload(waiting.templateId)}><Dismiss16 /></button>
+          </li>)}
+          {upcoming.map(row)}
+        </ul></section>}
         {finished.length > 0 && <section aria-label="Finished work"><h3 className="work-queue__group">Finished</h3><ul>{finished.map(row)}</ul></section>}
       </div>
     </Flyout>

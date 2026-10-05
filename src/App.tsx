@@ -5,7 +5,7 @@ import { CudaSetupDialog } from "./components/CudaSetupDialog";
 import { ReleaseNotesDialog } from "./components/ReleaseNotesDialog";
 import { hasSeenReleaseNotes } from "./lib/releaseNotes";
 import { missingCudaDownload } from "./lib/cudaSupport";
-import { getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
+import { getQueuedWeightDownloads, getWeightDownloadState, subscribeWeightDownloads } from "./lib/weightDownloads";
 import { startWorkerDiscovery } from "./lib/workers";
 import { Add16, FolderOpen16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, Search16, Search32, Settings16, WorkQueue16 } from "./components/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
@@ -56,6 +56,7 @@ function App() {
   }));
   const workItems = useSyncExternalStore(workQueue.subscribe, workQueue.getSnapshot);
   const weightDownloadActive = useSyncExternalStore(subscribeWeightDownloads, () => getWeightDownloadState()?.active ?? false);
+  const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const iconConfirmationCount = useSyncExternalStore(workQueue.subscribe, workQueue.getIconConfirmationCount);
   const [workQueueOpen, setWorkQueueOpen] = useState(false);
   useEffect(() => workQueue.start(), [workQueue]);
@@ -154,7 +155,7 @@ function App() {
   useEffect(() => {
     void reportGenerationJobs(JSON.parse(guardKey) as GuardJob[]).catch(() => undefined);
   }, [guardKey]);
-  const queueCount = guardJobs.length + Number(weightDownloadActive);
+  const queueCount = guardJobs.length + Number(weightDownloadActive) + queuedDownloads.length;
   /* Something is being worked on right now, not merely waiting its turn:
      a generation or icon past the queue, an export, a weight download. */
   const queueBusy = weightDownloadActive || exportingName !== null

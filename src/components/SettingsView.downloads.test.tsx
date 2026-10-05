@@ -232,7 +232,7 @@ it("keeps a LoRA download alive outside Settings, shows progress and cancels thr
   const settings = render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "Download LoRA TaoMate 3-Step" }));
   await waitFor(() => expect(requestId).not.toBe(""));
-  expect(screen.getByRole("button", { name: "Download generator First/Last Frame" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Download generator First/Last Frame" })).toBeEnabled();
   settings.unmount();
   render(<WorkQueuePanel queue={new WorkQueue()} items={[]} onClose={() => undefined} />);
   act(() => progress({ payload: { requestId, downloaded: 50, total: 100 } }));
@@ -288,6 +288,45 @@ it("keeps downloading with Settings closed and restores progress in the template
   expect(vi.mocked(invoke).mock.calls.some(([command]) => command === "cancel_weight_download")).toBe(false);
   render(<WorkQueuePanel queue={queue} items={[]} onClose={() => undefined} />);
   expect(screen.getByRole("region", { name: "Weight downloads" })).toHaveTextContent("Download complete");
+});
+
+it("queues Other weights from Settings and follows their progress after Settings closes", async () => {
+  let progress: (event: { payload: { requestId: string; downloaded: number; total: number | null } }) => void = () => undefined;
+  vi.mocked(listen).mockImplementation((async (_name, callback) => { progress = callback as typeof progress; return () => undefined; }) as typeof listen);
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  const pending: { requestId: string; finish: () => void }[] = [];
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command !== "download_weight") return original(command, args);
+    const request = args as { requestId: string; url: string };
+    return new Promise<string>((resolve) => pending.push({ requestId: request.requestId, finish: () => resolve(`C:/weights/${request.url.split('/').at(-1)}`) }));
+  });
+  const settings = render(<SettingsView onClose={() => undefined} />);
+  const otherCard = (name: string) => within(screen.getByText(name).closest(".ui-settings-card") as HTMLElement);
+  fireEvent.click(otherCard("Real-ESRGAN").getByRole("button", { name: "Download" }));
+  await waitFor(() => expect(pending).toHaveLength(1));
+  fireEvent.click(otherCard("SeedVR2").getByRole("button", { name: "Download" }));
+  expect(otherCard("SeedVR2").getByText("Queued for download")).toBeInTheDocument();
+  fireEvent.click(otherCard("SeedVR2").getByRole("button", { name: "Cancel" }));
+  fireEvent.click(otherCard("SeedVR2").getByRole("button", { name: "Download" }));
+  settings.unmount();
+  const navigate = vi.fn();
+  render(<WorkQueuePanel queue={new WorkQueue()} items={[]} onClose={() => undefined} onNavigate={navigate} />);
+  expect(within(screen.getByRole("region", { name: "Upcoming work" })).getByText("SeedVR2")).toBeInTheDocument();
+  act(() => progress({ payload: { requestId: pending[0].requestId, downloaded: 50, total: 100 } }));
+  expect(screen.getByRole("progressbar", { name: "Real-ESRGAN download progress" })).toHaveAttribute("aria-valuenow", "50");
+  await act(async () => pending[0].finish());
+  await waitFor(() => expect(pending).toHaveLength(2));
+  expect(screen.queryByRole("region", { name: "Upcoming work" })).toBeNull();
+  act(() => progress({ payload: { requestId: pending[1].requestId, downloaded: 50, total: 100 } }));
+  expect(screen.getByRole("progressbar", { name: "SeedVR2 download progress" })).toHaveAttribute("aria-valuenow", "25");
+  await act(async () => pending[1].finish());
+  await waitFor(() => expect(pending).toHaveLength(3));
+  act(() => progress({ payload: { requestId: pending[2].requestId, downloaded: 50, total: 100 } }));
+  expect(screen.getByRole("progressbar", { name: "SeedVR2 download progress" })).toHaveAttribute("aria-valuenow", "75");
+  await act(async () => pending[2].finish());
+  await waitFor(() => expect(screen.getByText(/Download complete/)).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "Open SeedVR2 download" }));
+  expect(navigate).toHaveBeenCalledWith({ kind: "download", download: expect.objectContaining({ otherWeightId: "seedvr2", completed: 2, active: false }) });
 });
 
 it("downloads the sample, enables its default choice, and removes only weights to restore the download action", async () => {

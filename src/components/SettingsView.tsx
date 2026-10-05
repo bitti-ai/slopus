@@ -17,7 +17,7 @@ import { OpenableCard } from "./OpenableCard";
 import { TitleBar } from "./TitleBar";
 import { downloadableTemplateLoras, loadLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
-import { cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
+import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, generatorPathFields,
@@ -296,6 +296,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   useEffect(() => { page.current?.focus(); }, []);
   const [templateSettings, setTemplateSettings] = useState<GeneratorTemplateSettings>(() => loadGeneratorTemplateSettings());
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
+  const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
@@ -529,7 +530,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const generatorEditor = editingTemplate && <>
     <GeneratorSharing key={`sharing:${selectedTemplate.id}`} templates={[selectedTemplate]}>{({ exportButton }) => <div className="settings-page__actions">
-      {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download16 /> Download weights</button>}
+      {templateNeedsDownload(selectedTemplate) && <button type="button" className="primary-button" disabled={!desktop || downloading || queuedDownloads.some((item) => item.templateId === selectedTemplate.id)} onClick={() => void downloadTemplateWeights(selectedTemplate.id)}><Download16 /> {queuedDownloads.some((item) => item.templateId === selectedTemplate.id) ? "Queued for download" : "Download weights"}</button>}
       <button type="button" className="secondary-button" disabled={Boolean(downloading)} onClick={clearAll}><Reset16 /> Clear generator paths</button>
       <div className="settings-page__actions-end">{exportButton}</div>
     </div>}</GeneratorSharing>
@@ -598,14 +599,15 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           const needsDownload = templateNeedsDownload(template);
           const isDefault = template.id === templateSettings.defaultTemplateId;
           const active = downloadState?.active && downloadState.templateId === template.id;
+          const queued = queuedDownloads.some((item) => item.templateId === template.id);
           const weights = hasDownloadedWeights(template);
           return <OpenableCard key={template.id} icon={<Video20 />} header={template.name} openRef={`template:${template.id}`}
             openLabel={`Edit ${template.name} generator`} onOpen={() => openTemplate(template.id)}
-            description={active ? downloadState?.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%`
+            description={queued ? "Queued for download" : active ? downloadState?.phase === "preparing" ? "Preparing LoRA…" : `Downloading · ${Math.floor(downloadPercent)}%`
               : `${!needsDownload && isDefault ? "Used by default · " : ""}${templateSummary(template)}`}
             progress={active && downloadState?.phase !== "preparing" && <ProgressBar className="settings-progress" value={downloadPercent} aria-label={`Downloading ${template.name} weights`} />}
             actions={needsDownload
-              ? <button type="button" className="icon-button" disabled={!desktop || downloadState?.active} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} data-tooltip={`Download ${template.name} weights`}>
+              ? <button type="button" className="icon-button" disabled={!desktop || active || queued} onClick={() => void downloadTemplateWeights(template.id)} aria-label={`Download generator ${template.name}`} data-tooltip={`Download ${template.name} weights`}>
                 {active ? <Spinner16 className="spin" /> : <Download16 />}
               </button>
               : <>

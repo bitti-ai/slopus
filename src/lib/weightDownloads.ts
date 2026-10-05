@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
+import { OTHER_WEIGHT_TEMPLATES, refreshOtherWeights, otherWeightPaths, saveOtherWeightPath } from "./upscalers";
 import { downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
 import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
   type EnginePathId, type GeneratorTemplate, type WeightGpu, type WeightSource } from "./settings";
@@ -9,6 +10,8 @@ export type { WeightGpu } from "./settings";
 export { chooseWeightSource };
 export interface DownloadState {
   templateId: string;
+  otherWeightId?: string;
+  currentFile?: string;
   loraId?: string;
   currentLoraId?: string;
   currentAdditionalId?: string;
@@ -33,6 +36,41 @@ const subscribers = new Set<() => void>();
 export const getWeightDownloadState = () => state;
 export const subscribeWeightDownloads = (listener: () => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; };
 const publish = (next: DownloadState | null) => { state = next; subscribers.forEach((listener) => listener()); };
+
+interface QueuedDownload { state: DownloadState; run: () => Promise<void>; done: Promise<void>; resolve: () => void; reject: (reason: unknown) => void }
+let pending: QueuedDownload[] = [];
+let running: QueuedDownload | null = null;
+let queued: readonly DownloadState[] = [];
+export const getQueuedWeightDownloads = () => queued;
+const publishQueue = () => { queued = pending.map((job) => job.state); subscribers.forEach((listener) => listener()); };
+
+function enqueueDownload(initial: Pick<DownloadState, "templateId" | "name" | "loraId" | "otherWeightId">, run: () => Promise<void>): Promise<void> {
+  const existing = [running, ...pending].find((job) => job?.state.templateId === initial.templateId);
+  if (existing) return existing.done;
+  let resolve!: () => void, reject!: (reason: unknown) => void;
+  const done = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+  pending.push({ state: { ...initial, field: null, downloaded: 0, total: null, completed: 0, files: 0, error: null, active: false }, run, done, resolve, reject });
+  pumpDownloads();
+  publishQueue();
+  return done;
+}
+
+function pumpDownloads() {
+  if (running || !pending.length) return;
+  const job = pending.shift()!;
+  running = job;
+  cancelled = false;
+  const finish = () => { running = null; pumpDownloads(); publishQueue(); };
+  // Wait for the transfer and event-listener cleanup before starting the next job.
+  void job.run().then(() => { finish(); job.resolve(); }, (reason) => { finish(); job.reject(reason); });
+}
+
+export function cancelQueuedWeightDownload(templateId: string) {
+  const job = pending.find((entry) => entry.state.templateId === templateId);
+  pending = pending.filter((entry) => entry !== job);
+  job?.resolve();
+  publishQueue();
+}
 
 export function weightDownloadProgress(download: DownloadState): number {
   if (!download.files) return 0;
@@ -113,8 +151,12 @@ export function refreshDownloadedWeights(): Promise<void> {
   return refreshPending;
 }
 
-export async function downloadTemplateWeights(templateId: string): Promise<void> {
-  if (!isTauri() || state?.active) return;
+export function downloadTemplateWeights(templateId: string): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  return enqueueDownload({ templateId, name: loadGeneratorTemplateSettings().templates.find((template) => template.id === templateId)?.name }, () => runTemplateDownload(templateId));
+}
+
+async function runTemplateDownload(templateId: string): Promise<void> {
   cancelled = false;
   publish({ templateId, field: null, downloaded: 0, total: null, completed: 0, files: 0, error: null, active: true });
   let unlisten: (() => void) | undefined;
@@ -210,9 +252,12 @@ async function prepareLoraFile(path: string, allowDownload: boolean): Promise<vo
 }
 
 /** Explicit setup for a local or previously downloaded adapter. */
-export async function prepareLora(lora: Pick<Lora, "id" | "name" | "path">, allowDownload = true): Promise<void> {
-  if (!isTauri()) throw new Error("LoRA preparation is available in the desktop app.");
-  if (state?.active) throw new Error("Wait for the current download or preparation to finish.");
+export function prepareLora(lora: Pick<Lora, "id" | "name" | "path">, allowDownload = true): Promise<void> {
+  if (!isTauri()) return Promise.reject(new Error("LoRA preparation is available in the desktop app."));
+  return enqueueDownload({ templateId: `lora:${lora.id}`, loraId: lora.id, name: lora.name }, () => runLoraPreparation(lora, allowDownload));
+}
+
+async function runLoraPreparation(lora: Pick<Lora, "id" | "name" | "path">, allowDownload: boolean): Promise<void> {
   publish({ templateId: `lora:${lora.id}`, loraId: lora.id, name: lora.name, field: null,
     downloaded: 0, total: null, completed: 0, files: 1, error: null, active: true,
     preparePath: lora.path, allowDownload, phase: "preparing" });
@@ -228,8 +273,12 @@ export async function prepareLora(lora: Pick<Lora, "id" | "name" | "path">, allo
 }
 
 /** Uses the same native transfer, storage, cancellation and app-wide lock as weights. */
-export async function downloadLora(loraId: string): Promise<void> {
-  if (!isTauri() || state?.active) return;
+export function downloadLora(loraId: string): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  return enqueueDownload({ templateId: `lora:${loraId}`, loraId, name: loadLoras().find((lora) => lora.id === loraId)?.name }, () => runLoraDownload(loraId));
+}
+
+async function runLoraDownload(loraId: string): Promise<void> {
   const lora = loadLoras().find(({ id }) => id === loraId);
   if (!lora?.url) return;
   cancelled = false;
@@ -249,9 +298,39 @@ export async function downloadLora(loraId: string): Promise<void> {
 }
 
 export function retryWeightDownload(): Promise<void> {
+  if (state?.otherWeightId) return downloadOtherWeights(state.otherWeightId);
   if (state?.preparePath && state.loraId) return prepareLora({ id: state.loraId, name: state.name ?? "LoRA", path: state.preparePath }, state.allowDownload)
     .catch(() => undefined); // The shared status retains the error for another retry.
   return state?.loraId ? downloadLora(state.loraId) : state ? downloadTemplateWeights(state.templateId) : Promise.resolve();
+}
+
+export function downloadOtherWeights(id: string): Promise<void> {
+  const template = OTHER_WEIGHT_TEMPLATES.find((item) => item.id === id);
+  if (!isTauri() || !template) return Promise.resolve();
+  return enqueueDownload({ templateId: `other:${id}`, otherWeightId: id, name: template.name }, async () => {
+    publish({ templateId: `other:${id}`, otherWeightId: id, name: template.name, field: null,
+      downloaded: 0, total: null, completed: 0, files: template.files.length, error: null, active: true });
+    let unlisten: (() => void) | undefined;
+    try {
+      await refreshOtherWeights();
+      unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
+        if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
+      });
+      for (const file of template.files) {
+        if (cancelled) throw new Error("Download cancelled.");
+        requestId = crypto.randomUUID();
+        publish({ ...state!, currentAdditionalId: file.id, currentFile: file.name, downloaded: 0, total: null });
+        const path = otherWeightPaths()[file.url] ?? await invoke<string>("download_weight", { requestId, url: file.url });
+        if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+        saveOtherWeightPath(file.url, path);
+        if (cancelled) throw new Error("Download cancelled.");
+        publish({ ...state!, completed: state!.completed + 1, currentAdditionalId: undefined, currentFile: undefined, downloaded: 0, total: null });
+      }
+      publish({ ...state!, active: false });
+    } catch (reason) {
+      publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });
+    } finally { requestId = null; unlisten?.(); }
+  });
 }
 
 let loraRefreshPending: Promise<void> | null = null;
