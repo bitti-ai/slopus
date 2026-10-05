@@ -156,6 +156,59 @@ fn worker_error(name: &str, response: Response) -> String {
 }
 
 impl Connection {
+    pub(crate) fn upscale(&self, id: &str, options: &StartUpscale, stop: &AtomicBool,
+        read: &mut (dyn FnMut() -> Result<Option<Vec<u8>>, String> + Send),
+        write: &mut (dyn FnMut(Vec<u8>) -> Result<(), String> + Send)) -> Result<u64, String> {
+        if !self.info.runtime.cuda_available { return Err(format!("Worker {} needs CUDA for SeedVR2.", self.name)); }
+        self.post::<bool>(&format!("/v1/upscales/{id}"), options)?;
+        let finished = AtomicBool::new(false);
+        let failed = AtomicBool::new(false);
+        let result = std::thread::scope(|scope| {
+            let monitor = scope.spawn(|| {
+                let mut ticks = 0;
+                while !finished.load(Ordering::Relaxed) {
+                    if stop.load(Ordering::Relaxed) || failed.load(Ordering::Relaxed) {
+                        let _ = self.send(self.request(reqwest::Method::DELETE, &format!("/v1/upscales/{id}")).timeout(Duration::from_secs(5)));
+                        break;
+                    }
+                    ticks += 1;
+                    if ticks % 50 == 0 {
+                        let _ = self.send(self.request(reqwest::Method::GET, &format!("/v1/upscales/{id}")).timeout(Duration::from_secs(5)));
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            });
+            let output = scope.spawn(|| -> Result<u64, String> {
+                let result = (|| {
+                    let mut count = 0;
+                    loop {
+                        let bytes = self.bytes(&format!("/v1/upscales/{id}/frames"))?;
+                        if bytes.is_empty() { return Ok(count); }
+                        write(bytes)?;
+                        count += 1;
+                    }
+                })();
+                if result.is_err() { failed.store(true, Ordering::Relaxed); }
+                result
+            });
+            let input = (|| -> Result<(), String> {
+                while let Some(frame) = read()? {
+                    if stop.load(Ordering::Relaxed) || failed.load(Ordering::Relaxed) { return Err("Upscaler stream stopped.".into()); }
+                    self.post_bytes::<bool>(&format!("/v1/upscales/{id}/frames"), &[], frame)?;
+                }
+                self.post::<bool>(&format!("/v1/upscales/{id}/finish"), &())?;
+                Ok(())
+            })();
+            if input.is_err() { failed.store(true, Ordering::Relaxed); }
+            let output = output.join().unwrap_or_else(|_| Err("Worker upscale reader panicked.".into()));
+            finished.store(true, Ordering::Relaxed);
+            let _ = monitor.join();
+            output.and_then(|count| input.map(|_| count))
+        });
+        let _ = self.send(self.request(reqwest::Method::DELETE, &format!("/v1/upscales/{id}")).timeout(Duration::from_secs(5)));
+        result
+    }
+
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::blocking::RequestBuilder {
         let builder = self.http.request(method, format!("{}{path}", self.base));
         match &self.token {
@@ -886,6 +939,53 @@ mod tests {
     use crate::project::ProviderOption;
 
     pub(super) static FAILED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    #[test]
+    fn upscale_stream_sends_and_receives_frames_with_bounded_backpressure() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let address = server.server_addr().to_ip().unwrap().to_string();
+        let session = slopus_core::upscale_stream::Session::start((1, 1), (1, 1), |_, read, write| {
+            // Like SeedVR2, wait for a temporal segment before writing output.
+            let mut frames = Vec::new();
+            while let Some(frame) = read()? { frames.push(frame); }
+            let count = frames.len() as u64;
+            for frame in frames { write(frame)?; }
+            Ok(count)
+        }).unwrap();
+        let server_thread = std::thread::spawn(move || {
+            while let Some(mut request) = server.recv_timeout(Duration::from_secs(5)).unwrap() {
+                let session = session.clone();
+                let remove = request.method() == &tiny_http::Method::Delete;
+                std::thread::spawn(move || {
+                    assert!(request.headers().iter().any(|header| header.field.equiv(TOKEN_HEADER) && header.value.as_str() == "test-token"));
+                    let response = match (request.method().clone(), request.url()) {
+                        (tiny_http::Method::Post, "/v1/upscales/test") => b"true".to_vec(),
+                        (tiny_http::Method::Post, "/v1/upscales/test/frames") => {
+                            let mut bytes = Vec::new(); request.as_reader().read_to_end(&mut bytes).unwrap();
+                            session.push(bytes).unwrap(); b"true".to_vec()
+                        }
+                        (tiny_http::Method::Post, "/v1/upscales/test/finish") => { session.finish().unwrap(); b"true".to_vec() }
+                        (tiny_http::Method::Get, "/v1/upscales/test/frames") => session.read().unwrap(),
+                        (tiny_http::Method::Delete, "/v1/upscales/test") => { session.cancel(); b"true".to_vec() }
+                        _ => panic!("Unexpected upscale request"),
+                    };
+                    request.respond(tiny_http::Response::from_data(response)).unwrap();
+                });
+                if remove { break; }
+            }
+        });
+        let info = WorkerInfo { id: "00112233aabbccdd".into(), name: "Stub".into(), version: "0".into(), protocol: PROTOCOL_VERSION,
+            requires_token: true, gpus: Vec::new(), runtime: WorkerRuntime { state: "ready".into(), version: None,
+                platform: None, cuda_available: true, cuda_device_names: Vec::new(), detail: String::new() } };
+        let connection = Connection { base: format!("http://{address}"), token: Some("test-token".into()), name: "Stub".into(), address, info, http: http_client(Some(Duration::from_secs(5))) };
+        let mut source = vec![vec![1; 4], vec![2; 4], vec![3; 4], vec![4; 4], vec![5; 4]].into_iter();
+        let mut frames = Vec::new();
+        let count = connection.upscale("test", &StartUpscale { input_width: 1, input_height: 1, width: 1, height: 1, segment_frames: 5 },
+            &AtomicBool::new(false), &mut || Ok(source.next()), &mut |frame| { frames.push(frame); Ok(()) }).unwrap();
+        assert_eq!(count, 5);
+        assert_eq!(frames, vec![vec![1; 4], vec![2; 4], vec![3; 4], vec![4; 4], vec![5; 4]]);
+        server_thread.join().unwrap();
+    }
 
     #[test]
     fn addresses_get_the_default_port_and_reject_urls_with_paths() {

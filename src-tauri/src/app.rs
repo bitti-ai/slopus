@@ -187,6 +187,8 @@ pub fn run() {
             commands::character_sheet::discard_character_sheet_views,
             commands::artifacts::open_image_source,
             commands::artifacts::export_generated_image,
+            commands::artifacts::choose_image_export_destination,
+            commands::artifacts::cancel_image_export,
             crate::upscale::start_export_upscale,
             crate::upscale::push_export_upscale,
             crate::upscale::finish_export_upscale,

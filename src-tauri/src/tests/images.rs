@@ -160,7 +160,7 @@ fn image_export_does_not_silently_skip_a_selected_upscaler() {
             upscale: Some(UpscaleConfig { method, model_path: folder.path().join("missing.safetensors").to_string_lossy().into(), vae_path: None }),
             ..Default::default()
         }).unwrap_err();
-        assert!(error.contains("weights are missing"));
+        assert!(error.contains(if method == UpscaleMethod::Seedvr2 { "Select a worker" } else { "weights are missing" }));
         assert!(!destination.exists());
         assert_eq!(fs::read(&source).unwrap(), original);
     }

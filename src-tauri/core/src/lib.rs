@@ -12,5 +12,6 @@ pub mod slopfab;
 pub mod storage;
 pub mod weights;
 pub mod worker;
+pub mod upscale_stream;
 
 pub use slopfab::{default_dll_path, generate_reference_icon_batch, ReferenceIconBatchConfig, ReferenceIconSpec};

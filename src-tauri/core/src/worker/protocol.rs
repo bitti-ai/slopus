@@ -9,9 +9,21 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
-// v3 carries inverted image masks; older workers would silently edit the
-// preserved original instead of the extension if they ignored this field.
-pub const PROTOCOL_VERSION: u32 = 3;
+// v4 adds bounded SeedVR2 export streams. v3 added inverted image masks.
+pub const PROTOCOL_VERSION: u32 = 4;
+
+/// Streaming SeedVR2 restoration; model paths are resolved on the worker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartUpscale {
+    pub input_width: u32,
+    pub input_height: u32,
+    pub width: u32,
+    pub height: u32,
+    pub segment_frames: u32,
+}
+pub const SEEDVR2_MODEL: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors";
+pub const SEEDVR2_VAE: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors";
 pub const DEFAULT_PORT: u16 = 47321;
 pub const TOKEN_HEADER: &str = "x-slopus-token";
 

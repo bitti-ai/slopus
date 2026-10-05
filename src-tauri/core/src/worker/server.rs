@@ -156,6 +156,7 @@ struct Worker {
     runtime: slopfab::SlopfabRuntime,
     jobs: Mutex<HashMap<String, Arc<JobLog>>>,
     preparations: Mutex<HashMap<String, Arc<Preparation>>>,
+    upscales: Mutex<HashMap<String, Arc<crate::upscale_stream::Session>>>,
 }
 
 struct HttpError(u16, String);
@@ -285,8 +286,21 @@ pub fn run(options: WorkerOptions) -> Result<(), String> {
         runtime: slopfab::SlopfabRuntime::default(),
         jobs: Mutex::default(),
         preparations: Mutex::default(),
+        upscales: Mutex::default(),
     });
     let server = Server::http(("0.0.0.0", options.port)).map_err(|error| format!("Could not listen on port {}: {error}", options.port))?;
+    let cleanup = Arc::downgrade(&worker);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(60));
+        let Some(worker) = cleanup.upgrade() else { break };
+        if let Ok(mut sessions) = worker.upscales.lock() {
+            sessions.retain(|_, session| {
+                let keep = session.idle_for() < Duration::from_secs(30 * 60);
+                if !keep { session.cancel(); }
+                keep
+            });
+        };
+    });
     let info = worker.info();
     println!("Slopus worker '{}' ({}) listening on port {}.", info.name, info.id, options.port);
     println!("Engine: {} {}", info.runtime.state, info.runtime.version.as_deref().unwrap_or(""));
@@ -373,6 +387,46 @@ impl Worker {
         }
         match (method, &parts[1..]) {
             (Method::Get, ["info"]) => json(&self.info()),
+            (Method::Post, ["upscales", id]) => {
+                generated_file_stem(id)?;
+                let options: StartUpscale = body(request)?;
+                if !(1..=5).contains(&options.segment_frames) || options.width < 16 || options.height < 16 {
+                    return Err("Invalid SeedVR2 dimensions or segment size.".into());
+                }
+                if self.vulkan { return Err("SeedVR2 requires a CUDA worker.".into()); }
+                let mut sessions = self.upscales.lock().map_err(|_| "Lock failed.")?;
+                sessions.retain(|_, session| {
+                    let keep = session.idle_for() < Duration::from_secs(30 * 60);
+                    if !keep { session.cancel(); }
+                    keep
+                });
+                if !sessions.is_empty() { return Err("Another upscale export is running on this worker.".into()); }
+                let store = self.store.clone();
+                let session = crate::upscale_stream::Session::start((options.input_width, options.input_height), (options.width, options.height), move |stop, read, write| {
+                    let files = [FileRef::Url { url: SEEDVR2_MODEL.into(), lora: false }, FileRef::Url { url: SEEDVR2_VAE.into(), lora: false }];
+                    store.prepare(&files, stop, |_| {})?;
+                    let config = slopfab::upscale::UpscaleConfig { method: slopfab::upscale::UpscaleMethod::Seedvr2,
+                        model_path: store.resolve(&files[0])?.to_string_lossy().into_owned(),
+                        vae_path: Some(store.resolve(&files[1])?.to_string_lossy().into_owned()) };
+                    slopfab::upscale::run(&config, (options.input_width, options.input_height), (options.width, options.height), options.segment_frames as i32, stop, read, write)
+                })?;
+                sessions.insert(id.to_string(), session);
+                json(&true)
+            }
+            (Method::Post, ["upscales", id, "frames"]) => {
+                let session = self.upscale(id)?;
+                let mut pixels = Vec::new();
+                request.as_reader().take(512 * 1024 * 1024 + 1).read_to_end(&mut pixels).map_err(|e| e.to_string())?;
+                session.push(pixels)?;
+                json(&true)
+            }
+            (Method::Post, ["upscales", id, "finish"]) => { self.upscale(id)?.finish()?; json(&true) }
+            (Method::Get, ["upscales", id, "frames"]) => Ok(bytes(self.upscale(id)?.read()?, "application/octet-stream")),
+            (Method::Get, ["upscales", id]) => { self.upscale(id)?.touch(); json(&true) }
+            (Method::Delete, ["upscales", id]) => {
+                if let Some(session) = self.upscales.lock().map_err(|_| "Lock failed.")?.remove(*id) { session.cancel(); }
+                json(&true)
+            }
             (Method::Post, ["uploads", "missing"]) => {
                 let files: Vec<FileRef> = body(request)?;
                 json(&MissingUploads { missing: self.store.missing(&files)? })
@@ -499,6 +553,10 @@ impl Worker {
 
     fn job(&self, id: &str) -> Result<Arc<JobLog>, HttpError> {
         self.jobs.lock().map_err(|_| "Lock failed.")?.get(id).cloned().ok_or(HttpError(404, "No job with this id.".into()))
+    }
+
+    fn upscale(&self, id: &str) -> Result<Arc<crate::upscale_stream::Session>, HttpError> {
+        self.upscales.lock().map_err(|_| "Lock failed.")?.get(id).cloned().ok_or(HttpError(404, "Upscale session has ended.".into()))
     }
 
     fn start_preparation(&self, id: &str, files: Vec<FileRef>) -> Result<(), String> {

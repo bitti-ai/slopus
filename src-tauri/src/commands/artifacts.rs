@@ -4,7 +4,7 @@ use crate::{app_paths, diagnostics, reference_icons, rendered};
 use std::fs;
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle,
+    AppHandle, Emitter, State,
 };
 pub(crate) const GENERATED_FOLDER_HEADER: &str = "x-generated-folder";
 pub(crate) const GENERATED_JOB_HEADER: &str = "x-generated-job";
@@ -268,22 +268,13 @@ pub(crate) enum ImageExportFormat {
 const GENERATED_JPEG_QUALITY: u8 = 95;
 
 #[tauri::command]
-pub(crate) async fn export_generated_image(
+pub(crate) async fn choose_image_export_destination(
     app: AppHandle,
-    folder_path: String,
-    relative_path: String,
     options: Option<ImageExportOptions>,
-) -> Result<bool, String> {
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
         let options = options.unwrap_or_default();
-        let root = ProjectRoot::open(&folder_path)?;
-        let source = root.existing(&relative_path)?;
-        if !relative_path.starts_with("media/generated/")
-            || !matches!(source.extension().and_then(|s| s.to_str()), Some("jpg" | "jpeg" | "png"))
-        {
-            return Err("Choose a generated JPEG or PNG image to export.".into());
-        }
         let dialog = app.dialog().file().set_title("Export image");
         let dialog = match options.format {
             Some(ImageExportFormat::Jpg) => dialog.add_filter("JPEG image", &["jpg", "jpeg"]).set_file_name("image.jpg"),
@@ -294,7 +285,7 @@ pub(crate) async fn export_generated_image(
                 .set_file_name("image"),
         };
         let Some(destination) = dialog.blocking_save_file() else {
-            return Ok(false);
+            return Ok(None);
         };
         let destination = destination
             .into_path()
@@ -305,11 +296,51 @@ pub(crate) async fn export_generated_image(
             Some(ImageExportFormat::Jpg) if !has_extension(&destination, &["jpg", "jpeg"]) => destination.with_extension("jpg"),
             _ => destination,
         };
-        export_image_file_with(&source, &destination, options)?;
-        Ok(true)
+        IMAGE_DESTINATIONS.lock().map_err(|e| e.to_string())?.insert(destination.clone());
+        Ok(Some(destination.to_string_lossy().into_owned()))
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+static IMAGE_DESTINATIONS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<std::path::PathBuf>>> = std::sync::LazyLock::new(Default::default);
+static IMAGE_EXPORTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>> = std::sync::LazyLock::new(Default::default);
+
+#[tauri::command]
+pub(crate) async fn export_generated_image(app: AppHandle, workers: State<'_, crate::worker::Workers>,
+    job_id: String, folder_path: String, relative_path: String, destination: String, options: Option<ImageExportOptions>) -> Result<u64, String> {
+    let destination = std::path::PathBuf::from(destination);
+    if !IMAGE_DESTINATIONS.lock().map_err(|e| e.to_string())?.contains(&destination) {
+        return Err("Choose the image destination with the save dialog first.".into());
+    }
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let mut jobs = IMAGE_EXPORTS.lock().map_err(|e| e.to_string())?;
+        if jobs.contains_key(&job_id) { return Err("This image export is already running.".into()); }
+        jobs.insert(job_id.clone(), stop.clone());
+    }
+    let id = job_id.clone();
+    let workers = workers.inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let root = ProjectRoot::open(&folder_path)?;
+        let source = root.existing(&relative_path)?;
+        let progress = |phase: &str, detail: &str| {
+            let _ = app.emit("export-progress", serde_json::json!({ "jobId": id, "phase": phase,
+                "framesDone": if phase == "writing" { 1 } else { 0 }, "frameCount": 1, "detail": detail }));
+        };
+        export_image_file_running(&source, &destination, options.unwrap_or_default(), &workers, &id, &stop, &progress)?;
+        fs::metadata(destination).map(|info| info.len()).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string()).and_then(|result| result);
+    IMAGE_EXPORTS.lock().map_err(|e| e.to_string())?.remove(&job_id);
+    result
+}
+
+#[tauri::command]
+pub(crate) fn cancel_image_export(job_id: String) -> Result<(), String> {
+    if let Some(stop) = IMAGE_EXPORTS.lock().map_err(|e| e.to_string())?.get(&job_id) {
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    Ok(())
 }
 
 fn has_extension(path: &std::path::Path, extensions: &[&str]) -> bool {
@@ -331,11 +362,20 @@ pub(crate) fn export_image_file(
 /// Copy the file untouched when nothing would change (same format, same size,
 /// and for JPEG no quality below the one it was written at); otherwise decode,
 /// resize with Lanczos3 and encode. File extensions always match the bytes.
+#[cfg(test)]
 pub(crate) fn export_image_file_with(
     source: &std::path::Path,
     destination: &std::path::Path,
     options: ImageExportOptions,
 ) -> Result<(), String> {
+    export_image_file_running(source, destination, options, &crate::worker::Workers::default(), "image-test",
+        &std::sync::atomic::AtomicBool::new(false), &|_, _| {})
+}
+
+fn export_image_file_running(source: &std::path::Path, destination: &std::path::Path, options: ImageExportOptions,
+    workers: &crate::worker::Workers, id: &str, stop: &std::sync::atomic::AtomicBool, progress: &dyn Fn(&str, &str)) -> Result<(), String> {
+    if stop.load(std::sync::atomic::Ordering::Relaxed) { return Err("Export cancelled.".into()); }
+    progress("preparing", "Reading image…");
     let destination = if destination.extension().is_none() {
         destination.with_extension("jpg")
     } else {
@@ -375,9 +415,10 @@ pub(crate) fn export_image_file_with(
             let original = image.to_rgba8();
             let mut input = Some(original.clone().into_raw());
             let mut output = None;
-            crate::slopfab::upscale::run(config, (source_width, source_height), (width, height),
+            progress("rendering", if config.method == crate::slopfab::upscale::UpscaleMethod::Seedvr2 { "Upscaling with SeedVR2 on worker…" } else { "Upscaling with Real-ESRGAN…" });
+            crate::upscale::run(workers, id, config, (source_width, source_height), (width, height),
                 1,
-                &std::sync::atomic::AtomicBool::new(false), &mut || Ok(input.take()),
+                stop, &mut || Ok(input.take()),
                 &mut |bytes| { output = Some(bytes); Ok(()) })?;
             let mut restored = image::RgbaImage::from_raw(width, height, output.ok_or("Upscaler returned no image.")?)
                 .ok_or("Upscaler returned invalid image dimensions.")?;
@@ -395,6 +436,8 @@ pub(crate) fn export_image_file_with(
         }
         encoded.into_inner()
     };
+    if stop.load(std::sync::atomic::Ordering::Relaxed) { return Err("Export cancelled.".into()); }
+    progress("writing", "Writing image…");
     crate::storage::atomic::write_atomically(&destination, &bytes)
 }
 
