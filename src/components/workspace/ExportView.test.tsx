@@ -93,6 +93,10 @@ describe("the export view where nothing can encode", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Frame rate" }));
     fireEvent.click(screen.getByRole("option", { name: "30 fps" }));
     expect(screen.getByText("60 frames at 30 fps")).toBeTruthy();
+    const upscaler = screen.getByRole("combobox", { name: "Upscaler" });
+    expect(optionNames(upscaler)).toEqual(["None", "Real-ESRGAN", "SeedVR2"]);
+    chooseOption(upscaler, "SeedVR2");
+    expect(upscaler.textContent).toContain("SeedVR2");
   });
 });
 

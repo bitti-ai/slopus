@@ -8,6 +8,7 @@ import * as persistence from "../../lib/persistence";
 import { invoke } from "@tauri-apps/api/core";
 import { ImageExportView } from "./ImageExportView";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
+import { OTHER_WEIGHT_TEMPLATES } from "../../lib/upscalers";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
@@ -41,6 +42,24 @@ it("refuses to export a draft and says why", () => {
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("data-tooltip", "This image is still a draft. Generate it before exporting.");
   expect(screen.getByText("The image is a draft")).toBeInTheDocument();
+});
+
+it.each(OTHER_WEIGHT_TEMPLATES)("exports with the selected $name model paths", async (template) => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.mocked(invoke).mockResolvedValue(true);
+  localStorage.setItem("slopus.other-weights.v1", JSON.stringify(Object.fromEntries(template.files.map((file) => [file.url, `C:/weights/${file.id}`]))));
+  render(<ImageExportView config={withOutput({ width: 64, height: 32 })} folderPath="D:/Images" />);
+  const selector = screen.getByRole("combobox", { name: "Upscaler" });
+  expect(selector).toHaveTextContent("None");
+  fireEvent.click(selector);
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["None", "Real-ESRGAN", "SeedVR2"]);
+  fireEvent.click(screen.getByRole("option", { name: template.name }));
+  fireEvent.click(screen.getByRole("button", { name: "Export…" }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({
+    options: expect.objectContaining({ width: 64, height: 32, upscale: { method: template.id, modelPath: "C:/weights/model",
+      ...(template.id === "seedvr2" ? { vaePath: "C:/weights/vae" } : {}) } }),
+  })));
 });
 
 it("sends the chosen size, format and JPG quality, and hides quality for PNG", async () => {

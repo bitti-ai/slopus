@@ -7,6 +7,7 @@ import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, 
 import { Image32 } from "../ui/icons";
 import { ImageBar } from "./ImageBar";
 import { ReferenceImage } from "./ReferenceImage";
+import { UPSCALERS, upscaleConfig, type Upscaler } from "../../lib/upscalers";
 
 /* The image project's Export tab: the same page as the video export (see
    export.css) — the image on the stage, filling it, and the resizable settings
@@ -30,6 +31,7 @@ function loadPreferences(): { format: ImageFormat; quality: number } {
 export function ImageExportView({ config, folderPath }: { config: ProjectConfig; folderPath: string }) {
   const settingsPane = usePaneSize("export.settings", 340, { min: 280, max: 560 });
   const [exporting, setExporting] = useState(false);
+  const [upscaler, setUpscaler] = useState<Upscaler>("none");
   const [error, setError] = useState<string | null>(null);
   /* Which image to export is this page's own choice: it starts on the one open
      in the Editor, and picking another here leaves the Editor where it was. */
@@ -68,7 +70,8 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
       await invoke("export_generated_image", {
         folderPath,
         relativePath: output.relativePath,
-        options: { format: preferences.format, width: size?.width, height: size?.height, quality: preferences.format === "jpg" ? preferences.quality : undefined },
+        options: { format: preferences.format, width: size?.width, height: size?.height, quality: preferences.format === "jpg" ? preferences.quality : undefined,
+          ...(upscaler !== "none" ? { upscale: upscaleConfig(upscaler) } : {}) },
       });
     }
     catch (reason) { setError(String(reason)); }
@@ -114,6 +117,10 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
                 onChange={(value) => choose({ format: value as ImageFormat })}
                 options={[{ value: "jpg", label: "JPG" }, { value: "png", label: "PNG · lossless" }]}
               />
+            </PropRow>
+            <PropRow label="Upscaler" htmlFor="image-export-upscaler">
+              <ComboBox id="image-export-upscaler" value={upscaler} disabled={exporting}
+                options={[...UPSCALERS]} onChange={(value) => setUpscaler(value as Upscaler)} />
             </PropRow>
             {preferences.format === "jpg" && <PropRow label="Quality" value={preferences.quality} defaultValue={DEFAULT_QUALITY} onReset={exporting ? undefined : () => choose({ quality: DEFAULT_QUALITY })} resetLabel="Reset quality">
               <Slider aria-label="JPG quality" min={1} max={100} step={1} value={preferences.quality} disabled={exporting} onChange={(quality) => choose({ quality })} />

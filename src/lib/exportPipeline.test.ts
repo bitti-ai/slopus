@@ -7,6 +7,8 @@ import externalFixture from "../../fixtures/project-v1-external-media.json";
 import { audioMixBytes, buildExportPlan, defaultExportSettings } from "./export";
 import { parseProjectConfig, type ProjectAsset } from "./project";
 import { demux, ExportCancelled, PreviewSources, probeCompositor, runExport } from "./exportPipeline";
+import * as upscaleBridge from "./upscaleExport";
+import { OTHER_WEIGHT_TEMPLATES } from "./upscalers";
 
 // Every IPC call is captured rather than performed: what the export DISPATCHES
 // is the thing under test.
@@ -818,6 +820,31 @@ const PATHS = {
 };
 
 const audioProject = () => parseProjectConfig(audioFixture);
+
+it("routes every composed frame through the selected upscaler while retaining the soundtrack", async () => {
+  const harness = installWebCodecs({ decodes: true });
+  const dispose = vi.fn().mockResolvedValue(undefined);
+  const finish = vi.fn().mockResolvedValue(undefined);
+  const upscale = vi.spyOn(upscaleBridge, "startUpscaleExport").mockImplementation(async (options) => {
+    let index = 0;
+    return { push: async (frame) => options.output(frame, index++), finish, dispose };
+  });
+  try {
+    localStorage.setItem("slopus.other-weights.v1", JSON.stringify({ [OTHER_WEIGHT_TEMPLATES[0].files[0].url]: "C:/weights/model.safetensors" }));
+    const config = audioProject();
+    const settings = { ...defaultExportSettings(config), upscaler: "realesrgan" as const };
+    serveFiles({ video: await sampleFile(120, 24), score: scoreFile(), voice: wavFile({ seconds: 3, sample: () => 0.2 }) });
+    const plan = buildExportPlan(config, settings);
+    const result = await runExport({ folderPath: AUDIO_FOLDER, config, settings, plan, bitrate: 5_000_000,
+      onProgress: () => {}, cancelled: () => false });
+    expect(upscale).toHaveBeenCalledWith(expect.objectContaining({ config: { method: "realesrgan", modelPath: "C:/weights/model.safetensors" },
+      width: plan.width, height: plan.height, frameCount: plan.frameCount }));
+    expect(harness.recorded.videoChunks).toBe(plan.frameCount);
+    expect(result.audio).toBe(true);
+    expect(finish).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally { upscale.mockRestore(); harness.restore(); localStorage.removeItem("slopus.other-weights.v1"); }
+});
 
 /** The IPC layer, answering with real files per path. Anything unasked-for
  *  throws, so a read the export should not have made shows up as a failure

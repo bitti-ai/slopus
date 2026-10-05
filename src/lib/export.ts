@@ -34,6 +34,7 @@ export type OutputCodecId = "h264" | "vp9" | "av1";
 export type QualityId = "draft" | "balanced" | "high";
 
 export interface ExportSettings {
+  upscaler?: import("./upscalers").Upscaler;
   /** The encoded frame, in pixels: the project's own size or a standard one. */
   width: number;
   height: number;

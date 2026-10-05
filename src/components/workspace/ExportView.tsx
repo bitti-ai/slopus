@@ -41,6 +41,7 @@ import { askNative, messageNative, revealInExplorer } from "../../lib/nativeShel
 import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { ProjectStatus } from "./ProjectStatus";
+import { UPSCALERS, type Upscaler } from "../../lib/upscalers";
 import type { ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
@@ -445,6 +446,11 @@ export function ExportView({ config, folderPath, onClose }: {
                 onChange={(value) => setSettings({ ...settings, frameRate: Number(value) as FrameRate })}
                 options={FRAME_RATES.map((rate) => ({ value: String(rate), label: `${rate} fps` }))}
               />
+            </PropRow>
+
+            <PropRow label="Upscaler" htmlFor="export-upscaler">
+              <ComboBox id="export-upscaler" value={settings.upscaler ?? "none"} disabled={runningHere}
+                options={[...UPSCALERS]} onChange={(value) => setSettings({ ...settings, upscaler: value as Upscaler })} />
             </PropRow>
 
             <PropRow label="Format" htmlFor="export-codec">

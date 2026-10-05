@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Image and video export offer None, Real-ESRGAN and SeedVR2 upscaling through SlopFab. Download their models from the new Other weights section in Settings → Generator.
 - Image export offers sizes closest to the selected image's actual aspect ratio, even when project or saved generation settings differ.
 - Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
 - Character Sheet offers Debug prompt when debug options are enabled, exposing the separate compiled prompt for each of its four views.

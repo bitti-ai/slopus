@@ -39,6 +39,9 @@ import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chr
 import { hasVideoEffects } from "./effectSettings";
 import { createVideoEffectsProcessor } from "./videoEffectsGpu";
 import { previewEngine } from "./previewEngine";
+import { outputDimensions } from "./export";
+import { upscaleConfig } from "./upscalers";
+import { startUpscaleExport } from "./upscaleExport";
 
 /* ---------------------------------------------------------------------------
    What this machine can do
@@ -1010,6 +1013,13 @@ function describeSoundtrack(
 
 export async function runExport(options: ExportRunOptions): Promise<ExportResult> {
   const { plan, settings, config, folderPath, bitrate, onProgress, cancelled } = options;
+  const upscale = upscaleConfig(settings.upscaler ?? "none");
+  const projectSize = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const renderScale = upscale ? Math.min(1, projectSize.width / plan.width, projectSize.height / plan.height,
+    upscale.method === "realesrgan" ? 4096 / Math.max(plan.width, plan.height) : 1) : 1;
+  const renderWidth = Math.max(1, Math.round(plan.width * renderScale));
+  const renderHeight = Math.max(1, Math.round(plan.height * renderScale));
+  let upscaler: Awaited<ReturnType<typeof startUpscaleExport>> | undefined;
   const support = detectExportSupport();
   if (!support.encoder || !support.decoder) {
     throw new Error("This webview has no WebCodecs VideoEncoder/VideoDecoder, so Slopus cannot encode video here.");
@@ -1089,7 +1099,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
      picture on the same geometry. Which one ran is reported, never assumed —
      and so is WHY, because "WebGPU was unavailable" on its own is a sentence
      nobody can act on. */
-  const attempt = await createWebGpuCompositor(plan.width, plan.height, plan.backgroundColor).catch(
+  const attempt = await createWebGpuCompositor(renderWidth, renderHeight, plan.backgroundColor).catch(
     (reason: unknown) => ({
       compositor: null,
       reason: `Starting the GPU compositor failed: ${reason instanceof Error ? reason.message : String(reason)}`,
@@ -1098,7 +1108,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   const stage: { compositor: Compositor; detail: string } = attempt.compositor
     ? { compositor: attempt.compositor, detail: attempt.reason ?? "" }
     : {
-        compositor: createCanvasCompositor(plan.width, plan.height, plan.backgroundColor),
+        compositor: createCanvasCompositor(renderWidth, renderHeight, plan.backgroundColor),
         detail: attempt.reason,
       };
   const paint = (pictures: { frame: VideoFrame; style: ClipFrameStyle }[]) => {
@@ -1112,7 +1122,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
     } catch (reason) {
       if (stage.compositor.kind === "canvas2d") throw reason;
       stage.compositor.dispose();
-      stage.compositor = createCanvasCompositor(plan.width, plan.height, plan.backgroundColor);
+      stage.compositor = createCanvasCompositor(renderWidth, renderHeight, plan.backgroundColor);
       stage.detail = `The GPU compositor gave out ${framesDone} frames in and the rest was composited on a 2D canvas: ${reason instanceof Error ? reason.message : String(reason)}`;
     }
     draw();
@@ -1146,10 +1156,13 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       timestampUs(outputIndex),
       timestampUs(outputIndex + 1) - timestampUs(outputIndex),
     );
-    try { encoder.encode(composited, { keyFrame: outputIndex % keyFrameInterval === 0 }); }
+    try {
+      if (upscaler) await upscaler.push(composited);
+      else encoder.encode(composited, { keyFrame: outputIndex % keyFrameInterval === 0 });
+    }
     finally { composited.close(); }
     framesDone += 1;
-    if (framesDone % 5 === 0 || framesDone === plan.frameCount) {
+    if (!upscaler && (framesDone % 5 === 0 || framesDone === plan.frameCount)) {
       report("rendering", framesDone, `Rendering frame ${framesDone} of ${plan.frameCount}.`);
     }
     // Yield so the encoder's own queue drains and the window stays alive.
@@ -1351,6 +1364,17 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
 
   try {
     encoder.configure(encoderConfig(probe.codecString, plan, bitrate));
+    if (upscale) {
+      report("preparing", 0, "Loading upscaler weights…");
+      upscaler = await startUpscaleExport({ config: upscale, inputWidth: renderWidth, inputHeight: renderHeight,
+        width: plan.width, height: plan.height, frameRate: plan.frameRate, frameCount: plan.frameCount, cancelled,
+        output: async (frame, index) => {
+          encoderWait.check();
+          encoder.encode(frame, { keyFrame: index % keyFrameInterval === 0 });
+          report("rendering", index + 1, `Upscaling frame ${index + 1} of ${plan.frameCount}.`);
+          await waitForCodec(() => encoder.encodeQueueSize <= 8, encoderWait);
+        } });
+    }
     for (const segment of plan.segments) {
       stopIfCancelled();
       if (segment.kind === "gap") {
@@ -1362,6 +1386,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       }
     }
 
+    await upscaler?.finish();
     if (soundtrack) {
       report("finishing", framesDone, `Encoding the mixed soundtrack as AAC…`);
       await encodeAudio(soundtrack, (chunk, meta) => muxer.addAudioChunk(chunk, meta), encoderWait.check);
@@ -1380,10 +1405,16 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       audioProblems,
       audioShortfalls,
     };
+  } catch (reason) {
+    stopIfCancelled();
+    throw reason;
   } finally {
-    releaseLoaded();
-    if (encoder.state !== "closed") encoder.close();
-    stage.compositor.dispose();
+    try { await upscaler?.dispose(); }
+    finally {
+      releaseLoaded();
+      if (encoder.state !== "closed") encoder.close();
+      stage.compositor.dispose();
+    }
   }
 }
 
