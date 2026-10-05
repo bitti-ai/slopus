@@ -403,7 +403,8 @@ impl Worker {
                 if !sessions.is_empty() { return Err("Another upscale export is running on this worker.".into()); }
                 let store = self.store.clone();
                 let session = crate::upscale_stream::Session::start((options.input_width, options.input_height), (options.width, options.height), move |stop, read, write| {
-                    let files = [FileRef::Url { url: SEEDVR2_MODEL.into(), lora: false }, FileRef::Url { url: SEEDVR2_VAE.into(), lora: false }];
+                    let files = [options.model.unwrap_or(FileRef::Url { url: SEEDVR2_MODEL.into(), lora: false }),
+                        options.vae.unwrap_or(FileRef::Url { url: SEEDVR2_VAE.into(), lora: false })];
                     store.prepare(&files, stop, |_| {})?;
                     let config = slopfab::upscale::UpscaleConfig { method: slopfab::upscale::UpscaleMethod::Seedvr2,
                         model_path: store.resolve(&files[0])?.to_string_lossy().into_owned(),

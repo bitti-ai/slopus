@@ -320,9 +320,10 @@ export function downloadOtherWeights(id: string): Promise<void> {
         if (cancelled) throw new Error("Download cancelled.");
         requestId = crypto.randomUUID();
         publish({ ...state!, currentAdditionalId: file.id, currentFile: file.name, downloaded: 0, total: null });
-        const path = otherWeightPaths()[file.url] ?? await invoke<string>("download_weight", { requestId, url: file.url });
+        const existing = otherWeightPaths()[file.url];
+        const path = existing ?? await invoke<string>("download_weight", { requestId, url: file.url });
         if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
-        saveOtherWeightPath(file.url, path);
+        if (!existing) saveOtherWeightPath(file.url, path);
         if (cancelled) throw new Error("Download cancelled.");
         publish({ ...state!, completed: state!.completed + 1, currentAdditionalId: undefined, currentFile: undefined, downloaded: 0, total: null });
       }

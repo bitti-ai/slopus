@@ -18,18 +18,30 @@ export const OTHER_WEIGHT_TEMPLATES = [
   ] },
 ] as const;
 const KEY = "slopus.other-weights.v1";
+const LOCAL_KEY = "slopus.other-weights-local.v1";
 const EVENT = "slopus:other-weights";
-export function otherWeightPaths(): Record<string, string> {
+function readPaths(key: string): Record<string, string> {
   try {
-    const value = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
     return Object.fromEntries(Object.entries(value).filter(([, path]) => typeof path === "string" && path && !/^https?:/i.test(path))) as Record<string, string>;
   } catch { return {}; }
+}
+export const localOtherWeightPaths = () => readPaths(LOCAL_KEY);
+export const otherWeightPaths = () => ({ ...readPaths(KEY), ...localOtherWeightPaths() });
+export function saveLocalOtherWeightPaths(paths: Record<string, string>) {
+  const saved = localOtherWeightPaths();
+  for (const [url, path] of Object.entries(paths)) {
+    if (path.trim()) saved[url] = path.trim();
+    else delete saved[url];
+  }
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(saved));
+  window.dispatchEvent(new Event(EVENT));
 }
 const savePaths = (paths: Record<string, string>) => {
   localStorage.setItem(KEY, JSON.stringify(paths));
   window.dispatchEvent(new Event(EVENT));
 };
-export const saveOtherWeightPath = (url: string, path: string) => savePaths({ ...otherWeightPaths(), [url]: path });
+export const saveOtherWeightPath = (url: string, path: string) => savePaths({ ...readPaths(KEY), [url]: path });
 export function subscribeOtherWeights(listener: () => void) {
   window.addEventListener(EVENT, listener);
   window.addEventListener("storage", listener);
@@ -40,11 +52,13 @@ export function upscaleConfig(method: Upscaler): UpscaleConfig | undefined {
   if (method === "none") return undefined;
   if (method === "seedvr2") {
     if (!selectedWorker()) throw new Error("Select a worker in Settings → Workers to use SeedVR2 upscaling.");
-    return { method, modelPath: "" };
+    const local = localOtherWeightPaths();
+    return { method, modelPath: local[OTHER_WEIGHT_TEMPLATES[1].files[0].url] ?? "",
+      vaePath: local[OTHER_WEIGHT_TEMPLATES[1].files[1].url] };
   }
   const template = OTHER_WEIGHT_TEMPLATES.find((item) => item.id === method)!;
   const paths = otherWeightPaths();
-  if (template.files.some((file) => !paths[file.url])) throw new Error(`Download ${template.name} in Settings → Generator → Other weights first.`);
+  if (template.files.some((file) => !paths[file.url])) throw new Error(`Download ${template.name} or choose a local weight file in Settings → Generator → Other weights first.`);
   return { method, modelPath: paths[template.files[0].url] };
 }
 export async function refreshOtherWeights() {

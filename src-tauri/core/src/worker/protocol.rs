@@ -9,9 +9,10 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
-// v5 carries overlap locking; older workers would silently ignore it.
+// v6 carries custom upscale weights; older workers would silently ignore them.
+// v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,10 @@ pub struct StartUpscale {
     pub width: u32,
     pub height: u32,
     pub segment_frames: u32,
+    #[serde(default)]
+    pub model: Option<FileRef>,
+    #[serde(default)]
+    pub vae: Option<FileRef>,
 }
 pub const SEEDVR2_MODEL: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_fp16.safetensors";
 pub const SEEDVR2_VAE: &str = "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors";

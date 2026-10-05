@@ -4,10 +4,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
-import { OTHER_WEIGHT_TEMPLATES, otherWeightPaths, upscaleConfig } from "../lib/upscalers";
+import { OTHER_WEIGHT_TEMPLATES, localOtherWeightPaths, otherWeightPaths, refreshOtherWeights, upscaleConfig } from "../lib/upscalers";
+import { chooseEnginePath } from "../lib/runtime";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../lib/persistence", () => ({ isTauri: () => true }));
+vi.mock("../lib/runtime", () => ({ chooseEnginePath: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });
 
 it("downloads the SeedVR2 model and VAE as one template and remembers both paths", async () => {
@@ -27,4 +29,51 @@ it("downloads the SeedVR2 model and VAE as one template and remembers both paths
     [OTHER_WEIGHT_TEMPLATES[1].files[1].url]: "C:/weights/seedvr2_ema_vae_fp16.safetensors",
   });
   expect(upscaleConfig("none")).toBeUndefined();
+});
+
+it.each(OTHER_WEIGHT_TEMPLATES)("saves local $name files and uses them for exports after refreshing downloads", async (template) => {
+  vi.mocked(invoke).mockImplementation(async (name, args) => {
+    if (name === "find_downloaded_weights") return Object.fromEntries(template.files.map((file) => [file.url, `C:/cache/${file.id}.safetensors`])) as never;
+    if (name === "check_weight_files") return Object.fromEntries((args as { paths: string[] }).paths.map((path) => [path, true])) as never;
+    return undefined as never;
+  });
+  localStorage.setItem("slopus.generation-worker.v1", JSON.stringify({ id: "worker" }));
+  render(<OtherWeightsSettings desktop />);
+  fireEvent.click(screen.getByRole("button", { name: `Edit ${template.name} weights` }));
+  for (const file of template.files) {
+    if (file.id === "model") {
+      vi.mocked(chooseEnginePath).mockResolvedValueOnce(`D:/custom/${file.id}.safetensors`);
+      fireEvent.click(screen.getByRole("button", { name: `Browse for ${file.name}` }));
+      await waitFor(() => expect(screen.getByRole("textbox", { name: `${file.name} path` })).toHaveValue(`D:/custom/${file.id}.safetensors`));
+    } else fireEvent.change(screen.getByRole("textbox", { name: `${file.name} path` }), { target: { value: `D:/custom/${file.id}.safetensors` } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await refreshOtherWeights();
+  expect(upscaleConfig(template.id)).toEqual({ method: template.id, modelPath: "D:/custom/model.safetensors",
+    ...(template.id === "seedvr2" ? { vaePath: "D:/custom/vae.safetensors" } : {}) });
+  fireEvent.click(screen.getByRole("button", { name: `Edit ${template.name} weights` }));
+  for (const file of template.files) {
+    expect(screen.getByRole("textbox", { name: `${file.name} path` })).toHaveValue(`D:/custom/${file.id}.safetensors`);
+    fireEvent.change(screen.getByRole("textbox", { name: `${file.name} path` }), { target: { value: "" } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(localOtherWeightPaths()).toEqual({});
+  expect(otherWeightPaths()[template.files[0].url]).toBe("C:/cache/model.safetensors");
+  if (template.id === "seedvr2") expect(upscaleConfig("seedvr2")).toMatchObject({ modelPath: "", vaePath: undefined });
+});
+
+it("rejects relative paths and missing files without saving them", async () => {
+  vi.mocked(invoke).mockResolvedValue({});
+  render(<OtherWeightsSettings desktop />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit Real-ESRGAN weights" }));
+  const path = screen.getByRole("textbox", { name: "RealESRGAN x4plus path" });
+  fireEvent.change(path, { target: { value: "relative.safetensors" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.getByText("Choose local weight files using their absolute paths.")).toBeInTheDocument();
+  fireEvent.change(path, { target: { value: "C:/missing.safetensors" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.getByText(/Weight file not found/)).toBeInTheDocument());
+  expect(localOtherWeightPaths()).toEqual({});
 });

@@ -265,6 +265,39 @@ fn probe(address: &str, token: Option<&str>) -> Result<WorkerInfo, String> {
 }
 
 impl Workers {
+    /// Reuse the generation upload cache for explicitly selected local upscaler files.
+    pub(crate) fn prepare_upscale_files(&self, connection: &Connection, id: &str,
+        config: &slopfab::upscale::UpscaleConfig, stop: &AtomicBool) -> Result<[FileRef; 2], String> {
+        if !connection.info.runtime.cuda_available { return Err(format!("Worker {} needs CUDA for SeedVR2.", connection.name)); }
+        let mut sources = HashMap::new();
+        let mut source = |path: &str, url: &str| {
+            if path.trim().is_empty() { Ok(FileRef::Url { url: url.into(), lora: false }) }
+            else { file_ref(PathKind::Input, path, &mut sources) }
+        };
+        let files = [source(&config.model_path, SEEDVR2_MODEL)?, source(config.vae_path.as_deref().unwrap_or(""), SEEDVR2_VAE)?];
+        let uploads: Vec<_> = files.iter().filter(|file| matches!(file, FileRef::Upload { .. })).cloned().collect();
+        if stop.load(Ordering::Acquire) { return Err("Export cancelled.".into()); }
+        if !uploads.is_empty() {
+            let job = RemoteJob { request: GenerationRequest { job_id: id.into(), ..Default::default() },
+                settings: BTreeMap::new(), files: uploads, continuation: None, image_edit_source: None };
+            let cancel = Arc::new(AtomicBool::new(false));
+            let finished = AtomicBool::new(false);
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    while !finished.load(Ordering::Acquire) {
+                        if stop.load(Ordering::Acquire) { cancel.store(true, Ordering::Release); break; }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                });
+                let result = self.send_files(connection, &job, &sources, &cancel);
+                finished.store(true, Ordering::Release);
+                result
+            })?;
+        }
+        if stop.load(Ordering::Acquire) { return Err("Export cancelled.".into()); }
+        Ok(files)
+    }
+
     /// Loads the saved selection and starts listening for workers.
     pub fn start(&self, app: &AppHandle, data_directory: &Path) {
         let _ = APP.set(app.clone());
@@ -944,6 +977,15 @@ mod tests {
     fn upscale_stream_sends_and_receives_frames_with_bounded_backpressure() {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let address = server.server_addr().to_ip().unwrap().to_string();
+        let folder = tempfile::tempdir().unwrap();
+        let store = Arc::new(slopus_core::worker::store::FileStore::new(&folder.path().join("worker"), Vec::new()).unwrap());
+        let uploads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let uploaded = uploads.clone();
+        let config = slopfab::upscale::UpscaleConfig { method: slopfab::upscale::UpscaleMethod::Seedvr2,
+            model_path: folder.path().join("model.safetensors").to_string_lossy().into_owned(),
+            vae_path: Some(folder.path().join("vae.safetensors").to_string_lossy().into_owned()) };
+        fs::write(&config.model_path, b"custom model").unwrap();
+        fs::write(config.vae_path.as_ref().unwrap(), b"custom vae").unwrap();
         let session = slopus_core::upscale_stream::Session::start((1, 1), (1, 1), |_, read, write| {
             // Like SeedVR2, wait for a temporal segment before writing output.
             let mut frames = Vec::new();
@@ -955,11 +997,28 @@ mod tests {
         let server_thread = std::thread::spawn(move || {
             while let Some(mut request) = server.recv_timeout(Duration::from_secs(5)).unwrap() {
                 let session = session.clone();
+                let store = store.clone();
+                let uploaded = uploaded.clone();
                 let remove = request.method() == &tiny_http::Method::Delete;
                 std::thread::spawn(move || {
                     assert!(request.headers().iter().any(|header| header.field.equiv(TOKEN_HEADER) && header.value.as_str() == "test-token"));
                     let response = match (request.method().clone(), request.url()) {
-                        (tiny_http::Method::Post, "/v1/upscales/test") => b"true".to_vec(),
+                        (tiny_http::Method::Post, "/v1/uploads/missing") => {
+                            let files: Vec<FileRef> = serde_json::from_reader(request.as_reader()).unwrap();
+                            serde_json::to_vec(&MissingUploads { missing: store.missing(&files).unwrap() }).unwrap()
+                        }
+                        (tiny_http::Method::Put, path) if path.starts_with("/v1/uploads/") => {
+                            let parts: Vec<_> = path.split('/').map(str::to_owned).collect();
+                            store.receive(&parts[3], &parts[4], request.body_length().unwrap() as u64, request.as_reader()).unwrap();
+                            uploaded.fetch_add(1, Ordering::Relaxed);
+                            b"true".to_vec()
+                        }
+                        (tiny_http::Method::Post, "/v1/upscales/test") => {
+                            let options: StartUpscale = serde_json::from_reader(request.as_reader()).unwrap();
+                            assert_eq!(fs::read(store.resolve(options.model.as_ref().unwrap()).unwrap()).unwrap(), b"custom model");
+                            assert_eq!(fs::read(store.resolve(options.vae.as_ref().unwrap()).unwrap()).unwrap(), b"custom vae");
+                            b"true".to_vec()
+                        }
                         (tiny_http::Method::Post, "/v1/upscales/test/frames") => {
                             let mut bytes = Vec::new(); request.as_reader().read_to_end(&mut bytes).unwrap();
                             session.push(bytes).unwrap(); b"true".to_vec()
@@ -978,9 +1037,18 @@ mod tests {
             requires_token: true, gpus: Vec::new(), runtime: WorkerRuntime { state: "ready".into(), version: None,
                 platform: None, cuda_available: true, cuda_device_names: Vec::new(), detail: String::new() } };
         let connection = Connection { base: format!("http://{address}"), token: Some("test-token".into()), name: "Stub".into(), address, info, http: http_client(Some(Duration::from_secs(5))) };
+        let workers = Workers::default();
+        let files = workers.prepare_upscale_files(&connection, "test", &config, &AtomicBool::new(false)).unwrap();
+        assert_eq!(workers.prepare_upscale_files(&connection, "test", &config, &AtomicBool::new(false)).unwrap(), files);
+        assert_eq!(uploads.load(Ordering::Relaxed), 2, "unchanged weights are uploaded only once");
+        assert!(workers.prepare_upscale_files(&connection, "test", &config, &AtomicBool::new(true)).is_err());
+        let default_config = slopfab::upscale::UpscaleConfig { model_path: String::new(), vae_path: None, ..config };
+        let defaults = workers.prepare_upscale_files(&connection, "test", &default_config, &AtomicBool::new(false)).unwrap();
+        assert_eq!(defaults, [FileRef::Url { url: SEEDVR2_MODEL.into(), lora: false }, FileRef::Url { url: SEEDVR2_VAE.into(), lora: false }]);
+        let [model, vae] = files;
         let mut source = vec![vec![1; 4], vec![2; 4], vec![3; 4], vec![4; 4], vec![5; 4]].into_iter();
         let mut frames = Vec::new();
-        let count = connection.upscale("test", &StartUpscale { input_width: 1, input_height: 1, width: 1, height: 1, segment_frames: 5 },
+        let count = connection.upscale("test", &StartUpscale { input_width: 1, input_height: 1, width: 1, height: 1, segment_frames: 5, model: Some(model), vae: Some(vae) },
             &AtomicBool::new(false), &mut || Ok(source.next()), &mut |frame| { frames.push(frame); Ok(()) }).unwrap();
         assert_eq!(count, 5);
         assert_eq!(frames, vec![vec![1; 4], vec![2; 4], vec![3; 4], vec![4; 4], vec![5; 4]]);

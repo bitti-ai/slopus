@@ -14,7 +14,9 @@ pub(crate) fn run(workers: &Workers, id: &str, config: &UpscaleConfig,
     write: &mut (dyn FnMut(Vec<u8>) -> Result<(), String> + Send)) -> Result<u64, String> {
     if config.method == UpscaleMethod::Seedvr2 {
         let worker = workers.active()?.ok_or("Select a worker in Settings → Workers to use SeedVR2 upscaling.")?;
-        worker.upscale(id, &StartUpscale { input_width: input.0, input_height: input.1, width: output.0, height: output.1, segment_frames }, stop, read, write)
+        let [model, vae] = workers.prepare_upscale_files(&worker, id, config, stop)?;
+        worker.upscale(id, &StartUpscale { input_width: input.0, input_height: input.1, width: output.0, height: output.1, segment_frames,
+            model: Some(model), vae: Some(vae) }, stop, read, write)
     } else {
         upscale::run(config, input, output, segment_frames as i32, stop, read, write)
     }

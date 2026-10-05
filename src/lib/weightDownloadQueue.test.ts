@@ -104,3 +104,19 @@ it("retries a failed upscaler through the shared pipeline and reuses its complet
   transfers[2].resolve("C:/vae.safetensors"); await retry;
   expect(queue.getWeightDownloadState()).toMatchObject({ active: false, completed: 2, error: null });
 });
+
+it("keeps a local SeedVR2 model while downloading only its missing VAE", async () => {
+  const queue = await import("./weightDownloads");
+  const { OTHER_WEIGHT_TEMPLATES, saveLocalOtherWeightPaths, refreshOtherWeights, otherWeightPaths } = await import("./upscalers");
+  const [model, vae] = OTHER_WEIGHT_TEMPLATES[1].files;
+  saveLocalOtherWeightPaths({ [model.url]: "D:/custom/seed.safetensors" });
+  const download = queue.downloadOtherWeights("seedvr2");
+  await vi.waitFor(() => expect(transfers).toHaveLength(1));
+  expect(transfers[0].url).toBe(vae.url);
+  transfers[0].resolve("C:/downloaded/vae.safetensors");
+  await download;
+  expect(otherWeightPaths()).toMatchObject({ [model.url]: "D:/custom/seed.safetensors", [vae.url]: "C:/downloaded/vae.safetensors" });
+  saveLocalOtherWeightPaths({ [model.url]: "" });
+  expect(otherWeightPaths()[model.url]).toBeUndefined();
+  await refreshOtherWeights();
+});

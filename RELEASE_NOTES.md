@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. SeedVR2 sends selected local files to the worker and downloads any missing components there.
 - Scene continuation offers a Lock Overlap toggle for local and worker generation, constraining overlapping video and audio to the source scene.
 - Image and video exports share a work queue with progress, cancellation, and retained results. SeedVR2 upscaling runs on the selected CUDA worker, which prepares its own models.
 - Upscaler downloads share the generator and LoRA download queue, with progress in Work Queue and cancellation for waiting downloads.
