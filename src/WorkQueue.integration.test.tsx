@@ -98,6 +98,11 @@ it("keeps the application queue alive while switching projects and saves results
   fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
   const panel = screen.getByRole("dialog", { name: "Work queue" });
   expect(within(panel).getByRole("region", { name: "In progress" })).toHaveTextContent("First project");
+  for (const [step, percent] of [[2, 27], [8, 73]]) {
+    act(() => handlers.get("slopfab-progress")?.({ payload: { jobId: workId, stage: "denoising", step, totalSteps: 10 } }));
+    expect(within(panel).getByRole("progressbar", { name: "First scene progress" })).toHaveAttribute("aria-valuenow", String(percent));
+    expect(screen.getByRole("button", { name: "Work queue" })).toHaveClass("icon-button--busy");
+  }
   expect(within(panel).getByRole("region", { name: "Upcoming work" })).toHaveTextContent("Upcoming scene");
   fireEvent.click(within(panel).getByRole("button", { name: "Cancel Upcoming scene in First project" }));
   expect(within(panel).queryByRole("region", { name: "Upcoming work" })).toBeNull();
@@ -155,6 +160,12 @@ it("opens a pending image and its completed result without restarting generation
   const workId = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].jobId;
   fireEvent.click(screen.getByRole("tab", { name: "Video" }));
   fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
+  const panel = screen.getByRole("dialog", { name: "Work queue" });
+  for (const [step, percent] of [[2, 27], [8, 73]]) {
+    act(() => handlers.get("slopfab-progress")?.({ payload: { jobId: workId, stage: "denoising", step, totalSteps: 10 } }));
+    expect(within(panel).getByRole("progressbar", { name: "Image · Pictures progress" })).toHaveAttribute("aria-valuenow", String(percent));
+    expect(screen.getByRole("button", { name: "Work queue" })).toHaveClass("icon-button--busy");
+  }
   fireEvent.click(screen.getByRole("button", { name: "Open Image · Pictures in Pictures" }));
   expect(screen.getByRole("button", { name: "View Original" })).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(screen.getByRole("tab", { name: "Video" }));

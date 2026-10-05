@@ -202,6 +202,15 @@ textarea:focus-visible,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Activity indicators must still distinguish working from stalled when
+     Windows disables interface animations. Keep only this small, slower
+     rotation; decorative motion and transitions remain disabled. */
+  .icon-button--busy::before,
+  .ui-ring--indeterminate svg {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* --- Utilities ------------------------------------------------------------- */
@@ -235,4 +244,3 @@ textarea:focus-visible,
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-

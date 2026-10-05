@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Work queue activity indicators keep moving in the top bar and open queue when Windows interface animations are disabled.
 - Image and video export offer None, Real-ESRGAN and SeedVR2 upscaling through SlopFab. Download their models from the new Other weights section in Settings → Generator.
 - Image export offers sizes closest to the selected image's actual aspect ratio, even when project or saved generation settings differ.
 - Click a work queue job to open its image, scene, reference, generator download or export. Navigation works across projects and preserves unsaved project edits.
