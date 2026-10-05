@@ -19,7 +19,7 @@ export function OtherWeightsSettings({ desktop }: { desktop: boolean }) {
         {active ? <><ProgressBar value={download.progress} aria-label={`Downloading ${template.name} weights`} />
           <button type="button" onClick={() => void cancelOtherDownload().catch((reason) => setError(String(reason)))}>Cancel</button></>
           : <button type="button" className="secondary-button" disabled={!desktop || ready || download?.active}
-            onClick={() => void downloadOtherWeights(template.id)}>{ready ? "Downloaded" : `Download ${template.name}`}</button>}
+            onClick={() => void downloadOtherWeights(template.id)}>{ready ? "Downloaded" : "Download"}</button>}
       </SettingsCard>;
     })}
     {(error || download?.error) && <InfoBar severity="error" title="Couldn’t download weights" message={error ?? download!.error!} />}
