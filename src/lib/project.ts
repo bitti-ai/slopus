@@ -17,6 +17,7 @@ export const DEFAULT_GENERATION_STEPS = 20;
  * target; higher rates are produced later by interpolation and retiming. */
 export const GENERATION_FRAME_RATE = 24;
 export const MAX_GENERATION_STEPS = 2_147_483_647;
+export const MAX_AUDIO_GENERATION_STEPS = 1_000_000;
 export const RANDOM_GENERATION_SEED = -1;
 
 /** Languages MiniMax H3 documents as stable for dialogue generation. These are
@@ -578,6 +579,7 @@ export const generationJobSchema = z.object({
    * were exposed; the readers below give those scenes the current defaults
    * without rewriting the file just because it was opened. */
   steps: z.number().int().min(2).max(MAX_GENERATION_STEPS).nullish(),
+  audioSteps: z.number().int().min(2).max(MAX_AUDIO_GENERATION_STEPS).nullish(),
   seed: z.number().int().min(RANDOM_GENERATION_SEED).max(Number.MAX_SAFE_INTEGER).nullish(),
   /** Base guide §4.6 and §4.7. Per-PROMPT fields, not per-shot, so they live on
    *  the scene. Blank or absent means the compiler emits its own content-neutral
@@ -1129,6 +1131,7 @@ export interface SceneGenerationInput {
   videoTransition?: "extend" | "bridge";
   frames: number;
   steps: number;
+  audioSteps?: number;
   seed: number;
   canvasWidth: number;
   canvasHeight: number;
@@ -1159,6 +1162,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     frames: input.frames,
     steps: input.steps,
+    ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
     seed: input.seed,
     canvasWidth: input.canvasWidth,
     canvasHeight: input.canvasHeight,

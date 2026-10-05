@@ -33,6 +33,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     // The scene's own length, not a fixed six seconds.
     frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
     steps: sceneGenerationSteps(job, defaultGenerationSteps),
+    ...(job.audioSteps != null ? { audioSteps: job.audioSteps } : {}),
     seed: sceneGenerationSeed(job),
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,

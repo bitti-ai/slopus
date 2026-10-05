@@ -55,7 +55,7 @@ export interface WorkItem {
   completionAt: number | null;
   cancelling: boolean;
   needsSave: boolean;
-  settings: { frames: number; steps: number; seed: number; canvasWidth: number; canvasHeight: number };
+  settings: { frames: number; steps: number; audioSteps?: number; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
   extend?: { sourceId: string; name: string; options: ExtendOptions };
@@ -228,7 +228,7 @@ export class WorkQueue {
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
         status: "queued", progress: 0, detail: "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
-        settings: { frames: request.frames, steps: request.steps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
+        settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot });
     }

@@ -117,6 +117,8 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) steps: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) audio_steps: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) seed: Option<i64>,
     /// Base guide §4.6 and §4.7 — per-prompt fields, so they sit on the scene
     /// rather than on a shot. Absent means the compiler writes its own
@@ -175,6 +177,7 @@ impl GenerationJob {
             shots: Some(Vec::new()),
             duration_seconds: Some(defaults.duration_seconds),
             steps: None,
+            audio_steps: None,
             seed: None,
             soundscape: None,
             music: None,

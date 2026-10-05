@@ -6,6 +6,28 @@ use crate::settings::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn audio_steps_override_and_reset_reach_planning_and_execution() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.motion_cache = true;
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        let handle = RequestHandle::new(&api).unwrap();
+        let mut request = GenerationRequest { prompt: "Ocean waves".into(), frames: 48, steps: 4,
+            audio_steps: Some(7), seed: 1, canvas_width: 64, canvas_height: 32, ..Default::default() };
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+        assert!(api.resolve(&handle).unwrap().num_model_evaluations >= 6);
+        request.audio_steps = None;
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+        assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, 3);
+        for steps in [0, 1, 1_000_001] {
+            request.audio_steps = Some(steps);
+            assert!(validate_generation_controls(&request).is_err());
+        }
+    }
+}
+
+#[test]
 fn dmad_recipe_reaches_preview_and_execution_on_both_backends() {
     let root = tempfile::tempdir().unwrap();
     let adapter = root.path().join("renamed-adapter.safetensors");

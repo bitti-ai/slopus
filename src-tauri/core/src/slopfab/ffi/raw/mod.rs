@@ -89,6 +89,7 @@ pub struct Api {
     set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
+    set_audio_steps: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_sampling_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
@@ -206,6 +207,9 @@ impl Api {
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
                 ),
+                set_audio_steps: library
+                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_audio_steps\0")
+                    .ok().map(|symbol| *symbol),
                 set_sampling_settings: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_sampling_settings\0")
                     .ok().map(|symbol| *symbol),
@@ -452,6 +456,12 @@ impl Api {
     }
     pub fn set_steps(&self, r: *mut Request, v: i32) -> Result<(), String> {
         self.error(unsafe { (self.set_steps)(r, v) })
+    }
+    pub fn set_audio_steps(&self, r: *mut Request, steps: i32) -> Result<(), String> {
+        let Some(set) = self.set_audio_steps else {
+            return if steps == 0 { Ok(()) } else { Err("Separate audio steps require SlopFab API 1.21 or later. Update the generation runtime.".into()) };
+        };
+        self.error(unsafe { set(r, steps) })
     }
     pub fn set_seed(&self, r: *mut Request, v: u64) -> Result<(), String> {
         self.error(unsafe { (self.set_seed)(r, v) })

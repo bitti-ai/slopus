@@ -90,6 +90,9 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
     if request.steps < limits.min_steps {
         return Err("Generation step count must be at least 2.".into());
     }
+    if request.audio_steps.is_some_and(|steps| !(2..=1_000_000).contains(&steps)) {
+        return Err("Audio step count must be a whole number from 2 to 1000000.".into());
+    }
     if request.seed < -1 {
         return Err("Generation seed must be -1 or greater.".into());
     }

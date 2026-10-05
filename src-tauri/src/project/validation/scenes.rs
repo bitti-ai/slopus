@@ -105,6 +105,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                 job.id, limits.min_steps
             ));
         }
+        if job.audio_steps.is_some_and(|steps| !(2..=1_000_000).contains(&steps)) {
+            return Err(format!("Scene '{}' must use 2 to 1000000 audio steps.", job.id));
+        }
         if job.seed.is_some_and(|seed| seed < -1) {
             return Err(format!("Scene '{}' has a seed below -1.", job.id));
         }

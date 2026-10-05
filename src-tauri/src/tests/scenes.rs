@@ -434,6 +434,25 @@ fn a_scene_is_bounded_to_fifteen_seconds_on_both_the_length_and_the_cuts() {
 }
 
 #[test]
+fn scene_audio_steps_save_and_validate_without_changing_video_steps() {
+    for audio_steps in [None, Some(2), Some(17), Some(1_000_000)] {
+        let mut config = scene_fixture();
+        config.generation_jobs[0].steps = Some(28);
+        config.generation_jobs[0].audio_steps = audio_steps;
+        let folder = tempfile::tempdir().unwrap();
+        write_project(folder.path(), &config).unwrap();
+        let restored = read_project(folder.path()).unwrap().config;
+        assert_eq!(restored.generation_jobs[0].audio_steps, audio_steps);
+        assert_eq!(restored.generation_jobs[0].steps, Some(28));
+    }
+    for audio_steps in [0, 1, 1_000_001] {
+        let mut config = scene_fixture();
+        config.generation_jobs[0].audio_steps = Some(audio_steps);
+        assert!(validate_and_normalize_config(config).is_err());
+    }
+}
+
+#[test]
 fn scene_generation_controls_match_the_frontend_boundaries() {
     for (steps, seed) in [(2, -1), (20, 0), (50, 9_007_199_254_740_991)] {
         let mut config = scene_fixture();

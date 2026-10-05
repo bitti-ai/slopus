@@ -54,6 +54,8 @@ pub struct GenerationRequest {
     #[serde(skip)]
     pub image_edit_pixels: Option<std::sync::Arc<Vec<u8>>>,
     pub steps: i32,
+    #[serde(default)]
+    pub audio_steps: Option<i32>,
     /// -1 asks the host to draw a fresh seed for this generation.
     pub seed: i64,
     pub canvas_width: i32,

@@ -18,6 +18,7 @@ import {
   sceneDurationSeconds,
   sceneGenerationSeed,
   sceneGenerationSteps,
+  MAX_AUDIO_GENERATION_STEPS,
   sceneGenerationReferences,
   splitActionText,
   DEFAULT_SPEECH_LANGUAGE,
@@ -487,6 +488,14 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ steps: value })}
           />
         </PropRow>
+        <PropRow label="Separate audio steps" htmlFor={`${id}-separate-audio-steps`}>
+          <ToggleSwitch id={`${id}-separate-audio-steps`} aria-label="Separate audio steps" checked={job.audioSteps != null} disabled={disabled}
+            onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
+        </PropRow>
+        {job.audioSteps != null ? <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
+          <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
+            value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
+        </PropRow> : <p className="prop-caption">Audio uses the video generation step count.</p>}
         <PropRow label="Seed" htmlFor={`${id}-seed`}>
           <CommittedNumberInput
             id={`${id}-seed`}

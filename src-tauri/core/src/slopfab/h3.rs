@@ -52,11 +52,14 @@ pub(super) fn configure_request(
     if request.still_image {
         api.set_still_image(handle)?;
     }
-    api.set_steps(handle, configuration.generation_steps(request.steps)?)?;
+    let video_steps = configuration.generation_steps(request.steps)?;
+    api.set_steps(handle, video_steps)?;
     let dmad = configuration.sampling_preset.as_ref().map_err(Clone::clone)? == &Some(SamplingPreset::Dmad4Step);
     if dmad {
         api.set_dmad_sampling(handle)?;
     }
+    // Sampling presets replace overrides, so apply the audio setting afterward.
+    api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;
     api.set_seed(handle, generation_seed(request.seed)?)?;
     if let Some(edit) = &request.image_edit {
         let step = edit.edits.first().ok_or("Add an image edit before generating.")?;
@@ -79,8 +82,9 @@ pub(super) fn configure_request(
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
-    // SlopFab's overlap constraint cannot be combined with approximate caches.
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap)?;
+    let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
+    // Overlap locking and different audio/video step counts require full evaluations.
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio)?;
     api.set_verbose(handle, false)?;
     if let Some(mode) = request.video_transition.as_deref() {
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;

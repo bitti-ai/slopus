@@ -58,6 +58,19 @@ const finish = async (queue: WorkQueue, id: string) => {
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
 
+it.each([undefined, 17])("freezes audio steps %s independently of video steps through the queue", async (audioSteps) => {
+  const { queue, first } = setup();
+  const item = submission(first);
+  item.request.audioSteps = audioSteps;
+  queue.enqueue(first, [item]);
+  item.request.audioSteps = 99;
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps });
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps });
+  expect(queue.getSnapshot()[0].settings).toMatchObject({ steps: 12, audioSteps });
+  await finish(queue, queue.getSnapshot()[0].id);
+});
+
 describe("agent scene generation", () => {
   const templates = () => {
     const chosen: GeneratorTemplate = { id: "chosen", name: "Chosen engine", modelType: "minimax-h3", defaultSteps: 8, attention: "exact",

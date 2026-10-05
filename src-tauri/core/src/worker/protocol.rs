@@ -9,10 +9,11 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
-// v6 carries custom upscale weights; older workers would silently ignore them.
+// v7 carries separate audio steps; older workers would silently ignore them.
+// v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 6;
+pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -585,7 +585,7 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });
 
-  it("shows scene generation controls and sends their values in the render snapshot", async () => {
+  it.each([false, true])("saves generation controls with separate audio steps %s", async (separateAudio) => {
     const initial = project();
     initial.settings = { ...initial.settings, resolution: "416p", frameRate: 60 };
     const state = setup(initial);
@@ -595,10 +595,18 @@ describe("Generator scene controls", () => {
 
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation step count" }), { target: { value: "28" } });
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation seed" }), { target: { value: "9173" } });
+    expect(within(generation).getByRole("switch", { name: "Separate audio steps" })).not.toBeChecked();
+    expect(within(generation).queryByRole("spinbutton", { name: "Audio step count" })).toBeNull();
+    fireEvent.click(within(generation).getByRole("switch", { name: "Separate audio steps" }));
+    expect(within(generation).getByRole("spinbutton", { name: "Audio step count" })).toHaveValue(28);
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Audio step count" }), { target: { value: "17" } });
+    if (!separateAudio) fireEvent.click(within(generation).getByRole("switch", { name: "Separate audio steps" }));
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].audioSteps).toBe(separateAudio ? 17 : undefined);
     expect(state.latest().generationJobs[0]).toEqual(expect.objectContaining({ steps: 28, seed: 9173 }));
 
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).audioSteps).toBe(separateAudio ? 17 : undefined);
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({
       steps: 28,
       seed: 9173,

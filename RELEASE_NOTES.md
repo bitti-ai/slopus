@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Video scenes offer a separate audio step count. Audio follows the video step count by default, with optional overrides for local and worker generation.
 - Character Sheet lets you enable Close up, Front view, Side view and Back view independently. Side view is off by default; generation and the combined image include only enabled views.
 - Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. SeedVR2 sends selected local files to the worker and downloads any missing components there.
 - Scene continuation offers a Lock Overlap toggle for local and worker generation, constraining overlapping video and audio to the source scene.
