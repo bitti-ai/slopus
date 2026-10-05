@@ -25,7 +25,7 @@ it("serializes generator, upscaler and LoRA downloads and reports both SeedVR2 f
   const queue = await import("./weightDownloads");
   const settings = await import("./settings");
   const loras = await import("./loras");
-  const { OTHER_WEIGHT_TEMPLATES, upscaleConfig } = await import("./upscalers");
+  const { OTHER_WEIGHT_TEMPLATES, otherWeightPaths } = await import("./upscalers");
   const template = settings.createGeneratorTemplate("Extra");
   template.additionalSafetensors = [{ id: "extra", name: "Extra", url: "https://example.com/extra.safetensors" }];
   settings.saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
@@ -59,7 +59,7 @@ it("serializes generator, upscaler and LoRA downloads and reports both SeedVR2 f
   expect(queue.weightDownloadProgress(queue.getWeightDownloadState()!)).toBe(75);
   transfers[3].resolve("C:/vae.safetensors");
   await seed;
-  expect(upscaleConfig("seedvr2")).toEqual({ method: "seedvr2", modelPath: "C:/seed.safetensors", vaePath: "C:/vae.safetensors" });
+  expect(otherWeightPaths()).toMatchObject({ [OTHER_WEIGHT_TEMPLATES[1].files[0].url]: "C:/seed.safetensors", [OTHER_WEIGHT_TEMPLATES[1].files[1].url]: "C:/vae.safetensors" });
   await vi.waitFor(() => expect(transfers).toHaveLength(5));
   transfers[4].resolve("C:/adapter.safetensors");
   await lora;

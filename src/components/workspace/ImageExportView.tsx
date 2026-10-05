@@ -3,11 +3,12 @@ import { useState } from "react";
 import { closestExportAspectRatio, exportSizeChoices } from "../../lib/export";
 import type { ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
-import { ComboBox, EmptyState, InfoBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
+import { ComboBox, EmptyState, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
 import { ImageBar } from "./ImageBar";
 import { ReferenceImage } from "./ReferenceImage";
 import { UPSCALERS, upscaleConfig, type Upscaler } from "../../lib/upscalers";
+import { cancelExportJob, exportFraction, isExportActive, startImageExportJob, useExportJob } from "../../lib/exportJob";
 
 /* The image project's Export tab: the same page as the video export (see
    export.css) — the image on the stage, filling it, and the resizable settings
@@ -33,6 +34,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
   const [exporting, setExporting] = useState(false);
   const [upscaler, setUpscaler] = useState<Upscaler>("none");
   const [error, setError] = useState<string | null>(null);
+  const job = useExportJob(folderPath, "image");
   /* Which image to export is this page's own choice: it starts on the one open
      in the Editor, and picking another here leaves the Editor where it was. */
   const images = config.assets.filter((asset) => asset.kind === "image");
@@ -67,12 +69,10 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
     if (!output?.relativePath || disabled) return;
     setExporting(true); setError(null);
     try {
-      await invoke("export_generated_image", {
-        folderPath,
-        relativePath: output.relativePath,
-        options: { format: preferences.format, width: size?.width, height: size?.height, quality: preferences.format === "jpg" ? preferences.quality : undefined,
-          ...(upscaler !== "none" ? { upscale: upscaleConfig(upscaler) } : {}) },
-      });
+      const options = { format: preferences.format, width: size?.width, height: size?.height, quality: preferences.format === "jpg" ? preferences.quality : undefined,
+        ...(upscaler !== "none" ? { upscale: upscaleConfig(upscaler) } : {}) };
+      const destination = await invoke<string | null>("choose_image_export_destination", { options });
+      if (destination) void startImageExportJob({ folderPath, projectName: config.name, relativePath: output.relativePath, options, destination });
     }
     catch (reason) { setError(String(reason)); }
     finally { setExporting(false); }
@@ -128,12 +128,17 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
             </PropRow>}
           </PropSection>
           <div className="export-messages">
+            {isExportActive(job) && <InfoBar severity="informational" title={job.status === "queued" ? "Queued for export" : "Exporting image"} message={job.progress?.detail ?? "Waiting for the current export to finish."} />}
+            {job.progress && <ProgressBar value={job.progress.framesDone ? exportFraction(job.progress) * 100 : undefined} aria-label="Image export progress" />}
+            {job.outcome?.kind === "saved" && <InfoBar severity="success" title="Image exported" message={job.outcome.path} />}
+            {job.outcome?.kind === "failed" && <InfoBar severity="error" title="Couldn’t export image" message={job.outcome.message} />}
             {blocker && <InfoBar severity="informational" title="Nothing to export yet" message={blocker} />}
             {error && <InfoBar severity="error" title="Couldn’t export image" message={error} onClose={() => setError(null)} />}
           </div>
         </div>
         <div className="export-settings__foot">
           <div className="export-settings__actions">
+            {isExportActive(job) && <button type="button" className="secondary-button" disabled={job.cancelling} onClick={() => cancelExportJob(job.id)}>Cancel export</button>}
             <button
               type="button"
               className="primary-button"

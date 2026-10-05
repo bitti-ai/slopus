@@ -1365,7 +1365,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
   try {
     encoder.configure(encoderConfig(probe.codecString, plan, bitrate));
     if (upscale) {
-      report("preparing", 0, "Loading upscaler weights…");
+      report("preparing", 0, upscale.method === "seedvr2" ? "Preparing SeedVR2 on worker…" : "Loading upscaler weights…");
       upscaler = await startUpscaleExport({ config: upscale, inputWidth: renderWidth, inputHeight: renderHeight,
         width: plan.width, height: plan.height, frameRate: plan.frameRate, frameCount: plan.frameCount, cancelled,
         output: async (frame, index) => {

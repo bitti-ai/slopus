@@ -190,22 +190,23 @@ it("opens the matching LoRA for a standalone download", async () => {
   expect(screen.getByRole("textbox", { name: "LoRA name" })).toHaveValue("My adapter");
 });
 
-it("opens a running export's project and export tab from the library", async () => {
+it.each(["video", "image"] as const)("opens a running %s export's project and export tab from the library", async (kind) => {
   const config = createProjectConfig({ name: "Exported film", prompt: "A forest", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 15 });
   vi.mocked(listRecentProjects).mockResolvedValue({ projects: [{ folderPath: "C:/Exported film", config }], unreadable: [] });
-  setExportJobForTests({ folderPath: "C:/Exported film", projectName: config.name, progress: { phase: "rendering", framesDone: 1, frameCount: 10, detail: "Rendering" } });
+  setExportJobForTests({ kind, folderPath: "C:/Exported film", projectName: config.name, progress: { phase: "rendering", framesDone: 1, frameCount: 10, detail: "Rendering" } });
+  const openLabel = kind === "image" ? "Open Export image · Exported film" : "Open Export Exported film";
   render(<App />);
   await screen.findByRole("option", { name: "Exported film" });
   fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open Export Exported film" }));
+  fireEvent.click(screen.getByRole("button", { name: openLabel }));
   expect(screen.getByRole("tab", { name: "Export" })).toHaveAttribute("aria-selected", "true");
   expect(document.querySelector(".project-title")?.textContent).toBe("Exported film");
   expect(getExportJob().progress).not.toBeNull();
-  fireEvent.click(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: "Image" }));
+  fireEvent.click(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: kind === "image" ? "Video" : "Image" }));
   fireEvent.click(screen.getByRole("button", { name: "Work queue" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open Export Exported film" }));
+  fireEvent.click(screen.getByRole("button", { name: openLabel }));
   expect(screen.getByRole("tab", { name: "Export" })).toHaveAttribute("aria-selected", "true");
-  expect(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: "Video" })).toHaveAttribute("aria-selected", "true");
+  expect(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: kind === "image" ? "Image" : "Video" })).toHaveAttribute("aria-selected", "true");
 });
 
 it("opens an empty queue from the library and closes it with Escape", async () => {
@@ -247,6 +248,6 @@ it("guards the window for a running export and lists it in the queue with a Canc
   expect(getExportJob().cancelling).toBe(true);
   expect(cancel).toBeDisabled();
   act(() => setExportJobForTests({ progress: null, cancelling: false, outcome: { kind: "cancelled" } }));
-  expect(within(flyout).queryByRole("region", { name: "Export" })).toBeNull();
+  expect(within(flyout).getByRole("region", { name: "Export" })).toHaveTextContent("Cancelled");
   await waitFor(() => expect(reportGenerationJobs).toHaveBeenLastCalledWith([]));
 });

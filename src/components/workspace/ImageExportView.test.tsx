@@ -9,9 +9,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { ImageExportView } from "./ImageExportView";
 import { imageGenerationSnapshot } from "../../lib/imageHistory";
 import { OTHER_WEIGHT_TEMPLATES } from "../../lib/upscalers";
+import { resetExportJobForTests } from "../../lib/exportJob";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
+afterEach(() => { cleanup(); resetExportJobForTests(); localStorage.clear(); vi.restoreAllMocks(); });
 
 function withOutput(patch: Partial<ProjectConfig["assets"][number]> = {}): ProjectConfig {
   const config = parseProjectConfig(fixture);
@@ -47,8 +49,9 @@ it("refuses to export a draft and says why", () => {
 it.each(OTHER_WEIGHT_TEMPLATES)("exports with the selected $name model paths", async (template) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  vi.mocked(invoke).mockResolvedValue(true);
+  vi.mocked(invoke).mockImplementation(async (command) => command === "choose_image_export_destination" ? "D:/out.jpg" : 123);
   localStorage.setItem("slopus.other-weights.v1", JSON.stringify(Object.fromEntries(template.files.map((file) => [file.url, `C:/weights/${file.id}`]))));
+  localStorage.setItem("slopus.generation-worker.v1", JSON.stringify({ id: "worker", name: "Worker", gpus: [] }));
   render(<ImageExportView config={withOutput({ width: 64, height: 32 })} folderPath="D:/Images" />);
   const selector = screen.getByRole("combobox", { name: "Upscaler" });
   expect(selector).toHaveTextContent("None");
@@ -57,15 +60,14 @@ it.each(OTHER_WEIGHT_TEMPLATES)("exports with the selected $name model paths", a
   fireEvent.click(screen.getByRole("option", { name: template.name }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", expect.objectContaining({
-    options: expect.objectContaining({ width: 64, height: 32, upscale: { method: template.id, modelPath: "C:/weights/model",
-      ...(template.id === "seedvr2" ? { vaePath: "C:/weights/vae" } : {}) } }),
+    options: expect.objectContaining({ width: 64, height: 32, upscale: { method: template.id, modelPath: template.id === "seedvr2" ? "" : "C:/weights/model" } }),
   })));
 });
 
 it("sends the chosen size, format and JPG quality, and hides quality for PNG", async () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  vi.mocked(invoke).mockResolvedValue(true);
+  vi.mocked(invoke).mockImplementation(async (command) => command === "choose_image_export_destination" ? "D:/out.jpg" : 123);
   render(<ImageExportView config={withOutput({ width: 2048, height: 1152 })} folderPath="D:/Images" />);
   fireEvent.change(screen.getByRole("slider", { name: "JPG quality" }), { target: { value: "60" } });
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
@@ -75,6 +77,7 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
   fireEvent.click(screen.getByRole("option", { name: "3840 × 2160" }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {
+    jobId: expect.any(String), destination: "D:/out.jpg",
     folderPath: "D:/Images", relativePath: "media/generated/out.png",
     options: { format: "jpg", width: 3840, height: 2160, quality: 60 },
   }));
@@ -116,7 +119,7 @@ it("keeps Original selected across images and omits duplicate presets", () => {
 it("shows the image bar and exports the image picked in it, leaving the Editor's image alone", async () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  vi.mocked(invoke).mockResolvedValue(true);
+  vi.mocked(invoke).mockImplementation(async (command) => command === "choose_image_export_destination" ? "D:/out.jpg" : 123);
   const config = withOutput({ width: 2048, height: 1152 });
   config.assets.push({ id: "second", name: "Second", kind: "image", relativePath: "media/generated/second.jpg", mimeType: "image/jpeg", width: 768, height: 1376, createdAt: config.createdAt } as ProjectConfig["assets"][number]);
   render(<ImageExportView config={config} folderPath="D:/Images" />);

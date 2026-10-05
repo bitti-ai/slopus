@@ -20,7 +20,7 @@ import { CommandBar, CommandBarButton, EmptyState, InfoBadge, InfoBar, TextField
 import { AppUpdater } from "./lib/updater";
 import { useShortcut } from "./lib/commands";
 import { APP_CHANNEL, APP_VERSION } from "./lib/version";
-import { useRunningExportName } from "./lib/exportJob";
+import { isExportActive, useExportActivity } from "./lib/exportJob";
 import { reportGenerationJobs, revealInExplorer, type GuardJob } from "./lib/nativeShell";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "./lib/diagnostics";
 import { chooseAndOpenProject, chooseNewProjectFolder, inspectNewProjectFolder, createProject, deleteProject, isTauri, listRecentProjects, saveProject, type NewProjectFolder } from "./lib/persistence";
@@ -149,8 +149,8 @@ function App() {
     .map((item) => ({ title: `${item.title} · ${item.projectName}`, running: item.status !== "queued" }));
   /* An export keeps running when its tab (or its project) is left, and
      closing the window ends it just the same, so it is on the list too. */
-  const exportingName = useRunningExportName();
-  if (exportingName !== null) guardJobs.push({ title: exportingName ? `Export ${exportingName}` : "Export", running: true });
+  const exports = useExportActivity();
+  for (const job of exports.filter(isExportActive)) guardJobs.push({ title: `Export ${job.projectName ?? ""}`, running: job.status === "running" });
   const guardKey = JSON.stringify(guardJobs);
   useEffect(() => {
     void reportGenerationJobs(JSON.parse(guardKey) as GuardJob[]).catch(() => undefined);
@@ -158,7 +158,7 @@ function App() {
   const queueCount = guardJobs.length + Number(weightDownloadActive) + queuedDownloads.length;
   /* Something is being worked on right now, not merely waiting its turn:
      a generation or icon past the queue, an export, a weight download. */
-  const queueBusy = weightDownloadActive || exportingName !== null
+  const queueBusy = weightDownloadActive || exports.some((job) => job.status === "running")
     || workItems.some((item) => isWorkActive(item) && item.status !== "queued");
 
   useEffect(() => {
@@ -224,7 +224,7 @@ function App() {
     const record = target.kind === "work" ? workQueue.projectRecord(target.item.projectKey)
       : [activeProject, ...projects].find((record) => record?.folderPath === target.folderPath);
     if (!record) return;
-    let navigation: WorkspaceNavigation = { view: "export" };
+    let navigation: WorkspaceNavigation = { view: "export", ...(target.kind === "export" ? { exportKind: target.exportKind ?? "video" } : {}) };
     if (target.kind === "work") {
       const item = target.item;
       if (item.kind === "image") {
@@ -300,7 +300,7 @@ function App() {
     setDeletingProject(true);
     setError(null);
     try {
-      if (workQueue.hasActiveProject(target)) throw new Error("Cancel or finish this project’s work before deleting it.");
+      if (workQueue.hasActiveProject(target) || exports.some((job) => job.folderPath === target.folderPath && isExportActive(job))) throw new Error("Cancel or finish this project’s work before deleting it.");
       await deleteProject(target);
       workQueue.forgetProject(target);
       setProjects((current) => current.filter((project) => project.config.id !== target.config.id || project.folderPath !== target.folderPath));

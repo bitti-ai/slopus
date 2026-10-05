@@ -178,7 +178,8 @@ describe("a run in progress and a finished one", () => {
     render(<ExportView config={project([clip("a", 0, 3_000)])} folderPath="/tmp/project" />);
     expect(screen.getByRole("status").textContent).toContain("42% · 1:12 remaining · Encoding frame 30 of 72");
     expect(screen.getByRole("progressbar")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Exporting…" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Queue export" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
@@ -202,7 +203,7 @@ describe("a run in progress and a finished one", () => {
     }));
     render(<ExportView config={project([clip("a", 0, 3_000)])} folderPath="/tmp/project" />);
     expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("alert").textContent).toContain("Another project is exporting");
+    expect(screen.getByRole("alert").textContent).not.toContain("Another project is exporting");
   });
 });
 

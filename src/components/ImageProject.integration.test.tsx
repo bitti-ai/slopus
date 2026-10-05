@@ -17,10 +17,11 @@ import fixture from "../../fixtures/project-v1-image.json";
 import videoFixture from "../../fixtures/project-v1-complete.json";
 import { invoke } from "@tauri-apps/api/core";
 import * as persistence from "../lib/persistence";
+import { getExportJobs, resetExportJobForTests } from "../lib/exportJob";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); resetExportJobForTests(); localStorage.clear(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
 it("opens template settings and executes only after configuring prompts and clothing references", () => {
@@ -142,6 +143,7 @@ it("exports the selected image from the Export tab and handles cancellation and 
   let complete!: (value: boolean) => void;
   const exporting = new Promise<boolean>((resolve) => { complete = resolve; });
   vi.mocked(invoke).mockImplementation(async (command) => {
+    if (command === "choose_image_export_destination") return "D:/out.jpg" as never;
     if (command === "export_generated_image") return await exporting as never;
     return undefined as never;
   });
@@ -159,9 +161,11 @@ it("exports the selected image from the Export tab and handles cancellation and 
   const button = within(settings).getByRole("button", { name: "Export…" });
   fireEvent.click(button);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith("export_generated_image", {
+    jobId: expect.any(String), destination: "D:/out.jpg",
     folderPath: "D:/Images", relativePath: "media/generated/Second.jpg", options: { format: "jpg", width: 1024, height: 768, quality: 90 },
   }));
-  expect(within(settings).getByRole("button", { name: "Exporting…" })).toBeDisabled();
+  expect(within(settings).getByRole("button", { name: "Cancel export" })).toBeEnabled();
+  expect(getExportJobs()[0]).toMatchObject({ kind: "image", status: "running" });
   await act(async () => complete(false));
   expect(button).toBeEnabled();
   expect(button).toHaveTextContent("Export…");

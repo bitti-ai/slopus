@@ -42,6 +42,7 @@ import { formatTimecode, frameAt, frameStartMs } from "../../lib/timeline";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { ProjectStatus } from "./ProjectStatus";
 import { UPSCALERS, type Upscaler } from "../../lib/upscalers";
+import { remoteWorkerSelected } from "../../lib/workers";
 import type { ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
 
@@ -107,7 +108,7 @@ export function ExportView({ config, folderPath, onClose }: {
 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [destinationError, setDestinationError] = useState<string | null>(null);
-  const job = useExportJob();
+  const job = useExportJob(folderPath, "video");
   const ours = job.folderPath === folderPath;
   const running = job.progress !== null;
   const runningHere = running && ours;
@@ -221,6 +222,7 @@ export function ExportView({ config, folderPath, onClose }: {
 
   const codecProbe = probes?.find((probe) => probe.id === settings.codec) ?? null;
   const blockers = [...plan.blockers];
+  if (settings.upscaler === "seedvr2" && !remoteWorkerSelected()) blockers.push("Select a worker in Settings → Workers to use SeedVR2 upscaling.");
   if (!support.desktop) {
     blockers.push(
       "This is the browser preview. There is no project folder to read media from and nowhere on disk to write a file, so exporting is only available in the Slopus desktop app.",
@@ -232,8 +234,7 @@ export function ExportView({ config, folderPath, onClose }: {
   if (codecProbe && !codecProbe.supported) {
     blockers.push(`This computer will not encode ${settings.codec.toUpperCase()} at ${plan.width}×${plan.height}: ${codecProbe.detail}`);
   }
-  if (running && !ours) blockers.push("Another project is exporting. Wait for it to finish.");
-  const canExport = blockers.length === 0 && !running;
+  const canExport = blockers.length === 0;
 
   const browse = async (): Promise<Destination | null> => {
     setDestinationError(null);
@@ -251,7 +252,7 @@ export function ExportView({ config, folderPath, onClose }: {
 
   const start = async () => {
     if (!canExport) return;
-    dismissExportOutcome();
+    dismissExportOutcome(job.id);
     const target = destination ?? await browse();
     if (!target) return; // The user closed the save dialog. Nothing to say.
     if (!target.fromDialog) {
@@ -415,7 +416,7 @@ export function ExportView({ config, folderPath, onClose }: {
                 <button
                   type="button"
                   className="secondary-button export-destination__browse"
-                  disabled={runningHere || !support.desktop}
+                  disabled={!support.desktop}
                   aria-describedby="export-destination-label"
                   onClick={() => void browse()}
                 >Browse…</button>
@@ -429,7 +430,6 @@ export function ExportView({ config, folderPath, onClose }: {
               <ComboBox
                 id="export-resolution"
                 value={exportSizeKey(settings.width, settings.height)}
-                disabled={runningHere}
                 onChange={(value) => {
                   const size = sizeChoices.find((choice) => choice.value === value);
                   if (size) setSettings({ ...settings, width: size.width, height: size.height });
@@ -442,14 +442,13 @@ export function ExportView({ config, folderPath, onClose }: {
               <ComboBox
                 id="export-frame-rate"
                 value={String(settings.frameRate)}
-                disabled={runningHere}
                 onChange={(value) => setSettings({ ...settings, frameRate: Number(value) as FrameRate })}
                 options={FRAME_RATES.map((rate) => ({ value: String(rate), label: `${rate} fps` }))}
               />
             </PropRow>
 
             <PropRow label="Upscaler" htmlFor="export-upscaler">
-              <ComboBox id="export-upscaler" value={settings.upscaler ?? "none"} disabled={runningHere}
+              <ComboBox id="export-upscaler" value={settings.upscaler ?? "none"}
                 options={[...UPSCALERS]} onChange={(value) => setSettings({ ...settings, upscaler: value as Upscaler })} />
             </PropRow>
 
@@ -457,7 +456,6 @@ export function ExportView({ config, folderPath, onClose }: {
               <ComboBox
                 id="export-codec"
                 value={settings.codec}
-                disabled={runningHere}
                 onChange={(value) => setSettings({ ...settings, codec: value as OutputCodecId })}
                 options={OUTPUT_CODECS.map((codec) => {
                   const probe = probes?.find((candidate) => candidate.id === codec.id);
@@ -471,7 +469,6 @@ export function ExportView({ config, folderPath, onClose }: {
               <ComboBox
                 id="export-quality"
                 value={settings.quality}
-                disabled={runningHere}
                 onChange={(value) => setSettings({ ...settings, quality: value as QualityId })}
                 options={QUALITY_PRESETS.map((preset) => ({
                   value: preset.id,
@@ -493,6 +490,7 @@ export function ExportView({ config, folderPath, onClose }: {
           </PropSection>
 
           <div className="export-messages">
+            {job.status === "queued" && <InfoBar severity="informational" title="Queued for export" message="Waiting for the current export to finish." />}
             {destinationError && <InfoBar severity="error" title="Save location" message={destinationError} onClose={() => setDestinationError(null)} />}
             {blockers.length > 0 && <InfoBar severity="error" title="Can’t export yet">
               <ul className="export-reasons">{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
@@ -525,19 +523,19 @@ export function ExportView({ config, folderPath, onClose }: {
                 <button type="button" className="secondary-button" onClick={() => openFile(outcome.path)}>Open</button>
                 <button type="button" className="secondary-button" onClick={() => showInFolder(outcome.path)}>Show in folder</button>
               </>}
-              onClose={dismissExportOutcome}
+              onClose={() => dismissExportOutcome(job.id)}
             />}
             {!progress && outcome?.kind === "cancelled" && <InfoBar
               severity="informational"
               title="Export cancelled"
               message="Nothing was written."
-              onClose={dismissExportOutcome}
+              onClose={() => dismissExportOutcome(job.id)}
             />}
-            {!progress && outcome?.kind === "failed" && <InfoBar severity="error" title="Export failed" message={outcome.message} onClose={dismissExportOutcome} />}
+            {!progress && outcome?.kind === "failed" && <InfoBar severity="error" title="Export failed" message={outcome.message} onClose={() => dismissExportOutcome(job.id)} />}
           </div>
           <div className="export-settings__actions">
-            {runningHere
-              ? <button type="button" className="secondary-button" onClick={cancelExportJob} {...tooltipProps("Stop encoding. Nothing has been written yet.")}>Cancel</button>
+            {runningHere || job.status === "queued"
+              ? <button type="button" className="secondary-button" onClick={() => cancelExportJob(job.id)} {...tooltipProps("Cancel this export")}>Cancel</button>
               : onClose && <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>}
             <button
               type="button"
@@ -545,7 +543,7 @@ export function ExportView({ config, folderPath, onClose }: {
               disabled={!canExport}
               onClick={() => void start()}
               {...tooltipProps(canExport ? undefined : runningHere ? "Export is running" : blockers[0])}
-            >{runningHere ? "Exporting…" : "Export"}</button>
+            >{runningHere || job.status === "queued" ? "Queue export" : "Export"}</button>
           </div>
         </div>
       </section>

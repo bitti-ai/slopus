@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "./persistence";
+import { selectedWorker } from "./workers";
 
 export type Upscaler = "none" | "realesrgan" | "seedvr2";
 export const UPSCALERS = [
@@ -37,10 +38,14 @@ export function subscribeOtherWeights(listener: () => void) {
 export interface UpscaleConfig { method: Exclude<Upscaler, "none">; modelPath: string; vaePath?: string }
 export function upscaleConfig(method: Upscaler): UpscaleConfig | undefined {
   if (method === "none") return undefined;
+  if (method === "seedvr2") {
+    if (!selectedWorker()) throw new Error("Select a worker in Settings → Workers to use SeedVR2 upscaling.");
+    return { method, modelPath: "" };
+  }
   const template = OTHER_WEIGHT_TEMPLATES.find((item) => item.id === method)!;
   const paths = otherWeightPaths();
   if (template.files.some((file) => !paths[file.url])) throw new Error(`Download ${template.name} in Settings → Generator → Other weights first.`);
-  return { method, modelPath: paths[template.files[0].url], ...(method === "seedvr2" ? { vaePath: paths[OTHER_WEIGHT_TEMPLATES[1].files[1].url] } : {}) };
+  return { method, modelPath: paths[template.files[0].url] };
 }
 export async function refreshOtherWeights() {
   if (!isTauri()) return;

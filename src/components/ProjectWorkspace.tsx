@@ -24,7 +24,7 @@ import { outputDimensions, videoDurationMs } from "../lib/export";
  *  a project "on the agent" still means something: the pane opens with it. */
 export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 type ShownView = Exclude<ProjectView, "agent">;
-export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; referenceId?: string }
+export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; referenceId?: string; exportKind?: "video" | "image" }
 
 /** The scene badge includes native generation and the final encoding step. */
 export const isGenerationOngoing = (job: GenerationJob) =>
@@ -163,7 +163,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   useEffect(() => {
     if (!navigation) return;
     setView(navigation.view);
-    if (navigation.view === "export") setMediaMode("video");
+    if (navigation.view === "export") setMediaMode(navigation.exportKind ?? "video");
     if (navigation.sceneId) setSelectedGenerationJobId(navigation.sceneId);
     if (navigation.imageId) setImageNavigation({ id: navigation.imageId });
     if (navigation.referenceId) setReferenceNavigation({ id: navigation.referenceId });
