@@ -339,7 +339,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           </PropRow>
           <PropRow label="Take latents from" htmlFor={`${id}-continuation-from`}>
             <ComboBox id={`${id}-continuation-from`} aria-label="Take continuation latents from" disabled={disabled}
-              value={job.continuationFrom ?? "end"} options={[{ value: "end", label: "End" }, { value: "start", label: "Beginning" }]}
+              value={job.continuationFrom ?? "end"} options={[{ value: "end", label: "End" }, { value: "start", label: "Start" }]}
               onChange={(value) => onChange({ continuationFrom: value as "start" | "end" })} />
           </PropRow>
           <PropRow label="Overlap frames" htmlFor={`${id}-overlap`}>

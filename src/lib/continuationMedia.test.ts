@@ -93,7 +93,7 @@ it("reconstructs old suffix-only archives from saved generations, not edited sce
   expect(assetSceneSegment(config.assets[1], config.generationJobs)?.startFrame).toBe(0);
 });
 
-it("keeps Beginning overlap ranges separate and rejects suffix-only worker results", () => {
+it("keeps Start overlap ranges separate and rejects suffix-only worker results", () => {
   const config = project();
   config.assets[1].sceneSegments = joinedSceneSegments("b", "latents/b.safetensors", 141, 119, {
     sceneId: "a", latentRelativePath: "latents/a.safetensors", frameCount: 124, from: "start",

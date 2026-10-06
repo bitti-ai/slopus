@@ -482,7 +482,7 @@ describe("Generator scene controls", () => {
     expect(comboValue(screen.getByLabelText("Continuation overlap frames"))).toBe("22");
     expect(optionNames(screen.getByLabelText("Source scene for continuation"))).not.toContain("First scene");
     choose("Source scene for continuation", "Second scene");
-    choose("Take continuation latents from", "Beginning");
+    choose("Take continuation latents from", "Start");
     choose("Continuation overlap frames", "39");
     expect(screen.getByRole("switch", { name: "Lock Overlap" })).not.toBeChecked();
     fireEvent.click(screen.getByRole("switch", { name: "Lock Overlap" }));
