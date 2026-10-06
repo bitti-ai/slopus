@@ -32,6 +32,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Zoom the timeline video preview up to 400% with the zoom menu, buttons, or Ctrl+wheel, and scroll to inspect details. Choose Fit to see the whole frame again.
 - Video scenes offer a separate audio step count. Audio follows the video step count by default, with optional overrides for local and worker generation.
 - Character Sheet lets you enable Close up, Front view, Side view and Back view independently. Side view is off by default; generation and the combined image include only enabled views.
 - Real-ESRGAN and SeedVR2 weights support local file paths in Other weights settings. When using a worker, SeedVR2 sends selected local files and downloads any missing components there.

@@ -855,6 +855,59 @@ describe("zoom and the wheel", () => {
 });
 
 describe("the program monitor", () => {
+  it("magnifies the preview up to 400% and returns to Fit without editing the timeline", () => {
+    const { container, onChange } = render_(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+    const stage = container.querySelector<HTMLElement>(".program-stage")!;
+    const canvas = container.querySelector<HTMLElement>(".program-canvas")!;
+    Object.defineProperties(canvas, { clientWidth: { value: 960 }, clientHeight: { value: 540 } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Monitor zoom" }));
+    fireEvent.click(screen.getByRole("option", { name: "200%" }));
+    expect(stage.style.width).toBe("3840px");
+    expect(stage.style.height).toBe("2160px");
+    expect(canvas.scrollLeft).toBe(1440);
+    expect(canvas.scrollTop).toBe(810);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in preview" }));
+    expect(stage.style.width).toBe("7680px");
+    expect((screen.getByRole("button", { name: "Zoom in preview" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out preview" }));
+    expect(stage.style.width).toBe("5760px");
+    fireEvent.click(screen.getByRole("combobox", { name: "Monitor zoom" }));
+    fireEvent.click(screen.getByRole("option", { name: "25%" }));
+    expect((screen.getByRole("button", { name: "Zoom out preview" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("combobox", { name: "Monitor zoom" }));
+    fireEvent.click(screen.getByRole("option", { name: "Fit" }));
+    expect(stage.style.width).toBe("");
+    expect(stage.style.height).toBe("");
+    expect(canvas.scrollLeft).toBe(0);
+    expect(canvas.scrollTop).toBe(0);
+    expect(canvas.classList.contains("program-canvas--zoomed")).toBe(false);
+    expect(toolbarTime(container)).toBe("00:00:00:00");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("zooms around the pointer with Ctrl+wheel and leaves plain wheel scrolling available", () => {
+    const { container, onChange } = render_(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+    const canvas = container.querySelector<HTMLElement>(".program-canvas")!;
+    const stage = container.querySelector<HTMLElement>(".program-stage")!;
+    Object.defineProperties(canvas, { clientWidth: { value: 960 }, clientHeight: { value: 540 } });
+    const wheel = createEvent.wheel(canvas, { deltaY: -100, ctrlKey: true, clientX: 240, clientY: 135 });
+    fireEvent(canvas, wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(stage.style.width).toBe("1440px");
+    expect(canvas.scrollLeft).toBe(120);
+    expect(canvas.scrollTop).toBe(67.5);
+    const plainWheel = createEvent.wheel(canvas, { deltaY: 100 });
+    fireEvent(canvas, plainWheel);
+    expect(plainWheel.defaultPrevented).toBe(false);
+    expect(stage.style.width).toBe("1440px");
+    fireEvent.wheel(canvas, { deltaY: 100, ctrlKey: true, clientX: 240, clientY: 135 });
+    expect(stage.style.width).toBe("960px");
+    expect(canvas.scrollLeft).toBe(0);
+    expect(canvas.scrollTop).toBe(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("shows a muted line on an empty timeline and a footer with time, duration, zoom and safe areas", () => {
     const { container } = render_(projectWithMedia());
     const empty = container.querySelector(".program-empty") as HTMLElement;

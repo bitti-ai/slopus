@@ -438,7 +438,7 @@
   background: var(--surface-stage);
 }
 
-/* A flat stage, no dot grid. At 50% / 100% the stage has a fixed size and
+/* A flat stage, no dot grid. At a percentage zoom the stage has a fixed size and
    this scrolls; `margin: auto` on the stage centres it without clipping the
    top-left of a picture larger than the panel. */
 .program-canvas {
@@ -451,6 +451,7 @@
 
 .program-canvas--zoomed {
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .program-stage {
@@ -665,6 +666,7 @@
 }
 
 .program-footer__toggle:hover { background: var(--fill-subtle-hover); }
+.program-footer__toggle:disabled { opacity: 0.4; }
 
 /* A narrow monitor keeps the values and drops their labels first. */
 @container program-panel (max-width: 360px) {

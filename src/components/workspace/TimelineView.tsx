@@ -99,7 +99,8 @@ const shortTimecode = (ms: number, fps: number) => formatTimecode(ms, fps).repla
 const TRANSFORM_DEFAULTS = { scale: 100, rotation: 0, positionX: 0, positionY: 0 } as const;
 
 type DragMode = "move" | "trim-start" | "trim-end";
-type MonitorZoom = "fit" | "50" | "100";
+const MONITOR_ZOOM_STEPS = [25, 50, 75, 100, 150, 200, 300, 400];
+type MonitorZoom = "fit" | number;
 
 /** One drag, from the press that began it. Everything the pointer needs is
  *  measured ONCE, here: the lane's geometry, what may be snapped to, and how
@@ -262,8 +263,10 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      editor: a clip only means something inside this project. */
   const clipboard = useRef<TimelineClip | null>(null);
   const [hasClipboard, setHasClipboard] = useState(false);
-  /* Program monitor: Fit / 50% / 100%, and the title/action-safe guides. */
+  /* Monitor magnification is view state, independent of clip transforms. */
   const [monitorZoom, setMonitorZoom] = useState<MonitorZoom>("fit");
+  const monitorCanvasRef = useRef<HTMLDivElement>(null);
+  const monitorAnchor = useRef<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
   const [safeArea, setSafeArea] = useState(false);
   /* The side panes collapse from the toolbar instead of disappearing at a
      window width — a narrow window keeps whatever the user chose to see. */
@@ -1138,6 +1141,60 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
   const frameSize = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
   const monitorScale = monitorZoom === "fit" ? null : Number(monitorZoom) / 100;
+  const changeMonitorZoom = useCallback((next: MonitorZoom, pointer?: { x: number; y: number }) => {
+    const canvas = monitorCanvasRef.current;
+    if (canvas && next !== monitorZoom) {
+      const scale = monitorZoom === "fit"
+        ? Math.min(canvas.clientWidth / frameSize.width, canvas.clientHeight / frameSize.height)
+        : monitorZoom / 100;
+      const screenX = pointer?.x ?? canvas.clientWidth / 2;
+      const screenY = pointer?.y ?? canvas.clientHeight / 2;
+      if (scale > 0) monitorAnchor.current = {
+        x: (canvas.scrollLeft + screenX - Math.max(0, (canvas.clientWidth - frameSize.width * scale) / 2)) / scale,
+        y: (canvas.scrollTop + screenY - Math.max(0, (canvas.clientHeight - frameSize.height * scale) / 2)) / scale,
+        screenX,
+        screenY,
+      };
+    }
+    setMonitorZoom(next);
+  }, [monitorZoom, frameSize.width, frameSize.height]);
+  const stepMonitorZoom = useCallback((direction: 1 | -1, pointer?: { x: number; y: number }) => {
+    const canvas = monitorCanvasRef.current;
+    const current = monitorZoom === "fit"
+      ? (canvas ? Math.min(canvas.clientWidth / frameSize.width, canvas.clientHeight / frameSize.height) * 100 : 100)
+      : monitorZoom;
+    const next = direction > 0
+      ? MONITOR_ZOOM_STEPS.find((step) => step > current + 1e-6)
+      : [...MONITOR_ZOOM_STEPS].reverse().find((step) => step < current - 1e-6);
+    if (next !== undefined) changeMonitorZoom(next, pointer);
+  }, [monitorZoom, frameSize.width, frameSize.height, changeMonitorZoom]);
+  useLayoutEffect(() => {
+    const canvas = monitorCanvasRef.current;
+    const anchor = monitorAnchor.current;
+    if (canvas) {
+      if (monitorZoom === "fit") {
+        canvas.scrollLeft = 0;
+        canvas.scrollTop = 0;
+      } else if (anchor) {
+        canvas.scrollLeft = Math.max(0, anchor.x * monitorZoom / 100 - anchor.screenX);
+        canvas.scrollTop = Math.max(0, anchor.y * monitorZoom / 100 - anchor.screenY);
+      }
+    }
+    monitorAnchor.current = null;
+  }, [monitorZoom]);
+  useEffect(() => {
+    const canvas = monitorCanvasRef.current;
+    if (!canvas) return;
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      if (!event.deltaY) return;
+      const bounds = canvas.getBoundingClientRect();
+      stepMonitorZoom(event.deltaY < 0 ? 1 : -1, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+    };
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", wheel);
+  }, [stepMonitorZoom]);
   const stageStyle = {
     "--frame-aspect": frameSize.width / frameSize.height,
     ...(monitorScale ? { width: frameSize.width * monitorScale, height: frameSize.height * monitorScale, flex: "none" } : {}),
@@ -1303,7 +1360,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
         <main className="program-panel">
           <h2 className="sr-only">Program monitor</h2>
-          <div className={`program-canvas${monitorScale ? " program-canvas--zoomed" : ""}`}>
+          <div ref={monitorCanvasRef} className={`program-canvas${monitorScale ? " program-canvas--zoomed" : ""}`}>
             <div className="program-stage" style={stageStyle}>
               {/* The real picture: the clip under the playhead, decoded from
                   its own file. An empty timeline still shows an empty monitor
@@ -1352,13 +1409,19 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               <span className="program-footer__range" aria-label="In to out">{formatTimecode(Math.max(0, (outMs ?? duration) - (inMs ?? 0)), fps)}</span>
             </span>}
             <span className="program-footer__spacer" />
+            <button type="button" className="program-footer__toggle" aria-label="Zoom out preview"
+              disabled={monitorZoom === MONITOR_ZOOM_STEPS[0]} onClick={() => stepMonitorZoom(-1)}
+              {...tooltipProps("Zoom out preview", "Ctrl+wheel")}><ZoomOut16 aria-hidden="true" /></button>
             <ComboBox
               className="program-footer__zoom"
               aria-label="Monitor zoom"
-              value={monitorZoom}
-              onChange={(value) => setMonitorZoom(value as MonitorZoom)}
-              options={[{ value: "fit", label: "Fit" }, { value: "50", label: "50%" }, { value: "100", label: "100%" }]}
+              value={String(monitorZoom)}
+              onChange={(value) => changeMonitorZoom(value === "fit" ? "fit" : Number(value))}
+              options={[{ value: "fit", label: "Fit" }, ...MONITOR_ZOOM_STEPS.map((step) => ({ value: String(step), label: `${step}%` }))]}
             />
+            <button type="button" className="program-footer__toggle" aria-label="Zoom in preview"
+              disabled={monitorZoom === MONITOR_ZOOM_STEPS.at(-1)} onClick={() => stepMonitorZoom(1)}
+              {...tooltipProps("Zoom in preview", "Ctrl+wheel")}><ZoomIn16 aria-hidden="true" /></button>
             <button
               type="button"
               className="ui-toggle-button program-footer__toggle"
