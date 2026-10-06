@@ -1107,6 +1107,14 @@ export function formatSceneSeconds(seconds: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+/** Generation prompts use minute:second timestamps with millisecond precision. */
+function scenePromptTimestamp(seconds: number): string {
+  const milliseconds = Math.round(seconds * 1000);
+  const minutes = String(Math.floor(milliseconds / 60_000)).padStart(2, "0");
+  const remainder = ((milliseconds % 60_000) / 1000).toFixed(3).padStart(6, "0");
+  return `${minutes}:${remainder}`;
+}
+
 /** The shots of a job, whatever era the file is from. A job written before
  *  scenes existed becomes ONE shot holding the words and tags it already had —
  *  no words are added and none are dropped. */
@@ -1310,7 +1318,7 @@ function compileCharacterReplaceSegments(job: GenerationJob, references: Project
     frame("subject_definitions:\n"), ...definitions,
     frame(`\nsummary:\n[video editing + reference generation${audioVideos.length ? " + audio reuse" : ""}] The target video is an edited version of ${videos.map((reference) => videoLabel(reference.id)).join(", ") || "the selected source videos"}. Replace the selected character in each shot with its assigned replacement character.\n\nretention_analysis:\n${retention.join("\n")}\n\ndetailed_description:\nRetain the visual style of each source video.\n`),
     ...shots.flatMap((shot, index): PromptSegment[] => {
-      const timestamp = `${String(Math.floor(shot.startSeconds / 60)).padStart(2, "0")}:${(shot.startSeconds % 60).toFixed(3).padStart(6, "0")}`;
+      const timestamp = scenePromptTimestamp(shot.startSeconds);
       const sourceAudio = audioVideos.find((reference) => reference.id === shot.videoReferenceId);
       return [frame(`${index ? "\n" : ""}[Shot ${index + 1}] ${index ? `At ${timestamp}, ` : ""}`), ...replacement(shot),
         ...(sourceAudio ? [frame(` Reuse ${audioLabel(sourceAudio.id)} in sync with this shot.`)] : [frame(" Do not reuse the source soundtrack.")])];
@@ -1413,7 +1421,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   /** The `[Shot N]` marker. Shot 1 never carries a timestamp (base guide §4.2);
    *  every later shot carries the cut it starts on (docs/architecture.md). */
   const marker = (shot: CompiledShot): string =>
-    shot.index === 0 ? "[Shot 1] " : `[Shot ${shot.index + 1}] (cut at ${formatSceneSeconds(shot.startSeconds)}s) `;
+    shot.index === 0 ? "[Shot 1] " : `[Shot ${shot.index + 1}] At ${scenePromptTimestamp(shot.startSeconds)}, `;
 
   // Sentences the settings contribute after the description. The field name is
   // Slopus's, the terms inside it are the user's — hence three segments per

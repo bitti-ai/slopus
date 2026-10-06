@@ -801,8 +801,8 @@ describe("project workspace timecode", () => {
     openDebugPrompt();
     const compiled = document.querySelector(".compiled-prompt__text")!.textContent!;
     expect(compiled).toContain("[Shot 1] Live-action, cinematic, A quiet product film.");
-    expect(compiled).toContain("[Shot 2] (cut at 3s) she stops at the doorway.");
-    expect(compiled).toContain("[Shot 3] (cut at 6.5s) the door opens");
+    expect(compiled).toContain("[Shot 2] At 00:03.000, she stops at the doorway.");
+    expect(compiled).toContain("[Shot 3] At 00:06.500, the door opens");
     expect(compiled.indexOf("[Shot 2]")).toBeLessThan(compiled.indexOf("[Shot 3]"));
     // And the whole thing is still a project that can be saved.
     expect(parseProjectConfig(next)).toBeTruthy();
@@ -1131,8 +1131,8 @@ describe("project workspace timecode", () => {
       "The target video is in a live-action, cinematic style.",
       "[Shot 1] <Subject 1> walks towards the camera on <Subject 2>. The shot features <Subject 1> and <Subject 2>, matching the definitions above. Camera movement: push in, slow speed.",
       // Shot 2 names nobody, so nothing claims it features anyone.
-      "[Shot 2] (cut at 4.5s) Medium close-up, she stops at a doorway and looks up.",
-      "[Shot 3] (cut at 9s) the door opens and light spills across <Subject 2>. The shot features <Subject 2>, matching the definitions above.",
+      "[Shot 2] At 00:04.500, Medium close-up, she stops at a doorway and looks up.",
+      "[Shot 3] At 00:09.000, the door opens and light spills across <Subject 2>. The shot features <Subject 2>, matching the definitions above.",
       "",
       "overall_soundscape:",
       "Rain on cobbles, distant traffic, her boots on stone.",

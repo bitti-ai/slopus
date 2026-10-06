@@ -822,19 +822,19 @@ describe("scenes and the shots inside them", () => {
       id: "scene-three", title: "Three shots", now, durationSeconds: 9,
       shots: [
         // Deliberately out of order in the array: the START TIMES decide.
-        shot("b", 3, "she stops at the doorway"),
+        shot("b", 3.5, "she stops at the doorway"),
         shot("a", 0, "she walks towards the camera"),
         shot("c", 6.5, "the door opens"),
       ],
     });
     const compiled = compileGenerationJobPrompt(job, []);
     expect(compiled).toContain("[Shot 1] Live-action, cinematic, she walks towards the camera.");
-    expect(compiled).toContain("[Shot 2] (cut at 3s) she stops at the doorway.");
-    expect(compiled).toContain("[Shot 3] (cut at 6.5s) the door opens");
+    expect(compiled).toContain("[Shot 2] At 00:03.500, she stops at the doorway.");
+    expect(compiled).toContain("[Shot 3] At 00:06.500, the door opens");
     // In order, and only shot 1 is timestamp-free (base guide §4.2).
     expect(compiled.indexOf("[Shot 1]")).toBeLessThan(compiled.indexOf("[Shot 2]"));
     expect(compiled.indexOf("[Shot 2]")).toBeLessThan(compiled.indexOf("[Shot 3]"));
-    expect(compiled).not.toContain("[Shot 1] (cut");
+    expect(compiled).not.toContain("[Shot 1] At ");
     // The mirror is the user's own lines and nothing else.
     expect(job.creativeBrief).toBe("she walks towards the camera\n\nshe stops at the doorway\n\nthe door opens");
     expect(sceneBriefText(sceneShots(job))).toBe(job.creativeBrief);
@@ -892,7 +892,7 @@ describe("scenes and the shots inside them", () => {
     // the street.
     expect(compiled).toContain("<Subject 1> (appears in [Shot 1]): fully_preserved");
     expect(compiled).toContain("<Subject 2> (appears in [Shot 1], [Shot 3]): fully_preserved");
-    expect(compiled).toContain("[Shot 2] (cut at 4.5s) Medium close-up, she stops at a doorway and looks up.\n");
+    expect(compiled).toContain("[Shot 2] At 00:04.500, Medium close-up, she stops at a doorway and looks up.\n");
     // The scene's own sound and music replace the two default lines.
     expect(compiled).toContain("overall_soundscape:\nRain on cobbles, distant traffic, her boots on stone.");
     expect(compiled).toContain("non_diegetic_music:\nLow sustained cello");
