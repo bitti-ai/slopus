@@ -1,3 +1,4 @@
+import { imageSettings } from "./imageSettings";
 import { createImageEditScene } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import { outputDimensions } from "./export";
@@ -38,7 +39,7 @@ export function initialExtendBounds(width: number, height: number): ExtendBounds
 }
 
 export function extendOutputDimensions(config: ProjectConfig, source: { width: number; height: number }, bounds: ExtendBounds) {
-  const selected = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const selected = outputDimensions(imageSettings(config).resolution, imageSettings(config).aspectRatio);
   const pixelBudget = Math.min(source.width * source.height, selected.width * selected.height, EXTEND_MAX_PIXELS);
   const scale = Math.min(1, Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
   const width = Math.floor(bounds.width * scale / EXTEND_GRID) * EXTEND_GRID;
@@ -95,7 +96,7 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
   scene.nodes[0].description = "A wider view of the source scene, as if the view were zoomed out. Continue the same surroundings beyond the visible edges, matching perspective, scale, lighting and textures. One continuous scene, with the original content in its existing position. " + options.prompt.trim();
-  const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
+  const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
   // Preserve the original throughout denoising while generating every new
   // region together. Separate border passes break shared context at the seams.
   const edits = [{ ...preserved, prompt: compiled.prompt, feather: 0, invertMask: true }];

@@ -407,7 +407,7 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   expect(screen.getByRole("button", { name: "Lantern" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Lettering" })).toBeInTheDocument();
   expect(current().references).toEqual(saved.references);
-  expect(current().settings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5" });
+  expect(current().imageSettings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5" });
   // Viewing a result starts a fresh history: Ctrl+Z has nothing to undo.
   undoImageEdit();
   expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe(saved.scene.nodes[0].description);
@@ -418,6 +418,9 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(current().imageScene).toEqual({ ...saved.scene, outputAssetId: "result-1" });
   expect(current().assets[1].imageGeneration).toEqual(saved);
+  expect(current().settings).toEqual(initial.settings);
+  expect(current().brief.resolution).toBe(initial.brief.resolution);
+  expect(current().brief.aspectRatio).toBe(initial.brief.aspectRatio);
 });
 
 it("displays each generated image at its saved aspect ratio independently of future generation settings", () => {
@@ -431,10 +434,12 @@ it("displays each generated image at its saved aspect ratio independently of fut
   const frame = screen.getByLabelText("Image placement canvas").parentElement!;
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   choose("Resolution", "2720 × 1536");
-  expect(current().settings.resolution).toBe("1536p");
+  expect(current().imageSettings?.resolution).toBe("1536p");
+  expect(current().settings).toEqual(initial.settings);
+  expect(current().brief).toEqual(initial.brief);
   choose("Resolution", "3648 × 2048");
   choose("Aspect ratio", "1:1");
-  expect(current().settings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
+  expect(current().imageSettings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   fireEvent.click(screen.getByRole("button", { name: "View Tall" }));
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1088 / 1920));
@@ -442,7 +447,9 @@ it("displays each generated image at its saved aspect ratio independently of fut
   expect(frame.style.getPropertyValue("--image-ratio")).toBe(String(1376 / 768));
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.assets).toEqual(initial.assets);
-  expect(reopened.settings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
+  expect(reopened.settings).toEqual(initial.settings);
+  expect(reopened.brief).toEqual(initial.brief);
+  expect(reopened.imageSettings).toMatchObject({ resolution: "2048p", aspectRatio: "1:1" });
 });
 
 it("removes generated images through their context menu and keeps the preview and thumbnail valid", () => {

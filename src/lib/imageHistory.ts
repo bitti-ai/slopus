@@ -1,14 +1,14 @@
 import { createImageEditScene, createImageScene, imageSceneReferenceIds, imageScenePromptText, imageSourceSchema } from "./imageScene";
 import { actionReferenceIds, type ImageGenerationSnapshot, type ProjectAsset, type ProjectConfig } from "./project";
+import { imageSettings } from "./imageSettings";
 
 export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, generatorTemplateId: string): ImageGenerationSnapshot {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
   const cited = actionReferenceIds(imageScenePromptText(scene));
   return structuredClone({
     scene: { ...scene, outputAssetId: null },
-    resolution: config.settings.resolution,
-    aspectRatio: config.settings.aspectRatio,
-    defaultLook: config.settings.defaultLook ?? null,
+    ...imageSettings(config),
+    defaultLook: imageSettings(config).defaultLook ?? null,
     briefPrompt: config.brief.prompt,
     prompt,
     generatorTemplateId,
@@ -133,8 +133,8 @@ export function restoreGeneratedImage(config: ProjectConfig, id: string): Projec
   const references = new Map(restored.references.map((reference) => [reference.id, reference]));
   return { ...config, thumbnail: asset.relativePath ?? null,
     imageScene: { ...scene, outputAssetId: id },
-    settings: { ...config.settings, resolution: restored.resolution, aspectRatio: restored.aspectRatio, defaultLook: restored.defaultLook },
-    brief: { ...config.brief, prompt: restored.briefPrompt, resolution: restored.resolution, aspectRatio: restored.aspectRatio },
+    imageSettings: { resolution: restored.resolution, aspectRatio: restored.aspectRatio, defaultLook: restored.defaultLook },
+    brief: { ...config.brief, prompt: restored.briefPrompt },
     references: [...config.references.map((reference) => references.get(reference.id) ?? reference),
       ...restored.references.filter((reference) => !config.references.some((current) => current.id === reference.id))],
   };

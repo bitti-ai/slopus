@@ -3,6 +3,7 @@ import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Co
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
+import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
@@ -55,6 +56,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   onImageOpened?: () => void;
 }) {
   const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
+  const settings = imageSettings(config);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const imageRoot = scene.rootType === "image";
   const generatedImage = config.assets.find((asset) => asset.id === scene.outputAssetId && !asset.imageDraft && asset.imageGeneration);
@@ -165,10 +167,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const menuImage = images.find((asset) => asset.id === imageMenu?.id);
   const canUseMenuImage = Boolean(menuImage?.relativePath || menuImage?.sourcePath);
   // Generated assets retain the dimensions returned by the native encoder.
-  // Project settings size only the empty canvas and future generation requests.
+  // Image settings size only the empty canvas and future generation requests.
   const { width, height } = imageRoot && scene.sourceImage ? scene.sourceImage : output?.width && output?.height
     ? { width: output.width, height: output.height }
-    : outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+    : outputDimensions(settings.resolution, settings.aspectRatio);
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
 
   const commit = (next: ImageScene) => {
@@ -719,8 +721,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             <PropRow label="Seed" htmlFor={rootField("seed")}><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} data-tooltip="-1 picks a random seed" onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
             {generatedImage && <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />}
-            <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={config.settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, settings: { ...current.settings, aspectRatio }, brief: { ...current.brief, aspectRatio } })); }} /></PropRow>
-            <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={config.settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, config.settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, config.settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, settings: { ...current.settings, resolution }, brief: { ...current.brief, resolution } })); }} /></PropRow>
+            <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>
+            <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>
           </PropSection>
           <PropSection title="Style" persistKey="image.style">
             <PropRow label="Mode" htmlFor={rootField("mode")}><ComboBox id={rootField("mode")} aria-label="Mode" value={scene.style.mode} options={[{ value: "photo", label: "Photo" }, { value: "art", label: "Art" }]} onChange={(value) => commit({ ...scene, style: { ...scene.style, mode: value as "photo" | "art" } })} /></PropRow>

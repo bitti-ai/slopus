@@ -1,3 +1,4 @@
+import { imageSettings } from "./imageSettings";
 import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
 import { actionReferenceIds, activeReferenceRefmods, isVideoReference, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
 import { SHOT_TAG_GROUPS } from "./shot-tags";
@@ -32,7 +33,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     return [{ id: reference.id, name: reference.name, role, description, source: sources.length ? ` from ${sources.join(" and ")}` : "" }];
   });
   if (picture > 9) throw new Error("MiniMax H3 supports at most nine reference images per generation.");
-  const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === config.settings.defaultLook)?.label;
+  const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === imageSettings(config).defaultLook)?.label;
   const parts = imageScenePromptParts(scene, look);
   if (!parts) return { prompt: "", references };
   const label = (index: number) => `<Subject ${index + 1}>`;

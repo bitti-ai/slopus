@@ -16,6 +16,7 @@ import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloa
 import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
 import { createEmptyImage, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
+import { sceneGenerationRequest } from "./sceneGeneration";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -164,20 +165,26 @@ describe("agent scene generation", () => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
-  it("generates an image in a video project and preserves its video scenes", async () => {
+  it("generates an image at its own resolution and preserves the video generation canvas after reopening", async () => {
     const { queue, first } = setup();
     const original = first.getSnapshot().config;
+    first.update((current) => ({ ...current, imageSettings: { resolution: "768p", aspectRatio: "1:1" } }));
     vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/poster.jpg", width: 768, height: 768 });
     queue.enqueueImage(first, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
-    expect(request).toMatchObject({ stillImage: true, frames: 1 });
+    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 768, canvasHeight: 768 });
     await finish(queue, request.jobId);
     const reopened = parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config)));
     expect(reopened.imageScene?.outputAssetId).toBeTruthy();
     expect(reopened.assets.some((asset) => asset.relativePath === "media/generated/poster.jpg")).toBe(true);
     expect(reopened.generationJobs).toEqual(original.generationJobs);
     expect(reopened.timeline).toEqual(original.timeline);
+    expect(reopened.settings).toEqual(original.settings);
+    expect(reopened.brief).toEqual(original.brief);
+    expect(reopened.assets[0].imageGeneration).toMatchObject({ resolution: "768p", aspectRatio: "1:1" });
+    expect(sceneGenerationRequest(reopened.generationJobs[0], reopened, "C:/First", 20))
+      .toMatchObject({ canvasWidth: 736, canvasHeight: 416 });
   });
   it.each([-1, 0, Number.MAX_SAFE_INTEGER])("saves the exact submitted image seed without changing the authored seed (%s)", async (seed) => {
     const { queue, saved } = setup();

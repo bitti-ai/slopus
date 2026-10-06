@@ -60,7 +60,10 @@ describe("generated image history", () => {
     const reopened = parseProjectConfig(JSON.parse(JSON.stringify(config)));
     const restored = restoreGeneratedImage(reopened, "result");
     expect(restored.imageScene).toEqual({ ...snapshot.scene, outputAssetId: "result" });
-    expect(restored.settings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5", defaultLook: "watercolor" });
+    expect(restored.settings).toEqual(config.settings);
+    expect(restored.brief.resolution).toBe(config.brief.resolution);
+    expect(restored.brief.aspectRatio).toBe(config.brief.aspectRatio);
+    expect(restored.imageSettings).toMatchObject({ resolution: "1088p", aspectRatio: "4:5", defaultLook: "watercolor" });
     expect(restored.brief.prompt).toBe(snapshot.briefPrompt);
     expect(restored.references).toEqual([snapshot.references[0], config.references[1]]);
     expect(restored.assets).toEqual(config.assets);

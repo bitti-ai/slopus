@@ -21,6 +21,14 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     }
     check_iso_datetime("Project createdAt", &config.created_at)?;
     check_iso_datetime("Project updatedAt", &config.updated_at)?;
+    if let Some(settings) = &config.image_settings {
+        if !is_supported_resolution(&settings.resolution)
+            || !is_supported_aspect_ratio(&settings.aspect_ratio)
+            || settings.default_look.as_ref().is_some_and(|look| !is_shot_tag_id(look))
+        {
+            return Err("Invalid still-image generation settings.".into());
+        }
+    }
     if !is_supported_aspect_ratio(&config.settings.aspect_ratio) {
         return Err(format!(
             "Unsupported aspect ratio '{}'.",

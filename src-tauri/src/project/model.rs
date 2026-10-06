@@ -23,6 +23,8 @@ pub(crate) struct ProjectConfig {
     pub(crate) generation_type: GenerationType,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_scene: Option<super::image::ImageScene>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image_settings: Option<ImageSettings>,
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) created_at: String,
@@ -42,6 +44,15 @@ pub(crate) struct ProjectConfig {
     pub(crate) agent_conversation: AgentConversation,
     #[serde(default)]
     pub(crate) provider_settings: BTreeMap<String, ProviderSetting>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageSettings {
+    pub(crate) resolution: String,
+    pub(crate) aspect_ratio: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) default_look: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

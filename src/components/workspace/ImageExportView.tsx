@@ -1,3 +1,4 @@
+import { imageSettings } from "../../lib/imageSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { closestExportAspectRatio, exportSizeChoices } from "../../lib/export";
@@ -59,7 +60,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
   /* Match presets to the selected image, including imported or resized images
      whose dimensions differ from their saved generation settings. */
   const original = output?.width && output?.height ? { width: output.width, height: output.height } : null;
-  const aspectRatio = original ? closestExportAspectRatio(original) : output?.imageGeneration?.aspectRatio ?? config.settings.aspectRatio;
+  const aspectRatio = original ? closestExportAspectRatio(original) : output?.imageGeneration?.aspectRatio ?? imageSettings(config).aspectRatio;
   const sizes = exportSizeChoices(original, aspectRatio, "original")
     .map((size, index) => original && index === 0 ? { ...size, value: "original" } : size);
   const [chosenSize, setChosenSize] = useState<string | null>(null);

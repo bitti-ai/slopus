@@ -1,3 +1,4 @@
+import { imageSettings } from "./imageSettings";
 import { createImageEditScene, createImageScene, imageSourceSchema, type ImageNode, type ImageSource } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import type { ProjectConfig, ProjectReference } from "./project";
@@ -30,7 +31,7 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
     const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };
-    const compiled = compileImagePrompt({ ...config, settings: { ...config.settings, defaultLook: null }, imageScene: editScene });
+    const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: editScene });
     return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
   });
   if (!edits.length) throw new Error("Enter a whole-image edit prompt or add an Edit node before generating.");

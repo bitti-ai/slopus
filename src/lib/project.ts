@@ -639,6 +639,11 @@ export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   generationType: generationTypeSchema.default("video"),
   imageScene: imageSceneSchema.nullish(),
+  imageSettings: z.object({
+    resolution: resolutionSchema,
+    aspectRatio: aspectRatioSchema,
+    defaultLook: z.string().regex(SHOT_TAG_ID_PATTERN).nullish(),
+  }).nullish(),
   id: idSchema,
   name: z.string().min(1).max(120),
   createdAt: isoDateSchema,

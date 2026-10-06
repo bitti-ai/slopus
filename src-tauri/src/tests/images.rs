@@ -147,6 +147,23 @@ fn image_export_resizes_and_reencodes_at_the_chosen_quality() {
 }
 
 #[test]
+fn image_settings_survive_save_without_changing_video_settings() {
+    let mut config = image_fixture();
+    config.image_settings = Some(serde_json::from_value(serde_json::json!({
+        "resolution": "1536p", "aspectRatio": "1:1", "defaultLook": "watercolor"
+    })).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let opened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(opened.config.image_settings, config.image_settings);
+    assert_eq!(opened.config.settings, config.settings);
+    assert_eq!(opened.config.brief, config.brief);
+    let mut invalid = opened.config;
+    invalid.image_settings.as_mut().unwrap().resolution = "invalid".into();
+    assert!(validate_and_normalize_config(invalid).is_err());
+}
+
+#[test]
 fn image_export_does_not_silently_skip_a_selected_upscaler() {
     use crate::commands::artifacts::{export_image_file_with, ImageExportOptions};
     use crate::slopfab::upscale::{UpscaleConfig, UpscaleMethod};

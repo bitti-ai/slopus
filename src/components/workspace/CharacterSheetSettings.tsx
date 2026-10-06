@@ -1,3 +1,4 @@
+import { imageSettings } from "../../lib/imageSettings";
 import { useMemo, useState } from "react";
 import { CHARACTER_SHEET_HEIGHTS, CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
@@ -12,11 +13,11 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
   initialOptions?: CharacterSheetOptions;
   onExecute: (options: CharacterSheetOptions) => void; onClose: () => void;
 }) {
-  const [options, setOptions] = useState<CharacterSheetOptions>(() => ({ ...emptyCharacterSheetOptions(), height: characterSheetDimensions(config.settings.resolution)[0].height,
+  const [options, setOptions] = useState<CharacterSheetOptions>(() => ({ ...emptyCharacterSheetOptions(), height: characterSheetDimensions(imageSettings(config).resolution)[0].height,
     steps: config.imageScene?.steps ?? defaultSteps, seed: config.imageScene?.seed ?? -1, ...initialOptions,
     // Older submitted sheets always generated all four views.
     ...(initialOptions && !initialOptions.views ? { views: { closeUp: true, front: true, side: true, back: true } } : {}) }));
-  const dimensions = characterSheetDimensions(config.settings.resolution, options.height);
+  const dimensions = characterSheetDimensions(imageSettings(config).resolution, options.height);
   const selectedViews = characterSheetViews(options);
   const indices = characterSheetViewIndices(options);
   const [error, setError] = useState<string | null>(null);

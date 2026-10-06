@@ -1,3 +1,4 @@
+import { imageSettings } from "./imageSettings";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
@@ -275,7 +276,7 @@ export class WorkQueue {
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
-    const { width, height } = edit?.source ?? outputDimensions(current.settings.resolution, current.settings.aspectRatio);
+    const { width, height } = edit?.source ?? outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
     // Generating again from a finished image makes a new image in its family.
@@ -350,7 +351,7 @@ export class WorkQueue {
     config.imageScene = { ...(config.imageScene ?? createImageScene()),
       steps: generationStepsWithLoras(options?.steps ?? current.imageScene?.steps ?? template.defaultSteps, config),
       seed: options?.seed ?? current.imageScene?.seed ?? -1 };
-    const dimensions = characterSheetDimensions(config.settings.resolution, options?.height);
+    const dimensions = characterSheetDimensions(imageSettings(config).resolution, options?.height);
     const indices = characterSheetViewIndices(options);
     const order = CHARACTER_SHEET_ORDER.filter((index) => indices.includes(index));
     const firstView = order[0];
