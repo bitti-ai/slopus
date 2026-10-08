@@ -196,18 +196,20 @@ export async function getAgentModels(provider: EndpointProviderId, settings: End
   return invoke<string[]>("list_agent_models", { provider, setting: endpointProviderSetting(settings) });
 }
 
-export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string, conversation: AgentMessage[] = [], signal?: AbortSignal): Promise<AgentTurnResponse> {
+export type AgentScope = "project" | "settings";
+
+export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string, conversation: AgentMessage[] = [], signal?: AbortSignal, scope: AgentScope = "project"): Promise<AgentTurnResponse> {
   signal?.throwIfAborted();
   const createdAt = new Date().toISOString();
   const userMessageId = crypto.randomUUID();
   const assistantMessageId = crypto.randomUUID();
   if (isTauri()) {
-    const stopCaptures = await listenForAgentCaptures(record, requestId);
+    const stopCaptures = scope === "settings" ? () => {} : await listenForAgentCaptures(record, requestId);
     try {
       signal?.throwIfAborted();
       const response = await invoke<Omit<AgentTurnResponse, "messages">>("run_agent_turn", { request: {
         requestId, folderPath: record.folderPath, provider, prompt, config: withAgentEndpointSettings(record.config),
-        conversation, generators: generatorContext(),
+        conversation, generators: generatorContext(), scope,
       } });
       const assistantContent = "summary" in response.result ? response.result.summary : response.result.content;
       return {
@@ -220,7 +222,9 @@ export async function runAgentTurn(record: ProjectRecord, provider: ProviderId, 
       };
     } finally { stopCaptures(); }
   }
-  const result = demoTurn(record.config, prompt);
+  const result = scope === "settings"
+    ? { kind: "answer" as const, content: "I can help configure generator templates, weight paths and LoRAs in the desktop app. Open Settings > Generator to review them in this browser preview." }
+    : demoTurn(record.config, prompt);
   const assistantContent = "summary" in result ? result.summary : result.content;
   return {
     result,

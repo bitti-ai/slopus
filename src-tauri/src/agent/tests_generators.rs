@@ -184,6 +184,15 @@ fn parses_generator_contract_and_rejects_unknown_fields() {
 
 #[test]
 fn endpoint_turn_inspects_weights_then_corrects_and_returns_generator_commands() {
+    inspect_weights_and_edit_generators(AgentScope::Project);
+}
+
+#[test]
+fn settings_turn_inspects_weights_and_edits_generators_without_a_project() {
+    inspect_weights_and_edit_generators(AgentScope::Settings);
+}
+
+fn inspect_weights_and_edit_generators(scope: AgentScope) {
     use crate::project::{ProjectConfig, ProviderOption, ProviderSetting};
     use std::{
         io::{BufRead, BufReader, Read, Write},
@@ -193,11 +202,9 @@ fn endpoint_turn_inspects_weights_then_corrects_and_returns_generator_commands()
     };
     let dir = tempfile::tempdir().unwrap();
     let fixture = include_str!("../../../fixtures/project-v1-complete.json");
-    fs::write(
-        dir.path().join(crate::project::storage::PROJECT_FILE_NAME),
-        fixture,
-    )
-    .unwrap();
+    if scope == AgentScope::Project {
+        fs::write(dir.path().join(crate::project::storage::PROJECT_FILE_NAME), fixture).unwrap();
+    }
     tensor_file(
         &dir.path().join("minimax_h3.safetensors"),
         "blocks.0.weight",
@@ -208,11 +215,15 @@ fn endpoint_turn_inspects_weights_then_corrects_and_returns_generator_commands()
     let folder = dir.path().to_string_lossy().to_string();
     let server = thread::spawn(move || {
         let mut bodies = Vec::new();
-        for reply in [
+        let mut replies = vec![
             json!({"kind":"inspect","requests":[{"op":"generator.scan","folder":folder}]}),
             json!({"kind":"generatorCommands","summary":"Invalid","commands":[{"op":"generator.add","id":"new","settings":{"name":"New","defaultSteps":1}}]}),
             json!({"kind":"generatorCommands","summary":"Created","commands":[{"op":"generator.add","id":"new","settings":{"name":"New","defaultSteps":20}}]}),
-        ] {
+        ];
+        if scope == AgentScope::Settings {
+            replies.insert(0, json!({"kind":"inspect","requests":[{"op":"timeline.capture","at":0}]}));
+        }
+        for reply in replies {
             let started = std::time::Instant::now();
             let (mut socket, _) = loop {
                 match listener.accept() {
@@ -270,7 +281,8 @@ fn endpoint_turn_inspects_weights_then_corrects_and_returns_generator_commands()
     );
     let request = AgentTurnRequest {
         request_id: "generator-test".into(),
-        folder_path: dir.path().to_string_lossy().into(),
+        scope,
+        folder_path: if scope == AgentScope::Settings { String::new() } else { dir.path().to_string_lossy().into() },
         provider: ProviderId::Local,
         prompt: "Inspect this folder and create a generator".into(),
         config,
@@ -287,16 +299,20 @@ fn endpoint_turn_inspects_weights_then_corrects_and_returns_generator_commands()
         .iter()
         .any(|event| matches!(event, AgentEvent::Validation { .. })));
     let bodies = server.join().unwrap();
-    for body in &bodies[1..] {
+    let offset = usize::from(scope == AgentScope::Settings);
+    if scope == AgentScope::Settings {
+        assert!(bodies[0].to_string().contains("Settings-only session without an open project"));
+        assert!(bodies[1].to_string().contains("Settings sessions allow only"));
+    }
+    for body in &bodies[1 + offset..] {
         let prompt = body["messages"][1]["content"].as_str().unwrap();
         assert!(prompt.contains("minimax_h3.safetensors"));
         assert!(prompt.contains("tensorCount"));
         assert!(!prompt.contains("private-secret"));
     }
-    assert!(bodies[2].to_string().contains("defaultSteps must be"));
+    assert!(bodies[2 + offset].to_string().contains("defaultSteps must be"));
     // Inspection and provider validation never write settings or the project.
-    assert_eq!(
-        fs::read_to_string(dir.path().join(crate::project::storage::PROJECT_FILE_NAME)).unwrap(),
-        fixture
-    );
+    let project_file = dir.path().join(crate::project::storage::PROJECT_FILE_NAME);
+    if scope == AgentScope::Settings { assert!(!project_file.exists()); }
+    else { assert_eq!(fs::read_to_string(project_file).unwrap(), fixture); }
 }

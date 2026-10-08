@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- Open the agent from the Settings top bar in a resizable right-side panel to configure generators, weight paths and LoRAs, even without an open project.
 - Scene Generation settings now offer Latent upscale: generate at half resolution and upscale to the selected output size, locally or on a LAN worker. Download its model or choose a local file in Other weights settings.
 
 - Character Sheet creates a selectable image-bar entry as soon as generation is queued. Selecting it while generation runs shows the template's existing settings panel with the submitted settings. Finished results open in the normal image editor.

@@ -92,11 +92,21 @@ pub enum AgentTurnResult {
     },
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentScope {
+    #[default]
+    Project,
+    Settings,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentTurnRequest {
     pub request_id: String,
     pub folder_path: String,
+    #[serde(default)]
+    pub scope: AgentScope,
     pub provider: ProviderId,
     pub prompt: String,
     pub config: ProjectConfig,

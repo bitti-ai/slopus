@@ -34,6 +34,30 @@
   gap: var(--space-2);
 }
 
+/* Keep the settings page and chat independently scrollable. */
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-layout--agent {
+  grid-template-columns: minmax(0, 1fr) auto var(--pane-settings-agent);
+}
+
+.settings-agent-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--layer);
+}
+
+.settings-agent-pane > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .settings-view {
   flex: 1;
   width: 100%;

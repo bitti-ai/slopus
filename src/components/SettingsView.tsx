@@ -1,6 +1,10 @@
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { GeneratorSharing } from "./GeneratorSharing";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
+import { AgentDock } from "./workspace/AgentDock";
+import { useAgentPane } from "../lib/useAgentPane";
+import { useShortcut } from "../lib/commands";
+import { executeGeneratorCommands, type GeneratorCommand } from "../lib/agentGenerators";
 import {
   Add20, Agent16, Agent16Filled, Agent20, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
   Diagnostics16Filled, Download16, Download20, Error16, Error20, Flash20, Folder20, Gauge20, Gpu20, Image20, ModelFile20, More16,
@@ -18,7 +22,7 @@ import { TitleBar } from "./TitleBar";
 import { downloadableTemplateLoras, loadLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
-import { chooseEnginePath, getAgentModels, getEngineStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
+import { CHECKING_PROVIDERS, chooseEnginePath, getAgentModels, getEngineStatus, type ProviderStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
   EMPTY_ENGINE_SETTINGS, generatorPathFields,
   createGeneratorTemplate, defaultGeneratorTemplate,
@@ -30,13 +34,13 @@ import {
   type AgentEndpointSettings, type EndpointProviderId, type EndpointProviderSettings,
   type EnginePathField, type EnginePathId, type EngineSettings, type GeneratorTemplate, type GeneratorTemplateSettings,
 } from "../lib/settings";
-import { MAX_GENERATION_STEPS } from "../lib/project";
+import { createProjectConfig, MAX_GENERATION_STEPS } from "../lib/project";
 import { availableReferenceIconGenerators, loadReferenceIconAutomation, loadReferenceIconGeneratorId, referenceIconGenerator, saveReferenceIconAutomation, saveReferenceIconGeneratorId, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "../lib/theme";
 import { runtimeLocationHint } from "../lib/platform";
 import {
   ComboBox, ContextMenu, InfoBadge, InfoBar, NavItem, NavPane, ProgressBar, SettingsCard, SettingsExpander, SettingsGroup, SettingsRow,
-  TextField, ToggleSwitch, type InfoBarSeverity,
+  Splitter, TextField, ToggleSwitch, type InfoBarSeverity,
 } from "./ui";
 
 type PathState = "unset" | "checking" | "found" | "missing" | "download";
@@ -278,15 +282,31 @@ const engineSeverity = (status: SlopfabStatus | null, desktop: boolean): InfoBar
    groups of one-setting-per-row cards. */
 export interface SettingsNavigation { templateId: string; loraId?: string }
 
-export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions, navigation }: {
+export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions, navigation, providers = CHECKING_PROVIDERS }: {
   onClose: () => void; updates?: ReactNode; initialTab?: TabId;
   /** App-wide title-bar buttons (the work queue), after Settings' own. */
   titleBarActions?: ReactNode;
   navigation?: SettingsNavigation;
+  providers?: ProviderStatus[];
 }) {
   /* The engine first: this screen exists because those paths have to be set
      before anything can be rendered. */
   const [tab, setTab] = useState<TabId>(initialTab);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const agentPane = useAgentPane("settings.agent");
+  const agentToggle = useRef<HTMLButtonElement>(null);
+  const agentPaneRef = useRef<HTMLElement>(null);
+  const [agentRecord] = useState(() => ({ folderPath: "", config: createProjectConfig({
+    name: "Settings", prompt: "", aspectRatio: "16:9", resolution: "768p", targetDurationSeconds: 30,
+  }) }));
+  const toggleAgent = () => {
+    setAgentOpen(!agentOpen);
+    if (!agentOpen) requestAnimationFrame(() => (agentPaneRef.current?.querySelector<HTMLElement>("textarea:not(:disabled)")
+      ?? agentPaneRef.current?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus());
+    else if (agentPaneRef.current?.contains(document.activeElement)) agentToggle.current?.focus();
+  };
+  useShortcut("Ctrl+Shift+A", toggleAgent, { allowInInput: true });
   const page = useRef<HTMLElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const subpageHeading = useRef<HTMLHeadingElement>(null);
@@ -632,14 +652,20 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     <TitleBar
       title="Settings"
       leading={<button type="button" className="icon-button" onClick={back} aria-label="Back" data-tooltip="Back" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
-      actions={titleBarActions}
+      actions={<>
+        <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}${agentBusy ? " icon-button--busy" : ""}`}
+          aria-label="Agent" aria-pressed={agentOpen} aria-busy={agentBusy} aria-controls="settings-agent"
+          data-tooltip={`${agentOpen ? "Hide agent" : "Show agent"}${agentBusy ? " \u00b7 working" : ""}`} data-tooltip-shortcut="Ctrl+Shift+A" aria-keyshortcuts="Control+Shift+A"
+          onClick={toggleAgent}>{agentOpen ? <Agent16Filled /> : <Agent16 />}</button>
+        {titleBarActions}
+      </>}
     />
-    <div className="app-screen__content">
+    <div className={`app-screen__content settings-layout${agentOpen ? " settings-layout--agent" : ""}`} style={agentPane.style}>
     <main aria-hidden={editingLoraId ? true : undefined} className="settings-view" ref={page} tabIndex={-1} aria-label="Settings" onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
       // The mounted editor must not receive shortcuts while Settings has focus.
-      // Alt+Left is Settings' own Back (App binds it while Settings is open),
-      // so that one press is let through to the dispatcher.
-      if (!(event.altKey && event.key === "ArrowLeft")) event.stopPropagation();
+      // Allow Settings' Back and agent shortcuts through to the dispatcher.
+      const agentShortcut = event.ctrlKey && event.shiftKey && !event.altKey && event.key.toLowerCase() === "a";
+      if (!(event.altKey && event.key === "ArrowLeft") && !agentShortcut) event.stopPropagation();
       if (event.key !== "Escape" || event.defaultPrevented) return;
       back();
     }}>
@@ -691,6 +717,18 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         </div>
       </div>
     </main>
+    {agentOpen && <Splitter {...agentPane.splitterProps} reverse aria-label="Resize agent pane" aria-controls="settings-agent" />}
+    <aside ref={agentPaneRef} id="settings-agent" className="settings-agent-pane" aria-label="Agent" hidden={!agentOpen}>
+      <AgentDock scope="settings" context="settings" record={agentRecord} providers={providers}
+        onClose={() => { setAgentOpen(false); agentToggle.current?.focus(); }}
+        onPromptStart={() => setAgentOpen(true)} onBusyChange={setAgentBusy}
+        onCommands={async (commands) => {
+          if (!commands.every((command) => command.op.startsWith("generator."))) {
+            throw new Error("Use the project agent for project edits. This agent edits generator settings.");
+          }
+          await executeGeneratorCommands(commands as GeneratorCommand[]);
+        }} />
+    </aside>
     </div>
     {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} />}
     </>

@@ -267,6 +267,12 @@ describe("project library controls", () => {
     const settings = screen.getByRole("main", { name: "Settings" });
     expect(screen.queryByRole("textbox", { name: /Ask Slop about/ })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
+    const settingsDraft = screen.getByRole("textbox", { name: "Ask Slop about settings" });
+    fireEvent.change(settingsDraft, { target: { value: "Find my local weights" } });
+    expect(settingsDraft).not.toBe(draft);
+    fireEvent.keyDown(settingsDraft, { key: "A", ctrlKey: true, shiftKey: true });
+    expect(screen.queryByRole("complementary", { name: "Agent" })).toBeNull();
     fireEvent.keyDown(settings, { key: "Escape" });
     expect(screen.queryByRole("main", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("textbox", { name: /Ask Slop about/ })).toBe(draft);

@@ -168,6 +168,7 @@ fn endpoint_receives_capture_and_keeps_it_on_validation_retries_without_project_
         .run_with_capture(
             AgentTurnRequest {
                 request_id: "capture-turn".into(),
+                scope: super::AgentScope::Project,
                 folder_path: project.path().to_string_lossy().into(),
                 provider: ProviderId::Local,
                 prompt: "Look at 1.5 seconds".into(),

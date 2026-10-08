@@ -5,6 +5,8 @@ import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project
 import { CHECKING_PROVIDERS, executeAgentCommands, type RuntimeStatus, type SlopfabStatus } from "../lib/runtime";
 import { purgeTimelineThumbnails } from "../lib/timelineThumbnails";
 import { WorkQueue, projectQueueKey } from "../lib/workQueue";
+import { useAgentPane } from "../lib/useAgentPane";
+export { agentPaneMax } from "../lib/useAgentPane";
 import { useShortcut } from "../lib/commands";
 import { AgentDock } from "./workspace/AgentDock";
 import { generateAgentScene } from "../lib/agentGeneration";
@@ -16,7 +18,7 @@ import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
 import { PromptComposer } from "./PromptComposer";
 import { TitleBar } from "./TitleBar";
-import { InfoBadge, InfoBar, SelectorBar, Splitter, StatusBar, tooltipProps, usePaneSize } from "./ui";
+import { InfoBadge, InfoBar, SelectorBar, Splitter, StatusBar, tooltipProps } from "./ui";
 import { ProjectStatusSlot } from "./workspace/ProjectStatus";
 import { outputDimensions, videoDurationMs } from "../lib/export";
 
@@ -67,22 +69,6 @@ const writeAgentPane = (open: boolean) => {
 const VIEW_LABELS: Record<ShownView, string> = {
   timeline: "Timeline", generator: "Video", references: "References", export: "Export", editor: "Image",
 };
-
-const AGENT_PANE_MIN = 280;
-const AGENT_PANE_MAX = 640;
-/** The widest the agent pane may be in a window this wide: 35% of it. */
-export const agentPaneMax = (windowWidth: number) =>
-  Math.max(AGENT_PANE_MIN, Math.min(AGENT_PANE_MAX, Math.round(windowWidth * 0.35)));
-
-function useWindowWidth(): number {
-  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
-  useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return width;
-}
 
 /* The project window.
 
@@ -149,8 +135,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
      way instead: never more than about a third of the window (and never
      under 280px). A wider size the user dragged to comes back as the window
      grows. */
-  const windowWidth = useWindowWidth();
-  const agentPane = usePaneSize("workspace.agent", 360, { min: AGENT_PANE_MIN, max: agentPaneMax(windowWidth) });
+  const agentPane = useAgentPane("workspace.agent");
   const agentPaneRef = useRef<HTMLElement>(null);
   const agentToggle = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);

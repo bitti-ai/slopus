@@ -7,6 +7,7 @@ import {
   AGENT_TURN_EVENT,
   cancelAgentTurn,
   type AgentTurnEvent,
+  type AgentScope,
   type AgentTurnEventPayload,
   type AgentCommand,
   type ProviderId,
@@ -35,8 +36,9 @@ export interface AgentActivity {
  *  workspace. `onClose` wires the header's close button to it; without it the
  *  button is not shown. `expanded` is accepted for compatibility and no longer
  *  changes the layout: the pane is always the full conversation. */
-export function AgentDock({ context, record, mode = record.config.generationType === "image" ? "image" : "video", providers, onPromptStart, onCommands, onClose, onBusyChange, generation }: {
+export function AgentDock({ context, record, scope = "project", mode = record.config.generationType === "image" ? "image" : "video", providers, onPromptStart, onCommands, onClose, onBusyChange, generation }: {
   context: string;
+  scope?: AgentScope;
   record: ProjectRecord;
   /** Active editor context; legacy project types no longer restrict capabilities. */
   mode?: "video" | "image";
@@ -166,7 +168,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
       activeController.current = controller;
       setWorkDetail(null);
       const response = await runAgentWorkflow({ ...record, config: { ...record.config, generationType: mode } },
-        provider, clean, id, sessionMessages, controller.signal, generation, setWorkDetail);
+        provider, clean, id, sessionMessages, controller.signal, generation, setWorkDetail, scope);
       controller.signal.throwIfAborted();
       if ("commands" in response.result) await onCommands(response.result.commands);
       setSessionMessages(response.messages);
@@ -242,7 +244,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
           className="agent-conversation__empty"
           icon={<Agent32 />}
           title="Nothing asked yet"
-          description={`Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
+          description={scope === "settings" ? "Ask Slop to configure generators, find weight files or update LoRAs." : `Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
         />}
         {messages.map((message) => message.role === "user"
           ? <Bubble key={message.id} className="agent-conversation__user" speaker="You">{message.content}</Bubble>

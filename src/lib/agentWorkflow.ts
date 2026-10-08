@@ -1,4 +1,4 @@
-import { runAgentTurn, type AgentTurnResponse, type ProviderId } from "./runtime";
+import { runAgentTurn, type AgentTurnResponse, type AgentScope, type ProviderId } from "./runtime";
 import type { AgentMessage, ProjectRecord } from "./project";
 import type { GenerationObservation, SceneGenerateCommand } from "./agentGeneration";
 
@@ -10,7 +10,7 @@ export interface AgentGenerationHost {
 /** Native provider calls are finite turns. Waiting for generation happens in
  * the app queue, outside provider timeouts, and resumes against fresh state. */
 export async function runAgentWorkflow(record: ProjectRecord, provider: ProviderId, prompt: string, requestId: string,
-  conversation: AgentMessage[], signal: AbortSignal, host?: AgentGenerationHost, onProgress: (text: string) => void = () => {}): Promise<AgentTurnResponse> {
+  conversation: AgentMessage[], signal: AbortSignal, host?: AgentGenerationHost, onProgress: (text: string) => void = () => {}, scope: AgentScope = "project"): Promise<AgentTurnResponse> {
   const observations: { command: SceneGenerateCommand; result: GenerationObservation }[] = [];
   const completed = new Map<string, GenerationObservation>();
   let nextPrompt = prompt;
@@ -19,7 +19,7 @@ export async function runAgentWorkflow(record: ProjectRecord, provider: Provider
     const latest = host?.getRecord() ?? record;
     if (latest.config.id !== record.config.id || latest.folderPath !== record.folderPath) throw new Error("The active project changed. Agent work stopped.");
     const response = await runAgentTurn({ ...latest, config: { ...latest.config, generationType: record.config.generationType } },
-      provider, nextPrompt, requestId, conversation, signal);
+      provider, nextPrompt, requestId, conversation, signal, scope);
     signal.throwIfAborted();
     if (response.result.kind !== "generation") {
       // Internal completion receipts are context for the model, not user chat.
