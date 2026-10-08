@@ -244,3 +244,40 @@ describe("generated audio at the Rust/webview boundary", () => {
     expect(invoked).toHaveBeenCalledWith("release_generated_frames", { jobId: "job-01" });
   });
 });
+
+it("encodes grid-aligned upscaled frames at the selected output size", async () => {
+  desktop();
+  const frames: VideoFrameBufferInit[] = [];
+  const configured: VideoEncoderConfig[] = [];
+  class FakeVideoFrame {
+    constructor(_pixels: unknown, init: VideoFrameBufferInit) { frames.push(init); }
+    close() { /* released */ }
+  }
+  class FakeVideoEncoder {
+    static isConfigSupported = async (config: VideoEncoderConfig) => ({ supported: true, config });
+    state = "configured";
+    encodeQueueSize = 0;
+    constructor(private init: VideoEncoderInit) {}
+    configure(config: VideoEncoderConfig) { configured.push(config); }
+    encode() { this.init.output({} as EncodedVideoChunk); }
+    async flush() { /* complete */ }
+    close() { this.state = "closed"; }
+  }
+  scope.VideoFrame = FakeVideoFrame;
+  scope.VideoEncoder = FakeVideoEncoder;
+  invoked.mockImplementation(async (command: string) => {
+    if (command === "generated_summary") return summary({ width: 768, height: 448, frameCount: 2, audioSamples: 0 });
+    if (command === "generated_frame") return new Uint8Array(768 * 448 * 4);
+    if (command === "write_generated_video") return { relativePath: "media/generated/job-01.mp4", bytes: 4 };
+    return true;
+  });
+  const saved = await saveGeneratedScene({ folderPath: "C:/Project", jobId: "job-01", outputSize: { width: 736, height: 416 } });
+  expect(saved).toMatchObject({ width: 736, height: 416, durationMs: 83 });
+  expect(configured[0]).toMatchObject({ width: 736, height: 416 });
+  expect(muxed.configs[0].video).toMatchObject({ width: 736, height: 416 });
+  expect(frames).toHaveLength(2);
+  expect(frames[0]).toMatchObject({ codedWidth: 768, codedHeight: 448, timestamp: 0 });
+  expect(frames[1].timestamp).toBe(41667);
+  expect(muxed.videoChunks).toBe(2);
+  expect(invoked).toHaveBeenCalledWith("release_generated_frames", { jobId: "job-01" });
+});

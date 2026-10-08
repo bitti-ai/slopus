@@ -46,7 +46,7 @@ it("refuses to export a draft and says why", () => {
   expect(screen.getByText("The image is a draft")).toBeInTheDocument();
 });
 
-it.each(OTHER_WEIGHT_TEMPLATES)("exports with the selected $name model paths", async (template) => {
+it.each(OTHER_WEIGHT_TEMPLATES.filter((template) => template.id !== "latent-upscale"))("exports with the selected $name model paths", async (template) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   vi.mocked(invoke).mockImplementation(async (command) => command === "choose_image_export_destination" ? "D:/out.jpg" : 123);

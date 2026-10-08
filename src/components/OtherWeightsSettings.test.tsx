@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
-import { OTHER_WEIGHT_TEMPLATES, localOtherWeightPaths, otherWeightPaths, refreshOtherWeights, upscaleConfig } from "../lib/upscalers";
+import { OTHER_WEIGHT_TEMPLATES, localOtherWeightPaths, otherWeightPaths, refreshOtherWeights, upscaleConfig, latentUpscalerPath } from "../lib/upscalers";
 import { chooseEnginePath } from "../lib/runtime";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -51,7 +51,8 @@ it.each(OTHER_WEIGHT_TEMPLATES.flatMap((template) => [false, true].map((remote) 
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await refreshOtherWeights();
-  expect(upscaleConfig(template.id)).toEqual({ method: template.id, modelPath: "D:/custom/model.safetensors",
+  if (template.id === "latent-upscale") expect(latentUpscalerPath()).toBe("D:/custom/model.safetensors");
+  else expect(upscaleConfig(template.id)).toEqual({ method: template.id, modelPath: "D:/custom/model.safetensors",
     ...(template.id === "seedvr2" ? { vaePath: "D:/custom/vae.safetensors" } : {}) });
   fireEvent.click(screen.getByRole("button", { name: `Edit ${template.name} weights` }));
   for (const file of template.files) {
@@ -89,4 +90,30 @@ it("rejects relative paths and missing files without saving them", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.getByText(/Weight file not found/)).toBeInTheDocument());
   expect(localOtherWeightPaths()).toEqual({});
+});
+
+it("resolves latent upscaling weights locally or as a worker download", () => {
+  const url = OTHER_WEIGHT_TEMPLATES[2].files[0].url;
+  expect(latentUpscalerPath()).toBeUndefined();
+  localStorage.setItem("slopus.other-weights.v1", JSON.stringify({ [url]: "C:/cache/upscaler.safetensors" }));
+  expect(latentUpscalerPath()).toBe("C:/cache/upscaler.safetensors");
+  localStorage.setItem("slopus.generation-worker.v1", JSON.stringify({ id: "worker" }));
+  expect(latentUpscalerPath()).toBe(url);
+});
+
+it("downloads the latent upscale checkpoint into Other weights", async () => {
+  const url = "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors";
+  vi.mocked(invoke).mockImplementation(async (name) => {
+    if (name === "find_downloaded_weights") return {} as never;
+    if (name === "download_weight") return "C:/weights/latent-upscaler.safetensors" as never;
+    return undefined as never;
+  });
+  render(<OtherWeightsSettings desktop />);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("find_downloaded_weights", expect.anything()));
+  const card = screen.getByText("Latent upscale").closest(".ui-settings-card") as HTMLElement;
+  fireEvent.click(within(card).getByRole("button", { name: "Download" }));
+  await waitFor(() => expect(within(card).getByRole("button", { name: "Downloaded" })).toBeDisabled());
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url }));
+  expect(latentUpscalerPath()).toBe("C:/weights/latent-upscaler.safetensors");
+  expect(within(card).getByText("Ready for scene generation")).toBeInTheDocument();
 });

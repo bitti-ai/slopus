@@ -331,6 +331,8 @@ export async function saveGeneratedScene(options: {
   jobId: string;
   /** Queue runs have unique IDs; timeline caches still belong to the scene. */
   thumbnailJobId?: string;
+  /** Fit grid-aligned latent upscaling to the selected output using WebCodecs. */
+  outputSize?: { width: number; height: number };
   /** Called as frames go into the encoder, for the progress bar. */
   onProgress?: (encoded: number, total: number) => void;
 }): Promise<SavedGeneration> {
@@ -352,11 +354,15 @@ export async function saveGeneratedScene(options: {
   });
 
   try {
+    const { width, height } = options.outputSize ?? summary;
+    if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
+      throw new Error("The selected video output dimensions are invalid.");
+    }
     const fps = summary.fps > 0 ? summary.fps : 24;
-    const bitrate = bitrateFor(summary.width, summary.height, fps, GENERATED_QUALITY);
-    const { codec } = await pickCodec(summary.width, summary.height, fps, bitrate);
+    const bitrate = bitrateFor(width, height, fps, GENERATED_QUALITY);
+    const { codec } = await pickCodec(width, height, fps, bitrate);
     writeDiagnostic("info", "generated-video", "video_encoder.selected", "WebCodecs accepted a video encoder configuration.", {
-      jobId, codec, bitrate, fps, width: summary.width, height: summary.height,
+      jobId, codec, bitrate, fps, width, height,
     });
     const sound = await audioConfig(summary);
     const audioChunks: Array<{ chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }> = [];
@@ -379,7 +385,7 @@ export async function saveGeneratedScene(options: {
     const target = new ArrayBufferTarget();
     const muxer = new Muxer({
       target,
-      video: { codec: outputCodec("h264").muxer, width: summary.width, height: summary.height, frameRate: Math.round(fps) },
+      video: { codec: outputCodec("h264").muxer, width, height, frameRate: Math.round(fps) },
       ...(withAudio
         ? { audio: { codec: "aac" as const, numberOfChannels: summary.audioChannels, sampleRate: sound!.sampleRate! } }
         : {}),
@@ -393,7 +399,7 @@ export async function saveGeneratedScene(options: {
       output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
       error: (reason) => { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); },
     });
-    encoder.configure({ codec, width: summary.width, height: summary.height, bitrate, framerate: fps, avc: { format: "avc" } });
+    encoder.configure({ codec, width, height, bitrate, framerate: fps, avc: { format: "avc" } });
 
     const makeFrame = frameFactory(summary.width, summary.height);
     /* Computed from the index every time rather than accumulated, so a rate
@@ -433,7 +439,7 @@ export async function saveGeneratedScene(options: {
     const written = await writeGeneratedVideo(folderPath, jobId, new Uint8Array(target.buffer));
     await Promise.allSettled(timelineThumbnails.map((thumbnail) =>
       writeTimelineThumbnail(folderPath, options.thumbnailJobId ?? jobId, thumbnail.timeMs, thumbnail.bytes)));
-    return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio, width: summary.width, height: summary.height, durationMs: Math.round(summary.frameCount / summary.fps * 1000) };
+    return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio, width, height, durationMs: Math.round(summary.frameCount / summary.fps * 1000) };
   } finally {
     // Whatever happened, the render stops occupying memory here.
     await releaseRendered(jobId);

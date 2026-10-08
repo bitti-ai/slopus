@@ -8,6 +8,7 @@ export const UPSCALERS = [
   { value: "realesrgan", label: "Real-ESRGAN" },
   { value: "seedvr2", label: "SeedVR2" },
 ] as const;
+export const LATENT_UPSCALER_URL = "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors";
 export const OTHER_WEIGHT_TEMPLATES = [
   { id: "realesrgan", name: "Real-ESRGAN", files: [
     { id: "model", name: "RealESRGAN x4plus", url: "https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged/resolve/main/RealESRGAN_x4plus.safetensors" },
@@ -15,6 +16,9 @@ export const OTHER_WEIGHT_TEMPLATES = [
   { id: "seedvr2", name: "SeedVR2", files: [
     { id: "model", name: "SeedVR2 3B FP16", url: "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_fp16.safetensors" },
     { id: "vae", name: "SeedVR2 VAE", url: "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors" },
+  ] },
+  { id: "latent-upscale", name: "Latent upscale", files: [
+    { id: "model", name: "MiniMax H3 latent upscaler", url: LATENT_UPSCALER_URL },
   ] },
 ] as const;
 const KEY = "slopus.other-weights.v1";
@@ -60,6 +64,11 @@ export function upscaleConfig(method: Upscaler): UpscaleConfig | undefined {
   if (template.files.some((file) => !paths[file.url])) throw new Error(`Download ${template.name} or choose a local weight file in Settings → Generator → Other weights first.`);
   return { method, modelPath: paths[template.files[0].url],
     ...(template.id === "seedvr2" ? { vaePath: paths[template.files[1].url] } : {}) };
+}
+/** Resolve on this machine, or let a worker download the standard checkpoint. */
+export function latentUpscalerPath(): string | undefined {
+  return selectedWorker() ? localOtherWeightPaths()[LATENT_UPSCALER_URL] ?? LATENT_UPSCALER_URL
+    : otherWeightPaths()[LATENT_UPSCALER_URL];
 }
 export async function refreshOtherWeights() {
   if (!isTauri()) return;

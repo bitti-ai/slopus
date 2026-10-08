@@ -56,7 +56,7 @@ export interface WorkItem {
   completionAt: number | null;
   cancelling: boolean;
   needsSave: boolean;
-  settings: { frames: number; steps: number; audioSteps?: number; seed: number; canvasWidth: number; canvasHeight: number };
+  settings: { frames: number; steps: number; audioSteps?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
   extend?: { sourceId: string; name: string; options: ExtendOptions };
@@ -229,7 +229,7 @@ export class WorkQueue {
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
         status: "queued", progress: 0, detail: "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
-        settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
+        settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot });
     }
@@ -561,7 +561,7 @@ export class WorkQueue {
       return;
     }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
-    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
+    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "upscaling" ? "Upscaling video latents" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
@@ -650,6 +650,7 @@ export class WorkQueue {
     try {
       const saved = await saveGeneratedScene({
         folderPath: work.session.record.folderPath, jobId: work.id, thumbnailJobId: work.sceneId,
+        ...(work.request.latentUpscale ? { outputSize: { width: work.request.canvasWidth, height: work.request.canvasHeight } } : {}),
         onProgress: (encoded, total) => {
           if (total <= 0) return;
           const progress = Math.min(0.99, 0.9 + encoded / total * 0.1);

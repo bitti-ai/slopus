@@ -9,6 +9,7 @@ import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
 import { generateAgentScene } from "./agentGeneration";
+import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -829,4 +830,24 @@ describe("project sessions", () => {
     expect(session.getSnapshot().config.name).toBe("Before save");
     expect(session.getSnapshot().dirty).toBe(false);
   });
+});
+
+it.each([false, true])("freezes latent upscale %s and saves the selected output size", async (latentUpscale) => {
+  const { queue, first } = setup();
+  const item = submission(first);
+  item.request.latentUpscale = latentUpscale;
+  saveLocalOtherWeightPaths({ [LATENT_UPSCALER_URL]: "C:/weights/upscaler.safetensors" });
+  queue.enqueue(first, [item]);
+  item.request.latentUpscale = !latentUpscale;
+  saveLocalOtherWeightPaths({ [LATENT_UPSCALER_URL]: "C:/changed.safetensors" });
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject({ latentUpscale, canvasWidth: 736, canvasHeight: 416 });
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ latentUpscale, canvasWidth: 736, canvasHeight: 416 });
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][1].providerSettings.slopfab.options.latentUpscaler).toBe("C:/weights/upscaler.safetensors");
+  const work = queue.getSnapshot()[0];
+  expect(work.settings.latentUpscale).toBe(latentUpscale);
+  emit("slopfab-progress", { jobId: work.id, stage: "upscaling", step: 1, totalSteps: 2 });
+  expect(queue.getSnapshot()[0].detail).toBe("Upscaling video latents");
+  await finish(queue, work.id);
+  expect(vi.mocked(saveGeneratedScene).mock.calls[0][0].outputSize).toEqual(latentUpscale ? { width: 736, height: 416 } : undefined);
 });

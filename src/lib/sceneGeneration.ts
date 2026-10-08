@@ -34,6 +34,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
     steps: sceneGenerationSteps(job, defaultGenerationSteps),
     ...(job.audioSteps != null ? { audioSteps: job.audioSteps } : {}),
+    ...(job.latentUpscale ? { latentUpscale: true } : {}),
     seed: sceneGenerationSeed(job),
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,

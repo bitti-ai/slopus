@@ -585,11 +585,16 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });
 
-  it.each([false, true])("saves generation controls with separate audio steps %s", async (separateAudio) => {
+  it.each([[false, false], [false, true], [true, false], [true, true]])("saves generation controls with separate audio steps %s and latent upscale %s", async (separateAudio, latentUpscale) => {
     const initial = project();
     initial.settings = { ...initial.settings, resolution: "416p", frameRate: 60 };
     const state = setup(initial);
     const generation = screen.getByRole("region", { name: "Generation" });
+    const upscale = within(generation).getByRole("switch", { name: "Latent upscale" });
+    expect(upscale).not.toBeChecked();
+    fireEvent.click(upscale);
+    if (!latentUpscale) fireEvent.click(upscale);
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].latentUpscale).toBe(latentUpscale);
     expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
     expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
 
@@ -607,6 +612,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).audioSteps).toBe(separateAudio ? 17 : undefined);
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).latentUpscale).toBe(latentUpscale ? true : undefined);
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({
       steps: 28,
       seed: 9173,

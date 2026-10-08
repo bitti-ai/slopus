@@ -1,5 +1,28 @@
 # Slopfab compatibility
 
+## API 1.24: scene latent upscaling
+
+Scene Generation settings offer an optional **Latent upscale** toggle. Slopus
+passes a half-size diffusion canvas (rounded up to complete 32-pixel patches)
+and calls `slopfab_request_set_latent_upscaler` with scale 2 and temporal chunking.
+Slopfab upscales the video latents before VAE decoding on CUDA or Vulkan; audio
+and frame counts are unchanged. WebCodecs encodes to the exact selected output
+size when patch alignment makes the decoded frames slightly larger. Planning
+reports the selected output size while latent dimensions describe diffusion.
+
+The MiniMax H3 3D conv v1 FP16 checkpoint is downloadable under
+Settings > Generator > Other weights > Latent upscale, with an optional local
+file override. Weights remain machine-local. LAN protocol 8 transfers local
+files or has the worker download the standard checkpoint; older workers must
+be updated so they cannot silently ignore the toggle. Older runtimes reject
+an enabled toggle with an API 1.24 requirement; disabled scenes remain supported.
+
+Saved latents retain the diffusion resolution. Continuations must use a source
+archive with matching diffusion dimensions, so use the same upscale setting
+and project resolution throughout a continuation chain. The toggle is captured
+in generation history and in queued requests. Progress identifies the latent
+upscaling stage, and existing cancellation and WebCodecs/MP4 saving apply.
+
 ## API 1.22: export upscaling
 
 The bundled Windows and Linux runtimes come from SlopFab commit `d4f423f`,

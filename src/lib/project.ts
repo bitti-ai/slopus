@@ -579,6 +579,7 @@ export const generationJobSchema = z.object({
    * were exposed; the readers below give those scenes the current defaults
    * without rewriting the file just because it was opened. */
   steps: z.number().int().min(2).max(MAX_GENERATION_STEPS).nullish(),
+  latentUpscale: z.boolean().nullish(),
   audioSteps: z.number().int().min(2).max(MAX_AUDIO_GENERATION_STEPS).nullish(),
   seed: z.number().int().min(RANDOM_GENERATION_SEED).max(Number.MAX_SAFE_INTEGER).nullish(),
   /** Base guide §4.6 and §4.7. Per-PROMPT fields, not per-shot, so they live on
@@ -1145,6 +1146,7 @@ export interface SceneGenerationInput {
   frames: number;
   steps: number;
   audioSteps?: number;
+  latentUpscale?: boolean;
   seed: number;
   canvasWidth: number;
   canvasHeight: number;
@@ -1176,6 +1178,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     frames: input.frames,
     steps: input.steps,
     ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
+    ...(input.latentUpscale ? { latentUpscale: true } : {}),
     seed: input.seed,
     canvasWidth: input.canvasWidth,
     canvasHeight: input.canvasHeight,

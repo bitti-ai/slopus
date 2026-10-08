@@ -12,6 +12,7 @@
  * in src-tauri/core/src/slopfab/config.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
+import { latentUpscalerPath } from "./upscalers";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
@@ -523,6 +524,9 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.promptEmbedding;
   delete options.motionCache;
   delete options.workerWeightSources;
+  delete options.latentUpscaler;
+  const latentUpscaler = latentUpscalerPath();
+  if (latentUpscaler) options.latentUpscaler = latentUpscaler;
   if (remote && sources) {
     options.workerWeightSources = JSON.stringify(Object.fromEntries(Object.entries(sources)
       .filter(([role, entries]) => entries?.length && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
