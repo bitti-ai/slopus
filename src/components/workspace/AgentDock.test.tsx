@@ -188,7 +188,7 @@ describe("Slop output panel", () => {
     expect(onPromptStart).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the running turn with a progress ring, stops it with Esc, and recalls the last prompt with Up", async () => {
+  it.each(["Enter", "button"])("clears the composer on %s submission, stops with Esc, and recalls the last prompt with Up", async (submit) => {
     let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
     vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     const onPromptStart = vi.fn();
@@ -197,7 +197,10 @@ describe("Slop output panel", () => {
 
     const field = screen.getByRole("textbox", { name: "Ask Slop about this generation queue" });
     fireEvent.change(field, { target: { value: "Create four shots" } });
-    fireEvent.keyDown(field, { key: "Enter" });
+    if (submit === "Enter") fireEvent.keyDown(field, { key: "Enter" });
+    else fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    expect(field).toHaveValue("");
+    expect(field).toBeDisabled();
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
     expect(onPromptStart).toHaveBeenCalledTimes(1);
 
@@ -256,6 +259,8 @@ describe("Slop output panel", () => {
     expect(log).toHaveTextContent("Leonard and Penny, in live action");
     expect(log).toHaveTextContent("Agent turn timed out after 300 seconds.");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(field).toHaveValue("");
+    fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(field).toHaveValue("Leonard and Penny, in live action");
   });
 

@@ -157,6 +157,7 @@ export function AgentDock({ context, record, mode = record.config.generationType
     setError(null);
     setPendingPrompt(clean);
     setLastPrompt(clean);
+    setPrompt("");
     setActivity([]);
     try {
       // The native agent uses this legacy field to select its instructions.
@@ -173,11 +174,9 @@ export function AgentDock({ context, record, mode = record.config.generationType
       // correction notes that led to it would only repeat it.
       setActivity([]);
       setPendingPrompt(null);
-      setPrompt("");
     } catch (reason) {
       if (activeController.current?.signal.aborted) {
         setPendingPrompt(null);
-        setPrompt("");
       } else {
         const detail = describeDiagnosticError(reason);
         writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
