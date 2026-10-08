@@ -609,11 +609,10 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined, images: referenceImages(selected) })}><Delete16 aria-hidden="true" /> Remove video</button>
             </section>
           </PropSection>}
-          {selected.kind === "audio" && <PropSection title="Sound clip" persistKey="references.audio">
+          {selected.kind === "audio" && <PropSection title="Sound clip" persistKey="references.audio" tooltip="Needs a Ref2VA generator and an image or video reference in the same scene. Cite it in a shot to place it.">
             <section className="reference-video" aria-label="Sound reference">
               <ReferenceAudio key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
                 onChange={(audio) => update(selected.id, { audio })} />
-              <p>Needs a Ref2VA generator and an image or video reference in the same scene. Cite it in a shot to place it.</p>
               <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, audio: undefined })}><Delete16 aria-hidden="true" /> Remove sound</button>
             </section>
           </PropSection>}
@@ -661,35 +660,34 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
               <button type="button" className="icon-button" aria-label="Next reference image" data-tooltip="Next image" disabled={currentImagePage === selectedImages.length - 1} onClick={() => setImagePage(currentImagePage + 1)}><ChevronRight16 aria-hidden="true" /></button>
             </div>}
           </PropSection>}
-          <PropSection title="Prompt" persistKey="references.prompt" summary={hasRefmods ? "Locked by refmods" : isReferenceDescribed(selected) ? undefined : "Not described"}>
+          <PropSection title="Prompt" persistKey="references.prompt" summary={hasRefmods ? "Locked by refmods" : isReferenceDescribed(selected) ? undefined : "Not described"}
+            tooltip={hasRefmods ? "Remove the refmods to edit the prompt or add files."
+              : isVideoReference(selected) ? "The clip is sent as a reference. Add a prompt to describe what to keep."
+              : selected.kind === "audio" ? "The sound is sent as a reference. Describe its role, such as the voice timbre for a character."
+              : !isReferenceDescribed(selected) ? selectedImages.length > 0
+                ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
+                : "Not described yet — it won’t be used until you add a definition."
+              : "Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots."}>
             <div className="reference-fields">
               {/* The section header names the field on screen. */}
               <label><span className="sr-only">Prompt</span><textarea className="text-field" disabled={hasRefmods} value={selected.description} placeholder="Describe what should stay consistent — the traits, materials, colours, or wardrobe Slopus should preserve across shots." onChange={(event) => update(selected.id, { description: event.target.value, content: event.target.value || null, subcategory: selectedSubcategory })} /></label>
-              {hasRefmods ? <p>Remove the refmods to edit the prompt or add files.</p>
-                : !isReferenceDescribed(selected) && <p>{isVideoReference(selected)
-                  ? "The clip is sent as a reference. Add a prompt to describe what to keep."
-                  : selected.kind === "audio"
-                    ? "The sound is sent as a reference. Describe its role, such as the voice timbre for a character."
-                  : selectedImages.length > 0
-                    ? "Not described yet — the picture is sent, but nothing tells the engine what to keep."
-                    : "Not described yet — it won’t be used until you add a definition."}</p>}
             </div>
           </PropSection>
           {hasRefmods && <PropSection
             title="Refmods"
+            tooltip="Needs a Ref2VA generator."
             persistKey="references.refmods"
             summary={selected.refmods!.length}
             actions={<button type="button" className="icon-button prop-row__button" aria-label="Remove refmods" data-tooltip="Remove all refmods" onClick={() => update(selected.id, { iconRelativePath: undefined, refmods: [] })}><Delete16 aria-hidden="true" /></button>}
           >
             <section className="reference-refmods" aria-label="Refmod attachments">
-              <p>Needs a Ref2VA generator. Strength 0 turns a refmod off; more copies use more GPU memory.</p>
               {selected.refmods!.map((refmod) => <div key={refmod.id}>
                 <b data-tooltip={refmod.name}>{refmod.name}</b>
-                <PropRow label="Strength" htmlFor={`${refmod.id}-strength`}><input id={`${refmod.id}-strength`} className="text-field" aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
+                <PropRow label="Strength" htmlFor={`${refmod.id}-strength`} tooltip="Strength 0 turns a refmod off."><input id={`${refmod.id}-strength`} className="text-field" aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
                   const strength = Number(event.target.value);
                   if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
                 }} /></PropRow>
-                <PropRow label="Copies" htmlFor={`${refmod.id}-copies`}><input id={`${refmod.id}-copies`} className="text-field" aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
+                <PropRow label="Copies" htmlFor={`${refmod.id}-copies`} tooltip="More copies use more GPU memory."><input id={`${refmod.id}-copies`} className="text-field" aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
                   const copies = Number(event.target.value);
                   if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
                 }} /></PropRow>

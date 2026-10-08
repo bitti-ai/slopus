@@ -39,23 +39,21 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
     }}>
       <div className="image-inspector__fields image-template-settings__fields">
         <p className="image-inspector__caption">Source: {source.name}</p>
-        <p className="image-inspector__caption">Combine selected views into one image: a square waist-up close up and full-body front, side, or back views.</p>
-        {CHARACTER_SHEET_VIEWS.map((view) => <PropRow key={view.id} label={view.label} htmlFor={`character-sheet-${view.id}`}>
+        {CHARACTER_SHEET_VIEWS.map((view) => <PropRow key={view.id} label={view.label} htmlFor={`character-sheet-${view.id}`}
+          tooltip={`Combine selected views into one image: a square waist-up close up and full-body front, side, or back views.${view.id === "front" ? " When enabled, the front view provides the outfit reference for other views; otherwise each view uses the source image." : ""}`}>
           <ToggleSwitch id={`character-sheet-${view.id}`} aria-label={view.label} checked={selectedViews[view.id]} disabled={busy}
             onChange={(checked) => update("views", { ...selectedViews, [view.id]: checked })} />
         </PropRow>)}
-        <PropRow label="Resolution" htmlFor="character-sheet-resolution"><ComboBox id="character-sheet-resolution" aria-label="Character sheet resolution" value={options.height} disabled={busy}
+        <PropRow label="Resolution" htmlFor="character-sheet-resolution" tooltip="Width follows the selected view proportions."><ComboBox id="character-sheet-resolution" aria-label="Character sheet resolution" value={options.height} disabled={busy}
           options={CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${height} px high` }))} onChange={(height) => update("height", height)} /></PropRow>
-        <p className="image-inspector__caption">Sheet size: {indices.reduce((width, index) => width + dimensions[index].width, 0)} × {dimensions[0].height} px. Width follows the selected view proportions.</p>
-        <PropRow label="Steps" htmlFor="character-sheet-steps"><input id="character-sheet-steps" className="text-field" type="number" min="2" max="1000" step="1" required disabled={busy}
+        <p className="image-inspector__caption">Sheet size: {indices.reduce((width, index) => width + dimensions[index].width, 0)} × {dimensions[0].height} px.</p>
+        <PropRow label="Steps" htmlFor="character-sheet-steps" tooltip="All selected views use the same step count."><input id="character-sheet-steps" className="text-field" type="number" min="2" max="1000" step="1" required disabled={busy}
           value={Number.isNaN(options.steps) ? "" : options.steps} onChange={(event) => update("steps", event.target.valueAsNumber)} /></PropRow>
-        <PropRow label="Seed" htmlFor="character-sheet-seed"><input id="character-sheet-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}
+        <PropRow label="Seed" htmlFor="character-sheet-seed" tooltip="Use -1 for a random seed. All selected views use the same seed."><input id="character-sheet-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}
           value={Number.isNaN(options.seed) ? "" : options.seed} onChange={(event) => update("seed", event.target.valueAsNumber)} /></PropRow>
-        <p className="image-inspector__caption">Use -1 for a random seed. All selected views use the same seed and step count.</p>
-        <div className="image-inspector__area"><span>Prompt</span>
+        <div className="image-inspector__area"><span tabIndex={0} data-tooltip="Use the prompt and references for clothing and other details. Leave it blank to keep the source appearance.">Prompt</span>
           <PromptTextField aria-label="Character sheet prompt" value={options.prompt} onChange={(value) => update("prompt", value)} references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe the character, clothing, accessories, style, or lighting…" />
         </div>
-        <p className="image-inspector__caption">Use the prompt and references for clothing and other details. Leave it blank to keep the source appearance. When enabled, the front view provides the outfit reference for other views; otherwise each view uses the source image.</p>
         {(validation || error) && <InfoBar severity="error" title="Couldn't prepare the template" message={validation ?? error ?? ""} />}
       </div>
       <div className="image-template-settings__footer">

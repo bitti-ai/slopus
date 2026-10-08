@@ -156,7 +156,7 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
 
   return <section className={`shot-inspector${promptOnly ? " shot-inspector--flat" : ""}`} aria-label={`Shot ${shotNumber}`}>
     {group("Shot", "shot", `${seconds(shot.startSeconds)} – ${seconds(endsAt)}`, <>
-    {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`}>
+    {!promptOnly && <PropRow label="Starts at" htmlFor={`shot-start-${shot.id}`} tooltip={index === 0 ? "The first shot always opens the scene." : undefined}>
       <input
         id={`shot-start-${shot.id}`}
         className="text-field"
@@ -167,7 +167,6 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
         value={shot.startSeconds}
         disabled={disabled || index === 0}
         aria-label={`Shot ${shotNumber} starts at, in seconds`}
-        data-tooltip={index === 0 ? "The first shot always opens the scene." : undefined}
         onChange={(event) => onChange({ startSeconds: Math.min(duration, Math.max(0, Number(event.target.value) || 0)) })}
       />
       <span className="prop-unit">to {seconds(endsAt)}</span>
@@ -243,22 +242,20 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
   const characters = references.filter((reference) => !isVideoReference(reference) && isVisualReference(reference)
     && isReferenceUsable(reference) && referenceImages(reference).length > 0);
   return <div className="scene-settings">
-    <PropRow label="Video" htmlFor={`replace-video-${shot.id}`}>
+    <PropRow label="Video" htmlFor={`replace-video-${shot.id}`} tooltip="Uses the clip range and soundtrack setting saved under References.">
       <ComboBox id={`replace-video-${shot.id}`} aria-label="Video reference for this shot" value={shot.videoReferenceId ?? ""} disabled={disabled}
         options={referenceOptions(videos, shot.videoReferenceId, "None", "Unavailable video reference")}
         onChange={(value) => onChange({ videoReferenceId: value || null })} />
     </PropRow>
-    <p className="prop-caption">Uses the clip range and soundtrack setting saved under References.</p>
     <PropRow label="New character" htmlFor={`replace-character-${shot.id}`}>
       <ComboBox id={`replace-character-${shot.id}`} aria-label="New character reference for this shot" value={shot.characterReferenceId ?? ""} disabled={disabled}
         options={referenceOptions(characters, shot.characterReferenceId, "None", "Unavailable character reference")}
         onChange={(value) => onChange({ characterReferenceId: value || null })} />
     </PropRow>
-    <PropRow label="Replace" htmlFor={`replace-target-${shot.id}`}>
+    <PropRow label="Replace" htmlFor={`replace-target-${shot.id}`} tooltip="With several characters, name one, for example “the person in the red jacket”. Camera, background, lighting and other characters are kept.">
       <input id={`replace-target-${shot.id}`} className="text-field" aria-label="Character to replace in this shot" value={shot.characterTarget ?? ""} disabled={disabled}
         placeholder="The main character" onChange={(event) => onChange({ characterTarget: event.target.value || null })} />
     </PropRow>
-    <p className="prop-caption">With several characters, name one, for example “the person in the red jacket”. Camera, background, lighting and other characters are kept.</p>
   </div>;
 }
 
@@ -322,13 +319,13 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
       <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label}>
-        <PropRow label="Scene type" htmlFor={`${id}-type`}>
+        <PropRow label="Scene type" htmlFor={`${id}-type`} tooltip={characterReplace ? "Open a shot to choose its source video and new character." : animate ? "Animate output is limited to 14.375 seconds; longer scenes are shortened to fit." : undefined}>
           <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES}
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
         {continuing && <>
-          <PropRow label="Source scene" htmlFor={`${id}-source-scene`}>
+          <PropRow label="Source scene" htmlFor={`${id}-source-scene`} tooltip="Uses the selected scene’s saved latents. Generate it first, or use Generate all.">
             <ComboBox id={`${id}-source-scene`} aria-label="Source scene for continuation" disabled={disabled}
               value={job.continuationSceneId ?? ""}
               options={[{ value: "", label: "None" },
@@ -342,7 +339,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               value={job.continuationFrom ?? "end"} options={[{ value: "end", label: "End" }, { value: "start", label: "Start" }]}
               onChange={(value) => onChange({ continuationFrom: value as "start" | "end" })} />
           </PropRow>
-          <PropRow label="Overlap frames" htmlFor={`${id}-overlap`}>
+          <PropRow label="Overlap frames" htmlFor={`${id}-overlap`} tooltip="Overlap uses 22, 39, 56, … frames at 24 fps.">
             <ComboBox id={`${id}-overlap`} aria-label="Continuation overlap frames" disabled={disabled}
               value={String(job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP)}
               options={Array.from({ length: (MAX_CONTINUATION_OVERLAP - DEFAULT_CONTINUATION_OVERLAP) / 17 + 1 }, (_, index) => {
@@ -351,41 +348,38 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               })}
               onChange={(value) => onChange({ continuationOverlapFrames: Number(value) })} />
           </PropRow>
-          <PropRow label="Lock Overlap" htmlFor={`${id}-lock-overlap`}>
+          <PropRow label="Lock Overlap" htmlFor={`${id}-lock-overlap`} tooltip="Lock Overlap constrains the overlapping video and audio to the source.">
             <ToggleSwitch id={`${id}-lock-overlap`} aria-label="Lock Overlap" checked={job.continuationLockOverlap ?? false} disabled={disabled}
               onChange={(checked) => onChange({ continuationLockOverlap: checked })} />
           </PropRow>
-          <p className="prop-caption">Uses the selected scene’s saved latents. Generate it first, or use Generate all. Overlap uses 22, 39, 56, … frames at 24 fps. Lock Overlap constrains the overlapping video and audio to the source.</p>
         </>}
         {pose && <>
-          <PropRow label="Pose video" htmlFor={`${id}-pose`}>
+          <PropRow label="Pose video" htmlFor={`${id}-pose`} tooltip="Uses the saved clip range for pose and motion. Describe the subject and setting below.">
             <ComboBox id={`${id}-pose`} aria-label="Pose video reference for this scene" value={job.poseVideoReferenceId ?? ""} disabled={disabled}
               options={referenceOptions(videos, job.poseVideoReferenceId, "None", "Unavailable video reference")}
               onChange={(value) => onChange({ poseVideoReferenceId: value || null })} />
           </PropRow>
-          <p className="prop-caption">Uses the saved clip range for pose and motion. Describe the subject and setting below.</p>
           {shots.map((shot, index) => <ShotInspector key={shot.id} job={job} shots={shots} shot={shot} index={index}
             endsAt={shots[index + 1]?.startSeconds ?? sceneDurationSeconds(job)} duration={sceneDurationSeconds(job)}
             references={references} folderPath={folderPath} disabled={disabled} promptOnly
             onChange={(updates) => onShots(shots.map((item) => item.id === shot.id ? { ...item, ...updates } : item))} />)}
         </>}
-        {characterReplace && <p className="prop-caption">Open a shot to choose its source video and new character.</p>}
         {transition && <>
-          <PropRow label={sceneType === "bridge" ? "Start video" : "Video"} htmlFor={`${id}-start-video`}>
+          <PropRow label={sceneType === "bridge" ? "Start video" : "Video"} htmlFor={`${id}-start-video`}
+            tooltip={`${sceneType === "bridge" ? "Connects the end of the start video to the beginning of the end video." : "Continues from the end of the selected video."} Open a shot to describe the new action; the scene length sets only the new segment.`}>
             <ComboBox id={`${id}-start-video`} aria-label="Start video reference for this scene" value={job.startVideoReferenceId ?? ""} disabled={disabled}
               options={referenceOptions(videos, job.startVideoReferenceId, "None", "Unavailable video reference")}
               onChange={(value) => onChange({ startVideoReferenceId: value || null })} />
           </PropRow>
-          {sceneType === "bridge" && <PropRow label="End video" htmlFor={`${id}-end-video`}>
+          {sceneType === "bridge" && <PropRow label="End video" htmlFor={`${id}-end-video`} tooltip="Connects the end of the start video to the beginning of the end video.">
             <ComboBox id={`${id}-end-video`} aria-label="End video reference for this scene" value={job.endVideoReferenceId ?? ""} disabled={disabled}
               options={referenceOptions(videos, job.endVideoReferenceId, "None", "Unavailable video reference")}
               onChange={(value) => onChange({ endVideoReferenceId: value || null })} />
           </PropRow>}
-          <p className="prop-caption">{sceneType === "bridge" ? "Connects the end of the start video to the beginning of the end video." : "Continues from the end of the selected video."} Open a shot to describe the new action; the scene length sets only the new segment.</p>
         </>}
         {!characterReplace && <>
           {animate && <>
-            <PropRow label="Video" htmlFor={`${id}-animate-video`}>
+            <PropRow label="Video" htmlFor={`${id}-animate-video`} tooltip="One driving video and one repainted frame of its scene. Turn on the video’s soundtrack under References to keep it.">
               <ComboBox id={`${id}-animate-video`} aria-label="Reference video for this scene" disabled={disabled}
                 value={videos.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
                 options={referenceOptions(videos, null, "None", "")}
@@ -394,7 +388,6 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
                   ...(value ? [value] : []),
                 ] })} />
             </PropRow>
-            <p className="prop-caption">One driving video and one repainted frame of its scene. Turn on the video’s soundtrack under References to keep it.</p>
           </>}
           {!animate && <PropRow label="Look" htmlFor={`${id}-look`}>
             <ComboBox
@@ -415,7 +408,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           </PropRow>}
           {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
           {!transition && !pose && !continuing && <>
-            <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`}>
+            <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`} tooltip={animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : undefined}>
               <ReferenceSelector
                 id={`${id}-start`}
                 references={references} accept={["image"]} folderPath={folderPath}
@@ -435,7 +428,6 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               />
               {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
             </PropRow>
-            {animate && <p className="prop-caption">A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting.</p>}
           </>}
           {!animate && !transition && !pose && !continuing && <PropRow label="Last frame" htmlFor={`${id}-end`}>
             <ReferenceSelector id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
@@ -473,7 +465,6 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
     </div>
     <div role="region" aria-label="Generation" className="scene-settings">
       <PropSection title="Generation" persistKey="generator.generation" summary={`${sceneGenerationSteps(job, defaultSteps)} steps`}>
-        {animate && <p className="prop-caption">Animate output is limited to 14.375 seconds; longer scenes are shortened to fit.</p>}
         <PropRow label="Steps" htmlFor={`${id}-steps`}>
           <CommittedNumberInput
             id={`${id}-steps`}
@@ -488,15 +479,15 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ steps: value })}
           />
         </PropRow>
-        <PropRow label="Separate audio steps" htmlFor={`${id}-separate-audio-steps`}>
+        <PropRow label="Separate audio steps" htmlFor={`${id}-separate-audio-steps`} tooltip="Audio uses the video generation step count unless separate audio steps are enabled.">
           <ToggleSwitch id={`${id}-separate-audio-steps`} aria-label="Separate audio steps" checked={job.audioSteps != null} disabled={disabled}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
         </PropRow>
-        {job.audioSteps != null ? <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
+        {job.audioSteps != null && <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
           <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
             value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
-        </PropRow> : <p className="prop-caption">Audio uses the video generation step count.</p>}
-        <PropRow label="Seed" htmlFor={`${id}-seed`}>
+        </PropRow>}
+        <PropRow label="Seed" htmlFor={`${id}-seed`} tooltip="-1 picks a random seed">
           <CommittedNumberInput
             id={`${id}-seed`}
             className="text-field"
@@ -507,15 +498,13 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             integer
             disabled={disabled}
             aria-label="Generation seed"
-            data-tooltip="-1 picks a random seed"
             onCommit={(value) => onChange({ seed: value })}
           />
         </PropRow>
-        <PropRow label="Latent upscale" htmlFor={`${id}-latent-upscale`}>
+        <PropRow label="Latent upscale" htmlFor={`${id}-latent-upscale`} tooltip="Generate at half resolution, then upscale to the selected resolution. Requires Latent upscale weights in Settings → Generator → Other weights.">
           <ToggleSwitch id={`${id}-latent-upscale`} aria-label="Latent upscale" checked={job.latentUpscale ?? false} disabled={disabled}
             onChange={(checked) => onChange({ latentUpscale: checked })} />
         </PropRow>
-        <p className="prop-caption">Generate at half resolution, then upscale to the selected resolution. Requires Latent upscale weights in Settings → Generator → Other weights.</p>
       </PropSection>
     </div>
   </section>;
@@ -545,7 +534,7 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
     <ul className="shot-settings__chips">
       {chosen.map(({ group: owner, option }) => <li key={`${owner.id}-${option.id}`}>
         <span className="setting-tag" data-tooltip={`Adds “${option.term}” to the prompt`}>
-          <em>{owner.label}</em>
+          <em data-tooltip={owner.help} tabIndex={0}>{owner.label}</em>
           <b>{option.label}</b>
           <button
             type="button"
@@ -562,6 +551,7 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
         value={pending}
         disabled={disabled}
         placeholder="Add a setting…"
+        data-tooltip={group?.help}
         aria-label={`Add a setting to shot ${shotNumber}`}
         options={groups.map((option) => {
           // Speed and amplitude qualify a movement. With none chosen the
@@ -584,7 +574,6 @@ function ShotSettings({ settings, disabled, shotNumber, onChange }: {
           setPending(null);
         }}
       />}
-      {group && <span className="shot-settings__help">{group.help}</span>}
     </div>
   </div>;
 }

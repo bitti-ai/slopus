@@ -35,6 +35,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Inspector instructions now appear as tooltips on field labels, keeping the right-side panels compact.
 - Scene generation prompts now mark shot times as `[Shot 2] At 00:03.500,`.
 - Still-image resolution and aspect ratio are saved separately from video project settings. Editing or selecting an image no longer changes the canvas used for video generation and continuation.
 - Zoom the timeline video preview up to 400% with the zoom menu, buttons, or Ctrl+wheel, and scroll to inspect details. Choose Fit to see the whole frame again.

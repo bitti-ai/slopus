@@ -36,6 +36,8 @@ export interface ScrubOptions {
 
 export interface PropRowProps {
   label: ReactNode;
+  /** Help shown when hovering or focusing the row label. */
+  tooltip?: string;
   /** Id of the control the label names. */
   htmlFor?: string;
   children?: ReactNode;
@@ -52,7 +54,7 @@ export interface PropRowProps {
 
 const DRAG_THRESHOLD = 3;
 
-export function PropRow({ label, htmlFor, children, value, defaultValue, modified, onReset, resetLabel, scrub, className }: PropRowProps) {
+export function PropRow({ label, tooltip, htmlFor, children, value, defaultValue, modified, onReset, resetLabel, scrub, className }: PropRowProps) {
   const drag = useRef<{ x: number; start: number; accumulated: number; moved: boolean; pointer: number } | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const suppressClick = useRef(false);
@@ -98,6 +100,8 @@ export function PropRow({ label, htmlFor, children, value, defaultValue, modifie
       <label
         className={cx("ui-prop-row__label", scrub && "ui-prop-row__label--scrub")}
         htmlFor={htmlFor}
+        data-tooltip={tooltip}
+        tabIndex={tooltip ? 0 : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={end}
@@ -125,6 +129,7 @@ export function PropRow({ label, htmlFor, children, value, defaultValue, modifie
 
 export interface PropSectionProps {
   title: ReactNode;
+  tooltip?: string;
   children?: ReactNode;
   /** Controlled open state. */
   open?: boolean;
@@ -149,7 +154,7 @@ function readOpen(key: string | undefined, fallback: boolean) {
   }
 }
 
-export function PropSection({ title, children, open, defaultOpen = true, onOpenChange, persistKey, summary, actions, className }: PropSectionProps) {
+export function PropSection({ title, tooltip, children, open, defaultOpen = true, onOpenChange, persistKey, summary, actions, className }: PropSectionProps) {
   const [inner, setInner] = useState(() => readOpen(persistKey, defaultOpen));
   const isOpen = open ?? inner;
   const contentId = useId();
@@ -164,7 +169,7 @@ export function PropSection({ title, children, open, defaultOpen = true, onOpenC
   return (
     <section className={cx("ui-prop-section", isOpen && "ui-prop-section--open", className)}>
       <div className="ui-prop-section__header">
-        <button type="button" className="ui-prop-section__toggle" aria-expanded={isOpen} aria-controls={contentId} onClick={toggle}>
+        <button type="button" className="ui-prop-section__toggle" data-tooltip={tooltip} aria-expanded={isOpen} aria-controls={contentId} onClick={toggle}>
           <ChevronDown12 aria-hidden="true" className="ui-prop-section__chevron" />
           <span className="ui-prop-section__title">{title}</span>
           {summary !== undefined && summary !== null && summary !== false && <span className="ui-prop-section__summary">{summary}</span>}
