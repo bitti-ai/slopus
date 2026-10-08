@@ -100,3 +100,15 @@ fn reference_registries_are_independent_sessions() {
         .append_reference_video(&id, &[0; 16], 2, 2, 1.0)
         .is_err());
 }
+
+#[test]
+fn older_runtimes_reject_latent_upscale_but_allow_normal_generation() {
+    let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+    api.disable_latent_upscaler_for_test();
+    let request = RequestHandle::new(&api).unwrap();
+    assert!(api.set_latent_upscaler(&request, Some(Path::new("upscaler.safetensors"))).unwrap_err().contains("API 1.24"));
+    api.set_latent_upscaler(&request, None).unwrap();
+    api.set_frames(&request, 48).unwrap();
+    api.set_resolution(&request, 64, 32).unwrap();
+    assert!(api.resolve(&request).is_ok());
+}

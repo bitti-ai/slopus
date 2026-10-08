@@ -61,6 +61,7 @@ pub(super) fn stage_name(stage: i32) -> &'static str {
         6 => "audioDecode",
         7 => "delivering",
         8 => "finished",
+        9 => "upscaling",
         _ => "unknown",
     }
 }

@@ -9,11 +9,12 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
+// v8 carries latent upscaling and its model weights.
 // v7 carries separate audio steps; older workers would silently ignore them.
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 7;
+pub const PROTOCOL_VERSION: u32 = 8;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,7 +159,7 @@ pub enum PathKind {
     Input,
 }
 
-const MODEL_OPTIONS: [&str; 5] = ["transformer", "textEncoder", "videoVae", "audioVae", "promptEmbedding"];
+const MODEL_OPTIONS: [&str; 6] = ["transformer", "textEncoder", "videoVae", "audioVae", "promptEmbedding", "latentUpscaler"];
 
 /// Visits every file path a generation names, in a fixed order. The client
 /// swaps local paths for tokens with it, and the worker swaps tokens back
@@ -171,6 +172,7 @@ pub fn visit_paths(
     if let Some(slopfab) = settings.get_mut("slopfab") {
         // The engine library always comes from the machine that runs it.
         slopfab.options.remove("dllPath");
+        if !request.latent_upscale { slopfab.options.remove("latentUpscaler"); }
         for name in MODEL_OPTIONS {
             if let Some(ProviderOption::String(value)) = slopfab.options.get_mut(name) {
                 if !value.trim().is_empty() {
@@ -274,6 +276,33 @@ mod tests {
         assert_eq!(request.refmods[0].path, file_token(4));
         assert_eq!(parse_file_token(&request.reference_paths[0]), Some(3));
         assert_eq!(parse_file_token("C:/project/a.png"), None);
+    }
+
+    #[test]
+    fn latent_upscale_weights_are_transferred_only_for_enabled_jobs() {
+        for enabled in [false, true] {
+            let mut request = GenerationRequest { latent_upscale: enabled, ..Default::default() };
+            let mut settings = settings(&[("latentUpscaler", "C:/weights/upscaler.safetensors")]);
+            let mut count = 0;
+            visit_paths(&mut request, &mut settings, |kind, path| {
+                assert_eq!(kind, PathKind::Model);
+                *path = file_token(0);
+                count += 1;
+                Ok(())
+            }).unwrap();
+            assert_eq!(count, usize::from(enabled));
+            let wire = serde_json::to_vec(&request).unwrap();
+            let restored: GenerationRequest = serde_json::from_slice(&wire).unwrap();
+            assert_eq!(restored.latent_upscale, enabled);
+            visit_paths(&mut request, &mut settings, |_, path| {
+                assert_eq!(parse_file_token(path), Some(0));
+                *path = "/worker/upscaler.safetensors".into();
+                Ok(())
+            }).unwrap();
+            if enabled {
+                assert_eq!(settings["slopfab"].options["latentUpscaler"], ProviderOption::String("/worker/upscaler.safetensors".into()));
+            }
+        }
     }
 
     #[test]

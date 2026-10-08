@@ -139,6 +139,14 @@ impl Api {
         self.check(r)?;
         self.inner.set_steps(r.pointer.as_ptr(), v)
     }
+    pub fn set_latent_upscaler(&self, r: &RequestHandle, path: Option<&Path>) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_latent_upscaler(r.pointer.as_ptr(), path)
+    }
+    #[cfg(test)]
+    pub fn disable_latent_upscaler_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner).expect("configure API before creating handles").disable_latent_upscaler_for_test();
+    }
     pub fn set_audio_steps(&self, r: &RequestHandle, steps: i32) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_audio_steps(r.pointer.as_ptr(), steps)

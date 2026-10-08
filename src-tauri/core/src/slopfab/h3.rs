@@ -77,8 +77,22 @@ pub(super) fn configure_request(
             api.set_image_edit_invert_mask(handle)?;
         }
     } else {
-        api.set_resolution(handle, request.canvas_width, request.canvas_height)?;
+        // H3 diffusion needs complete 32-pixel patches. The encoder fits the
+        // 2x decoded result to the exact selected output dimensions.
+        let (width, height) = if request.latent_upscale {
+            ((request.canvas_width / 64 + i32::from(request.canvas_width % 64 != 0)) * 32,
+             (request.canvas_height / 64 + i32::from(request.canvas_height % 64 != 0)) * 32)
+        } else { (request.canvas_width, request.canvas_height) };
+        api.set_resolution(handle, width, height)?;
     }
+    let upscaler = if request.latent_upscale {
+        let path = configuration.latent_upscaler.as_deref().ok_or("Download Latent upscale weights or choose a local file in Settings > Generator > Other weights first.")?;
+        if !path.is_file() {
+            return Err(format!("Latent upscale weights are missing: {}", path.display()));
+        }
+        Some(path)
+    } else { None };
+    api.set_latent_upscaler(handle, upscaler)?;
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;

@@ -1064,6 +1064,32 @@ mod tests {
     }
 
     #[test]
+    fn latent_upscale_jobs_transfer_custom_weights_or_download_on_the_worker() {
+        let folder = tempfile::tempdir().unwrap();
+        let local = folder.path().join("latent-upscaler.safetensors");
+        fs::write(&local, b"weights").unwrap();
+        for path in ["https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors".to_string(), local.to_string_lossy().into_owned()] {
+            let settings = BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None,
+                options: BTreeMap::from([("latentUpscaler".into(), ProviderOption::String(path.clone()))]) })]);
+            let request = GenerationRequest { latent_upscale: true, canvas_width: 736, canvas_height: 416, ..Default::default() };
+            let (job, uploads) = build_job(&request, &settings, &[]).unwrap();
+            assert!(job.request.latent_upscale);
+            assert_eq!((job.request.canvas_width, job.request.canvas_height), (736, 416));
+            assert_eq!(job.settings["slopfab"].options["latentUpscaler"], ProviderOption::String(file_token(0)));
+            assert_eq!(job.files.len(), 1);
+            if path.starts_with("https:") {
+                assert_eq!(job.files[0], FileRef::Url { url: path, lora: false });
+                assert!(uploads.is_empty());
+            } else {
+                assert!(matches!(job.files[0], FileRef::Upload { .. }));
+                assert_eq!(uploads.len(), 1);
+            }
+            let (ordinary, _) = build_job(&GenerationRequest::default(), &settings, &[]).unwrap();
+            assert!(ordinary.files.is_empty());
+        }
+    }
+
+    #[test]
     fn jobs_send_urls_for_downloads_and_uploads_for_local_files() {
         let folder = tempfile::tempdir().unwrap();
         let image = folder.path().join("ref one.png");

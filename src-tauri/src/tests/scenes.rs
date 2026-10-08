@@ -497,3 +497,15 @@ fn timeline_flags_fall_back_to_the_frontend_defaults() {
 The webview names the scene, and the scene names the file. That is the
 whole of the caller's influence over this path, and these pin it.
 ------------------------------------------------------------------- */
+
+#[test]
+fn scene_latent_upscale_survives_save_and_preserves_legacy_defaults() {
+    for latent_upscale in [None, Some(false), Some(true)] {
+        let folder = tempfile::tempdir().unwrap();
+        let mut config = scene_fixture();
+        config.generation_jobs[0].latent_upscale = latent_upscale;
+        write_project(folder.path(), &config).unwrap();
+        let restored = read_project(folder.path()).unwrap().config;
+        assert_eq!(restored.generation_jobs[0].latent_upscale, latent_upscale);
+    }
+}

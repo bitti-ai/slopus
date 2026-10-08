@@ -90,6 +90,7 @@ pub struct Api {
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_audio_steps: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_latent_upscaler: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
     set_sampling_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
@@ -207,6 +208,9 @@ impl Api {
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
                 ),
+                set_latent_upscaler: library
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(b"slopfab_request_set_latent_upscaler\0")
+                    .ok().map(|symbol| *symbol),
                 set_audio_steps: library
                     .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_audio_steps\0")
                     .ok().map(|symbol| *symbol),
@@ -456,6 +460,17 @@ impl Api {
     }
     pub fn set_steps(&self, r: *mut Request, v: i32) -> Result<(), String> {
         self.error(unsafe { (self.set_steps)(r, v) })
+    }
+    pub fn set_latent_upscaler(&self, r: *mut Request, path: Option<&Path>) -> Result<(), String> {
+        let Some(set) = self.set_latent_upscaler else {
+            return if path.is_some() { Err("Latent upscale requires SlopFab API 1.24 or later. Update the generation runtime.".into()) } else { Ok(()) };
+        };
+        let path = path_cstring(path.unwrap_or_else(|| Path::new("")))?;
+        self.error(unsafe { set(r, path.as_ptr(), 2.0, 1) })
+    }
+    #[cfg(test)]
+    pub fn disable_latent_upscaler_for_test(&mut self) {
+        self.set_latent_upscaler = None;
     }
     pub fn set_audio_steps(&self, r: *mut Request, steps: i32) -> Result<(), String> {
         let Some(set) = self.set_audio_steps else {

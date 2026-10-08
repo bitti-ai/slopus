@@ -1279,3 +1279,41 @@ fn linux_packages_find_the_runtime_in_the_resource_folder() {
     std::fs::write(bin.join(super::DLL_FILE_NAME), b"\x7fELF").unwrap();
     assert_eq!(super::runtime_beside(&bin), bin.join(super::DLL_FILE_NAME));
 }
+
+#[test]
+fn latent_upscale_uses_half_aligned_canvas_for_preview_and_execution() {
+    let folder = tempfile::tempdir().unwrap();
+    let weights = folder.path().join("latent-upscaler.safetensors");
+    std::fs::write(&weights, b"planning does not load the weights").unwrap();
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.latent_upscaler = Some(weights);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            for (width, height, half_width, half_height) in [(1344, 768, 672, 384), (736, 416, 384, 224), (416, 736, 224, 384)] {
+                let handle = RequestHandle::new(&api).unwrap();
+                let mut request = GenerationRequest { prompt: "Ocean waves".into(), frames: 48, steps: 4,
+                    latent_upscale: true, seed: 1, canvas_width: width, canvas_height: height, ..Default::default() };
+                validate_generation_controls(&request).unwrap();
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let plan = api.resolve(&handle).unwrap();
+                assert_eq!((plan.canvas_width, plan.canvas_height), (half_width, half_height));
+                request.latent_upscale = false;
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let normal = api.resolve(&handle).unwrap();
+                assert_eq!((normal.canvas_width, normal.canvas_height), (width, height));
+                assert_eq!(normal.aligned_frames, plan.aligned_frames);
+            }
+        }
+    }
+    let request = GenerationRequest { prompt: "Ocean waves".into(), frames: 48, steps: 4, latent_upscale: true,
+        canvas_width: 736, canvas_height: 416, ..Default::default() };
+    configuration.latent_upscaler = None;
+    let handle = RequestHandle::new(&api).unwrap();
+    assert!(configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan,
+        RequestPurpose::Plan, &ReferenceVideos::default()).unwrap_err().contains("Other weights"));
+    assert!(validate_generation_controls(&GenerationRequest { still_image: true, ..request.clone() }).is_err());
+    assert!(validate_generation_controls(&GenerationRequest { canvas_width: 65, ..request }).is_err());
+    assert_eq!(stage_name(9), "upscaling");
+}

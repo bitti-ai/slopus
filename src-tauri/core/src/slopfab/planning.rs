@@ -42,8 +42,8 @@ pub fn resolve_plan(
     let description = api.describe(&handle)?;
     let (_, frames) = scene_frame_window(request, plan.aligned_frames)?;
     Ok(ResolvedPlan {
-        canvas_width: plan.canvas_width,
-        canvas_height: plan.canvas_height,
+        canvas_width: if request.latent_upscale { request.canvas_width } else { plan.canvas_width },
+        canvas_height: if request.latent_upscale { request.canvas_height } else { plan.canvas_height },
         aligned_frames: frames,
         duration_seconds: plan.duration_seconds * frames as f64 / plan.aligned_frames as f64,
         model_evaluations: plan.num_model_evaluations * request.image_edit.as_ref().map_or(1, |edit| edit.edits.len() as i32),
@@ -58,6 +58,11 @@ pub fn resolve_plan(
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
     super::continuation::validate(request)?;
+    if request.latent_upscale && (request.still_image || request.image_edit.is_some()
+        || request.canvas_width < 64 || request.canvas_height < 64
+        || request.canvas_width % 32 != 0 || request.canvas_height % 32 != 0) {
+        return Err("Latent upscale requires a video canvas of at least 64 pixels per side, in multiples of 32.".into());
+    }
     if let Some(edit) = &request.image_edit {
         if !request.still_image || request.frames != 1 || request.continuation_relative_path.is_some() || request.continuation_path.is_some() || request.video_transition.is_some()
             || edit.edits.is_empty() || edit.edits.len() > 500 || request.canvas_width > 8192 || request.canvas_height > 8192

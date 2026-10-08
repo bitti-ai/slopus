@@ -56,6 +56,9 @@ pub struct GenerationRequest {
     pub steps: i32,
     #[serde(default)]
     pub audio_steps: Option<i32>,
+    /// Canvas dimensions describe the final output; denoise at half size when enabled.
+    #[serde(default)]
+    pub latent_upscale: bool,
     /// -1 asks the host to draw a fresh seed for this generation.
     pub seed: i64,
     pub canvas_width: i32,

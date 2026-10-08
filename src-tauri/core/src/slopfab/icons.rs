@@ -117,6 +117,7 @@ pub fn generate_reference_icon_batch(
         motion_cache: false,
         animate: false,
         prompt_embedding: None,
+        latent_upscaler: None,
         models: [
             (0, "transformer", Some(batch.transformer.clone())),
             (1, "textEncoder", Some(batch.text_encoder.clone())),
