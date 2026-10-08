@@ -29,11 +29,10 @@
   flex-direction: column;
 }
 
-/* The command bar is chrome, like the Generator's: a 36px strip with the
-   divider where it meets the library's well. */
+/* Align the command bar with the inspector's selected-item header. */
 .references-command {
   flex: 0 0 auto;
-  height: var(--command-row);
+  height: var(--item-header);
   border-bottom: 1px solid var(--stroke-divider);
   background: var(--surface-chrome);
 }
