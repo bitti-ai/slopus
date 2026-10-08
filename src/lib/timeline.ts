@@ -1,4 +1,5 @@
 import type { ProjectConfig, TimelineClip, TimelineTrack } from "./project";
+import { clipPlaybackRate, clipSourceTimeMs, MIN_CLIP_SPEED, MAX_CLIP_SPEED } from "./clipTiming";
 
 /** Grow to contain an edit, retaining the existing length when clips move left or are removed. */
 export function withTimelineTracks(config: ProjectConfig, tracks: TimelineTrack[]): ProjectConfig {
@@ -29,6 +30,20 @@ export function withTimelineTracks(config: ProjectConfig, tracks: TimelineTrack[
 /** Where a clip stops. Exclusive: a clip at 0 lasting 1000 ends at 1000, and a
  *  clip starting at 1000 sits flush against it without overlapping. */
 export const clipEndMs = (clip: Pick<TimelineClip, "startMs" | "durationMs">) => clip.startMs + clip.durationMs;
+
+/** Keep the same source range and preserve the spacing of later clips on this track. */
+export function retimeClip(tracks: TimelineTrack[], clipId: string, playbackRate: number): TimelineTrack[] | null {
+  const found = findClip(tracks, clipId);
+  if (!found || found.track.locked || !Number.isFinite(playbackRate) || playbackRate < MIN_CLIP_SPEED || playbackRate > MAX_CLIP_SPEED) return null;
+  const { clip, track } = found;
+  if (playbackRate === clipPlaybackRate(clip)) return null;
+  // Round down so millisecond storage cannot extend past the source's end.
+  const durationMs = Math.max(1, Math.floor(clip.durationMs * clipPlaybackRate(clip) / playbackRate));
+  const delta = durationMs - clip.durationMs;
+  return withClips(tracks, track.id, track.clips.map((item) => item.id === clipId
+    ? { ...item, playbackRate, durationMs }
+    : item.startMs >= clipEndMs(clip) ? { ...item, startMs: item.startMs + delta } : item));
+}
 
 const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) => aStart < bEnd && bStart < aEnd;
 
@@ -193,8 +208,8 @@ export function sourceRoom(clip: TimelineClip, sourceDurationMs: number | null):
     return { headMs: null, tailMs: null };
   }
   return {
-    headMs: Math.max(0, clip.sourceStartMs),
-    tailMs: Math.max(0, sourceDurationMs - clip.sourceStartMs - clip.durationMs),
+    headMs: Math.floor(Math.max(0, clip.sourceStartMs / clipPlaybackRate(clip))),
+    tailMs: Math.floor(Math.max(0, (sourceDurationMs - clip.sourceStartMs) / clipPlaybackRate(clip) - clip.durationMs)),
   };
 }
 
@@ -237,14 +252,12 @@ export function trimClip(
     const floor = Math.max(0, previousEnd, options.room.headMs === null ? 0 : clip.startMs - options.room.headMs);
     const startMs = Math.min(Math.max(snapped, floor), end - minClipMs);
     if (startMs === clip.startMs) return null;
-    const shift = startMs - clip.startMs;
     const next: TimelineClip = {
       ...clip,
       startMs,
       durationMs: end - startMs,
-      // The head moved by `shift` on the ruler, so it moved by `shift` inside
-      // the file too. Clamped at zero for a source with no timeline of its own.
-      sourceStartMs: Math.max(0, clip.sourceStartMs + shift),
+      // Source time advances at the clip's playback rate.
+      sourceStartMs: Math.max(0, Math.round(clipSourceTimeMs(clip, startMs))),
     };
     return withClips(tracks, track.id, byStart([...others, next]));
   }

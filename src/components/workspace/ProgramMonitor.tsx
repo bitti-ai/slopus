@@ -1,3 +1,4 @@
+import { clipPlaybackRate, clipSourceTimeMs } from "../../lib/clipTiming";
 import { ProgramLayer } from "./ProgramLayer";
 import { ProgramPicture } from "./ProgramPicture";
 import { Film16 } from "../ui/icons";
@@ -28,7 +29,7 @@ const carriesAudio = (asset: ProjectAsset | undefined) => Boolean(
 );
 
 /** Where inside the FILE this moment of the timeline lives. */
-const sourceTimeMs = (clip: TimelineClip, timelineMs: number) => clip.sourceStartMs + (timelineMs - clip.startMs);
+const sourceTimeMs = clipSourceTimeMs;
 
 type TransformGesture = {
   kind: "move" | "scale" | "rotate";
@@ -244,7 +245,9 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
         element.currentTime = Math.max(0, target);
       }
       if (mediaPlaying) {
-        if (element.playbackRate !== rate) element.playbackRate = rate;
+        const mediaRate = rate * clipPlaybackRate(audioClip);
+        element.preservesPitch = false;
+        if (element.playbackRate !== mediaRate) element.playbackRate = mediaRate;
         void element.play().catch(() => undefined);
       } else element.pause();
     }

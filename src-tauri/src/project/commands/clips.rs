@@ -142,6 +142,7 @@ pub(super) fn apply(
                     start_ms,
                     duration_ms,
                     source_start_ms,
+                    playback_rate: None,
                     label,
                     color: None,
                     status: status.into(),
@@ -209,7 +210,7 @@ pub(super) fn apply(
                 project,
                 &clip.asset_id,
                 clip.source_start_ms,
-                clip.duration_ms,
+                (clip.duration_ms as f64 * clip.playback_rate.unwrap_or(1.0)).round() as u64,
             )?;
             clip.track_id = project.timeline.tracks[target_track_index].id.clone();
             project.timeline.tracks[source_track_index]

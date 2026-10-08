@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- Timeline clips now offer Speed in Timing, from 25% to 400%. Speed changes preserve the source range, adjust duration and later clips on the same track, and apply to preview and export, including audio pitch.
 - Open the agent from the Settings top bar in a resizable right-side panel to configure generators, weight paths and LoRAs, even without an open project.
 - Scene Generation settings now offer Latent upscale: generate at half resolution and upscale to the selected output size, locally or on a LAN worker. Download its model or choose a local file in Other weights settings.
 

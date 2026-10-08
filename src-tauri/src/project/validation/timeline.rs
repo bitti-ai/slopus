@@ -8,6 +8,9 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             return Err(format!("Track '{}' cannot have an empty name.", track.id));
         }
         for clip in &track.clips {
+            if clip.playback_rate.is_some_and(|rate| !rate.is_finite() || !(0.25..=4.0).contains(&rate)) {
+                return Err(format!("Clip '{}' has an invalid playback rate.", clip.id));
+            }
             if clip.label.is_empty() {
                 return Err(format!("Clip '{}' cannot have an empty label.", clip.id));
             }

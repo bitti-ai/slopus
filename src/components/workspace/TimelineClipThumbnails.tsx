@@ -1,3 +1,4 @@
+import { clipPlaybackRate } from "../../lib/clipTiming";
 import { useEffect, useMemo, useState } from "react";
 import { readProjectFileUrl } from "../../lib/persistence";
 import { type GenerationJob, type TimelineClip } from "../../lib/project";
@@ -20,7 +21,8 @@ export function TimelineClipThumbnails({ folderPath, job, clip }: {
   job: GenerationJob;
   clip: TimelineClip;
 }) {
-  const sourceEndMs = clip.sourceStartMs + clip.durationMs;
+  const sourceDurationMs = clip.durationMs * clipPlaybackRate(clip);
+  const sourceEndMs = clip.sourceStartMs + sourceDurationMs;
   const times = useMemo(() => {
     const first = Math.floor(clip.sourceStartMs / TIMELINE_THUMBNAIL_INTERVAL_MS) * TIMELINE_THUMBNAIL_INTERVAL_MS;
     const result: number[] = [];
@@ -72,8 +74,8 @@ export function TimelineClipThumbnails({ folderPath, job, clip }: {
       alt=""
       draggable={false}
       style={{
-        left: `${(still.timeMs - clip.sourceStartMs) / clip.durationMs * 100}%`,
-        width: `${TIMELINE_THUMBNAIL_INTERVAL_MS / clip.durationMs * 100}%`,
+        left: `${(still.timeMs - clip.sourceStartMs) / sourceDurationMs * 100}%`,
+        width: `${TIMELINE_THUMBNAIL_INTERVAL_MS / sourceDurationMs * 100}%`,
       }}
     />)}
   </span>;

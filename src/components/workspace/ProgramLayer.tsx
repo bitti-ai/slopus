@@ -1,3 +1,4 @@
+import { clipPlaybackRate, clipSourceTimeMs } from "../../lib/clipTiming";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../lib/export";
 import { PreviewSources } from "../../lib/exportPipeline";
@@ -77,13 +78,15 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
     const run = state.playing && state.active;
     if (!run) element.pause();
     if (element.readyState < 1) return;
-    const target = Math.max(0, (state.clip.sourceStartMs + state.playheadMs - state.clip.startMs) / 1000);
+    const target = Math.max(0, clipSourceTimeMs(state.clip, state.playheadMs) / 1000);
     // Upcoming players seek while paused. At a normal cut they can start
     // immediately without seeking again for a fraction of a display frame.
     // Explicit jumps still seek precisely, including during playback.
     const tolerance = run && !state.externalSeek ? 0.25 : 0.033;
     if (!element.seeking && Math.abs(element.currentTime - target) > tolerance) element.currentTime = target;
-    if (run && element.playbackRate !== rate) element.playbackRate = rate;
+    const mediaRate = rate * clipPlaybackRate(state.clip);
+    element.preservesPitch = false;
+    if (run && element.playbackRate !== mediaRate) element.playbackRate = mediaRate;
     if (run && element.paused) void element.play().catch(() => undefined);
   };
   useLayoutEffect(sync, [playheadMs, playing, rate, active, externalSeek, clip, url]);

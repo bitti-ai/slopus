@@ -1,3 +1,4 @@
+import { clipPlaybackRate } from "./clipTiming";
 import { GENERATION_FRAME_RATE, generationAssetId, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneMediaSegment, type TimelineClip } from "./project";
 
 const milliseconds = (frames: number) => frames * 1000 / GENERATION_FRAME_RATE;
@@ -65,7 +66,7 @@ export function continuationPlaybackTracks(config: ProjectConfig) {
         const matching = joined?.sceneSegments?.find((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath);
         // A Start continuation contains only the opening overlap, so do
         // not pretend that its source file contains the whole original scene.
-        if (matching && clip.sourceStartMs + clip.durationMs <= milliseconds(matching.frameCount) + 1) {
+        if (matching && clip.sourceStartMs + clip.durationMs * clipPlaybackRate(clip) <= milliseconds(matching.frameCount) + 1) {
           source = joined;
           segment = matching;
           break;

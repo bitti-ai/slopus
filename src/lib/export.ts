@@ -11,6 +11,7 @@
    has to come from, are the two questions an editor gets wrong silently.
    ========================================================================== */
 
+import { clipPlaybackRate, clipSourceTimeMs } from "./clipTiming";
 import {
   clipChromaKey,
   clipLook,
@@ -286,6 +287,7 @@ export function estimatedBytes(bitrate: number, durationMs: number): number {
    --------------------------------------------------------------------------- */
 
 export interface ExportClipLayer {
+  playbackRate?: number;
   clipId: string;
   assetId: string;
   label: string;
@@ -297,6 +299,7 @@ export interface ExportClipLayer {
 export type ExportSegment =
   | {
       kind: "clip";
+      playbackRate?: number;
       clipId: string;
       assetId: string;
       label: string;
@@ -347,6 +350,7 @@ const AUDIO_MIX_NOTE_BYTES = 200_000_000;
  *  to fit it, the audible part is worked out here and the remainder is reported
  *  as a note the user reads before pressing Export. */
 export interface AudioSegment {
+  playbackRate?: number;
   clipId: string;
   assetId: string;
   label: string;
@@ -395,7 +399,8 @@ export function audioSegments(config: ProjectConfig, durationMs: number): AudioS
         startMs: start,
         durationMs: end - start,
         // A clip dragged to a negative start would begin further into its file.
-        sourceStartMs: clip.sourceStartMs + (start - clip.startMs),
+        sourceStartMs: clipSourceTimeMs(clip, start),
+        ...(clipPlaybackRate(clip) !== 1 ? { playbackRate: clipPlaybackRate(clip) } : {}),
       });
     }
   }
@@ -440,7 +445,7 @@ export function sourceTimeMsForFrame(
   frameIndex: number,
   frameRate: number,
 ): number {
-  return segment.clipSourceStartMs + ((frameIndex * 1000) / frameRate - segment.clipStartMs);
+  return segment.clipSourceStartMs + ((frameIndex * 1000) / frameRate - segment.clipStartMs) * (segment.playbackRate ?? 1);
 }
 
 /** The clip a viewer sees at `timeMs`.
@@ -533,10 +538,12 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
       endFrame: frame + 1,
       clipStartMs: clip.startMs,
       clipSourceStartMs: clip.sourceStartMs,
+      ...(clipPlaybackRate(clip) !== 1 ? { playbackRate: clipPlaybackRate(clip) } : {}),
       visual: clipVisualSettings(clip),
       ...(underlays.length ? { underlays: underlays.map((layer) => ({
         clipId: layer.id, assetId: layer.assetId, label: layer.label,
         clipStartMs: layer.startMs, clipSourceStartMs: layer.sourceStartMs,
+        ...(clipPlaybackRate(layer) !== 1 ? { playbackRate: clipPlaybackRate(layer) } : {}),
         visual: clipVisualSettings(layer),
       })) } : {}),
     });

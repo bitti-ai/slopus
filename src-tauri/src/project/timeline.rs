@@ -27,6 +27,8 @@ pub(crate) struct TimelineClip {
     pub(crate) duration_ms: u64,
     #[serde(default)]
     pub(crate) source_start_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) playback_rate: Option<f64>,
     pub(crate) label: String,
     // `.optional()` without `.nullable()` on the frontend — see ProjectAsset.
     #[serde(default, skip_serializing_if = "Option::is_none")]

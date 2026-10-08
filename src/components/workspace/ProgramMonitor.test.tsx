@@ -53,6 +53,27 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it.each([0.5, 2])("seeks and plays video and audio at %sx clip speed", async (playbackRate) => {
+    vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(4);
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => undefined);
+    const config = project([clip({ playbackRate })]);
+    config.assets.push({ ...config.assets[0], id: "sound", kind: "audio", sourcePath: "D:/sound.wav" });
+    config.timeline.tracks[1].clips = [clip({ id: "sound", assetId: "sound", trackId: config.timeline.tracks[1].id, playbackRate })];
+    const props = { config, folderPath: "C:/Film", onSeek: vi.fn(), onPlayingChange: vi.fn(), rate: 2 };
+    const view = render(<ProgramMonitor {...props} playheadMs={2000} playing={false} />);
+    await act(async () => undefined);
+    view.rerender(<ProgramMonitor {...props} playheadMs={3000} playing />);
+    for (const media of view.container.querySelectorAll<HTMLMediaElement>("video, audio")) {
+      expect(media.currentTime).toBe(8 + playbackRate);
+      expect(media.playbackRate).toBe(2 * playbackRate);
+      expect(media.preservesPitch).toBe(false);
+    }
+    expect(view.container.querySelectorAll("video, audio")).toHaveLength(2);
+  });
   it.each([false, true])("prepares the next trim before a cut and promotes its decoder without seeking (same asset: %s)", async (sameAsset) => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     const read = vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);

@@ -2,6 +2,18 @@ use super::batch::execute_commands;
 use super::*;
 
 #[test]
+fn clip_speed_round_trips_and_validates() {
+    let mut config = fixture();
+    config.timeline.tracks[0].clips[0].playback_rate = Some(0.5);
+    let json = serde_json::to_value(&config).unwrap();
+    assert_eq!(json["timeline"]["tracks"][0]["clips"][0]["playbackRate"], 0.5);
+    let restored: ProjectConfig = serde_json::from_value(json).unwrap();
+    assert_eq!(validate_and_normalize_config(restored).unwrap().timeline.tracks[0].clips[0].playback_rate, Some(0.5));
+    config.timeline.tracks[0].clips[0].playback_rate = Some(0.0);
+    assert!(validate_and_normalize_config(config).unwrap_err().contains("playback rate"));
+}
+
+#[test]
 fn scene_creation_uses_injected_model_defaults() {
     let current = fixture();
     let batch = parse_jsonl_commands(

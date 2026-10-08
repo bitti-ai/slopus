@@ -584,7 +584,7 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
       readonly numberOfChannels: number;
       readonly length: number;
       readonly sampleRate: number;
-      private readonly started: Array<{ buffer: HarnessAudioBuffer; when: number; offset: number; duration: number }> = [];
+      private readonly started: Array<{ buffer: HarnessAudioBuffer; when: number; offset: number; duration: number; rate: number }> = [];
       constructor(init: { numberOfChannels: number; length: number; sampleRate: number }) {
         this.numberOfChannels = init.numberOfChannels;
         this.length = init.length;
@@ -605,13 +605,14 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
         const context = this;
         return {
           buffer: null as HarnessAudioBuffer | null,
+          playbackRate: { value: 1 },
           connected: false,
           connect(destination: unknown) {
             this.connected = destination === context.destination;
           },
           start(when: number, offset: number, duration: number) {
             if (!this.buffer || !this.connected) return; // an unconnected source is silence
-            context.started.push({ buffer: this.buffer, when, offset, duration });
+            context.started.push({ buffer: this.buffer, when, offset, duration, rate: this.playbackRate.value });
           },
         };
       }
@@ -621,15 +622,15 @@ function installWebCodecs(options: HarnessOptions = {}): { restore: () => void; 
           const startFrame = Math.round(source.when * this.sampleRate);
           const offsetFrame = Math.round(source.offset * this.sampleRate);
           const count = Math.min(
-            Math.round(source.duration * this.sampleRate),
-            source.buffer.length - offsetFrame,
+            Math.round(source.duration / source.rate * this.sampleRate),
+            Math.floor((source.buffer.length - offsetFrame) / source.rate),
             this.length - startFrame,
           );
           for (let channel = 0; channel < this.numberOfChannels; channel += 1) {
             // Mono up-mixes onto both channels, as the browser's graph does.
             const from = source.buffer.getChannelData(Math.min(channel, source.buffer.numberOfChannels - 1));
             const into = out[channel];
-            for (let index = 0; index < count; index += 1) into[startFrame + index] += from[offsetFrame + index];
+            for (let index = 0; index < count; index += 1) into[startFrame + index] += from[offsetFrame + Math.floor(index * source.rate)];
           }
         }
         return new HarnessAudioBuffer(out, this.sampleRate);
@@ -922,6 +923,25 @@ async function audioTrackOf(bytes: Uint8Array) {
 }
 
 describe("mixing real sound into a real export", () => {
+  it.each([0.5, 2])("exports audio at %sx with the correct source samples and end time", async (playbackRate) => {
+    const harness = installWebCodecs({ decodes: true });
+    try {
+      const config = audioProject();
+      let keptAudio = false;
+      config.timeline.tracks = config.timeline.tracks.map((track) => ({ ...track, clips: track.clips.flatMap((clip) => {
+        if (config.assets.find((asset) => asset.id === clip.assetId)?.kind !== "audio") return [clip];
+        if (track.muted || keptAudio) return [];
+        keptAudio = true;
+        return [{ ...clip, startMs: 0, sourceStartMs: 500, durationMs: 1000, playbackRate }];
+      }) }));
+      serveFiles({ video: await sampleFile(120, 30), score: wavFile({ seconds: 3, sample: (frame) => frame / (48000 * 4) }) });
+      const result = await runAudioExport(harness, config);
+      expect(result.audioShortfalls).toEqual([]);
+      const channel = encoderChannels(harness.recorded)[0];
+      expect(channel[at(500)]).toBeCloseTo((0.5 + 0.5 * playbackRate) / 4, 3);
+      expect(channel[at(1100)]).toBe(0);
+    } finally { harness.restore(); }
+  });
   it("reads each audio ASSET once, before the file is opened, and never a muted one", async () => {
     const harness = installWebCodecs({ decodes: true });
     try {

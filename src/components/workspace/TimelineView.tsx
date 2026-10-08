@@ -1,4 +1,5 @@
 import { clipEffectCount, ClipEffects } from "./ClipEffects";
+import { clipPlaybackRate, clipSourceTimeMs, MIN_CLIP_SPEED, MAX_CLIP_SPEED } from "../../lib/clipTiming";
 import { continuationPlaybackTracks, sceneMediaDurationMs, sceneMediaStartSeconds } from "../../lib/continuationMedia";
 import { ProjectStatus } from "./ProjectStatus";
 import { PreviewEngineStatus } from "./PreviewEngineStatus";
@@ -25,7 +26,7 @@ import {
 } from "../../lib/project";
 import {
   adjacentCut, clipEndMs, findClip, formatTimecode, frameAt, frameStartMs, insertClip, moveClip, parseTimecode, pasteClip,
-  removeClip, rulerLabel, rulerScale, scrollAfterZoom, snapTargets, sourceRoom, trimClip, withTimelineTracks,
+  removeClip, retimeClip, rulerLabel, rulerScale, scrollAfterZoom, snapTargets, sourceRoom, trimClip, withTimelineTracks,
   type SnapOptions, type SourceRoom,
 } from "../../lib/timeline";
 import { useShortcut } from "../../lib/commands";
@@ -550,7 +551,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const splitClip = (clip: TimelineClip | undefined) => {
     if (!clip || !canSplit(clip)) return;
     const leftDuration = playhead - clip.startMs;
-    const right: TimelineClip = { ...clip, id: `${clip.id}-split-${Date.now()}`, startMs: playhead, durationMs: clip.durationMs - leftDuration, sourceStartMs: clip.sourceStartMs + leftDuration, label: `${clip.label} · B`, transition: undefined };
+    const right: TimelineClip = { ...clip, id: `${clip.id}-split-${Date.now()}`, startMs: playhead, durationMs: clip.durationMs - leftDuration, sourceStartMs: Math.round(clipSourceTimeMs(clip, playhead)), label: `${clip.label} · B`, transition: undefined };
     updateTracks(tracks.map((track) => track.id === clip.trackId ? { ...track, clips: track.clips.flatMap((item) => item.id === clip.id ? [{ ...item, durationMs: leftDuration, label: `${item.label} · A` }, right] : [item]) } : track));
     setSelectedId(right.id);
   };
@@ -796,9 +797,15 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      is only bounded from below. */
   const selectedAsset = selected ? assetById(selected.assetId) : undefined;
   const sourceLimitMs = selected && selectedAsset?.kind !== "image" && selectedAsset?.durationMs
-    ? Math.max(1, (sceneMediaDurationMs(selectedAsset) ?? selectedAsset.durationMs) - selected.sourceStartMs)
+    ? Math.max(1, ((sceneMediaDurationMs(selectedAsset) ?? selectedAsset.durationMs) - selected.sourceStartMs) / clipPlaybackRate(selected))
     : null;
   const minClipMs = Math.max(1, Math.round(1000 / fps));
+  const speedDisabled = !selected || tracks.find((track) => track.id === selected.trackId)?.locked || !selectedAsset || !["video", "generated", "audio"].includes(selectedAsset.kind);
+  const changeSpeed = (percent: number) => {
+    if (!selected || speedDisabled) return;
+    const next = retimeClip(tracks, selected.id, percent / 100);
+    if (next) { setDurationDraft(null); updateTracks(next, `speed:${selected.id}`); }
+  };
   /** What the FILE has left at each end of a clip. A still image and a file
    *  nothing has measured have no source timeline to run out of, and get no
    *  limit rather than a guessed one. */
@@ -1462,6 +1469,13 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               ><More16 aria-hidden="true" /></button>}
             />
             <PropSection title="Timing" persistKey="timeline.clip.timing" summary={`${shortTimecode(selected.startMs, fps)} → ${shortTimecode(clipEndMs(selected), fps)}`}>
+              <PropRow label="Speed" htmlFor="clip-speed" value={clipPlaybackRate(selected)} defaultValue={1}
+                onReset={speedDisabled ? undefined : () => changeSpeed(100)}
+                tooltip="100% is normal speed. Changes duration while keeping the same source range and moving later clips on this track. Audio pitch changes with speed.">
+                <CommittedNumberInput id="clip-speed" className="text-field" aria-label="Clip speed" minimum={MIN_CLIP_SPEED * 100} maximum={MAX_CLIP_SPEED * 100} step={1}
+                  value={Number((clipPlaybackRate(selected) * 100).toFixed(2))} disabled={speedDisabled} onCommit={changeSpeed} />
+                <span className="inspector-unit">%</span>
+              </PropRow>
               <PropRow label="Starts at"><span className="inspector-value">{formatTimecode(selected.startMs, fps)}</span></PropRow>
               <PropRow label="Duration" htmlFor="clip-duration">
                 <input

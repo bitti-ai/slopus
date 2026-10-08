@@ -1,3 +1,4 @@
+import { clipSourceTimeMs } from "./clipTiming";
 import { continuationPlaybackTracks } from "./continuationMedia";
 import { clipFrameStyle, clipVisualSettings, outputDimensions, videoDurationMs, visibleClipsAt } from "./export";
 import { createCaptureCompositor, openLayerFrameReader } from "./exportPipeline";
@@ -18,7 +19,7 @@ export function timelineCapturePlan(config: ProjectConfig, at: number) {
     const asset = assets.get(clip.assetId);
     if (!asset) throw new Error(`Clip "${clip.label}" points at missing media.`);
     if (!asset.relativePath && !asset.sourcePath) throw new Error(`Clip "${clip.label}" has no generated or imported media to capture.`);
-    return { asset, sourceTimeUs: Math.round((clip.sourceStartMs + timeMs - clip.startMs) * 1000),
+    return { asset, sourceTimeUs: Math.round((clipSourceTimeMs(clip, timeMs)) * 1000),
       style: clipFrameStyle(clipVisualSettings(clip), timeMs - clip.startMs) };
   });
   const dimensions = outputDimensions(config.settings.resolution, config.settings.aspectRatio);

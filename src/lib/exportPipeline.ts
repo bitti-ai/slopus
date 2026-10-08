@@ -710,7 +710,8 @@ async function mixAudio(options: {
        right; what was missing was anyone saying so. Below a millisecond this is
        rounding between a millisecond timeline and a 48 kHz buffer, not a hole. */
     const wantedSeconds = segment.durationMs / 1000;
-    const availableSeconds = buffer.duration - offsetSeconds;
+    const playbackRate = segment.playbackRate ?? 1;
+    const availableSeconds = (buffer.duration - offsetSeconds) / playbackRate;
     const playSeconds = Math.min(wantedSeconds, availableSeconds);
     if (wantedSeconds - availableSeconds > 0.001) {
       shortfalls.push(
@@ -719,8 +720,9 @@ async function mixAudio(options: {
     }
     const source = context.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = playbackRate;
     source.connect(context.destination);
-    source.start(segment.startMs / 1000, offsetSeconds, playSeconds);
+    source.start(segment.startMs / 1000, offsetSeconds, playSeconds * playbackRate);
     used += 1;
   }
 

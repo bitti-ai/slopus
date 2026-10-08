@@ -19,6 +19,12 @@ function project() {
 }
 
 describe("timeline capture", () => {
+  it("captures each layer at its own playback rate", () => {
+    const config = project();
+    config.timeline.tracks[0].clips[0].playbackRate = 2;
+    config.timeline.tracks[1].clips[0].playbackRate = 0.5;
+    expect(timelineCapturePlan(config, 1.5).layers.map((layer) => layer.sourceTimeUs)).toEqual([500000, 1250000]);
+  });
   beforeEach(() => vi.resetAllMocks());
   afterEach(() => vi.unstubAllGlobals());
 

@@ -1,3 +1,4 @@
+import { clipPlaybackRate } from "./clipTiming";
 import { invoke } from "@tauri-apps/api/core";
 import { cancelAgentCaptures, listenForAgentCaptures } from "./agentCapture";
 import type { SceneGenerateCommand } from "./agentGeneration";
@@ -345,7 +346,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
     const asset = next.assets.find((candidate) => candidate.id === clip.assetId);
     if (!asset) throw new Error(`Asset '${clip.assetId}' was not found.`);
     const durationMs = sceneMediaDurationMs(asset);
-    if (asset.kind !== "image" && durationMs && clip.sourceStartMs + clip.durationMs > durationMs) {
+    if (asset.kind !== "image" && durationMs && clip.sourceStartMs + clip.durationMs * clipPlaybackRate(clip) > durationMs + 1) {
       throw new Error(`Clip source range extends past asset '${asset.id}'.`);
     }
   };

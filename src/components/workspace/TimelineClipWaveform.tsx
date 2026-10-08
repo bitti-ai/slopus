@@ -1,3 +1,4 @@
+import { clipPlaybackRate } from "../../lib/clipTiming";
 import { useEffect, useMemo, useState } from "react";
 import { audioWaveformSegment, loadAudioWaveform } from "../../lib/audioWaveform";
 import { type ProjectAsset, type TimelineClip } from "../../lib/project";
@@ -23,12 +24,12 @@ export function TimelineClipWaveform({ folderPath, asset, clip, cacheVersion = "
     let live = true;
     setLevels(null);
     void loadAudioWaveform(folderPath, asset, cacheVersion).then((overview) => {
-      if (live) setLevels(audioWaveformSegment(overview, clip.sourceStartMs / 1_000, clip.durationMs / 1_000, DISPLAY_POINTS));
+      if (live) setLevels(audioWaveformSegment(overview, clip.sourceStartMs / 1_000, clip.durationMs * clipPlaybackRate(clip) / 1_000, DISPLAY_POINTS));
     }).catch(() => {
       if (live) setLevels([]);
     });
     return () => { live = false; };
-  }, [asset, cacheVersion, clip.durationMs, clip.sourceStartMs, folderPath]);
+  }, [asset, cacheVersion, clip.durationMs, clip.playbackRate, clip.sourceStartMs, folderPath]);
 
   const lines = useMemo(() => levels && levels.length > 0 ? sampleLines(levels) : null, [levels]);
 

@@ -220,6 +220,24 @@ const press = (container: HTMLElement, key: string, init: Partial<KeyboardEventI
 const toolbarTime = (container: HTMLElement) => container.querySelector(".transport-time")!.textContent;
 
 describe("the media and scene panels", () => {
+  it("changes clip speed in Timing and splits using the retimed source position", () => {
+    const config = withClip(measuredVideo(projectWithMedia(), 40000), { durationMs: 4000, sourceStartMs: 1000, playbackRate: 2 });
+    const { container, onChange } = render_(config);
+    const field = screen.getByRole("spinbutton", { name: "Clip speed" });
+    expect((field as HTMLInputElement).value).toBe("200");
+    fireEvent.change(field, { target: { value: "50" } });
+    fireEvent.blur(field);
+    const changed = wrote(onChange.mock.calls.at(-1)![0], config).timeline.tracks.flatMap((track) => track.clips)[0];
+    expect(changed.playbackRate).toBe(0.5);
+    expect(changed.durationMs).toBe(16000);
+    // This harness retains its input snapshot; split the original 2x clip.
+    onChange.mockClear();
+    press(container, "ArrowRight", { shiftKey: true });
+    press(container, "k", { ctrlKey: true });
+    const split = wrote(onChange.mock.calls.at(-1)![0], config).timeline.tracks.flatMap((track) => track.clips);
+    expect(split[1].sourceStartMs).toBe(Math.round(1000 + split[0].durationMs * 2));
+    expect(split[1].playbackRate).toBe(2);
+  });
   it("switches the media panel between grid and list, and remembers which", () => {
     const { container } = mediaPanel(projectWithMedia());
     expect(container.querySelector(".media-grid--grid")).not.toBeNull();

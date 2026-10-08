@@ -279,6 +279,7 @@ export const timelineClipSchema = z.object({
   startMs: z.number().int().nonnegative(),
   durationMs: z.number().int().positive(),
   sourceStartMs: z.number().int().nonnegative().default(0),
+  playbackRate: z.number().min(0.25).max(4).nullish(),
   label: z.string().min(1),
   // See the note on projectAssetSchema.durationMs — nullish, never bare optional.
   color: z.string().nullish(),
