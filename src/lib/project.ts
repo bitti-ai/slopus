@@ -454,7 +454,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop"]);
+export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;
 export const MAX_CONTINUATION_OVERLAP = 362;
@@ -542,6 +542,8 @@ export const generationJobSchema = z.object({
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
   backdropColor: z.enum(["green", "blue", "black", "white"]).nullish(),
+  bridgeLeftMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
+  bridgeRightMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
   poseVideoReferenceId: idSchema.nullish(),
   startVideoReferenceId: idSchema.nullish(),
   endVideoReferenceId: idSchema.nullish(),
@@ -977,7 +979,7 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
-  if (job.sceneType === "backdrop") {
+  if (job.sceneType === "backdrop" || job.sceneType === "long-shot") {
     const cited = sceneShots(job).flatMap(shotReferenceIds);
     return references.filter((reference) => cited.includes(reference.id));
   }
@@ -1040,7 +1042,7 @@ export function continuationBlocker(job: GenerationJob, jobs: readonly Generatio
 /** The saved scene's output length, not the current editable duration. */
 export function sceneOutputFrames(job: GenerationJob, config: ProjectConfig): number | undefined {
   const asset = config.assets.find((candidate) => candidate.id === generationAssetId(job.id));
-  const segment = asset?.sceneSegments?.at(-1);
+  const segment = asset?.sceneSegments?.find((part) => part.sceneId === job.id) ?? asset?.sceneSegments?.at(-1);
   if (segment?.sceneId === job.id) return segment.frameCount;
   if (asset?.durationMs) return Math.round(asset.durationMs * GENERATION_FRAME_RATE / 1000);
   try {
@@ -1162,6 +1164,12 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 
 export interface SceneGenerationInput {
   prompt: string;
+  latentBridge?: {
+    leftSceneId: string; rightSceneId: string;
+    leftRelativePath?: string; rightRelativePath?: string;
+    leftFrames?: number; rightFrames?: number;
+    leftMarginFrames: number; rightMarginFrames: number; contextFrames: number;
+  };
   videoTransition?: "extend" | "bridge";
   frames: number;
   steps: number;
@@ -1195,6 +1203,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
+    ...(input.latentBridge ? { latentBridge: input.latentBridge } : {}),
     frames: input.frames,
     steps: input.steps,
     ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
@@ -1245,6 +1254,9 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  if (job.sceneType === "long-shot") return compileScenePromptSegments({
+    shots: sceneShots(job), soundscape: job.soundscape, music: job.music,
+  }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "backdrop") return compileScenePromptSegments({
     shots: sceneShots(job), soundscape: job.soundscape, music: job.music, backdropColor: job.backdropColor ?? "green",
   }, sceneGenerationReferences(job, references), defaultLook);

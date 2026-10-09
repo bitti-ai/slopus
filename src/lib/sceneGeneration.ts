@@ -1,4 +1,5 @@
 import { generationDimensions } from "./export";
+import { longShotInputs } from "./longShot";
 import {
   audioReferenceBlocker, characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker,
   usableAudioReferences, usableVideoReferences, referenceRefmodInputs, compileGenerationJobPrompt,
@@ -17,8 +18,10 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   const inputs = sceneFrameInputs(job, config);
   const bound = inputs.references;
   const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const longShot = longShotInputs(job, config);
   return {
     jobId: job.id,
+    ...(longShot ? { latentBridge: longShot.bridge } : {}),
     ...(job.sceneType === "extend" || job.sceneType === "bridge" ? { videoTransition: job.sceneType } : {}),
     // Recompiled from current state so edits to a bound reference or a
     // retimed shot reach the engine, rather than sending a prompt frozen at

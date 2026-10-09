@@ -16,6 +16,7 @@ import { referenceOrder, STEP_SECONDS } from "./SceneEditor";
 import { statusIcon, STATUS_BADGE } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
 import { sceneMediaStartSeconds } from "../../lib/continuationMedia";
+import { longShotPlaybackSource } from "../../lib/longShot";
 import { generationAssetId, type ProjectAsset } from "../../lib/project";
 
 export interface GeneratorSelection {
@@ -399,6 +400,7 @@ export function SceneBoard({
           onDrop={(event) => dropShot(event, null)}
         >
           {shots.map((shot, index) => {
+            const joined = longShotPlaybackSource(job, { assets, generationJobs: jobs });
             const isSource = dragging?.kind === "shot" && dragging.shotId === shot.id;
             return <li
               key={shot.id}
@@ -423,8 +425,8 @@ export function SceneBoard({
               }}
             >
               <ShotCard
-                sourceOffsetSeconds={sceneMediaStartSeconds(assets.find((asset) => asset.id === generationAssetId(job.id)))}
-                job={job}
+                sourceOffsetSeconds={joined ? joined.segment.startFrame / 24 : sceneMediaStartSeconds(assets.find((asset) => asset.id === generationAssetId(job.id)))}
+                job={joined ? { ...job, outputRelativePath: joined.source.relativePath } : job}
                 shot={shot}
                 index={index}
                 endsAt={index + 1 < shots.length ? shots[index + 1].startSeconds : duration}

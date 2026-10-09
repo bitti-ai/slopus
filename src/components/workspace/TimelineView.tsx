@@ -1,6 +1,7 @@
 import { clipEffectCount, ClipEffects } from "./ClipEffects";
 import { clipPlaybackRate, clipSourceTimeMs, MIN_CLIP_SPEED, MAX_CLIP_SPEED } from "../../lib/clipTiming";
 import { continuationPlaybackTracks, sceneMediaDurationMs, sceneMediaStartSeconds } from "../../lib/continuationMedia";
+import { longShotPlaybackSource } from "../../lib/longShot";
 import { ProjectStatus } from "./ProjectStatus";
 import { PreviewEngineStatus } from "./PreviewEngineStatus";
 import {
@@ -1270,6 +1271,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           {panelTab === "scenes" ? (
             <div className="scene-list" role="tabpanel" aria-label="Scenes">
               {config.generationJobs.map((job, index) => {
+                const joined = longShotPlaybackSource(job, config);
                 const assetIds = new Set([
                   generationAssetId(job.id),
                   ...config.assets.filter((asset) => job.outputRelativePath && asset.relativePath === job.outputRelativePath).map((asset) => asset.id),
@@ -1296,7 +1298,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   {...tooltipProps(`${job.title} · ${sceneShape(job)}. Drag onto a track to use it.`)}
                 >
                   <span className="scene-card__thumb">
-                    {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={job} seconds={0} sourceOffsetSeconds={sceneMediaStartSeconds(assetsById.get(generationAssetId(job.id)))} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
+                    {job.status !== "draft" ? <ShotThumbnail folderPath={folderPath} job={joined ? { ...job, outputRelativePath: joined.source.relativePath } : job} seconds={0} sourceOffsetSeconds={joined ? joined.segment.startFrame / 24 : sceneMediaStartSeconds(assetsById.get(generationAssetId(job.id)))} shotNumber={1} estimatedCompletionAt={generationCompletionTimes[job.id] ?? null} />
                       : <Film20 aria-hidden="true" />}
                     <i>{String(index + 1).padStart(2, "0")}</i><em>{sceneDurationSeconds(job).toFixed(1)}s</em>
                   </span>

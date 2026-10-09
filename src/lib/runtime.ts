@@ -9,6 +9,7 @@ import { isTauri } from "./persistence";
 import type { TemplateLora } from "./loras";
 import { refreshDownloadedLoras, refreshDownloadedWeights } from "./weightDownloads";
 import { sceneArchiveSegments, sceneMediaDurationMs } from "./continuationMedia";
+import { bridgeGapFrames } from "./longShot";
 import {
   actionReferenceIds, createDraftGenerationJob, GENERATION_FRAME_RATE, parseProjectConfig,
   sceneBriefText, type AgentMessage, type GenerationJob, type ProjectAsset, type ProjectConfig,
@@ -94,6 +95,7 @@ export interface AgentTurnResponse {
 export interface SlopfabGenerationRequest {
   jobId: string;
   videoTransition?: "extend" | "bridge";
+  latentBridge?: import("./project").SceneGenerationInput["latentBridge"];
   prompt: string;
   frames: number;
   stillImage?: boolean;
@@ -269,7 +271,8 @@ export async function resolveSlopfabPlan(request: SlopfabGenerationRequest, conf
   const tail = source && sceneArchiveSegments(config, source)?.at(-1);
   const prefix = request.continuationFrom === "start" ? request.continuationOverlapFrames ?? 22
     : tail ? tail.startFrame + tail.frameCount : request.continuationSourceFrames ?? 22;
-  const alignedFrames = request.continuationRelativePath ? prefix + Math.ceil(request.frames / 17) * 17
+  const alignedFrames = request.latentBridge ? (request.latentBridge.leftFrames ?? 0) + bridgeGapFrames(request.frames) + (request.latentBridge.rightFrames ?? 0)
+    : request.continuationRelativePath ? prefix + Math.ceil(request.frames / 17) * 17
     : Math.ceil(Math.max(5, request.frames - 5) / 17) * 17 + 5;
   return {
     canvasWidth: request.canvasWidth,

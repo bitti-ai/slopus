@@ -1,4 +1,5 @@
 import { isTauri } from "./persistence";
+import { longShotBlocker } from "./longShot";
 import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot } from "./project";
 import type { ProjectSession } from "./projectSession";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
@@ -35,6 +36,7 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
   }
   const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
   const blocker = continuationBlocker(job, config.generationJobs)
+    ?? longShotBlocker(job, config)
     ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first." : null)
     ?? templateSceneBlocker(job.sceneType ?? "first-last-frame", template) ?? sendBlocker(job, config.references);
   if (blocker) throw new Error(blocker);

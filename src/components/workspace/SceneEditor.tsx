@@ -1,5 +1,6 @@
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
+import { longShotPosition } from "../../lib/longShot";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { ComboBox, InfoBar, PropRow, PropSection, ToggleSwitch } from "../ui";
 import {
@@ -265,6 +266,7 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
 const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "first-last-frame", label: "First & last frame" },
   { value: "backdrop", label: "Backdrop" },
+  { value: "long-shot", label: "Long Shot" },
   { value: "continue", label: "Continue" },
   { value: "animate", label: "Animate" },
   { value: "pose", label: "Pose" },
@@ -298,6 +300,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   const animate = sceneType === "animate";
   const continuing = sceneType === "continue";
   const backdrop = sceneType === "backdrop";
+  const longShot = longShotPosition(job, scenes);
   const pose = sceneType === "pose";
   const characterReplace = sceneType === "character-replace";
   const transition = isVideoTransition({ sceneType });
@@ -328,6 +331,17 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
+        {longShot && <>
+          <p className="prop-caption">{longShot.bridge
+            ? `Bridge between ${longShot.left?.title ?? "the previous scene"} and ${longShot.right?.title ?? "a following Long Shot scene (add one first)"}. Both neighbors must be generated first. Generate all handles this order.`
+            : "Generate a fresh clip. The next Long Shot scene bridges this clip to the following fresh clip."}</p>
+          {longShot.bridge && ([['bridgeLeftMargin', 'Edit previous ending'], ['bridgeRightMargin', 'Edit following beginning']] as const).map(([key, label]) =>
+            <PropRow key={key} label={label} htmlFor={`${id}-${key}`} tooltip="Frames regenerated along with the bridge, at 24 fps. Zero preserves the anchor latents. The joined decode updates playback for both neighbors.">
+              <ComboBox id={`${id}-${key}`} aria-label={label} disabled={disabled} value={String(job[key] ?? 17)}
+                options={Array.from({ length: 21 }, (_, index) => ({ value: String(index * 17), label: `${index * 17} frames (${(index * 17 / 24).toFixed(2)} s)` }))}
+                onChange={(value) => onChange({ [key]: Number(value) })} />
+            </PropRow>)}
+        </>}
         {backdrop && <>
           <PropRow label="Backdrop color" htmlFor={`${id}-backdrop`}>
             <ComboBox id={`${id}-backdrop`} aria-label="Scene backdrop color" value={job.backdropColor ?? "green"} disabled={disabled}
@@ -418,7 +432,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             />
           </PropRow>}
           {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
-          {!transition && !pose && !continuing && !backdrop && <>
+          {!transition && !pose && !continuing && !backdrop && !longShot && <>
             <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`} tooltip={animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : undefined}>
               <ReferenceSelector
                 id={`${id}-start`}
@@ -440,7 +454,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
             </PropRow>
           </>}
-          {!animate && !transition && !pose && !continuing && !backdrop && <PropRow label="Last frame" htmlFor={`${id}-end`}>
+          {!animate && !transition && !pose && !continuing && !backdrop && !longShot && <PropRow label="Last frame" htmlFor={`${id}-end`}>
             <ReferenceSelector id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
               references={references} accept={["image"]} folderPath={folderPath}
               onChange={(value) => onChange({ endFrameReferenceId: value || undefined })} />

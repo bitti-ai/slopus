@@ -31,6 +31,30 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("queues Long Shot anchors before their intervening bridges", () => {
+  const initial = project();
+  initial.generationJobs = Array.from({ length: 7 }, (_, i) => createDraftGenerationJob("Keep walking", { id: String(i + 1), sceneType: "long-shot" }));
+  const submitted = vi.fn();
+  render(<GeneratorView config={initial} folderPath="C:/project" runtime={readyRuntime}
+    onChange={vi.fn()} onGenerate={submitted} onOpenTimeline={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+  expect(submitted.mock.calls[0][0].map((item: { job: { id: string } }) => item.job.id)).toEqual(["1", "3", "2", "5", "4", "7", "6"]);
+  expect(submitted.mock.calls[0][0][2].request.latentBridge).toMatchObject({ leftSceneId: "1", rightSceneId: "3", leftMarginFrames: 17, rightMarginFrames: 17 });
+});
+
+it("persists Long Shot boundary controls and inherits the scene type for new scenes", () => {
+  const initial = project();
+  initial.generationJobs.forEach((job) => { job.sceneType = "long-shot"; });
+  const state = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+  choose("Edit previous ending", "34 frames (1.42 s)");
+  choose("Edit following beginning", "0 frames (0.00 s)");
+  expect(state.latest().generationJobs[1]).toMatchObject({ sceneType: "long-shot", bridgeLeftMargin: 34, bridgeRightMargin: 0 });
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
+  expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("long-shot");
+});
+
 it("hides unfinished templates from the generator picker", () => {
   setup();
   fireEvent.click(screen.getByRole("combobox", { name: /Video generator template/ }));

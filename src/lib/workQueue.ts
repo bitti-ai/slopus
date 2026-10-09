@@ -25,6 +25,7 @@ import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
 import { joinedSceneSegments, sceneArchiveSegments } from "./continuationMedia";
+import { bridgedSceneSegments, longShotBlocker, longShotInputs } from "./longShot";
 import type { SceneMediaSegment } from "./project";
 import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
@@ -68,6 +69,7 @@ interface PendingWork {
   };
   outputFrames?: number;
   continuationSegments?: SceneMediaSegment[];
+  bridgeSegments?: SceneMediaSegment[];
   imageDraftId?: string;
   /** The family a regenerated image joins. */
   imageParentId?: string;
@@ -441,6 +443,20 @@ export class WorkQueue {
               output: { width: work.request.canvasWidth, height: work.request.canvasHeight } });
             if (work.cancelled) continue;
           }
+          if (work.request.latentBridge) {
+            const live = work.session.getSnapshot().config;
+            const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+            const current = live.generationJobs.find((job) => job.id === work.sceneId);
+            const inputs = current && longShotInputs({ ...current, bridgeLeftMargin: captured.bridgeLeftMargin, bridgeRightMargin: captured.bridgeRightMargin }, live);
+            if (!inputs || inputs.bridge.leftSceneId !== work.request.latentBridge.leftSceneId || inputs.bridge.rightSceneId !== work.request.latentBridge.rightSceneId)
+              throw new Error("The Long Shot neighbors changed while queued. Queue this scene again.");
+            const blocker = longShotBlocker({ ...captured, latentUpscale: work.request.latentUpscale }, live);
+            if (blocker) throw new Error(blocker);
+            work.request.latentBridge = inputs.bridge;
+            work.bridgeSegments = inputs.leftSegments;
+            work.snapshot = sceneGenerationSnapshot(captured, work.request);
+            this.updateScene(work, { generationSnapshot: work.snapshot });
+          }
           if (work.request.previousSceneId) {
             const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
             if (!previous?.latentRelativePath || previous.status !== "completed") {
@@ -668,7 +684,9 @@ export class WorkQueue {
       });
       const assetId = generationAssetId(work.sceneId);
       const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
-      const sceneSegments = joinedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames,
+      const sceneSegments = work.request.latentBridge
+        ? bridgedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames, work.request.frames, work.request.latentBridge, work.bridgeSegments)
+        : joinedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames,
         Math.ceil(work.request.frames / 17) * 17, work.request.previousSceneId ? {
           sceneId: work.request.previousSceneId, latentRelativePath: work.request.continuationRelativePath!,
           frameCount: work.request.continuationSourceFrames ?? totalFrames - Math.ceil(work.request.frames / 17) * 17,

@@ -1,4 +1,5 @@
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
+import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
 export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
@@ -358,7 +359,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
-      sceneType: selectedTemplate.mode === "animate" ? "animate" : "first-last-frame" });
+      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "long-shot" ? "long-shot" : "first-last-frame" });
     onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
@@ -404,18 +405,24 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
    * both its output and the exact renderer-input snapshot still exist. */
   const batchScenesReady: GenerationJob[] = [];
   const visited = new Set<string>();
+  const visiting = new Set<string>();
   const visitForBatch = (job: GenerationJob): boolean => {
-    if (continuationBlocker(job, jobs) || templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) return false;
+    if (continuationBlocker(job, jobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) return false;
     if (visited.has(job.id)) return true;
+    if (visiting.has(job.id)) return false;
     if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
     const previous = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
-    if (previous && !visitForBatch(previous)) return false;
+    const dependencies = [...(previous ? [previous] : []), ...longShotDependencies(job, jobs)];
+    visiting.add(job.id);
+    if (dependencies.some((source) => !visitForBatch(source))) { visiting.delete(job.id); return false; }
+    visiting.delete(job.id);
     visited.add(job.id);
-    const previousWillRender = previous &&
-      (batchScenesReady.includes(previous) || ["queued", "generating", "ready"].includes(previous.status));
+    const priorBridge = longShotPosition(job, jobs)?.previousBridge;
+    const previousWillRender = [...dependencies, ...(priorBridge ? [priorBridge] : [])].some((source) =>
+      batchScenesReady.includes(source) || ["queued", "generating", "ready"].includes(source.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
-      || (!job.latentRelativePath && jobs.some((candidate) => continuationSceneId(candidate, jobs) === job.id))
+      || (!job.latentRelativePath && (job.sceneType === "long-shot" || jobs.some((candidate) => continuationSceneId(candidate, jobs) === job.id)))
       || !job.generationSnapshot
       || job.generationSnapshot !== snapshotFor(job)) batchScenesReady.push(job);
     return true;
@@ -429,6 +436,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (job.status === "ready") return "Saving this scene.";
     const source = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
     return continuationBlocker(job, jobs)
+      ?? longShotBlocker(job, config)
       ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first, or use Generate all." : null)
       ?? templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
   };
@@ -437,7 +445,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     .filter((job) => job.status === "completed"
       && Boolean(job.generationSnapshot)
       && (job.generationSnapshot !== snapshotFor(job)
-        || jobs.some((source) => source.id === continuationSceneId(job, jobs) && ["queued", "generating", "ready"].includes(source.status))))
+        || jobs.some((source) => (source.id === continuationSceneId(job, jobs) || longShotDependencies(job, jobs).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
 

@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- Added Long Shot scenes: generate alternating fresh clips and latent bridges in 1 → 3 → 2 → 5 → 4 order. Bridge controls set how much of the neighboring ending and beginning may change, with joined video and audio used in preview and export. Includes updated Windows/Linux runtimes and LAN worker support; update workers alongside the app.
 - Video and image generation headers now show the effective step count from the selected generator's active LoRAs, including fixed sampling schedules.
 - Added Backdrop scenes to generate subjects and action against a selected green, blue, black or white background. Chroma Key now offers matching backdrop modes and automatic border detection, with matte levels, background color removal, despill, shadow removal, edge softness, choke/grow and small-speck/hole cleanup in GPU preview and export.
 - Timeline clips now offer Speed in Timing, from 25% to 400%. Speed changes preserve the source range, adjust duration and later clips on the same track, and apply to preview and export, including audio pitch.

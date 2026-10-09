@@ -1,16 +1,18 @@
 import { clipPlaybackRate } from "./clipTiming";
+import { currentLongShotArchives } from "./longShot";
 import { GENERATION_FRAME_RATE, generationAssetId, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneMediaSegment, type TimelineClip } from "./project";
 
 const milliseconds = (frames: number) => frames * 1000 / GENERATION_FRAME_RATE;
-export const sceneMediaStartSeconds = (asset?: ProjectAsset) => (asset?.sceneSegments?.at(-1)?.startFrame ?? 0) / GENERATION_FRAME_RATE;
+const ownSegment = (asset?: ProjectAsset) => asset?.sceneSegments?.find((part) => generationAssetId(part.sceneId) === asset.id) ?? asset?.sceneSegments?.at(-1);
+export const sceneMediaStartSeconds = (asset?: ProjectAsset) => (ownSegment(asset)?.startFrame ?? 0) / GENERATION_FRAME_RATE;
 
 /** Editing coordinates stay relative to the scene, even when its file contains
  * the whole chain. Old, suffix-only assets need no offset. */
 export const sceneMediaDurationMs = (asset: ProjectAsset): number | null | undefined =>
-  asset.sceneSegments?.length ? Math.round(milliseconds(asset.sceneSegments.at(-1)!.frameCount)) : asset.durationMs;
+  asset.sceneSegments?.length ? Math.round(milliseconds(ownSegment(asset)!.frameCount)) : asset.durationMs;
 
 export function assetSceneSegment(asset: ProjectAsset, jobs: readonly GenerationJob[]): SceneMediaSegment | undefined {
-  if (asset.sceneSegments?.length) return asset.sceneSegments.at(-1);
+  if (asset.sceneSegments?.length) return ownSegment(asset);
   const job = jobs.find((candidate) => generationAssetId(candidate.id) === asset.id);
   return job?.latentRelativePath && asset.durationMs ? {
     sceneId: job.id, latentRelativePath: job.latentRelativePath, startFrame: 0,
@@ -25,7 +27,7 @@ export function sceneArchiveSegments(config: ProjectConfig, job: GenerationJob, 
   if (!job.latentRelativePath || seen.has(job.id)) return undefined;
   seen.add(job.id);
   const asset = config.assets.find((candidate) => candidate.id === generationAssetId(job.id));
-  if (asset?.sceneSegments?.at(-1)?.latentRelativePath === job.latentRelativePath) return asset.sceneSegments;
+  if (ownSegment(asset)?.latentRelativePath === job.latentRelativePath) return asset?.sceneSegments ?? undefined;
   const frames = sceneOutputFrames(job, config);
   if (!frames) return undefined;
   try {
@@ -49,6 +51,7 @@ export function sceneArchiveSegments(config: ProjectConfig, job: GenerationJob, 
  * A -> B -> C uses C's joined decode throughout the chain. */
 export function continuationPlaybackTracks(config: ProjectConfig) {
   const assets = new Map(config.assets.map((asset) => [asset.id, asset]));
+  const longShots = currentLongShotArchives(config);
   const resolved = new Map<string, TimelineClip>();
   const sorted = config.timeline.tracks.flatMap((track) => track.clips).sort((a, b) => a.startMs - b.startMs);
   for (let index = sorted.length - 1; index >= 0; index--) {
@@ -57,12 +60,22 @@ export function continuationPlaybackTracks(config: ProjectConfig) {
     const own = asset && assetSceneSegment(asset, config.generationJobs);
     let source = asset;
     let segment = own;
+    const joinedLongShot = own && longShots.find((candidate) => candidate.sceneSegments?.some((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath));
+    if (joinedLongShot) {
+      const part = joinedLongShot.sceneSegments!.find((part) => part.sceneId === own!.sceneId)!;
+      resolved.set(clip.id, { ...clip, assetId: joinedLongShot.id, sourceStartMs: clip.sourceStartMs + milliseconds(part.startFrame) });
+      continue;
+    }
     if (own) {
       const following = sorted.filter((next) => next.id !== clip.id && Math.abs(clip.startMs + clip.durationMs - next.startMs) <= 1)
         .sort((a, b) => Number(b.trackId === clip.trackId) - Number(a.trackId === clip.trackId));
       for (const next of following) {
         const nextClip = resolved.get(next.id);
         const joined = nextClip && assets.get(nextClip.assetId);
+        // Long Shot archives are selected above only after validating all
+        // dependencies. Never revive a stale archive through legacy adjacency.
+        const joinedOwnIndex = joined?.sceneSegments?.findIndex((part) => generationAssetId(part.sceneId) === joined.id) ?? -1;
+        if (joinedOwnIndex >= 0 && joinedOwnIndex < joined!.sceneSegments!.length - 1) continue;
         const matching = joined?.sceneSegments?.find((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath);
         // A Start continuation contains only the opening overlap, so do
         // not pretend that its source file contains the whole original scene.
