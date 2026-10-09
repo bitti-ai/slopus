@@ -553,6 +553,10 @@ it("edits ordered style tokens with suggestions, custom tags, removal, undo, and
   expect(screen.queryByRole("option", { name: "whimsical" })).not.toBeInTheDocument();
   fireEvent.keyDown(aesthetics, { key: "Backspace" });
   expect(current().imageScene!.style.aesthetics).toBe("Minimal poster, intricate");
+  choose("Mode", "None");
+  expect(comboValue(screen.getByRole("combobox", { name: "Mode" }))).toBe("none");
+  expect(screen.queryByRole("combobox", { name: "Add Aesthetics tag" })).not.toBeInTheDocument();
+  expect(imageScenePrompt(current().imageScene!)).not.toMatch(/still photograph|Minimal poster|golden hour|Screen print/);
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
 });
 

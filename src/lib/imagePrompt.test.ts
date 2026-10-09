@@ -43,6 +43,11 @@ describe("MiniMax H3 still-image prompts", () => {
     ].join("\n"));
     expect(compileImagePrompt(config).prompt).not.toMatch(/\[Shot 2|00:|root:|Ignored art medium|Medium:|Aesthetics:|Camera and lens:/);
     expect(config).toEqual(snapshot);
+    config.imageScene!.style.mode = "none";
+    expect(compileImagePrompt(config).prompt).toBe([
+      "integrated_multimodal_description: [Shot 1] A runner suspended mid-stride.",
+      "", "overall_soundscape: N/A", "", "non_diegetic_music: N/A",
+    ].join("\n"));
   });
 
   it("preserves nested composition while omitting placement and palettes", () => {
@@ -85,7 +90,7 @@ describe("MiniMax H3 still-image prompts", () => {
     expect(result.prompt).toContain("<Subject 2> is Palette, providing appearance. Warm ochre and red.");
     expect(result.prompt).toContain("<Subject 3> is Runner, providing appearance from <Picture 2> and <Picture 3>. Red jersey.");
     expect(result.prompt).toContain("summary:\n[reference generation] A single still image uses <Subject 1>, <Subject 2>, <Subject 3>");
-    expect(result.prompt).toContain("detailed_description:\nA still photograph.\n[Shot 1] On <Subject 1> in <Subject 2> tones, <Subject 3> is suspended mid-stride.");
+    expect(result.prompt).toContain("detailed_description:\n[Shot 1] On <Subject 1> in <Subject 2> tones, <Subject 3> is suspended mid-stride.");
     for (let index = 1; index <= 3; index++) {
       expect(result.prompt).toContain(`<Subject ${index}> (appears in [Shot 1]): fully_preserved`);
       expect(result.prompt.split("detailed_description:")[1]).toContain(`Use <Subject ${index}>`);

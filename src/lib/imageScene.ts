@@ -19,7 +19,7 @@ export const imageSceneSchema = z.object({
   sourceImage: imageSourceSchema.nullish(),
   nodes: z.array(imageNodeSchema).min(1).max(500),
   background: z.string(),
-  style: z.object({ mode: z.enum(["photo", "art"]), aesthetics: z.string(), lighting: z.string(), medium: z.string(), detail: z.string() }),
+  style: z.object({ mode: z.enum(["none", "photo", "art"]), aesthetics: z.string(), lighting: z.string(), medium: z.string(), detail: z.string() }),
   steps: z.number().int().min(2).max(1000), seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER),
   referenceIds: z.array(z.string().min(1)).max(100),
   outputAssetId: z.string().min(1).nullable(),
@@ -51,7 +51,7 @@ export const imageScenePromptText = (scene: ImageScene): string =>
 
 export function createImageScene(prompt = ""): ImageScene {
   return { nodes: [{ id: "image-root", parentId: null, kind: "root", name: "Image", description: prompt, text: "", box: null, colors: [] }],
-    background: "", style: { mode: "photo", aesthetics: "", lighting: "", medium: "", detail: "" }, steps: 20, seed: -1, referenceIds: [], outputAssetId: null };
+    background: "", style: { mode: "none", aesthetics: "", lighting: "", medium: "", detail: "" }, steps: 20, seed: -1, referenceIds: [], outputAssetId: null };
 }
 export function createImageEditScene(sourceImage: ImageSource | null, previous?: ImageScene): ImageScene {
   return { ...createImageScene(), rootType: "image", sourceImage,
@@ -107,7 +107,7 @@ export function imageScenePromptParts(scene: ImageScene, look?: string): { style
     ...(scene.style.detail.trim() ? [`${scene.style.detail.trim()} ${scene.style.mode === "photo" ? "camera and lens characteristics" : "art style"}`] : []),
   ];
   const medium = scene.style.mode === "photo" ? "A still photograph" : `A still image in ${scene.style.medium.trim() || "an artistic medium"}`;
-  const style = sentence(`${medium}${treatment.length ? ` with ${treatment.join(", ")}` : ""}`);
+  const style = scene.style.mode === "none" ? "" : sentence(`${medium}${treatment.length ? ` with ${treatment.join(", ")}` : ""}`);
   const lines: string[] = [
     ...(root.description.trim() ? [sentence(root.description)] : []),
     ...(scene.background.trim() ? [`Background: ${sentence(scene.background)}`] : []),
@@ -128,5 +128,5 @@ export function imageScenePromptParts(scene: ImageScene, look?: string): { style
 
 export function imageScenePrompt(scene: ImageScene, look?: string): string {
   const parts = imageScenePromptParts(scene, look);
-  return parts ? `${parts.style}\n${parts.composition}` : "";
+  return parts ? [parts.style, parts.composition].filter(Boolean).join("\n") : "";
 }

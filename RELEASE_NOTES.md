@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- New image scenes default to None style mode, which adds no style instructions to the generated prompt.
 - Generation diagnostics now separate VAE model opening, weight loading, decoding and cleanup times to help identify intermittent image-generation slowdowns.
 - Added Long Shot scenes: generate alternating fresh clips and latent bridges in 1 → 3 → 2 → 5 → 4 order. Bridge controls set how much of the neighboring ending and beginning may change, with joined video and audio used in preview and export. Includes updated Windows/Linux runtimes and LAN worker support; update workers alongside the app.
 - Video and image generation headers now show the effective step count from the selected generator's active LoRAs, including fixed sampling schedules.

@@ -48,6 +48,7 @@ describe("image documents", () => {
     objectScene.nodes[1].colors = ["#FF0000"];
     expect(imageScenePrompt(objectScene)).toBe("");
     objectScene.nodes[1].description = "sunglasses";
-    expect(imageScenePrompt(objectScene)).toBe("A still photograph.\nsunglasses.");
+    expect(objectScene.style.mode).toBe("none");
+    expect(imageScenePrompt(objectScene)).toBe("sunglasses.");
   });
 });

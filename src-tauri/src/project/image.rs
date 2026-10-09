@@ -146,7 +146,7 @@ impl ImageScene {
             || self.nodes.len() > 500
             || !(2..=1000).contains(&self.steps)
             || !(-1..=9_007_199_254_740_991).contains(&self.seed)
-            || !matches!(self.style.mode.as_str(), "photo" | "art")
+            || !matches!(self.style.mode.as_str(), "none" | "photo" | "art")
             || self.reference_ids.len() > 100
             || self.reference_ids.iter().any(String::is_empty)
             || self.output_asset_id.as_ref().is_some_and(String::is_empty)

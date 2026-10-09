@@ -486,6 +486,7 @@ describe("image generation work", () => {
     const { queue } = setup();
     const project = imageProject();
     project.config.settings.defaultLook = "watercolor";
+    project.config.imageScene!.style.mode = "photo";
     project.config.references = [{ id: "ocean", kind: "image", name: "Ocean", description: "Turquoise water", relativePath: "references/ocean.png", intendedUse: [], createdAt: project.config.createdAt }];
     project.config.imageScene!.nodes[0].description += " over @[ref:ocean]";
     const preview = compileImagePrompt(project.config).prompt;

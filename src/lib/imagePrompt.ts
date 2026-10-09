@@ -49,7 +49,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     : editing ? "The still image retains the visual medium, lighting, palette and perspective of <Picture 1>." : visual.style;
   const audio = ["overall_soundscape: N/A", "non_diegetic_music: N/A"];
   if (!subjects.length && !sourcePicture) return {
-    prompt: [`integrated_multimodal_description: [Shot 1] ${style}\n${visual.composition}`, ...audio].join("\n\n"), references,
+    prompt: [`integrated_multimodal_description: [Shot 1] ${[style, visual.composition].filter(Boolean).join("\n")}`, ...audio].join("\n\n"), references,
   };
   const definitions = subjects.map((subject, index) => `${label(index)} is ${subject.name}, providing ${subject.role}${subject.source}. ${subject.description}`);
   const retention = subjects.map((subject, index) => {
@@ -71,7 +71,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     `subject_definitions:\n${definitions.join("\n")}`,
     `summary:\n${summary}`,
     `retention_analysis:\n${retention.join("\n")}`,
-    `detailed_description:\n${style}\n[Shot 1] ${visual.composition}\n${subjects.map((subject, index) => `Use ${label(index)} for ${subject.name}'s ${subject.role}${subject.source}. ${subject.description}`).join("\n")}`,
+    `detailed_description:\n${style ? `${style}\n` : ""}[Shot 1] ${visual.composition}\n${subjects.map((subject, index) => `Use ${label(index)} for ${subject.name}'s ${subject.role}${subject.source}. ${subject.description}`).join("\n")}`,
     ...audio,
   ].join("\n\n"), references };
 }

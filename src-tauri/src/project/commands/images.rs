@@ -38,7 +38,7 @@ fn new_scene(prompt: &str) -> ImageScene {
         }],
         background: String::new(),
         style: ImageStyle {
-            mode: "photo".into(),
+            mode: "none".into(),
             aesthetics: String::new(),
             lighting: String::new(),
             medium: String::new(),

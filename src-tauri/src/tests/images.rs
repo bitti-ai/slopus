@@ -51,6 +51,7 @@ fn image_root_survives_save_and_agent_hierarchy_replacement() {
     use crate::project::commands::{execute_commands_at, ProjectCommand};
     let mut config = image_fixture();
     let scene = config.image_scene.as_mut().unwrap();
+    scene.style.mode = "none".into();
     scene.root_type = Some("image".into());
     scene.source_image = Some(crate::project::image::ImageSource { relative_path: "media/imported/source.png".into(), name: "Source".into(), width: 65, height: 41 });
     let root = tempfile::tempdir().unwrap();
