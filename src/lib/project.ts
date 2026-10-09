@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { backdropDirection, type BackdropColor } from "./backdrop";
 import { createImageScene, imageSceneReferenceIds, imageSceneSchema } from "./imageScene";
 import { effectEnabledSchema, effectSchemas, isEffectOn } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
@@ -441,7 +442,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge"]);
+export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;
 export const MAX_CONTINUATION_OVERLAP = 362;
@@ -528,6 +529,7 @@ export function shotReferenceIds(shot: Pick<SceneShot, "action" | "speech">): st
 export const generationJobSchema = z.object({
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
+  backdropColor: z.enum(["green", "blue", "black", "white"]).nullish(),
   poseVideoReferenceId: idSchema.nullish(),
   startVideoReferenceId: idSchema.nullish(),
   endVideoReferenceId: idSchema.nullish(),
@@ -963,6 +965,10 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
+  if (job.sceneType === "backdrop") {
+    const cited = sceneShots(job).flatMap(shotReferenceIds);
+    return references.filter((reference) => cited.includes(reference.id));
+  }
   if (job.sceneType === "pose") {
     // Optional guidance is explicit in the prompt. Old bindings and frame
     // anchors belong to other modes and must not redefine the target scene.
@@ -1084,6 +1090,7 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
  *  to show the same bytes for both. */
 export interface ScenePrompt {
   shots: readonly SceneShot[];
+  backdropColor?: BackdropColor;
   poseVideoReferenceId?: string | null;
   videoTransition?: "extend" | "bridge";
   startFrameReferenceId?: string | null;
@@ -1226,6 +1233,9 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
+  if (job.sceneType === "backdrop") return compileScenePromptSegments({
+    shots: sceneShots(job), soundscape: job.soundscape, music: job.music, backdropColor: job.backdropColor ?? "green",
+  }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "continue") return compileScenePromptSegments({
     shots: sceneShots(job), soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
@@ -1466,6 +1476,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     // T2VA — base guide §2.2 field list and order.
     return [
       frame("integrated_multimodal_description: "),
+      ...(scene.backdropColor ? [frame(`${backdropDirection(scene.backdropColor)} `)] : []),
       ...compiled.flatMap((shot) => [
         frame(shot.index === 0 ? marker(shot) : ` ${marker(shot)}`),
         ...(shot.index === 0 ? [styleSegment, frame(", ")] : []),
@@ -1638,10 +1649,12 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     ...definitions,
     frame("\n\nsummary:\n"),
     ...summary,
+    ...(scene.backdropColor ? [frame(` ${backdropDirection(scene.backdropColor)}`)] : []),
     frame(`\n\nretention_analysis:\n${retention.join("\n")}`),
     ...(scene.videoTransition ? [frame("\n<Video 1>: partially_preserved - continue from its ending state without copying its completed action."),
       ...(scene.videoTransition === "bridge" ? [frame("\n<Video 2>: partially_preserved - approach its opening state with continuous motion; do not repeat the ending clip.")] : [])] : []),
     frame("\n\ndetailed_description:\n"),
+    ...(scene.backdropColor ? [frame(`${backdropDirection(scene.backdropColor)}\n`)] : []),
     ...detailed,
     frame("\n\noverall_soundscape:\n"),
     soundSegment,

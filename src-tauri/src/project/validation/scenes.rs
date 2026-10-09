@@ -22,10 +22,13 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge"
+                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
+        }
+        if job.backdrop_color.as_deref().is_some_and(|value| !matches!(value, "green" | "blue" | "black" | "white")) {
+            return Err(format!("Scene '{}' has an unsupported backdrop color.", job.id));
         }
         if [
             &job.start_video_reference_id,

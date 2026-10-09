@@ -323,10 +323,12 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
         "character-replace",
         "extend",
         "bridge",
+        "backdrop",
     ] {
         let mut config = scene_fixture();
         let job = &mut config.generation_jobs[0];
         job.scene_type = Some(scene_type.into());
+        job.backdrop_color = Some("blue".into());
         job.pose_video_reference_id = Some("pose-video".into());
         job.start_video_reference_id = Some("start-video".into());
         job.end_video_reference_id = Some("end-video".into());
@@ -337,6 +339,7 @@ fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
         let normalized = validate_and_normalize_config(config).unwrap();
         let saved = serde_json::to_string(&normalized).unwrap();
         let restored: ProjectConfig = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.generation_jobs[0].backdrop_color.as_deref(), Some("blue"));
         assert_eq!(
             restored.generation_jobs[0]
                 .pose_video_reference_id
