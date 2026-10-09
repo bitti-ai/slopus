@@ -35,7 +35,7 @@ import {
   type OutputCodecId,
 } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
-import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
+import { applyChromaKey, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE, usesBackdropKey } from "./chromaKey";
 import { hasVideoEffects } from "./effectSettings";
 import { createVideoEffectsProcessor } from "./videoEffectsGpu";
 import { previewEngine } from "./previewEngine";
@@ -309,7 +309,7 @@ async function createWebGpuCompositor(width: number, height: number, background:
       pass(context.getCurrentTexture().createView(), null);
     },
     draw(frame, style) {
-      const processed = hasVideoEffects(style);
+      const processed = hasVideoEffects(style) || usesBackdropKey(style.chromaKey);
       const renderPipeline = processed ? processedPipeline : pipeline;
       const fitted = fitRect(frame.displayWidth, frame.displayHeight, width, height);
       const scale = style.transform.scale / 100;
@@ -397,7 +397,7 @@ function createCanvasCompositor(width: number, height: number, background: strin
     clear: paintBackground,
     draw(frame, style) {
       let picture: VideoFrame | OffscreenCanvas = frame;
-      if (hasVideoEffects(style)) throw new Error("This clip uses video effects that require WebGPU. A GPU is unavailable; effects cannot be included in this export.");
+      if (hasVideoEffects(style) || usesBackdropKey(style.chromaKey)) throw new Error("This clip uses video effects that require WebGPU. A GPU is unavailable; effects cannot be included in this export.");
       if (style.chromaKey) {
         keyCanvas ??= new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
         if (keyCanvas.width !== frame.displayWidth) keyCanvas.width = frame.displayWidth;

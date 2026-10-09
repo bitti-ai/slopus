@@ -6,6 +6,7 @@ Each effect can be adjusted or removed independently. Locked tracks cannot be ed
 | Effect | Controls |
 | --- | --- |
 | Opacity | Clip opacity, 0–100%. Temperature is available in Basic Corrections. |
+| Chroma Key | Custom RGB-distance keying or Auto, Green, Blue, Black and White backdrop modes. Backdrop modes add screen gain/balance, matte black/white levels, background unmix, despill, shadow removal, edge softness, choke/grow, isolated-speck removal and tiny-hole filling. |
 | Sharpen | Edge enhancement, 0–200%; zero bypasses sharpening. |
 | Gaussian Blur | Radius, 0–24 source pixels; zero bypasses blur. |
 | Basic Corrections | Temperature, tint, highlights, shadows, whites and blacks −100 to +100%; exposure −4 to +4 stops; contrast −100 to +100%; saturation 0–200%. The existing brightness control remains available. |
@@ -14,6 +15,12 @@ Each effect can be adjusted or removed independently. Locked tracks cannot be ed
 | Color Wheels | Shadow, midtone and highlight tint wheels, each with separate lightness from −100 to +100%. |
 | Vignette | Amount −100 to +100% (positive darkens, negative lightens), midpoint 0–100%, roundness −100 to +100%, and feather 0–100%. |
 | 3D LUT | Import or replace a `.cube` file and blend it at 0–100% intensity. |
+
+For a consistent backdrop, choose **Green** or **Blue** for color-difference keying, **Black** for light, fire and glows, or **White** for dark smoke and ink. Black and white modes derive partial transparency from brightness; they are not general segmentation tools for solid subjects. The color swatch can be adjusted to the actual screen color. **Auto** measures 32 border samples on the GPU each frame, chooses the dominant green/blue/black/white group, and estimates its color. Keep the subject away from the border, or use a fixed mode and color. Existing effects retain **Custom color (RGB distance)** and their original tolerance.
+
+Screen gain changes removal strength; screen balance mixes the maximum and average of the other two color channels. Clip black removes faint matte residue and clip white makes the subject opaque; the controls always maintain black below white. Background unmix removes the backdrop contribution from soft edges, while despill suppresses excess green or blue. Remove backdrop shadows normalizes the color key for darker screen pixels. Edge softness and choke/grow use source pixels (0–4 and −4–4 respectively; positive choke shrinks the matte). Speck and hole cleanup affect isolated one-pixel defects. Cleanup/choke run before softness and before the other video effects.
+
+Backdrop keying uses the same WebGPU passes for the program monitor and export. Border analysis, matte cleanup and intermediate pictures remain on the GPU. Each frame is processed independently so seeking and scrubbing have no previous-frame state to reset. This assumes a consistent background; it does not reconstruct a spatially varying clean plate or apply temporal smoothing. If WebGPU is unavailable, the new modes report an error rather than exporting with a different key. Existing RGB-distance effects retain their fallback.
 
 The render order is Chroma Key → Gaussian Blur → Sharpen (standalone + Creative) → Basic Corrections → Creative look / faded film / vibrance → Curves → Color Wheels → LUT → Vignette. Transform, opacity, and transitions composite the result into the timeline. This order is fixed; the inspector is not a reorderable effect stack. Blur radii refer to source resolution, so preview and export use the same radius even at different output sizes.
 

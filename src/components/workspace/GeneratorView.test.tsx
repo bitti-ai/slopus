@@ -38,6 +38,20 @@ it("hides unfinished templates from the generator picker", () => {
   expect(screen.queryByRole("option", { name: "First/Last Frame" })).toBeNull();
 });
 
+it("generates the selected backdrop with the scene action and restores it on reopen", () => {
+  const state = setup();
+  fireEvent.click(screen.getByRole("button", { name: "Select scene First scene" }));
+  choose("Scene type", "Backdrop");
+  choose("Scene backdrop color", "White");
+  expect(state.latest().generationJobs[0]).toMatchObject({ sceneType: "backdrop", backdropColor: "white" });
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(state.latest())));
+  const snapshot = JSON.parse(saved.generationJobs[0].generationSnapshot!);
+  expect(snapshot.prompt).toContain("solid white (#ffffff)");
+  expect(saved.generationJobs[0].backdropColor).toBe("white");
+});
+
 it("unbinds a reference after its last prompt chip is removed and excludes it from generation and Used by", () => {
   const initial = project();
   initial.references = ["hero", "opening"].map((id) => ({ id, kind: "image", name: id, description: "", intendedUse: [],

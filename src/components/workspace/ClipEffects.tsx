@@ -8,6 +8,8 @@ import { Checkbox, ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMe
 import { CurveEditor } from "./CurveEditor";
 import { GradingWheel } from "./GradingWheel";
 import { ColorSwatch } from "./ColorPicker";
+import { BACKDROP_COLORS, BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
+import { BACKDROP_KEY_DEFAULTS, usesBackdropKey } from "../../lib/chromaKey";
 
 type EffectId = "look" | "transition" | "chromaKey" | "sharpen" | "blur" | "colorCorrection" | "vignette" | "lut" | "creative" | "curves" | "colorWheels";
 // Keep copied settings across clip selections and inspector remounts, like the
@@ -127,13 +129,40 @@ const EFFECTS: readonly EffectDefinition[] = [
     defaults: { chromaKey: DEFAULT_CLIP_CHROMA_KEY },
     editor: ({ clip, update, disabled }) => {
       const key = clip.chromaKey!;
+      const advanced = usesBackdropKey({ ...key, enabled: true });
+      const presetColor = BACKDROP_COLORS[key.backdrop as BackdropColor] ?? DEFAULT_CLIP_CHROMA_KEY.color;
+      const chromatic = key.backdrop !== "black" && key.backdrop !== "white";
       return <>
-        <PropRow label="Colour" value={key.color.toLowerCase()} defaultValue={DEFAULT_CLIP_CHROMA_KEY.color.toLowerCase()}
-          onReset={disabled ? undefined : () => update({ chromaKey: { ...key, color: DEFAULT_CLIP_CHROMA_KEY.color } })} resetLabel="Reset colour">
+        <PropRow label="Backdrop">
+          <ComboBox aria-label="Chroma key backdrop" value={key.backdrop ?? "color"} disabled={disabled}
+            options={[{ value: "color", label: "Custom color" }, { value: "auto", label: "Auto (frame border)" }, ...BACKDROP_OPTIONS]}
+            onChange={(backdrop) => update({ chromaKey: { ...key, backdrop: backdrop as NonNullable<typeof key.backdrop>,
+              ...(backdrop in BACKDROP_COLORS ? { color: BACKDROP_COLORS[backdrop as BackdropColor] } : {}) } })} />
+        </PropRow>
+        {key.backdrop !== "auto" && <PropRow label="Colour" value={key.color.toLowerCase()} defaultValue={presetColor}
+          onReset={disabled ? undefined : () => update({ chromaKey: { ...key, color: presetColor } })} resetLabel="Reset colour">
           <ColorSwatch label="Chroma key colour" value={key.color} disabled={disabled} onChange={(color) => update({ chromaKey: { ...key, color } })} />
           <code className="clip-effect__value">{key.color.toUpperCase()}</code>
-        </PropRow>
-        <Param label="Tolerance" ariaLabel="Chroma key tolerance" value={key.tolerance} defaultValue={DEFAULT_CLIP_CHROMA_KEY.tolerance} disabled={disabled} onChange={(tolerance) => update({ chromaKey: { ...key, tolerance } })} />
+        </PropRow>}
+        {!advanced && <Param label="Tolerance" ariaLabel="Chroma key tolerance" value={key.tolerance} defaultValue={DEFAULT_CLIP_CHROMA_KEY.tolerance} disabled={disabled} onChange={(tolerance) => update({ chromaKey: { ...key, tolerance } })} />}
+        {advanced && <>
+          <p className="prop-caption">Use a consistent backdrop. Black preserves glows; white preserves dark smoke or ink. Matching colors inside the subject also become transparent.</p>
+          {([
+            ["screenGain", "Screen gain", 0, 200], ["screenBalance", "Screen balance", 0, 100],
+            ["clipBlack", "Clip black", 0, 99], ["clipWhite", "Clip white", 1, 100],
+            ["despill", "Despill", 0, 100], ["unmix", "Background unmix", 0, 100],
+            ["softness", "Edge softness", 0, 4], ["choke", "Choke / grow", -4, 4],
+          ] as const).filter(([field]) => chromatic || (field !== "screenBalance" && field !== "despill")).map(([field, label, min, max]) => <Param key={field} label={label} ariaLabel={`Chroma key ${label.toLowerCase()}`}
+            value={key[field] ?? BACKDROP_KEY_DEFAULTS[field]} defaultValue={BACKDROP_KEY_DEFAULTS[field]} min={min} max={max}
+            step={field === "softness" || field === "choke" ? .25 : 1} suffix={field === "softness" || field === "choke" ? " px" : "%"}
+            disabled={disabled} onChange={(value) => update({ chromaKey: { ...key, [field]: value,
+              ...(field === "clipBlack" && value >= (key.clipWhite ?? 95) ? { clipWhite: value + 1 } : {}),
+              ...(field === "clipWhite" && value <= (key.clipBlack ?? 3) ? { clipBlack: value - 1 } : {}),
+            } })} />)}
+          {([["removeShadows", "Remove backdrop shadows"], ["despeckle", "Remove isolated specks"], ["fillHoles", "Fill tiny holes"]] as const).filter(([field]) => chromatic || field !== "removeShadows").map(([field, label]) =>
+            <PropRow key={field} label={label}><Checkbox aria-label={label} checked={key[field] ?? false} disabled={disabled}
+              onChange={(checked) => update({ chromaKey: { ...key, [field]: checked } })} /></PropRow>)}
+        </>}
       </>;
     },
   },

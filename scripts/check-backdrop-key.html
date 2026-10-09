@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- Run npm run dev, then open /scripts/check-backdrop-key.html in a WebGPU browser.
+     Pixel readback is confined to this test; production frames stay on the GPU. -->
+<meta charset="utf-8"><title>Backdrop key GPU check</title><pre id="result">RUNNING</pre>
+<script type="module">
+import { createVideoEffectsProcessor } from '/src/lib/videoEffectsGpu.ts';
+import { createCaptureCompositor } from '/src/lib/exportPipeline.ts';
+const result = document.getElementById('result');
+try {
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('No WebGPU adapter');
+  const device = await adapter.requestDevice();
+  const errors = [];
+  device.addEventListener('uncapturederror', event => errors.push(event.error.message));
+  // Capture compilation errors, which are asynchronous in WebGPU.
+  device.pushErrorScope('validation');
+  const processor = createVideoEffectsProcessor(device);
+  const source = new OffscreenCanvas(32, 32);
+  const ctx = source.getContext('2d');
+  const target = device.createTexture({size:[32,32], format:'rgba8unorm', usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});
+  const module = device.createShaderModule({code:`
+    @group(0) @binding(0) var input: texture_2d<f32>;
+    @vertex fn vs(@builtin(vertex_index) i:u32) -> @builtin(position) vec4f {
+      let p = array<vec2f,3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3)); return vec4f(p[i],0,1);
+    }
+    @fragment fn fs(@builtin(position) p:vec4f) -> @location(0) vec4f { return textureLoad(input,vec2i(p.xy),0); }
+  `});
+  const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:'rgba8unorm'}]}});
+  async function render(backdrop, background, subject, extra={}, paint=()=>{}, effects={}) {
+    ctx.fillStyle=background;ctx.fillRect(0,0,32,32);ctx.fillStyle=subject;ctx.fillRect(8,8,16,16);
+    paint(ctx);
+    const frame=new VideoFrame(source,{timestamp:0});
+    const output=processor.render(frame,{...effects,chromaKey:{backdrop,color:background,tolerance:20,clipBlack:0,clipWhite:100,...extra}});
+    const buffer=device.createBuffer({size:256*32,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+    const encoder=device.createCommandEncoder();
+    const pass=encoder.beginRenderPass({colorAttachments:[{view:target.createView(),loadOp:'clear',storeOp:'store'}]});
+    pass.setPipeline(pipeline);pass.setBindGroup(0,device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:output.createView()}]}));pass.draw(3);pass.end();
+    encoder.copyTextureToBuffer({texture:target},{buffer,bytesPerRow:256},[32,32]);device.queue.submit([encoder.finish()]);
+    await buffer.mapAsync(GPUMapMode.READ);
+    const bytes=new Uint8Array(buffer.getMappedRange());
+    const at=(x,y)=>Array.from(bytes.slice(y*256+x*4,y*256+x*4+4));
+    const data={border:at(0,0),center:at(16,16),edge:at(8,16)};
+    buffer.unmap();buffer.destroy();frame.close();return data;
+  }
+  const cases=[];
+  function check(condition,message){if(!condition)throw new Error(message);}
+  for(const [mode,bg,fg] of [['green','#00ff00','#ff0000'],['blue','#0000ff','#ff0000'],['black','#000000','#800000'],['white','#ffffff','#7f7f7f']]){
+    const data=await render(mode,bg,fg);
+    check(data.border[3]===0,mode+' did not remove background: '+JSON.stringify(data));
+    check(Math.abs(data.center[3]-(mode==='black'||mode==='white'?128:255))<3,mode+' alpha: '+JSON.stringify(data));
+    const auto=await render('auto',bg,fg);
+    check(JSON.stringify(auto)===JSON.stringify(data),'auto differs from '+mode);
+    cases.push({mode,...data});
+  }
+  const edge=await render('green','#00ff00','#ff0000',{softness:1,choke:.5,fillHoles:true,despeckle:true});
+  check(edge.edge[3]>0&&edge.edge[3]<255,'refinement edge: '+JSON.stringify(edge));
+  const legacy=await render('color','#00ff00','#ff0000');
+  check(legacy.border[3]===0&&legacy.center[3]===255,'legacy regression');
+  const bypass=await render('green','#00ff00','#ff0000',{enabled:false});
+  check(bypass.border[3]===255,'bypass regression');
+  const mixed=await render('green','#00ff00','#80ff80');
+  check(mixed.center.every(value=>Math.abs(value-128)<3),'unmix green edge: '+JSON.stringify(mixed));
+  const shadow=await render('green','#00ff00','#008000',{removeShadows:true});
+  check(shadow.center[3]===0,'shadow removal');
+  const speck=ctx=>{ctx.fillStyle='#00ff00';ctx.fillRect(0,0,32,32);ctx.fillStyle='#33cc00';ctx.fillRect(16,16,1,1);};
+  check((await render('green','#00ff00','#ff0000',{},speck)).center[3]>0,'speck fixture');
+  check((await render('green','#00ff00','#ff0000',{despeckle:true},speck)).center[3]===0,'speck cleanup');
+  const hole=ctx=>{ctx.fillStyle='#00ff00';ctx.fillRect(16,16,1,1);};
+  const filled=await render('green','#00ff00','#ff0000',{fillHoles:true},hole);
+  check(filled.center[0]===255 && filled.center[3]===255,'hole cleanup color: '+JSON.stringify(filled));
+  const blurred=await render('green','#00ff00','#ff0000',{softness:1,choke:.5},()=>{},{blur:{radius:2},sharpen:{amount:10}});
+  check(blurred.border[3]===0&&blurred.center[0]===255,'effect stack regression');
+  // Exercise the actual monitor/export compositor over an opaque blue layer.
+  ctx.fillStyle='#00ff00';ctx.fillRect(0,0,32,32);ctx.fillStyle='#ff0000';ctx.fillRect(8,8,16,16);
+  const compositor=await createCaptureCompositor(32,32,'#0000ff');
+  check(compositor.kind==='webgpu','expected GPU compositor');
+  compositor.clear();
+  const input=new VideoFrame(source,{timestamp:0});
+  compositor.draw(input,{transform:{scale:100,rotation:0,positionX:0,positionY:0},look:{opacity:100},opacity:1,revealStart:0,revealEnd:1,
+    transition:{type:'cut',durationMs:500},chromaKey:{color:'#00ff00',tolerance:20,backdrop:'green'}});
+  const composed=compositor.take(0,41667);
+  const pixels=new Uint8Array(composed.allocationSize({format:'RGBA'}));
+  const layout=await composed.copyTo(pixels,{format:'RGBA'});
+  const c=16*layout[0].stride+16*4;
+  check(pixels[2]>250&&pixels[0]<3&&pixels[c]>250&&pixels[c+2]<3,'compositor did not layer keyed picture');
+  input.close();composed.close();compositor.dispose();
+  const validation=await device.popErrorScope();
+  if(validation)throw new Error(validation.message);
+  if(errors.length)throw new Error(errors.join('\n'));
+  processor.dispose();target.destroy();device.destroy();
+  result.textContent='PASS '+JSON.stringify({cases,edge});
+} catch(error) {result.textContent='FAIL '+error.stack;}
+</script>

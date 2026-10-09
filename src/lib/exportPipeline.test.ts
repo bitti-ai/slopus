@@ -730,13 +730,14 @@ describe("running an export of external media", () => {
     }
   }, 10_000);
 
-  it("refuses to silently omit GPU effects when only canvas compositing is available", async () => {
+  it.each(["sharpen", "backdrop"])("refuses to silently omit %s effects when only canvas compositing is available", async (effect) => {
     const { restore, recorded } = installWebCodecs({ decodes: true, audio: false });
     try {
       invoked.mockResolvedValue(await sampleFile(5, 30));
       const config = externalProject();
       const video = config.timeline.tracks.find((track) => track.kind === "video" && track.clips.length > 0)!;
-      video.clips[0].sharpen = { amount: 50 };
+      if (effect === "sharpen") video.clips[0].sharpen = { amount: 50 };
+      else video.clips[0].chromaKey = { color: "#00ff00", tolerance: 20, backdrop: "green" };
       const settings = defaultExportSettings(config);
       await expect(runExport({
         folderPath: FOLDER, config, settings, plan: buildExportPlan(config, settings),

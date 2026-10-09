@@ -21,5 +21,6 @@ it("uses green by default and retains explicitly cited subject references", () =
   const references: ProjectReference[] = [{ id: "subject", name: "Dancer", kind: "text", description: "A red robot", intendedUse: [], createdAt: "2026-10-09T00:00:00Z" }];
   expect(sceneGenerationReferences(job, references)).toEqual(references);
   expect(compileGenerationJobPrompt(job, references)).toContain("solid green");
+  expect(compileGenerationJobPrompt(job, references)).toContain("partially_preserved");
   expect(generationJobSchema.safeParse({ ...job, backdropColor: "red" }).success).toBe(false);
 });

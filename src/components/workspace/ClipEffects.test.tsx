@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { timelineClipSchema, type TimelineClip } from "../../lib/project";
 import { DEFAULT_CREATIVE, DEFAULT_WHEELS, parseCube } from "../../lib/effectSettings";
 import { ClipEffects } from "./ClipEffects";
+import { choose } from "./comboTestUtils";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -42,6 +43,26 @@ async function inTauri(answers: Record<string, (args: unknown) => unknown>, body
 const CUBE = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
 
 describe("clip effects", () => {
+  it("selects backdrop presets, keeps matte levels valid, and bypasses without losing controls", () => {
+    render(<Harness />);
+    add("Chroma key");
+    choose("Chroma key backdrop", "Blue");
+    expect(saved().chromaKey).toMatchObject({ backdrop: "blue", color: "#0000ff" });
+    expect(screen.queryByRole("slider", { name: "Chroma key tolerance" })).toBeNull();
+    fireEvent.change(screen.getByRole("slider", { name: "Chroma key clip black" }), { target: { value: "98" } });
+    expect(saved().chromaKey).toMatchObject({ clipBlack: 98, clipWhite: 99 });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fill tiny holes" }));
+    expect(saved().chromaKey.fillHoles).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Chroma key on" }));
+    expect(saved().chromaKey).toMatchObject({ enabled: false, backdrop: "blue", fillHoles: true });
+    expect(screen.getByRole("slider", { name: "Chroma key screen gain" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Chroma key on" }));
+    choose("Chroma key backdrop", "Black");
+    expect(saved().chromaKey.color).toBe("#000000");
+    expect(screen.queryByRole("slider", { name: "Chroma key despill" })).toBeNull();
+    choose("Chroma key backdrop", "Custom color");
+    expect(screen.getByRole("slider", { name: "Chroma key tolerance" })).toBeTruthy();
+  });
   it("disables Paste settings until settings have been copied", () => {
     render(<ClipEffects clip={{ ...original, sharpen: { amount: 50 } }} disabled={false} onChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Sharpen options" }));

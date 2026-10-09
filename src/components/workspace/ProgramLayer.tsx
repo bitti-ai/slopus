@@ -6,6 +6,7 @@ import { clipChromaKey, type ProjectAsset, type TimelineClip } from "../../lib/p
 import { ChromaKeyPreview } from "./ChromaKeyPreview";
 import { VideoEffectsPreview } from "./VideoEffectsPreview";
 import { activeVideoEffects, hasVideoEffects } from "../../lib/effectSettings";
+import { usesBackdropKey } from "../../lib/chromaKey";
 import type { GpuEffects } from "../../lib/videoEffectsGpu";
 import { isTauri } from "../../lib/persistence";
 import type { PreviewMedia } from "../../lib/previewPresentation";
@@ -99,7 +100,7 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
      per clip object so the effect canvases only redraw when the clip does. */
   const gpuEffects = useMemo<GpuEffects>(() => ({ ...activeVideoEffects(clip), chromaKey: clipChromaKey(clip) }), [clip]);
   const chromaKey = gpuEffects.chromaKey;
-  const effects = hasVideoEffects(gpuEffects);
+  const effects = hasVideoEffects(gpuEffects) || usesBackdropKey(chromaKey);
   const sourceStyle: CSSProperties = composited || chromaKey || effects ? { ...style, visibility: "hidden", position: "absolute" } : style;
   const showStatus = active && foreground && isTauri() && Boolean(asset?.relativePath || asset?.sourcePath);
   return <div className="program-layer" data-clip-id={clip.id} data-active={active} aria-hidden={!active}

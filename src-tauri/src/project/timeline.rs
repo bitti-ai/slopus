@@ -79,10 +79,35 @@ pub(crate) struct ClipLook {
     pub(crate) enabled: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ClipChromaKey {
     pub(crate) color: String,
     pub(crate) tolerance: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) backdrop: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) screen_gain: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) screen_balance: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) clip_black: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) clip_white: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) despill: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) unmix: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) softness: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) choke: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) remove_shadows: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) despeckle: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) fill_holes: Option<bool>,
     /// Effect bypass: `Some(false)` keeps the settings but renders without
     /// them. Absent in every project written before bypass existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]

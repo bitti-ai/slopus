@@ -257,8 +257,20 @@ export const clipTransformSchema = z.object({
 export const clipChromaKeySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   tolerance: z.number().min(0).max(100),
+  backdrop: z.enum(["color", "auto", "green", "blue", "black", "white"]).nullish(),
+  screenGain: z.number().finite().min(0).max(200).nullish(),
+  screenBalance: z.number().finite().min(0).max(100).nullish(),
+  clipBlack: z.number().finite().min(0).max(99).nullish(),
+  clipWhite: z.number().finite().min(1).max(100).nullish(),
+  despill: z.number().finite().min(0).max(100).nullish(),
+  unmix: z.number().finite().min(0).max(100).nullish(),
+  softness: z.number().finite().min(0).max(4).nullish(),
+  choke: z.number().finite().min(-4).max(4).nullish(),
+  removeShadows: z.boolean().nullish(),
+  despeckle: z.boolean().nullish(),
+  fillHoles: z.boolean().nullish(),
   enabled: effectEnabledSchema,
-});
+}).refine((key) => (key.clipBlack ?? 3) < (key.clipWhite ?? 95), "Clip white must exceed clip black.");
 
 // Keep the legacy `look` key for opacity; retired temperature values are stripped on load.
 export const clipLookSchema = z.object({
@@ -1605,6 +1617,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const appearances = compiled.filter((shot) => featured[shot.index].includes(reference.id))
       .map((shot) => `[Shot ${shot.index + 1}]`);
     const where = appearances.length > 0 ? ` (appears in ${appearances.join(", ")})` : "";
+    if (scene.backdropColor) return `${referenceLabel(reference, index)}${where}: partially_preserved - retain the subject's appearance and identity; replace the setting with the uniform ${scene.backdropColor} backdrop.`;
     return `${referenceLabel(reference, index)}${where}: fully_preserved - the referenced characteristics are retained.`;
   });
   // §4.2: `reference`, not a copy marker. The clip guides the target sound;

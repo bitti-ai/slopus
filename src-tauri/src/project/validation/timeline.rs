@@ -49,6 +49,13 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
                     || !key.color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
                     || !key.tolerance.is_finite()
                     || !(0.0..=100.0).contains(&key.tolerance)
+                    || key.backdrop.as_deref().is_some_and(|value| !matches!(value, "color" | "auto" | "green" | "blue" | "black" | "white"))
+                    || [(key.screen_gain, 0.0, 200.0), (key.screen_balance, 0.0, 100.0),
+                        (key.clip_black, 0.0, 99.0), (key.clip_white, 1.0, 100.0),
+                        (key.despill, 0.0, 100.0), (key.unmix, 0.0, 100.0),
+                        (key.softness, 0.0, 4.0), (key.choke, -4.0, 4.0)]
+                        .iter().any(|(value, min, max)| value.is_some_and(|v| !v.is_finite() || v < *min || v > *max))
+                    || key.clip_black.unwrap_or(3.0) >= key.clip_white.unwrap_or(95.0)
                 {
                     return Err(format!("Clip '{}' has an invalid chroma key.", clip.id));
                 }

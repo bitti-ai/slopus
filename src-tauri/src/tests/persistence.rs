@@ -114,6 +114,7 @@ fn effect_bypass_round_trips_and_stays_absent_when_unset() {
         color: "#00ff00".into(),
         tolerance: 20.0,
         enabled: Some(false),
+        ..Default::default()
     });
     clip.look = Some(ClipLook {
         opacity: 80.0,
@@ -145,6 +146,7 @@ fn chroma_key_survives_save_and_reopen_and_validates_settings() {
         color: "#12ABef".into(),
         tolerance: 27.0,
         enabled: None,
+        ..Default::default()
     });
     let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
     let root = tempfile::tempdir().unwrap();
@@ -169,6 +171,7 @@ fn chroma_key_survives_save_and_reopen_and_validates_settings() {
             color: color.into(),
             tolerance,
             enabled: None,
+            ..Default::default()
         });
         assert!(validate_and_normalize_config(invalid)
             .unwrap_err()
@@ -182,6 +185,35 @@ fn chroma_key_survives_save_and_reopen_and_validates_settings() {
             .chroma_key
             .is_none()
     );
+}
+
+#[test]
+fn backdrop_key_controls_round_trip_and_reject_invalid_ranges() {
+    let mut config = fixture();
+    let key = serde_json::json!({"color":"#0000ff", "tolerance":20, "backdrop":"blue",
+        "screenGain":110, "screenBalance":50, "clipBlack":5, "clipWhite":90,
+        "despill":70, "unmix":80, "softness":1.5, "choke":-0.5,
+        "removeShadows":true, "despeckle":true, "fillHoles":true});
+    config.timeline.tracks[0].clips[0].chroma_key = Some(serde_json::from_value(key.clone()).unwrap());
+    let config = without_derived_project_state(validate_and_normalize_config(config).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let folder = PathBuf::from(&created.folder_path);
+    write_project(&folder, &config).unwrap();
+    assert_eq!(read_project(&folder).unwrap().config, config);
+    let restored = serde_json::to_value(&config.timeline.tracks[0].clips[0].chroma_key).unwrap();
+    assert_eq!(restored["backdrop"], "blue");
+    assert_eq!(restored["softness"], 1.5);
+    assert_eq!(restored["fillHoles"], true);
+    for (name, value) in [("backdrop", serde_json::json!("red")), ("clipBlack", serde_json::json!(90)),
+        ("clipWhite", serde_json::json!(5)), ("screenGain", serde_json::json!(201)),
+        ("despill", serde_json::json!(-1)), ("softness", serde_json::json!(5)), ("choke", serde_json::json!(-5))] {
+        let mut invalid = config.clone();
+        let mut invalid_key = key.clone();
+        invalid_key[name] = value;
+        invalid.timeline.tracks[0].clips[0].chroma_key = Some(serde_json::from_value(invalid_key).unwrap());
+        assert!(validate_and_normalize_config(invalid).unwrap_err().contains("chroma key"));
+    }
 }
 
 #[test]

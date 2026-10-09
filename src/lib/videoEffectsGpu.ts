@@ -1,5 +1,6 @@
 /// <reference types="@webgpu/types" />
-import { keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE } from "./chromaKey";
+import { backdropKeyUniforms, keyColor, KEY_FEATHER, RGB_DISTANCE_SCALE, usesBackdropKey } from "./chromaKey";
+import { BACKDROP_KEY_WGSL, BACKDROP_PLATE_WGSL, BACKDROP_REFINE_WGSL } from "./backdropKeyShader";
 import { activeVideoEffects, CREATIVE_LOOKS, type VideoEffects, type LutTable } from "./effectSettings";
 import { compileCurves, CURVE_SAMPLES } from "./colorCurves";
 import { COLOR_GRADING_WGSL } from "./colorGradingShader";
@@ -30,14 +31,18 @@ struct Params {
   shadows: vec4f,
   midtones: vec4f,
   highlights: vec4f,
+  keyControls: vec4f,
+  keyMatte: vec4f,
+  keyEdge: vec4f,
 };
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(2) var linearSampler: sampler;
 `;
-const IMPORT = VERTEX + PARAMS + /* wgsl */ `
+const IMPORT = VERTEX + PARAMS + BACKDROP_KEY_WGSL + /* wgsl */ `
 @group(0) @binding(1) var picture: texture_external;
 @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let color = textureSampleBaseClampToEdge(picture, linearSampler, uv);
+  if (params.detail.w > 0. && params.keyControls.x > 0.) { return backdropKey(color); }
   var alpha = color.a;
   if (params.detail.w > 0.) {
     let difference = distance(color.rgb, params.key.rgb) / ${RGB_DISTANCE_SCALE};
@@ -149,10 +154,13 @@ function pipeline(device: GPUDevice, code: string, format: GPUTextureFormat): GP
 /** Shared by monitor and export. All pictures stay in GPU textures; output is premultiplied. */
 export function createVideoEffectsProcessor(device: GPUDevice) {
   const importPipeline = pipeline(device, IMPORT, "rgba16float");
+  const platePipeline = pipeline(device, VERTEX + PARAMS + BACKDROP_PLATE_WGSL, "rgba16float");
+  const refinePipeline = pipeline(device, VERTEX + PARAMS + BACKDROP_REFINE_WGSL, "rgba16float");
+  const plate = device.createTexture({ size: [1, 1], format: "rgba16float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
   const blurPipeline = pipeline(device, BLUR, "rgba16float");
   const finishPipeline = pipeline(device, FINISH, "rgba16float");
   const sampler = device.createSampler({ minFilter: "linear", magFilter: "linear" });
-  const uniforms = Array.from({ length: 3 }, () => device.createBuffer({ size: 208, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+  const uniforms = Array.from({ length: 5 }, () => device.createBuffer({ size: 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
   const curveBuffer = device.createBuffer({ size: 9 * CURVE_SAMPLES * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   let curveKey: string | undefined;
   let curveMask = 0;
@@ -163,6 +171,7 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
   return {
     render(frame: VideoFrame, effects: GpuEffects): GPUTexture {
       effects = { ...effects, ...activeVideoEffects(effects) };
+      if (effects.chromaKey?.enabled === false) effects = { ...effects, chromaKey: null };
       const nextCurveKey = JSON.stringify(effects.curves ?? null);
       if (nextCurveKey !== curveKey) {
         const compiled = compileCurves(effects.curves);
@@ -206,6 +215,7 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
           const wheel = effects.colorWheels?.[name];
           return [wheel?.x ?? 0, wheel?.y ?? 0, (wheel?.lightness ?? 0) / 100, 0];
         }),
+        ...backdropKeyUniforms(effects.chromaKey),
       ]);
       device.queue.writeBuffer(uniforms[0], 0, data);
       const encoder = device.createCommandEncoder();
@@ -214,20 +224,41 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
           { binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: source }, { binding: 2, resource: sampler },
         ];
         if (lut) entries.push({ binding: 3, resource: { buffer: lut } }, { binding: 4, resource: { buffer: curveBuffer } });
+        if (renderPipeline === importPipeline) entries.push({ binding: 3, resource: plate.createView() });
         const group = device.createBindGroup({ layout: renderPipeline.getBindGroupLayout(0), entries });
         const render = encoder.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
         render.setPipeline(renderPipeline); render.setBindGroup(0, group); render.draw(3); render.end();
       };
-      pass(importPipeline, device.importExternalTexture({ source: frame }), textures[0], uniforms[0]);
+      const external = device.importExternalTexture({ source: frame });
+      const backdrop = usesBackdropKey(effects.chromaKey);
+      if (backdrop) pass(platePipeline, external, plate, uniforms[0]);
+      pass(importPipeline, external, textures[0], uniforms[0]);
+      let source = textures[0];
+      let spare = textures[1];
+      const key = effects.chromaKey;
+      if (backdrop && ((key?.choke ?? 0) !== 0 || key?.despeckle || key?.fillHoles)) {
+        const refinement = data.slice();
+        refinement[60] = 0;
+        device.queue.writeBuffer(uniforms[3], 0, refinement);
+        pass(refinePipeline, source.createView(), spare, uniforms[3]);
+        [source, spare] = [spare, source];
+      }
+      if (backdrop && (key?.softness ?? 0) > 0) {
+        const refinement = data.slice();
+        refinement.fill(0, 61, 64);
+        device.queue.writeBuffer(uniforms[4], 0, refinement);
+        pass(refinePipeline, source.createView(), spare, uniforms[4]);
+        [source, spare] = [spare, source];
+      }
       if ((effects.blur?.radius ?? 0) > 0) {
         data[21] = 1;
         device.queue.writeBuffer(uniforms[1], 0, data);
-        pass(blurPipeline, textures[0].createView(), textures[1], uniforms[1]);
+        pass(blurPipeline, source.createView(), spare, uniforms[1]);
         data[21] = 0; data[22] = 1;
         device.queue.writeBuffer(uniforms[2], 0, data);
-        pass(blurPipeline, textures[1].createView(), textures[0], uniforms[2]);
+        pass(blurPipeline, spare.createView(), source, uniforms[2]);
       }
-      pass(finishPipeline, textures[0].createView(), textures[2], uniforms[0], lutBuffer);
+      pass(finishPipeline, source.createView(), textures[2], uniforms[0], lutBuffer);
       device.queue.submit([encoder.finish()]);
       return textures[2];
     },
@@ -237,6 +268,7 @@ export function createVideoEffectsProcessor(device: GPUDevice) {
       luts.forEach(({ buffer }) => buffer.destroy());
       emptyLut.destroy();
       curveBuffer.destroy();
+      plate.destroy();
     },
   };
 }
