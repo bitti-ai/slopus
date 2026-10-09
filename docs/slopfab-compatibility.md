@@ -26,7 +26,10 @@ to load the new library and logging code.
 
 Consecutive **Long Shot** scenes alternate fresh anchors and bridges. Generate
 all queues 1, 3, 2, 5, 4, 7, 6. A bridge requires completed neighbors with saved
-latents; an unfinished final bridge needs another Long Shot scene after it.
+latents. With an even number of scenes, the final scene continues from the
+previous anchor using the latest compatible joined archive. Four scenes run
+in 1, 3, 2, 4 order. Adding a following Long Shot scene turns that continuation
+into a bridge on its next generation.
 The two margin controls replace the previous anchor's ending and the following
 anchor's beginning in multiples of 17 frames (default 17, zero allowed).
 Each anchor must also provide 22 preserved context frames. Use the same canvas,

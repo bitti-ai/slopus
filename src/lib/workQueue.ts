@@ -25,7 +25,7 @@ import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
 import { joinedSceneSegments, sceneArchiveSegments } from "./continuationMedia";
-import { bridgedSceneSegments, longShotBlocker, longShotInputs } from "./longShot";
+import { bridgedSceneSegments, longShotBlocker, longShotContinuationInputs, longShotInputs } from "./longShot";
 import type { SceneMediaSegment } from "./project";
 import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
@@ -458,14 +458,26 @@ export class WorkQueue {
             this.updateScene(work, { generationSnapshot: work.snapshot });
           }
           if (work.request.previousSceneId) {
-            const previous = work.session.getSnapshot().config.generationJobs.find((job) => job.id === work.request.previousSceneId);
+            const live = work.session.getSnapshot().config;
+            const previous = live.generationJobs.find((job) => job.id === work.request.previousSceneId);
             if (!previous?.latentRelativePath || previous.status !== "completed") {
               throw new Error("Generate the selected source scene successfully to save its latents before continuing it. You can also use Generate All.");
             }
-            work.request.continuationRelativePath = previous.latentRelativePath;
-            work.request.continuationSourceFrames = sceneOutputFrames(previous, work.session.getSnapshot().config);
-            work.continuationSegments = sceneArchiveSegments(work.session.getSnapshot().config, previous);
             const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+            if (captured.sceneType === "long-shot") {
+              const current = live.generationJobs.find((job) => job.id === work.sceneId);
+              const inputs = current && longShotContinuationInputs(current, live);
+              if (!inputs || inputs.request.previousSceneId !== work.request.previousSceneId)
+                throw new Error("The Long Shot neighbors changed while queued. Queue this scene again.");
+              const blocker = longShotBlocker({ ...captured, latentUpscale: work.request.latentUpscale }, live);
+              if (blocker) throw new Error(blocker);
+              Object.assign(work.request, inputs.request);
+              work.continuationSegments = inputs.segments;
+            } else {
+              work.request.continuationRelativePath = previous.latentRelativePath;
+              work.request.continuationSourceFrames = sceneOutputFrames(previous, live);
+              work.continuationSegments = sceneArchiveSegments(live, previous);
+            }
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });
           }

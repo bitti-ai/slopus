@@ -10,25 +10,26 @@ export function longShotPosition(job: GenerationJob, jobs: readonly GenerationJo
   if (index < 0) return null;
   let start = index;
   while (start > 0 && jobs[start - 1].sceneType === "long-shot") start--;
-  const bridge = (index - start) % 2 === 1;
-  return { index, start, bridge,
-    left: bridge ? jobs[index - 1] : undefined,
-    right: bridge && jobs[index + 1]?.sceneType === "long-shot" ? jobs[index + 1] : undefined,
-    previousBridge: bridge && index - start > 1 ? jobs[index - 2] : undefined };
+  const between = (index - start) % 2 === 1;
+  const right = between && jobs[index + 1]?.sceneType === "long-shot" ? jobs[index + 1] : undefined;
+  return { index, start, bridge: between && !!right, continuation: between && !right,
+    left: between ? jobs[index - 1] : undefined, right,
+    previousBridge: between && index - start > 1 ? jobs[index - 2] : undefined };
 }
 
 export function longShotDependencies(job: GenerationJob, jobs: readonly GenerationJob[]): GenerationJob[] {
   const position = longShotPosition(job, jobs);
-  return position?.bridge ? [position.left, position.right].filter((source): source is GenerationJob => !!source) : [];
+  return position?.left ? [position.left, position.right].filter((source): source is GenerationJob => !!source) : [];
 }
 
 export function longShotBlocker(job: GenerationJob, config: ProjectConfig, requireCompleted = true): string | null {
   const position = longShotPosition(job, config.generationJobs);
-  if (!position?.bridge) return null;
-  if (!position.left || !position.right) return "Add a following Long Shot scene before generating this bridge.";
-  for (const [source, margin] of [[position.left, job.bridgeLeftMargin ?? 17], [position.right, job.bridgeRightMargin ?? 17]] as const) {
+  if (!position?.left) return null;
+  const neighbors: [GenerationJob, number][] = [[position.left, position.continuation ? 0 : job.bridgeLeftMargin ?? 17]];
+  if (position.right) neighbors.push([position.right, job.bridgeRightMargin ?? 17]);
+  for (const [source, margin] of neighbors) {
     if (requireCompleted && (source.status !== "completed" || !source.latentRelativePath || !source.outputRelativePath))
-      return `Generate “${source.title}” first, or use Generate all. Both neighboring clips need saved latents.`;
+      return `Generate “${source.title}” first, or use Generate all. ${position.continuation ? "The previous clip needs saved latents." : "Both neighboring clips need saved latents."}`;
     const sourceAsset = config.assets.find((asset) => asset.id === generationAssetId(source.id));
     if (requireCompleted && (sourceAsset?.sceneSegments?.length ?? 0) > 1)
       return `Regenerate “${source.title}” as a fresh Long Shot anchor first.`;
@@ -44,13 +45,14 @@ export function currentLongShotArchives(config: Pick<ProjectConfig, "assets" | "
   const candidates = config.assets.filter((asset) => {
     const parts = asset.sceneSegments;
     const own = parts?.findIndex((part) => generationAssetId(part.sceneId) === asset.id) ?? -1;
-    if (!parts || own <= 0 || own >= parts.length - 1) return false;
+    if (!parts || own <= 0) return false;
     const first = config.generationJobs.findIndex((job) => job.id === parts[0].sceneId);
     if (first < 0 || !parts.every((part, offset) => config.generationJobs[first + offset]?.id === part.sceneId && config.generationJobs[first + offset]?.sceneType === "long-shot")) return false;
     if (!parts.every((part) => config.generationJobs.some((job) => job.id === part.sceneId && job.status === "completed" && job.latentRelativePath === part.latentRelativePath))) return false;
     const owner = config.generationJobs.find((job) => generationAssetId(job.id) === asset.id)!;
     const position = longShotPosition(owner, config.generationJobs);
-    if (!position?.bridge || position.left?.id !== parts[own - 1].sceneId || position.right?.id !== parts[own + 1].sceneId) return false;
+    if (!position?.left || position.left.id !== parts[own - 1].sceneId) return false;
+    if (position.continuation ? own !== parts.length - 1 : !position.bridge || position.right?.id !== parts[own + 1]?.sceneId) return false;
     return true;
   }).sort((a, b) => config.generationJobs.findIndex((job) => generationAssetId(job.id) === a.id)
     - config.generationJobs.findIndex((job) => generationAssetId(job.id) === b.id));
@@ -77,6 +79,24 @@ export function longShotPlaybackSource(job: GenerationJob, config: Pick<ProjectC
   const source = currentLongShotArchives(config).find((asset) => asset.sceneSegments?.some((part) => part.sceneId === job.id && part.latentRelativePath === job.latentRelativePath));
   const segment = source?.sceneSegments?.find((part) => part.sceneId === job.id);
   return source && segment ? { source, segment } : null;
+}
+
+/** A final unpaired scene extends the latest joined archive, so earlier
+ * bridge edits to the preceding anchor survive in its video and audio. */
+export function longShotContinuationInputs(job: GenerationJob, config: ProjectConfig) {
+  const position = longShotPosition(job, config.generationJobs);
+  if (!position?.continuation || !position.left) return null;
+  const { left, previousBridge } = position;
+  const prefix = previousBridge && currentLongShotArchives(config).find((asset) => asset.id === generationAssetId(previousBridge.id)
+    && asset.sceneSegments?.at(-1)?.sceneId === left.id);
+  const segments = prefix?.sceneSegments ?? (left.latentRelativePath ? [{ sceneId: left.id, latentRelativePath: left.latentRelativePath,
+    startFrame: 0, frameCount: sceneOutputFrames(left, config) ?? 0 }] : undefined);
+  return { segments: segments ?? undefined, request: {
+    previousSceneId: left.id,
+    continuationRelativePath: (prefix ? previousBridge!.latentRelativePath : left.latentRelativePath) ?? undefined,
+    continuationSourceFrames: sceneOutputFrames(left, config),
+    continuationOverlapFrames: LONG_SHOT_CONTEXT, continuationFrom: "end" as const, continuationLockOverlap: false,
+  } };
 }
 
 export function longShotInputs(job: GenerationJob, config: ProjectConfig): { bridge: NonNullable<SceneGenerationInput["latentBridge"]>; leftSegments?: SceneMediaSegment[] } | null {

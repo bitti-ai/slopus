@@ -42,6 +42,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Generate all now includes the final scene in an even-length Long Shot sequence, continuing from the preceding scene and preserving earlier joined video and audio.
 - Long Shot timeline playback keeps the same video player running across adjacent scenes in a joined generation, avoiding a playback restart at bridge boundaries.
 - Reduced memory retained between generations: release Slopfab samples and handles after consumption, discard completed queue snapshots, close encoders on errors, and clean up abandoned LAN generation results.
 - Inspector instructions now appear as tooltips on field labels, keeping the right-side panels compact.

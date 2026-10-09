@@ -332,7 +332,9 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
         {longShot && <>
-          <p className="prop-caption">{longShot.bridge
+          <p className="prop-caption">{longShot.continuation
+            ? `Continue from ${longShot.left?.title ?? "the previous scene"}. Generate all completes the preceding scenes first. Adding a following Long Shot scene turns this scene into a bridge.`
+            : longShot.bridge
             ? `Bridge between ${longShot.left?.title ?? "the previous scene"} and ${longShot.right?.title ?? "a following Long Shot scene (add one first)"}. Both neighbors must be generated first. Generate all handles this order.`
             : "Generate a fresh clip. The next Long Shot scene bridges this clip to the following fresh clip."}</p>
           {longShot.bridge && ([['bridgeLeftMargin', 'Edit previous ending'], ['bridgeRightMargin', 'Edit following beginning']] as const).map(([key, label]) =>

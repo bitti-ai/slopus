@@ -76,6 +76,8 @@ export function continuationPlaybackTracks(config: ProjectConfig) {
         // dependencies. Never revive a stale archive through legacy adjacency.
         const joinedOwnIndex = joined?.sceneSegments?.findIndex((part) => generationAssetId(part.sceneId) === joined.id) ?? -1;
         if (joinedOwnIndex >= 0 && joinedOwnIndex < joined!.sceneSegments!.length - 1) continue;
+        if ((joined?.sceneSegments?.length ?? 0) > 1
+          && config.generationJobs.some((job) => generationAssetId(job.id) === joined!.id && job.sceneType === "long-shot")) continue;
         const matching = joined?.sceneSegments?.find((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath);
         // A Start continuation contains only the opening overlap, so do
         // not pretend that its source file contains the whole original scene.

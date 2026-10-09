@@ -18,7 +18,7 @@ import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
 import { createEmptyImage, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
 import { sceneGenerationRequest } from "./sceneGeneration";
-import { bridgeGapFrames } from "./longShot";
+import { bridgeGapFrames, currentLongShotArchives } from "./longShot";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -123,6 +123,52 @@ it.each(["failure", "reorder"])("refuses a queued Long Shot bridge after anchor 
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === ids[2])?.status).toBe("failed"));
   expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2);
   expect(queue.getSnapshot().find((item) => item.id === ids[2])?.error).toMatch(reason === "failure" ? /Generate/ : /neighbors changed/);
+});
+
+it.each([2, 4])("completes all %s Long Shot scenes and continues their freshly joined archive", async (count) => {
+  const { queue, first } = setup();
+  first.update((config) => ({ ...config, generationJobs: Array.from({ length: count }, (_, i) => ({ ...config.generationJobs[0], id: String(i + 1), sceneType: "long-shot" as const })) }));
+  vi.mocked(resolveSlopfabPlan).mockImplementation(async (request) => {
+    const live = first.getSnapshot().config;
+    const owner = live.generationJobs.find((job) => job.latentRelativePath === request.continuationRelativePath);
+    const tail = live.assets.find((asset) => asset.id === `asset-${owner?.id}`)?.sceneSegments?.at(-1);
+    return { ...plan, alignedFrames: request.latentBridge
+      ? request.latentBridge.leftFrames! + bridgeGapFrames(request.frames) + request.latentBridge.rightFrames!
+      : request.continuationRelativePath ? tail!.startFrame + tail!.frameCount + Math.ceil(request.frames / 17) * 17 : 124
+    } as Awaited<ReturnType<typeof resolveSlopfabPlan>>;
+  });
+  const config = first.getSnapshot().config;
+  const order = count === 2 ? [0, 1] : [0, 2, 1, 3];
+  const ids = queue.enqueue(first, order.map((i) => ({ job: config.generationJobs[i], snapshot: "queued",
+    request: sceneGenerationRequest(config.generationJobs[i], config, first.record.folderPath, 8) })));
+  for (let index = 0; index < ids.length; index++) {
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+    await finish(queue, ids[index]);
+  }
+  const request = vi.mocked(enqueueSlopfabGeneration).mock.calls.at(-1)![0];
+  expect(request).toMatchObject({ previousSceneId: String(count - 1), continuationRelativePath: `latents/${ids.at(-2)}.safetensors`,
+    continuationSourceFrames: 124, continuationFrom: "end", continuationOverlapFrames: 22 });
+  expect(request.latentBridge).toBeUndefined();
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config)));
+  expect(saved.generationJobs.every((job) => job.status === "completed")).toBe(true);
+  const joined = currentLongShotArchives(saved)[0];
+  expect(joined.id).toBe(`asset-${count}`);
+  expect(joined.sceneSegments?.map((part) => part.sceneId)).toEqual(Array.from({ length: count }, (_, i) => String(i + 1)));
+  expect(JSON.parse(saved.generationJobs.at(-1)!.generationSnapshot!).continuationRelativePath).toBe(request.continuationRelativePath);
+});
+
+it("rejects a queued final Long Shot continuation when a following anchor is added", async () => {
+  const { queue, first } = setup();
+  first.update((config) => ({ ...config, generationJobs: Array.from({ length: 2 }, (_, i) => ({ ...config.generationJobs[0], id: String(i + 1), sceneType: "long-shot" as const })) }));
+  const config = first.getSnapshot().config;
+  const ids = queue.enqueue(first, config.generationJobs.map((job) => ({ job, snapshot: "queued",
+    request: sceneGenerationRequest(job, config, first.record.folderPath, 8) })));
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  first.update((current) => ({ ...current, generationJobs: [...current.generationJobs, { ...config.generationJobs[0], id: "3" }] }));
+  await finish(queue, ids[0]);
+  await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === ids[1])?.status).toBe("failed"));
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
+  expect(queue.getSnapshot().find((item) => item.id === ids[1])?.error).toContain("neighbors changed");
 });
 
 it("releases a cancelled queued snapshot before the running job finishes", async () => {

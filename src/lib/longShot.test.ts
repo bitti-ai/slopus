@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { bridgedSceneSegments, currentLongShotArchives, longShotBlocker, longShotInputs, longShotPosition } from "./longShot";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, sceneOutputFrames } from "./project";
-import { continuationPlaybackTracks, sceneMediaDurationMs, sceneMediaStartSeconds } from "./continuationMedia";
+import { continuationPlaybackTracks, joinedSceneSegments, sceneMediaDurationMs, sceneMediaStartSeconds } from "./continuationMedia";
 import { sceneGenerationRequest } from "./sceneGeneration";
 import { buildExportPlan, defaultExportSettings } from "./export";
 
@@ -30,8 +30,39 @@ it("alternates within consecutive runs and blocks missing, failed and short anch
   config.generationJobs[1].bridgeRightMargin = 119;
   expect(longShotBlocker(config.generationJobs[1], config)).toContain("141 frames");
   config.generationJobs[2].sceneType = "backdrop";
-  expect(longShotBlocker(config.generationJobs[1], config)).toContain("following Long Shot");
+  expect(longShotBlocker(config.generationJobs[1], config)).toBeNull();
+  expect(longShotPosition(config.generationJobs[1], config.generationJobs)?.continuation).toBe(true);
   expect(longShotPosition(config.generationJobs[3], config.generationJobs)?.bridge).toBe(false);
+});
+
+it("continues the last scene from the joined archive and invalidates it when a following anchor is added", () => {
+  const config = project();
+  const fifth = config.generationJobs.pop()!;
+  const last = config.generationJobs[3];
+  expect(longShotBlocker(last, config)).toBeNull();
+  const request = sceneGenerationRequest(last, config, "C:/project", 8);
+  expect(request.latentBridge).toBeUndefined();
+  expect(request).toMatchObject({ previousSceneId: "3", continuationRelativePath: "latents/2.safetensors",
+    continuationSourceFrames: 124, continuationOverlapFrames: 22, continuationFrom: "end" });
+  config.assets[3].sceneSegments = joinedSceneSegments("4", last.latentRelativePath!, 345, 51, {
+    sceneId: "3", latentRelativePath: request.continuationRelativePath!, frameCount: 124, segments: config.assets[1].sceneSegments!,
+  });
+  const parts = config.assets[3].sceneSegments;
+  expect(currentLongShotArchives(config).map((asset) => asset.id)).toEqual(["asset-4", "asset-2"]);
+  let startMs = 0;
+  config.timeline.tracks[0].clips = parts.map((part) => {
+    const durationMs = Math.round(part.frameCount * 1000 / 24);
+    const clip = { id: part.sceneId, assetId: `asset-${part.sceneId}`, trackId: config.timeline.tracks[0].id,
+      label: part.sceneId, startMs, durationMs, sourceStartMs: 0, status: "generated" as const };
+    startMs += durationMs;
+    return clip;
+  });
+  expect(continuationPlaybackTracks(config)[0].clips.map((clip) => clip.assetId)).toEqual(Array(4).fill("asset-4"));
+  expect(buildExportPlan(config, defaultExportSettings(config)).audio.map((part) => part.assetId)).toEqual(Array(4).fill("asset-4"));
+  config.generationJobs.push(fifth);
+  expect(currentLongShotArchives(config).map((asset) => asset.id)).toEqual(["asset-2"]);
+  expect(sceneGenerationRequest(last, config, "C:/project", 8).latentBridge).toBeDefined();
+  expect(continuationPlaybackTracks(config)[0].clips.map((clip) => clip.assetId)).toEqual(["asset-2", "asset-2", "asset-2", "asset-4"]);
 });
 
 it("chains complete archives to preserve both ends of shared anchors", () => {

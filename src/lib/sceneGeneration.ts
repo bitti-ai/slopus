@@ -1,5 +1,5 @@
 import { generationDimensions } from "./export";
-import { longShotInputs } from "./longShot";
+import { longShotContinuationInputs, longShotInputs } from "./longShot";
 import {
   audioReferenceBlocker, characterReplaceBlocker, poseBlocker, isVideoTransition, videoTransitionBlocker,
   usableAudioReferences, usableVideoReferences, referenceRefmodInputs, compileGenerationJobPrompt,
@@ -15,7 +15,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   // ordered list drives the <Subject N> / <Picture N> numbering inside the
   // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
   // array index 0 must be the asset the prompt calls <Picture 1>.
-  const inputs = sceneFrameInputs(job, config);
+  const inputs = { ...sceneFrameInputs(job, config), ...longShotContinuationInputs(job, config)?.request };
   const bound = inputs.references;
   const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
   const longShot = longShotInputs(job, config);
