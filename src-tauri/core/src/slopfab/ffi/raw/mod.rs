@@ -115,6 +115,7 @@ pub struct Api {
     generation_error: unsafe extern "C" fn(*const Generation) -> *const c_char,
     generation_output: unsafe extern "C" fn(*const Generation, *mut Output) -> i32,
     generation_frame_rgba8: unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32,
+    generation_release_samples: Option<unsafe extern "C" fn(*mut Generation) -> i32>,
     generation_destroy: unsafe extern "C" fn(*mut Generation),
 }
 
@@ -326,6 +327,12 @@ impl Api {
                     "slopfab_generation_destroy",
                     unsafe extern "C" fn(*mut Generation)
                 ),
+                generation_release_samples: library
+                    .get::<unsafe extern "C" fn(*mut Generation) -> i32>(
+                        b"slopfab_generation_release_samples\0",
+                    )
+                    .ok()
+                    .map(|symbol| *symbol),
                 _library: library,
             })
         }
@@ -674,9 +681,20 @@ impl Api {
         Ok(rgba)
     }
     pub fn destroy_generation(&self, generation: *mut Generation) {
+        // The owner has stopped the worker and excludes all sample readers.
+        // API 1.25 releases the large decoded buffers explicitly. Destruction
+        // remains unconditional: it also frees retained latents and request
+        // inputs, and is the complete cleanup path for older runtimes.
+        if let Some(release) = self.generation_release_samples {
+            unsafe { release(generation); }
+        }
         unsafe { (self.generation_destroy)(generation) }
     }
 }
+
+#[cfg(test)]
+#[path = "lifecycle_tests.rs"]
+mod lifecycle_tests;
 fn path_cstring(path: &Path) -> Result<CString, String> {
     CString::new(path.to_string_lossy().as_bytes())
         .map_err(|_| "A slopfab path contains a null byte.".into())

@@ -81,6 +81,7 @@ pub(super) fn write_reference_icon(
         ));
     }
     let rgba = generation.frame_rgba8(0, render_size, render_size)?;
+    drop(generation);
     let jpeg = crate::reference_icons::encode_jpeg(&rgba)?;
     if let Some(parent) = spec.destination.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {

@@ -1,5 +1,25 @@
 # Slopfab compatibility
 
+## API 1.25: generation sample lifetime
+
+Finished generation cleanup calls `slopfab_generation_release_samples` before
+`slopfab_generation_destroy`. Sample release is optional when loading older
+runtimes; destruction always runs, including if sample release fails. Cleanup
+waits for active native work to stop and excludes sample readers. Slopus saves
+continuation latents to project files and does not need to retain the native
+handle after consuming its output.
+
+Image finalizers consume the single RGBA frame and destroy its native source
+before encoding or writing the image. Video output remains available until
+WebCodecs has consumed its frames and audio. Cancelled, failed, evicted and
+abandoned results use the same ownership cleanup. Requests are destroyed as
+soon as generation starts because Slopfab snapshots them in the start call.
+
+Lifecycle tests use an instrumented C ABI fixture to check release/destruction
+order, request and callback lifetimes, repeated runs, failures, cancellation
+and the older-runtime fallback. A separate test checks that the bundled
+runtime exports the new entry point; these tests do not run model inference.
+
 ## API 1.24: scene latent upscaling
 
 Scene Generation settings offer an optional **Latent upscale** toggle. Slopus

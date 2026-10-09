@@ -19,7 +19,6 @@ pub struct GenerationHandle {
     api: Api,
     pointer: NonNull<raw::Generation>,
     _callback: Option<Box<Callback>>,
-    _request: RequestHandle,
     terminal: bool,
     succeeded: bool,
 }
@@ -46,7 +45,9 @@ impl GenerationHandle {
             api: request.api.clone(),
             pointer,
             _callback: callback,
-            _request: request,
+            // slopfab_generation_start snapshots the request. Let the caller's
+            // copy (including image/reference samples) drop now instead of
+            // retaining it through inference and the webview's encoding pass.
             terminal: false,
             succeeded: false,
         })
