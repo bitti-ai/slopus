@@ -225,14 +225,15 @@ export function resolutionLabel(resolution: Resolution, aspectRatio: AspectRatio
 }
 
 /* The sizes an export offers besides the project's own: the standard delivery
-   sizes at each aspect, at its exact ratio. The generation ladder above is on a
+   sizes at each aspect. The 1280 short-edge widescreen sizes round to the
+   nearest even pixel for encoding. The generation ladder above is on a
    32-pixel grid, which is what the model needs and not what a player or a
    platform expects — so an export may leave it. */
 export const STANDARD_EXPORT_SIZES: Record<AspectRatio, readonly (readonly [number, number])[]> = {
-  "16:9": [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160]],
-  "9:16": [[720, 1280], [1080, 1920], [1440, 2560], [2160, 3840]],
-  "1:1": [[512, 512], [1024, 1024], [1080, 1080], [2048, 2048], [4096, 4096]],
-  "4:5": [[720, 900], [1080, 1350], [1440, 1800], [2160, 2700], [3072, 3840]],
+  "16:9": [[1280, 720], [1920, 1080], [2276, 1280], [2560, 1440], [3840, 2160]],
+  "9:16": [[720, 1280], [1080, 1920], [1280, 2276], [1440, 2560], [2160, 3840]],
+  "1:1": [[512, 512], [1024, 1024], [1080, 1080], [1280, 1280], [2048, 2048], [4096, 4096]],
+  "4:5": [[720, 900], [1080, 1350], [1280, 1600], [1440, 1800], [2160, 2700], [3072, 3840]],
 };
 
 export const exportSizeKey = (width: number, height: number) => `${width}x${height}`;

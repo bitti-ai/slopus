@@ -72,7 +72,7 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
   fireEvent.change(screen.getByRole("slider", { name: "JPG quality" }), { target: { value: "60" } });
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
   expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-    "2048 × 1152 (original)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160",
+    "2048 × 1152 (original)", "1280 × 720", "1920 × 1080", "2276 × 1280", "2560 × 1440", "3840 × 2160",
   ]);
   fireEvent.click(screen.getByRole("option", { name: "3840 × 2160" }));
   fireEvent.click(screen.getByRole("button", { name: "Export…" }));
@@ -88,9 +88,9 @@ it("sends the chosen size, format and JPG quality, and hides quality for PNG", a
 });
 
 it.each([
-  [768, 1376, ["720 × 1280", "1080 × 1920", "1440 × 2560", "2160 × 3840"]],
-  [1056, 1024, ["512 × 512", "1024 × 1024", "1080 × 1080", "2048 × 2048", "4096 × 4096"]],
-  [832, 1024, ["720 × 900", "1080 × 1350", "1440 × 1800", "2160 × 2700", "3072 × 3840"]],
+  [768, 1376, ["720 × 1280", "1080 × 1920", "1280 × 2276", "1440 × 2560", "2160 × 3840"]],
+  [1056, 1024, ["512 × 512", "1024 × 1024", "1080 × 1080", "1280 × 1280", "2048 × 2048", "4096 × 4096"]],
+  [832, 1024, ["720 × 900", "1080 × 1350", "1280 × 1600", "1440 × 1800", "2160 × 2700", "3072 × 3840"]],
 ] as const)("offers the closest presets for a %s × %s image despite different saved and project ratios", (width, height, labels) => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   const config = withOutput({ width, height });
@@ -112,7 +112,7 @@ it("keeps Original selected across images and omits duplicate presets", () => {
   expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("5760 × 3240 (original)");
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
   expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-    "5760 × 3240 (original)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160",
+    "5760 × 3240 (original)", "1280 × 720", "1920 × 1080", "2276 × 1280", "2560 × 1440", "3840 × 2160",
   ]);
 });
 

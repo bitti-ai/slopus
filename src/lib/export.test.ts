@@ -106,8 +106,8 @@ describe("effect compositing", () => {
 describe("output geometry", () => {
   it("offers an export its own size first, then the standard sizes that differ", () => {
     expect(exportSizeChoices({ width: 1920, height: 1080 }, "16:9", "project").map((size) => size.label))
-      .toEqual(["1920 × 1080 (project)", "1280 × 720", "2560 × 1440", "3840 × 2160"]);
-    expect(exportSizeChoices(null, "4:5", "original").map((size) => size.value)).toEqual(["720x900", "1080x1350", "1440x1800", "2160x2700", "3072x3840"]);
+      .toEqual(["1920 × 1080 (project)", "1280 × 720", "2276 × 1280", "2560 × 1440", "3840 × 2160"]);
+    expect(exportSizeChoices(null, "4:5", "original").map((size) => size.value)).toEqual(["720x900", "1080x1350", "1280x1600", "1440x1800", "2160x2700", "3072x3840"]);
   });
 
   it("asks H.264 for a level that holds the frame, past 4K UHD too", () => {

@@ -71,7 +71,7 @@ describe("the export view where nothing can encode", () => {
     config.settings.resolution = "1344p";
     render(<ExportView config={config} folderPath="/tmp/project" />);
     const resolution = screen.getByRole("combobox", { name: "Resolution" });
-    expect(optionNames(resolution)).toEqual(["2432 × 1344 (project)", "1280 × 720", "1920 × 1080", "2560 × 1440", "3840 × 2160"]);
+    expect(optionNames(resolution)).toEqual(["2432 × 1344 (project)", "1280 × 720", "1920 × 1080", "2276 × 1280", "2560 × 1440", "3840 × 2160"]);
     chooseOption(resolution, "3840 × 2160");
     expect(screen.getByText(/3840 × 2160/)).toBeTruthy();
   });
