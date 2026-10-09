@@ -78,7 +78,7 @@ pub(crate) fn reference_icon_pixels(job_id: &str) -> Result<Vec<u8>, String> {
     {
         return Err("A reference icon must be a single 768x768 frame.".into());
     }
-    rendered::frame(job_id, 0)?.ok_or_else(|| "The reference icon has no image.".into())
+    rendered::take_still(job_id).map(|(_, pixels)| pixels)
 }
 pub(crate) fn write_reference_icon_frame(
     folder_path: &str,

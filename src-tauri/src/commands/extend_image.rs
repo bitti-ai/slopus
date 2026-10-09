@@ -234,7 +234,7 @@ pub(crate) fn save_extended_image(
     {
         return Err("The generated image does not match the Extend box.".into());
     }
-    let pixels = crate::rendered::frame(&job_id, 0)?.ok_or("The extended image has no pixels.")?;
+    let (_, pixels) = crate::rendered::take_still(&job_id)?;
     let mut result = RgbaImage::from_raw(bounds.width, bounds.height, pixels)
         .ok_or("Invalid generated image pixels.")?;
     restore_original(&mut result, &source, bounds);
@@ -560,6 +560,7 @@ mod tests {
             .unwrap(),
         );
         let saved = save_extended_image(path.clone(), job.into()).unwrap();
+        assert!(crate::rendered::summary(job).is_none());
         let image = image::open(root.existing(&saved.relative_path).unwrap())
             .unwrap()
             .to_rgba8();

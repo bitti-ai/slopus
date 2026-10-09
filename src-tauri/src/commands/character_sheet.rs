@@ -17,11 +17,7 @@ pub(crate) fn save_character_sheet_view(
     job_id: String,
     index: usize,
 ) -> Result<(), String> {
-    let summary = rendered::summary(&job_id).ok_or("The character view is no longer in memory.")?;
-    if summary.frame_count != 1 {
-        return Err("Expected one character view.".into());
-    }
-    let pixels = rendered::frame(&job_id, 0)?.ok_or("The character view has no pixels.")?;
+    let (summary, pixels) = rendered::take_still(&job_id)?;
     write_view(
         &folder_path,
         &sheet_id,

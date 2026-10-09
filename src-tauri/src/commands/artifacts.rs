@@ -160,12 +160,7 @@ pub(crate) fn save_generated_image(
     job_id: String,
     format: Option<String>,
 ) -> Result<GeneratedImageFile, String> {
-    let summary =
-        rendered::summary(&job_id).ok_or("The generated image is no longer in memory.")?;
-    if summary.frame_count != 1 {
-        return Err("Expected a single still image.".into());
-    }
-    let rgba = rendered::frame(&job_id, 0)?.ok_or("The generated image has no pixels.")?;
+    let (summary, rgba) = rendered::take_still(&job_id)?;
     if format.as_deref() == Some("png") {
         write_generated_png_frame(&folder_path, &job_id, summary.width, summary.height, &rgba)
     } else if format.is_none() || format.as_deref() == Some("jpg") {

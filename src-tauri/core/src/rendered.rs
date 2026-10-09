@@ -53,6 +53,30 @@ pub struct RenderedVideo {
 }
 
 impl RenderedVideo {
+    fn summary(&self) -> RenderedSummary {
+        RenderedSummary {
+            job_id: self.job_id.clone(),
+            width: self.width,
+            height: self.height,
+            frame_count: self.frame_count,
+            fps: self.fps,
+            audio_channels: self.audio_channels,
+            audio_sample_rate: self.audio_sample_rate,
+            audio_samples: self.audio.len() as u32,
+        }
+    }
+
+    fn into_still(self) -> Result<(RenderedSummary, Vec<u8>), String> {
+        if self.frame_count != 1 {
+            return Err("Expected a single still image.".into());
+        }
+        let summary = self.summary();
+        let pixels = self.frame(0)?.ok_or("The generated image has no pixels.")?;
+        // Dropping self releases the native generation before image encoding
+        // allocates its own buffers. Errors release the same ownership.
+        Ok((summary, pixels))
+    }
+
     /// One frame's pixels, converted on demand, or None past the last frame.
     pub fn frame(&self, index: u32) -> Result<Option<Vec<u8>>, String> {
         if index >= self.frame_count {
@@ -292,6 +316,10 @@ fn from_output(
 
 static WAITING: LazyLock<Mutex<VecDeque<RenderedVideo>>> = LazyLock::new(Default::default);
 
+// Tests that exercise the shared capacity must not evict one another's jobs.
+#[cfg(test)]
+pub(crate) static TEST_LOCK: Mutex<()> = Mutex::new(());
+
 /// Puts a finished render where the webview can fetch it. Returns what had to
 /// be dropped to make room, so the caller can say so rather than let a render
 /// disappear quietly.
@@ -353,16 +381,21 @@ pub struct RenderedSummary {
 }
 
 pub fn summary(job_id: &str) -> Option<RenderedSummary> {
-    with(job_id, |video| RenderedSummary {
-        job_id: video.job_id.clone(),
-        width: video.width,
-        height: video.height,
-        frame_count: video.frame_count,
-        fps: video.fps,
-        audio_channels: video.audio_channels,
-        audio_sample_rate: video.audio_sample_rate,
-        audio_samples: video.audio.len() as u32,
-    })
+    with(job_id, RenderedVideo::summary)
+}
+
+/// Transfers a still's pixels to its finalizer and immediately releases the
+/// generation. The caller owns everything needed to encode the image now.
+pub fn take_still(job_id: &str) -> Result<(RenderedSummary, Vec<u8>), String> {
+    let video = {
+        let mut waiting = WAITING
+            .lock()
+            .map_err(|_| "Finished-render lock failed.".to_string())?;
+        let index = waiting.iter().position(|video| video.job_id == job_id)
+            .ok_or("The generated image is no longer in memory.")?;
+        waiting.remove(index).unwrap()
+    };
+    video.into_still()
 }
 
 /// Hands the memory back. Called when the webview has written the file, and
@@ -380,6 +413,49 @@ pub fn release(job_id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+
+    struct TrackedStill {
+        dropped: Arc<AtomicBool>,
+        fail: bool,
+    }
+
+    impl FrameSource for TrackedStill {
+        fn frame_rgba(&self, _: u32, _: u32, _: u32) -> Result<Vec<u8>, String> {
+            assert!(!self.dropped.load(Ordering::Acquire));
+            if self.fail { Err("Frame conversion failed.".into()) } else { Ok(vec![20, 40, 60, 255]) }
+        }
+    }
+
+    impl Drop for TrackedStill {
+        fn drop(&mut self) { self.dropped.store(true, Ordering::Release); }
+    }
+
+    #[test]
+    fn consuming_a_still_releases_its_source_before_the_encoder_receives_pixels() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mut video = sample("consume-still");
+        video.source = Box::new(TrackedStill { dropped: dropped.clone(), fail: false });
+        keep(video);
+        let (summary, pixels) = take_still("consume-still").unwrap();
+        assert!(dropped.load(Ordering::Acquire));
+        assert_eq!(summary.frame_count, 1);
+        assert_eq!(pixels, vec![20, 40, 60, 255]);
+        assert!(!release("consume-still"));
+    }
+
+    #[test]
+    fn consuming_a_still_releases_its_source_when_conversion_fails() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mut video = sample("failed-still");
+        video.source = Box::new(TrackedStill { dropped: dropped.clone(), fail: true });
+        keep(video);
+        assert_eq!(take_still("failed-still").unwrap_err(), "Frame conversion failed.");
+        assert!(dropped.load(Ordering::Acquire));
+        assert!(!release("failed-still"));
+    }
 
     fn planar(
         frames: usize,
@@ -516,6 +592,7 @@ mod tests {
 
     #[test]
     fn a_render_is_held_until_it_is_released() {
+        let _serial = TEST_LOCK.lock().unwrap();
         release("held");
         assert!(frame("held", 0).unwrap().is_none());
         keep(sample("held"));
@@ -552,6 +629,7 @@ mod tests {
 
     #[test]
     fn a_second_run_of_one_scene_replaces_the_first() {
+        let _serial = TEST_LOCK.lock().unwrap();
         release("same");
         keep(sample("same"));
         keep(sample("same"));
@@ -561,6 +639,7 @@ mod tests {
 
     #[test]
     fn the_oldest_render_is_dropped_rather_than_the_process_growing_without_limit() {
+        let _serial = TEST_LOCK.lock().unwrap();
         for id in ["cap-1", "cap-2", "cap-3"] {
             release(id);
         }

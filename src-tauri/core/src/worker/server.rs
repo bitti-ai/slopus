@@ -118,15 +118,32 @@ struct JobLog {
     changed: Condvar,
     latents: Option<PathBuf>,
     created: Instant,
+    released: AtomicBool,
 }
 
 impl JobLog {
     fn push(&self, kind: &str, payload: serde_json::Value) {
+        // The client can disappear while native generation is finishing.
+        // Its result is stored before this callback runs, so a release that
+        // raced with that hand-off must also discard the late result.
+        if self.released.load(Ordering::Acquire) {
+            if kind == "job" && payload["state"] == "framesReady" {
+                if let Some(id) = payload["jobId"].as_str() {
+                    rendered::release(id);
+                }
+            }
+            return;
+        }
         if let Ok(mut events) = self.events.lock() {
             let seq = events.len() as u64 + 1;
             events.push(WireEvent { seq, kind: kind.into(), payload });
         }
         self.changed.notify_all();
+    }
+
+    fn release(&self, id: &str) {
+        self.released.store(true, Ordering::Release);
+        rendered::release(id);
     }
 
     /// Long poll: returns as soon as anything after `after` exists.
@@ -648,7 +665,7 @@ impl Worker {
             None
         };
         request.save_latents_path = latents.clone();
-        let log = Arc::new(JobLog { events: Mutex::default(), changed: Condvar::new(), latents, created: Instant::now() });
+        let log = Arc::new(JobLog { events: Mutex::default(), changed: Condvar::new(), latents, created: Instant::now(), released: AtomicBool::new(false) });
         {
             let mut jobs = self.jobs.lock().map_err(|_| "Lock failed.")?;
             if jobs.contains_key(id) {
@@ -672,9 +689,12 @@ impl Worker {
     }
 
     fn release_job(&self, id: &str) {
-        rendered::release(id);
-        if let Ok(mut jobs) = self.jobs.lock() {
-            jobs.remove(id);
+        self.runtime.cancel(id);
+        let log = self.jobs.lock().ok().and_then(|mut jobs| jobs.remove(id));
+        if let Some(log) = log {
+            log.release(id);
+        } else {
+            rendered::release(id);
         }
         if generated_file_stem(id).is_ok() {
             let _ = fs::remove_dir_all(self.data.join("jobs").join(id));
@@ -712,6 +732,50 @@ fn percent_decode(part: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TrackedFrames(Arc<AtomicBool>);
+
+    impl rendered::FrameSource for TrackedFrames {
+        fn frame_rgba(&self, _: u32, _: u32, _: u32) -> Result<Vec<u8>, String> {
+            Ok(vec![0, 0, 0, 255])
+        }
+    }
+
+    impl Drop for TrackedFrames {
+        fn drop(&mut self) { self.0.store(true, Ordering::Release); }
+    }
+
+    #[test]
+    fn releasing_a_worker_job_discards_frames_that_finish_after_release() {
+        let _serial = rendered::TEST_LOCK.lock().unwrap();
+        let id = "worker-release-before-finish";
+        let log = JobLog { events: Mutex::default(), changed: Condvar::new(), latents: None,
+            created: Instant::now(), released: AtomicBool::new(false) };
+        log.release(id);
+        let dropped = Arc::new(AtomicBool::new(false));
+        rendered::keep(rendered::from_source(id, Box::new(TrackedFrames(dropped.clone())),
+            vec![], 1, 1, 1, 3, 3, 24.0, 0, 0).unwrap());
+        log.push("job", serde_json::json!({ "jobId": id, "state": "framesReady" }));
+        assert!(dropped.load(Ordering::Acquire));
+        assert!(rendered::summary(id).is_none());
+        assert!(log.after(0, Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn releasing_a_finished_worker_job_discards_its_frames() {
+        let _serial = rendered::TEST_LOCK.lock().unwrap();
+        let id = "worker-release-after-finish";
+        let log = JobLog { events: Mutex::default(), changed: Condvar::new(), latents: None,
+            created: Instant::now(), released: AtomicBool::new(false) };
+        let dropped = Arc::new(AtomicBool::new(false));
+        rendered::keep(rendered::from_source(id, Box::new(TrackedFrames(dropped.clone())),
+            vec![], 1, 1, 1, 3, 3, 24.0, 0, 0).unwrap());
+        log.push("job", serde_json::json!({ "jobId": id, "state": "framesReady" }));
+        assert_eq!(log.after(0, Duration::ZERO).len(), 1);
+        log.release(id);
+        assert!(dropped.load(Ordering::Acquire));
+        assert!(rendered::summary(id).is_none());
+    }
 
     fn probe(nvidia_gpu: bool, cuda: Option<&'static str>) -> slopfab::BackendProbe {
         slopfab::BackendProbe { nvidia_gpu, cuda, cuda_problem: (nvidia_gpu && cuda.is_none()).then(|| "cublas64_12.dll not found".into()) }
