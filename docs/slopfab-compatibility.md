@@ -1,5 +1,27 @@
 # Slopfab compatibility
 
+## API 1.27: decode diagnostics
+
+Successful native generations write an INFO-level `generation.video_decode`
+entry to `slopus.log`, with the job ID, runtime version, backend, still-image
+flag, output dimensions/frame count and total decode seconds. The `timings`
+object contains `secondsPrepare`, `secondsUpscale`, `secondsModelOpen`,
+`secondsWeightLoad`, `secondsCompute` and `secondsCleanup`.
+
+Model open covers the file mapping and normalization statistics; weight load
+covers decoder/device creation and loading the VAE. Compute includes workspace
+allocations, transfers, kernels and tile assembly. Cleanup is the remainder,
+including decoder destruction, temporary buffers, mapping teardown and minor
+instrumentation overhead. These wall times sum to the total; the measurement
+adds no GPU synchronization. Timings are per decode, so multi-edit images log
+one entry for each edit under the same job ID. LAN generations log on the worker.
+
+Slopus optionally loads `slopfab_generation_video_decode_timings`, leaving the
+existing output ABI unchanged. Older runtimes retain aggregate timing, and a
+diagnostic getter failure logs a warning without discarding generated media.
+Both bundled runtimes include the new getter. Restart/rebuild the running app
+to load the new library and logging code.
+
 ## API 1.26: Long Shot latent bridges
 
 Consecutive **Long Shot** scenes alternate fresh anchors and bridges. Generate

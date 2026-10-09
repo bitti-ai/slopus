@@ -4,6 +4,7 @@ mod raw;
 mod tests;
 pub use handles::{FinishedGeneration, GenerationHandle, ProgressSink, Output};
 pub use raw::{cuda_device_names, gpu_devices, has_cuda_device, Plan, Progress};
+pub use raw::VideoDecodeTimings;
 use std::{
     path::{Path, PathBuf},
     ptr::NonNull,

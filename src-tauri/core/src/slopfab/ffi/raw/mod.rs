@@ -12,6 +12,17 @@ pub use device::{cuda_device_names, gpu_devices, has_cuda_device};
 pub use reference_video::ReferenceVideoHandle;
 pub enum Generation {}
 #[repr(C)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoDecodeTimings {
+    pub seconds_prepare: f64,
+    pub seconds_upscale: f64,
+    pub seconds_model_open: f64,
+    pub seconds_weight_load: f64,
+    pub seconds_compute: f64,
+    pub seconds_cleanup: f64,
+}
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Plan {
     pub canvas_width: i32,
@@ -115,6 +126,7 @@ pub struct Api {
     generation_wait: unsafe extern "C" fn(*mut Generation, i32) -> i32,
     generation_error: unsafe extern "C" fn(*const Generation) -> *const c_char,
     generation_output: unsafe extern "C" fn(*const Generation, *mut Output) -> i32,
+    generation_video_decode_timings: Option<unsafe extern "C" fn(*const Generation, *mut VideoDecodeTimings) -> i32>,
     generation_frame_rgba8: unsafe extern "C" fn(*const Generation, i32, *mut u8, usize) -> i32,
     generation_release_samples: Option<unsafe extern "C" fn(*mut Generation) -> i32>,
     generation_destroy: unsafe extern "C" fn(*mut Generation),
@@ -317,6 +329,7 @@ impl Api {
                     "slopfab_generation_error",
                     unsafe extern "C" fn(*const Generation) -> *const c_char
                 ),
+                generation_video_decode_timings: library.get::<unsafe extern "C" fn(*const Generation, *mut VideoDecodeTimings) -> i32>(b"slopfab_generation_video_decode_timings\0").ok().map(|symbol| *symbol),
                 generation_output: symbol!(
                     "slopfab_generation_output",
                     unsafe extern "C" fn(*const Generation, *mut Output) -> i32
@@ -643,6 +656,12 @@ impl Api {
     }
     pub fn generation_error(&self, generation: *mut Generation) -> String {
         unsafe { c_string((self.generation_error)(generation)) }
+    }
+    pub fn video_decode_timings(&self, generation: *mut Generation) -> Result<Option<VideoDecodeTimings>, String> {
+        let Some(get) = self.generation_video_decode_timings else { return Ok(None); };
+        let mut value = VideoDecodeTimings::default();
+        self.error(unsafe { get(generation, &mut value) })?;
+        Ok(Some(value))
     }
     pub fn output(&self, generation: *mut Generation) -> Result<Output, String> {
         let mut value = Output {

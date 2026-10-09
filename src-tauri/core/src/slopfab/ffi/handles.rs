@@ -125,6 +125,9 @@ pub struct Output {
 }
 
 impl FinishedGeneration {
+    pub fn video_decode_timings(&self) -> Result<Option<super::VideoDecodeTimings>, String> {
+        self.0.api.inner.video_decode_timings(self.0.pointer.as_ptr())
+    }
     pub fn output(&self) -> Result<Output, String> {
         let value = self.0.api.inner.output(self.0.pointer.as_ptr())?;
         if value.audio_float_count > isize::MAX as usize / std::mem::size_of::<f32>()

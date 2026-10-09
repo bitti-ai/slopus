@@ -152,6 +152,16 @@ fn run_single_generation(
     }
     let generation = generation.finish()?;
     let output = generation.output()?;
+    // Diagnostics must never turn a successfully generated image into a failure.
+    match generation.video_decode_timings() {
+        Ok(Some(timings)) => diagnostics::info("slopfab", "generation.video_decode", "VAE decode timing breakdown.", serde_json::json!({
+            "jobId": item.request.job_id, "backend": platform.label(), "runtimeVersion": version,
+            "stillImage": item.request.still_image, "width": output.width, "height": output.height, "frames": output.frames,
+            "secondsTotal": output.seconds_video_decode, "timings": timings,
+        })),
+        Ok(None) => {}, // Older runtimes keep their aggregate decode timing.
+        Err(error) => diagnostics::warn("slopfab", "generation.decode_timing_unavailable", &error, serde_json::json!({ "jobId": item.request.job_id })),
+    }
     let source = Box::new(FrameSource { generation });
     collect_output(item, output, source, timing_profile)
 }

@@ -83,6 +83,7 @@ fn fixture(release_supported: bool) -> (OwnedApi, SharedTrace) {
     raw.generation_wait = wait;
     raw.generation_cancel = cancel;
     raw.generation_output = output;
+    raw.generation_video_decode_timings = None;
     raw.generation_frame_rgba8 = frame;
     raw.generation_error = error;
     raw.generation_release_samples = release_supported.then_some(release);
@@ -151,8 +152,33 @@ fn destruction_is_unconditional_when_release_is_missing_or_fails() {
 }
 
 #[test]
+fn decode_timing_accessor_preserves_fields_and_supports_older_runtimes() {
+    unsafe extern "C" fn timing(_: *const Generation, out: *mut VideoDecodeTimings) -> i32 {
+        unsafe { *out = VideoDecodeTimings { seconds_prepare: 1.0, seconds_upscale: 2.0, seconds_model_open: 3.0,
+            seconds_weight_load: 4.0, seconds_compute: 5.0, seconds_cleanup: 6.0 }; }
+        0
+    }
+    for supported in [false, true] {
+        let (mut api, _) = fixture(true);
+        Arc::get_mut(&mut api.inner).unwrap().generation_video_decode_timings = supported.then_some(timing);
+        let mut generation = RequestHandle::new(&api).unwrap().start(None).unwrap();
+        generation.wait(-1).unwrap();
+        let generation = generation.finish().unwrap();
+        let timings = generation.video_decode_timings().unwrap();
+        assert_eq!(timings.is_some(), supported);
+        if let Some(timings) = timings {
+            assert_eq!(serde_json::to_value(timings).unwrap(), serde_json::json!({
+                "secondsPrepare": 1.0, "secondsUpscale": 2.0, "secondsModelOpen": 3.0,
+                "secondsWeightLoad": 4.0, "secondsCompute": 5.0, "secondsCleanup": 6.0,
+            }));
+        }
+    }
+}
+
+#[test]
 fn bundled_runtime_exports_sample_release() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
     let api = Api::load(&path).unwrap();
     assert!(api.generation_release_samples.is_some());
+    assert!(api.generation_video_decode_timings.is_some());
 }
