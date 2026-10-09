@@ -98,7 +98,13 @@ pub(super) fn configure_request(
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
     let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
     // Overlap locking and different audio/video step counts require full evaluations.
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio)?;
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none())?;
+    if let Some(bridge) = &request.latent_bridge {
+        api.set_latent_bridge_files(handle,
+            request.bridge_left_path.as_deref().ok_or("Missing left Long Shot archive.")?,
+            request.bridge_right_path.as_deref().ok_or("Missing right Long Shot archive.")?,
+            bridge.left_margin_frames, bridge.right_margin_frames, bridge.context_frames)?;
+    }
     api.set_verbose(handle, false)?;
     if let Some(mode) = request.video_transition.as_deref() {
         api.set_video_transition(handle, if mode == "bridge" { 2 } else { 1 })?;

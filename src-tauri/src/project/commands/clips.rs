@@ -47,8 +47,7 @@ pub(super) fn apply(
                         true,
                     )?
                     .max(frame_ms.max(1));
-                    let scene_ms = existing.and_then(|index| project.assets[index].scene_segments.as_ref()
-                        .and_then(|segments| segments.last()).map(|part| (f64::from(part.frame_count) * 1000.0 / 24.0).round() as u64)).unwrap_or(scene_ms);
+                    let scene_ms = existing.and_then(|index| project.assets[index].clip_duration_ms()).unwrap_or(scene_ms);
                     let asset_id = if let Some(index) = existing {
                         project.assets[index].id.clone()
                     } else {

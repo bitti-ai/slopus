@@ -58,6 +58,17 @@ pub fn resolve_plan(
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
     super::continuation::validate(request)?;
+    if let Some(bridge) = &request.latent_bridge {
+        if request.bridge_left_path.is_none() || request.bridge_right_path.is_none()
+            || request.still_image || request.image_edit.is_some() || request.video_transition.is_some()
+            || request.continuation_path.is_some() || request.continuation_relative_path.is_some()
+            || request.frames <= 0 || bridge.context_frames < 5 || bridge.context_frames % 17 != 5
+            || [bridge.left_margin_frames, bridge.right_margin_frames].iter().any(|margin| !(0..=340).contains(margin) || margin % 17 != 0)
+            || [(bridge.left_frames, bridge.left_margin_frames), (bridge.right_frames, bridge.right_margin_frames)].iter()
+                .any(|(frames, margin)| frames.is_none_or(|frames| i64::from(frames) < i64::from(*margin) + i64::from(bridge.context_frames) || frames % 17 != 5)) {
+            return Err("Long Shot requires two generated latent archives, compatible video settings, margins in multiples of 17, and enough context in both anchors.".into());
+        }
+    }
     if request.latent_upscale && (request.still_image || request.image_edit.is_some()
         || request.canvas_width < 64 || request.canvas_height < 64
         || request.canvas_width % 32 != 0 || request.canvas_height % 32 != 0) {
@@ -126,6 +137,13 @@ pub(super) fn scene_frame_window(
 ) -> Result<(i32, i32), String> {
     if total <= 0 {
         return Err("Slopfab returned no video frames.".into());
+    }
+    if let Some(bridge) = &request.latent_bridge {
+        let gap = ((i64::from(request.frames) - 12).max(0) + 16) / 17 * 17 + 12;
+        if i64::from(total) != i64::from(bridge.left_frames.unwrap_or(0)) + gap + i64::from(bridge.right_frames.unwrap_or(0)) {
+            return Err("Long Shot output must contain both anchors and the entire bridge.".into());
+        }
+        return Ok((0, total));
     }
     if request.continuation_path.is_none() {
         return Ok((0, total));

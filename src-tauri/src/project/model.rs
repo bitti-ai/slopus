@@ -134,7 +134,7 @@ pub(crate) struct AgentConversation {
 
 impl ProjectAsset {
     pub(crate) fn clip_duration_ms(&self) -> Option<u64> {
-        self.scene_segments.as_ref().and_then(|segments| segments.last())
+        self.scene_segments.as_ref().and_then(|segments| segments.iter().find(|part| self.id == format!("asset-{}", part.scene_id)).or_else(|| segments.last()))
             .map(|segment| (f64::from(segment.frame_count) * 1000.0 / 24.0).round() as u64)
             .or(self.duration_ms)
     }

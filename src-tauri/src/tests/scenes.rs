@@ -1,6 +1,31 @@
 use super::*;
 
 #[test]
+fn long_shot_settings_and_middle_scene_duration_survive_save() {
+    let mut config = fixture();
+    config.generation_jobs[0].scene_type = Some("long-shot".into());
+    config.generation_jobs[0].bridge_left_margin = Some(34);
+    config.generation_jobs[0].bridge_right_margin = Some(0);
+    let mut asset = config.assets[0].clone();
+    asset.id = "asset-middle".into();
+    asset.scene_segments = Some(vec![
+        SceneMediaSegment { scene_id: "left".into(), latent_relative_path: "latents/left.safetensors".into(), start_frame: 0, frame_count: 124 },
+        SceneMediaSegment { scene_id: "middle".into(), latent_relative_path: "latents/middle.safetensors".into(), start_frame: 124, frame_count: 46 },
+        SceneMediaSegment { scene_id: "right".into(), latent_relative_path: "latents/right.safetensors".into(), start_frame: 170, frame_count: 124 },
+    ]);
+    assert_eq!(asset.clip_duration_ms(), Some(1917));
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    let restored = read_project(folder.path()).unwrap().config;
+    assert_eq!(restored.generation_jobs[0].bridge_left_margin, Some(34));
+    assert_eq!(restored.generation_jobs[0].bridge_right_margin, Some(0));
+    for margin in [-17, 1, 357] {
+        config.generation_jobs[0].bridge_left_margin = Some(margin);
+        assert!(validate_and_normalize_config(config.clone()).is_err());
+    }
+}
+
+#[test]
 fn joined_scene_ranges_survive_save_and_validate_bounds() {
     let mut value = serde_json::to_value(fixture()).unwrap();
     value["assets"][0]["kind"] = serde_json::json!("generated");

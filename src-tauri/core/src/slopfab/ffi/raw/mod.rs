@@ -86,6 +86,7 @@ pub struct Api {
     set_image_edit_invert_mask: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
+    set_latent_bridge_files: Option<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>,
     set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -242,6 +243,7 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                set_latent_bridge_files: library.get::<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>(b"slopfab_request_set_latent_bridge_files\0").ok().map(|symbol| *symbol),
                 set_continuation_file: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(
                         b"slopfab_request_set_continuation_file\0",
@@ -452,6 +454,12 @@ impl Api {
             "Extend and Bridge require slopfab.dll API 1.14 or later. Update the runtime.",
         )?;
         self.error(unsafe { set(r, mode) })
+    }
+    pub fn set_latent_bridge_files(&self, r: *mut Request, left: &Path, right: &Path, left_margin: i32, right_margin: i32, context: i32) -> Result<(), String> {
+        let set = self.set_latent_bridge_files.ok_or("Long Shot requires SlopFab API 1.26 or later. Update the runtime.")?;
+        let left = path_cstring(left)?;
+        let right = path_cstring(right)?;
+        self.error(unsafe { set(r, left.as_ptr(), right.as_ptr(), left_margin, right_margin, context) })
     }
     pub fn set_continuation_file(
         &self,

@@ -133,7 +133,7 @@ impl Configuration {
                     "Animate requires exactly one repainted frame of the driving scene.".into(),
                 );
             }
-            if request.continuation_path.is_some() || !request.refmods.is_empty() || !request.reference_audio_ids.is_empty() {
+            if request.continuation_path.is_some() || request.latent_bridge.is_some() || !request.refmods.is_empty() || !request.reference_audio_ids.is_empty() {
                 return Err("Animate does not support scene continuation, sound references or refmods.".into());
             }
         } else if request.prompt.trim().is_empty() {

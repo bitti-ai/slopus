@@ -279,7 +279,7 @@ impl Workers {
         if stop.load(Ordering::Acquire) { return Err("Export cancelled.".into()); }
         if !uploads.is_empty() {
             let job = RemoteJob { request: GenerationRequest { job_id: id.into(), ..Default::default() },
-                settings: BTreeMap::new(), files: uploads, continuation: None, image_edit_source: None };
+                settings: BTreeMap::new(), files: uploads, continuation: None, image_edit_source: None, bridge_left: None, bridge_right: None };
             let cancel = Arc::new(AtomicBool::new(false));
             let finished = AtomicBool::new(false);
             std::thread::scope(|scope| {
@@ -963,7 +963,11 @@ pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String,
         .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
     request.save_latents_path = None;
     request.image_edit_pixels = None;
-    Ok((RemoteJob { request, settings, files, continuation, image_edit_source }, sources))
+    let bridge_left = request.bridge_left_path.take()
+        .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
+    let bridge_right = request.bridge_right_path.take()
+        .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
+    Ok((RemoteJob { request, settings, files, continuation, image_edit_source, bridge_left, bridge_right }, sources))
 }
 
 #[cfg(test)]
@@ -1061,6 +1065,28 @@ mod tests {
         assert_eq!(normalize_address(" http://pc:9000/ ").unwrap(), "pc:9000");
         assert!(normalize_address("pc/v1/info").is_err());
         assert!(normalize_address("").is_err());
+    }
+
+    #[test]
+    fn long_shot_transfers_both_anchors_without_serializing_host_paths() {
+        let folder = tempfile::tempdir().unwrap();
+        let left = folder.path().join("left.safetensors");
+        let right = folder.path().join("right.safetensors");
+        fs::write(&left, b"left archive").unwrap();
+        fs::write(&right, b"right archive").unwrap();
+        let request = GenerationRequest { bridge_left_path: Some(left), bridge_right_path: Some(right),
+            latent_bridge: Some(slopfab::LatentBridgeRequest { left_margin_frames: 17, right_margin_frames: 34, context_frames: 22, ..Default::default() }),
+            ..Default::default() };
+        let (job, uploads) = build_job(&request, &BTreeMap::new(), &[]).unwrap();
+        assert_eq!(job.files.len(), 2);
+        assert_eq!(uploads.len(), 2);
+        assert_eq!(job.bridge_left, Some(0));
+        assert_eq!(job.bridge_right, Some(1));
+        assert!(job.request.bridge_left_path.is_none());
+        assert!(job.request.bridge_right_path.is_none());
+        let wire = serde_json::to_value(&job).unwrap();
+        assert_eq!(wire["request"]["latentBridge"]["rightMarginFrames"], 34);
+        assert!(wire["request"].get("bridgeLeftPath").is_none());
     }
 
     #[test]

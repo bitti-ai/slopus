@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn long_shot_resolves_both_archives_inside_the_project_only() {
+    let folder = project_folder();
+    let root = folder.path().to_string_lossy();
+    let destination = generated_latent_destination(&root, "anchor").unwrap();
+    fs::write(&destination, b"latents").unwrap();
+    let mut request = slopfab::GenerationRequest {
+        latent_bridge: Some(slopfab::LatentBridgeRequest {
+            left_relative_path: Some("latents/anchor.safetensors".into()), right_relative_path: Some("latents/anchor.safetensors".into()),
+            ..Default::default()
+        }), ..Default::default()
+    };
+    assert!(prepare_continuation_path(&mut request, None).is_err());
+    prepare_continuation_path(&mut request, Some(&root)).unwrap();
+    assert_eq!(request.bridge_left_path.as_ref(), Some(&destination));
+    assert_eq!(request.bridge_right_path.as_ref(), Some(&destination));
+    for invalid in ["../outside.safetensors", "C:/outside.safetensors", "latents/missing.safetensors", "latents"] {
+        request.latent_bridge.as_mut().unwrap().right_relative_path = Some(invalid.into());
+        assert!(prepare_continuation_path(&mut request, Some(&root)).is_err());
+        assert!(request.bridge_right_path.is_none());
+    }
+}
+
+#[test]
 fn a_rendered_scene_lands_in_the_project_under_its_own_id() {
     let folder = project_folder();
     let (destination, relative) =

@@ -125,6 +125,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_save_latents(r.pointer.as_ptr(), path)
     }
+    pub fn set_latent_bridge_files(&self, r: &RequestHandle, left: &Path, right: &Path, left_margin: i32, right_margin: i32, context: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_latent_bridge_files(r.pointer.as_ptr(), left, right, left_margin, right_margin, context)
+    }
     pub fn set_continuation_file(
         &self,
         r: &RequestHandle,

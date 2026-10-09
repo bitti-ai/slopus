@@ -248,6 +248,41 @@ mod tests {
     }
 
     #[test]
+    fn long_shot_plans_full_joined_outputs_and_keeps_source_archives_immutable() {
+        use super::super::{types::LatentBridgeRequest, planning::validate_generation_controls};
+        let left = archive(124).into_temp_path();
+        let right = archive(90).into_temp_path();
+        let originals = [std::fs::read(&left).unwrap(), std::fs::read(&right).unwrap()];
+        let mut request = GenerationRequest {
+            prompt: "The subject continues walking".into(), frames: 30, steps: 4, seed: 1,
+            canvas_width: 64, canvas_height: 32,
+            bridge_left_path: Some(left.to_path_buf()), bridge_right_path: Some(right.to_path_buf()),
+            latent_bridge: Some(LatentBridgeRequest { left_scene_id: "left".into(), right_scene_id: "right".into(),
+                left_frames: Some(124), right_frames: Some(90), left_margin_frames: 17, right_margin_frames: 34,
+                context_frames: 22, ..Default::default() }), ..Default::default()
+        };
+        let settings = BTreeMap::from([("slopfab".into(), crate::settings::ProviderSetting {
+            enabled: true, model: None, options: BTreeMap::from([("motionCache".into(), crate::settings::ProviderOption::Boolean(true))]),
+        })]);
+        let plan = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
+        assert_eq!(plan.aligned_frames, 260); // 124 + 46 + 90, including replaced margins.
+        assert!((plan.duration_seconds - 260.0 / 24.0).abs() < 0.0001);
+        for margin in [-17, 1, 357] {
+            request.latent_bridge.as_mut().unwrap().left_margin_frames = margin;
+            assert!(validate_generation_controls(&request).is_err());
+        }
+        request.latent_bridge.as_mut().unwrap().left_margin_frames = 0;
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).is_ok());
+        request.bridge_right_path = None;
+        assert!(validate_generation_controls(&request).is_err());
+        assert_eq!(std::fs::read(&left).unwrap(), originals[0]);
+        assert_eq!(std::fs::read(&right).unwrap(), originals[1]);
+        let wire = serde_json::to_value(request).unwrap();
+        assert!(wire.get("bridgeLeftPath").is_none());
+        assert_eq!(wire["latentBridge"]["rightMarginFrames"], 34);
+    }
+
+    #[test]
     fn opening_continuation_crops_the_selected_scene_and_both_audio_channels() {
         let source = archive(124);
         let original = std::fs::read(source.path()).unwrap();

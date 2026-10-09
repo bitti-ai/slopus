@@ -10,11 +10,12 @@ use std::collections::BTreeMap;
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
 // v8 carries latent upscaling and its model weights.
+// v9 carries retained latent bridges and both anchor archives.
 // v7 carries separate audio steps; older workers would silently ignore them.
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 8;
+pub const PROTOCOL_VERSION: u32 = 9;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +93,8 @@ pub struct RemoteJob {
     pub settings: BTreeMap<String, ProviderSetting>,
     pub files: Vec<FileRef>,
     pub continuation: Option<usize>,
+    pub bridge_left: Option<usize>,
+    pub bridge_right: Option<usize>,
     pub image_edit_source: Option<usize>,
 }
 

@@ -22,10 +22,13 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop"
+                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
+        }
+        if [job.bridge_left_margin, job.bridge_right_margin].iter().flatten().any(|margin| !(0..=340).contains(margin) || margin % 17 != 0) {
+            return Err(format!("Scene '{}' has invalid Long Shot margins. Use multiples of 17 from 0 to 340 frames.", job.id));
         }
         if job.backdrop_color.as_deref().is_some_and(|value| !matches!(value, "green" | "blue" | "black" | "white")) {
             return Err(format!("Scene '{}' has an unsupported backdrop color.", job.id));

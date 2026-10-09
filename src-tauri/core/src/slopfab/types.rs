@@ -35,6 +35,20 @@ pub fn gpu_devices() -> Vec<GpuDevice> {
     ffi::gpu_devices()
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatentBridgeRequest {
+    pub left_scene_id: String,
+    pub right_scene_id: String,
+    pub left_relative_path: Option<String>,
+    pub right_relative_path: Option<String>,
+    pub left_frames: Option<i32>,
+    pub right_frames: Option<i32>,
+    pub left_margin_frames: i32,
+    pub right_margin_frames: i32,
+    pub context_frames: i32,
+}
+
 // Serialize exists for LAN workers. Skipped fields stay on this side: the
 // worker resolves its own continuation, edit source and latent paths.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -81,6 +95,12 @@ pub struct GenerationRequest {
     pub continuation_lock_overlap: bool,
     #[serde(default)]
     pub continuation_source_frames: Option<i32>,
+    #[serde(default)]
+    pub latent_bridge: Option<LatentBridgeRequest>,
+    #[serde(skip)]
+    pub bridge_left_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub bridge_right_path: Option<PathBuf>,
     // Only the project commands resolve paths; IPC cannot supply save targets.
     #[serde(skip)]
     pub continuation_path: Option<PathBuf>,

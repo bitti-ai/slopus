@@ -57,6 +57,18 @@ pub(crate) fn prepare_continuation_path(
     folder_path: Option<&str>,
 ) -> Result<(), String> {
     request.continuation_path = None;
+    request.bridge_left_path = None;
+    request.bridge_right_path = None;
+    if let Some(bridge) = &request.latent_bridge {
+        let root = ProjectRoot::open(folder_path.ok_or("A project folder is required for Long Shot.")?)?;
+        let resolve = |relative: &Option<String>| -> Result<PathBuf, String> {
+            let path = root.existing(relative.as_deref().ok_or("Generate both Long Shot neighbors first.")?)?;
+            if !path.is_file() { return Err("Long Shot latents must be files inside this project.".into()); }
+            Ok(path)
+        };
+        request.bridge_left_path = Some(resolve(&bridge.left_relative_path)?);
+        request.bridge_right_path = Some(resolve(&bridge.right_relative_path)?);
+    }
     if let Some(relative) = &request.continuation_relative_path {
         let root = ProjectRoot::open(
             folder_path.ok_or("A project folder is required to continue a scene.")?,

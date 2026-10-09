@@ -1,5 +1,31 @@
 # Slopfab compatibility
 
+## API 1.26: Long Shot latent bridges
+
+Consecutive **Long Shot** scenes alternate fresh anchors and bridges. Generate
+all queues 1, 3, 2, 5, 4, 7, 6. A bridge requires completed neighbors with saved
+latents; an unfinished final bridge needs another Long Shot scene after it.
+The two margin controls replace the previous anchor's ending and the following
+anchor's beginning in multiples of 17 frames (default 17, zero allowed).
+Each anchor must also provide 22 preserved context frames. Use the same canvas,
+VAE models and latent upscale setting throughout the run. Cite original subject
+references in every scene that needs them.
+
+Slopus calls `slopfab_request_set_latent_bridge_files`. The requested gap rounds
+up to `17*k+12` frames; output is the full left archive, gap and right archive.
+MotionCache is disabled for bridge requests. The next bridge uses the previous
+joined archive as its left input, preserving earlier changes to shared anchors.
+Scene ranges keep editing coordinates and duration local to each scene while
+preview, timeline playback and export use the latest compatible joined decode,
+including audio. Regenerating an anchor invalidates joined playback derived
+from its old latents. Original anchor archives are never overwritten.
+
+Windows and Linux bundles include API 1.26 builds with FFmpeg disabled. LAN
+protocol 9 transfers both archives and preserves margin/context settings;
+update the desktop and worker together. Older local runtimes report an API
+requirement when a bridge is requested. Planning tests exercise both bundles
+with synthetic latent archives, without running model inference.
+
 ## API 1.25: generation sample lifetime
 
 Finished generation cleanup calls `slopfab_generation_release_samples` before

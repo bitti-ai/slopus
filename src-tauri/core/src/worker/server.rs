@@ -640,6 +640,11 @@ impl Worker {
         }
         let file = |index: Option<usize>| index.map(|index| paths.get(index).cloned().ok_or("A worker job names a file it did not send.")).transpose();
         request.continuation_path = file(job.continuation)?;
+        request.bridge_left_path = file(job.bridge_left)?;
+        request.bridge_right_path = file(job.bridge_right)?;
+        if request.latent_bridge.is_some() && (request.bridge_left_path.is_none() || request.bridge_right_path.is_none()) {
+            return Err("Long Shot requires both neighboring latent archives.".into());
+        }
         request.image_edit_path = file(job.image_edit_source)?;
         if request.image_edit.is_some() && request.image_edit_path.is_none() {
             return Err("Image edits require their source image.".into());
