@@ -3415,7 +3415,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slopus"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -3444,7 +3444,7 @@ dependencies = [
 
 [[package]]
 name = "slopus-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "getrandom 0.3.4",
  "image",
@@ -3463,7 +3463,7 @@ dependencies = [
 
 [[package]]
 name = "slopus-worker"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "slopus-core",
  "tauri-winres",

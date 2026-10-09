@@ -1,4 +1,4 @@
-# Slopus 0.3.0
+# Slopus 0.3.1
 
 This alpha update adds LAN generation workers, Linux support, expanded color grading, character sheets, and shareable generator templates, alongside improvements to references and scene continuation.
 
