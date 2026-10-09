@@ -8,8 +8,9 @@
 //! CLAUDE.md on the licensing reason).
 //!
 //! So this module is the hand-off. It keeps the finished generation handle
-//! alive, asks slopfab to convert only the frame the webview currently needs,
-//! and releases the handle after WebCodecs has encoded and muxed the file.
+//! alive and asks slopfab to convert only the frame the consumer currently
+//! needs. Still images release the handle after copying RGBA; videos release
+//! it after WebCodecs consumes the samples, before muxing and writing the file.
 //!
 //! ## What this costs
 //!
@@ -38,7 +39,7 @@ pub trait FrameSource: Send {
     fn frame_rgba(&self, index: u32, width: u32, height: u32) -> Result<Vec<u8>, String>;
 }
 
-/// A finished render whose slopfab source is kept alive until encoding ends.
+/// A finished render whose slopfab source lives until its samples are consumed.
 pub struct RenderedVideo {
     pub job_id: String,
     pub width: u32,

@@ -36,6 +36,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## Fixes and improvements
 
+- Reduced memory retained between generations: release Slopfab samples and handles after consumption, discard completed queue snapshots, close encoders on errors, and clean up abandoned LAN generation results.
 - Inspector instructions now appear as tooltips on field labels, keeping the right-side panels compact.
 - Scene generation prompts now mark shot times as `[Shot 2] At 00:03.500,`.
 - Still-image resolution and aspect ratio are saved separately from video project settings. Editing or selecting an image no longer changes the canvas used for video generation and continuation.

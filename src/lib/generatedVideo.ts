@@ -290,8 +290,8 @@ async function encodeAudio(
     output: (chunk, meta) => { chunks += 1; add(chunk, meta); },
     error: (reason) => { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); },
   });
-  encoder.configure(config);
   try {
+    encoder.configure(config);
     for (let offset = 0; offset < total; offset += AUDIO_BLOCK) {
       if (failure.reason) throw failure.reason;
       const count = Math.min(AUDIO_BLOCK, total - offset);
@@ -306,9 +306,12 @@ async function encodeAudio(
         timestamp: Math.round((offset * 1_000_000) / sampleRate),
         data: interleaved,
       });
-      encoder.encode(data);
-      data.close();
-      while (encoder.encodeQueueSize > 16) await tick();
+      try { encoder.encode(data); }
+      finally { data.close(); }
+      while (encoder.encodeQueueSize > 16) {
+        if (failure.reason) throw failure.reason;
+        await tick();
+      }
     }
     await encoder.flush();
     if (failure.reason) throw failure.reason;
@@ -338,22 +341,23 @@ export async function saveGeneratedScene(options: {
 }): Promise<SavedGeneration> {
   const { folderPath, jobId } = options;
   if (!isTauri()) throw new Error("Saving a rendered scene needs the desktop app.");
-  if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") {
-    throw new Error("This webview has no WebCodecs VideoEncoder, so a rendered scene cannot be turned into a video file here.");
-  }
-  const summary = await renderedSummary(jobId);
-  if (!summary) {
-    throw new Error("The rendered frames are no longer in memory, so there is nothing to save. Run the scene again.");
-  }
-  if (summary.frameCount <= 0 || summary.width <= 0 || summary.height <= 0) {
-    throw new Error("The render came back with no pictures in it.");
-  }
-  writeDiagnostic("info", "generated-video", "render.loaded", "Rendered buffers are available for encoding.", {
-    jobId, width: summary.width, height: summary.height, frames: summary.frameCount, fps: summary.fps,
-    audioChannels: summary.audioChannels, audioSampleRate: summary.audioSampleRate, audioSamples: summary.audioSamples,
-  });
-
+  let released = false;
   try {
+    if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") {
+      throw new Error("This webview has no WebCodecs VideoEncoder, so a rendered scene cannot be turned into a video file here.");
+    }
+    const summary = await renderedSummary(jobId);
+    if (!summary) {
+      throw new Error("The rendered frames are no longer in memory, so there is nothing to save. Run the scene again.");
+    }
+    if (summary.frameCount <= 0 || summary.width <= 0 || summary.height <= 0) {
+      throw new Error("The render came back with no pictures in it.");
+    }
+    writeDiagnostic("info", "generated-video", "render.loaded", "Rendered buffers are available for encoding.", {
+      jobId, width: summary.width, height: summary.height, frames: summary.frameCount, fps: summary.fps,
+      audioChannels: summary.audioChannels, audioSampleRate: summary.audioSampleRate, audioSamples: summary.audioSamples,
+    });
+
     const { width, height } = options.outputSize ?? summary;
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
       throw new Error("The selected video output dimensions are invalid.");
@@ -395,12 +399,6 @@ export async function saveGeneratedScene(options: {
     /* On an object because the encoder writes it from its own callback, where
        TypeScript's flow analysis cannot follow the assignment. */
     const failure: { reason: Error | null } = { reason: null };
-    const encoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (reason) => { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); },
-    });
-    encoder.configure({ codec, width, height, bitrate, framerate: fps, avc: { format: "avc" } });
-
     const makeFrame = frameFactory(summary.width, summary.height);
     /* Computed from the index every time rather than accumulated, so a rate
        that does not divide a microsecond evenly cannot drift the last frame
@@ -409,8 +407,12 @@ export async function saveGeneratedScene(options: {
     const keyframeEvery = Math.max(1, Math.round(fps * KEYFRAME_SECONDS));
     const thumbnailEvery = Math.max(1, Math.round(fps * TIMELINE_THUMBNAIL_INTERVAL_MS / 1_000));
     const timelineThumbnails: Array<{ timeMs: number; bytes: Uint8Array }> = [];
-
+    const encoder = new VideoEncoder({
+      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      error: (reason) => { failure.reason = reason instanceof Error ? reason : new Error(String(reason)); },
+    });
     try {
+      encoder.configure({ codec, width, height, bitrate, framerate: fps, avc: { format: "avc" } });
       for (let index = 0; index < summary.frameCount; index += 1) {
         if (failure.reason) throw failure.reason;
         const pixels = await renderedFrame(jobId, index);
@@ -419,12 +421,15 @@ export async function saveGeneratedScene(options: {
           if (thumbnail) timelineThumbnails.push({ timeMs: Math.round(index * 1_000 / fps), bytes: thumbnail });
         }
         const frame = makeFrame(pixels, timestampUs(index), timestampUs(index + 1) - timestampUs(index));
-        encoder.encode(frame, { keyFrame: index % keyframeEvery === 0 });
-        frame.close();
+        try { encoder.encode(frame, { keyFrame: index % keyframeEvery === 0 }); }
+        finally { frame.close(); }
         options.onProgress?.(index + 1, summary.frameCount);
         // Let the encoder drain, and let the window paint: this loop is the
         // whole of a five-second render's encode and it must not freeze the UI.
-        while (encoder.encodeQueueSize > ENCODE_QUEUE_LIMIT) await tick();
+        while (encoder.encodeQueueSize > ENCODE_QUEUE_LIMIT) {
+          if (failure.reason) throw failure.reason;
+          await tick();
+        }
         if (index % 8 === 7) await tick();
       }
       await encoder.flush();
@@ -433,6 +438,9 @@ export async function saveGeneratedScene(options: {
       if (encoder.state !== "closed") encoder.close();
     }
 
+    // Audio and frames are now encoded. Free the native render before muxing
+    // and sending the MP4, which both allocate their own output buffers.
+    released = await releaseRendered(jobId);
     audioChunks.forEach(({ chunk, meta }) => muxer.addAudioChunk(chunk, meta));
 
     muxer.finalize();
@@ -442,7 +450,7 @@ export async function saveGeneratedScene(options: {
     return { relativePath: written.relativePath, bytes: written.bytes, note, hasAudio: withAudio, width, height, durationMs: Math.round(summary.frameCount / summary.fps * 1000) };
   } finally {
     // Whatever happened, the render stops occupying memory here.
-    await releaseRendered(jobId);
+    if (!released) await releaseRendered(jobId);
   }
 }
 

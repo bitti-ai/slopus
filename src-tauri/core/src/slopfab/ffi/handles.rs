@@ -91,7 +91,8 @@ impl Drop for GenerationHandle {
     fn drop(&mut self) {
         if !self.terminal {
             self.cancel();
-            // Joining precedes destruction of callback memory and the library.
+            // Wait for completion before releasing samples. Native destroy
+            // then joins before callback memory and the library are dropped.
             while self.api.inner.wait(self.pointer.as_ptr(), -1) == super::super::NOT_READY {}
         }
         self.api.inner.destroy_generation(self.pointer.as_ptr());
@@ -99,7 +100,7 @@ impl Drop for GenerationHandle {
 }
 
 pub struct FinishedGeneration(GenerationHandle);
-// Only successful, joined generations cross threads. The render store serializes
+// Only successfully completed generations cross threads. The render store serializes
 // access and the native API exposes immutable output after wait completes.
 unsafe impl Send for FinishedGeneration {}
 

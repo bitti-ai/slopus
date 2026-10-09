@@ -7,7 +7,7 @@ import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage, type ExtendOptions } from "./extendImage";
 import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
 import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGenerationSnapshot, saveImageDraft } from "./imageHistory";
-import type { ImageGenerationSnapshot } from "./project";
+import type { ImageGenerationSnapshot, ProjectAsset } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
 import { engineProviderSetting, type GeneratorTemplate } from "./settings";
@@ -244,7 +244,10 @@ export class WorkQueue {
   waitFor(id: string, signal: AbortSignal, onProgress: (item: WorkItem) => void = () => {}): Promise<WorkItem> {
     const work = this.work.get(id);
     let latest = this.items.find((item) => item.id === id);
-    if (!work || !latest) return Promise.reject(new Error("Generation is no longer in the work queue."));
+    if (!latest) return Promise.reject(new Error("Generation is no longer in the work queue."));
+    if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Agent request cancelled."));
+    if (!work && !isWorkActive(latest)) { onProgress(latest); return Promise.resolve(latest); }
+    if (!work) return Promise.reject(new Error("Generation is no longer in the work queue."));
     return new Promise((resolve, reject) => {
       const stop = this.subscribe(() => {
         const item = this.items.find((candidate) => candidate.id === id);
@@ -407,9 +410,9 @@ export class WorkQueue {
   }
   private updateScene(work: PendingWork, patch: Partial<GenerationJob>, dirty = true) {
     if (work.image || work.refmod) return;
-    work.session.update((current) => ({
-      ...current, generationJobs: current.generationJobs.map((job) => job.id === work.sceneId ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job),
-    }), dirty);
+    // The undo replay log retains this callback. Do not retain the submitted
+    // project snapshot with every progress update.
+    work.session.update(sceneUpdate(work.sceneId, patch), dirty);
   }
   private async pump() {
     if (this.pumping) return;
@@ -473,6 +476,9 @@ export class WorkQueue {
           await releaseReferenceAudios(work.request.referenceAudioIds ?? []).catch((reason) =>
             writeDiagnostic("error", "work-queue", "references.release_failed", describeDiagnosticError(reason), { workId: work.id }));
           delete work.request.referenceAudioIds;
+          // Queue history only needs WorkItem; finished runs must not keep a
+          // deep copy of the entire project and its image history alive.
+          this.work.delete(work.id);
         }
       }
     } finally { this.pumping = false; }
@@ -503,6 +509,7 @@ export class WorkQueue {
     work.cancelled = true;
     if (item.status === "queued" || item.status === "preparing") {
       this.cancelled(work);
+      if (item.status === "queued") this.work.delete(id);
       // Stops files that are still being sent to a LAN worker for this job.
       if (item.status === "preparing" && remoteWorkerSelected()) void cancelSlopfabGeneration(work.request.jobId).catch(() => undefined);
       return;
@@ -568,7 +575,10 @@ export class WorkQueue {
     if (this.icons.event(event)) return;
     const work = this.nativeWork(event.jobId);
     const item = this.items.find((candidate) => candidate.id === work?.id);
-    if (!work || !item) return;
+    if (!work || !item) {
+      if (event.state === "framesReady" && this.items.some((candidate) => candidate.id === event.jobId && !isWorkActive(candidate))) void releaseRendered(event.jobId);
+      return;
+    }
     if (!isWorkActive(item)) { if (event.state === "framesReady") void releaseRendered(event.jobId); return; }
     if (item.status === "encoding") return;
     if (work.characterSheet) {
@@ -629,10 +639,8 @@ export class WorkQueue {
       const scene = createImageEditScene({ ...saved, name: sheet.name }, work.config.imageScene ?? undefined);
       scene.referenceIds = [];
       const generation = { ...work.imageGeneration!, scene };
-      work.session.update((current) => completeImageDraft(current, work.id, {
-        id: work.id, kind: "image", name: sheet.name, ...saved, mimeType: "image/png",
-        parentAssetId: imageFamilyRoot(current.assets, sheet.sourceId), imageGeneration: generation, createdAt: new Date().toISOString(),
-      }));
+      work.session.update(derivedImageUpdate(work.id, sheet.sourceId, { id: work.id, kind: "image", name: sheet.name,
+        ...saved, mimeType: "image/png", imageGeneration: generation, createdAt: new Date().toISOString() }));
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Character sheet saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Character sheet created; project save failed", error: describeDiagnosticError(reason) }); }
     } finally {
@@ -667,16 +675,8 @@ export class WorkQueue {
           segments: work.continuationSegments, from: work.request.continuationFrom,
         } : undefined);
       const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(totalFrames / GENERATION_FRAME_RATE * 1000), sceneSegments };
-      work.session.update((current) => ({
-        ...current,
-        generationJobs: current.generationJobs.map((job) => job.id === work.sceneId ? { ...job, status: "completed", stage: "completed", progress: 1, generationSnapshot: work.snapshot, outputRelativePath: saved.relativePath, latentRelativePath: generationLatentPath(work.id), error: saved.note, updatedAt: new Date().toISOString() } : job),
-        assets: current.assets.some((asset) => asset.id === assetId)
-          ? current.assets.map((asset) => asset.id === assetId ? { ...asset, ...media } : asset)
-          : current.generationJobs.some((job) => job.id === work.sceneId)
-            ? [...current.assets, { id: assetId, name: current.generationJobs.find((job) => job.id === work.sceneId)!.title, createdAt: new Date().toISOString(), ...media }]
-            : current.assets,
-        timeline: { tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.assetId === assetId ? { ...clip, status: "generated" } : clip) })) },
-      }));
+      work.session.update(videoResultUpdate(work.sceneId, assetId, media, { status: "completed", stage: "completed", progress: 1,
+        generationSnapshot: work.snapshot, outputRelativePath: saved.relativePath, latentRelativePath: generationLatentPath(work.id), error: saved.note }));
       try {
         await work.session.save();
         this.patch(work.id, { status: "completed", progress: 1, detail: "Video saved", error: saved.note });
@@ -688,9 +688,10 @@ export class WorkQueue {
   }
   async retrySave(id: string) {
     if (this.icons.owns(id)) { await this.icons.retrySave(); return; }
-    const work = this.work.get(id);
-    if (!work) return;
-    try { await work.session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: work.image ? "Image saved" : "Video saved" }); }
+    const item = this.items.find((candidate) => candidate.id === id);
+    const session = item && this.projects.get(item.projectKey);
+    if (!item?.needsSave || !session) return;
+    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "image" ? "Image saved" : "Video saved" }); }
     catch (reason) { this.patch(id, { error: describeDiagnosticError(reason) }); }
   }
   private async saveImage(work: PendingWork) {
@@ -700,21 +701,12 @@ export class WorkQueue {
       if (work.extend) {
         const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed });
         work.imageGeneration = { ...work.imageGeneration!, scene };
-        work.session.update((current) => completeImageDraft(current, work.id, {
-          id: work.id, kind: "image", name: work.extend!.name, ...saved, mimeType: "image/png",
-          parentAssetId: imageFamilyRoot(current.assets, work.extend!.sourceId), imageGeneration: work.imageGeneration, createdAt: new Date().toISOString(),
-        }));
+        work.session.update(derivedImageUpdate(work.id, work.extend.sourceId, { id: work.id, kind: "image", name: work.extend.name,
+          ...saved, mimeType: "image/png", imageGeneration: work.imageGeneration, createdAt: new Date().toISOString() }));
       } else {
-        work.session.update((current) => work.imageDraftId ? completeImageDraft(current, work.imageDraftId, {
-          id: work.imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
-          ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", createdAt: new Date().toISOString(),
-        }) : ({ ...current,
-          ...(current.imageScene?.outputAssetId === work.config.imageScene?.outputAssetId ? {
-            thumbnail: saved.relativePath,
-            imageScene: { ...(work.request.imageEdit && JSON.stringify(current.imageScene) === work.snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: work.id },
-          } : {}),
-          assets: [...current.assets, { id: work.id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration: work.imageGeneration, mimeType: work.request.imageEdit ? "image/png" : "image/jpeg", ...(work.imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, work.imageParentId) } : {}), createdAt: new Date().toISOString() }],
-        }));
+        work.session.update(imageResultUpdate({ id: work.id, imageDraftId: work.imageDraftId, imageParentId: work.imageParentId,
+          imageGeneration: work.imageGeneration, snapshot: work.snapshot, outputAssetId: work.config.imageScene?.outputAssetId,
+          imageEdit: Boolean(work.request.imageEdit), saved }));
       }
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
@@ -724,6 +716,50 @@ export class WorkQueue {
       finally { work.finish(); }
     }
   }
+}
+
+// These factories live outside the running job's closure scope: undo replay
+// retains only the result fields, never its full submitted project snapshot.
+function sceneUpdate(sceneId: string, patch: Partial<GenerationJob>) {
+  return (current: ProjectConfig): ProjectConfig => ({ ...current,
+    generationJobs: current.generationJobs.map((job) => job.id === sceneId ? { ...job, ...patch, updatedAt: new Date().toISOString() } : job),
+  });
+}
+
+function derivedImageUpdate(id: string, sourceId: string, asset: ProjectAsset) {
+  return (current: ProjectConfig) => completeImageDraft(current, id, {
+    ...asset, parentAssetId: imageFamilyRoot(current.assets, sourceId),
+  });
+}
+
+function videoResultUpdate(sceneId: string, assetId: string, media: Omit<ProjectAsset, "id" | "name" | "createdAt">, patch: Partial<GenerationJob>) {
+  const update = sceneUpdate(sceneId, patch);
+  return (current: ProjectConfig): ProjectConfig => ({
+    ...update(current),
+    assets: current.assets.some((asset) => asset.id === assetId)
+      ? current.assets.map((asset) => asset.id === assetId ? { ...asset, ...media } : asset)
+      : current.generationJobs.some((job) => job.id === sceneId)
+        ? [...current.assets, { id: assetId, name: current.generationJobs.find((job) => job.id === sceneId)!.title, createdAt: new Date().toISOString(), ...media }]
+        : current.assets,
+    timeline: { tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.assetId === assetId ? { ...clip, status: "generated" } : clip) })) },
+  });
+}
+
+function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, snapshot, outputAssetId, imageEdit, saved }: {
+  id: string; imageDraftId?: string; imageParentId?: string; imageGeneration?: ImageGenerationSnapshot; snapshot: string;
+  outputAssetId?: string | null; imageEdit: boolean; saved: { relativePath: string; width: number; height: number };
+}) {
+  const mimeType = imageEdit ? "image/png" : "image/jpeg";
+  return (current: ProjectConfig): ProjectConfig => imageDraftId ? completeImageDraft(current, imageDraftId, {
+    id: imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
+    ...saved, imageGeneration, mimeType, createdAt: new Date().toISOString(),
+  }) : ({ ...current,
+    ...(current.imageScene?.outputAssetId === outputAssetId ? {
+      thumbnail: saved.relativePath,
+      imageScene: { ...(imageEdit && JSON.stringify(current.imageScene) === snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: id },
+    } : {}),
+    assets: [...current.assets, { id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration, mimeType, ...(imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, imageParentId) } : {}), createdAt: new Date().toISOString() }],
+  });
 }
 
 type WorkerTransfer = GenerationTimingProgress & { detail?: string; transferred?: number; transferTotal?: number | null };

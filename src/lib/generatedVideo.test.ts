@@ -10,6 +10,7 @@ const muxed = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
   audioChunks: 0,
   videoChunks: 0,
+  finalized: false,
 }));
 vi.mock("mp4-muxer", () => ({
   ArrayBufferTarget: class { buffer = new Uint8Array([1, 2, 3, 4]).buffer; },
@@ -17,7 +18,7 @@ vi.mock("mp4-muxer", () => ({
     constructor(config: Record<string, unknown>) { muxed.configs.push(config); }
     addVideoChunk() { muxed.videoChunks += 1; }
     addAudioChunk() { muxed.audioChunks += 1; }
-    finalize() { /* the fake target already owns its test bytes */ }
+    finalize() { muxed.finalized = true; }
   },
 }));
 
@@ -33,10 +34,11 @@ const summary = (over: Record<string, unknown> = {}) => ({
 const desktop = () => { scope.__TAURI_INTERNALS__ = {}; };
 
 beforeEach(() => {
-  invoked.mockReset();
+  invoked.mockReset().mockResolvedValue(true);
   muxed.configs.length = 0;
   muxed.audioChunks = 0;
   muxed.videoChunks = 0;
+  muxed.finalized = false;
   delete scope.__TAURI_INTERNALS__;
   delete scope.VideoEncoder;
   delete scope.VideoFrame;
@@ -59,6 +61,68 @@ afterEach(() => {
    the wrong side of the app, keeping hold of half a gigabyte of frames after a
    failure, or reporting a file that was never written. */
 describe("saving a rendered scene", () => {
+  it.each(["configure", "encode"])("closes video resources when %s throws", async (operation) => {
+    desktop();
+    const closeFrame = vi.fn();
+    const closeEncoder = vi.fn();
+    scope.VideoFrame = class { close = closeFrame; };
+    scope.VideoEncoder = class {
+      static isConfigSupported = async () => ({ supported: true });
+      state = "configured";
+      configure() { if (operation === "configure") throw new Error("Encoder failed"); }
+      encode() { throw new Error("Encoder failed"); }
+      close = closeEncoder;
+    };
+    invoked.mockImplementation(async (command: string) => {
+      if (command === "generated_summary") return summary({ width: 1, height: 1, frameCount: 1, audioSamples: 0 });
+      if (command === "generated_frame") return [0, 0, 0, 255];
+      return true;
+    });
+    await expect(saveGeneratedScene({ folderPath: "/p", jobId: "job-01" })).rejects.toThrow("Encoder failed");
+    expect(closeEncoder).toHaveBeenCalledOnce();
+    expect(closeFrame).toHaveBeenCalledTimes(operation === "encode" ? 1 : 0);
+    expect(invoked).toHaveBeenCalledWith("release_generated_frames", { jobId: "job-01" });
+  });
+
+  it.each(["configure", "encode"])("closes audio resources when %s throws and saves the video", async (operation) => {
+    desktop();
+    const closeData = vi.fn();
+    const closeEncoder = vi.fn();
+    scope.AudioData = class { close = closeData; };
+    scope.AudioEncoder = class {
+      static isConfigSupported = async () => ({ supported: true });
+      state = "configured";
+      configure() { if (operation === "configure") throw new Error("Audio failed"); }
+      encode() { throw new Error("Audio failed"); }
+      close = closeEncoder;
+    };
+    scope.VideoFrame = class { close() {} };
+    scope.VideoEncoder = class {
+      static isConfigSupported = async () => ({ supported: true });
+      state = "configured";
+      encodeQueueSize = 0;
+      constructor(private init: VideoEncoderInit) {}
+      configure() {}
+      encode() { this.init.output({} as EncodedVideoChunk); }
+      async flush() {}
+      close() {}
+    };
+    invoked.mockImplementation(async (command: string) => {
+      if (command === "generated_summary") return summary({ width: 1, height: 1, frameCount: 1, audioSamples: 2 });
+      if (command === "generated_frame") return [0, 0, 0, 255];
+      if (command === "generated_audio") return new Float32Array([0, 0]).buffer;
+      if (command === "release_generated_frames") expect(muxed.finalized).toBe(false);
+      if (command === "write_generated_video") return { relativePath: "media/result.mp4", bytes: 4 };
+      return true;
+    });
+    await expect(saveGeneratedScene({ folderPath: "/p", jobId: "job-01" })).resolves.toMatchObject({ note: "Saved without sound: Audio failed" });
+    expect(closeEncoder).toHaveBeenCalledOnce();
+    expect(closeData).toHaveBeenCalledTimes(operation === "encode" ? 1 : 0);
+    const commands = invoked.mock.calls.map(([command]) => command);
+    expect(commands.filter((command) => command === "release_generated_frames")).toHaveLength(1);
+    expect(commands.indexOf("release_generated_frames")).toBeLessThan(commands.indexOf("write_generated_video"));
+  });
+
   it("cannot save from the browser preview, and says which half is missing", async () => {
     await expect(saveGeneratedScene({ folderPath: "/p", jobId: "job-01" })).rejects.toThrow(/desktop app/);
     expect(invoked).not.toHaveBeenCalled();
@@ -67,9 +131,7 @@ describe("saving a rendered scene", () => {
   it("says a webview with no encoder cannot make a video file", async () => {
     desktop();
     await expect(saveGeneratedScene({ folderPath: "/p", jobId: "job-01" })).rejects.toThrow(/no WebCodecs VideoEncoder/);
-    // Nothing was asked of Rust: there is no point pulling frames that cannot
-    // be encoded.
-    expect(invoked).not.toHaveBeenCalled();
+    expect(invoked).toHaveBeenCalledExactlyOnceWith("release_generated_frames", { jobId: "job-01" });
   });
 
   it("says when the frames are gone rather than writing an empty file", async () => {
@@ -99,6 +161,7 @@ describe("saving a rendered scene", () => {
     scope.VideoFrame = class {};
     invoked.mockResolvedValueOnce(summary({ frameCount: 0 }));
     await expect(saveGeneratedScene({ folderPath: "/p", jobId: "job-01" })).rejects.toThrow(/no pictures/);
+    expect(invoked).toHaveBeenCalledWith("release_generated_frames", { jobId: "job-01" });
   });
 });
 

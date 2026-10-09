@@ -60,6 +60,37 @@ const finish = async (queue: WorkQueue, id: string) => {
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
 
+it("releases submitted snapshots after each generation while keeping completed results available", async () => {
+  const { queue, first } = setup();
+  const pending = (queue as unknown as { work: Map<string, unknown> }).work;
+  for (let index = 0; index < 3; index++) {
+    const [id] = queue.enqueue(first, [submission(first)]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+    await finish(queue, id);
+    await waitFor(() => expect(pending.size).toBe(0));
+    const progress = vi.fn();
+    await expect(queue.waitFor(id, new AbortController().signal, progress)).resolves.toMatchObject({ id, status: "completed" });
+    expect(progress).toHaveBeenCalledOnce();
+  }
+  expect(queue.getSnapshot()).toHaveLength(3);
+  const id = queue.getSnapshot()[0].id;
+  vi.mocked(releaseRendered).mockClear();
+  emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Late result" });
+  expect(releaseRendered).toHaveBeenCalledWith(id);
+  expect(saveGeneratedScene).toHaveBeenCalledTimes(3);
+});
+
+it("releases a cancelled queued snapshot before the running job finishes", async () => {
+  const { queue, first, second } = setup();
+  const [running] = queue.enqueue(first, [submission(first)]);
+  const [cancelled] = queue.enqueue(second, [submission(second)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  await queue.cancel(cancelled);
+  expect((queue as unknown as { work: Map<string, unknown> }).work.has(cancelled)).toBe(false);
+  await expect(queue.waitFor(cancelled, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled" });
+  await finish(queue, running);
+});
+
 it.each([undefined, 17])("freezes audio steps %s independently of video steps through the queue", async (audioSteps) => {
   const { queue, first } = setup();
   const item = submission(first);
