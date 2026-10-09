@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectAsset, TimelineClip, TimelineTrack } from "./project";
-import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "./timelinePreview";
+import { preparedPreviewClips, previewPlayerKeys, previewSegmentIndex, previewSegments } from "./timelinePreview";
 
 const asset = { id: "video", kind: "video", mimeType: "video/mp4" } as ProjectAsset;
 const assets = new Map([[asset.id, asset]]);
@@ -10,6 +10,24 @@ const clip = (id: string, startMs: number, durationMs: number, extra: Partial<Ti
 const track = (clips: TimelineClip[]): TimelineTrack => ({ id: "track", name: "Picture", kind: "video", muted: false, locked: false, clips });
 
 describe("prepared timeline pictures", () => {
+  it("shares a joined decoder across rounded scene boundaries, but keeps distinct seeks separate", () => {
+    const joined = new Map([[asset.id, { ...asset, sceneSegments: [
+      { sceneId: "a", latentRelativePath: "a", startFrame: 0, frameCount: 124 },
+      { sceneId: "b", latentRelativePath: "b", startFrame: 124, frameCount: 46 },
+    ] }]]);
+    const a = clip("a", 0, 5167);
+    const b = clip("b", 5167, 1917, { sourceStartMs: 124 * 1000 / 24 });
+    const tracks = [track([a, b])];
+    const segments = previewSegments(tracks, joined);
+    const keys = previewPlayerKeys(tracks, joined);
+    expect(preparedPreviewClips(segments, 0, keys).map((entry) => [entry.clip.id, entry.playerKey])).toEqual([["a", "a"]]);
+    expect(preparedPreviewClips(segments, 1, keys).map((entry) => [entry.clip.id, entry.playerKey])).toEqual([["b", "a"]]);
+    for (const change of [{ sourceStartMs: b.sourceStartMs + 1 }, { startMs: 5168 }, { startMs: 5166 }, { playbackRate: 2 }]) {
+      expect(previewPlayerKeys([track([a, { ...b, ...change }])], joined).get("b")).toBe("b");
+    }
+    expect(previewPlayerKeys(tracks, assets).get("b")).toBe("b");
+  });
+
   it("prepares a covered lower track at the time it will be revealed", () => {
     const segments = previewSegments([track([clip("top", 0, 2000)]), track([clip("lower", 0, 6000, { sourceStartMs: 8000 })])], assets);
     expect(segments.map((segment) => [segment.startMs, segment.clips.map((clip) => clip.id)])).toEqual([

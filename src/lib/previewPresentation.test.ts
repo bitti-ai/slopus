@@ -14,6 +14,26 @@ const video = (ready = true) => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("persistent preview presentation", () => {
+  it("draws the shared Long Shot player immediately when the scene changes", () => {
+    const sources: unknown[] = [];
+    const close = vi.fn();
+    vi.stubGlobal("VideoFrame", class {
+      close = close;
+      constructor(source: unknown) { sources.push(source); }
+    });
+    const media = new PreviewMedia();
+    const joined = video();
+    media.set("first", joined);
+    const output = compositor();
+    const keys = new Map([["first", "first"], ["bridge", "first"], ["last", "first"]]);
+    for (const [index, id] of ["first", "bridge", "last"].entries()) {
+      expect(presentPreviewFrame(output, media, [clip(id)], index * 1000, keys)).toBe(true);
+    }
+    expect(sources).toEqual([joined, joined, joined]);
+    expect(output.draw).toHaveBeenCalledTimes(3);
+    expect(close).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps the outgoing pixels until the incoming frame is available, then replaces them in the same surface", () => {
     const frames: { source: unknown; close: ReturnType<typeof vi.fn> }[] = [];
     vi.stubGlobal("VideoFrame", class {

@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
+import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { PreviewSources } from "../../lib/exportPipeline";
 
@@ -53,6 +53,73 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it.each([1, 2])("keeps the Long Shot video running across both bridge boundaries at %sx speed", async (playbackRate) => {
+    const read = vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
+    const playingElements = new WeakSet<HTMLMediaElement>();
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) {
+      playingElements.add(this);
+      return Promise.resolve();
+    });
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { playingElements.delete(this); });
+    vi.spyOn(HTMLMediaElement.prototype, "paused", "get").mockImplementation(function (this: HTMLMediaElement) { return !playingElements.has(this); });
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(4);
+    const seek = vi.spyOn(HTMLMediaElement.prototype, "currentTime", "set");
+    let now = 0, nextId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextId, callback); return nextId; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+    const config = project([]);
+    const parts = [124, 46, 124].map((frameCount, index) => ({ sceneId: String(index), frameCount,
+      startFrame: [0, 124, 170][index], latentRelativePath: `latents/${index}.safetensors` }));
+    config.generationJobs = parts.map((part) => ({ ...createDraftGenerationJob("Walk", { id: part.sceneId, sceneType: "long-shot" }),
+      status: "completed", latentRelativePath: part.latentRelativePath }));
+    config.assets = parts.map((part, index) => ({ ...config.assets[0], id: `asset-${part.sceneId}`, kind: "generated",
+      sourcePath: `D:/scene-${index}.mp4`, hasAudio: true,
+      sceneSegments: index === 1 ? parts : [{ ...part, startFrame: 0 }] }));
+    let startMs = 0;
+    const clips = parts.map((part) => {
+      const durationMs = Math.round(part.frameCount * 1000 / 24 / playbackRate);
+      const next = clip({ id: part.sceneId, assetId: `asset-${part.sceneId}`, startMs, durationMs, sourceStartMs: 0, playbackRate,
+        transform: { scale: 80 + Number(part.sceneId), rotation: 0, positionX: 0, positionY: 0 } });
+      startMs += durationMs;
+      return next;
+    });
+    config.timeline.tracks.find((track) => track.id === STORY_TRACK_ID)!.clips = clips;
+    let scrub: (time: number) => void = () => undefined;
+    function Harness() {
+      const [position, setPosition] = useState(0);
+      scrub = setPosition;
+      return <ProgramMonitor config={config} folderPath="C:/Film" playheadMs={position} playing
+        onSeek={setPosition} onPlayingChange={() => undefined} />;
+    }
+    const view = render(<Harness />);
+    await act(async () => undefined);
+    const video = view.container.querySelector("video")!;
+    expect(view.container.querySelectorAll("video")).toHaveLength(1);
+    expect(video.src).toBe("blob:asset-1");
+    for (const next of clips.slice(1)) {
+      // Model the running media clock before React advances across the cut.
+      now = next.startMs + 16;
+      video.currentTime = now * playbackRate / 1000;
+      seek.mockClear(); play.mockClear(); pause.mockClear();
+      await act(async () => {
+        const pending = [...frames.values()]; frames.clear(); pending.forEach((callback) => callback(now));
+      });
+      expect(view.container.querySelector(`[data-clip-id="${next.id}"] video`)).toBe(video);
+      expect(video.style.transform).toContain(`scale(${next.transform!.scale / 100})`);
+      expect(video.paused).toBe(false);
+      expect(video.muted).toBe(false);
+      expect(seek).not.toHaveBeenCalled();
+      expect(play).not.toHaveBeenCalled();
+      expect(pause).not.toHaveBeenCalled();
+    }
+    await act(async () => scrub(1000));
+    expect(view.container.querySelector('[data-clip-id="0"] video')).toBe(video);
+    expect(video.currentTime).toBe(playbackRate);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
   it.each([0.5, 2])("seeks and plays video and audio at %sx clip speed", async (playbackRate) => {
     vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();

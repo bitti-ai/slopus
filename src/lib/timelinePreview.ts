@@ -1,4 +1,5 @@
 import { visibleClipsAt } from "./export";
+import { clipPlaybackRate, clipSourceTimeMs } from "./clipTiming";
 import { clipTransition, type ProjectAsset, type TimelineClip, type TimelineTrack } from "./project";
 
 export type PreviewSegment = { startMs: number; clips: TimelineClip[] };
@@ -38,16 +39,40 @@ export function previewSegmentIndex(segments: PreviewSegment[], timeMs: number):
   return low;
 }
 
-/** Keep the current picture and the next two pictures mounted. A prepared
- * player is keyed by clip, since two trims of one asset need separate seeks. */
-export function preparedPreviewClips(segments: PreviewSegment[], index: number) {
-  const prepared = new Map<string, { clip: TimelineClip; prepareAtMs: number }>();
+/** Adjacent ranges of a joined generation can keep one running decoder.
+ * Preserve separate players for gaps, overlaps, changed speeds and other trims. */
+export function previewPlayerKeys(tracks: TimelineTrack[], assets: ReadonlyMap<string, ProjectAsset>) {
+  const keys = new Map<string, string>();
+  for (const track of tracks) {
+    if (track.kind !== "video") continue;
+    let previous: TimelineClip | undefined;
+    for (const clip of [...track.clips].sort((a, b) => a.startMs - b.startMs)) {
+      const asset = assets.get(clip.assetId);
+      const rate = clipPlaybackRate(clip);
+      const continuous = previous && (asset?.sceneSegments?.length ?? 0) > 1
+        && previous.assetId === clip.assetId && clipPlaybackRate(previous) === rate
+        && previous.startMs + previous.durationMs === clip.startMs
+        // Scene durations are stored in whole milliseconds; their frame
+        // offsets are exact. Allow only that half-millisecond rounding error.
+        && Math.abs(clipSourceTimeMs(previous, clip.startMs) - clip.sourceStartMs) <= rate / 2 + 1e-6;
+      keys.set(clip.id, continuous ? keys.get(previous!.id)! : clip.id);
+      previous = clip;
+    }
+  }
+  return keys;
+}
+
+/** Keep the current picture and the next two pictures mounted. Continuous
+ * joined scenes share a player; unrelated trims still prepare independently. */
+export function preparedPreviewClips(segments: PreviewSegment[], index: number, playerKeys?: ReadonlyMap<string, string>) {
+  const prepared = new Map<string, { clip: TimelineClip; prepareAtMs: number; playerKey: string }>();
   let pictures = 0;
   for (let next = index; next < segments.length && pictures < 3; next++) {
     const segment = segments[next];
     if (segment.clips.length) pictures++;
     for (const clip of segment.clips) {
-      if (!prepared.has(clip.id)) prepared.set(clip.id, { clip, prepareAtMs: segment.startMs });
+      const playerKey = playerKeys?.get(clip.id) ?? clip.id;
+      if (!prepared.has(playerKey)) prepared.set(playerKey, { clip, prepareAtMs: segment.startMs, playerKey });
     }
   }
   return [...prepared.values()];

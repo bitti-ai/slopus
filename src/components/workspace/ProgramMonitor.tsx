@@ -8,15 +8,14 @@ import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
 import { PreviewSources } from "../../lib/exportPipeline";
-import { preparedPreviewClips, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
+import { preparedPreviewClips, previewPlayerKeys, previewSegmentIndex, previewSegments } from "../../lib/timelinePreview";
 import { PreviewMedia } from "../../lib/previewPresentation";
 import { PLAYBACK_SAMPLE_MS, previewEngine } from "../../lib/previewEngine";
 import { continuationPlaybackTracks } from "../../lib/continuationMedia";
 
-/* The monitor owns a continuous timeline clock. Each visible or upcoming clip
- * owns a persistent media element: loading, decoding the first frame and seeking
- * a trim happen ahead of a cut. Promoting a prepared layer preserves its decoder
- * and effect renderer, including when a lower track becomes the foreground. */
+/* The monitor owns a continuous timeline clock. Visible and upcoming clips
+ * prepare persistent media elements ahead of a cut. Adjacent ranges of a joined
+ * generation keep the same running player while retaining each clip's effects. */
 
 /** How far a sound may drift from the cut before it is pulled back. Below this
  *  a correction is more audible than the drift it fixes. */
@@ -76,7 +75,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   const segments = useMemo(() => previewSegments(tracks, assetsById), [tracks, assetsById]);
   const segmentIndex = previewSegmentIndex(segments, playheadMs);
   const layers = segments[segmentIndex].clips;
-  const prepared = useMemo(() => preparedPreviewClips(segments, segmentIndex), [segments, segmentIndex]);
+  const playerKeys = useMemo(() => previewPlayerKeys(tracks, assetsById), [tracks, assetsById]);
+  const prepared = useMemo(() => preparedPreviewClips(segments, segmentIndex, playerKeys), [segments, segmentIndex, playerKeys]);
   const clip = layers[0] ?? null;
   const asset = useMemo(
     () => (clip ? config.assets.find((candidate) => candidate.id === clip.assetId) : undefined),
@@ -338,14 +338,15 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
       onSelectClip(clip.id);
     }}
   >
-    <ProgramPicture key={folderPath} media={media} layers={layers} playheadMs={playheadMs}
+    <ProgramPicture key={folderPath} media={media} playerKeys={playerKeys} layers={layers} playheadMs={playheadMs}
       width={Math.round(dimensions.width * previewScale)} height={Math.round(dimensions.height * previewScale)}
       background={config.settings.backgroundColor} onAvailable={setComposited} />
-    <div className="program-media">{prepared.map(({ clip: layer, prepareAtMs }) => {
+    <div className="program-media">{prepared.map(({ clip: layer, prepareAtMs, playerKey }) => {
       const depth = layers.findIndex((visible) => visible.id === layer.id);
       return <ProgramLayer
-        key={`${folderPath}:${layer.id}`}
+        key={`${folderPath}:${playerKey}`}
         clip={layer}
+        playerKey={playerKey}
         asset={assetsById.get(layer.assetId)}
         sources={sources}
         media={media}

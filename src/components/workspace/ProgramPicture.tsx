@@ -6,8 +6,9 @@ import type { TimelineClip } from "../../lib/project";
 
 /** A persistent presentation surface: media elements may come and go, but a
  * cut never removes the canvas containing the last complete picture. */
-export function ProgramPicture({ media, layers, playheadMs, width, height, background, onAvailable }: {
+export function ProgramPicture({ media, playerKeys, layers, playheadMs, width, height, background, onAvailable }: {
   media: PreviewMedia;
+  playerKeys?: ReadonlyMap<string, string>;
   layers: TimelineClip[];
   playheadMs: number;
   width: number;
@@ -16,8 +17,8 @@ export function ProgramPicture({ media, layers, playheadMs, width, height, backg
   onAvailable: (available: boolean) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const current = useRef({ layers, playheadMs, onAvailable });
-  current.current = { layers, playheadMs, onAvailable };
+  const current = useRef({ layers, playheadMs, onAvailable, playerKeys });
+  current.current = { layers, playheadMs, onAvailable, playerKeys };
   const redraw = useRef<((tick?: boolean) => void) | null>(null);
   const [available, setAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function ProgramPicture({ media, layers, playheadMs, width, height, backg
     const draw = (tick = false) => {
       if (!live || !compositor) return;
       try {
-        const presented = presentPreviewFrame(compositor, media, current.current.layers, current.current.playheadMs);
+        const presented = presentPreviewFrame(compositor, media, current.current.layers, current.current.playheadMs, current.current.playerKeys);
         if (tick) previewEngine.tick(presented);
       }
       catch (reason) { setError(String(reason)); }
@@ -55,7 +56,7 @@ export function ProgramPicture({ media, layers, playheadMs, width, height, backg
       compositor?.dispose();
     };
   }, [media, width, height, background]);
-  useLayoutEffect(() => redraw.current?.(true), [layers, playheadMs]);
+  useLayoutEffect(() => redraw.current?.(true), [layers, playheadMs, playerKeys]);
   return <>
     <canvas ref={canvas} className="program-composited-picture" aria-label="Video preview" style={{ visibility: available ? "visible" : "hidden" }} />
     {available && error && <div className="program-note program-note--error" role="alert">{error}</div>}

@@ -21,8 +21,9 @@ export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
 }
 
 /** Prepared clips keep their decoder and effect renderer when made visible. */
-export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate = 1, active, foreground, muted, externalSeek, depth, media, composited }: {
+export function ProgramLayer({ clip, playerKey, asset, sources, playheadMs, playing, rate = 1, active, foreground, muted, externalSeek, depth, media, composited }: {
   clip: TimelineClip;
+  playerKey: string;
   asset: ProjectAsset | undefined;
   sources: PreviewSources;
   playheadMs: number;
@@ -44,12 +45,12 @@ export function ProgramLayer({ clip, asset, sources, playheadMs, playing, rate =
   const image = useRef<HTMLImageElement | null>(null);
   const registerVideo = useCallback((element: HTMLVideoElement | null) => {
     video.current = element;
-    media.set(clip.id, element);
-  }, [media, clip.id]);
+    media.set(playerKey, element);
+  }, [media, playerKey]);
   const registerImage = useCallback((element: HTMLImageElement | null) => {
     image.current = element;
-    media.set(clip.id, element);
-  }, [media, clip.id]);
+    media.set(playerKey, element);
+  }, [media, playerKey]);
   const position = useRef({ clip, playheadMs, playing, active, externalSeek });
   position.current = { clip, playheadMs, playing, active, externalSeek };
   const isImage = asset?.kind === "image" || asset?.mimeType.startsWith("image/");

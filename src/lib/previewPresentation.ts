@@ -4,7 +4,7 @@ import type { TimelineClip } from "./project";
 
 type PreviewMediaElement = HTMLVideoElement | HTMLImageElement;
 
-/** Prepared decoders belong to clips; the displayed canvas belongs to the
+/** Prepared decoders belong to players; the displayed canvas belongs to the
  * monitor. Media arriving asynchronously requests a redraw of the current cut. */
 export class PreviewMedia {
   private elements = new Map<string, PreviewMediaElement>();
@@ -33,11 +33,11 @@ export class PreviewMedia {
 /** Capture every layer BEFORE clearing the display. If any decoder is still
  * loading/seeking, keep the complete previous picture. A real timeline gap
  * deliberately clears the canvas. No pixel readback or CPU frame copies. */
-export function presentPreviewFrame(compositor: Compositor, media: PreviewMedia, layers: TimelineClip[], playheadMs: number): boolean {
+export function presentPreviewFrame(compositor: Compositor, media: PreviewMedia, layers: TimelineClip[], playheadMs: number, playerKeys?: ReadonlyMap<string, string>): boolean {
   const pictures: { frame: VideoFrame; clip: TimelineClip }[] = [];
   try {
     for (const clip of layers) {
-      const element = media.get(clip.id);
+      const element = media.get(playerKeys?.get(clip.id) ?? clip.id);
       if (!element) return false;
       const video = element instanceof HTMLVideoElement;
       if (video ? element.readyState < 2 || element.seeking || !element.videoWidth || !element.videoHeight
