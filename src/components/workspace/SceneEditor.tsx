@@ -277,7 +277,7 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
@@ -286,6 +286,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   folderPath?: string;
   scenes?: GenerationJob[];
   defaultSteps: number;
+  effectiveSteps?: number;
   disabled: boolean;
   importAvailable: boolean;
   importError: string | null;
@@ -474,7 +475,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
       </PropSection>
     </div>
     <div role="region" aria-label="Generation" className="scene-settings">
-      <PropSection title="Generation" persistKey="generator.generation" summary={`${sceneGenerationSteps(job, defaultSteps)} steps`}>
+      <PropSection title="Generation" persistKey="generator.generation" summary={`${effectiveSteps ?? sceneGenerationSteps(job, defaultSteps)} steps`}>
         <PropRow label="Steps" htmlFor={`${id}-steps`}>
           <CommittedNumberInput
             id={`${id}-steps`}

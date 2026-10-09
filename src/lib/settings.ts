@@ -16,7 +16,7 @@ import { latentUpscalerPath } from "./upscalers";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { downloadableTemplateLoras, highestLoraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
+import { downloadableTemplateLoras, loadLoras, loraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
 import { remoteWorkerSelected, selectedWorker, WORKERS_EVENT } from "./workers";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
@@ -541,12 +541,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   }
   const loras = resolveTemplateLoras(selection, remote);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
-  const stepOverride = highestLoraStepOverride(loras);
+  const stepOverride = loraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
   if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) {
     options.samplingPreset = "dmad-4step";
     // The fixed sigma grid defines four evaluations and forbids approximate caches.
-    options.stepOverride = 4;
     delete options.motionCache;
   }
   for (const field of ENGINE_PATH_FIELDS) {
@@ -561,13 +560,21 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
 }
 
-/** A copy of `config` carrying this machine's engine paths. For passing to a
- *  Tauri command only — never store or save the result. */
+/** The effective count shown for the selected generator before submission. */
+export function generationStepsForTemplate(steps: number, template?: Pick<GeneratorTemplate, "loras">): number {
+  // Display metadata without resolving weight paths: a template awaiting a
+  // download can still show its step count without throwing during render.
+  const activeIds = new Set(template?.loras?.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+  return loraStepOverride(loadLoras().filter((lora) => activeIds.has(lora.id))) ?? steps;
+}
+
 export function generationStepsWithLoras(steps: number, config: ProjectConfig): number {
   const override = config.providerSettings.slopfab?.options.stepOverride;
   return isLoraStepOverride(override) ? override : steps;
 }
 
+/** A copy of `config` carrying this machine's engine paths. For passing to a
+ *  Tauri command only — never store or save the result. */
 export function withEngineSettings(config: ProjectConfig): ProjectConfig {
   return {
     ...config,

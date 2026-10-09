@@ -4,6 +4,7 @@ This alpha update adds LAN generation workers, Linux support, expanded color gra
 
 ## What's new
 
+- Video and image generation headers now show the effective step count from the selected generator's active LoRAs, including fixed sampling schedules.
 - Added Backdrop scenes to generate subjects and action against a selected green, blue, black or white background. Chroma Key now offers matching backdrop modes and automatic border detection, with matte levels, background color removal, despill, shadow removal, edge softness, choke/grow and small-speck/hole cleanup in GPU preview and export.
 - Timeline clips now offer Speed in Timing, from 25% to 400%. Speed changes preserve the source range, adjust duration and later clips on the same track, and apply to preview and export, including audio pitch.
 - Open the agent from the Settings top bar in a resizable right-side panel to configure generators, weight paths and LoRAs, even without an open project.

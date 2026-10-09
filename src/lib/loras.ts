@@ -127,3 +127,8 @@ export function highestLoraStepOverride(loras: { stepOverride?: number }[]): num
   return loras.reduce<number | undefined>((highest, lora) => isLoraStepOverride(lora.stepOverride)
     ? Math.max(highest ?? 0, lora.stepOverride) : highest, undefined);
 }
+
+/** Fixed sampling schedules take priority over editable LoRA step overrides. */
+export function loraStepOverride(loras: Pick<Lora, "stepOverride" | "samplingPreset">[]): number | undefined {
+  return loras.some((lora) => lora.samplingPreset === "dmad-4step") ? 4 : highestLoraStepOverride(loras);
+}

@@ -3,7 +3,7 @@ export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { continuationBlocker, continuationSceneId, isVideoTransition, type SceneType } from "../../lib/project";
+import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationSteps, type SceneType } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -20,7 +20,7 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { STATUS_BADGE, type SceneIndicatorStatus } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable } from "../../lib/settings";
+import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 
@@ -648,6 +648,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               job={selected}
               shots={selectedShots}
               defaultSteps={defaultGenerationSteps}
+              effectiveSteps={generationStepsForTemplate(sceneGenerationSteps(selected, defaultGenerationSteps), selectedTemplate)}
               defaultLook={config.settings.defaultLook}
               disabled={false}
               references={config.references}
