@@ -72,6 +72,8 @@ pub enum AgentTurnResult {
     Generation {
         summary: String,
         command: super::generation::GenerationCommand,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        prepare: Vec<ProjectCommand>,
     },
     Inspect {
         requests: Vec<super::capture::InspectionRequest>,

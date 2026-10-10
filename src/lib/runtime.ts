@@ -1,7 +1,9 @@
 import { clipPlaybackRate } from "./clipTiming";
 import { invoke } from "@tauri-apps/api/core";
 import { cancelAgentCaptures, listenForAgentCaptures } from "./agentCapture";
-import type { SceneGenerateCommand } from "./agentGeneration";
+import type { AgentGenerateCommand } from "./agentGeneration";
+import { applyImageDraftCommand, type ImageDraftCommand } from "./imageDraftCommands";
+import { saveImageDraft } from "./imageHistory";
 import { executeGeneratorCommands, generatorContext, type GeneratorCommand } from "./agentGenerators";
 import { createImageScene, imageScenePromptText } from "./imageScene";
 import { applyImageCommand, type ImageCommand } from "./imageCommands";
@@ -49,6 +51,7 @@ export interface RuntimeStatus { providers: ProviderStatus[]; slopfab: SlopfabSt
 
 export type ProjectCommand =
   | ImageCommand
+  | ImageDraftCommand
   | { op: "project.set"; name?: string; prompt?: string; targetSeconds?: number; aspectRatio?: string; resolution?: string; frameRate?: number; backgroundColor?: string }
   | { op: "ref.add"; id: string; name: string; text: string; use: string[] }
   | { op: "ref.set"; id: string; name?: string; text?: string; use?: string[] }
@@ -65,7 +68,7 @@ export type ProjectCommand =
   | { op: "clip.remove"; id: string };
 
 export type AgentTurnResult =
-  | { kind: "generation"; summary: string; command: SceneGenerateCommand }
+  | { kind: "generation"; summary: string; command: AgentGenerateCommand; prepare?: ProjectCommand[] }
   | { kind: "answer"; content: string }
   | { kind: "question"; content: string }
   | { kind: "generatorCommands"; summary: string; commands: GeneratorCommand[] }
@@ -357,11 +360,16 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   };
   for (const command of commands) {
     switch (command.op) {
+      case "image.draft.add": case "image.draft.select": {
+        Object.assign(next, applyImageDraftCommand(next, command, now));
+        break;
+      }
       case "image.set": case "image.configure": case "image.node.add": case "image.node.set": case "image.node.move": case "image.node.duplicate": case "image.node.remove": {
         const scene = applyImageCommand(next.imageScene ?? createImageScene(next.brief.prompt), command);
         for (const id of scene.referenceIds) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`Image reference '${id}' must name an existing image or text reference.`);
         for (const id of actionReferenceIds(imageScenePromptText(scene))) if (!next.references.some((reference) => reference.id === id && ["image", "text"].includes(reference.kind))) throw new Error(`The image cites '@[ref:${id}]', which must name an existing image or text reference.`);
         next.imageScene = scene;
+        Object.assign(next, saveImageDraft(next));
         break;
       }
       case "project.set":

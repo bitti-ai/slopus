@@ -9,7 +9,7 @@ import { useAgentPane } from "../lib/useAgentPane";
 export { agentPaneMax } from "../lib/useAgentPane";
 import { useShortcut } from "../lib/commands";
 import { AgentDock } from "./workspace/AgentDock";
-import { generateAgentScene } from "../lib/agentGeneration";
+import { generateAgentMedia } from "../lib/agentGeneration";
 import { ExportView } from "./workspace/ExportView";
 import { ImageExportView } from "./workspace/ImageExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
@@ -311,7 +311,13 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
           onBusyChange={setAgentBusy}
           generation={{
             getRecord: () => ({ ...project, config: session.getSnapshot().config }),
-            generate: (command, signal, onProgress) => generateAgentScene(queue, session, command, signal, onProgress),
+            generate: (command, signal, onProgress) => generateAgentMedia(queue, session, command, signal, onProgress),
+            prepare: async (commands) => {
+              const next = await executeAgentCommands(session.getSnapshot().config, commands);
+              session.edit(next, "agent");
+              session.sealHistory();
+              await save();
+            },
           }}
           /* The provider only proposes typed commands. Apply them to the session's
              latest state—edits can continue while it thinks—as one undo step, then

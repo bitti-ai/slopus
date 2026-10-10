@@ -12,6 +12,18 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "image.draft.add")]
+    ImageDraftAdd {
+        id: String,
+        name: String,
+        prompt: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<String>,
+        #[serde(default, rename = "aspectRatio", skip_serializing_if = "Option::is_none")]
+        aspect_ratio: Option<String>,
+    },
+    #[serde(rename = "image.draft.select")]
+    ImageDraftSelect { id: String },
     #[serde(rename = "image.configure")]
     ImageConfigure {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -307,6 +319,8 @@ pub(super) struct CommitLine {
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
         ProjectCommand::ImageConfigure { .. } => "image.configure",
+        ProjectCommand::ImageDraftAdd { .. } => "image.draft.add",
+        ProjectCommand::ImageDraftSelect { .. } => "image.draft.select",
         ProjectCommand::ImageNodeAdd { .. } => "image.node.add",
         ProjectCommand::ImageNodeSet { .. } => "image.node.set",
         ProjectCommand::ImageNodeMove { .. } => "image.node.move",

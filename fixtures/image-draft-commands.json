@@ -1,0 +1,18 @@
+{
+  "commands": [
+    { "op": "ref.add", "id": "ref-balloon", "name": "Balloon", "text": "A round red balloon", "use": ["product"] },
+    { "op": "image.draft.add", "id": "poster", "name": "Poster", "prompt": "@[ref:ref-balloon] above a snowy forest", "resolution": "768p", "aspectRatio": "1:1" },
+    { "op": "image.configure", "steps": 30, "seed": 42, "background": "Snowy mountains" },
+    { "op": "image.node.add", "id": "caption", "parent": "image-root", "kind": "text", "name": "Title", "text": "UP" },
+    { "op": "image.draft.add", "id": "banner", "name": "Banner", "prompt": "A boat on a lake", "resolution": "416p", "aspectRatio": "16:9" },
+    { "op": "image.draft.select", "id": "poster" },
+    { "op": "image.configure", "prompt": "@[ref:ref-balloon] floats beside the mountains" }
+  ],
+  "invalid": [
+    { "op": "image.draft.add", "id": "poster", "name": "Duplicate", "prompt": "No" },
+    { "op": "image.draft.add", "id": "bad", "name": "Bad size", "prompt": "No", "resolution": "123p" },
+    { "op": "image.draft.add", "id": "bad", "name": "Bad ratio", "prompt": "No", "aspectRatio": "0:1" },
+    { "op": "image.draft.add", "id": "bad", "name": "Unknown reference", "prompt": "@[ref:missing]" },
+    { "op": "image.draft.select", "id": "missing" }
+  ]
+}

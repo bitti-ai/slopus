@@ -18,6 +18,8 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
                     _kind: String,
                     summary: String,
                     command: super::generation::GenerationCommand,
+                    #[serde(default)]
+                    prepare: Vec<crate::project::commands::ProjectCommand>,
                 }
                 let request: Request =
                     serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
@@ -27,6 +29,7 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
                 return Ok(AgentTurnResult::Generation {
                     summary: request.summary,
                     command: request.command,
+                    prepare: request.prepare,
                 });
             }
             if kind == "inspect" {

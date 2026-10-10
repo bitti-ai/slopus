@@ -13,6 +13,32 @@ const generate = response({ kind: "generation", summary: "Generate this scene", 
 const answer = response({ kind: "answer", content: "Reviewed the finished scene." });
 const outcome: GenerationObservation = { scene: command.scene, template: command.template, status: "completed", workId: "work-one", detail: "Video saved" };
 
+it("prepares and saves image drafts before generation and never reapplies duplicate preparation", async () => {
+  const record = project();
+  let prepared = false;
+  const host = { getRecord: () => record, prepare: vi.fn(async () => { prepared = true; }),
+    generate: vi.fn(async () => { expect(prepared).toBe(true); return { image: "poster", template: "chosen", status: "completed" as const, detail: "Image saved" }; }) };
+  const prepare = [{ op: "image.draft.add" as const, id: "poster", name: "Poster", prompt: "A red balloon" }];
+  const image = response({ kind: "generation", summary: "Prepare and generate Poster", prepare, command: { op: "image.generate", image: "poster", template: "chosen" } });
+  vi.mocked(runAgentTurn).mockResolvedValueOnce(image).mockResolvedValueOnce(image).mockResolvedValueOnce(answer);
+  await runAgentWorkflow(record, "local", "Prepare and generate", "turn", [], new AbortController().signal, host);
+  expect(host.prepare).toHaveBeenCalledExactlyOnceWith(prepare);
+  expect(host.generate).toHaveBeenCalledOnce();
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain('"image":"poster"');
+});
+
+it("reports failed preparation without generating or retrying edits", async () => {
+  const record = project();
+  const host = { getRecord: () => record, prepare: vi.fn().mockRejectedValue(new Error("Save failed")), generate: vi.fn() };
+  const image = response({ kind: "generation", summary: "Prepare", prepare: [{ op: "image.draft.add", id: "poster", name: "Poster", prompt: "A balloon" }],
+    command: { op: "image.generate", image: "poster", template: "chosen" } });
+  vi.mocked(runAgentTurn).mockResolvedValueOnce(image).mockResolvedValueOnce(image).mockResolvedValueOnce(answer);
+  await runAgentWorkflow(record, "local", "Generate", "turn", [], new AbortController().signal, host);
+  expect(host.generate).not.toHaveBeenCalled();
+  expect(host.prepare).toHaveBeenCalledOnce();
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain("Save failed");
+});
+
 it("waits for the exact generation result, then resumes with fresh edits and clean chat", async () => {
   const record = project();
   let current = structuredClone(record);

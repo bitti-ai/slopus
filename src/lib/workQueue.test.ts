@@ -8,7 +8,8 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
-import { generateAgentScene } from "./agentGeneration";
+import { generateAgentImage, generateAgentScene } from "./agentGeneration";
+import { applyImageDraftCommand } from "./imageDraftCommands";
 import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
 import { saveSceneLastFrame } from "./sceneLastFrame";
@@ -208,6 +209,66 @@ describe("agent scene generation", () => {
     ] });
     return chosen;
   };
+
+  it("generates the named image draft at its saved dimensions, preserves other drafts and waits for saving", async () => {
+    const chosen = templates();
+    const { queue, first, saved } = setup();
+    first.update((config) => applyImageDraftCommand(config, { op: "image.draft.add", id: "poster", name: "Poster", prompt: "A red balloon", resolution: "768p", aspectRatio: "1:1" }, config.updatedAt));
+    first.update((config) => applyImageDraftCommand(config, { op: "image.draft.add", id: "banner", name: "Banner", prompt: "A blue boat", resolution: "416p", aspectRatio: "16:9" }, config.updatedAt));
+    const before = structuredClone(first.getSnapshot().config);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/poster.jpg", width: 768, height: 768 });
+    const pending = generateAgentImage(queue, first, { op: "image.generate", image: "poster", template: chosen.id }, new AbortController().signal, vi.fn());
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request).toMatchObject({ stillImage: true, canvasWidth: 768, canvasHeight: 768 });
+    expect(request.prompt).toContain("A red balloon");
+    expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("default");
+    await expect(generateAgentImage(queue, first, { op: "image.generate", image: "poster", template: chosen.id }, new AbortController().signal, vi.fn())).rejects.toThrow("already has generation in progress");
+    first.edit((config) => restoreGeneratedImage(config, "banner"));
+    let finishSave!: (record: ProjectRecord) => void;
+    saved.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve; }));
+    const completed = vi.fn();
+    void pending.then(completed);
+    emit("slopfab-job", { jobId: request.jobId, state: "framesReady" });
+    await waitFor(() => expect(finishSave).toBeDefined());
+    expect(completed).not.toHaveBeenCalled();
+    finishSave({ ...first.record, config: first.getSnapshot().config });
+    await expect(pending).resolves.toMatchObject({ status: "completed", image: "poster", assetId: "poster", outputRelativePath: "media/generated/poster.jpg" });
+    const config = first.getSnapshot().config;
+    expect(config.assets.find((asset) => asset.id === "poster")).toMatchObject({ name: "Poster", imageDraft: false });
+    expect(config.assets.find((asset) => asset.id === "banner")).toEqual(before.assets.find((asset) => asset.id === "banner"));
+    expect(config.imageScene?.outputAssetId).toBe("banner");
+    expect(config.settings).toEqual(before.settings);
+    expect(config.generationJobs).toEqual(before.generationJobs);
+  });
+
+  it("cancels only the agent's image work and leaves the draft available", async () => {
+    templates();
+    const { queue, first } = setup();
+    first.update((config) => applyImageDraftCommand(config, { op: "image.draft.add", id: "poster", name: "Poster", prompt: "A red balloon" }, config.updatedAt));
+    const controller = new AbortController();
+    const pending = generateAgentImage(queue, first, { op: "image.generate", image: "poster", template: "chosen" }, controller.signal, vi.fn());
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const id = queue.getSnapshot()[0].id;
+    controller.abort(new Error("Stopped"));
+    await expect(pending).rejects.toThrow("Stopped");
+    await waitFor(() => expect(cancelSlopfabGeneration).toHaveBeenCalledWith(id));
+    expect(first.getSnapshot().config.assets.find((asset) => asset.id === "poster")?.imageDraft).toBe(true);
+  });
+
+  it("rejects missing drafts and incompatible image generators before changing selection", async () => {
+    const chosen = templates();
+    const { queue, first } = setup();
+    first.update((config) => applyImageDraftCommand(config, { op: "image.draft.add", id: "poster", name: "Poster", prompt: "A red balloon" }, config.updatedAt));
+    const before = first.getSnapshot().config;
+    const run = (image: string, template = "chosen") => generateAgentImage(queue, first, { op: "image.generate", image, template }, new AbortController().signal, vi.fn());
+    await expect(run("missing")).rejects.toThrow("draft");
+    await expect(run("poster", "missing")).rejects.toThrow("template");
+    saveGeneratorTemplateSettings({ defaultTemplateId: "chosen", templates: [{ ...chosen, mode: "animate" }] });
+    await expect(run("poster")).rejects.toThrow("prompt generator");
+    expect(first.getSnapshot().config).toBe(before);
+    expect(queue.getSnapshot()).toEqual([]);
+  });
 
   it("uses the requested template without changing the default and waits through encoding and saving", async () => {
     const chosen = templates();

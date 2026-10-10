@@ -1,4 +1,8 @@
 import { isTauri } from "./persistence";
+import { restoreGeneratedImage, saveImageDraft } from "./imageHistory";
+import { compileImagePrompt } from "./imagePrompt";
+import { compileImageEdits } from "./imageEditing";
+import { imageScenePrompt } from "./imageScene";
 import { longShotBlocker } from "./longShot";
 import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot } from "./project";
 import type { ProjectSession } from "./projectSession";
@@ -7,8 +11,11 @@ import { loadGeneratorTemplateSettings, templateUsable } from "./settings";
 import { isWorkActive, projectQueueKey, type WorkQueue } from "./workQueue";
 
 export interface SceneGenerateCommand { op: "scene.generate"; scene: string; template: string }
+export interface ImageGenerateCommand { op: "image.generate"; image: string; template: string }
+export type AgentGenerateCommand = SceneGenerateCommand | ImageGenerateCommand;
 export interface GenerationObservation {
-  scene: string;
+  scene?: string;
+  image?: string;
   template: string;
   status: "completed" | "failed" | "cancelled" | "rejected";
   workId?: string;
@@ -17,6 +24,53 @@ export interface GenerationObservation {
   needsSave?: boolean;
   assetId?: string;
   outputRelativePath?: string | null;
+}
+
+export function generateAgentMedia(queue: WorkQueue, session: ProjectSession, command: AgentGenerateCommand,
+  signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
+  return command.op === "image.generate" ? generateAgentImage(queue, session, command, signal, onProgress)
+    : generateAgentScene(queue, session, command, signal, onProgress);
+}
+
+export async function generateAgentImage(queue: WorkQueue, session: ProjectSession, command: ImageGenerateCommand,
+  signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
+  signal.throwIfAborted();
+  if (!isTauri()) throw new Error("Image generation requires the desktop app.");
+  const config = session.getSnapshot().config;
+  const draft = config.assets.find((asset) => asset.id === command.image && asset.kind === "image" && asset.imageDraft && asset.imageGeneration && !asset.imageGeneration.template);
+  if (!draft) throw new Error(`Editable image draft '${command.image}' was not found.`);
+  const template = loadGeneratorTemplateSettings().templates.find((candidate) => candidate.id === command.template);
+  if (!template) throw new Error(`Generator template '${command.template}' no longer exists.`);
+  if (template.mode === "animate") throw new Error("Choose a prompt generator for images.");
+  if (!templateUsable(template)) throw new Error(`Generator '${template.name}' needs its weights or LoRAs prepared before generation.`);
+  if (queue.getSnapshot().some((item) => item.projectKey === projectQueueKey(session.record) && (item.imageAssetId === draft.id || item.imageDraftId === draft.id) && isWorkActive(item))) {
+    throw new Error(`Image '${draft.name}' already has generation in progress. Do not submit it again.`);
+  }
+  const restored = restoreGeneratedImage(saveImageDraft(config), draft.id);
+  // Validate before switching the editor or submitting work.
+  if (!restored.imageScene || !imageScenePrompt(restored.imageScene)) throw new Error("Describe the image or add an object before generating.");
+  if (restored.imageScene?.rootType === "image") compileImageEdits(restored);
+  else compileImagePrompt(restored);
+  session.update(restored);
+  const id = queue.enqueueImage(session, template);
+  if (!id) throw new Error("This image is already queued.");
+  const cancel = () => { void queue.cancel(id).catch(() => undefined); };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    if (signal.aborted) { cancel(); signal.throwIfAborted(); }
+    let lastDetail = "";
+    const item = await queue.waitFor(id, signal, (work) => {
+      const detail = `${draft.name} · ${template.name}: ${work.detail}`;
+      if (detail !== lastDetail) { lastDetail = detail; onProgress(detail); }
+    });
+    signal.throwIfAborted();
+    const asset = session.getSnapshot().config.assets.find((asset) => asset.id === draft.id);
+    return { image: draft.id, template: template.id, workId: id,
+      status: item.status === "completed" ? "completed" : item.status === "cancelled" ? "cancelled" : "failed",
+      detail: item.detail, error: item.error, needsSave: item.needsSave,
+      ...(item.status === "completed" || item.needsSave ? { assetId: asset?.id, outputRelativePath: asset?.relativePath } : {}),
+    };
+  } finally { signal.removeEventListener("abort", cancel); }
 }
 
 /** Choose an engine for this run without changing the user's global selection.

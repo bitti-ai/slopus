@@ -4,6 +4,7 @@ mod clips;
 mod effects;
 mod jsonl;
 mod images;
+mod image_drafts;
 mod patch;
 mod project;
 mod references;

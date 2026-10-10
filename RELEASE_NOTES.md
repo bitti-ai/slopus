@@ -4,6 +4,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## What's new
 
+- **Agent image drafts and generation.** Ask the agent to prepare multiple images in the image bar for later, edit a selected draft, or generate it with a chosen generator. Preparation is saved before rendering, and the agent resumes after generation with the saved result.
 - **Sol attention in Settings.** Choose Sol attention under a generator's Performance settings for generation on CUDA GPUs. The selection is saved per generator and included in shared generator files.
 - **Zoom image template (formerly Extend).** Draw or resize the output box, choose a generation resolution, and optionally describe the new surroundings. Output follows the box's aspect ratio and selected pixel budget, resizing the source to fit. Boxes inside the source regenerate the selected crop with refined detail at the target resolution. Positioned source conditioning keeps the scene anchored. SlopFab 1.28 refines new surroundings with Langevin iterations and blends edges with a Gaussian mask.
 - **SeedVR2 upscaling for images and videos.** Restore exports at the selected output size using SeedVR2 3B FP16 and its VAE. Run on the local NVIDIA CUDA GPU or a selected CUDA LAN worker. Workers download missing standard weights or receive your selected local weight files.

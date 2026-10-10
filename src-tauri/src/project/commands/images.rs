@@ -21,7 +21,7 @@ pub struct ImageStylePatch {
     pub detail: Option<String>,
 }
 
-fn new_scene(prompt: &str) -> ImageScene {
+pub(super) fn new_scene(prompt: &str) -> ImageScene {
     ImageScene {
         root_type: None,
         source_image: None,
@@ -365,6 +365,7 @@ pub(super) fn apply(
         }
     }
     project.image_scene = Some(scene);
+    super::image_drafts::save(project)?;
     project.updated_at = timestamp.into();
     Ok(())
 }

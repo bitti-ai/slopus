@@ -302,6 +302,7 @@ export class WorkQueue {
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
+    return id;
   }
   enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
     if (!isTauri()) throw new Error("Zoom requires the desktop app.");
@@ -784,7 +785,8 @@ function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, s
 }) {
   const mimeType = imageEdit ? "image/png" : "image/jpeg";
   return (current: ProjectConfig): ProjectConfig => imageDraftId ? completeImageDraft(current, imageDraftId, {
-    id: imageDraftId, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
+    id: imageDraftId, kind: "image", name: current.assets.find((asset) => asset.id === imageDraftId && asset.name !== "New image")?.name
+      ?? `Image ${current.assets.filter((asset) => asset.kind === "image" && !asset.imageDraft).length + 1}`,
     ...saved, imageGeneration, mimeType, createdAt: new Date().toISOString(),
   }) : ({ ...current,
     ...(current.imageScene?.outputAssetId === outputAssetId ? {

@@ -124,11 +124,17 @@ impl AgentRuntime {
                                     "Settings sessions allow only generator inspections, generator settings edits, answers and questions.".into()));
                             }
                         }
-                        if let AgentTurnResult::Generation { command, .. } = &result {
-                            super::generation::validate(command, &config, &request.generators)
+                        if let AgentTurnResult::Generation { command, prepare, .. } = &result {
+                            let prepared = if prepare.is_empty() { config.clone() } else {
+                                let next = execute_checked(&config, prepare, &config.updated_at,
+                                    crate::generation::models::default_model().defaults)?;
+                                validate_scene_policy(&config, &next)?;
+                                next
+                            };
+                            super::generation::validate(command, &prepared, &request.generators)
                                 .map_err(|message| {
                                     ValidationIssue::new(
-                                        "scene.generate",
+                                        "generation.request",
                                         None,
                                         "generation",
                                         message,
