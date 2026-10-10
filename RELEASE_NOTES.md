@@ -15,7 +15,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 - **Clip speed controls.** Timeline clips now offer Speed in Timing, from 25% to 400%. Changes preserve the source range, adjust duration and later clips on the same track, and apply to preview and export, including audio pitch.
 - **Timeline preview zoom.** Zoom up to 400% using the zoom menu, buttons or Ctrl+wheel, and scroll to inspect details. Choose Fit to see the whole frame again.
 - **Agent in Settings.** Open a resizable agent panel from the Settings top bar to configure generators, weight paths and LoRAs, even without an open project.
-- **Video and audio sigma shifts.** Set shifts beside generation steps in the right panel, define generator template defaults, and configure per-stream LoRA overrides. Local and LAN worker generation use the same settings.
+- **Video and audio sigma shifts.** Set shifts and a separate audio step count under Advanced options at the bottom of Generation in the right panel, define generator template defaults, and configure per-stream LoRA overrides. Local and LAN worker generation use the same settings.
 - **Separate audio generation steps.** Audio follows the video step count by default, with optional overrides for local and worker generation.
 - **Continuation overlap locking.** Continue scenes offer Lock Overlap for local and worker generation, constraining overlapping video and audio to the source scene.
 - **Selectable character sheet views.** Enable Close up, Front view, Side view and Back view independently. Side view is off by default; generation, combined images and debug prompts include only enabled views. When enabled, the front view provides a shared clothing reference for the other views.

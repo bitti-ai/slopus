@@ -651,20 +651,23 @@ describe("Generator scene controls", () => {
     expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].latentUpscale).toBe(latentUpscale);
     expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
     expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
+
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation step count" }), { target: { value: "28" } });
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation seed" }), { target: { value: "9173" } });
+    expect(within(generation).getByRole("switch", { name: "Advanced options" })).not.toBeChecked();
+    expect(within(generation).queryByRole("spinbutton", { name: "Audio step count" })).toBeNull();
+    expect(within(generation).queryByRole("spinbutton", { name: "Video sigma shift" })).toBeNull();
+    expect(within(generation).queryByRole("spinbutton", { name: "Audio sigma shift" })).toBeNull();
+    expect(within(generation).getAllByRole("switch").at(-1)).toHaveAccessibleName("Advanced options");
+    fireEvent.click(within(generation).getByRole("switch", { name: "Advanced options" }));
     expect(within(generation).getByRole("spinbutton", { name: "Video sigma shift" })).toHaveValue(12);
     expect(within(generation).getByRole("spinbutton", { name: "Audio sigma shift" })).toHaveValue(3);
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Video sigma shift" }), { target: { value: "8.5" } });
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Audio sigma shift" }), { target: { value: "2.5" } });
     expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0]).toMatchObject({ videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
-
-    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation step count" }), { target: { value: "28" } });
-    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation seed" }), { target: { value: "9173" } });
-    expect(within(generation).getByRole("switch", { name: "Separate audio steps" })).not.toBeChecked();
-    expect(within(generation).queryByRole("spinbutton", { name: "Audio step count" })).toBeNull();
-    fireEvent.click(within(generation).getByRole("switch", { name: "Separate audio steps" }));
     expect(within(generation).getByRole("spinbutton", { name: "Audio step count" })).toHaveValue(28);
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Audio step count" }), { target: { value: "17" } });
-    if (!separateAudio) fireEvent.click(within(generation).getByRole("switch", { name: "Separate audio steps" }));
+    if (!separateAudio) fireEvent.click(within(generation).getByRole("switch", { name: "Advanced options" }));
     expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].audioSteps).toBe(separateAudio ? 17 : undefined);
     expect(state.latest().generationJobs[0]).toEqual(expect.objectContaining({ steps: 28, seed: 9173 }));
 
@@ -1166,11 +1169,13 @@ it("shows template shifts and locks active LoRA overrides without replacing save
   const initial = project();
   initial.generationJobs[0].videoSigmaShift = 8;
   const state = setup(initial);
+  expect(screen.getByRole("switch", { name: "Advanced options" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("switch", { name: "Advanced options" }));
   expect(screen.getByLabelText("Video sigma shift")).toHaveValue(6);
   expect(screen.getByLabelText("Video sigma shift")).toBeDisabled();
   expect(screen.getByLabelText("Audio sigma shift")).toHaveValue(3.5);
   expect(screen.getByLabelText("Audio sigma shift")).toBeEnabled();
-  expect(screen.getByRole("switch", { name: "Separate audio steps" })).not.toBeChecked();
+  expect(screen.getByRole("switch", { name: "Advanced options" })).toBeChecked();
   fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
   expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toMatchObject({ videoSigmaShift: 6, audioSigmaShift: 3.5 });
   expect(state.latest().generationJobs[0].videoSigmaShift).toBe(8);

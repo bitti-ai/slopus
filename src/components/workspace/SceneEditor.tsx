@@ -509,16 +509,6 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ steps: value })}
           />
         </PropRow>
-        <SceneSigmaShift stream="video" job={job} template={template} disabled={disabled} onChange={onChange} />
-        <PropRow label="Separate audio steps" htmlFor={`${id}-separate-audio-steps`} tooltip="Audio uses the video generation step count unless separate audio steps are enabled.">
-          <ToggleSwitch id={`${id}-separate-audio-steps`} aria-label="Separate audio steps" checked={job.audioSteps != null} disabled={disabled}
-            onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
-        </PropRow>
-        {job.audioSteps != null && <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
-          <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
-            value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
-        </PropRow>}
-        <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
         <PropRow label="Seed" htmlFor={`${id}-seed`} tooltip="-1 picks a random seed">
           <CommittedNumberInput
             id={`${id}-seed`}
@@ -537,6 +527,18 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           <ToggleSwitch id={`${id}-latent-upscale`} aria-label="Latent upscale" checked={job.latentUpscale ?? false} disabled={disabled}
             onChange={(checked) => onChange({ latentUpscale: checked })} />
         </PropRow>
+        <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts and a separate audio step count.">
+          <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled}
+            onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
+        </PropRow>
+        {job.audioSteps != null && <>
+          <SceneSigmaShift stream="video" job={job} template={template} disabled={disabled} onChange={onChange} />
+          <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
+            <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
+              value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
+          </PropRow>
+          <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
+        </>}
       </PropSection>
     </div>
   </section>;
