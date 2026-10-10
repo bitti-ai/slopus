@@ -83,9 +83,10 @@ fn malformed_headers_are_reported_without_loading_payloads() {
 #[test]
 fn command_batches_preserve_other_settings_and_are_atomic() {
     let add = command(
-        json!({"op":"generator.add","id":"custom","settings":{"name":"Custom","paths":{"transformer":"https://example.com/model.safetensors"}}}),
+        json!({"op":"generator.add","id":"custom","settings":{"name":"Custom","attention":"sol","paths":{"transformer":"https://example.com/model.safetensors"}}}),
     );
     let mut context = prepare(&GeneratorContext::default(), &[add.clone()]).unwrap();
+    assert_eq!(context.settings["templates"][0]["attention"], "sol");
     context.settings["templates"][0]["sources"] = json!({"transformer":[{"url":"https://example.com/model.safetensors","gpuModel":"","minVramGb":0}],"audioVae":[{"url":"https://example.com/audio.bin"}]});
     context.settings["templates"][0]["additionalSafetensors"] =
         json!([{"id":"conditioning","url":"https://example.com/fixed.safetensors"}]);

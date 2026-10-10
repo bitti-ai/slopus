@@ -23,6 +23,7 @@ describe("portable generator bundles", () => {
   it("round trips prompt, accelerated and Animate templates including LoRA recipes and conditioning", () => {
     const templates = [minimaxOriginalTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()];
     templates[0].motionCache = true;
+    templates[0].attention = "sol";
     const bundle = parseGeneratorSlop(serializeGeneratorSlop(templates));
     const current = { templates: [createGeneratorTemplate("Existing")], defaultTemplateId: "existing", catalogVersion: 9 };
     const merged = mergeGeneratorSlop(bundle, current, loadLoras());

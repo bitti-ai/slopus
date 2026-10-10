@@ -4,6 +4,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## What's new
 
+- **Sol attention in Settings.** Choose Sol attention under a generator's Performance settings for generation on CUDA GPUs. The selection is saved per generator and included in shared generator files.
 - **Zoom image template (formerly Extend).** Draw or resize the output box, choose a generation resolution, and optionally describe the new surroundings. Output follows the box's aspect ratio and selected pixel budget, resizing the source to fit. Boxes inside the source regenerate the selected crop with refined detail at the target resolution. Positioned source conditioning keeps the scene anchored, while generated edges blend into the original with seam tone matching.
 - **SeedVR2 upscaling for images and videos.** Restore exports at the selected output size using SeedVR2 3B FP16 and its VAE. Run on the local NVIDIA CUDA GPU or a selected CUDA LAN worker. Workers download missing standard weights or receive your selected local weight files.
 - **Real-ESRGAN upscaling for images and videos.** Use RealESRGAN x4plus during export, with the result resized to your chosen output dimensions. CUDA and Vulkan are supported. Choose None to export without an upscaler.

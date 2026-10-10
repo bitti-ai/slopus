@@ -96,15 +96,16 @@ describe("the settings screen", () => {
     const view = open();
     editDefaultGenerator();
     expect(combo("Generator attention").getAttribute("data-value")).toBe("sage2");
-    expect(optionsOf("Generator attention")).toEqual(["Exact attention", "Flash attention", "Sage attention"]);
-    pick("Generator attention", "Flash attention");
+    expect(optionsOf("Generator attention")).toEqual(["Exact attention", "Flash attention", "Sage attention", "Sol attention"]);
+    pick("Generator attention", "Sol attention");
+    expect(screen.getByText("Sol attention requires a CUDA GPU on the machine running generation.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
     expect(combo("Generator attention").getAttribute("data-value")).toBe("sage2");
     view.unmount();
     open();
     editDefaultGenerator();
-    expect(combo("Generator attention").getAttribute("data-value")).toBe("flash2");
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("sol");
   });
 
   it("switches NVIDIA between CUDA and Vulkan and keeps both choices after switching", async () => {

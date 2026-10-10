@@ -80,6 +80,7 @@ impl Configuration {
             attention: match string_option("attention") {
                 Some("exact") => "exact",
                 Some("flash2") => "flash2",
+                Some("sol") => "sol",
                 _ => "sage2",
             },
             models: [

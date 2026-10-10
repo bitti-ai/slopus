@@ -174,7 +174,7 @@ export function subscribeGeneratorTemplates(listener: () => void) {
   };
 }
 
-export type AttentionMode = "exact" | "flash2" | "sage2";
+export type AttentionMode = "exact" | "flash2" | "sage2" | "sol";
 export type InferenceBackend = "cuda" | "vulkan";
 const INFERENCE_BACKEND_KEY = "slopus.inference-backend.v1";
 
@@ -310,7 +310,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
       : DEFAULT_GENERATION_STEPS;
-    const attention = candidate.attention === "exact" || candidate.attention === "flash2" ? candidate.attention : "sage2";
+    const attention = candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
     const paths = pathsFrom(candidate.paths);
     const sources: GeneratorTemplate["sources"] = {};
     for (const field of ENGINE_PATH_FIELDS) {

@@ -592,9 +592,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <SettingsGroup heading="Performance">
-      <SettingsCard icon={<Gauge20 />} header="Attention">
+      <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={[{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }]} />
+          options={[{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
       <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"

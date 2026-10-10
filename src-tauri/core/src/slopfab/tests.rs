@@ -1201,7 +1201,7 @@ fn attention_defaults_to_sage_and_is_independent_of_backend() {
         "sage2"
     );
     for backend in ["cuda", "vulkan"] {
-        for attention in ["exact", "flash2", "sage2", "invalid"] {
+        for attention in ["exact", "flash2", "sage2", "sol", "invalid"] {
             let settings = serde_json::from_value(serde_json::json!({
                 "slopfab": { "enabled": true, "model": null,
                     "options": { "inferenceBackend": backend, "attention": attention } }
@@ -1276,7 +1276,7 @@ fn installed_dll_resolves_icons_as_one_still_frame_when_present() {
 }
 
 #[test]
-fn bundled_dll_accepts_all_attention_modes_on_both_backends() {
+fn bundled_dll_accepts_attention_modes_on_supported_backends() {
     let references = ReferenceVideos::default();
     if !default_dll_path().is_file() {
         return;
@@ -1289,10 +1289,10 @@ fn bundled_dll_accepts_all_attention_modes_on_both_backends() {
     .unwrap();
     let mut config = Configuration::from_settings(&BTreeMap::new());
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
-        for attention in ["exact", "flash2", "sage2"] {
+        for attention in ["exact", "flash2", "sage2", "sol"] {
             config.attention = attention;
             let handle = RequestHandle::new(&api).unwrap();
-            configure_request(
+            let configured = configure_request(
                 &api,
                 &handle,
                 &request,
@@ -1300,8 +1300,12 @@ fn bundled_dll_accepts_all_attention_modes_on_both_backends() {
                 platform,
                 RequestPurpose::Plan,
                 &references,
-            )
-            .unwrap();
+            );
+            if attention == "sol" && platform == ComputePlatform::Vulkan {
+                assert!(configured.unwrap_err().contains("Sol attention requires CUDA"));
+                continue;
+            }
+            configured.unwrap();
             assert_eq!(api.resolve(&handle).unwrap().aligned_frames, 1);
         }
     }

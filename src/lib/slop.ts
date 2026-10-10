@@ -27,7 +27,7 @@ const portableLoraSchema = z.object({
   stepOverride: steps.optional(), samplingPreset: z.literal("dmad-4step").optional(),
 }).strict();
 export const portableGeneratorSchema = z.object({
-  name, modelType: name, defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2"]),
+  name, modelType: name, defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
   mode: z.enum(["prompt", "animate"]).default("prompt"), motionCache: z.boolean().default(false),
   sources: sourcesSchema,
   loras: z.array(portableLoraSchema).max(128).default([]),

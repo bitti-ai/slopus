@@ -317,7 +317,7 @@ describe("generator templates", () => {
     const template = createGeneratorTemplate();
     expect(template.attention).toBe("sage2");
     expect(loadInferenceBackend()).toBe("cuda");
-    for (const attention of ["exact", "flash2", "sage2"] as const) {
+    for (const attention of ["exact", "flash2", "sage2", "sol"] as const) {
       template.attention = attention;
       saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
       for (const inferenceBackend of ["cuda", "vulkan"] as const) {

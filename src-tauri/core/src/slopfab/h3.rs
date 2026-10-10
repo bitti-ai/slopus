@@ -18,6 +18,9 @@ pub(super) fn configure_request(
     references: &ReferenceVideos,
 ) -> Result<(), String> {
     configuration.validate_inputs(request)?;
+    if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
+        return Err("Sol attention requires CUDA. Select a CUDA GPU or worker, or choose another attention mode in Settings.".into());
+    }
     if configuration.animate {
         let videos = references
             .videos

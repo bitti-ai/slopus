@@ -273,8 +273,8 @@ pub(crate) fn prepare(
             template["defaultSteps"] = json!(steps);
         }
         if let Some(attention) = &patch.attention {
-            if !["exact", "flash2", "sage2"].contains(&attention.as_str()) {
-                return Err("attention must be exact, flash2 or sage2.".into());
+            if !["exact", "flash2", "sage2", "sol"].contains(&attention.as_str()) {
+                return Err("attention must be exact, flash2, sage2 or sol.".into());
             }
             template["attention"] = json!(attention);
         }
