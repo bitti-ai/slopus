@@ -32,6 +32,31 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("defaults to Prompt and switches frame conditioning off and back on without losing selections", () => {
+  const initial = project();
+  initial.references = [{ id: "still", kind: "image", name: "Still", description: "", intendedUse: [], sourcePath: "C:/still.png", createdAt: initial.createdAt }];
+  const state = setup(initial);
+  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("prompt");
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  expect(screen.queryByLabelText("Last frame for this scene")).toBeNull();
+  choose("Scene type", "First & last frame");
+  chooseReference("Start frame for this scene", "Still");
+  chooseReference("Last frame for this scene", "Still");
+  choose("Scene type", "Prompt");
+  expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
+  expect(screen.queryByLabelText("Last frame for this scene")).toBeNull();
+  fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+  const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
+  expect(snapshot.referencePaths).toEqual([]);
+  expect(snapshot.prompt).not.toContain("first frame");
+  choose("Scene type", "First & last frame");
+  expect(state.latest().generationJobs[0]).toMatchObject({ startFrameReferenceId: "still", endFrameReferenceId: "still" });
+  expect(screen.getByLabelText("Start frame for this scene")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
+  expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("prompt");
+  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("prompt");
+});
+
 it("queues Long Shot anchors before their intervening bridges", () => {
   const initial = project();
   initial.generationJobs = Array.from({ length: 7 }, (_, i) => createDraftGenerationJob("Keep walking", { id: String(i + 1), sceneType: "long-shot" }));
@@ -207,7 +232,7 @@ it("saves scene types and submits Character Replace with the exact selected refe
       onChange={setConfig} onGenerate={submitted} onOpenTimeline={() => undefined} />;
   }
   render(<Harness />);
-  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("first-last-frame");
+  expect(comboValue(screen.getByRole("combobox", { name: "Scene type" }))).toBe("prompt");
   choose("Scene type", "Character replace");
   expect(latest.generationJobs[0].sceneType).toBe("character-replace");
   expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
@@ -496,6 +521,7 @@ describe("Generator scene controls", () => {
     const state = setup(parseProjectConfig(initial));
 
     expect(optionNames(screen.getByRole("combobox", { name: "The look of this scene" }))).toContain("None");
+    choose("Scene type", "First & last frame");
     chooseReference("Start frame for this scene", "Opening still");
     expect(state.latest().generationJobs[0].startFrameReferenceId).toBe("ref-opening");
 
@@ -510,6 +536,7 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.references = [{ id: "closing", kind: "image", name: "Closing still", description: "", relativePath: "references/closing.png", intendedUse: [], createdAt: initial.createdAt }];
     const state = setup(initial);
+    choose("Scene type", "First & last frame");
     chooseReference("Last frame for this scene", "Closing still");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBe("closing");
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
@@ -575,6 +602,7 @@ describe("Generator scene controls", () => {
     const initial = project();
     initial.generationJobs[0] = { ...initial.generationJobs[0], status: "completed", outputRelativePath: "media/generated/work-original.mp4", latentRelativePath: "latents/work-original.safetensors" };
     const state = setup(initial);
+    choose("Scene type", "First & last frame");
     fireEvent.click(screen.getByRole("button", { name: "Start frame for this scene" }));
     expect(screen.queryByRole("option", { name: "Previous scene" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Start frame for this scene" }));

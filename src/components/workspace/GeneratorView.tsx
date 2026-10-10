@@ -4,7 +4,7 @@ export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationSteps, type SceneType } from "../../lib/project";
+import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationSteps, sceneTypeFor } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -63,7 +63,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const selectedTemplate = defaultGeneratorTemplate(templateSettings);
-  const sceneTypeFor = (job: GenerationJob): SceneType => job.sceneType ?? "first-last-frame";
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -359,7 +358,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
-      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "long-shot" ? "long-shot" : "first-last-frame" });
+      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "long-shot" ? "long-shot" : "prompt" });
     onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };

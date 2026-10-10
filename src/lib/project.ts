@@ -455,7 +455,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
+export const sceneTypeSchema = z.enum(["prompt", "first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;
 export const MAX_CONTINUATION_OVERLAP = 362;
@@ -982,7 +982,7 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
-  if (job.sceneType === "backdrop" || job.sceneType === "long-shot") {
+  if (job.sceneType === "prompt" || job.sceneType === "backdrop" || job.sceneType === "long-shot") {
     const cited = sceneShots(job).flatMap(shotReferenceIds);
     return references.filter((reference) => cited.includes(reference.id));
   }
@@ -1015,6 +1015,11 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
   // Other scenes take guidance from their current prompts, never stale bindings.
   const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
   return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
+}
+
+/** Unset types default to Prompt; preserve frame roles in older projects. */
+export function sceneTypeFor(job: GenerationJob): SceneType {
+  return job.sceneType ?? (job.startFrameReferenceId || job.endFrameReferenceId ? "first-last-frame" : "prompt");
 }
 
 /** Legacy links are resolved only until the project is migrated on load. */
@@ -1261,7 +1266,7 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
-  if (job.sceneType === "long-shot") return compileScenePromptSegments({
+  if (job.sceneType === "prompt" || job.sceneType === "long-shot") return compileScenePromptSegments({
     shots: sceneShots(job), soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "backdrop") return compileScenePromptSegments({

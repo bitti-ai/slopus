@@ -82,10 +82,11 @@ pub(super) fn apply(
             if let Some(value) = start_frame_reference_id.value() {
                 job.start_frame_reference_id = value.clone();
                 job.use_previous_scene_last_frame = None;
-                if job.scene_type.as_deref() == Some("continue") { job.scene_type = Some("first-last-frame".into()); }
+                if job.scene_type.as_deref() == Some("continue") || (job.scene_type.as_deref() == Some("prompt") && value.is_some()) { job.scene_type = Some("first-last-frame".into()); }
             }
             if let Some(value) = end_frame_reference_id.value() {
                 job.end_frame_reference_id = value.clone();
+                if job.scene_type.as_deref() == Some("prompt") && value.is_some() { job.scene_type = Some("first-last-frame".into()); }
             }
             if let Some(value) = use_previous_scene_last_frame {
                 job.scene_type = Some("first-last-frame".into());

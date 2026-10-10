@@ -4,7 +4,7 @@ import { compileImagePrompt } from "./imagePrompt";
 import { compileImageEdits } from "./imageEditing";
 import { imageScenePrompt } from "./imageScene";
 import { longShotBlocker } from "./longShot";
-import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot } from "./project";
+import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot, sceneTypeFor } from "./project";
 import type { ProjectSession } from "./projectSession";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
 import { loadGeneratorTemplateSettings, templateUsable } from "./settings";
@@ -92,7 +92,7 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
   const blocker = continuationBlocker(job, config.generationJobs)
     ?? longShotBlocker(job, config)
     ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first." : null)
-    ?? templateSceneBlocker(job.sceneType ?? "first-last-frame", template) ?? sendBlocker(job, config.references);
+    ?? templateSceneBlocker(sceneTypeFor(job), template) ?? sendBlocker(job, config.references);
   if (blocker) throw new Error(blocker);
   const request = sceneGenerationRequest(job, config, session.record.folderPath, template.defaultSteps, template);
   const [id] = queue.enqueue(session, [{ job, request, snapshot: sceneGenerationSnapshot(job, request) }], template);

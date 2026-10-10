@@ -436,9 +436,12 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
         if ("startFrame" in command) {
           job.startFrameReferenceId = command.startFrame;
           job.usePreviousSceneLastFrame = false;
-          if (job.sceneType === "continue") job.sceneType = "first-last-frame";
+          if (job.sceneType === "continue" || (job.sceneType === "prompt" && command.startFrame)) job.sceneType = "first-last-frame";
         }
-        if ("endFrame" in command) job.endFrameReferenceId = command.endFrame;
+        if ("endFrame" in command) {
+          job.endFrameReferenceId = command.endFrame;
+          if (job.sceneType === "prompt" && command.endFrame) job.sceneType = "first-last-frame";
+        }
         if ("usePreviousSceneLastFrame" in command) {
           job.sceneType = "first-last-frame";
           job.usePreviousSceneLastFrame = command.usePreviousSceneLastFrame;

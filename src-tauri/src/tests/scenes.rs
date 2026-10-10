@@ -342,6 +342,7 @@ fn a_shot_name_survives_the_project_round_trip() {
 #[test]
 fn scene_types_and_character_replacement_inputs_survive_save_and_reopen() {
     for scene_type in [
+        "prompt",
         "first-last-frame",
         "animate",
         "pose",

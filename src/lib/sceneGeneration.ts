@@ -27,7 +27,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     // retimed shot reach the engine, rather than sending a prompt frozen at
     // draft-creation time. This is the ONE string slopfab is given, and it is
     // the same string the compiled-prompt panel shows.
-    prompt: (job.sceneType ?? "first-last-frame") === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook),
+    prompt: job.sceneType === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook),
     ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
     ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
     ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,

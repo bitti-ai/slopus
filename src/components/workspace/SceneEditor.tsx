@@ -20,6 +20,7 @@ import {
   referenceToken,
   sceneBriefText,
   sceneDurationSeconds,
+  sceneTypeFor,
   sceneGenerationSeed,
   sceneGenerationSteps,
   MAX_AUDIO_GENERATION_STEPS,
@@ -266,6 +267,7 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
 /* --- The scene, opened from its own header -------------------------------- */
 
 const SCENE_TYPES: { value: SceneType; label: string }[] = [
+  { value: "prompt", label: "Prompt" },
   { value: "first-last-frame", label: "First & last frame" },
   { value: "backdrop", label: "Backdrop" },
   { value: "long-shot", label: "Long Shot" },
@@ -281,7 +283,7 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
@@ -437,7 +439,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             />
           </PropRow>}
           {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
-          {!transition && !pose && !continuing && !backdrop && !longShot && <>
+          {(sceneType === "first-last-frame" || animate) && <>
             <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`} tooltip={animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : undefined}>
               <ReferenceSelector
                 id={`${id}-start`}
@@ -459,7 +461,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               {addImageButton(animate ? "Add repainted frame" : "Add start frame", onAddStartFrame)}
             </PropRow>
           </>}
-          {!animate && !transition && !pose && !continuing && !backdrop && !longShot && <PropRow label="Last frame" htmlFor={`${id}-end`}>
+          {sceneType === "first-last-frame" && <PropRow label="Last frame" htmlFor={`${id}-end`}>
             <ReferenceSelector id={`${id}-end`} value={job.endFrameReferenceId ?? ""} disabled={disabled} aria-label="Last frame for this scene"
               references={references} accept={["image"]} folderPath={folderPath}
               onChange={(value) => onChange({ endFrameReferenceId: value || undefined })} />

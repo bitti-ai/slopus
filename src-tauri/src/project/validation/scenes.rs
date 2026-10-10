@@ -22,7 +22,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
+                "prompt" | "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));

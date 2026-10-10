@@ -4,6 +4,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## What's new
 
+- **Prompt video scenes.** New ordinary video scenes default to Prompt, with text and reference guidance but no start- or last-frame selectors. First & last frame remains available for frame conditioning.
 - **Agent image drafts and generation.** Ask the agent to prepare multiple images in the image bar for later, edit a selected draft, or generate it with a chosen generator. Preparation is saved before rendering, and the agent resumes after generation with the saved result.
 - **Sol attention in Settings.** Choose Sol attention under a generator's Performance settings for generation on CUDA GPUs. The selection is saved per generator and included in shared generator files.
 - **Zoom image template (formerly Extend).** Draw or resize the output box, choose a generation resolution, and optionally describe the new surroundings. Output follows the box's aspect ratio and selected pixel budget, resizing the source to fit. Boxes inside the source regenerate the selected crop with refined detail at the target resolution. Positioned source conditioning keeps the scene anchored. SlopFab 1.28 refines new surroundings with Langevin iterations and blends edges with a Gaussian mask.
