@@ -225,7 +225,7 @@
 .agent-composer {
   flex: 0 0 auto;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--space-1);
   padding: var(--space-2);
   border-top: 1px solid var(--line);
