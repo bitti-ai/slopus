@@ -95,6 +95,8 @@ pub struct Api {
     set_image_edit_path: Option<SetImageEditPath>,
     set_image_edit_rgb: Option<SetImageEditRgb>,
     set_image_edit_invert_mask: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_outpaint_blend_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_outpaint_langevin_steps: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_latent_bridge_files: Option<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>,
@@ -218,6 +220,8 @@ impl Api {
                 set_image_edit_path: library.get::<SetImageEditPath>(b"slopfab_request_set_image_edit_path\0").ok().map(|symbol| *symbol),
                 set_image_edit_rgb: library.get::<SetImageEditRgb>(b"slopfab_request_set_image_edit_rgb24\0").ok().map(|symbol| *symbol),
                 set_image_edit_invert_mask: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_image_edit_invert_mask\0").ok().map(|symbol| *symbol),
+                set_outpaint_blend_overlap: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_outpaint_blend_overlap\0").ok().map(|symbol| *symbol),
+                set_outpaint_langevin_steps: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_outpaint_langevin_steps\0").ok().map(|symbol| *symbol),
                 set_steps: symbol!(
                     "slopfab_request_set_steps",
                     unsafe extern "C" fn(*mut Request, i32) -> i32
@@ -467,6 +471,14 @@ impl Api {
         }
         self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], strength, feather) })
     }
+    pub fn set_outpaint_blend_overlap(&self, r: *mut Request, value: i32) -> Result<(), String> {
+        let set = self.set_outpaint_blend_overlap.ok_or("Zoom edge refinement requires SlopFab API 1.28 or later. Update the generation runtime.")?;
+        self.error(unsafe { set(r, value) })
+    }
+    pub fn set_outpaint_langevin_steps(&self, r: *mut Request, value: i32) -> Result<(), String> {
+        let set = self.set_outpaint_langevin_steps.ok_or("Zoom edge refinement requires SlopFab API 1.28 or later. Update the generation runtime.")?;
+        self.error(unsafe { set(r, value) })
+    }
     pub fn set_image_edit_invert_mask(&self, r: *mut Request) -> Result<(), String> {
         let set = self.set_image_edit_invert_mask.ok_or("Seamless Zoom requires SlopFab API 1.20 or later. Update the generation runtime.")?;
         self.error(unsafe { set(r, 1) })
@@ -584,6 +596,11 @@ impl Api {
     #[cfg(test)]
     pub fn disable_outpainting_for_test(&mut self) {
         self.set_image_edit_invert_mask = None;
+    }
+    #[cfg(test)]
+    pub fn disable_outpaint_refinement_for_test(&mut self) {
+        self.set_outpaint_blend_overlap = None;
+        self.set_outpaint_langevin_steps = None;
     }
     pub fn set_continuation_lock_overlap(&self, r: *mut Request, enabled: bool) -> Result<(), String> {
         let Some(set) = self.set_continuation_lock_overlap else {

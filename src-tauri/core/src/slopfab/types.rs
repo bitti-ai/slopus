@@ -135,6 +135,10 @@ pub struct ImageEditStep {
     #[serde(default)]
     pub invert_mask: bool,
     #[serde(default)]
+    pub outpaint_blend_overlap: Option<i32>,
+    #[serde(default)]
+    pub outpaint_langevin_steps: Option<i32>,
+    #[serde(default)]
     pub reference_paths: Option<Vec<String>>,
     #[serde(default)]
     pub refmods: Option<Vec<RefmodInput>>,

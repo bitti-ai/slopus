@@ -5,7 +5,8 @@ import { outputDimensions } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
 
 export const EXTEND_GRID = 32;
-export const EXTEND_SEAM = 16;
+export const ZOOM_BLEND_OVERLAP = 9;
+export const ZOOM_LANGEVIN_STEPS = 5;
 // Largest current generation preset (2048p landscape), also usable in portrait.
 const MAX_GENERATION_SIZE = outputDimensions("2048p", "16:9");
 export const EXTEND_MAX_EDGE = Math.max(MAX_GENERATION_SIZE.width, MAX_GENERATION_SIZE.height);
@@ -89,15 +90,9 @@ export function extendRegions(source: { width: number; height: number }, bounds:
   return { preserved: { x: left, y: top, width: right - left, height: bottom - top }, regions };
 }
 
-/** Leave one VAE cell free at each edge facing generated space. Canvas edges
- * stay pinned; only the source interior must contain a complete latent cell. */
-export function extendContext(preserved: ExtendBounds, output: { width: number; height: number }) {
-  const left = preserved.x > 0 ? EXTEND_SEAM : 0;
-  const top = preserved.y > 0 ? EXTEND_SEAM : 0;
-  const right = preserved.x + preserved.width < output.width ? EXTEND_SEAM : 0;
-  const bottom = preserved.y + preserved.height < output.height ? EXTEND_SEAM : 0;
-  const context = { x: preserved.x + left, y: preserved.y + top,
-    width: preserved.width - left - right, height: preserved.height - top - bottom };
+/** SlopFab blends the full source rectangle and refines its surroundings.
+ * Keep at least one complete patch for positioned source conditioning. */
+export function extendContext(context: ExtendBounds) {
   if (Math.ceil(context.x / EXTEND_GRID) >= Math.floor((context.x + context.width) / EXTEND_GRID)
     || Math.ceil(context.y / EXTEND_GRID) >= Math.floor((context.y + context.height) / EXTEND_GRID)) {
     throw new Error("Keep a larger area of the original image inside the Zoom box, or increase the generation resolution.");
@@ -110,7 +105,7 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
   const { preserved, output } = layout;
   const regenerate = layout.mode === "regenerate";
-  const context = regenerate ? preserved : extendContext(preserved, output);
+  const context = regenerate ? preserved : extendContext(preserved);
   if (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000) throw new Error("Steps must be a whole number from 2 to 1000.");
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
@@ -121,6 +116,7 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: scene }, regenerate ? {} : { sourceTreatment: "outpaint" });
   // Outpainting locks the interior and generates all borders together. Crops
   // refine the whole frame with partial denoising to retain the composition.
-  const edits = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: !regenerate, ...(regenerate ? { strength: 0.65 } : {}) }];
+  const edits = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: !regenerate,
+    ...(regenerate ? { strength: 0.65 } : { outpaintBlendOverlap: ZOOM_BLEND_OVERLAP, outpaintLangevinSteps: ZOOM_LANGEVIN_STEPS }) }];
   return { ...compiled, scene, edits, layout };
 }

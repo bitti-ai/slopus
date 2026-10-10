@@ -65,7 +65,7 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   const { jobId } = request;
   expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 960, canvasHeight: 576,
     imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [] });
-  expect(request.imageEdit!.edits).toEqual([{ x: 266, y: 131, width: 429, height: 314, invertMask: true, feather: 0, prompt: request.prompt }]);
+  expect(request.imageEdit!.edits).toEqual([{ x: 250, y: 115, width: 461, height: 346, invertMask: true, feather: 0, outpaintBlendOverlap: 9, outpaintLangevinSteps: 5, prompt: request.prompt }]);
   expect(request.prompt).toContain("Source scene's setting");
   expect(request.prompt).not.toContain("<Picture");
   expect(request.prompt).not.toContain("composition anchor");

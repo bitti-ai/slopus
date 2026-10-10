@@ -10,6 +10,9 @@ export interface ImageEditStep {
   strength?: number;
   /** Preserve this box and generate its surround in a single outpainting pass. */
   invertMask?: boolean;
+  /** Native outpainting: odd Gaussian mask kernel (1..51) and inner iterations (0..100). */
+  outpaintBlendOverlap?: number;
+  outpaintLangevinSteps?: number;
   referencePaths?: string[];
   refmods?: Array<{ path: string; strength: number; copies: number }>;
 }

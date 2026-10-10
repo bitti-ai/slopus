@@ -33,7 +33,7 @@ it("generates the entire surround in one pass while preserving the original in a
   for (const x of [-64, 0, 32]) for (const y of [-32, 0, 32]) {
     const { layout, edits } = compileExtendImage(config, source, "cache/canvas.png", { bounds: { x, y, width: 192, height: 128 }, prompt: "Forest", steps: 20, seed: 0 });
     expect(edits).toHaveLength(1);
-    expect(edits[0]).toMatchObject({ ...extendContext(layout.preserved, layout.output), invertMask: true, feather: 0 });
+    expect(edits[0]).toMatchObject({ ...extendContext(layout.preserved), invertMask: true, feather: 0, outpaintBlendOverlap: 9, outpaintLangevinSteps: 5 });
     const contains = (r: { x: number; y: number; width: number; height: number }, px: number, py: number) => px >= r.x && py >= r.y && px < r.x + r.width && py < r.y + r.height;
     let allNewPixelsGenerated = true;
     for (let py = 0; py < layout.output.height; py++) for (let px = 0; px < layout.output.width; px++) {
@@ -104,7 +104,7 @@ it("uses the selected resolution budget and the same scaled geometry for preserv
   const compiled = compileExtendImage(config, source, "cache/source.png", options);
   expect(compiled.layout).toMatchObject({ output: { width: 512, height: 320 }, source: { width: 256, height: 192 }, bounds: { x: -128, y: -64, width: 512, height: 320 }, preserved: { x: 128, y: 64, width: 256, height: 192 } });
   expect(compiled.scene.sourceImage).toMatchObject({ width: 512, height: 320 });
-  expect(compiled.edits[0]).toMatchObject({ x: 144, y: 80, width: 224, height: 160 });
+  expect(compiled.edits[0]).toMatchObject({ x: 128, y: 64, width: 256, height: 192 });
   const large = { width: 2048, height: 2048 };
   const layout = extendLayout(config, large, initialExtendBounds(large.width, large.height));
   expect(layout.output.width * layout.output.height).toBeLessThanOrEqual(416 * 416);
@@ -125,12 +125,12 @@ it("shrinks the source when the selection expands, and grows output when resolut
   expect(higher.source).toEqual({ width: 544, height: 544 });
 });
 
-it("frees seam rows only on edges that face generated space", () => {
-  expect(extendContext({ x: 0, y: 0, width: 256, height: 256 }, { width: 384, height: 256 }))
-    .toEqual({ x: 0, y: 0, width: 240, height: 256 });
-  expect(extendContext({ x: 64, y: 32, width: 256, height: 256 }, { width: 384, height: 320 }))
-    .toEqual({ x: 80, y: 48, width: 224, height: 224 });
-  expect(() => extendContext({ x: 16, y: 16, width: 32, height: 32 }, { width: 64, height: 64 })).toThrow("larger area");
+it("passes the full source rectangle to native blending and retains a positioned patch", () => {
+  expect(extendContext({ x: 0, y: 0, width: 256, height: 256 }))
+    .toEqual({ x: 0, y: 0, width: 256, height: 256 });
+  expect(extendContext({ x: 64, y: 32, width: 256, height: 256 }))
+    .toEqual({ x: 64, y: 32, width: 256, height: 256 });
+  expect(() => extendContext({ x: 16, y: 16, width: 32, height: 32 })).toThrow("larger area");
 });
 
 it("aligns resize dimensions while preserving the opposite corner and caps every sizing path", () => {

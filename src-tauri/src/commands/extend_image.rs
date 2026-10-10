@@ -208,8 +208,8 @@ pub(crate) fn prepare_extend_image(
         );
     }
     let cache = root.directory(&directory(&job_id)?)?;
-    // Snapshot the resized source or crop. Outpainting's final preservation
-    // uses exactly these pixels, with no second resampling.
+    // Snapshot the resized source or crop for native conditioning and final
+    // transparency restoration, with no second resampling.
     write_png(&cache.join("original.png"), &source)?;
     write_png(&cache.join("canvas.png"), &padded_source(&source, bounds))?;
     crate::storage::atomic::write_atomically(
@@ -218,149 +218,16 @@ pub(crate) fn prepare_extend_image(
     )
 }
 
-// Match EXTEND_SEAM in extendImage.ts. Only edges facing new pixels are free
-// during denoising; keep the interior exact and fade across that free row.
-const SEAM: u32 = 16;
-
-fn smoothstep(value: f32) -> f32 {
-    let t = value.clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-fn restore_original(result: &mut RgbaImage, source: &RgbaImage, bounds: ExtendBounds) {
+// SlopFab returns the final RGB blend. Restore only source transparency;
+// changing RGB here would apply a second blend over the native seam.
+fn restore_source_alpha(result: &mut RgbaImage, source: &RgbaImage, bounds: ExtendBounds) {
     let left = bounds.x.max(0) as u32;
     let top = bounds.y.max(0) as u32;
     let right = (bounds.x + bounds.width as i32).min(source.width() as i32) as u32;
     let bottom = (bounds.y + bounds.height as i32).min(source.height() as i32) as u32;
-    let px = (left as i32 - bounds.x) as u32;
-    let py = (top as i32 - bounds.y) as u32;
-    let pr = px + right - left;
-    let pb = py + bottom - top;
-    let bands = [px, py, bounds.width - pr, bounds.height - pb];
-    // Match color locally along each seam. A whole-edge average mixes unrelated
-    // materials (e.g. snow and fur) and paints visible rectangular tone bands.
-    // Prefix sums smooth the measured residual without blurring image detail.
-    let mut profiles: [Vec<[f32; 3]>; 4] = std::array::from_fn(|_| Vec::new());
-    for edge in 0..4 {
-        if bands[edge] == 0 {
-            continue;
-        }
-        let strip = 4.min(right - left).min(bottom - top);
-        let length = if edge % 2 == 0 {
-            bottom - top
-        } else {
-            right - left
-        };
-        let mut sums = vec![[0.0f32; 4]; length as usize + 1];
-        for position in 0..length {
-            let mut sum = sums[position as usize];
-            for inward in 0..strip {
-                let (x, y) = match edge {
-                    0 => (left + inward, top + position),
-                    1 => (left + position, top + inward),
-                    2 => (right - 1 - inward, top + position),
-                    _ => (left + position, bottom - 1 - inward),
-                };
-                let original = source.get_pixel(x, y);
-                // Hidden RGB cannot describe the generated surroundings.
-                if original[3] != 255 {
-                    continue;
-                }
-                let generated =
-                    result.get_pixel((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32);
-                // Large residuals usually represent displaced detail, not an
-                // exposure mismatch. Spreading them would create bright halos.
-                if (0..3).any(|c| original[c].abs_diff(generated[c]) > 64) {
-                    continue;
-                }
-                for c in 0..3 {
-                    sum[c] += original[c] as f32 - generated[c] as f32;
-                }
-                sum[3] += 1.0;
-            }
-            sums[position as usize + 1] = sum;
-        }
-        profiles[edge] = (0..length)
-            .map(|position| {
-                let from = sums[position.saturating_sub(SEAM) as usize];
-                let to = sums[(position + SEAM + 1).min(length) as usize];
-                let count = to[3] - from[3];
-                std::array::from_fn(|c| {
-                    if count > 0.0 {
-                        ((to[c] - from[c]) / count).clamp(-32.0, 32.0)
-                    } else {
-                        0.0
-                    }
-                })
-            })
-            .collect();
-    }
-    for (x, y, pixel) in result.enumerate_pixels_mut() {
-        // Signed distances are positive outside the source and negative inside.
-        let distances = [
-            px as f32 - x as f32 - 0.5,
-            py as f32 - y as f32 - 0.5,
-            x as f32 + 0.5 - pr as f32,
-            y as f32 + 0.5 - pb as f32,
-        ];
-        let along = [
-            y as i32 - py as i32,
-            x as i32 - px as i32,
-            y as i32 - py as i32,
-            x as i32 - px as i32,
-        ];
-        let weights: [f32; 4] = std::array::from_fn(|edge| {
-            if bands[edge] == 0 {
-                return 0.0;
-            }
-            let distance = distances[edge];
-            let extent = if distance >= 0.0 { bands[edge] } else { SEAM } as f32;
-            let position = along[edge];
-            let nearest = position.clamp(0, profiles[edge].len() as i32 - 1);
-            let tangent = (position - nearest) as f32;
-            // Distance to the finite edge, not its infinite horizontal/vertical
-            // line: corrections round the corners instead of forming a cross.
-            1.0 - smoothstep(distance.hypot(tangent) / extent)
-        });
-        let sum: f32 = weights.iter().sum();
-        let strength = weights.iter().copied().fold(0.0f32, f32::max);
-        if sum > 0.0 {
-            for c in 0..3 {
-                let correction: f32 = (0..4)
-                    .filter(|edge| weights[*edge] > 0.0)
-                    .map(|edge| {
-                        let position =
-                            along[edge].clamp(0, profiles[edge].len() as i32 - 1) as usize;
-                        weights[edge] * profiles[edge][position][c]
-                    })
-                    .sum();
-                pixel[c] = (pixel[c] as f32 + correction / sum * strength)
-                    .round()
-                    .clamp(0.0, 255.0) as u8;
-            }
-        }
-    }
     for y in top..bottom {
         for x in left..right {
-            let distances = [x - left, y - top, right - 1 - x, bottom - 1 - y];
-            let distance = (0..4)
-                .filter(|edge| bands[*edge] > 0)
-                .map(|edge| distances[edge])
-                .min()
-                .unwrap_or(SEAM);
-            let original = source.get_pixel(x, y);
-            let pixel =
-                result.get_pixel_mut((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32);
-            let weight = smoothstep((distance as f32 + 0.5) / SEAM as f32);
-            if weight == 1.0 || original[3] == 0 {
-                *pixel = *original;
-            } else {
-                for c in 0..3 {
-                    pixel[c] = (pixel[c] as f32 * (1.0 - weight) + original[c] as f32 * weight)
-                        .round() as u8;
-                }
-                pixel[3] = original[3];
-            }
+            result.get_pixel_mut((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32)[3] = source.get_pixel(x, y)[3];
         }
     }
 }
@@ -391,7 +258,7 @@ pub(crate) fn save_extended_image(
     let mut result = RgbaImage::from_raw(bounds.width, bounds.height, pixels)
         .ok_or("Invalid generated image pixels.")?;
     if !bounds.is_contained(source.width(), source.height()) {
-        restore_original(&mut result, &source, bounds);
+        restore_source_alpha(&mut result, &source, bounds);
     }
     super::artifacts::write_generated_png_frame(
         &folder_path,
@@ -417,19 +284,6 @@ mod tests {
     use super::*;
 
     /// Reuse a GPU smoke capture to compare compositing without another inference.
-    #[test]
-    #[ignore]
-    fn extend_reblend_smoke() {
-        let folder = std::path::PathBuf::from(std::env::var("SLOPUS_EXTEND_OUTPUT").unwrap());
-        let source = image::open(folder.join("source.png")).unwrap().to_rgba8();
-        let mut result = image::open(folder.join("raw.png")).unwrap().to_rgba8();
-        let bounds: ExtendBounds =
-            serde_json::from_slice(&std::fs::read(folder.join("bounds.json")).unwrap()).unwrap();
-        bounds.validate(source.width(), source.height()).unwrap();
-        restore_original(&mut result, &source, bounds);
-        write_png(&folder.join("reblended.png"), &result).unwrap();
-    }
-
     /// Opt-in GPU smoke test. Supply an existing source image, model directory
     /// and artifact directory; ordinary test runs do not load any models.
     #[test]
@@ -548,7 +402,7 @@ mod tests {
         let step = if regenerate {
             serde_json::json!({"x":0,"y":0,"width":size,"height":size,"strength":0.65,"feather":0,"prompt":prompt})
         } else {
-            serde_json::json!({"x":85,"y":85,"width":245,"height":245,"invertMask":true,"feather":0,"prompt":prompt})
+            serde_json::json!({"x":69,"y":69,"width":277,"height":277,"invertMask":true,"feather":0,"outpaintBlendOverlap":9,"outpaintLangevinSteps":5,"prompt":prompt})
         };
         let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
             "jobId":job, "stillImage":true, "frames":1, "steps":20, "seed":17, "canvasWidth":size, "canvasHeight":size, "prompt":prompt,
@@ -597,8 +451,9 @@ mod tests {
             assert_eq!(result, raw, "The finalizer must retain regenerated pixels");
             assert_ne!(result, snapshot, "Generation must change the resized crop");
         } else {
-            for y in 16..snapshot.height() - 16 {
-                for x in 16..snapshot.width() - 16 {
+            assert_eq!(result, raw, "Saving must retain the native Gaussian blend");
+            for y in 8..snapshot.height() - 8 {
+                for x in 8..snapshot.width() - 8 {
                     assert_eq!(result.get_pixel(x + 69, y + 69), snapshot.get_pixel(x, y));
                 }
             }
@@ -694,185 +549,23 @@ mod tests {
     }
 
     #[test]
-    fn extend_preserves_alpha_and_blends_only_inside_source_intersections() {
-        let source = RgbaImage::from_fn(7, 5, |x, y| {
-            image::Rgba([x as u8, y as u8, 80, (x * 25) as u8])
-        });
-        for bounds in [
-            ExtendBounds {
-                x: -3,
-                y: -2,
-                width: 12,
-                height: 10,
-            },
-            ExtendBounds {
-                x: 2,
-                y: 1,
-                width: 9,
-                height: 7,
-            },
-            ExtendBounds {
-                x: -2,
-                y: -1,
-                width: 5,
-                height: 4,
-            },
-        ] {
-            bounds.validate(source.width(), source.height()).unwrap();
-            let mut result = RgbaImage::from_pixel(
-                bounds.width,
-                bounds.height,
-                image::Rgba([200, 201, 202, 255]),
-            );
-            restore_original(&mut result, &source, bounds);
-            for y in 0..bounds.height {
-                for x in 0..bounds.width {
-                    let sx = x as i32 + bounds.x;
-                    let sy = y as i32 + bounds.y;
-                    let actual = result.get_pixel(x, y).0;
-                    if sx >= 0 && sy >= 0 && sx < 7 && sy < 5 {
-                        let original = source.get_pixel(sx as u32, sy as u32).0;
-                        assert_eq!(actual[3], original[3]);
-                        if original[3] == 0 {
-                            assert_eq!(actual, original);
-                        }
-                        for c in 0..3 {
-                            assert!((original[c]..=[200, 201, 202][c]).contains(&actual[c]));
-                        }
-                    } else {
-                        assert_eq!(actual, [200, 201, 202, 255]);
-                    }
+    fn extend_restores_only_source_alpha_for_cropped_and_extended_bounds() {
+        let source = RgbaImage::from_fn(64, 64, |x, y| image::Rgba([20, 40, 60, ((x + y) % 256) as u8]));
+        for x in [-32, 0, 32] {
+            for y in [-32, 0, 32] {
+                let bounds = ExtendBounds { x, y, width: 96, height: 96 };
+                let mut result = RgbaImage::from_pixel(96, 96, image::Rgba([210, 180, 150, 255]));
+                restore_source_alpha(&mut result, &source, bounds);
+                for (px, py, pixel) in result.enumerate_pixels() {
+                    assert_eq!(&pixel.0[..3], &[210, 180, 150], "Never reblend native RGB");
+                    let sx = px as i32 + x;
+                    let sy = py as i32 + y;
+                    let alpha = if (0..64).contains(&sx) && (0..64).contains(&sy) {
+                        source.get_pixel(sx as u32, sy as u32)[3]
+                    } else { 255 };
+                    assert_eq!(pixel[3], alpha);
                 }
             }
-            let padded = padded_source(&source, bounds);
-            for y in 0..bounds.height {
-                for x in 0..bounds.width {
-                    let sx = x as i32 + bounds.x;
-                    let sy = y as i32 + bounds.y;
-                    let expected = if sx >= 0 && sy >= 0 && sx < 7 && sy < 5 {
-                        source.get_pixel(sx as u32, sy as u32).0
-                    } else {
-                        [127, 127, 127, 255]
-                    };
-                    assert_eq!(padded.get_pixel(x, y).0, expected);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn extend_matches_seam_tone_and_retains_interior_and_far_band_pixels() {
-        // Exercise every direction, including a source cropped against canvas
-        // edges. A constant exposure shift must not become a rectangular seam.
-        let source = RgbaImage::from_pixel(96, 96, image::Rgba([80, 100, 120, 255]));
-        for (x, y) in [(-64, -64), (0, 0), (32, -64), (-64, 32)] {
-            let bounds = ExtendBounds {
-                x,
-                y,
-                width: 224,
-                height: 224,
-            };
-            let mut result = RgbaImage::from_pixel(224, 224, image::Rgba([110, 130, 150, 255]));
-            restore_original(&mut result, &source, bounds);
-            let left = (-x).max(0) as u32;
-            let top = (-y).max(0) as u32;
-            let right = (96 - x) as u32;
-            let bottom = (96 - y) as u32;
-            assert_eq!(
-                result.get_pixel((left + right) / 2, (top + bottom) / 2).0,
-                [80, 100, 120, 255]
-            );
-            for (a, b) in [
-                ((right - 1, (top + bottom) / 2), (right, (top + bottom) / 2)),
-                (
-                    ((left + right) / 2, bottom - 1),
-                    ((left + right) / 2, bottom),
-                ),
-            ] {
-                for c in 0..3 {
-                    assert!(
-                        result.get_pixel(a.0, a.1)[c].abs_diff(result.get_pixel(b.0, b.1)[c]) <= 1
-                    );
-                }
-            }
-            assert_eq!(result.get_pixel(223, 223).0, [110, 130, 150, 255]);
-        }
-    }
-
-    #[test]
-    fn extend_matches_different_materials_along_the_same_edge() {
-        let source = RgbaImage::from_fn(96, 128, |_, y| {
-            let value = if y < 64 { 60 } else { 100 };
-            image::Rgba([value, value, value, 255])
-        });
-        let mut result = RgbaImage::from_pixel(160, 128, image::Rgba([80, 80, 80, 255]));
-        restore_original(
-            &mut result,
-            &source,
-            ExtendBounds {
-                x: -64,
-                y: 0,
-                width: 160,
-                height: 128,
-            },
-        );
-        // The old whole-edge average was zero, leaving both seams visible.
-        for (y, expected) in [(24, 60u8), (104, 100u8)] {
-            assert!(result.get_pixel(63, y)[0].abs_diff(expected) <= 1);
-            assert!(result.get_pixel(64, y)[0].abs_diff(expected) <= 1);
-            assert_eq!(result.get_pixel(0, y).0, [80, 80, 80, 255]);
-            assert_eq!(result.get_pixel(100, y), source.get_pixel(36, y));
-        }
-    }
-
-    #[test]
-    fn extend_does_not_spread_displaced_high_contrast_details_into_the_surround() {
-        let source = RgbaImage::from_pixel(96, 96, image::Rgba([40, 40, 40, 255]));
-        let mut result = RgbaImage::from_fn(128, 96, |x, _| {
-            let value = if (92..96).contains(&x) { 200 } else { 40 };
-            image::Rgba([value, value, value, 255])
-        });
-        restore_original(
-            &mut result,
-            &source,
-            ExtendBounds {
-                x: 0,
-                y: 0,
-                width: 128,
-                height: 96,
-            },
-        );
-        for y in 0..96 {
-            for x in 96..128 {
-                assert_eq!(result.get_pixel(x, y).0, [40, 40, 40, 255]);
-            }
-        }
-    }
-
-    #[test]
-    fn extend_fades_details_at_generated_edges_but_keeps_the_interior_exact() {
-        // Nonopaque input bypasses tone matching, isolating the seam blend.
-        let source = RgbaImage::from_pixel(96, 96, image::Rgba([40, 60, 80, 123]));
-        let mut result = RgbaImage::from_pixel(128, 96, image::Rgba([200, 200, 200, 255]));
-        restore_original(
-            &mut result,
-            &source,
-            ExtendBounds {
-                x: 0,
-                y: 0,
-                width: 128,
-                height: 96,
-            },
-        );
-        for y in 0..96 {
-            for x in 0..80 {
-                assert_eq!(result.get_pixel(x, y).0, [40, 60, 80, 123]);
-            }
-            for x in 80..96 {
-                assert_eq!(result.get_pixel(x, y)[3], 123);
-                assert!(result.get_pixel(x, y)[0] >= result.get_pixel(x - 1, y)[0]);
-            }
-            assert_eq!(result.get_pixel(96, y).0, [200, 200, 200, 255]);
         }
     }
 
@@ -1021,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn extend_finalizer_preserves_downscaled_source_pixels_in_a_bounded_png() {
+    fn extend_finalizer_retains_native_blend_and_restores_source_alpha() {
         struct GeneratedPixels;
         impl crate::rendered::FrameSource for GeneratedPixels {
             fn frame_rgba(&self, _: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
@@ -1061,8 +754,6 @@ mod tests {
             },
         )
         .unwrap();
-        let scaled =
-            image::imageops::resize(&source, 51, 38, image::imageops::FilterType::Lanczos3);
         // The original file may change while the job runs; its prepared snapshot wins.
         write_png(
             &root.existing("media/source.png").unwrap(),
@@ -1096,9 +787,7 @@ mod tests {
                 let actual = image.get_pixel(x, y).0;
                 if (38..89).contains(&x) && (13..51).contains(&y) {
                     assert_eq!(actual[3], 123);
-                    if (54..73).contains(&x) && (29..35).contains(&y) {
-                        assert_eq!(actual, scaled.get_pixel(x - 38, y - 13).0);
-                    }
+                    assert_eq!(&actual[..3], &[210, 180, 150]);
                 } else {
                     assert_eq!(actual, [210, 180, 150, 255]);
                 }

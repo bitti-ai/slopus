@@ -86,6 +86,12 @@ pub(super) fn configure_request(
         }
         if step.invert_mask {
             api.set_image_edit_invert_mask(handle)?;
+            if let Some(overlap) = step.outpaint_blend_overlap {
+                api.set_outpaint_blend_overlap(handle, overlap)?;
+            }
+            if let Some(steps) = step.outpaint_langevin_steps {
+                api.set_outpaint_langevin_steps(handle, steps)?;
+            }
         }
     } else {
         // H3 diffusion needs complete 32-pixel patches. The encoder fits the

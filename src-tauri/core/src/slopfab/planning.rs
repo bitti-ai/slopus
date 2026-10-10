@@ -84,6 +84,11 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
         for step in &edit.edits {
+            if (step.outpaint_blend_overlap.is_some() || step.outpaint_langevin_steps.is_some()) && !step.invert_mask
+                || step.outpaint_blend_overlap.is_some_and(|value| !(1..=51).contains(&value) || value % 2 == 0)
+                || step.outpaint_langevin_steps.is_some_and(|value| !(0..=100).contains(&value)) {
+                return Err("Outpaint refinement requires an inverted mask, an odd blend overlap from 1 to 51 and Langevin steps from 0 to 100.".into());
+            }
             if step.strength.is_some_and(|strength| !strength.is_finite() || strength <= 0.0 || strength > 1.0) {
                 return Err("Image edit strength must be greater than zero and at most one.".into());
             }

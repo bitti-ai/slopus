@@ -79,7 +79,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, reference_paths: None, refmods: None }
+            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -154,12 +154,15 @@ fn outpainting_preserves_one_box_in_preview_execution_and_worker_requests() {
         "steps":4, "seed":0, "canvasWidth":128, "canvasHeight":64,
         "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[{
             "prompt":"Continue the scene", "x":38, "y":13, "width":51, "height":38,
-            "feather":0, "invertMask":true
+            "feather":0, "invertMask":true, "outpaintBlendOverlap":9, "outpaintLangevinSteps":5
         }]}
     })).unwrap();
     // This is the same serialization boundary used by LAN workers.
     let mut roundtrip: GenerationRequest = serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
-    assert!(roundtrip.image_edit.as_ref().unwrap().edits[0].invert_mask);
+    let edit = &roundtrip.image_edit.as_ref().unwrap().edits[0];
+    assert!(edit.invert_mask);
+    assert_eq!(edit.outpaint_blend_overlap, Some(9));
+    assert_eq!(edit.outpaint_langevin_steps, Some(5));
     validate_generation_controls(&roundtrip).unwrap();
     roundtrip.image_edit_pixels = Some(std::sync::Arc::new(vec![127; 128 * 64 * 3]));
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
@@ -169,13 +172,21 @@ fn outpainting_preserves_one_box_in_preview_execution_and_worker_requests() {
             let plan = api.resolve(&handle).unwrap();
             assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (128, 64, 1));
             assert_eq!(plan.num_model_evaluations, 3);
-            assert!(api.describe(&handle).unwrap().contains("outpaint (preserve box)"));
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("outpaint (preserve box)"));
+            assert!(description.contains("blend overlap 9; Langevin steps 5"));
+            api.set_outpaint_blend_overlap(&handle, 1).unwrap();
+            api.set_outpaint_langevin_steps(&handle, 0).unwrap();
+            assert!(api.describe(&handle).unwrap().contains("blend overlap 1; Langevin steps 0"));
         }
     }
     for change in [
         serde_json::json!({"feather":16}), serde_json::json!({"feather":null}),
         serde_json::json!({"x":0,"y":0,"width":128,"height":64}),
         serde_json::json!({"width":1}), serde_json::json!({"height":1}),
+        serde_json::json!({"outpaintBlendOverlap":0}), serde_json::json!({"outpaintBlendOverlap":8}),
+        serde_json::json!({"outpaintBlendOverlap":53}), serde_json::json!({"outpaintLangevinSteps":-1}),
+        serde_json::json!({"outpaintLangevinSteps":101}), serde_json::json!({"invertMask":false}),
     ] {
         let mut value = serde_json::to_value(&request).unwrap();
         value["imageEdit"]["edits"][0].as_object_mut().unwrap().extend(change.as_object().unwrap().clone());
@@ -188,7 +199,7 @@ fn outpainting_preserves_one_box_in_preview_execution_and_worker_requests() {
     positioned.canvas_height = 416;
     positioned.image_edit_pixels = Some(std::sync::Arc::new(vec![127; 416 * 416 * 3]));
     let step = &mut positioned.image_edit.as_mut().unwrap().edits[0];
-    step.x = 85; step.y = 85; step.width = 245; step.height = 245;
+    step.x = 69; step.y = 69; step.width = 277; step.height = 277;
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
         let handle = RequestHandle::new(&api).unwrap();
         configure_request(&api, &handle, &positioned, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();

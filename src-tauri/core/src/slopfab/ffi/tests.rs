@@ -50,6 +50,17 @@ fn older_runtimes_reject_outpainting_instead_of_editing_the_original() {
 }
 
 #[test]
+fn older_runtimes_reject_requested_zoom_refinement() {
+    let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+    api.disable_outpaint_refinement_for_test();
+    let request = RequestHandle::new(&api).unwrap();
+    api.set_image_edit_rgb(&request, &vec![127; 64 * 64 * 3], 64, 64, [16, 16, 32, 32], 1.0, 0).unwrap();
+    api.set_image_edit_invert_mask(&request).unwrap();
+    assert!(api.set_outpaint_blend_overlap(&request, 9).unwrap_err().contains("API 1.28"));
+    assert!(api.set_outpaint_langevin_steps(&request, 5).unwrap_err().contains("API 1.28"));
+}
+
+#[test]
 fn older_runtimes_report_missing_lora_preparation_without_breaking_planning() {
     let mut api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
     api.disable_lora_preparation_for_test();

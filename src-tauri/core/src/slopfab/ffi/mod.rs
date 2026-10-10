@@ -118,6 +118,18 @@ impl Api {
         self.check(r)?;
         self.inner.set_image_edit_rgb(r.pointer.as_ptr(), pixels, width, height, bounds, strength, feather)
     }
+    pub fn set_outpaint_blend_overlap(&self, r: &RequestHandle, value: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_outpaint_blend_overlap(r.pointer.as_ptr(), value)
+    }
+    #[cfg(test)]
+    pub fn disable_outpaint_refinement_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner).expect("configure API before creating handles").disable_outpaint_refinement_for_test();
+    }
+    pub fn set_outpaint_langevin_steps(&self, r: &RequestHandle, value: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_outpaint_langevin_steps(r.pointer.as_ptr(), value)
+    }
     pub fn set_image_edit_invert_mask(&self, r: &RequestHandle) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_image_edit_invert_mask(r.pointer.as_ptr())
