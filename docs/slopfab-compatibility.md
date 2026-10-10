@@ -124,8 +124,11 @@ cache and progress/cancellation commands; paths remain machine-local.
 The restored image Extend template uses the existing API with a 16-pixel
 inset on each source edge facing generated space. This frees the VAE boundary
 row while keeping the source interior pinned. Canvas edges without new space
-are not inset. Slopus tone-matches generated bands using opaque source seam
-samples and composites the source with a smoothstep fade over those 16 pixels;
+are not inset. Slopus tone-matches generated bands using locally smoothed opaque
+source seam samples. Corrections follow the finite edges and round their corners,
+avoiding the rectangular tone shifts of a whole-edge average. High-contrast
+residuals are excluded and corrections bounded to avoid spreading displaced
+details into halos. It composites the source with a smoothstep fade over those 16 pixels;
 the interior and original alpha remain exact. The prompt is optional and uses
 the runtime's `Source scene` context without zoom-out instructions or duplicate
 reference pictures. This adapts the edge handling in

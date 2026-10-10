@@ -24,6 +24,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## Fixes and improvements
 
+- Extend blends color locally along each edge and smoothly around corners, reducing visible rectangular transitions without spreading high-contrast details into halos.
 - Generate all includes the final scene in an even-length Long Shot sequence, continuing from the preceding scene and preserving earlier joined video and audio. Four scenes generate in 1 → 3 → 2 → 4 order; adding another scene turns the final continuation into a bridge on its next generation.
 - Long Shot timeline playback keeps the same video player running across adjacent scenes in a joined generation, avoiding a playback restart at bridge boundaries.
 - Reduced memory retained between generations by releasing consumed SlopFab samples and handles, completed queue snapshots, encoder buffers on errors, and abandoned LAN generation results.

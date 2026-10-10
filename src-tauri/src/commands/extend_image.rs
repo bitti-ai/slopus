@@ -215,41 +215,63 @@ fn restore_original(result: &mut RgbaImage, source: &RgbaImage, bounds: ExtendBo
     let pr = px + right - left;
     let pb = py + bottom - top;
     let bands = [px, py, bounds.width - pr, bounds.height - pb];
-    // Estimate the RGB mismatch on the same scene pixels, before compositing.
-    // Fade the correction across each new band. Ignore transparent source
-    // pixels, whose hidden RGB cannot describe the generated surroundings.
-    let mut offsets = [[0.0f32; 3]; 4];
+    // Match color locally along each seam. A whole-edge average mixes unrelated
+    // materials (e.g. snow and fur) and paints visible rectangular tone bands.
+    // Prefix sums smooth the measured residual without blurring image detail.
+    let mut profiles: [Vec<[f32; 3]>; 4] = std::array::from_fn(|_| Vec::new());
     for edge in 0..4 {
         if bands[edge] == 0 {
             continue;
         }
-        let mut count = 0;
         let strip = 4.min(right - left).min(bottom - top);
-        let (x0, y0, x1, y1) = match edge {
-            0 => (left, top, left + strip, bottom),
-            1 => (left, top, right, top + strip),
-            2 => (right - strip, top, right, bottom),
-            _ => (left, bottom - strip, right, bottom),
+        let length = if edge % 2 == 0 {
+            bottom - top
+        } else {
+            right - left
         };
-        for y in y0..y1 {
-            for x in x0..x1 {
+        let mut sums = vec![[0.0f32; 4]; length as usize + 1];
+        for position in 0..length {
+            let mut sum = sums[position as usize];
+            for inward in 0..strip {
+                let (x, y) = match edge {
+                    0 => (left + inward, top + position),
+                    1 => (left + position, top + inward),
+                    2 => (right - 1 - inward, top + position),
+                    _ => (left + position, bottom - 1 - inward),
+                };
                 let original = source.get_pixel(x, y);
+                // Hidden RGB cannot describe the generated surroundings.
                 if original[3] != 255 {
                     continue;
                 }
                 let generated =
                     result.get_pixel((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32);
-                for c in 0..3 {
-                    offsets[edge][c] += original[c] as f32 - generated[c] as f32;
+                // Large residuals usually represent displaced detail, not an
+                // exposure mismatch. Spreading them would create bright halos.
+                if (0..3).any(|c| original[c].abs_diff(generated[c]) > 64) {
+                    continue;
                 }
-                count += 1;
+                for c in 0..3 {
+                    sum[c] += original[c] as f32 - generated[c] as f32;
+                }
+                sum[3] += 1.0;
             }
+            sums[position as usize + 1] = sum;
         }
-        if count > 0 {
-            for delta in &mut offsets[edge] {
-                *delta /= count as f32;
-            }
-        }
+        profiles[edge] = (0..length)
+            .map(|position| {
+                let from = sums[position.saturating_sub(SEAM) as usize];
+                let to = sums[(position + SEAM + 1).min(length) as usize];
+                let count = to[3] - from[3];
+                std::array::from_fn(|c| {
+                    if count > 0.0 {
+                        ((to[c] - from[c]) / count).clamp(-32.0, 32.0)
+                    } else {
+                        0.0
+                    }
+                })
+            })
+            .collect();
     }
     for (x, y, pixel) in result.enumerate_pixels_mut() {
         // Signed distances are positive outside the source and negative inside.
@@ -259,22 +281,37 @@ fn restore_original(result: &mut RgbaImage, source: &RgbaImage, bounds: ExtendBo
             x as f32 + 0.5 - pr as f32,
             y as f32 + 0.5 - pb as f32,
         ];
+        let along = [
+            y as i32 - py as i32,
+            x as i32 - px as i32,
+            y as i32 - py as i32,
+            x as i32 - px as i32,
+        ];
         let weights: [f32; 4] = std::array::from_fn(|edge| {
             if bands[edge] == 0 {
                 return 0.0;
             }
             let distance = distances[edge];
-            if distance >= 0.0 {
-                1.0 - smoothstep(distance / bands[edge] as f32)
-            } else {
-                1.0 - smoothstep(-distance / SEAM as f32)
-            }
+            let extent = if distance >= 0.0 { bands[edge] } else { SEAM } as f32;
+            let position = along[edge];
+            let nearest = position.clamp(0, profiles[edge].len() as i32 - 1);
+            let tangent = (position - nearest) as f32;
+            // Distance to the finite edge, not its infinite horizontal/vertical
+            // line: corrections round the corners instead of forming a cross.
+            1.0 - smoothstep(distance.hypot(tangent) / extent)
         });
         let sum: f32 = weights.iter().sum();
         let strength = weights.iter().copied().fold(0.0f32, f32::max);
         if sum > 0.0 {
             for c in 0..3 {
-                let correction: f32 = (0..4).map(|edge| weights[edge] * offsets[edge][c]).sum();
+                let correction: f32 = (0..4)
+                    .filter(|edge| weights[*edge] > 0.0)
+                    .map(|edge| {
+                        let position =
+                            along[edge].clamp(0, profiles[edge].len() as i32 - 1) as usize;
+                        weights[edge] * profiles[edge][position][c]
+                    })
+                    .sum();
                 pixel[c] = (pixel[c] as f32 + correction / sum * strength)
                     .round()
                     .clamp(0.0, 255.0) as u8;
@@ -354,6 +391,20 @@ pub(crate) fn discard_extend_image(folder_path: String, job_id: String) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Reuse a GPU smoke capture to compare compositing without another inference.
+    #[test]
+    #[ignore]
+    fn extend_reblend_smoke() {
+        let folder = std::path::PathBuf::from(std::env::var("SLOPUS_EXTEND_OUTPUT").unwrap());
+        let source = image::open(folder.join("source.png")).unwrap().to_rgba8();
+        let mut result = image::open(folder.join("raw.png")).unwrap().to_rgba8();
+        let bounds: ExtendBounds =
+            serde_json::from_slice(&std::fs::read(folder.join("bounds.json")).unwrap()).unwrap();
+        bounds.validate(source.width(), source.height()).unwrap();
+        restore_original(&mut result, &source, bounds);
+        write_png(&folder.join("reblended.png"), &result).unwrap();
+    }
 
     /// Opt-in GPU smoke test. Supply an existing source image, model directory
     /// and artifact directory; ordinary test runs do not load any models.
@@ -493,6 +544,11 @@ mod tests {
                 }
             }
         }
+        let raw = RgbaImage::from_raw(416, 416, crate::rendered::frame(job, 0).unwrap().unwrap())
+            .unwrap();
+        write_png(&artifact_dir.join("raw.png"), &raw).unwrap();
+        write_png(&artifact_dir.join("source.png"), &snapshot).unwrap();
+        std::fs::copy(cache.join("bounds.json"), artifact_dir.join("bounds.json")).unwrap();
         let saved = save_extended_image(path.clone(), job.into()).unwrap();
         let final_path = folder.path().join(saved.relative_path);
         let result = image::open(&final_path).unwrap().to_rgba8();
@@ -695,6 +751,56 @@ mod tests {
                 }
             }
             assert_eq!(result.get_pixel(223, 223).0, [110, 130, 150, 255]);
+        }
+    }
+
+    #[test]
+    fn extend_matches_different_materials_along_the_same_edge() {
+        let source = RgbaImage::from_fn(96, 128, |_, y| {
+            let value = if y < 64 { 60 } else { 100 };
+            image::Rgba([value, value, value, 255])
+        });
+        let mut result = RgbaImage::from_pixel(160, 128, image::Rgba([80, 80, 80, 255]));
+        restore_original(
+            &mut result,
+            &source,
+            ExtendBounds {
+                x: -64,
+                y: 0,
+                width: 160,
+                height: 128,
+            },
+        );
+        // The old whole-edge average was zero, leaving both seams visible.
+        for (y, expected) in [(24, 60u8), (104, 100u8)] {
+            assert!(result.get_pixel(63, y)[0].abs_diff(expected) <= 1);
+            assert!(result.get_pixel(64, y)[0].abs_diff(expected) <= 1);
+            assert_eq!(result.get_pixel(0, y).0, [80, 80, 80, 255]);
+            assert_eq!(result.get_pixel(100, y), source.get_pixel(36, y));
+        }
+    }
+
+    #[test]
+    fn extend_does_not_spread_displaced_high_contrast_details_into_the_surround() {
+        let source = RgbaImage::from_pixel(96, 96, image::Rgba([40, 40, 40, 255]));
+        let mut result = RgbaImage::from_fn(128, 96, |x, _| {
+            let value = if (92..96).contains(&x) { 200 } else { 40 };
+            image::Rgba([value, value, value, 255])
+        });
+        restore_original(
+            &mut result,
+            &source,
+            ExtendBounds {
+                x: 0,
+                y: 0,
+                width: 128,
+                height: 96,
+            },
+        );
+        for y in 0..96 {
+            for x in 96..128 {
+                assert_eq!(result.get_pixel(x, y).0, [40, 40, 40, 255]);
+            }
         }
     }
 
