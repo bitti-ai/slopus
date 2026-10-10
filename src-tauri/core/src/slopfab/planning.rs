@@ -84,6 +84,9 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
         for step in &edit.edits {
+            if step.strength.is_some_and(|strength| !strength.is_finite() || strength <= 0.0 || strength > 1.0) {
+                return Err("Image edit strength must be greater than zero and at most one.".into());
+            }
             if step.invert_mask && (edit.edits.len() != 1 || step.feather != Some(0)
                 || (step.x == 0 && step.y == 0 && step.width == request.canvas_width && step.height == request.canvas_height)
                 || (i64::from(step.x) + 15) / 16 >= (i64::from(step.x) + i64::from(step.width)) / 16

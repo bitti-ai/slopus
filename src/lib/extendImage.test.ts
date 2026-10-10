@@ -4,7 +4,6 @@ import { createProjectConfig } from "./project";
 
 it("partitions only new pixels for every combination of extension directions and crops", () => {
   for (const x of [-3, 0, 2]) for (const y of [-2, 0, 1]) for (const width of [5, 10]) for (const height of [4, 8]) {
-    if (x >= 0 && y >= 0 && x + width <= 7 && y + height <= 5) continue;
     const { preserved, regions } = extendRegions({ width: 7, height: 5 }, { x, y, width, height });
     for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
       const inside = px + x >= 0 && px + x < 7 && py + y >= 0 && py + y < 5;
@@ -15,10 +14,10 @@ it("partitions only new pixels for every combination of extension directions and
   }
 });
 
-it("rejects boxes with no original context, no extension, fractional or excessive dimensions", () => {
+it("rejects boxes with no original context, fractional or excessive dimensions", () => {
   for (const bounds of [
     { x: 100, y: 0, width: 20, height: 20 }, { x: -20, y: 0, width: 20, height: 20 },
-    { x: 0, y: 0, width: 20, height: 20 }, { x: -1.5, y: 0, width: 20, height: 20 },
+    { x: -1.5, y: 0, width: 20, height: 20 },
     { x: -20, y: 0, width: 8193, height: 20 }, { x: NaN, y: 0, width: 20, height: 20 },
   ]) expect(() => extendRegions({ width: 100, height: 100 }, bounds)).toThrow();
   const large = initialExtendBounds(8192, 400);
@@ -142,4 +141,31 @@ it("aligns resize dimensions while preserving the opposite corner and caps every
     expect(bounds.width * bounds.height).toBeLessThanOrEqual(EXTEND_MAX_PIXELS);
     expect(Math.max(bounds.width,bounds.height)).toBeLessThanOrEqual(EXTEND_MAX_EDGE);
   }
+});
+
+
+it("regenerates contained crops and full-image boxes at the target budget", () => {
+  const config = createProjectConfig({ name: "Crop", prompt: "", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 15 });
+  const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 256, height: 256, createdAt: config.createdAt };
+  for (const bounds of [{ x: 32, y: 64, width: 128, height: 96 }, { x: 0, y: 0, width: 256, height: 256 }]) {
+    const compiled = compileExtendImage(config, source, "cache/crop.png", { bounds, prompt: "Fine fur", steps: 20, seed: 0 });
+    expect(compiled.layout.mode).toBe("regenerate");
+    expect(compiled.layout.regions).toEqual([]);
+    expect(compiled.edits).toEqual([{ x: 0, y: 0, ...compiled.layout.output, strength: 0.65, invertMask: false, feather: 0, prompt: compiled.prompt }]);
+    expect(compiled.layout.output.width * compiled.layout.output.height).toBeLessThanOrEqual(768 * 768);
+    expect(compiled.layout.output.width).toBeGreaterThan(bounds.width);
+    expect(compiled.prompt).toContain("Refine the selected crop in <Picture 1>");
+    expect(compiled.prompt).toContain("Fine fur");
+    expect(compiled.scene.sourceImage).toMatchObject(compiled.layout.output);
+  }
+  const small = extendLayout(config, { width: 8192, height: 8192 }, { x: 100, y: 100, width: 32, height: 32 });
+  expect(small).toMatchObject({ mode: "regenerate", source: { width: 768, height: 768 }, bounds: { x: 0, y: 0, width: 768, height: 768 } });
+  const crossing = extendLayout(config, source, { x: -1, y: 64, width: 128, height: 96 });
+  expect(crossing.mode).toBe("outpaint");
+});
+
+
+it("rejects an extension that disappears when mapped to a lower resolution", () => {
+  const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
+  expect(() => extendLayout(config, { width: 1024, height: 1024 }, { x: -1, y: 0, width: 1024, height: 1024 })).toThrow("Expand the box further");
 });

@@ -16,7 +16,7 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
   const validation = useMemo(() => {
     try {
       const compiled = compileExtendImage(config, source, "cache/extend-preview.png", options);
-      return { output: compiled.layout.output, prompt: compiled.prompt, message: null };
+      return { mode: compiled.layout.mode, output: compiled.layout.output, prompt: compiled.prompt, message: null };
     }
     catch (reason) { return { output: null, prompt: null, message: reason instanceof Error ? reason.message : String(reason) }; }
   }, [config, source, options]);
@@ -29,6 +29,7 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
             disabled={busy || !onResolutionChange} onChange={(value) => onResolutionChange?.(value)} />
         </PropRow>
         {validation.output && <p className="image-inspector__caption">Output: {validation.output.width} × {validation.output.height} px</p>}
+        {validation.mode === "regenerate" && <p className="image-inspector__caption">Regenerate selection: refine the selected crop at the output resolution.</p>}
         <p className="image-inspector__caption">Source: {source.name} · {source.width} × {source.height} px</p>
         {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={`extend-${field}`}
           tooltip={field === "x" || field === "y" ? "Drag the box or its handles, or drag outside it to draw a new box." : "Sizes use 32-pixel increments. The source is resized to fit the box at the selected generation resolution."}>
@@ -45,7 +46,7 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
         <PropRow label="Seed" htmlFor="extend-seed" tooltip="Use -1 for a random seed."><input id="extend-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}
           value={Number.isNaN(options.seed) ? "" : options.seed} onChange={(event) => onChange({ ...options, seed: event.target.valueAsNumber })} /></PropRow>
         <div className="image-inspector__area"><span>Prompt (optional)</span><PromptTextField aria-label="Extend prompt" value={options.prompt} onChange={(prompt) => onChange({ ...options, prompt })}
-          references={references} missingLabel={missingLabel} disabled={busy} placeholder="Describe what should appear beyond the image…" /></div>
+          references={references} missingLabel={missingLabel} disabled={busy} placeholder={validation.mode === "regenerate" ? "Describe details to refine…" : "Describe what should appear beyond the image…"} /></div>
         {validation.message && <InfoBar severity="error" title="Adjust the Extend settings" message={validation.message} />}
       </div>
       <div className="image-template-settings__footer">

@@ -144,8 +144,25 @@ it("retains the finished image when saving the project fails and retries without
 
 it("rejects invalid bounds, seeds and missing references before queueing", () => {
   const { queue, session } = setup();
-  for (const input of [{ ...options(), bounds: { x: 0, y: 0, width: 128, height: 96 } }, { ...options(), seed: -2 }, { ...options(), prompt: "@[ref:missing]" }]) {
+  for (const input of [{ ...options(), bounds: { x: 128, y: 0, width: 128, height: 96 } }, { ...options(), seed: -2 }, { ...options(), prompt: "@[ref:missing]" }]) {
     expect(() => queue.enqueueExtendImage(session, template, "source", input)).toThrow();
   }
   expect(queue.getSnapshot()).toHaveLength(0);
+});
+
+
+it("submits a contained crop for real regeneration and saves the new child", async () => {
+  const { queue, session } = setup();
+  const bounds = { x: 32, y: 32, width: 64, height: 64 };
+  queue.enqueueExtendImage(session, template, "source", { ...options(), bounds, prompt: "" });
+  const request = await submitted();
+  expect(request).toMatchObject({ canvasWidth: 768, canvasHeight: 768, referencePaths: [`C:/Extend/cache/extend-images/${request.jobId}/canvas.png`],
+    imageEdit: { edits: [{ x: 0, y: 0, width: 768, height: 768, strength: 0.65, invertMask: false, feather: 0 }] } });
+  expect(request.prompt).toContain("<Picture 1>");
+  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId: request.jobId, sourceId: "source", bounds, output: { width: 768, height: 768 } });
+  expect(session.getSnapshot().config.assets.at(-1)!.name).toBe("Regenerated - source");
+  emit("framesReady", request.jobId);
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  expect(session.getSnapshot().config.assets.at(-1)).toMatchObject({ name: "Regenerated - source", imageDraft: false, imageGeneration: { template: { kind: "extend", bounds } } });
+  expect(invoke).toHaveBeenCalledWith("save_extended_image", { folderPath: "C:/Extend", jobId: request.jobId });
 });

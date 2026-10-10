@@ -63,6 +63,9 @@ fn scaled_layout(
                 .into(),
         );
     }
+    if bounds.is_contained(workspace.width, workspace.height) {
+        return Ok((output, ExtendBounds { x: 0, y: 0, width: output.width, height: output.height }));
+    }
     let scale = (output.width as f64 / bounds.width as f64)
         .min(output.height as f64 / bounds.height as f64);
     let source = ExtendSize {
@@ -81,10 +84,19 @@ fn scaled_layout(
         height: output.height,
     };
     mapped.validate(source.width, source.height)?;
+    if mapped.is_contained(source.width, source.height) {
+        return Err("Expand the box further or increase the resolution to generate the extension.".into());
+    }
     Ok((source, mapped))
 }
 
 impl ExtendBounds {
+    fn is_contained(self, width: u32, height: u32) -> bool {
+        self.x >= 0 && self.y >= 0
+            && i64::from(self.x) + i64::from(self.width) <= i64::from(width)
+            && i64::from(self.y) + i64::from(self.height) <= i64::from(height)
+    }
+
     fn validate(self, width: u32, height: u32) -> Result<(), String> {
         if width == 0
             || height == 0
@@ -103,9 +115,6 @@ impl ExtendBounds {
         let bottom = self.y + self.height as i32;
         if self.x >= width as i32 || self.y >= height as i32 || right <= 0 || bottom <= 0 {
             return Err("The Extend box must overlap the original image.".into());
-        }
-        if self.x >= 0 && self.y >= 0 && right <= width as i32 && bottom <= height as i32 {
-            return Err("The Extend box must extend beyond the original image.".into());
         }
         Ok(())
     }
@@ -168,7 +177,8 @@ pub(crate) fn prepare_extend_image(
         return Err("The Extend source has no saved file.".into());
     };
     let (width, height) = image::image_dimensions(&source_path).map_err(|e| e.to_string())?;
-    let (scaled, bounds) = scaled_layout(width, height, bounds, output)?;
+    let selection = bounds;
+    let (scaled, bounds) = scaled_layout(width, height, selection, output)?;
     if asset.width != Some(width) || asset.height != Some(height) {
         return Err(
             "The source image dimensions changed. Reopen the image before extending it.".into(),
@@ -177,6 +187,18 @@ pub(crate) fn prepare_extend_image(
     let mut source = image::open(source_path)
         .map_err(|e| e.to_string())?
         .to_rgba8();
+    let workspace = source_dimensions(width, height);
+    if selection.is_contained(workspace.width, workspace.height) {
+        // Crop in original pixels before resizing, so a tiny selection never
+        // allocates a magnified copy of the entire source image.
+        let left = (selection.x as u64 * width as u64 / workspace.width as u64) as u32;
+        let top = (selection.y as u64 * height as u64 / workspace.height as u64) as u32;
+        let right = ((selection.x as u64 + selection.width as u64) * width as u64)
+            .div_ceil(workspace.width as u64) as u32;
+        let bottom = ((selection.y as u64 + selection.height as u64) * height as u64)
+            .div_ceil(workspace.height as u64) as u32;
+        source = image::imageops::crop_imm(&source, left, top, right - left, bottom - top).to_image();
+    }
     if source.dimensions() != (scaled.width, scaled.height) {
         source = image::imageops::resize(
             &source,
@@ -186,8 +208,8 @@ pub(crate) fn prepare_extend_image(
         );
     }
     let cache = root.directory(&directory(&job_id)?)?;
-    // Snapshot the resized original. Generation and final preservation use
-    // exactly these pixels, with no second resampling.
+    // Snapshot the resized source or crop. Outpainting's final preservation
+    // uses exactly these pixels, with no second resampling.
     write_png(&cache.join("original.png"), &source)?;
     write_png(&cache.join("canvas.png"), &padded_source(&source, bounds))?;
     crate::storage::atomic::write_atomically(
@@ -368,7 +390,9 @@ pub(crate) fn save_extended_image(
     let (_, pixels) = crate::rendered::take_still(&job_id)?;
     let mut result = RgbaImage::from_raw(bounds.width, bounds.height, pixels)
         .ok_or("Invalid generated image pixels.")?;
-    restore_original(&mut result, &source, bounds);
+    if !bounds.is_contained(source.width(), source.height()) {
+        restore_original(&mut result, &source, bounds);
+    }
     super::artifacts::write_generated_png_frame(
         &folder_path,
         &job_id,
@@ -411,6 +435,16 @@ mod tests {
     #[test]
     #[ignore]
     fn extend_gpu_smoke() {
+        generation_smoke(false);
+    }
+
+    #[test]
+    #[ignore]
+    fn extend_crop_gpu_smoke() {
+        generation_smoke(true);
+    }
+
+    fn generation_smoke(regenerate: bool) {
         use slopus_core::{
             settings::{ProviderOption, ProviderSetting},
             slopfab::{GenerationRequest, NativeEvent, SlopfabRuntime},
@@ -488,21 +522,18 @@ mod tests {
         crate::project::storage::write_project(folder.path(), &config).unwrap();
         write_png(&folder.path().join("source.png"), &source).unwrap();
         let path = folder.path().to_string_lossy().into_owned();
-        let job = "extend-gpu-smoke";
-        // A 1.5x square selection rendered at 416p, matching the TS compiler.
+        let job = if regenerate { "extend-crop-gpu-smoke" } else { "extend-gpu-smoke" };
+        let size = if regenerate { 768 } else { 416 };
+        // Exercise extension at 416p or a contained crop regenerated at 768p.
         prepare_extend_image(
             path.clone(),
             job.into(),
             "source".into(),
-            ExtendBounds {
-                x: -64,
-                y: -64,
-                width: 384,
-                height: 384,
-            },
+            if regenerate { ExtendBounds { x: 32, y: 32, width: 192, height: 192 } }
+            else { ExtendBounds { x: -64, y: -64, width: 384, height: 384 } },
             ExtendSize {
-                width: 416,
-                height: 416,
+                width: size,
+                height: size,
             },
         )
         .unwrap();
@@ -511,10 +542,19 @@ mod tests {
         let canvas = cache.join("canvas.png");
         std::fs::copy(&canvas, artifact_dir.join("canvas.png")).unwrap();
         let prompt = "integrated_multimodal_description: [Shot 1] Match the source scene's visual style. One continuous scene matching Source scene's setting, perspective, subject scale, lighting and textures. The existing subjects remain at their canvas positions.\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A";
+        let prompt = if regenerate {
+            "subject_definitions:\n<Picture 1> is the original source image and composition anchor for the edited still keyframe in [Shot 1], providing the framing, perspective, environment, lighting and visual style.\n\nsummary:\n[keyframe completion] The target is a single edited still keyframe based on <Picture 1>. Apply the described change while preserving all other content.\n\nretention_analysis:\n<Picture 1> ([Shot 1] edited keyframe): partially_preserved - retain its composition and visual characteristics except for the described change. Preserve all other content, including any previously completed edits.\n\ndetailed_description:\nThe still image retains the visual medium, lighting, palette and perspective of <Picture 1>.\n[Shot 1] Refine the selected crop in <Picture 1> at the target resolution. Recover natural fine detail and clean textures while preserving the subjects, composition, perspective, lighting and visual style.\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A"
+        } else { prompt };
+        let step = if regenerate {
+            serde_json::json!({"x":0,"y":0,"width":size,"height":size,"strength":0.65,"feather":0,"prompt":prompt})
+        } else {
+            serde_json::json!({"x":85,"y":85,"width":245,"height":245,"invertMask":true,"feather":0,"prompt":prompt})
+        };
         let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
-            "jobId":job, "stillImage":true, "frames":1, "steps":20, "seed":17, "canvasWidth":416, "canvasHeight":416, "prompt":prompt,
-            "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[{"x":85,"y":85,"width":245,"height":245,"invertMask":true,"feather":0,"prompt":prompt}]}
+            "jobId":job, "stillImage":true, "frames":1, "steps":20, "seed":17, "canvasWidth":size, "canvasHeight":size, "prompt":prompt,
+            "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[step]}
         })).unwrap();
+        if regenerate { request.reference_paths = vec![canvas.to_string_lossy().into_owned()]; }
         request.image_edit_path = Some(canvas);
         let runtime = SlopfabRuntime::default();
         let (send, receive) = mpsc::channel();
@@ -544,7 +584,7 @@ mod tests {
                 }
             }
         }
-        let raw = RgbaImage::from_raw(416, 416, crate::rendered::frame(job, 0).unwrap().unwrap())
+        let raw = RgbaImage::from_raw(size, size, crate::rendered::frame(job, 0).unwrap().unwrap())
             .unwrap();
         write_png(&artifact_dir.join("raw.png"), &raw).unwrap();
         write_png(&artifact_dir.join("source.png"), &snapshot).unwrap();
@@ -552,16 +592,21 @@ mod tests {
         let saved = save_extended_image(path.clone(), job.into()).unwrap();
         let final_path = folder.path().join(saved.relative_path);
         let result = image::open(&final_path).unwrap().to_rgba8();
-        assert_eq!(result.dimensions(), (416, 416));
-        for y in 16..snapshot.height() - 16 {
-            for x in 16..snapshot.width() - 16 {
-                assert_eq!(result.get_pixel(x + 69, y + 69), snapshot.get_pixel(x, y));
+        assert_eq!(result.dimensions(), (size, size));
+        if regenerate {
+            assert_eq!(result, raw, "The finalizer must retain regenerated pixels");
+            assert_ne!(result, snapshot, "Generation must change the resized crop");
+        } else {
+            for y in 16..snapshot.height() - 16 {
+                for x in 16..snapshot.width() - 16 {
+                    assert_eq!(result.get_pixel(x + 69, y + 69), snapshot.get_pixel(x, y));
+                }
             }
+            assert!(result
+                .enumerate_pixels()
+                .filter(|(x, y, _)| *x < 69 || *y < 69)
+                .any(|(_, _, pixel)| pixel.0 != [127, 127, 127, 255]));
         }
-        assert!(result
-            .enumerate_pixels()
-            .filter(|(x, y, _)| *x < 69 || *y < 69)
-            .any(|(_, _, pixel)| pixel.0 != [127, 127, 127, 255]));
         std::fs::copy(final_path, artifact_dir.join("result.png")).unwrap();
         discard_extend_image(path, job.into()).unwrap();
         eprintln!("Inspect {}", artifact_dir.join("result.png").display());
@@ -897,11 +942,6 @@ mod tests {
         for invalid in [
             ExtendBounds { x: 224, ..bounds },
             ExtendBounds {
-                x: 0,
-                width: 224,
-                ..bounds
-            },
-            ExtendBounds {
                 width: 8193,
                 ..bounds
             },
@@ -935,6 +975,49 @@ mod tests {
             .is_ok());
         assert!(root.existing("media/source.png").is_ok());
         discard_extend_image(path, "extend-test".into()).unwrap();
+    }
+
+    #[test]
+    fn contained_selection_crops_original_pixels_and_saves_regenerated_output() {
+        struct GeneratedPixels;
+        impl crate::rendered::FrameSource for GeneratedPixels {
+            fn frame_rgba(&self, _: u32, width: u32, height: u32) -> Result<Vec<u8>, String> {
+                Ok([210, 180, 150, 255].repeat(width as usize * height as usize))
+            }
+        }
+        let folder = tempfile::tempdir().unwrap();
+        let mut config = crate::tests::created_fixture();
+        config.assets.push(serde_json::from_value(serde_json::json!({
+            "id":"source", "kind":"image", "name":"Source", "relativePath":"media/source.png", "mimeType":"image/png",
+            "width":128, "height":96, "createdAt":config.created_at
+        })).unwrap());
+        crate::project::storage::write_project(folder.path(), &config).unwrap();
+        let path = folder.path().to_string_lossy().into_owned();
+        let root = ProjectRoot::open(&path).unwrap();
+        let job = "extend-crop-finalizer-test";
+        let source = RgbaImage::from_fn(128, 96, |x, y| image::Rgba([x as u8, y as u8, 80, 255]));
+        write_png(&root.directory("media").unwrap().join("source.png"), &source).unwrap();
+        prepare_extend_image(path.clone(), job.into(), "source".into(),
+            ExtendBounds { x: 32, y: 32, width: 64, height: 32 }, ExtendSize { width: 256, height: 128 }).unwrap();
+        let crop = image::imageops::crop_imm(&source, 32, 32, 64, 32).to_image();
+        let expected = image::imageops::resize(&crop, 256, 128, image::imageops::FilterType::Lanczos3);
+        let cache = root.path().join(directory(job).unwrap());
+        for file in ["original.png", "canvas.png"] {
+            assert_eq!(image::open(cache.join(file)).unwrap().to_rgba8(), expected);
+        }
+        let bounds: ExtendBounds = serde_json::from_slice(&std::fs::read(cache.join("bounds.json")).unwrap()).unwrap();
+        assert_eq!((bounds.x, bounds.y, bounds.width, bounds.height), (0, 0, 256, 128));
+        crate::rendered::keep(crate::rendered::from_source(job, Box::new(GeneratedPixels), vec![], 1,
+            256, 128, 3, 256 * 128 * 3, 24.0, 0, 0).unwrap());
+        let saved = save_extended_image(path.clone(), job.into()).unwrap();
+        let result = image::open(root.existing(&saved.relative_path).unwrap()).unwrap().to_rgba8();
+        assert_eq!(result, RgbaImage::from_pixel(256, 128, image::Rgba([210, 180, 150, 255])));
+        assert!(crate::rendered::summary(job).is_none());
+        // Even a tiny box in a large source is prepared at bounded output size.
+        let (scaled, mapped) = scaled_layout(8192, 8192,
+            ExtendBounds { x: 100, y: 100, width: 32, height: 32 }, ExtendSize { width: 768, height: 768 }).unwrap();
+        assert_eq!((scaled.width, scaled.height, mapped.x, mapped.y), (768, 768, 0, 0));
+        discard_extend_image(path, job.into()).unwrap();
     }
 
     #[test]

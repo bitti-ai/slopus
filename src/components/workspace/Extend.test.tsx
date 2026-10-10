@@ -139,3 +139,30 @@ it.each([0.5, 2])("snaps within six screen pixels at %sx scale without trapping 
   fireEvent.keyDown(screen.getByRole("button", { name: "Move Extend box" }), { key: "ArrowLeft" });
   expect(latest).toEqual({ x: -1, y: 0, width: 384, height: 288 });
 });
+
+
+it("executes a contained selection as crop regeneration", () => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(settings, "templateUsable").mockReturnValue(true);
+  const generator = settings.createGeneratorTemplate("Extend generator");
+  settings.saveGeneratorTemplateSettings({ templates: [generator], defaultTemplateId: generator.id });
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [source]; initial.imageScene!.outputAssetId = source.id;
+  const execute = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial);
+    return <ImageEditor config={config} folderPath="D:/Images" onChange={setConfig} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={execute} />;
+  }
+  render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
+  for (const [field, value] of Object.entries({ x: 32, y: 32, width: 128, height: 96 })) {
+    fireEvent.change(screen.getByLabelText(`Extend ${field}`), { target: { value: String(value) } });
+  }
+  expect(screen.getByText(/Regenerate selection:/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Execute" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: generator.id }), source.id,
+    expect.objectContaining({ bounds: { x: 32, y: 32, width: 128, height: 96 } }));
+});

@@ -128,6 +128,9 @@ pub struct ImageEditStep {
     pub height: i32,
     #[serde(default)]
     pub feather: Option<i32>,
+    /// Denoising strength, defaulting to a full edit for existing requests.
+    #[serde(default)]
+    pub strength: Option<f32>,
     /// Outpainting: preserve the box and generate all surrounding pixels together.
     #[serde(default)]
     pub invert_mask: bool,

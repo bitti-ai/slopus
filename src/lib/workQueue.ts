@@ -316,10 +316,12 @@ export class WorkQueue {
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
     const compiled = compileExtendImage(config, source, sourceRelativePath, options);
-    // The inpainting canvas already supplies the original at its selected size
-    // and position. A separate reference is resized independently by the model
-    // and can reproduce the whole original scene inside the extension.
+    // Outpainting uses the positioned canvas as context. Crop regeneration
+    // also supplies the prepared crop as its composition reference.
     const referencePaths = compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!));
+    const regenerate = compiled.layout.mode === "regenerate";
+    if (regenerate) referencePaths.unshift(projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!);
+    const resultName = `${regenerate ? "Regenerated" : "Extended"} - ${source.name}`;
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
       canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
       referencePaths, refmods: referenceRefmodInputs(session.record.folderPath, compiled.references),
@@ -331,14 +333,14 @@ export class WorkQueue {
       usedSeed: request.seed,
       template: { kind: "extend", sourceId, sourceName: source.name, generatorName: template.name, ...structuredClone(options), steps: request.steps },
     };
-    this.work.set(id, { id, image: true, imageDraftId: id, extend: { sourceId, name: `Extended - ${source.name}`, options: structuredClone(options) }, imageParentId: sourceId,
+    this.work.set(id, { id, image: true, imageDraftId: id, extend: { sourceId, name: resultName, options: structuredClone(options) }, imageParentId: sourceId,
       imageGeneration,
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, imageDraftId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
-      sceneId: this.work.get(id)!.sceneId, title: `Extend · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
-      detail: "Waiting to extend image", error: null, completionAt: null, cancelling: false, needsSave: false,
+      sceneId: this.work.get(id)!.sceneId, title: `${regenerate ? "Regenerate" : "Extend"} · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+      detail: regenerate ? "Waiting to regenerate selection" : "Waiting to extend image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight } }];
-    session.update((current) => createTemplateImageDraft(current, id, `Extended - ${source.name}`, imageGeneration, compiled.layout.output));
+    session.update((current) => createTemplateImageDraft(current, id, resultName, imageGeneration, compiled.layout.output));
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {

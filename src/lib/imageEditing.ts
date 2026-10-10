@@ -6,6 +6,8 @@ import type { ProjectConfig, ProjectReference } from "./project";
 export interface ImageEditStep {
   prompt: string; x: number; y: number; width: number; height: number;
   feather?: number;
+  /** Denoising strength; lower values retain more of the source detail. */
+  strength?: number;
   /** Preserve this box and generate its surround in a single outpainting pass. */
   invertMask?: boolean;
   referencePaths?: string[];

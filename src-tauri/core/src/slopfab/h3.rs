@@ -72,10 +72,14 @@ pub(super) fn configure_request(
         // Ordinary edits blend inward. Outpainting preserves this box and
         // generates its entire surround with shared context in one pass.
         let feather = step.feather.unwrap_or(16);
+        let strength = step.strength.unwrap_or(1.0);
+        if !strength.is_finite() || strength <= 0.0 || strength > 1.0 {
+            return Err("Image edit strength must be greater than zero and at most one.".into());
+        }
         if let Some(pixels) = &request.image_edit_pixels {
-            api.set_image_edit_rgb(handle, pixels, request.canvas_width, request.canvas_height, bounds, feather)?;
+            api.set_image_edit_rgb(handle, pixels, request.canvas_width, request.canvas_height, bounds, strength, feather)?;
         } else {
-            api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds, feather)?;
+            api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds, strength, feather)?;
         }
         if step.invert_mask {
             api.set_image_edit_invert_mask(handle)?;

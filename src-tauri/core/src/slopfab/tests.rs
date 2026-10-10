@@ -79,7 +79,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, invert_mask: false, reference_paths: None, refmods: None }
+            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -108,6 +108,40 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
     invalid.image_edit.as_mut().unwrap().edits[0].feather = None;
     invalid.image_edit.as_mut().unwrap().edits[0].width = 36;
     assert!(validate_generation_controls(&invalid).is_err());
+}
+
+#[test]
+fn crop_regeneration_strength_survives_worker_transfer_and_reaches_native_sampling() {
+    let configuration = Configuration::from_settings(&BTreeMap::new());
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request: GenerationRequest = serde_json::from_value(serde_json::json!({
+        "jobId":"crop", "prompt":"Refine the crop", "stillImage":true, "frames":1,
+        "steps":20, "seed":0, "canvasWidth":128, "canvasHeight":64,
+        "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[{
+            "prompt":"Refine the crop", "x":0, "y":0, "width":128, "height":64,
+            "feather":0, "strength":0.65
+        }]}
+    })).unwrap();
+    let mut roundtrip: GenerationRequest = serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
+    assert_eq!(roundtrip.image_edit.as_ref().unwrap().edits[0].strength, Some(0.65));
+    roundtrip.image_edit_pixels = Some(std::sync::Arc::new(vec![127; 128 * 64 * 3]));
+    validate_generation_controls(&roundtrip).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        let plan = |request: &GenerationRequest| {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, request, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+            api.resolve(&handle).unwrap()
+        };
+        let crop = plan(&roundtrip);
+        assert_eq!((crop.canvas_width, crop.canvas_height, crop.aligned_frames), (128, 64, 1));
+        let mut full = roundtrip.clone();
+        full.image_edit.as_mut().unwrap().edits[0].strength = None;
+        assert!(crop.num_model_evaluations > 0 && crop.num_model_evaluations < plan(&full).num_model_evaluations);
+    }
+    for strength in [0.0, -0.1, 1.1, f32::NAN, f32::INFINITY] {
+        roundtrip.image_edit.as_mut().unwrap().edits[0].strength = Some(strength);
+        assert!(validate_generation_controls(&roundtrip).is_err());
+    }
 }
 
 #[test]
