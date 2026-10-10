@@ -375,6 +375,22 @@ impl Api {
         let settings = CString::new(r#"{"version":1,"sampler":"renoise","video_sigma_shift":12,"audio_sigma_shift":2,"base_sigmas":[1,0.75,0.5,0.25,0]}"#).unwrap();
         self.error(unsafe { set(r, settings.as_ptr()) })
     }
+    pub fn set_sigma_shifts(&self, r: *mut Request, video: Option<f32>, audio: Option<f32>) -> Result<(), String> {
+        let Some(set) = self.set_sampling_settings else {
+            return if video.is_none() && audio.is_none() { Ok(()) }
+                else { Err("Sigma shifts require slopfab.dll API 1.16 or later. Update the runtime.".into()) };
+        };
+        let mut settings = serde_json::json!({ "version": 1 });
+        for (key, value) in [("video_sigma_shift", video), ("audio_sigma_shift", audio)] {
+            if let Some(value) = value {
+                if !value.is_finite() || value <= 0.0 { return Err("Sigma shifts must be finite and positive.".into()); }
+                settings[key] = serde_json::json!(value);
+            }
+        }
+        // Replaces the previous recipe, including clearing stale shifts on reused handles.
+        let settings = CString::new(settings.to_string()).map_err(|error| error.to_string())?;
+        self.error(unsafe { set(r, settings.as_ptr()) })
+    }
     fn error(&self, code: i32) -> Result<(), String> {
         if code == 0 {
             Ok(())

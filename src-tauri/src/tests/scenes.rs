@@ -537,3 +537,23 @@ fn scene_latent_upscale_survives_save_and_preserves_legacy_defaults() {
         assert_eq!(restored.generation_jobs[0].latent_upscale, latent_upscale);
     }
 }
+
+#[test]
+fn scene_sigma_shifts_round_trip_and_validate() {
+    let mut config = scene_fixture();
+    config.generation_jobs[0].video_sigma_shift = Some(8.5);
+    config.generation_jobs[0].audio_sigma_shift = Some(2.5);
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    let restored = read_project(folder.path()).unwrap().config;
+    assert_eq!(restored.generation_jobs[0].video_sigma_shift, Some(8.5));
+    assert_eq!(restored.generation_jobs[0].audio_sigma_shift, Some(2.5));
+    for invalid in [0.0, -1.0, f64::INFINITY, 1e39, 1e-50] {
+        let mut invalid_config = config.clone();
+        invalid_config.generation_jobs[0].video_sigma_shift = Some(invalid);
+        assert!(validate_and_normalize_config(invalid_config).is_err());
+        let mut invalid_config = config.clone();
+        invalid_config.generation_jobs[0].audio_sigma_shift = Some(invalid);
+        assert!(validate_and_normalize_config(invalid_config).is_err());
+    }
+}

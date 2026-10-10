@@ -70,6 +70,10 @@ pub struct GenerationRequest {
     pub steps: i32,
     #[serde(default)]
     pub audio_steps: Option<i32>,
+    #[serde(default)]
+    pub video_sigma_shift: Option<f32>,
+    #[serde(default)]
+    pub audio_sigma_shift: Option<f32>,
     /// Canvas dimensions describe the final output; denoise at half size when enabled.
     #[serde(default)]
     pub latent_upscale: bool,

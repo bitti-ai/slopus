@@ -57,6 +57,10 @@ pub(super) fn configure_request(
     let dmad = configuration.sampling_preset.as_ref().map_err(Clone::clone)? == &Some(SamplingPreset::Dmad4Step);
     if dmad {
         api.set_dmad_sampling(handle)?;
+    } else {
+        let shifts = configuration.sigma_shifts.as_ref().map_err(Clone::clone)?;
+        api.set_sigma_shifts(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video),
+            shifts.audio_override.or(request.audio_sigma_shift).or(shifts.audio))?;
     }
     // Sampling presets replace overrides, so apply the audio setting afterward.
     api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;

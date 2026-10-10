@@ -49,6 +49,7 @@ fn dmad_recipe_reaches_preview_and_execution_on_both_backends() {
     let request = GenerationRequest {
         prompt: "A polar bear plays the violin in the snow.".into(),
         frames: 124, steps: 30, seed: 42, canvas_width: 1344, canvas_height: 768,
+        video_sigma_shift: Some(7.0), audio_sigma_shift: Some(4.0),
         ..Default::default()
     };
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
@@ -1316,4 +1317,55 @@ fn latent_upscale_uses_half_aligned_canvas_for_preview_and_execution() {
     assert!(validate_generation_controls(&GenerationRequest { still_image: true, ..request.clone() }).is_err());
     assert!(validate_generation_controls(&GenerationRequest { canvas_width: 65, ..request }).is_err());
     assert_eq!(stage_name(9), "upscaling");
+}
+
+#[test]
+fn sigma_shifts_reach_planning_execution_and_reset() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.sigma_shifts = Ok(SigmaShifts { video: Some(9.0), audio: Some(3.5), ..Default::default() });
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            let mut request = GenerationRequest { prompt: "Ocean waves".into(), frames: 48, steps: 4,
+                video_sigma_shift: Some(8.5), audio_sigma_shift: Some(2.5), seed: 1,
+                canvas_width: 64, canvas_height: 32, ..Default::default() };
+            for (video, audio) in [(8.5, 2.5), (6.0, 2.0), (9.0, 3.5), (12.0, 3.0)] {
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let description = api.describe(&handle).unwrap();
+                assert!(description.contains(&format!("shift {video}")), "{description}");
+                assert!(description.contains(&format!("shift {audio}")), "{description}");
+                if video == 8.5 {
+                    let shifts = configuration.sigma_shifts.as_mut().unwrap();
+                    shifts.video_override = Some(6.0);
+                    shifts.audio_override = Some(2.0);
+                } else if video == 6.0 {
+                    configuration.sigma_shifts = Ok(SigmaShifts { video: Some(9.0), audio: Some(3.5), ..Default::default() });
+                    request.video_sigma_shift = None;
+                    request.audio_sigma_shift = None;
+                } else {
+                    configuration.sigma_shifts = Ok(SigmaShifts::default());
+                }
+            }
+            configuration.sigma_shifts = Ok(SigmaShifts { video: Some(9.0), audio: Some(3.5), ..Default::default() });
+            for invalid in [0.0, -1.0, f32::INFINITY, f32::NAN] {
+                request.video_sigma_shift = Some(invalid);
+                assert!(validate_generation_controls(&request).is_err());
+                request.video_sigma_shift = None;
+                request.audio_sigma_shift = Some(invalid);
+                assert!(validate_generation_controls(&request).is_err());
+            }
+        }
+    }
+}
+
+#[test]
+fn sigma_provider_settings_validate_float32_bounds() {
+    for key in ["videoSigmaShift", "audioSigmaShift", "videoSigmaShiftOverride", "audioSigmaShiftOverride"] {
+        for value in [0.0, -1.0, f64::INFINITY, 1e39, 1e-50] {
+            let settings = BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None,
+                options: BTreeMap::from([(key.into(), ProviderOption::Number(value))]) })]);
+            assert!(Configuration::from_settings(&settings).sigma_shifts.is_err());
+        }
+    }
 }

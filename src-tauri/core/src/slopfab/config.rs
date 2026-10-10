@@ -14,6 +14,14 @@ pub(super) enum SamplingPreset {
     Dmad4Step,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(super) struct SigmaShifts {
+    pub(super) video: Option<f32>,
+    pub(super) audio: Option<f32>,
+    pub(super) video_override: Option<f32>,
+    pub(super) audio_override: Option<f32>,
+}
+
 #[derive(Clone)]
 pub(super) struct Configuration {
     pub(super) dll_path: PathBuf,
@@ -27,6 +35,7 @@ pub(super) struct Configuration {
     pub(super) loras: Result<Vec<LoraAdapter>, String>,
     pub(super) step_override: Result<Option<i32>, String>,
     pub(super) sampling_preset: Result<Option<SamplingPreset>, String>,
+    pub(super) sigma_shifts: Result<SigmaShifts, String>,
 }
 
 impl Configuration {
@@ -46,7 +55,16 @@ impl Configuration {
                 _ => None,
             })
         };
+        let shift = |name: &str| -> Result<Option<f32>, String> {
+            match slopfab.and_then(|setting| setting.options.get(name)) {
+                None => Ok(None),
+                Some(ProviderOption::Number(value)) if value.is_finite() && *value >= f32::from_bits(1) as f64 && *value <= f32::MAX as f64 => Ok(Some(*value as f32)),
+                _ => Err(format!("{name} must be a finite, positive float32 value.")),
+            }
+        };
         Self {
+            sigma_shifts: (|| Ok(SigmaShifts { video: shift("videoSigmaShift")?, audio: shift("audioSigmaShift")?,
+                video_override: shift("videoSigmaShiftOverride")?, audio_override: shift("audioSigmaShiftOverride")? }))(),
             // `dllPath` is no longer written by the app and has no settings UI.
             // It is still READ so a project or a test that carries one keeps
             // working; with none, use the DLL beside the executable.

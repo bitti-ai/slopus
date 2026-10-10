@@ -125,6 +125,10 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) audio_steps: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) video_sigma_shift: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) audio_sigma_shift: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) latent_upscale: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) seed: Option<i64>,
@@ -189,6 +193,8 @@ impl GenerationJob {
             duration_seconds: Some(defaults.duration_seconds),
             steps: None,
             audio_steps: None,
+            video_sigma_shift: None,
+            audio_sigma_shift: None,
             latent_upscale: None,
             seed: None,
             soundscape: None,

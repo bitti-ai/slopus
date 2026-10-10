@@ -113,6 +113,7 @@ pub fn generate_reference_icon_batch(
         loras: Ok(Vec::new()),
         step_override: Ok(None),
         sampling_preset: Ok(None),
+        sigma_shifts: Ok(Default::default()),
         vulkan: backend == ComputePlatform::Vulkan,
         attention: "sage2",
         motion_cache: false,

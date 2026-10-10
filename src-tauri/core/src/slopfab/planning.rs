@@ -109,6 +109,11 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
     if request.audio_steps.is_some_and(|steps| !(2..=1_000_000).contains(&steps)) {
         return Err("Audio step count must be a whole number from 2 to 1000000.".into());
     }
+    for shift in [request.video_sigma_shift, request.audio_sigma_shift].into_iter().flatten() {
+        if !shift.is_finite() || shift <= 0.0 {
+            return Err("Sigma shifts must be finite and positive.".into());
+        }
+    }
     if request.seed < -1 {
         return Err("Generation seed must be -1 or greater.".into());
     }
