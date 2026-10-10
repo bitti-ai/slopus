@@ -11,7 +11,8 @@ import { GeneratorView, templateSceneBlocker } from "./GeneratorView";
 import { ReferencesView } from "./ReferencesView";
 import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
 import { chooseReference, changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
-import { minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
+import { saveLoras } from "../../lib/loras";
+import { createGeneratorTemplate, saveGeneratorTemplateSettings, minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/nativeShell")>(),
@@ -650,6 +651,11 @@ describe("Generator scene controls", () => {
     expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].latentUpscale).toBe(latentUpscale);
     expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
     expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
+    expect(within(generation).getByRole("spinbutton", { name: "Video sigma shift" })).toHaveValue(12);
+    expect(within(generation).getByRole("spinbutton", { name: "Audio sigma shift" })).toHaveValue(3);
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Video sigma shift" }), { target: { value: "8.5" } });
+    fireEvent.change(within(generation).getByRole("spinbutton", { name: "Audio sigma shift" }), { target: { value: "2.5" } });
+    expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0]).toMatchObject({ videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
 
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation step count" }), { target: { value: "28" } });
     fireEvent.change(within(generation).getByRole("spinbutton", { name: "Generation seed" }), { target: { value: "9173" } });
@@ -668,6 +674,8 @@ describe("Generator scene controls", () => {
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).latentUpscale).toBe(latentUpscale ? true : undefined);
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({
       steps: 28,
+      videoSigmaShift: 8.5,
+      audioSigmaShift: 2.5,
       seed: 9173,
       frames: 144,
       canvasWidth: 736,
@@ -1147,4 +1155,23 @@ describe("Generator board as a native list", () => {
     expect(target).not.toHaveClass("shot-slot--drop-before");
     expect(source.closest(".shot-card")).not.toHaveClass("shot-card--dragging");
   });
+});
+
+it("shows template shifts and locks active LoRA overrides without replacing saved scene values", () => {
+  const template = { ...createGeneratorTemplate("Shifts"), videoSigmaShift: 9, audioSigmaShift: 3.5,
+    loras: [{ loraId: "shift", enabled: true, strength: 1 }],
+    paths: { transformer: "model", textEncoder: "text", tokenizer: "", videoVae: "video", audioVae: "audio" } };
+  saveLoras([{ id: "shift", name: "Shift", path: "D:/shift.safetensors", videoSigmaShiftOverride: 6 }]);
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 9 });
+  const initial = project();
+  initial.generationJobs[0].videoSigmaShift = 8;
+  const state = setup(initial);
+  expect(screen.getByLabelText("Video sigma shift")).toHaveValue(6);
+  expect(screen.getByLabelText("Video sigma shift")).toBeDisabled();
+  expect(screen.getByLabelText("Audio sigma shift")).toHaveValue(3.5);
+  expect(screen.getByLabelText("Audio sigma shift")).toBeEnabled();
+  expect(screen.getByRole("switch", { name: "Separate audio steps" })).not.toBeChecked();
+  fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+  expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toMatchObject({ videoSigmaShift: 6, audioSigmaShift: 3.5 });
+  expect(state.latest().generationJobs[0].videoSigmaShift).toBe(8);
 });

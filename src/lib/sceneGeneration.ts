@@ -8,9 +8,9 @@ import {
   usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
-import type { GeneratorTemplate } from "./settings";
+import { generationSigmaShifts, type GeneratorTemplate } from "./settings";
 
-export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number): SlopfabGenerationRequest {
+export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number, template?: GeneratorTemplate): SlopfabGenerationRequest {
   // Only the references actually bound to this scene, in list order. The same
   // ordered list drives the <Subject N> / <Picture N> numbering inside the
   // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
@@ -36,6 +36,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     // The scene's own length, not a fixed six seconds.
     frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
     steps: sceneGenerationSteps(job, defaultGenerationSteps),
+    ...generationSigmaShifts(job, template),
     ...(job.audioSteps != null ? { audioSteps: job.audioSteps } : {}),
     ...(job.latentUpscale ? { latentUpscale: true } : {}),
     seed: sceneGenerationSeed(job),

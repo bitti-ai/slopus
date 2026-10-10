@@ -326,7 +326,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   };
 
   const requestFor = (job: GenerationJob): SlopfabGenerationRequest =>
-    sceneGenerationRequest(job, configRef.current, folderPath, defaultGenerationSteps);
+    sceneGenerationRequest(job, configRef.current, folderPath, defaultGenerationSteps, selectedTemplate);
 
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
@@ -655,6 +655,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               sceneType={sceneTypeFor(selected)}
               job={selected}
               shots={selectedShots}
+              template={selectedTemplate}
               defaultSteps={defaultGenerationSteps}
               effectiveSteps={generationStepsForTemplate(sceneGenerationSteps(selected, defaultGenerationSteps), selectedTemplate)}
               defaultLook={config.settings.defaultLook}

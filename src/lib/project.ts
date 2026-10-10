@@ -1,3 +1,4 @@
+import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
 import { backdropDirection, type BackdropColor } from "./backdrop";
 import { createImageScene, imageSceneReferenceIds, imageSceneSchema } from "./imageScene";
@@ -598,6 +599,8 @@ export const generationJobSchema = z.object({
   steps: z.number().int().min(2).max(MAX_GENERATION_STEPS).nullish(),
   latentUpscale: z.boolean().nullish(),
   audioSteps: z.number().int().min(2).max(MAX_AUDIO_GENERATION_STEPS).nullish(),
+  videoSigmaShift: z.number().min(MIN_SIGMA_SHIFT).max(MAX_SIGMA_SHIFT).nullish(),
+  audioSigmaShift: z.number().min(MIN_SIGMA_SHIFT).max(MAX_SIGMA_SHIFT).nullish(),
   seed: z.number().int().min(RANDOM_GENERATION_SEED).max(Number.MAX_SAFE_INTEGER).nullish(),
   /** Base guide §4.6 and §4.7. Per-PROMPT fields, not per-shot, so they live on
    *  the scene. Blank or absent means the compiler emits its own content-neutral
@@ -1174,6 +1177,8 @@ export interface SceneGenerationInput {
   frames: number;
   steps: number;
   audioSteps?: number;
+  videoSigmaShift?: number;
+  audioSigmaShift?: number;
   latentUpscale?: boolean;
   seed: number;
   canvasWidth: number;
@@ -1207,6 +1212,8 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     frames: input.frames,
     steps: input.steps,
     ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
+    ...(input.videoSigmaShift !== undefined ? { videoSigmaShift: input.videoSigmaShift } : {}),
+    ...(input.audioSigmaShift !== undefined ? { audioSigmaShift: input.audioSigmaShift } : {}),
     ...(input.latentUpscale ? { latentUpscale: true } : {}),
     seed: input.seed,
     canvasWidth: input.canvasWidth,

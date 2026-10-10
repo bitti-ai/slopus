@@ -10,7 +10,7 @@ import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGen
 import type { ImageGenerationSnapshot, ProjectAsset } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
-import { engineProviderSetting, type GeneratorTemplate } from "./settings";
+import { generationSigmaShiftsWithLoras, engineProviderSetting, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -57,7 +57,7 @@ export interface WorkItem {
   completionAt: number | null;
   cancelling: boolean;
   needsSave: boolean;
-  settings: { frames: number; steps: number; audioSteps?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
+  settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
   extend?: { sourceId: string; name: string; options: ExtendOptions };
@@ -215,7 +215,7 @@ export class WorkQueue {
     // template. Planning and native submission consume this same private copy.
     const current = session.getSnapshot().config;
     const config = structuredClone(template ? { ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources ?? {}),
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources ?? {}, template),
     } } : withEngineSettings(current));
     const ids: string[] = [];
     for (const submission of submissions) {
@@ -224,14 +224,15 @@ export class WorkQueue {
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config) });
+      const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config),
+        ...generationSigmaShiftsWithLoras(submission.request, config) });
       this.work.set(id, { id, session, sceneId: submission.job.id, request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
         status: "queued", progress: 0, detail: "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
-        settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
+        settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, videoSigmaShift: request.videoSigmaShift, audioSigmaShift: request.audioSigmaShift, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot });
     }
@@ -275,7 +276,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current);
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
@@ -311,7 +312,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
     const compiled = compileExtendImage(config, source, sourceRelativePath, options);
@@ -349,7 +350,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
     const views = compileCharacterSheet(config, source, frontRelativePath, options);

@@ -1,3 +1,4 @@
+import { isSigmaShift, type SigmaShifts } from "./sampling";
 import { MAX_GENERATION_STEPS } from "./project";
 
 /** Machine-local adapter library; paths never belong in portable projects. */
@@ -7,6 +8,8 @@ export interface Lora {
   path: string;
   url?: string;
   stepOverride?: number;
+  videoSigmaShiftOverride?: number;
+  audioSigmaShiftOverride?: number;
   samplingPreset?: "dmad-4step";
   needsPreparation?: boolean;
 }
@@ -48,6 +51,8 @@ export function loadLoras(): Lora[] {
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
         ...(entry.samplingPreset === "dmad-4step" ? { samplingPreset: "dmad-4step" as const } : {}),
+        ...(isSigmaShift(entry.videoSigmaShiftOverride) ? { videoSigmaShiftOverride: entry.videoSigmaShiftOverride } : {}),
+        ...(isSigmaShift(entry.audioSigmaShiftOverride) ? { audioSigmaShiftOverride: entry.audioSigmaShiftOverride } : {}),
         ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
@@ -64,6 +69,9 @@ export function loadLoras(): Lora[] {
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
     throw new Error(`Step override must be a whole number from 2 to ${MAX_GENERATION_STEPS}.`);
+  }
+  if (loras.some((lora) => [lora.videoSigmaShiftOverride, lora.audioSigmaShiftOverride].some((shift) => shift !== undefined && !isSigmaShift(shift)))) {
+    throw new Error("Sigma shift overrides must be finite, positive numbers in the float32 range.");
   }
   localStorage.setItem(KEY, JSON.stringify(loras));
   window.dispatchEvent(new Event(EVENT));
@@ -103,13 +111,13 @@ export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = fa
       const path = local ?? lora?.url;
       if (!path) throw new Error(lora?.needsPreparation ? `Prepare LoRA ${lora.name} in Settings before using it.`
         : `Locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
-      return [{ path, strength, stepOverride: lora?.stepOverride, samplingPreset: lora?.samplingPreset }];
+      return [{ path, strength, stepOverride: lora?.stepOverride, samplingPreset: lora?.samplingPreset, videoSigmaShiftOverride: lora?.videoSigmaShiftOverride, audioSigmaShiftOverride: lora?.audioSigmaShiftOverride }];
     }
     if (lora?.needsPreparation) throw new Error(`Prepare LoRA ${lora.name} in Settings before using it.`);
     if (!lora?.path.trim() || /^https?:\/\//i.test(lora.path)) {
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
     }
-    return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride, samplingPreset: lora.samplingPreset }];
+    return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride, samplingPreset: lora.samplingPreset, videoSigmaShiftOverride: lora.videoSigmaShiftOverride, audioSigmaShiftOverride: lora.audioSigmaShiftOverride }];
   });
 }
 
@@ -131,4 +139,11 @@ export function highestLoraStepOverride(loras: { stepOverride?: number }[]): num
 /** Fixed sampling schedules take priority over editable LoRA step overrides. */
 export function loraStepOverride(loras: Pick<Lora, "stepOverride" | "samplingPreset">[]): number | undefined {
   return loras.some((lora) => lora.samplingPreset === "dmad-4step") ? 4 : highestLoraStepOverride(loras);
+}
+
+/** Match step overrides: highest active value per stream, with fixed recipes first. */
+export function loraSigmaShiftOverrides(loras: Pick<Lora, "videoSigmaShiftOverride" | "audioSigmaShiftOverride" | "samplingPreset">[]): SigmaShifts {
+  if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) return { videoSigmaShift: 12, audioSigmaShift: 2 };
+  const highest = (values: (number | undefined)[]) => values.filter(isSigmaShift).reduce<number | undefined>((result, value) => Math.max(result ?? 0, value), undefined);
+  return { videoSigmaShift: highest(loras.map((lora) => lora.videoSigmaShiftOverride)), audioSigmaShift: highest(loras.map((lora) => lora.audioSigmaShiftOverride)) };
 }

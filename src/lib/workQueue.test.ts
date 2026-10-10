@@ -186,12 +186,16 @@ it.each([undefined, 17])("freezes audio steps %s independently of video steps th
   const { queue, first } = setup();
   const item = submission(first);
   item.request.audioSteps = audioSteps;
+  item.request.videoSigmaShift = 8.5;
+  item.request.audioSigmaShift = 2.5;
   queue.enqueue(first, [item]);
   item.request.audioSteps = 99;
+  item.request.videoSigmaShift = 99;
+  item.request.audioSigmaShift = 99;
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
-  expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps });
-  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps });
-  expect(queue.getSnapshot()[0].settings).toMatchObject({ steps: 12, audioSteps });
+  expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps, videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ steps: 12, audioSteps, videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
+  expect(queue.getSnapshot()[0].settings).toMatchObject({ steps: 12, audioSteps, videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
   await finish(queue, queue.getSnapshot()[0].id);
 });
 

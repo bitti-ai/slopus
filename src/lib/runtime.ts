@@ -102,6 +102,8 @@ export interface SlopfabGenerationRequest {
   imageEdit?: { sourceRelativePath: string; edits: import("./imageEditing").ImageEditStep[] };
   steps: number;
   audioSteps?: number;
+  videoSigmaShift?: number;
+  audioSigmaShift?: number;
   latentUpscale?: boolean;
   seed: number;
   canvasWidth: number;

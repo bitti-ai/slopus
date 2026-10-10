@@ -12,11 +12,12 @@
  * in src-tauri/core/src/slopfab/config.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
+import { isSigmaShift, type SigmaShifts } from "./sampling";
 import { latentUpscalerPath } from "./upscalers";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { downloadableTemplateLoras, loadLoras, loraStepOverride, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
+import { downloadableTemplateLoras, loadLoras, loraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
 import { remoteWorkerSelected, selectedWorker, WORKERS_EVENT } from "./workers";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
@@ -71,7 +72,7 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
 
 export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
 
-export interface GeneratorTemplate {
+export interface GeneratorTemplate extends SigmaShifts {
   id: string;
   name: string;
   /** Stable model-family identifier, independent of template name and mode.
@@ -336,6 +337,8 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
     return [{ id, name, modelType, defaultSteps, attention, paths, sources,
+      ...(isSigmaShift(candidate.videoSigmaShift) ? { videoSigmaShift: candidate.videoSigmaShift } : {}),
+      ...(isSigmaShift(candidate.audioSigmaShift) ? { audioSigmaShift: candidate.audioSigmaShift } : {}),
       ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
       ...(candidate.additionalSafetensors !== undefined ? { additionalSafetensors } : {}),
       ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
@@ -511,7 +514,7 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts = defaultGeneratorTemplate()): ProviderSetting {
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
@@ -520,6 +523,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.schedule;
   delete options.stepOverride;
   delete options.samplingPreset;
+  for (const key of ["videoSigmaShift", "audioSigmaShift"] as const) {
+    delete options[key];
+    delete options[`${key}Override`];
+    if (isSigmaShift(shifts[key])) options[key] = shifts[key];
+  }
   delete options.generationMode;
   delete options.promptEmbedding;
   delete options.motionCache;
@@ -541,6 +549,9 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   }
   const loras = resolveTemplateLoras(selection, remote);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
+  const shiftOverrides = loraSigmaShiftOverrides(loras);
+  if (shiftOverrides.videoSigmaShift !== undefined) options.videoSigmaShiftOverride = shiftOverrides.videoSigmaShift;
+  if (shiftOverrides.audioSigmaShift !== undefined) options.audioSigmaShiftOverride = shiftOverrides.audioSigmaShift;
   const stepOverride = loraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
   if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) {
@@ -566,6 +577,27 @@ export function generationStepsForTemplate(steps: number, template?: Pick<Genera
   // download can still show its step count without throwing during render.
   const activeIds = new Set(template?.loras?.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
   return loraStepOverride(loadLoras().filter((lora) => activeIds.has(lora.id))) ?? steps;
+}
+
+export function sigmaShiftOverridesForTemplate(template?: Pick<GeneratorTemplate, "loras">): SigmaShifts {
+  const active = new Set(template?.loras?.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+  return loraSigmaShiftOverrides(loadLoras().filter((lora) => active.has(lora.id)));
+}
+
+export function generationSigmaShifts(shifts: { videoSigmaShift?: number | null; audioSigmaShift?: number | null }, template?: GeneratorTemplate): SigmaShifts {
+  const overrides = sigmaShiftOverridesForTemplate(template);
+  return { videoSigmaShift: overrides.videoSigmaShift ?? shifts.videoSigmaShift ?? template?.videoSigmaShift,
+    audioSigmaShift: overrides.audioSigmaShift ?? shifts.audioSigmaShift ?? template?.audioSigmaShift };
+}
+
+export function generationSigmaShiftsWithLoras(shifts: SigmaShifts, config: ProjectConfig): SigmaShifts {
+  const options = config.providerSettings.slopfab?.options;
+  const resolve = (key: keyof SigmaShifts) => {
+    const override = options?.[`${key}Override`];
+    const fallback = options?.[key];
+    return isSigmaShift(override) ? override : shifts[key] ?? (isSigmaShift(fallback) ? fallback : undefined);
+  };
+  return { videoSigmaShift: resolve("videoSigmaShift"), audioSigmaShift: resolve("audioSigmaShift") };
 }
 
 export function generationStepsWithLoras(steps: number, config: ProjectConfig): number {

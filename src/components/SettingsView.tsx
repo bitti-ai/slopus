@@ -1,3 +1,4 @@
+import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT, isSigmaShift } from "../lib/sampling";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { GeneratorSharing } from "./GeneratorSharing";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
@@ -440,7 +441,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -574,6 +575,20 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
         }} />
       </SettingsCard>
+    </SettingsGroup>
+
+    <SettingsGroup heading="Sampling">
+      {(["videoSigmaShift", "audioSigmaShift"] as const).map((key) => {
+        const label = `${key === "videoSigmaShift" ? "Video" : "Audio"} sigma shift`;
+        const fallback = key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
+        return <SettingsCard key={key} icon={<Steps20 />} header={label} description="Default for this generator. Scene values and active LoRA overrides take priority. Leave blank for the model default.">
+          <input className="text-field settings-field settings-field--number" aria-label={`Generator ${label.toLowerCase()}`} type="number" min={MIN_SIGMA_SHIFT} max={MAX_SIGMA_SHIFT} step={0.1}
+            placeholder={String(fallback)} value={selectedTemplate[key] ?? ""} onChange={(event) => {
+              const value = Number(event.target.value);
+              if (!event.target.value || isSigmaShift(value)) updateTemplate({ [key]: event.target.value ? value : undefined });
+            }} />
+        </SettingsCard>;
+      })}
     </SettingsGroup>
 
     <SettingsGroup heading="Performance">

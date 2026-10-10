@@ -1,3 +1,5 @@
+import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "../../lib/sampling";
+import { sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
 import { longShotPosition } from "../../lib/longShot";
@@ -279,7 +281,7 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = job.sceneType ?? "first-last-frame" }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
@@ -288,6 +290,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   folderPath?: string;
   scenes?: GenerationJob[];
   defaultSteps: number;
+  template?: GeneratorTemplate;
   effectiveSteps?: number;
   disabled: boolean;
   importAvailable: boolean;
@@ -506,6 +509,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ steps: value })}
           />
         </PropRow>
+        <SceneSigmaShift stream="video" job={job} template={template} disabled={disabled} onChange={onChange} />
         <PropRow label="Separate audio steps" htmlFor={`${id}-separate-audio-steps`} tooltip="Audio uses the video generation step count unless separate audio steps are enabled.">
           <ToggleSwitch id={`${id}-separate-audio-steps`} aria-label="Separate audio steps" checked={job.audioSteps != null} disabled={disabled}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
@@ -514,6 +518,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
             value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
         </PropRow>}
+        <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
         <PropRow label="Seed" htmlFor={`${id}-seed`} tooltip="-1 picks a random seed">
           <CommittedNumberInput
             id={`${id}-seed`}
@@ -617,4 +622,19 @@ function DanglingReferences({ dangling, referenceById }: { dangling: string[]; r
     title={dangling.length === 1 ? "A reference can’t be used" : `${dangling.length} references can’t be used`}
     message={`${dangling.map((id) => referenceById.get(id)?.name ?? "A deleted reference").join(", ")} ${dangling.length === 1 ? "is" : "are"} left out of the prompt. Swap ${dangling.length === 1 ? "it" : "each one"} for another reference or remove ${dangling.length === 1 ? "it" : "them"} from the line before generating.`}
   />;
+}
+
+function SceneSigmaShift({ stream, job, template, disabled, onChange }: {
+  stream: "video" | "audio"; job: GenerationJob; template?: GeneratorTemplate; disabled?: boolean;
+  onChange: (patch: Partial<GenerationJob>) => void;
+}) {
+  const id = useId();
+  const key = stream === "video" ? "videoSigmaShift" : "audioSigmaShift";
+  const override = sigmaShiftOverridesForTemplate(template)[key];
+  const fallback = stream === "audio" ? DEFAULT_AUDIO_SIGMA_SHIFT : template?.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
+  const label = `${stream === "video" ? "Video" : "Audio"} sigma shift`;
+  return <PropRow label={label} htmlFor={id} tooltip={override !== undefined ? "Set by active LoRAs. Edit the override in LoRA settings." : "Controls the distribution of denoising timesteps."}>
+    <CommittedNumberInput id={id} className="text-field" aria-label={label} minimum={MIN_SIGMA_SHIFT} maximum={MAX_SIGMA_SHIFT} step={0.1}
+      value={override ?? job[key] ?? template?.[key] ?? fallback} disabled={disabled || override !== undefined} onCommit={(value) => onChange({ [key]: value })} />
+  </PropRow>;
 }

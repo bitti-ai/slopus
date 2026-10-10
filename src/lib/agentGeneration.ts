@@ -40,7 +40,7 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
     ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first." : null)
     ?? templateSceneBlocker(job.sceneType ?? "first-last-frame", template) ?? sendBlocker(job, config.references);
   if (blocker) throw new Error(blocker);
-  const request = sceneGenerationRequest(job, config, session.record.folderPath, template.defaultSteps);
+  const request = sceneGenerationRequest(job, config, session.record.folderPath, template.defaultSteps, template);
   const [id] = queue.enqueue(session, [{ job, request, snapshot: sceneGenerationSnapshot(job, request) }], template);
   if (!id) throw new Error("This scene is already queued.");
   // Stop affects only the work this agent started. Encoding already in progress

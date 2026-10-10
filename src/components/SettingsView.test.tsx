@@ -344,6 +344,25 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("saves and clears independent LoRA sigma shift overrides", async () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" }));
+    fireEvent.change(screen.getByLabelText("LoRA video sigma shift override"), { target: { value: "8.5" } });
+    fireEvent.change(screen.getByLabelText("LoRA audio sigma shift override"), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loadLoras()[0]).toMatchObject({ videoSigmaShiftOverride: 8.5, audioSigmaShiftOverride: 2.5 });
+    fireEvent.click(screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" }));
+    expect((screen.getByLabelText("LoRA video sigma shift override") as HTMLInputElement).value).toBe("8.5");
+    fireEvent.change(screen.getByLabelText("LoRA video sigma shift override"), { target: { value: "0" } });
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("LoRA video sigma shift override"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(loadLoras()[0].videoSigmaShiftOverride).toBeUndefined();
+    expect(loadLoras()[0].audioSigmaShiftOverride).toBe(2.5);
+  });
+
   it("defaults icon generation to the sole available generator and remembers a separate selection", () => {
     const first = createGeneratorTemplate("Video"), second = createGeneratorTemplate("Icons");
     const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 9 };
@@ -372,6 +391,9 @@ describe("the settings screen", () => {
 
     fireEvent.change(screen.getByLabelText("Generator name"), { target: { value: "Fast draft" } });
     fireEvent.change(screen.getByLabelText("Generator default steps"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Generator video sigma shift"), { target: { value: "8.5" } });
+    fireEvent.change(screen.getByLabelText("Generator audio sigma shift"), { target: { value: "2.5" } });
+    expect(loadGeneratorTemplateSettings().templates.find((template) => template.name === "Fast draft")).toMatchObject({ videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
     expect(screen.getByRole("heading", { level: 1, name: "Fast draft" })).toBeTruthy();
     enterPath("Transformer weights", "D:\\Models\\draft.safetensors");
     fireEvent.click(screen.getByRole("button", { name: "Generators" }));

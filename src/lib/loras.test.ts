@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
 import { DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
-import { createGeneratorTemplate, engineProviderSetting, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
+import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
 beforeEach(() => localStorage.clear());
@@ -117,4 +117,31 @@ it("does not silently generate without an active missing adapter", () => {
   const template = createGeneratorTemplate();
   expect(() => engineProviderSetting(template.paths, undefined, "sage2", [{ loraId: TAOMATE_LORA.id, enabled: true, strength: 1 }])).toThrow("Download or locate LoRA TaoMate 3-Step");
   expect(engineProviderSetting(template.paths, undefined, "sage2", [{ loraId: TAOMATE_LORA.id, enabled: true, strength: 0 }]).options).not.toHaveProperty("loras");
+});
+
+it("persists sigma defaults and applies the highest active override per stream before scene values", () => {
+  saveLoras([
+    { id: "a", name: "A", path: "D:/a.safetensors", videoSigmaShiftOverride: 6, audioSigmaShiftOverride: 2 },
+    { id: "b", name: "B", path: "D:/b.safetensors", videoSigmaShiftOverride: 8.5 },
+    { id: "off", name: "Off", path: "", audioSigmaShiftOverride: 50 },
+  ]);
+  const template = { ...createGeneratorTemplate(), videoSigmaShift: 10, audioSigmaShift: 3.5,
+    loras: [{ loraId: "a", enabled: true, strength: 1 }, { loraId: "b", enabled: true, strength: -0.5 },
+      { loraId: "off", enabled: false, strength: 1 }] };
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  const restored = loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)!;
+  expect(restored).toMatchObject({ videoSigmaShift: 10, audioSigmaShift: 3.5 });
+  expect(generationSigmaShifts({ videoSigmaShift: 12, audioSigmaShift: 5 }, restored)).toEqual({ videoSigmaShift: 8.5, audioSigmaShift: 2 });
+  template.loras = template.loras.map((entry) => ({ ...entry, strength: 0 }));
+  expect(generationSigmaShifts({ videoSigmaShift: 7 }, template)).toEqual({ videoSigmaShift: 7, audioSigmaShift: 3.5 });
+  expect(generationSigmaShifts({}, { ...template, loras: [{ loraId: DMAD_LORA.id, enabled: true, strength: 1 }] })).toEqual({ videoSigmaShift: 12, audioSigmaShift: 2 });
+  const options = engineProviderSetting(restored.paths, undefined, "sage2", restored.loras, "prompt", [], false, {}, restored).options;
+  expect(options).toMatchObject({ videoSigmaShift: 10, audioSigmaShift: 3.5, videoSigmaShiftOverride: 8.5, audioSigmaShiftOverride: 2 });
+  const cleared = engineProviderSetting(restored.paths, { enabled: true, model: null, options }, "sage2", [], "prompt", [], false, {}, {}).options;
+  for (const key of ["videoSigmaShift", "audioSigmaShift", "videoSigmaShiftOverride", "audioSigmaShiftOverride"]) expect(cleared).not.toHaveProperty(key);
+});
+
+it.each([0, -1, Infinity, NaN, 1e39, 1e-50])("rejects invalid LoRA sigma shift %s", (shift) => {
+  expect(() => saveLoras([{ id: "bad", name: "Bad", path: "D:/bad.safetensors", videoSigmaShiftOverride: shift }])).toThrow("Sigma shift");
+  expect(() => saveLoras([{ id: "bad", name: "Bad", path: "D:/bad.safetensors", audioSigmaShiftOverride: shift }])).toThrow("Sigma shift");
 });
