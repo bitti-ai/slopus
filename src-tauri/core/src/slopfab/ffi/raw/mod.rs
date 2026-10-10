@@ -468,7 +468,7 @@ impl Api {
         self.error(unsafe { set(r, pixels.as_ptr(), pixels.len(), width, height, width as usize * 3, bounds[0], bounds[1], bounds[2], bounds[3], strength, feather) })
     }
     pub fn set_image_edit_invert_mask(&self, r: *mut Request) -> Result<(), String> {
-        let set = self.set_image_edit_invert_mask.ok_or("Seamless Extend requires SlopFab API 1.20 or later. Update the generation runtime.")?;
+        let set = self.set_image_edit_invert_mask.ok_or("Seamless Zoom requires SlopFab API 1.20 or later. Update the generation runtime.")?;
         self.error(unsafe { set(r, 1) })
     }
     pub fn set_save_latents(&self, r: *mut Request, path: &Path) -> Result<(), String> {

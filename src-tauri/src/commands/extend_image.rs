@@ -38,7 +38,7 @@ fn scaled_layout(
     output: ExtendSize,
 ) -> Result<(ExtendSize, ExtendBounds), String> {
     if width == 0 || height == 0 || width > 8192 || height > 8192 {
-        return Err("Invalid Extend source dimensions.".into());
+        return Err("Invalid Zoom source dimensions.".into());
     }
     let workspace = source_dimensions(width, height);
     bounds.validate(workspace.width, workspace.height)?;
@@ -48,7 +48,7 @@ fn scaled_layout(
         || bounds.height > MAX_GENERATION_EDGE
         || u64::from(bounds.width) * u64::from(bounds.height) > MAX_GENERATION_PIXELS
     {
-        return Err("Extend box dimensions must be multiples of 32 within the maximum generation resolution.".into());
+        return Err("Zoom box dimensions must be multiples of 32 within the maximum generation resolution.".into());
     }
     if output.width == 0
         || output.height == 0
@@ -59,7 +59,7 @@ fn scaled_layout(
         || u64::from(output.width) * u64::from(output.height) > MAX_GENERATION_PIXELS
     {
         return Err(
-            "Extend output must be aligned to 32 pixels within the maximum generation resolution."
+            "Zoom output must be aligned to 32 pixels within the maximum generation resolution."
                 .into(),
         );
     }
@@ -109,12 +109,12 @@ impl ExtendBounds {
             || self.x.unsigned_abs() > 8192
             || self.y.unsigned_abs() > 8192
         {
-            return Err("Invalid Extend image dimensions.".into());
+            return Err("Invalid Zoom image dimensions.".into());
         }
         let right = self.x + self.width as i32;
         let bottom = self.y + self.height as i32;
         if self.x >= width as i32 || self.y >= height as i32 || right <= 0 || bottom <= 0 {
-            return Err("The Extend box must overlap the original image.".into());
+            return Err("The Zoom box must overlap the original image.".into());
         }
         Ok(())
     }
@@ -168,13 +168,13 @@ pub(crate) fn prepare_extend_image(
         .assets
         .iter()
         .find(|asset| asset.id == source_id && asset.kind == "image")
-        .ok_or("The Extend source image no longer exists.")?;
+        .ok_or("The Zoom source image no longer exists.")?;
     let source_path = if let Some(path) = &asset.relative_path {
         root.existing(path)?
     } else if let Some(path) = &asset.source_path {
         std::path::PathBuf::from(path)
     } else {
-        return Err("The Extend source has no saved file.".into());
+        return Err("The Zoom source has no saved file.".into());
     };
     let (width, height) = image::image_dimensions(&source_path).map_err(|e| e.to_string())?;
     let selection = bounds;
@@ -385,7 +385,7 @@ pub(crate) fn save_extended_image(
         crate::rendered::summary(&job_id).ok_or("The extended image is no longer in memory.")?;
     if summary.frame_count != 1 || summary.width != bounds.width || summary.height != bounds.height
     {
-        return Err("The generated image does not match the Extend box.".into());
+        return Err("The generated image does not match the Zoom box.".into());
     }
     let (_, pixels) = crate::rendered::take_still(&job_id)?;
     let mut result = RgbaImage::from_raw(bounds.width, bounds.height, pixels)

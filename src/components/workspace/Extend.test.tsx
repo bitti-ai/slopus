@@ -15,27 +15,27 @@ import type { ExtendBounds } from "../../lib/extendImage";
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const source = { id: "source", name: "Source", kind: "image" as const, relativePath: "media/source.png", mimeType: "image/png", width: 400, height: 300, createdAt: "2026-10-04T00:00:00Z" };
 
-it("opens Extend from Template with box controls and returns to image settings", () => {
+it("opens Zoom from Template with box controls and returns to image settings", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   const config = parseProjectConfig(fixture); config.assets = [source]; config.imageScene!.outputAssetId = source.id;
   render(<ImageEditor config={config} folderPath="D:/Images" onChange={vi.fn()} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  expect(screen.getByRole("menuitem", { name: "Extend" })).toBeEnabled();
+  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeEnabled();
   expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeEnabled();
-  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
-  expect(screen.getByLabelText("Extend bounding box tool")).toBeInTheDocument();
-  expect(screen.getByLabelText("Extend width")).toHaveValue(608);
-  expect(screen.getByLabelText("Extend resolution")).toBeEnabled();
-  expect(screen.getByLabelText("Extend prompt")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Zoom" }));
+  expect(screen.getByLabelText("Zoom bounding box tool")).toBeInTheDocument();
+  expect(screen.getByLabelText("Zoom width")).toHaveValue(608);
+  expect(screen.getByLabelText("Zoom resolution")).toBeEnabled();
+  expect(screen.getByLabelText("Zoom prompt")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close template settings" }));
-  expect(screen.queryByLabelText("Extend bounding box tool")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Zoom bounding box tool")).not.toBeInTheDocument();
 });
 
 it("executes an optional-prompt extension at the changed resolution without changing video settings", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(settings, "templateUsable").mockReturnValue(true);
-  const generator = settings.createGeneratorTemplate("Extend generator");
+  const generator = settings.createGeneratorTemplate("Zoom generator");
   settings.saveGeneratorTemplateSettings({ templates: [generator], defaultTemplateId: generator.id });
   const initial = parseProjectConfig(fixture);
   initial.assets = [source]; initial.imageScene!.outputAssetId = source.id;
@@ -47,8 +47,8 @@ it("executes an optional-prompt extension at the changed resolution without chan
   }
   render(<Harness />);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
-  choose("Extend resolution", "1088p");
+  fireEvent.click(screen.getByRole("menuitem", { name: "Zoom" }));
+  choose("Zoom resolution", "1088p");
   expect(latest.imageSettings?.resolution).toBe("1088p");
   expect(latest.settings).toEqual(initial.settings);
   fireEvent.click(screen.getByRole("button", { name: "Execute" }));
@@ -64,7 +64,7 @@ it("moves, resizes, redraws and cancels box drags in original pixel coordinates"
     return <ExtendCanvas source={source} folderPath="D:/Images" bounds={bounds} onChange={setBounds} disabled={false} />;
   }
   render(<Harness />);
-  const canvas = screen.getByLabelText("Extend bounding box tool");
+  const canvas = screen.getByLabelText("Zoom bounding box tool");
   const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp" | "pointerCancel", target: Element, x: number, y: number) => {
     const view = canvas.getAttribute("viewBox")!.split(" ").map(Number);
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: view[2], height: view[3] } as DOMRect);
@@ -72,7 +72,7 @@ it("moves, resizes, redraws and cancels box drags in original pixel coordinates"
     Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 1 }, clientX: { value: x - view[0] }, clientY: { value: y - view[1] } });
     fireEvent(target, event);
   };
-  pointer("pointerDown", screen.getByRole("button", { name: "Move Extend box" }), 0, 0);
+  pointer("pointerDown", screen.getByRole("button", { name: "Move Zoom box" }), 0, 0);
   pointer("pointerMove", canvas, 20, 10); pointer("pointerUp", canvas, 20, 10);
   expect(latest).toEqual({ x: -76, y: -54, width: 576, height: 448 });
   pointer("pointerDown", canvas.querySelector('[data-handle="nw"]')!, -76, -54);
@@ -99,7 +99,7 @@ it.each([0.5, 2])("snaps within six screen pixels at %sx scale without trapping 
     return <ExtendCanvas source={{ ...source, width: 384, height: 288 }} folderPath="D:/Images" bounds={bounds} onChange={setBounds} disabled={false} />;
   }
   render(<Harness />);
-  const canvas = screen.getByLabelText("Extend bounding box tool");
+  const canvas = screen.getByLabelText("Zoom bounding box tool");
   const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp" | "pointerCancel", target: Element, x: number, y: number) => {
     const view = canvas.getAttribute("viewBox")!.split(" ").map(Number);
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: view[2] * scale, height: view[3] * scale } as DOMRect);
@@ -126,7 +126,7 @@ it.each([0.5, 2])("snaps within six screen pixels at %sx scale without trapping 
   expect(latest).toEqual(original);
 
   // Moving snaps by translation, never by stretching the box.
-  pointer("pointerDown", screen.getByRole("button", { name: "Move Extend box" }), 0, 0);
+  pointer("pointerDown", screen.getByRole("button", { name: "Move Zoom box" }), 0, 0);
   pointer("pointerMove", canvas, 96 - 4 / scale, 64 + 4 / scale);
   expect(latest).toEqual({ ...original, x: 0, y: 0 });
   pointer("pointerCancel", canvas, 96, 64);
@@ -136,7 +136,7 @@ it.each([0.5, 2])("snaps within six screen pixels at %sx scale without trapping 
   pointer("pointerMove", canvas, 384 + 4 / scale, 288 + 4 / scale);
   expect(latest).toEqual({ x: 0, y: 0, width: 384, height: 288 });
   pointer("pointerUp", canvas, 384, 288);
-  fireEvent.keyDown(screen.getByRole("button", { name: "Move Extend box" }), { key: "ArrowLeft" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Move Zoom box" }), { key: "ArrowLeft" });
   expect(latest).toEqual({ x: -1, y: 0, width: 384, height: 288 });
 });
 
@@ -145,7 +145,7 @@ it("executes a contained selection as crop regeneration", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(settings, "templateUsable").mockReturnValue(true);
-  const generator = settings.createGeneratorTemplate("Extend generator");
+  const generator = settings.createGeneratorTemplate("Zoom generator");
   settings.saveGeneratorTemplateSettings({ templates: [generator], defaultTemplateId: generator.id });
   const initial = parseProjectConfig(fixture);
   initial.assets = [source]; initial.imageScene!.outputAssetId = source.id;
@@ -156,9 +156,9 @@ it("executes a contained selection as crop regeneration", () => {
   }
   render(<Harness />);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Zoom" }));
   for (const [field, value] of Object.entries({ x: 32, y: 32, width: 128, height: 96 })) {
-    fireEvent.change(screen.getByLabelText(`Extend ${field}`), { target: { value: String(value) } });
+    fireEvent.change(screen.getByLabelText(`Zoom ${field}`), { target: { value: String(value) } });
   }
   expect(screen.getByText(/Regenerate selection:/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Execute" })).toBeEnabled();

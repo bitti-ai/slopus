@@ -10,7 +10,7 @@ export const EXTEND_SEAM = 16;
 const MAX_GENERATION_SIZE = outputDimensions("2048p", "16:9");
 export const EXTEND_MAX_EDGE = Math.max(MAX_GENERATION_SIZE.width, MAX_GENERATION_SIZE.height);
 export const EXTEND_MAX_PIXELS = MAX_GENERATION_SIZE.width * MAX_GENERATION_SIZE.height;
-/** Selection bounds in the Extend workspace; negative coordinates extend left/up. */
+/** Selection bounds in the Zoom workspace; negative coordinates extend left/up. */
 export interface ExtendBounds { x: number; y: number; width: number; height: number }
 export interface ExtendOptions { bounds: ExtendBounds; prompt: string; steps: number; seed: number }
 export function extendSourceDimensions(width: number, height: number) {
@@ -45,7 +45,7 @@ export function extendOutputDimensions(config: ProjectConfig, bounds: ExtendBoun
   const scale = Math.min(Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
   const width = Math.floor(bounds.width * scale / EXTEND_GRID) * EXTEND_GRID;
   const height = Math.floor(bounds.height * scale / EXTEND_GRID) * EXTEND_GRID;
-  if (width < EXTEND_GRID || height < EXTEND_GRID) throw new Error("The Extend box is too narrow for a 32-pixel generation grid at this resolution.");
+  if (width < EXTEND_GRID || height < EXTEND_GRID) throw new Error("The Zoom box is too narrow for a 32-pixel generation grid at this resolution.");
   return { width, height };
 }
 
@@ -100,7 +100,7 @@ export function extendContext(preserved: ExtendBounds, output: { width: number; 
     width: preserved.width - left - right, height: preserved.height - top - bottom };
   if (Math.ceil(context.x / EXTEND_GRID) >= Math.floor((context.x + context.width) / EXTEND_GRID)
     || Math.ceil(context.y / EXTEND_GRID) >= Math.floor((context.y + context.height) / EXTEND_GRID)) {
-    throw new Error("Keep a larger area of the original image inside the Extend box, or increase the generation resolution.");
+    throw new Error("Keep a larger area of the original image inside the Zoom box, or increase the generation resolution.");
   }
   return context;
 }

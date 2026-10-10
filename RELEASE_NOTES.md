@@ -4,7 +4,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## What's new
 
-- **Extend image template restored.** Draw or resize the output box, choose a generation resolution, and optionally describe the new surroundings. Output follows the box's aspect ratio and selected pixel budget, resizing the source to fit. Boxes inside the source regenerate the selected crop with refined detail at the target resolution. Positioned source conditioning keeps the scene anchored, while generated edges blend into the original with seam tone matching.
+- **Zoom image template (formerly Extend).** Draw or resize the output box, choose a generation resolution, and optionally describe the new surroundings. Output follows the box's aspect ratio and selected pixel budget, resizing the source to fit. Boxes inside the source regenerate the selected crop with refined detail at the target resolution. Positioned source conditioning keeps the scene anchored, while generated edges blend into the original with seam tone matching.
 - **SeedVR2 upscaling for images and videos.** Restore exports at the selected output size using SeedVR2 3B FP16 and its VAE. Run on the local NVIDIA CUDA GPU or a selected CUDA LAN worker. Workers download missing standard weights or receive your selected local weight files.
 - **Real-ESRGAN upscaling for images and videos.** Use RealESRGAN x4plus during export, with the result resized to your chosen output dimensions. CUDA and Vulkan are supported. Choose None to export without an upscaler.
 - **Other weights settings.** Settings → Generator now includes downloads and optional local file paths for Real-ESRGAN, SeedVR2 and the MiniMax H3 latent upscaler. Upscaler downloads share the generator and LoRA download queue, with progress and cancellation in Work Queue.
@@ -24,7 +24,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## Fixes and improvements
 
-- Extend blends color locally along each edge and smoothly around corners, reducing visible rectangular transitions without spreading high-contrast details into halos.
+- Zoom blends color locally along each edge and smoothly around corners, reducing visible rectangular transitions without spreading high-contrast details into halos.
 - Generate all includes the final scene in an even-length Long Shot sequence, continuing from the preceding scene and preserving earlier joined video and audio. Four scenes generate in 1 → 3 → 2 → 4 order; adding another scene turns the final continuation into a bridge on its next generation.
 - Long Shot timeline playback keeps the same video player running across adjacent scenes in a joined generation, avoiding a playback restart at bridge boundaries.
 - Reduced memory retained between generations by releasing consumed SlopFab samples and handles, completed queue snapshots, encoder buffers on errors, and abandoned LAN generation results.

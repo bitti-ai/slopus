@@ -66,7 +66,7 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
       <div className="extend-source" style={{ left: `${-camera.x / camera.width * 100}%`, top: `${-camera.y / camera.height * 100}%`, width: `${width / camera.width * 100}%`, height: `${height / camera.height * 100}%` }}>
         <ReferenceImage folderPath={folderPath} relativePath={source.relativePath} sourcePath={source.sourcePath} alt={source.name} />
       </div>
-      <svg className="extend-overlay" viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} aria-label="Extend bounding box tool" aria-disabled={disabled}
+      <svg className="extend-overlay" viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} aria-label="Zoom bounding box tool" aria-disabled={disabled}
         onPointerDown={(event) => {
           if (disabled || event.button !== 0) return;
           let at = point(event); if (!Number.isFinite(at.x + at.y)) return;
@@ -108,7 +108,7 @@ export function ExtendCanvas({ source, folderPath, bounds, onChange, disabled }:
         <path className="extend-excluded" d={`M0,0h${width}v${height}h${-width}Z` + hole} fillRule="evenodd" pointerEvents="none" />
         <path className="extend-generated" d={outline + hole} fillRule="evenodd" pointerEvents="none" />
         <rect className="extend-original" x="0" y="0" width={width} height={height} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-        <rect className="extend-box" {...box} data-handle="move" vectorEffect="non-scaling-stroke" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move Extend box"
+        <rect className="extend-box" {...box} data-handle="move" vectorEffect="non-scaling-stroke" role="button" tabIndex={disabled ? -1 : 0} aria-label="Move Zoom box"
           onKeyDown={(event) => {
             if (disabled || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
             event.preventDefault(); const step = event.shiftKey ? 10 : 1;

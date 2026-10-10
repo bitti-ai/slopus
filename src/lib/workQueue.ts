@@ -304,8 +304,8 @@ export class WorkQueue {
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
-    if (!isTauri()) throw new Error("Extend requires the desktop app.");
-    if (template.mode === "animate") throw new Error("Choose a prompt generator for Extend.");
+    if (!isTauri()) throw new Error("Zoom requires the desktop app.");
+    if (template.mode === "animate") throw new Error("Choose a prompt generator for Zoom.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
     if (!source || (!source.relativePath && !source.sourcePath)) throw new Error("Select a saved image to extend.");
@@ -337,7 +337,7 @@ export class WorkQueue {
       imageGeneration,
       session, sceneId: current.imageScene?.nodes[0].id ?? "image-root", config, snapshot: JSON.stringify(current.imageScene), request, submitted: false, cancelled: false, done, finish });
     this.items = [...this.items, { id, kind: "image", imageAssetId: sourceId, imageDraftId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
-      sceneId: this.work.get(id)!.sceneId, title: `${regenerate ? "Regenerate" : "Extend"} · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+      sceneId: this.work.get(id)!.sceneId, title: `Zoom · ${source.name}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
       detail: regenerate ? "Waiting to regenerate selection" : "Waiting to extend image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight } }];
     session.update((current) => createTemplateImageDraft(current, id, resultName, imageGeneration, compiled.layout.output));

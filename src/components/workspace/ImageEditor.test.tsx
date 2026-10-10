@@ -36,7 +36,7 @@ it.each([
   const initial = parseProjectConfig(fixture);
   const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
   initial.assets = [source];
-  const name = kind === "extend" ? "Extend" : "Character sheet";
+  const name = kind === "extend" ? "Zoom" : "Character sheet";
   const generation = { ...imageGenerationSnapshot({ ...initial, imageScene: { ...createImageScene("Snowy forest"), steps: 28, seed: -1 } }, "Compiled prompt", "removed-generator"), usedSeed: 1234,
     template: { sourceId: source.id, sourceName: source.name, generatorName: "Recorded generator", prompt: "Snowy forest", steps: 28, seed: -1,
       ...(kind === "extend" ? { kind, bounds: { x: -64, y: -32, width: 768, height: 640 } } : { kind, height: 1024 }) } };
@@ -57,10 +57,10 @@ it.each([
     expect(promptValue(panel.getByLabelText(`${name} prompt`))).toBe("Snowy forest");
     expect(panel.getByRole("button", { name: "Executing…" })).toBeDisabled();
     if (kind === "extend") {
-      expect(panel.getByLabelText("Extend x")).toHaveValue(-64);
-      expect(panel.getByLabelText("Extend y")).toHaveValue(-32);
-      expect(panel.getByLabelText("Extend width")).toHaveValue(768);
-      expect(panel.getByLabelText("Extend height")).toHaveValue(640);
+      expect(panel.getByLabelText("Zoom x")).toHaveValue(-64);
+      expect(panel.getByLabelText("Zoom y")).toHaveValue(-32);
+      expect(panel.getByLabelText("Zoom width")).toHaveValue(768);
+      expect(panel.getByLabelText("Zoom height")).toHaveValue(640);
     } else expect(comboValue(panel.getByLabelText("Character sheet resolution"))).toBe("1024");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("progressbar", { name: "Image generation progress" })).toBeInTheDocument();
@@ -95,14 +95,14 @@ it.each(["extend", "character-sheet"] as const)("returns from %s settings to nor
   const work = { id: "job", imageAssetId: "source", imageDraftId: "result", status: "generating", progress: 0.25, detail: "Generating template" } as WorkItem;
   const props = { folderPath: "D:/Images", onChange: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn() };
   const { rerender } = render(<ImageEditor {...props} config={pending} workItems={[work]} />);
-  expect(screen.getByRole("complementary", { name: kind === "extend" ? "Extend settings" : "Character sheet settings" })).toBeInTheDocument();
+  expect(screen.getByRole("complementary", { name: kind === "extend" ? "Zoom settings" : "Character sheet settings" })).toBeInTheDocument();
   const result = { ...source, id: "result", name: "Result", relativePath: "media/result.png" };
   const completed = completeImageDraft(pending, result.id, { ...result, imageGeneration: { ...generation, scene: createImageEditScene(result, generation.scene) } });
   rerender(<ImageEditor {...props} config={completed} workItems={[{ ...work, status: "completed", progress: 1 }]} />);
   expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
   expect(screen.getByLabelText("Edit prompt")).toBeInTheDocument();
   expect(screen.getByLabelText("Used seed")).toHaveValue("42");
-  expect(screen.queryByRole("complementary", { name: /^(Extend|Character sheet) settings$/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("complementary", { name: /^(Zoom|Character sheet) settings$/ })).not.toBeInTheDocument();
 });
 
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */

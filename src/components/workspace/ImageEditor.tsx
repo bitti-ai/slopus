@@ -161,7 +161,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   let extendSize: { width: number; height: number } | null = null;
   if (extendMode && extendOptions && output?.width && output.height) {
     try { extendSize = extendOutputDimensions(config, extendOptions.bounds); }
-    catch { /* Invalid bounds are explained in Extend settings. */ }
+    catch { /* Invalid bounds are explained in Zoom settings. */ }
   }
   const images = config.assets.filter((asset) => asset.kind === "image");
   const menuImage = images.find((asset) => asset.id === imageMenu?.id);
@@ -542,7 +542,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         />
       </div>
       <div className="image-tools__center">
-        {extendMode ? <span className="extend-tool-active"><Boxes16Filled aria-hidden="true" /> Extend box</span> : <>
+        {extendMode ? <span className="extend-tool-active"><Boxes16Filled aria-hidden="true" /> Zoom box</span> : <>
         <div className="image-tools__group" role="radiogroup" aria-label="Canvas tool" onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault();
@@ -584,7 +584,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           disabled={!output || (!output.relativePath && !output.sourcePath)}
           onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
             onSelect: () => { setExtendSourceId(null); setTemplateSourceId(output!.id); },
-          }, { label: "Extend", icon: <Boxes16 />, disabled: !output?.width || !output?.height || Boolean(active),
+          }, { label: "Zoom", icon: <Boxes16 />, disabled: !output?.width || !output?.height || Boolean(active),
             onSelect: () => {
               setTemplateSourceId(null); setExtendSourceId(output!.id);
               setExtendOptions({ bounds: initialExtendBounds(output!.width!, output!.height!), prompt: "", steps: template?.defaultSteps ?? 20, seed: -1 });
@@ -678,7 +678,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Extend: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Extend" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
