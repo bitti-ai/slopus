@@ -391,7 +391,11 @@ mod tests {
                 "dllPath".into(),
                 ProviderOption::String(
                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../lib/slopfab/slopfab.dll")
+                        .join(if cfg!(windows) {
+                            "../lib/slopfab/slopfab.dll"
+                        } else {
+                            "../lib/slopfab/libslopfab.so"
+                        })
                         .to_string_lossy()
                         .into_owned(),
                 ),

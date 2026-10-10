@@ -147,6 +147,20 @@ fn outpainting_preserves_one_box_in_preview_execution_and_worker_requests() {
         value["imageEdit"]["edits"][0].as_object_mut().unwrap().extend(change.as_object().unwrap().clone());
         assert!(validate_generation_controls(&serde_json::from_value(value).unwrap()).is_err());
     }
+    // The restored template supplies a source interior with complete 32px
+    // patches. Both backend plans must include its positioned keyframe rows.
+    let mut positioned = roundtrip.clone();
+    positioned.canvas_width = 416;
+    positioned.canvas_height = 416;
+    positioned.image_edit_pixels = Some(std::sync::Arc::new(vec![127; 416 * 416 * 3]));
+    let step = &mut positioned.image_edit.as_mut().unwrap().edits[0];
+    step.x = 85; step.y = 85; step.width = 245; step.height = 245;
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &positioned, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+        let plan = api.resolve(&handle).unwrap();
+        assert_eq!(plan.sequence_rows_without_text, 13 * 13 + 7 * 7);
+    }
     let mut invalid = request.clone();
     let edits = &mut invalid.image_edit.as_mut().unwrap().edits;
     edits.push(edits[0].clone());

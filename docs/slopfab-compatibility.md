@@ -130,15 +130,19 @@ the interior and original alpha remain exact. The prompt is optional and uses
 the runtime's `Source scene` context without zoom-out instructions or duplicate
 reference pictures. This adapts the edge handling in
 [ComfyUI-H3VideoOutpaint](https://github.com/TwoAbove/ComfyUI-H3VideoOutpaint)
-to single-image generation; it does not add video windows or positioned FL2VA
-keyframe rows to the runtime.
+to single-image generation, including a positioned keyframe of the pinned
+source patches. SlopFab 1.27.1 reuses the source VAE rows at their target spatial
+coordinates and time on CUDA and Vulkan. This gives the denoiser a spatial
+anchor as well as source latent locking and Qwen visual context, without
+resizing a second copy of the scene. Video windowing is not needed for stills.
 
 The drawn box sets the aspect ratio. The selected image resolution and aspect
 preset set the pixel budget, rounded down to the 32-pixel grid and bounded by
 the maximum generation dimensions. The source scales into that output, so a
 larger selection reduces its footprint unless the resolution also increases.
 Preparation, preview, generation and final PNG use the same mapped geometry.
-No runtime or worker protocol change is required.
+The Windows and Linux bundles include SlopFab commit `e3ab3be` (1.27.1) with FFmpeg disabled; update LAN
+workers alongside the app. The request format and worker protocol are unchanged.
 
 The bundled Windows and Linux runtimes come from SlopFab commit `b7486be`,
 built with `SLOPFAB_WITH_FFMPEG=OFF`. The additive

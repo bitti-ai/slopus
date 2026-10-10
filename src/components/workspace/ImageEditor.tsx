@@ -160,7 +160,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const templateSource = runningTemplate && config.assets.find((asset) => asset.id === runningTemplate.sourceId);
   let extendSize: { width: number; height: number } | null = null;
   if (extendMode && extendOptions && output?.width && output.height) {
-    try { extendSize = extendOutputDimensions(config, { width: output.width, height: output.height }, extendOptions.bounds); }
+    try { extendSize = extendOutputDimensions(config, extendOptions.bounds); }
     catch { /* Invalid bounds are explained in Extend settings. */ }
   }
   const images = config.assets.filter((asset) => asset.kind === "image");

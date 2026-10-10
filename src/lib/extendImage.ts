@@ -39,7 +39,7 @@ export function initialExtendBounds(width: number, height: number): ExtendBounds
   return { ...box, x: Math.round((source.width - box.width) / 2), y: Math.round((source.height - box.height) / 2) };
 }
 
-export function extendOutputDimensions(config: ProjectConfig, _source: { width: number; height: number }, bounds: ExtendBounds) {
+export function extendOutputDimensions(config: ProjectConfig, bounds: ExtendBounds) {
   const selected = outputDimensions(imageSettings(config).resolution, imageSettings(config).aspectRatio);
   const pixelBudget = Math.min(selected.width * selected.height, EXTEND_MAX_PIXELS);
   const scale = Math.min(Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
@@ -54,7 +54,7 @@ export function extendLayout(config: ProjectConfig, source: { width: number; hei
   extendRegions(workspace, bounds);
   if (bounds.width % EXTEND_GRID || bounds.height % EXTEND_GRID || bounds.width > EXTEND_MAX_EDGE || bounds.height > EXTEND_MAX_EDGE
     || bounds.width * bounds.height > EXTEND_MAX_PIXELS) throw new Error("Use box dimensions in multiples of 32 within the maximum generation resolution.");
-  const output = extendOutputDimensions(config, source, bounds);
+  const output = extendOutputDimensions(config, bounds);
   const scale = Math.min(output.width / bounds.width, output.height / bounds.height);
   // A uniform scale preserves the source aspect ratio. Grid rounding adds a
   // little generated space instead of stretching the original to fit.
@@ -93,8 +93,8 @@ export function extendContext(preserved: ExtendBounds, output: { width: number; 
   const bottom = preserved.y + preserved.height < output.height ? EXTEND_SEAM : 0;
   const context = { x: preserved.x + left, y: preserved.y + top,
     width: preserved.width - left - right, height: preserved.height - top - bottom };
-  if (Math.ceil(context.x / 16) >= Math.floor((context.x + context.width) / 16)
-    || Math.ceil(context.y / 16) >= Math.floor((context.y + context.height) / 16)) {
+  if (Math.ceil(context.x / EXTEND_GRID) >= Math.floor((context.x + context.width) / EXTEND_GRID)
+    || Math.ceil(context.y / EXTEND_GRID) >= Math.floor((context.y + context.height) / EXTEND_GRID)) {
     throw new Error("Keep a larger area of the original image inside the Extend box, or increase the generation resolution.");
   }
   return context;
