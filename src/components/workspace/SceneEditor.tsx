@@ -279,6 +279,19 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "bridge", label: "Bridge" },
 ];
 
+const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
+  prompt: "Generate video from shot descriptions and optional references, without fixed start or last frames.",
+  "first-last-frame": "Generate video guided by optional start and last images, with shot descriptions controlling the action.",
+  backdrop: "Generate subjects and action against a solid green, blue, black or white background for keying.",
+  "long-shot": "Build a longer continuous sequence by generating clips and connecting them. Generate all handles the required order.",
+  continue: "Continue a previously generated scene from its saved beginning or ending, with adjustable overlap.",
+  animate: "Animate a repainted frame using a reference video's motion. Requires an Animate generator; output is limited to 14.375 seconds.",
+  pose: "Use a reference video's body poses, movement and timing while prompts and references define the subject and setting.",
+  "character-replace": "Replace a character in a video while retaining the action and setting. Open each shot to choose its source video and new character.",
+  extend: "Generate a new segment continuing from the end of a selected video, guided by shot descriptions.",
+  bridge: "Generate a connecting segment between the end of one selected video and the beginning of another.",
+};
+
 /** Scene-wide render controls, the look the description opens with (base guide
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
@@ -331,7 +344,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
       <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label}>
-        <PropRow label="Scene type" htmlFor={`${id}-type`} tooltip={characterReplace ? "Open a shot to choose its source video and new character." : animate ? "Animate output is limited to 14.375 seconds; longer scenes are shortened to fit." : undefined}>
+        <PropRow label="Scene type" htmlFor={`${id}-type`} tooltip={SCENE_TYPE_DESCRIPTIONS[sceneType]}>
           <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES}
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
