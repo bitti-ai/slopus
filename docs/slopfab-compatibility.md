@@ -121,6 +121,25 @@ cache and progress/cancellation commands; paths remain machine-local.
 
 ## API 1.20: single-pass image outpainting
 
+The restored image Extend template uses the existing API with a 16-pixel
+inset on each source edge facing generated space. This frees the VAE boundary
+row while keeping the source interior pinned. Canvas edges without new space
+are not inset. Slopus tone-matches generated bands using opaque source seam
+samples and composites the source with a smoothstep fade over those 16 pixels;
+the interior and original alpha remain exact. The prompt is optional and uses
+the runtime's `Source scene` context without zoom-out instructions or duplicate
+reference pictures. This adapts the edge handling in
+[ComfyUI-H3VideoOutpaint](https://github.com/TwoAbove/ComfyUI-H3VideoOutpaint)
+to single-image generation; it does not add video windows or positioned FL2VA
+keyframe rows to the runtime.
+
+The drawn box sets the aspect ratio. The selected image resolution and aspect
+preset set the pixel budget, rounded down to the 32-pixel grid and bounded by
+the maximum generation dimensions. The source scales into that output, so a
+larger selection reduces its footprint unless the resolution also increases.
+Preparation, preview, generation and final PNG use the same mapped geometry.
+No runtime or worker protocol change is required.
+
 The bundled Windows and Linux runtimes come from SlopFab commit `b7486be`,
 built with `SLOPFAB_WITH_FFMPEG=OFF`. The additive
 `slopfab_request_set_image_edit_invert_mask` setter makes an image-edit box

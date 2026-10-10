@@ -5,6 +5,7 @@ import { outputDimensions } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
 
 export const EXTEND_GRID = 32;
+export const EXTEND_SEAM = 16;
 // Largest current generation preset (2048p landscape), also usable in portrait.
 const MAX_GENERATION_SIZE = outputDimensions("2048p", "16:9");
 export const EXTEND_MAX_EDGE = Math.max(MAX_GENERATION_SIZE.width, MAX_GENERATION_SIZE.height);
@@ -38,10 +39,10 @@ export function initialExtendBounds(width: number, height: number): ExtendBounds
   return { ...box, x: Math.round((source.width - box.width) / 2), y: Math.round((source.height - box.height) / 2) };
 }
 
-export function extendOutputDimensions(config: ProjectConfig, source: { width: number; height: number }, bounds: ExtendBounds) {
+export function extendOutputDimensions(config: ProjectConfig, _source: { width: number; height: number }, bounds: ExtendBounds) {
   const selected = outputDimensions(imageSettings(config).resolution, imageSettings(config).aspectRatio);
-  const pixelBudget = Math.min(source.width * source.height, selected.width * selected.height, EXTEND_MAX_PIXELS);
-  const scale = Math.min(1, Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
+  const pixelBudget = Math.min(selected.width * selected.height, EXTEND_MAX_PIXELS);
+  const scale = Math.min(Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
   const width = Math.floor(bounds.width * scale / EXTEND_GRID) * EXTEND_GRID;
   const height = Math.floor(bounds.height * scale / EXTEND_GRID) * EXTEND_GRID;
   if (width < EXTEND_GRID || height < EXTEND_GRID) throw new Error("The Extend box is too narrow for a 32-pixel generation grid at this resolution.");
@@ -83,22 +84,35 @@ export function extendRegions(source: { width: number; height: number }, bounds:
   return { preserved: { x: left, y: top, width: right - left, height: bottom - top }, regions };
 }
 
+/** Leave one VAE cell free at each edge facing generated space. Canvas edges
+ * stay pinned; only the source interior must contain a complete latent cell. */
+export function extendContext(preserved: ExtendBounds, output: { width: number; height: number }) {
+  const left = preserved.x > 0 ? EXTEND_SEAM : 0;
+  const top = preserved.y > 0 ? EXTEND_SEAM : 0;
+  const right = preserved.x + preserved.width < output.width ? EXTEND_SEAM : 0;
+  const bottom = preserved.y + preserved.height < output.height ? EXTEND_SEAM : 0;
+  const context = { x: preserved.x + left, y: preserved.y + top,
+    width: preserved.width - left - right, height: preserved.height - top - bottom };
+  if (Math.ceil(context.x / 16) >= Math.floor((context.x + context.width) / 16)
+    || Math.ceil(context.y / 16) >= Math.floor((context.y + context.height) / 16)) {
+    throw new Error("Keep a larger area of the original image inside the Extend box, or increase the generation resolution.");
+  }
+  return context;
+}
+
 export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions) {
   if (!source.width || !source.height) throw new Error("Wait for the source image dimensions to load.");
   const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
   const { preserved, output } = layout;
-  if (Math.ceil(preserved.x / 16) >= Math.floor((preserved.x + preserved.width) / 16)
-    || Math.ceil(preserved.y / 16) >= Math.floor((preserved.y + preserved.height) / 16)) {
-    throw new Error("Keep a larger area of the original image inside the Extend box.");
-  }
+  const context = extendContext(preserved, output);
   if (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000) throw new Error("Steps must be a whole number from 2 to 1000.");
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
-  scene.nodes[0].description = "A wider view of the source scene, as if the view were zoomed out. Continue the same surroundings beyond the visible edges, matching perspective, scale, lighting and textures. One continuous scene, with the original content in its existing position. " + options.prompt.trim();
+  scene.nodes[0].description = "One continuous scene matching Source scene's setting, perspective, subject scale, lighting and textures. The existing subjects remain at their canvas positions. " + options.prompt.trim();
   const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: scene }, { sourceTreatment: "outpaint" });
-  // Preserve the original throughout denoising while generating every new
+  // Preserve the interior throughout denoising while generating every new
   // region together. Separate border passes break shared context at the seams.
-  const edits = [{ ...preserved, prompt: compiled.prompt, feather: 0, invertMask: true }];
+  const edits = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: true }];
   return { ...compiled, scene, edits, layout };
 }

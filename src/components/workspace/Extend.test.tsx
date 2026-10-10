@@ -7,19 +7,53 @@ import { ImageEditor } from "./ImageEditor";
 import { ExtendCanvas } from "./ExtendCanvas";
 import { parseProjectConfig } from "../../lib/project";
 import * as persistence from "../../lib/persistence";
+import * as settings from "../../lib/settings";
+import { choose } from "./comboTestUtils";
 import fixture from "../../../fixtures/project-v1-image.json";
 import type { ExtendBounds } from "../../lib/extendImage";
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 const source = { id: "source", name: "Source", kind: "image" as const, relativePath: "media/source.png", mimeType: "image/png", width: 400, height: 300, createdAt: "2026-10-04T00:00:00Z" };
 
-it("temporarily hides Extend from Template while keeping Character sheet available", () => {
+it("opens Extend from Template with box controls and returns to image settings", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   const config = parseProjectConfig(fixture); config.assets = [source]; config.imageScene!.outputAssetId = source.id;
   render(<ImageEditor config={config} folderPath="D:/Images" onChange={vi.fn()} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  expect(screen.queryByRole("menuitem", { name: "Extend" })).not.toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Extend" })).toBeEnabled();
   expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
+  expect(screen.getByLabelText("Extend bounding box tool")).toBeInTheDocument();
+  expect(screen.getByLabelText("Extend width")).toHaveValue(608);
+  expect(screen.getByLabelText("Extend resolution")).toBeEnabled();
+  expect(screen.getByLabelText("Extend prompt")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Close template settings" }));
+  expect(screen.queryByLabelText("Extend bounding box tool")).not.toBeInTheDocument();
+});
+
+it("executes an optional-prompt extension at the changed resolution without changing video settings", () => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(settings, "templateUsable").mockReturnValue(true);
+  const generator = settings.createGeneratorTemplate("Extend generator");
+  settings.saveGeneratorTemplateSettings({ templates: [generator], defaultTemplateId: generator.id });
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [source]; initial.imageScene!.outputAssetId = source.id;
+  let latest = initial;
+  const execute = vi.fn();
+  function Harness() {
+    const [config, setConfig] = useState(initial); latest = config;
+    return <ImageEditor config={config} folderPath="D:/Images" onChange={setConfig} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={execute} />;
+  }
+  render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Extend" }));
+  choose("Extend resolution", "1088p");
+  expect(latest.imageSettings?.resolution).toBe("1088p");
+  expect(latest.settings).toEqual(initial.settings);
+  fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: generator.id }), source.id,
+    expect.objectContaining({ prompt: "", bounds: { x: -104, y: -74, width: 608, height: 448 } }));
 });
 
 it("moves, resizes, redraws and cancels box drags in original pixel coordinates", () => {

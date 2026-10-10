@@ -15,8 +15,8 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     return reference;
   });
   // Ordinary edits submit the source before the selected reference pictures.
-  // Outpainting uses only the positioned inpainting canvas for source context;
-  // submitting the original as a separate picture would lose that placement.
+  // The runtime supplies the preserved outpaint crop to Qwen as "Source scene"
+  // and its positioned canvas to denoising; it does not consume a Picture slot.
   const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
   const outpainting = editing && options.sourceTreatment === "outpaint";
   const sourcePicture = editing && !outpainting;

@@ -54,12 +54,12 @@ fn scaled_layout(
         || output.height == 0
         || output.width % 32 != 0
         || output.height % 32 != 0
-        || output.width > bounds.width
-        || output.height > bounds.height
-        || u64::from(output.width) * u64::from(output.height) > u64::from(width) * u64::from(height)
+        || output.width > MAX_GENERATION_EDGE
+        || output.height > MAX_GENERATION_EDGE
+        || u64::from(output.width) * u64::from(output.height) > MAX_GENERATION_PIXELS
     {
         return Err(
-            "Extend output must be aligned to 32 pixels and cannot increase the source resolution."
+            "Extend output must be aligned to 32 pixels within the maximum generation resolution."
                 .into(),
         );
     }
@@ -186,8 +186,8 @@ pub(crate) fn prepare_extend_image(
         );
     }
     let cache = root.directory(&directory(&job_id)?)?;
-    // Snapshot the downscaled original. Generation and final preservation use
-    // exactly these pixels, with no second resampling or model changes to them.
+    // Snapshot the resized original. Generation and final preservation use
+    // exactly these pixels, with no second resampling.
     write_png(&cache.join("original.png"), &source)?;
     write_png(&cache.join("canvas.png"), &padded_source(&source, bounds))?;
     crate::storage::atomic::write_atomically(
@@ -196,18 +196,112 @@ pub(crate) fn prepare_extend_image(
     )
 }
 
+// Match EXTEND_SEAM in extendImage.ts. Only edges facing new pixels are free
+// during denoising; keep the interior exact and fade across that free row.
+const SEAM: u32 = 16;
+
+fn smoothstep(value: f32) -> f32 {
+    let t = value.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 fn restore_original(result: &mut RgbaImage, source: &RgbaImage, bounds: ExtendBounds) {
     let left = bounds.x.max(0) as u32;
     let top = bounds.y.max(0) as u32;
     let right = (bounds.x + bounds.width as i32).min(source.width() as i32) as u32;
     let bottom = (bounds.y + bounds.height as i32).min(source.height() as i32) as u32;
+    let px = (left as i32 - bounds.x) as u32;
+    let py = (top as i32 - bounds.y) as u32;
+    let pr = px + right - left;
+    let pb = py + bottom - top;
+    let bands = [px, py, bounds.width - pr, bounds.height - pb];
+    // Estimate the RGB mismatch on the same scene pixels, before compositing.
+    // Fade the correction across each new band. Ignore transparent source
+    // pixels, whose hidden RGB cannot describe the generated surroundings.
+    let mut offsets = [[0.0f32; 3]; 4];
+    for edge in 0..4 {
+        if bands[edge] == 0 {
+            continue;
+        }
+        let mut count = 0;
+        let strip = 4.min(right - left).min(bottom - top);
+        let (x0, y0, x1, y1) = match edge {
+            0 => (left, top, left + strip, bottom),
+            1 => (left, top, right, top + strip),
+            2 => (right - strip, top, right, bottom),
+            _ => (left, bottom - strip, right, bottom),
+        };
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let original = source.get_pixel(x, y);
+                if original[3] != 255 {
+                    continue;
+                }
+                let generated =
+                    result.get_pixel((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32);
+                for c in 0..3 {
+                    offsets[edge][c] += original[c] as f32 - generated[c] as f32;
+                }
+                count += 1;
+            }
+        }
+        if count > 0 {
+            for delta in &mut offsets[edge] {
+                *delta /= count as f32;
+            }
+        }
+    }
+    for (x, y, pixel) in result.enumerate_pixels_mut() {
+        // Signed distances are positive outside the source and negative inside.
+        let distances = [
+            px as f32 - x as f32 - 0.5,
+            py as f32 - y as f32 - 0.5,
+            x as f32 + 0.5 - pr as f32,
+            y as f32 + 0.5 - pb as f32,
+        ];
+        let weights: [f32; 4] = std::array::from_fn(|edge| {
+            if bands[edge] == 0 {
+                return 0.0;
+            }
+            let distance = distances[edge];
+            if distance >= 0.0 {
+                1.0 - smoothstep(distance / bands[edge] as f32)
+            } else {
+                1.0 - smoothstep(-distance / SEAM as f32)
+            }
+        });
+        let sum: f32 = weights.iter().sum();
+        let strength = weights.iter().copied().fold(0.0f32, f32::max);
+        if sum > 0.0 {
+            for c in 0..3 {
+                let correction: f32 = (0..4).map(|edge| weights[edge] * offsets[edge][c]).sum();
+                pixel[c] = (pixel[c] as f32 + correction / sum * strength)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
     for y in top..bottom {
         for x in left..right {
-            result.put_pixel(
-                (x as i32 - bounds.x) as u32,
-                (y as i32 - bounds.y) as u32,
-                *source.get_pixel(x, y),
-            );
+            let distances = [x - left, y - top, right - 1 - x, bottom - 1 - y];
+            let distance = (0..4)
+                .filter(|edge| bands[*edge] > 0)
+                .map(|edge| distances[edge])
+                .min()
+                .unwrap_or(SEAM);
+            let original = source.get_pixel(x, y);
+            let pixel =
+                result.get_pixel_mut((x as i32 - bounds.x) as u32, (y as i32 - bounds.y) as u32);
+            let weight = smoothstep((distance as f32 + 0.5) / SEAM as f32);
+            if weight == 1.0 || original[3] == 0 {
+                *pixel = *original;
+            } else {
+                for c in 0..3 {
+                    pixel[c] = (pixel[c] as f32 * (1.0 - weight) + original[c] as f32 * weight)
+                        .round() as u8;
+                }
+                pixel[3] = original[3];
+            }
         }
     }
 }
@@ -261,8 +355,160 @@ pub(crate) fn discard_extend_image(folder_path: String, job_id: String) -> Resul
 mod tests {
     use super::*;
 
+    /// Opt-in GPU smoke test. Supply an existing source image, model directory
+    /// and artifact directory; ordinary test runs do not load any models.
     #[test]
-    fn extend_layout_matches_the_scaled_generation_canvas_and_rejects_growth() {
+    #[ignore]
+    fn extend_gpu_smoke() {
+        use slopus_core::{
+            settings::{ProviderOption, ProviderSetting},
+            slopfab::{GenerationRequest, NativeEvent, SlopfabRuntime},
+        };
+        use std::{
+            collections::BTreeMap,
+            sync::{mpsc, Arc},
+            time::Duration,
+        };
+        let weights = std::path::PathBuf::from(std::env::var("SLOPUS_E2E_WEIGHTS").unwrap());
+        let source_path = std::env::var("SLOPUS_EXTEND_SOURCE").unwrap();
+        let artifact_dir = std::path::PathBuf::from(std::env::var("SLOPUS_EXTEND_OUTPUT").unwrap());
+        std::fs::create_dir_all(&artifact_dir).unwrap();
+        let find = |part: &str| {
+            std::fs::read_dir(&weights)
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.to_string_lossy().contains(part)
+                        && path.extension().is_some_and(|ext| ext == "safetensors")
+                })
+                .unwrap_or_else(|| panic!("no {part} weights"))
+                .to_string_lossy()
+                .into_owned()
+        };
+        let options = BTreeMap::from([
+            (
+                "dllPath".into(),
+                ProviderOption::String(
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../lib/slopfab/slopfab.dll")
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+            ),
+            (
+                "transformer".into(),
+                ProviderOption::String(
+                    std::env::var("SLOPUS_EXTEND_TRANSFORMER")
+                        .unwrap_or_else(|_| find("fl2va_pruned_int8")),
+                ),
+            ),
+            (
+                "textEncoder".into(),
+                ProviderOption::String(find("qwen3vl_32b_minimax_h3_nvfp4")),
+            ),
+            (
+                "videoVae".into(),
+                ProviderOption::String(find("video_vae_fp16")),
+            ),
+            ("motionCache".into(), ProviderOption::Boolean(false)),
+        ]);
+        let settings = BTreeMap::from([(
+            "slopfab".into(),
+            ProviderSetting {
+                enabled: true,
+                model: None,
+                options,
+            },
+        )]);
+        let source = image::open(source_path).unwrap().to_rgba8();
+        let source =
+            image::imageops::resize(&source, 256, 256, image::imageops::FilterType::Lanczos3);
+        let folder = tempfile::tempdir().unwrap();
+        let mut config = crate::tests::created_fixture();
+        config.assets.push(serde_json::from_value(serde_json::json!({
+            "id":"source", "kind":"image", "name":"Source", "relativePath":"source.png", "mimeType":"image/png",
+            "width":256, "height":256, "createdAt":config.created_at
+        })).unwrap());
+        crate::project::storage::write_project(folder.path(), &config).unwrap();
+        write_png(&folder.path().join("source.png"), &source).unwrap();
+        let path = folder.path().to_string_lossy().into_owned();
+        let job = "extend-gpu-smoke";
+        // A 1.5x square selection rendered at 416p, matching the TS compiler.
+        prepare_extend_image(
+            path.clone(),
+            job.into(),
+            "source".into(),
+            ExtendBounds {
+                x: -64,
+                y: -64,
+                width: 384,
+                height: 384,
+            },
+            ExtendSize {
+                width: 416,
+                height: 416,
+            },
+        )
+        .unwrap();
+        let cache = folder.path().join(directory(job).unwrap());
+        let snapshot = image::open(cache.join("original.png")).unwrap().to_rgba8();
+        let canvas = cache.join("canvas.png");
+        std::fs::copy(&canvas, artifact_dir.join("canvas.png")).unwrap();
+        let prompt = "integrated_multimodal_description: [Shot 1] Match the source scene's visual style. One continuous scene matching Source scene's setting, perspective, subject scale, lighting and textures. The existing subjects remain at their canvas positions.\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A";
+        let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":job, "stillImage":true, "frames":1, "steps":20, "seed":17, "canvasWidth":416, "canvasHeight":416, "prompt":prompt,
+            "imageEdit":{"sourceRelativePath":"canvas.png", "edits":[{"x":85,"y":85,"width":245,"height":245,"invertMask":true,"feather":0,"prompt":prompt}]}
+        })).unwrap();
+        request.image_edit_path = Some(canvas);
+        let runtime = SlopfabRuntime::default();
+        let (send, receive) = mpsc::channel();
+        runtime
+            .enqueue(
+                Arc::new(move |event| {
+                    send.send(event).unwrap();
+                }),
+                request,
+                &settings,
+            )
+            .unwrap();
+        loop {
+            match receive.recv_timeout(Duration::from_secs(600)).unwrap() {
+                NativeEvent::Progress(event) => {
+                    eprintln!("{}", serde_json::to_value(event).unwrap())
+                }
+                NativeEvent::Job(event) => {
+                    let event = serde_json::to_value(event).unwrap();
+                    if event["state"] == "framesReady" {
+                        break;
+                    }
+                    assert!(
+                        event["state"] != "failed" && event["state"] != "cancelled",
+                        "{event}"
+                    );
+                }
+            }
+        }
+        let saved = save_extended_image(path.clone(), job.into()).unwrap();
+        let final_path = folder.path().join(saved.relative_path);
+        let result = image::open(&final_path).unwrap().to_rgba8();
+        assert_eq!(result.dimensions(), (416, 416));
+        for y in 16..snapshot.height() - 16 {
+            for x in 16..snapshot.width() - 16 {
+                assert_eq!(result.get_pixel(x + 69, y + 69), snapshot.get_pixel(x, y));
+            }
+        }
+        assert!(result
+            .enumerate_pixels()
+            .filter(|(x, y, _)| *x < 69 || *y < 69)
+            .any(|(_, _, pixel)| pixel.0 != [127, 127, 127, 255]));
+        std::fs::copy(final_path, artifact_dir.join("result.png")).unwrap();
+        discard_extend_image(path, job.into()).unwrap();
+        eprintln!("Inspect {}", artifact_dir.join("result.png").display());
+    }
+
+    #[test]
+    fn extend_layout_matches_the_scaled_generation_canvas_and_allows_selected_resolution() {
         let bounds = ExtendBounds {
             x: -64,
             y: -32,
@@ -285,13 +531,27 @@ mod tests {
             ),
             (51, 38, -38, -13, 128, 64)
         );
+        let (source, mapped) = scaled_layout(
+            128,
+            96,
+            bounds,
+            ExtendSize {
+                width: 512,
+                height: 320,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            (source.width, source.height, mapped.x, mapped.y),
+            (256, 192, -128, -64)
+        );
         assert!(scaled_layout(
             128,
             96,
             bounds,
             ExtendSize {
-                width: 256,
-                height: 160
+                width: 3648,
+                height: 3648
             }
         )
         .is_err());
@@ -329,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn extend_preserves_original_pixels_including_alpha_and_cropped_intersections() {
+    fn extend_preserves_alpha_and_blends_only_inside_source_intersections() {
         let source = RgbaImage::from_fn(7, 5, |x, y| {
             image::Rgba([x as u8, y as u8, 80, (x * 25) as u8])
         });
@@ -364,12 +624,19 @@ mod tests {
                 for x in 0..bounds.width {
                     let sx = x as i32 + bounds.x;
                     let sy = y as i32 + bounds.y;
-                    let expected = if sx >= 0 && sy >= 0 && sx < 7 && sy < 5 {
-                        source.get_pixel(sx as u32, sy as u32).0
+                    let actual = result.get_pixel(x, y).0;
+                    if sx >= 0 && sy >= 0 && sx < 7 && sy < 5 {
+                        let original = source.get_pixel(sx as u32, sy as u32).0;
+                        assert_eq!(actual[3], original[3]);
+                        if original[3] == 0 {
+                            assert_eq!(actual, original);
+                        }
+                        for c in 0..3 {
+                            assert!((original[c]..=[200, 201, 202][c]).contains(&actual[c]));
+                        }
                     } else {
-                        [200, 201, 202, 255]
-                    };
-                    assert_eq!(result.get_pixel(x, y).0, expected);
+                        assert_eq!(actual, [200, 201, 202, 255]);
+                    }
                 }
             }
             let padded = padded_source(&source, bounds);
@@ -385,6 +652,72 @@ mod tests {
                     assert_eq!(padded.get_pixel(x, y).0, expected);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn extend_matches_seam_tone_and_retains_interior_and_far_band_pixels() {
+        // Exercise every direction, including a source cropped against canvas
+        // edges. A constant exposure shift must not become a rectangular seam.
+        let source = RgbaImage::from_pixel(96, 96, image::Rgba([80, 100, 120, 255]));
+        for (x, y) in [(-64, -64), (0, 0), (32, -64), (-64, 32)] {
+            let bounds = ExtendBounds {
+                x,
+                y,
+                width: 224,
+                height: 224,
+            };
+            let mut result = RgbaImage::from_pixel(224, 224, image::Rgba([110, 130, 150, 255]));
+            restore_original(&mut result, &source, bounds);
+            let left = (-x).max(0) as u32;
+            let top = (-y).max(0) as u32;
+            let right = (96 - x) as u32;
+            let bottom = (96 - y) as u32;
+            assert_eq!(
+                result.get_pixel((left + right) / 2, (top + bottom) / 2).0,
+                [80, 100, 120, 255]
+            );
+            for (a, b) in [
+                ((right - 1, (top + bottom) / 2), (right, (top + bottom) / 2)),
+                (
+                    ((left + right) / 2, bottom - 1),
+                    ((left + right) / 2, bottom),
+                ),
+            ] {
+                for c in 0..3 {
+                    assert!(
+                        result.get_pixel(a.0, a.1)[c].abs_diff(result.get_pixel(b.0, b.1)[c]) <= 1
+                    );
+                }
+            }
+            assert_eq!(result.get_pixel(223, 223).0, [110, 130, 150, 255]);
+        }
+    }
+
+    #[test]
+    fn extend_fades_details_at_generated_edges_but_keeps_the_interior_exact() {
+        // Nonopaque input bypasses tone matching, isolating the seam blend.
+        let source = RgbaImage::from_pixel(96, 96, image::Rgba([40, 60, 80, 123]));
+        let mut result = RgbaImage::from_pixel(128, 96, image::Rgba([200, 200, 200, 255]));
+        restore_original(
+            &mut result,
+            &source,
+            ExtendBounds {
+                x: 0,
+                y: 0,
+                width: 128,
+                height: 96,
+            },
+        );
+        for y in 0..96 {
+            for x in 0..80 {
+                assert_eq!(result.get_pixel(x, y).0, [40, 60, 80, 123]);
+            }
+            for x in 80..96 {
+                assert_eq!(result.get_pixel(x, y)[3], 123);
+                assert!(result.get_pixel(x, y)[0] >= result.get_pixel(x - 1, y)[0]);
+            }
+            assert_eq!(result.get_pixel(96, y).0, [200, 200, 200, 255]);
         }
     }
 
@@ -567,14 +900,15 @@ mod tests {
         assert_eq!(image.dimensions(), (128, 64));
         for y in 0..64 {
             for x in 0..128 {
-                assert_eq!(
-                    image.get_pixel(x, y).0,
-                    if (38..89).contains(&x) && (13..51).contains(&y) {
-                        scaled.get_pixel(x - 38, y - 13).0
-                    } else {
-                        [210, 180, 150, 255]
+                let actual = image.get_pixel(x, y).0;
+                if (38..89).contains(&x) && (13..51).contains(&y) {
+                    assert_eq!(actual[3], 123);
+                    if (54..73).contains(&x) && (29..35).contains(&y) {
+                        assert_eq!(actual, scaled.get_pixel(x - 38, y - 13).0);
                     }
-                );
+                } else {
+                    assert_eq!(actual, [210, 180, 150, 255]);
+                }
             }
         }
         crate::rendered::release(job);

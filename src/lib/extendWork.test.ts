@@ -18,7 +18,7 @@ vi.mock("./runtime", () => ({ cancelSlopfabGeneration: vi.fn(), enqueueSlopfabGe
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 const template: GeneratorTemplate = { id: "h3", name: "H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
 const options = (): ExtendOptions => ({ bounds: { x: -64, y: -32, width: 256, height: 160 }, prompt: "Continue the forest", steps: 25, seed: 0 });
-const result = { relativePath: "media/generated/extended.png", width: 128, height: 64 };
+const result = { relativePath: "media/generated/extended.png", width: 960, height: 576 };
 let stop: (() => void) | undefined;
 beforeEach(() => {
   localStorage.clear(); vi.resetAllMocks(); handlers.clear();
@@ -55,7 +55,7 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(queue.getSnapshot()).toHaveLength(1);
   const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
   const entry = pending.assets.at(-1)!;
-  expect(entry).toMatchObject({ id: queue.getSnapshot()[0].id, imageDraft: true, parentAssetId: "root", width: 128, height: 64,
+  expect(entry).toMatchObject({ id: queue.getSnapshot()[0].id, imageDraft: true, parentAssetId: "root", width: 960, height: 576,
     imageGeneration: { template: { kind: "extend", sourceId: "source", sourceName: "source", generatorName: "H3", ...options() } } });
   expect(entry.relativePath).toBeUndefined();
   expect(pending.imageScene!.outputAssetId).toBe(entry.id);
@@ -63,15 +63,15 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(saveImageDraft(restoreGeneratedImage(pending, entry.id)).assets).toEqual(pending.assets);
   const request = await submitted();
   const { jobId } = request;
-  expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 128, canvasHeight: 64,
+  expect(request).toMatchObject({ stillImage: true, frames: 1, seed: 0, steps: 25, canvasWidth: 960, canvasHeight: 576,
     imageEdit: { sourceRelativePath: `cache/extend-images/${jobId}/canvas.png` }, referencePaths: [] });
-  expect(request.imageEdit!.edits).toEqual([{ x: 38, y: 13, width: 51, height: 38, invertMask: true, feather: 0, prompt: request.prompt }]);
-  expect(request.prompt).toContain("as if the view were zoomed out");
+  expect(request.imageEdit!.edits).toEqual([{ x: 266, y: 131, width: 429, height: 314, invertMask: true, feather: 0, prompt: request.prompt }]);
+  expect(request.prompt).toContain("Source scene's setting");
   expect(request.prompt).not.toContain("<Picture");
   expect(request.prompt).not.toContain("composition anchor");
   expect(request.prompt).toContain("Continue the forest");
   expect(request.prompt).not.toContain("Changed");
-  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds, output: { width: 128, height: 64 } });
+  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId, sourceId: "source", bounds: options().bounds, output: { width: 960, height: 576 } });
   if (changed) session.update((config) => restoreGeneratedImage(config, "source"));
   emit("framesReady", jobId);
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
