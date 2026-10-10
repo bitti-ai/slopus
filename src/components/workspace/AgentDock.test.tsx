@@ -264,7 +264,7 @@ describe("Slop output panel", () => {
     expect(field).toHaveValue("Leonard and Penny, in live action");
   });
 
-  it("shows one reply per turn: no repeated drafts while working, only the answer once done", async () => {
+  it("appends distinct replies and correction notes and preserves them when the turn finishes", async () => {
     let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
     vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={() => undefined} onCommands={async () => undefined} />);
@@ -277,22 +277,121 @@ describe("Slop output panel", () => {
 
     const send = (event: AgentTurnEventPayload["event"]) => act(() => eventHandler?.({ payload: { requestId, event } }));
     send({ type: "message", text: "First draft." });
+    const firstBubble = within(log).getByText("First draft.").closest(".agent-message");
     send({ type: "message", text: "First draft." });
     send({ type: "validation", round: 1, maxRounds: 3, text: "Too short." });
     send({ type: "message", text: "Second draft." });
     send({ type: "validation", round: 2, maxRounds: 3, text: "Still short." });
-    expect(log.querySelectorAll(".agent-conversation__output")).toHaveLength(1);
-    expect(log.querySelectorAll(".agent-conversation__validation")).toHaveLength(1);
+    expect(log.querySelectorAll(".agent-conversation__output")).toHaveLength(2);
+    expect(log.querySelectorAll(".agent-conversation__validation")).toHaveLength(2);
     expect(log).toHaveTextContent("Second draft.");
-    expect(log).not.toHaveTextContent("First draft.");
+    expect(within(log).getByText("First draft.").closest(".agent-message")).toBe(firstBubble);
 
     await act(async () => finish({ result: { kind: "answer", content: "Hello **there**." }, events: [], messages: [
       { id: "u", role: "user", content: "Hi", createdAt: "" },
       { id: "a", role: "assistant", content: "Hello **there**.", createdAt: "" },
     ] as never }));
-    expect(log.querySelectorAll(".agent-conversation__output, .agent-conversation__validation")).toHaveLength(0);
+    expect(log.querySelectorAll(".agent-conversation__output, .agent-conversation__validation")).toHaveLength(4);
     expect(log.querySelectorAll(".agent-conversation__assistant")).toHaveLength(1);
     expect(within(log).getByText("there").tagName).toBe("STRONG");
+    expect([...log.querySelectorAll(".agent-message__bubble")].map((bubble) => bubble.textContent)).toEqual([
+      "Hi", "First draft.", "Correction 1 of 3: Too short.", "Second draft.", "Correction 2 of 3: Still short.", "Hello there.",
+    ]);
+  });
+
+  it("keeps every completed turn visible and appends even when response history is empty", async () => {
+    const record = project();
+    render(<AgentDock context="this project" record={record} providers={providers} onPromptStart={vi.fn()} onCommands={async () => undefined} />);
+    const log = screen.getByRole("log", { name: "Slop output" });
+    for (let turn = 1; turn <= 4; turn++) {
+      vi.mocked(runAgentTurn).mockResolvedValueOnce({ result: { kind: "answer", content: `Reply ${turn}` }, events: [], messages: [] });
+      fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: `Prompt ${turn}` } });
+      fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+      await within(log).findByText(`Reply ${turn}`);
+    }
+    expect([...log.querySelectorAll(".agent-message__bubble")].map((bubble) => bubble.textContent)).toEqual([
+      "Prompt 1", "Reply 1", "Prompt 2", "Reply 2", "Prompt 3", "Reply 3", "Prompt 4", "Reply 4",
+    ]);
+    expect(vi.mocked(runAgentTurn).mock.calls[3][4]!.map((message) => message.content)).toEqual([
+      "Prompt 1", "Reply 1", "Prompt 2", "Reply 2", "Prompt 3", "Reply 3",
+    ]);
+  });
+
+  it("never shows JSON payloads and deduplicates the final transport echo only within its turn", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    vi.mocked(runAgentTurn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={vi.fn()} onCommands={async () => undefined} />);
+    const log = screen.getByRole("log", { name: "Slop output" });
+    for (let turn = 1; turn <= 2; turn++) {
+      fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: `Request ${turn}` } });
+      fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+      await waitFor(() => expect(runAgentTurn).toHaveBeenCalledTimes(turn));
+      const requestId = vi.mocked(runAgentTurn).mock.calls.at(-1)![3];
+      const send = (text: string) => act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text } } }));
+      for (const raw of ['{"op":"scene.set","id":"secret-payload"}', '{"kind":"answer","content":',
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: '```json\n{"op":"scene.set","id":"secret-payload"}\n```' } })]) {
+        send(raw);
+        expect(log).not.toHaveTextContent("secret-payload");
+        expect(log).not.toHaveTextContent('{"');
+      }
+      send(JSON.stringify({ kind: "answer", content: "Done." }));
+      await act(async () => finish({ result: { kind: "answer", content: "Done." }, events: [], messages: [] }));
+      expect(within(log).getAllByText("Done.")).toHaveLength(turn);
+    }
+  });
+
+  it("retains errors and stopped replies when another request starts", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    vi.mocked(runAgentTurn).mockRejectedValueOnce(new Error("Connection failed."))
+      .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }))
+      .mockResolvedValueOnce({ result: { kind: "answer", content: "Finished." }, events: [], messages: [] });
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={vi.fn()} onCommands={async () => undefined} />);
+    const send = (text: string) => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: text } });
+      fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    };
+    send("First request");
+    await screen.findByText(/Connection failed/);
+    send("Second request");
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledTimes(2));
+    const requestId = vi.mocked(runAgentTurn).mock.calls[1][3];
+    act(() => eventHandler?.({ payload: { requestId, event: { type: "message", text: "Working on it." } } }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel agent turn" }));
+    await act(async () => finish({ result: { kind: "answer", content: "Late reply." }, events: [], messages: [] }));
+    send("Third request");
+    await screen.findByText("Finished.");
+    expect(screen.getByText(/Connection failed/)).toBeInTheDocument();
+    expect(screen.getByText("Second request")).toBeInTheDocument();
+    expect(screen.getByText("Working on it.")).toBeInTheDocument();
+    expect(screen.getByText("Request stopped.")).toBeInTheDocument();
+    expect(screen.queryByText("Late reply.")).not.toBeInTheDocument();
+  });
+
+  it("discards late replies from a previous project without clearing the new project's turn", async () => {
+    let finishOld!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    let finishNew!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    vi.mocked(runAgentTurn).mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    const onCommands = vi.fn();
+    const props = { context: "this project", providers, onPromptStart: vi.fn(), onCommands };
+    const view = render(<AgentDock {...props} record={project()} />);
+    const send = (text: string) => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: text } });
+      fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    };
+    send("Old project request");
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledOnce());
+    view.rerender(<AgentDock {...props} record={project()} />);
+    expect(screen.queryByText("Old project request")).not.toBeInTheDocument();
+    send("New project request");
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledTimes(2));
+    await act(async () => finishOld({ result: { kind: "commands", summary: "Stale reply", commands: [] }, events: [], messages: [] }));
+    expect(screen.queryByText("Stale reply")).not.toBeInTheDocument();
+    expect(onCommands).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cancel agent turn" })).toBeInTheDocument();
+    await act(async () => finishNew({ result: { kind: "answer", content: "New reply" }, events: [], messages: [] }));
+    expect(screen.getByText("New project request")).toBeInTheDocument();
+    expect(screen.getByText("New reply")).toBeInTheDocument();
   });
 
   it("formats Slop's replies as a message", () => {

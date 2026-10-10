@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { Agent32, Clear16, Dismiss16, Send16, Stop14 } from "../ui/icons";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { describeDiagnosticError, errorContext, writeDiagnostic } from "../../lib/diagnostics";
 import { isTauri } from "../../lib/persistence";
 import {
@@ -19,12 +19,20 @@ import type { ProjectRecord } from "../../lib/project";
 import type { AgentMessage } from "../../lib/project";
 import { ComboBox, EmptyState, PaneHeader, ProgressRing, tooltipProps } from "../ui";
 import { MessageText } from "./MessageText";
+import { readableProviderOutput } from "../../lib/agentOutput";
+export { readableProviderOutput } from "../../lib/agentOutput";
 
 /** How tall the prompt box grows before it scrolls. */
 export const COMPOSER_MAX_LINES = 6;
 
 export interface AgentActivity {
   kind: "output" | "diagnostic" | "validation";
+  text: string;
+}
+
+interface TranscriptMessage {
+  id: string;
+  kind: AgentActivity["kind"] | "user" | "assistant" | "error";
   text: string;
 }
 
@@ -61,9 +69,8 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   const [prompt, setPrompt] = useState("");
   const [lastPrompt, setLastPrompt] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [activity, setActivity] = useState<AgentActivity[]>([]);
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+  const seenActivity = useRef(new Set<string>());
   const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
   const activeRequest = useRef<string | null>(null);
   const activeController = useRef<AbortController | null>(null);
@@ -90,19 +97,31 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   }, [prompt]);
   const selected = providers.find((item) => item.id === provider);
   const ready = selected?.state === "ready";
-  const messages = useMemo(() => sessionMessages.slice(-4), [sessionMessages]);
-  const empty = !messages.length && !pendingPrompt && !activity.length && !error && !requestId;
+  const empty = !transcript.length && !requestId;
+
+  const appendActivity = (item: AgentActivity | { kind: "assistant" | "error"; text: string }) => {
+    // CLIs can emit the same reply in both a message and a final result.
+    // Deduplicate only within this turn; never replace a posted message.
+    const key = `${item.kind === "assistant" ? "output" : item.kind}\0${item.text}`;
+    if (seenActivity.current.has(key)) return;
+    seenActivity.current.add(key);
+    const message = { ...item, id: crypto.randomUUID() };
+    setTranscript((current) => [...current, message]);
+  };
 
   useEffect(() => {
     setSessionMessages([]);
-    setActivity([]);
-    setError(null);
-    setPendingPrompt(null);
-  }, [record.config.id]);
+    setTranscript([]);
+    seenActivity.current.clear();
+    setRequestId(null);
+    setWorkDetail(null);
+  }, [record.config.id, record.folderPath]);
 
   useEffect(() => () => {
     activeController.current?.abort(new Error("Agent request cancelled."));
     if (activeRequest.current) void cancelAgentTurn(activeRequest.current);
+    activeRequest.current = null;
+    activeController.current = null;
   }, [record.config.id, record.folderPath]);
 
   /* One listener lives for the dock's lifetime. A request id filters out any
@@ -112,10 +131,10 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
     let disposed = false;
     let stop: (() => void) | undefined;
     void listen<AgentTurnEventPayload>(AGENT_TURN_EVENT, ({ payload }) => {
-      if (payload.requestId !== activeRequest.current) return;
+      if (payload.requestId !== activeRequest.current || activeController.current?.signal.aborted) return;
       const item = activityFromEvent(payload.event);
       if (!item) return;
-      setActivity((current) => mergeActivity(current, item));
+      appendActivity(item);
     }).then((unlisten) => {
       if (disposed) unlisten();
       else stop = unlisten;
@@ -129,7 +148,7 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   useEffect(() => {
     const panel = conversation.current;
     if (panel) panel.scrollTop = panel.scrollHeight;
-  }, [activity, messages, error, pendingPrompt, requestId]);
+  }, [transcript, requestId, workDetail]);
 
   /* The text box is disabled while a turn runs; keep the focus in the pane
      (on the stop button) so Esc still reaches it. */
@@ -151,46 +170,54 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
 
   const send = async () => {
     const clean = prompt.trim();
-    if (!clean || !ready || requestId) return;
+    if (!clean || !ready || activeRequest.current) return;
     onPromptStart();
     const id = crypto.randomUUID();
     activeRequest.current = id;
     setRequestId(id);
-    setError(null);
-    setPendingPrompt(clean);
+    const userMessage: AgentMessage = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: new Date().toISOString() };
+    setTranscript((current) => [...current, { id: userMessage.id, kind: "user", text: clean }]);
     setLastPrompt(clean);
     setPrompt("");
-    setActivity([]);
+    seenActivity.current.clear();
+    const controller = new AbortController();
+    activeController.current = controller;
     try {
       // The native agent uses this legacy field to select its instructions.
       // Override only the request snapshot, never the saved project document.
-      const controller = new AbortController();
-      activeController.current = controller;
       setWorkDetail(null);
       const response = await runAgentWorkflow({ ...record, config: { ...record.config, generationType: mode } },
-        provider, clean, id, sessionMessages, controller.signal, generation, setWorkDetail, scope);
+        provider, clean, id, sessionMessages, controller.signal, generation,
+        (detail) => { if (activeRequest.current === id) setWorkDetail(readableProviderOutput(detail)); }, scope);
       controller.signal.throwIfAborted();
+      if (activeRequest.current !== id) return;
       if ("commands" in response.result) await onCommands(response.result.commands);
-      setSessionMessages(response.messages);
-      // The finished reply is in the conversation now; the streamed drafts and
-      // correction notes that led to it would only repeat it.
-      setActivity([]);
-      setPendingPrompt(null);
+      controller.signal.throwIfAborted();
+      if (activeRequest.current !== id) return;
+      const content = "summary" in response.result ? response.result.summary : response.result.content;
+      setSessionMessages((current) => [...current, userMessage,
+        { id: crypto.randomUUID(), role: "assistant", content, createdAt: new Date().toISOString() }]);
+      const text = readableProviderOutput(content);
+      if (text) appendActivity({ kind: "assistant", text });
     } catch (reason) {
-      if (activeController.current?.signal.aborted) {
-        setPendingPrompt(null);
+      if (activeRequest.current !== id) return;
+      if (controller.signal.aborted) {
+        appendActivity({ kind: "assistant", text: "Request stopped." });
       } else {
         const detail = describeDiagnosticError(reason);
         writeDiagnostic("error", "agent", "turn.failed", detail, { requestId: id, provider, projectId: record.config.id, ...errorContext(reason) });
-        setError(detail);
+        const readable = readableProviderOutput(detail);
+        appendActivity({ kind: "error", text: `Couldn’t finish that request.${readable ? ` ${readable}` : ""}` });
       }
     } finally {
-      const restoreFocus = document.activeElement === field.current || document.activeElement === cancelButton.current;
-      activeRequest.current = null;
-      activeController.current = null;
-      setWorkDetail(null);
-      setRequestId(null);
-      if (restoreFocus) requestAnimationFrame(() => field.current?.focus());
+      if (activeRequest.current === id) {
+        const restoreFocus = document.activeElement === field.current || document.activeElement === cancelButton.current;
+        activeRequest.current = null;
+        activeController.current = null;
+        setWorkDetail(null);
+        setRequestId(null);
+        if (restoreFocus) requestAnimationFrame(() => field.current?.focus());
+      }
     }
   };
   const cancel = () => {
@@ -199,9 +226,8 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   };
   const clear = () => {
     setSessionMessages([]);
-    setActivity([]);
-    setError(null);
-    setPendingPrompt(null);
+    setTranscript([]);
+    seenActivity.current.clear();
   };
 
   return (
@@ -246,14 +272,10 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
           title="Nothing asked yet"
           description={scope === "settings" ? "Ask Slop to configure generators, find weight files or update LoRAs." : `Ask Slop to write scenes from a prompt, refine shots or edit ${context}.`}
         />}
-        {messages.map((message) => message.role === "user"
-          ? <Bubble key={message.id} className="agent-conversation__user" speaker="You">{message.content}</Bubble>
-          : <Bubble key={message.id} className="agent-conversation__assistant" speaker="Slop"><MessageText text={message.content} /></Bubble>)}
-        {pendingPrompt && <Bubble className="agent-conversation__pending" speaker="You">{pendingPrompt}</Bubble>}
-        {activity.map((item, index) => <Bubble key={`${item.kind}-${index}`} className={`agent-conversation__${item.kind}`} speaker={activityLabel(item.kind)}>
-          {item.kind === "output" ? <MessageText text={item.text} /> : item.text}
+        {transcript.map((item) => <Bubble key={item.id} className={`agent-conversation__${item.kind}`}
+          speaker={item.kind === "user" ? "You" : item.kind === "assistant" || item.kind === "error" ? "Slop" : activityLabel(item.kind)}>
+          {item.kind === "output" || item.kind === "assistant" ? <MessageText text={item.text} /> : item.text}
         </Bubble>)}
-        {error && <Bubble className="agent-conversation__error" speaker="Slop">Couldn’t finish that request. {error}</Bubble>}
         {requestId && <Bubble className="agent-conversation__waiting" speaker="Slop" aria-label="Waiting for the next agent response">
           <span className="agent-conversation__thinking"><ProgressRing size={16} aria-label={workDetail ? "Working" : "Thinking"} /><span aria-hidden="true">{workDetail ?? "Thinking…"}</span></span>
         </Bubble>}
@@ -300,16 +322,6 @@ function Bubble({ className, speaker, children, "aria-label": label }: { classNa
   </div>;
 }
 
-/** Providers repeat themselves: one reply arrives as a streamed record, again
- *  in the CLI's final result record, and again on every validation round. Keep
- *  one live draft and the latest correction note (each moved to the end, so the
- *  log still reads in order) and each distinct diagnostic once. */
-export function mergeActivity(current: AgentActivity[], item: AgentActivity): AgentActivity[] {
-  if (current.some((existing) => existing.kind === item.kind && existing.text === item.text)) return current;
-  const kept = item.kind === "diagnostic" ? current : current.filter((existing) => existing.kind !== item.kind);
-  return [...kept, item].slice(-100);
-}
-
 const activityLabel =(kind: AgentActivity["kind"]): string => {
   switch (kind) {
     case "output": return "Slop";
@@ -322,49 +334,19 @@ function activityFromEvent(event: AgentTurnEvent): AgentActivity | null {
   switch (event.type) {
     case "started":
     case "completed": return null;
-    case "validation": return { kind: "validation", text: `Correction ${event.round} of ${event.maxRounds}: ${event.text}` };
-    case "diagnostic": return event.text.trim() ? { kind: "diagnostic", text: event.text.trim() } : null;
+    case "validation": {
+      const text = readableProviderOutput(event.text);
+      return { kind: "validation", text: `Correction ${event.round} of ${event.maxRounds}${text ? `: ${text}` : ""}` };
+    }
+    case "diagnostic": {
+      const text = readableProviderOutput(event.text);
+      return text ? { kind: "diagnostic", text } : null;
+    }
     case "message": {
       const text = readableProviderOutput(event.text);
       return text ? { kind: "output", text } : null;
     }
   }
-}
-
-/** Provider CLIs stream NDJSON. Pull out the model-authored text so the panel
- *  shows what Slop is saying instead of transport records. */
-export function readableProviderOutput(line: string): string | null {
-  const clean = line.trim();
-  if (!clean) return null;
-  let value: unknown;
-  try { value = JSON.parse(clean); } catch { return clean; }
-  if (!value || typeof value !== "object") return clean;
-  const record = value as Record<string, unknown>;
-  const message = record.message as Record<string, unknown> | undefined;
-  const candidates: unknown[] = [];
-  if (Array.isArray(message?.content)) {
-    candidates.push(...message.content.map((part) => (part as Record<string, unknown>)?.text ?? (part as Record<string, unknown>)?.thinking));
-  }
-  candidates.push((record.item as Record<string, unknown> | undefined)?.text, record.result);
-  for (const candidate of candidates) {
-    if (typeof candidate !== "string" || !candidate.trim()) continue;
-    const text = candidate.trim();
-    try {
-      const turn = JSON.parse(text) as Record<string, unknown>;
-      const summary = "summary" in turn ? turn.summary : turn.content;
-      if (typeof summary === "string" && summary.trim()) return summary.trim();
-    } catch { /* A normal model message is already displayable text. */ }
-    for (const line of text.split(/\r?\n/).reverse()) {
-      try {
-        const command = JSON.parse(line) as Record<string, unknown>;
-        if (command.op === "commit" && typeof command.summary === "string" && command.summary.trim()) {
-          return command.summary.trim();
-        }
-      } catch { /* Keep looking for a JSONL commit line. */ }
-    }
-    return text;
-  }
-  return null;
 }
 
 const providerStateLabel = (state: ProviderStatus["state"]) => state === "checking" ? "Checking…" : state === "ready" ? "Ready" : state === "notInstalled" ? "Not installed" : state === "authRequired" ? "Sign in required" : state === "disabled" ? "Disabled" : "Unavailable";
