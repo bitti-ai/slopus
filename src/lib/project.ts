@@ -1,6 +1,6 @@
 import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
-import { backdropDirection, type BackdropColor } from "./backdrop";
+import { backdropDirection, backdropShotDirection, backdropSummary, type BackdropColor } from "./backdrop";
 import { createImageScene, imageSceneReferenceIds, imageSceneSchema } from "./imageScene";
 import { effectEnabledSchema, effectSchemas, isEffectOn } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
@@ -881,8 +881,8 @@ const STYLE_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 const DEFAULT_STYLE = "Live-action, cinematic";
 
-export function deriveH3Style(creativeBrief: string): string {
-  return STYLE_PATTERNS.find(([pattern]) => pattern.test(creativeBrief))?.[1] ?? DEFAULT_STYLE;
+export function deriveH3Style(creativeBrief: string, fallback = DEFAULT_STYLE): string {
+  return STYLE_PATTERNS.find(([pattern]) => pattern.test(creativeBrief))?.[1] ?? fallback;
 }
 
 /** Base guide §4.1 spells the canonical style names with deliberate casing —
@@ -1413,6 +1413,12 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     let text = "";
     for (const part of splitActionText(shot.action.trim())) {
       if (part.kind === "text") {
+        // Reference chips can touch the following word in the editor. Keep
+        // inserted spacing attributed to Slopus, leaving user text intact.
+        if (/(?:<Subject \d+>|<Audio \d+>)$/.test(text) && /^[\p{L}\p{N}]/u.test(part.value)) {
+          body.push(frame(" "));
+          text += " ";
+        }
         body.push(own(part.value));
         text += part.value;
         continue;
@@ -1460,7 +1466,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   // retain the guess from the user's own words, marked as Slopus's doing.
   const styleFromTag = compiled.map((shot) => shot.tags.style).find((style) => Boolean(style))
     ?? (defaultLook ? shotTagClauses({ visualStyle: [defaultLook] }).style : null);
-  const style = styleFromTag ?? deriveH3Style(compiled.map((shot) => shot.text).join(" "));
+  const style = styleFromTag ?? deriveH3Style(compiled.map((shot) => shot.text).join(" "), scene.backdropColor ? "neutral studio" : DEFAULT_STYLE);
   const styleSegment = styleFromTag ? tagged(style) : frame(style);
 
   /** The `[Shot N]` marker. Shot 1 never carries a timestamp (base guide §4.2);
@@ -1502,6 +1508,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const music = (scene.music ?? "").trim();
   const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
   const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
+  const backdropShot = scene.backdropColor ? [frame(` ${backdropShotDirection(scene.backdropColor)}`)] : [];
 
   if (usable.length === 0 && sounds.length === 0 && !startFrame && !endFrame) {
     // T2VA — base guide §2.2 field list and order.
@@ -1515,8 +1522,9 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         // subject and its action.
         ...(shot.tags.framing.length > 0 ? [tagged(shot.tags.framing.join(", ")), frame(", ")] : []),
         ...shot.body,
-        ...stop(shot),
+        ...(scene.backdropColor ? addedStop(shot.text) : stop(shot)),
         ...tail(shot),
+        ...backdropShot,
         ...dialogue(shot, shot.text.length > 0 || shot.tags.clauses.length > 0),
       ]),
       frame("\n\noverall_soundscape: "),
@@ -1555,17 +1563,19 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     const video = videoNumbers.get(reference.id);
     const label = referenceLabel(reference, index);
     const lead = index === 0 ? "" : "\n";
+    const scope = scene.backdropColor ? [frame(" Use this reference for the subject's appearance and identity only; its background, scenery and environmental lighting are replaced by the target backdrop.")] : [];
     if (reference.id === scene.poseVideoReferenceId && video) {
       return [frame(`${lead}${label} is pose and motion guidance from <Video ${video}>. Use its body positions, movement and timing; the prompt and other references define the target subject and setting.`)];
     }
     if (!detail && pictures.length === 0 && !video && activeReferenceRefmods(reference).length) {
-      return [frame(`${lead}${label} uses the attached pre-encoded reference.`)];
+      return [frame(`${lead}${label} uses the attached pre-encoded reference.`), ...scope];
     }
-    if (pictures.length === 0 && !video) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)];
+    if (pictures.length === 0 && !video) return [frame(`${lead}${label}: `), own(detail), ...addedStop(detail), ...scope];
     const pictureList = listOf([...pictures.map((picture) => `<Picture ${picture}>`), ...(video ? [`<Video ${video}>`] : [])]);
     return [
       frame(`${lead}${label} is the content shown in ${pictureList}.`),
       ...(detail ? [frame(" "), own(detail), ...addedStop(detail)] : []),
+      ...scope,
     ];
   });
   // Ref guide §2.4: a sound is its own <Audio N> item, defined by its role.
@@ -1611,6 +1621,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     frame(scene.videoTransition === "extend" ? "[video continuation] Continue from the final frame of <Video 1>. "
       : scene.videoTransition === "bridge" ? "[video continuation + reference generation] Generate the missing segment after <Video 1> and before <Video 2>. " : `[reference generation${audioTask}] `),
     ...(poseDirection ? [frame(poseDirection)] : []),
+    ...(scene.backdropColor ? [frame(`${backdropSummary(scene.backdropColor)} `)] : []),
     ...compiled.flatMap((shot) => [
       ...(shot.index === 0 ? [] : [frame(" ")]),
       ...shot.body,
@@ -1651,6 +1662,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     frame("The target video is in a "),
     styleFromTag ? tagged(midSentenceStyle(style)) : frame(midSentenceStyle(style)),
     frame(" style.\n"),
+    ...(scene.backdropColor ? [frame(`${backdropDirection(scene.backdropColor)}\n`)] : []),
     ...(poseDirection ? [frame(`${poseDirection.trim()}\n`)] : []),
     ...(scene.videoTransition ? [frame(scene.videoTransition === "extend"
       ? "Begin immediately after the final frame of <Video 1>, continuing its subject identity, pose, motion, lighting and camera trajectory. Follow the text direction below. Output only the new continuation; do not replay the source clip.\n"
@@ -1666,6 +1678,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         ? [frame(` The shot features ${listOf(featured[shot.index].map((id) => `<Subject ${subjectNumber.get(id)}>`))}, matching the definitions above.`)]
         : []),
       ...tail(shot),
+      ...backdropShot,
       ...dialogue(shot, shot.text.length > 0 || featured[shot.index].length > 0 || shot.tags.clauses.length > 0),
       ...(shot.index === 0 && startPicture ? [frame(` The opening frame matches <Picture ${startPicture}>.`)] : []),
       ...(shot.index === compiled.length - 1 && endPicture ? [frame(` The closing frame matches <Picture ${endPicture}>.`)] : []),
@@ -1681,12 +1694,10 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     ...definitions,
     frame("\n\nsummary:\n"),
     ...summary,
-    ...(scene.backdropColor ? [frame(` ${backdropDirection(scene.backdropColor)}`)] : []),
     frame(`\n\nretention_analysis:\n${retention.join("\n")}`),
     ...(scene.videoTransition ? [frame("\n<Video 1>: partially_preserved - continue from its ending state without copying its completed action."),
       ...(scene.videoTransition === "bridge" ? [frame("\n<Video 2>: partially_preserved - approach its opening state with continuous motion; do not repeat the ending clip.")] : [])] : []),
     frame("\n\ndetailed_description:\n"),
-    ...(scene.backdropColor ? [frame(`${backdropDirection(scene.backdropColor)}\n`)] : []),
     ...detailed,
     frame("\n\noverall_soundscape:\n"),
     soundSegment,

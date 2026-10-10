@@ -3,5 +3,13 @@ export type BackdropColor = keyof typeof BACKDROP_COLORS;
 export const BACKDROP_OPTIONS = Object.keys(BACKDROP_COLORS).map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }));
 
 export function backdropDirection(color: BackdropColor): string {
-  return `Generate the described subject and action against a uniform, solid ${color} (${BACKDROP_COLORS[color]}) backdrop for background keying. Keep this exact backdrop color consistent across every frame and every shot, filling all space behind the subject. No scenery, floor, horizon, gradients, texture, backdrop shadows or reflections. Light the subject independently, with clear edges and no ${color} color spill. Keep the subject fully inside the frame. Reference images guide the subject's appearance only; replace their backgrounds with this solid backdrop.`;
+  return `The video is an isolated-subject compositing plate against a uniform, solid ${color} (${BACKDROP_COLORS[color]}) backdrop. The background is a flat digital color field, edge to edge, with constant color and brightness throughout the video. ${backdropShotDirection(color)} Only the subject has shading and detail; lighting and color grading affect the subject alone. Keep the subject fully inside the frame with clean, distinct edges.${color === "green" || color === "blue" ? ` Keep ${color} spill off the subject.` : ""} No visible scenery, floor, horizon, gradients, texture, backdrop shadows or reflections.`;
+}
+
+export function backdropShotDirection(color: BackdropColor): string {
+  return `Every area outside the subject's silhouette, including gaps between limbs and newly revealed areas during movement, remains the same solid ${color} (${BACKDROP_COLORS[color]}) in every frame.`;
+}
+
+export function backdropSummary(color: BackdropColor): string {
+  return `An isolated-subject compositing plate on a uniform, solid ${color} (${BACKDROP_COLORS[color]}) background throughout.`;
 }

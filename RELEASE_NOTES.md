@@ -25,6 +25,7 @@ This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and B
 
 ## Fixes and improvements
 
+- Backdrop prompts describe a flat, constant color field in every shot, limit reference guidance to subject appearance, and use neutral studio styling when no look is specified.
 - Zoom uses SlopFab's native edge blend directly, avoiding a second feather or color correction when saving. Source transparency is retained.
 - Generate all includes the final scene in an even-length Long Shot sequence, continuing from the preceding scene and preserving earlier joined video and audio. Four scenes generate in 1 → 3 → 2 → 4 order; adding another scene turns the final continuation into a bridge on its next generation.
 - Long Shot timeline playback keeps the same video player running across adjacent scenes in a joined generation, avoiding a playback restart at bridge boundaries.
