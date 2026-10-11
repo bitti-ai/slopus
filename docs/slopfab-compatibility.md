@@ -1,5 +1,44 @@
 # Slopfab compatibility
 
+## CUDA transformer loading memory recovery
+
+Large transformer checkpoints now upload through a bounded staging ring
+(two 32 MiB pinned buffers) instead of pinning the entire mapped file. Only
+checkpoints at most 64 MiB retain whole-mapping registration. On Windows,
+pinning a 20 GB checkpoint alongside the device arena reproduced an OOM at
+the conversion/upload boundary despite ample free VRAM. Bounded staging
+loaded the same checkpoint and completed repeated forward passes successfully.
+
+SlopFab 1.28.1 prepares the FP16 weight-conversion kernel before querying
+free VRAM, and reserves its upload scratch alongside activation headroom. This
+avoids budgeting weights against memory that CUDA's lazy kernel loading still
+needs. NVIDIA documents this allocation behavior in its
+[lazy loading guide](https://docs.nvidia.com/cuda/archive/13.1.0/cuda-programming-guide/04-special-topics/lazy-loading.html).
+
+If an automatic transformer load still receives `cudaErrorMemoryAllocation`,
+it synchronizes uploads, releases the partial model, clears the handled CUDA
+error and replans with a strictly smaller weight residency. The budget includes
+both transfer slots, so each retry actually reduces device memory. Retries are
+bounded by the block count and stop when the fixed weights and transfer slots
+cannot fit. Explicit offload counts and unrelated errors are not retried.
+Precision, references, resolution and sampling settings are preserved.
+
+The Windows and Linux bundles use SlopFab commit `513ba29` (1.28.1), built with
+`SLOPFAB_WITH_FFMPEG=OFF`. This fix changes no C API or worker protocol. Rebuild
+and restart Slopus and update LAN workers to load the replacement library.
+Regression coverage injects allocation failures to check cleanup, smaller
+residency, error propagation and exhaustion; CUDA tests compare resident and
+offloaded model output, including LoRAs and MotionCache.
+
+Validation: Windows transformer synthetic tests completed 254 checks without
+failures (11 deferred CPU-reference checks and one hardware skip). The real
+20 GB FP8 checkpoint completed 26 checks without failures; the optional full
+49-step run was skipped. Linux recovery, upload and offload comparisons passed,
+but its broader transformer suite reported a row-chunk numerical-tolerance
+failure in `transformer_row_chunks_match_full_rows` on CUDA 13.3. C API and
+embedded-tokenizer tests passed on both platforms. Slopus runtime integration
+tests passed with one ignored test.
+
 ## API 1.27: decode diagnostics
 
 Successful native generations write an INFO-level `generation.video_decode`
