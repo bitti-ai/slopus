@@ -1,5 +1,33 @@
 # Slopfab compatibility
 
+## Zoom boundary correction (1.28.2)
+
+The bundled Windows and Linux runtimes use SlopFab commit `8fe7da0` (1.28.2),
+built with `SLOPFAB_WITH_FFMPEG=OFF`. Outpaint VAE preparation extends source
+edge pixels into the unknown canvas before encoding. Previously, grey padding
+entered the VAE receptive field and contaminated locked source-edge latents
+and positioned anchors with a rectangular boundary. Only the encoding input
+changes: the semantic source reference, source rectangle, latent mask and
+final composite still use their original geometry. Both CUDA and Vulkan use
+this shared preparation path. Ordinary image edits are unchanged.
+
+Zoom requests a 33-pixel Gaussian kernel, blending up to 32 pixels inside
+source edges facing generated space (previously 8). For small intersections,
+the kernel shrinks to retain an unblended interior at least 32 pixels wide.
+Canvas edges without generated space do not fade. The save path retains the
+native RGB result and restores source alpha. Crop regeneration is unchanged.
+
+This is a runtime fix with no new C API or worker protocol. Restart Slopus
+and update LAN workers to load the replacement library. Regression coverage
+checks that unknown canvas pixels cannot affect outpaint encoding, source
+pixels remain intact, and small intersections retain an unblended interior.
+A real CUDA comparison at 416 x 416, 30 steps and seed 17 was visually checked;
+both runs preserved their source interiors exactly and used 174 evaluations.
+Slopus's GPU generation/save smoke test also passed with the bundled runtime;
+the saved PNG retained the native blend exactly. Inpaint regression tests and
+C API/tokenizer tests passed on Windows and Linux, along with the frontend
+build, focused Zoom tests and 61 Slopus runtime integration tests.
+
 ## CUDA transformer loading memory recovery
 
 Large transformer checkpoints now upload through a bounded staging ring

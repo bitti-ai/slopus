@@ -5,7 +5,7 @@ import { outputDimensions } from "./export";
 import type { ProjectAsset, ProjectConfig } from "./project";
 
 export const EXTEND_GRID = 32;
-export const ZOOM_BLEND_OVERLAP = 9;
+export const ZOOM_BLEND_OVERLAP = 33;
 export const ZOOM_LANGEVIN_STEPS = 5;
 // Largest current generation preset (2048p landscape), also usable in portrait.
 const MAX_GENERATION_SIZE = outputDimensions("2048p", "16:9");
@@ -100,6 +100,18 @@ export function extendContext(context: ExtendBounds) {
   return context;
 }
 
+function extendBlendOverlap(context: ExtendBounds, output: { width: number; height: number }) {
+  const room = (start: number, size: number, extent: number) => {
+    const edges = Number(start > 0) + Number(start + size < extent);
+    return edges ? (size - EXTEND_GRID) / edges : Infinity;
+  };
+  // Blend across two latent cells at exposed edges, but retain an unblended
+  // interior when only a small intersection of the source is on the canvas.
+  const band = Math.max(0, Math.min(ZOOM_BLEND_OVERLAP - 1,
+    room(context.x, context.width, output.width), room(context.y, context.height, output.height)));
+  return Math.floor(band / 2) * 2 + 1;
+}
+
 export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions) {
   if (!source.width || !source.height) throw new Error("Wait for the source image dimensions to load.");
   const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
@@ -117,6 +129,6 @@ export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, 
   // Outpainting locks the interior and generates all borders together. Crops
   // refine the whole frame with partial denoising to retain the composition.
   const edits = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: !regenerate,
-    ...(regenerate ? { strength: 0.65 } : { outpaintBlendOverlap: ZOOM_BLEND_OVERLAP, outpaintLangevinSteps: ZOOM_LANGEVIN_STEPS }) }];
+    ...(regenerate ? { strength: 0.65 } : { outpaintBlendOverlap: extendBlendOverlap(context, output), outpaintLangevinSteps: ZOOM_LANGEVIN_STEPS }) }];
   return { ...compiled, scene, edits, layout };
 }

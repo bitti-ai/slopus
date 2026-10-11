@@ -33,7 +33,7 @@ it("generates the entire surround in one pass while preserving the original in a
   for (const x of [-64, 0, 32]) for (const y of [-32, 0, 32]) {
     const { layout, edits } = compileExtendImage(config, source, "cache/canvas.png", { bounds: { x, y, width: 192, height: 128 }, prompt: "Forest", steps: 20, seed: 0 });
     expect(edits).toHaveLength(1);
-    expect(edits[0]).toMatchObject({ ...extendContext(layout.preserved), invertMask: true, feather: 0, outpaintBlendOverlap: 9, outpaintLangevinSteps: 5 });
+    expect(edits[0]).toMatchObject({ ...extendContext(layout.preserved), invertMask: true, feather: 0, outpaintBlendOverlap: 33, outpaintLangevinSteps: 5 });
     const contains = (r: { x: number; y: number; width: number; height: number }, px: number, py: number) => px >= r.x && py >= r.y && px < r.x + r.width && py < r.y + r.height;
     let allNewPixelsGenerated = true;
     for (let py = 0; py < layout.output.height; py++) for (let px = 0; px < layout.output.width; px++) {
@@ -131,6 +131,21 @@ it("passes the full source rectangle to native blending and retains a positioned
   expect(extendContext({ x: 64, y: 32, width: 256, height: 256 }))
     .toEqual({ x: 64, y: 32, width: 256, height: 256 });
   expect(() => extendContext({ x: 16, y: 16, width: 32, height: 32 })).toThrow("larger area");
+});
+
+it("limits the blend for small source intersections without erasing their interior", () => {
+  const config = createProjectConfig({ name: "Zoom", prompt: "", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
+  for (const width of [32, 64, 96, 128, 256]) {
+    const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width, height: width, createdAt: config.createdAt };
+    const { edits: [edit] } = compileExtendImage(config, source, "cache/canvas.png",
+      { bounds: { x: -32, y: -32, width: 416, height: 416 }, prompt: "", steps: 30, seed: 0 });
+    if (!("outpaintBlendOverlap" in edit)) throw new Error("Expected an outpaint edit");
+    expect(edit.outpaintBlendOverlap).toBeGreaterThanOrEqual(1);
+    expect(edit.outpaintBlendOverlap).toBeLessThanOrEqual(33);
+    expect(edit.outpaintBlendOverlap % 2).toBe(1);
+    expect(edit.width - 2 * (edit.outpaintBlendOverlap - 1)).toBeGreaterThanOrEqual(32);
+    expect(edit.height - 2 * (edit.outpaintBlendOverlap - 1)).toBeGreaterThanOrEqual(32);
+  }
 });
 
 it("aligns resize dimensions while preserving the opposite corner and caps every sizing path", () => {

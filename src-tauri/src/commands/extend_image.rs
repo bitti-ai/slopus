@@ -283,7 +283,6 @@ pub(crate) fn discard_extend_image(folder_path: String, job_id: String) -> Resul
 mod tests {
     use super::*;
 
-    /// Reuse a GPU smoke capture to compare compositing without another inference.
     /// Opt-in GPU smoke test. Supply an existing source image, model directory
     /// and artifact directory; ordinary test runs do not load any models.
     #[test]
@@ -402,7 +401,7 @@ mod tests {
         let step = if regenerate {
             serde_json::json!({"x":0,"y":0,"width":size,"height":size,"strength":0.65,"feather":0,"prompt":prompt})
         } else {
-            serde_json::json!({"x":69,"y":69,"width":277,"height":277,"invertMask":true,"feather":0,"outpaintBlendOverlap":9,"outpaintLangevinSteps":5,"prompt":prompt})
+            serde_json::json!({"x":69,"y":69,"width":277,"height":277,"invertMask":true,"feather":0,"outpaintBlendOverlap":33,"outpaintLangevinSteps":5,"prompt":prompt})
         };
         let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
             "jobId":job, "stillImage":true, "frames":1, "steps":20, "seed":17, "canvasWidth":size, "canvasHeight":size, "prompt":prompt,
@@ -452,8 +451,8 @@ mod tests {
             assert_ne!(result, snapshot, "Generation must change the resized crop");
         } else {
             assert_eq!(result, raw, "Saving must retain the native Gaussian blend");
-            for y in 8..snapshot.height() - 8 {
-                for x in 8..snapshot.width() - 8 {
+            for y in 32..snapshot.height() - 32 {
+                for x in 32..snapshot.width() - 32 {
                     assert_eq!(result.get_pixel(x + 69, y + 69), snapshot.get_pixel(x, y));
                 }
             }
