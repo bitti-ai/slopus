@@ -1,4 +1,4 @@
-# Slopus 0.3.1
+# Slopus 0.3.2
 
 This alpha update adds SeedVR2 and Real-ESRGAN export upscaling, Long Shot and Backdrop scenes, latent upscaling, clip speed controls, and a Settings agent, alongside improvements to generation, playback and memory use.
 
