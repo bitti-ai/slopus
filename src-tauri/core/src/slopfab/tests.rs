@@ -90,6 +90,8 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
             // Resolving fails if MotionCache is still enabled for inpainting.
             let plan = api.resolve(&handle).unwrap();
             assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (96, 64, 1));
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("feather 16\n"), "{description}");
         }
     }
     let mut invalid = request;
@@ -108,6 +110,43 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
     invalid.image_edit.as_mut().unwrap().edits[0].feather = None;
     invalid.image_edit.as_mut().unwrap().edits[0].width = 36;
     assert!(validate_generation_controls(&invalid).is_err());
+}
+
+#[test]
+fn whole_image_edits_never_feather_at_the_native_boundary() {
+    let configuration = Configuration::from_settings(&BTreeMap::new());
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    for (width, height) in [(96, 64), (65, 41)] {
+        let source = folder.path().join("source.png");
+        image::RgbImage::from_pixel(width as u32, height as u32, image::Rgb([100, 120, 140]))
+            .save(&source).unwrap();
+        for feather in [None, Some(0), Some(1), Some(16)] {
+            let request: GenerationRequest = serde_json::from_value(serde_json::json!({
+                "jobId":"whole-image", "prompt":"Change the entire image", "stillImage":true, "frames":1,
+                "steps":4, "seed":1, "canvasWidth":width, "canvasHeight":height,
+                "imageEdit":{"sourceRelativePath":"source.png", "edits":[{
+                    "prompt":"Change the entire image", "x":0, "y":0,
+                    "width":width, "height":height, "feather":feather
+                }]}
+            })).unwrap();
+            // Exercise the serialized request used by LAN workers as well.
+            let mut request: GenerationRequest = serde_json::from_value(serde_json::to_value(request).unwrap()).unwrap();
+            request.image_edit_path = Some(source.clone());
+            for from_pixels in [false, true] {
+                request.image_edit_pixels = from_pixels.then(|| std::sync::Arc::new(vec![100; (width * height * 3) as usize]));
+                for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                        let handle = RequestHandle::new(&api).unwrap();
+                        configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                        api.resolve(&handle).unwrap();
+                        let description = api.describe(&handle).unwrap();
+                        assert!(description.contains("feather 0\n"), "{description}");
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]

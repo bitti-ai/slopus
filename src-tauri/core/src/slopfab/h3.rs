@@ -72,9 +72,11 @@ pub(super) fn configure_request(
         let step = edit.edits.first().ok_or("Add an image edit before generating.")?;
         api.set_prompt(handle, &step.prompt)?;
         let bounds = [step.x, step.y, step.width, step.height];
-        // Ordinary edits blend inward. Outpainting preserves this box and
-        // generates its entire surround with shared context in one pass.
-        let feather = step.feather.unwrap_or(16);
+        // Full-image edits have no surrounding pixels to blend into. Enforce
+        // this here too, including older requests and sequential RGB edits.
+        let whole_image = !step.invert_mask && step.x == 0 && step.y == 0
+            && step.width == request.canvas_width && step.height == request.canvas_height;
+        let feather = if whole_image { 0 } else { step.feather.unwrap_or(16) };
         let strength = step.strength.unwrap_or(1.0);
         if !strength.is_finite() || strength <= 0.0 || strength > 1.0 {
             return Err("Image edit strength must be greater than zero and at most one.".into());

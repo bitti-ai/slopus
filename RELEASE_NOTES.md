@@ -13,7 +13,7 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 ## Fixes and improvements
 
 - Image edits keep the original as the parent with its saved prompt and settings. Child results open as normal images ready for further edits; selecting images does not create editing copies.
-- Whole-image edits now reach every edge without feathering.
+- Whole-image edits disable feathering at the native generation boundary, including requests with missing or previously saved feather settings.
 - Imported still images now have steps, seed and resolution controls. Resolution defaults to the source dimensions rounded down to multiples of 32, with additional sizes matching the source aspect ratio.
 - Fixed CUDA transformer-loading memory failures with bounded upload buffers, more accurate memory budgeting and automatic retries with more CPU offloading, while preserving precision and output settings.
 - Agent chat retains earlier replies, corrections and errors throughout the conversation. Raw JSON and command payloads stay hidden; readable replies and summaries are shown.
