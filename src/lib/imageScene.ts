@@ -17,6 +17,7 @@ export type ImageSource = z.infer<typeof imageSourceSchema>;
 export const imageSceneSchema = z.object({
   rootType: z.enum(["prompt", "image"]).optional(),
   sourceImage: imageSourceSchema.nullish(),
+  outputSize: z.object({ width: z.number().int().min(32).max(8192).multipleOf(32), height: z.number().int().min(32).max(8192).multipleOf(32) }).optional(),
   nodes: z.array(imageNodeSchema).min(1).max(500),
   background: z.string(),
   style: z.object({ mode: z.enum(["none", "photo", "art"]), aesthetics: z.string(), lighting: z.string(), medium: z.string(), detail: z.string() }),

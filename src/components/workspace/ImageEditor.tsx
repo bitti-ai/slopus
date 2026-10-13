@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type
 import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
-import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt } from "../../lib/imageEditing";
+import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize } from "../../lib/imageEditing";
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
@@ -59,6 +59,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const settings = imageSettings(config);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const imageRoot = scene.rootType === "image";
+  const editSize = imageRoot && scene.sourceImage ? imageEditOutputSize(scene) : null;
+  const sizeValue = (size: { width: number; height: number }) => `${size.width}x${size.height}`;
+  const editSizes = imageRoot && scene.sourceImage ? [...new Map([
+    imageEditSize(scene.sourceImage),
+    ...PROJECT_RESOLUTIONS.map((resolution) => imageEditSize(scene.sourceImage!, Number.parseInt(resolution))),
+    ...(editSize ? [editSize] : []),
+  ].filter((size) => size.width <= 8192 && size.height <= 8192).map((size) => [sizeValue(size), size])).values()] : [];
   const generatedImage = config.assets.find((asset) => asset.id === scene.outputAssetId && !asset.imageDraft && asset.imageGeneration);
   const recordedSeed = generatedImage?.imageGeneration?.usedSeed ?? generatedImage?.imageGeneration?.scene.seed;
   const usedSeed = recordedSeed !== undefined && recordedSeed >= 0 ? recordedSeed : undefined;
@@ -721,16 +728,16 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </>}
         <div className="image-inspector__area"><span id={rootField("prompt-label")} tabIndex={selected.kind === "root" && imageRoot ? 0 : undefined} data-tooltip={selected.kind === "root" && imageRoot ? "Applies to the whole image before the individual edits." : undefined}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} missingLabel={missingReference} onChange={(description) => patchNode({ description })} /></div>
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
-        {selected.kind === "root" && !imageRoot && <>
-          <div className="image-inspector__area"><span id={rootField("background-label")}>Background (environment)</span><PromptTextField aria-labelledby={rootField("background-label")} rows={3} value={scene.background} references={promptReferences} missingLabel={missingReference} onChange={(background) => commit({ ...scene, background })} /></div>
+        {selected.kind === "root" && <>
+          {!imageRoot && <div className="image-inspector__area"><span id={rootField("background-label")}>Background (environment)</span><PromptTextField aria-labelledby={rootField("background-label")} rows={3} value={scene.background} references={promptReferences} missingLabel={missingReference} onChange={(background) => commit({ ...scene, background })} /></div>}
           <PropSection title="Image generation" persistKey="image.generation" summary={`${generationStepsForTemplate(scene.steps, template)} steps`}>
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             <PropRow label="Seed" htmlFor={rootField("seed")} tooltip="-1 picks a random seed"><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
             {generatedImage && <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />}
-            <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>
-            <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>
+            {!imageRoot && <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>}
+            {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
           </PropSection>
-          <PropSection title="Style" persistKey="image.style">
+          {!imageRoot && <PropSection title="Style" persistKey="image.style">
             <PropRow label="Mode" htmlFor={rootField("mode")}><ComboBox id={rootField("mode")} aria-label="Mode" value={scene.style.mode} options={[{ value: "none", label: "None" }, { value: "photo", label: "Photo" }, { value: "art", label: "Art" }]} onChange={(value) => commit({ ...scene, style: { ...scene.style, mode: value as "none" | "photo" | "art" } })} /></PropRow>
             {scene.style.mode !== "none" && <>
             <TagEditor label="Aesthetics" value={scene.style.aesthetics} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoAestheticsSuggestions : styleSuggestions.ArtAestheticsSuggestions} onChange={(aesthetics) => commit({ ...scene, style: { ...scene.style, aesthetics } })} />
@@ -738,11 +745,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             {scene.style.mode === "art" && <TagEditor label="Medium" value={scene.style.medium} suggestions={styleSuggestions.MediumSuggestions} onChange={(medium) => commit({ ...scene, style: { ...scene.style, medium } })} />}
             <TagEditor key={scene.style.mode} label={scene.style.mode === "photo" ? "Camera / lens" : "Art style"} value={scene.style.detail} suggestions={scene.style.mode === "photo" ? styleSuggestions.PhotoSuggestions : styleSuggestions.ArtSuggestions} onChange={(detail) => commit({ ...scene, style: { ...scene.style, detail } })} />
             </>}
-          </PropSection>
+          </PropSection>}
         </>}
-        {selected.kind === "root" && imageRoot && generatedImage && <PropSection title="Image generation" persistKey="image.generation">
-          <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />
-        </PropSection>}
         {!isMiniMaxH3 && selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
           <label className="image-check"><input type="checkbox" checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>
           {selected.box && (["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={rootField(field)}>

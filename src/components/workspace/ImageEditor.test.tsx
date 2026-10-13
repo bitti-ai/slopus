@@ -108,6 +108,31 @@ it.each(["extend", "character-sheet"] as const)("returns from %s settings to nor
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
 
+it("edits imported-image generation settings and restores them with the draft", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "imported", name: "Imported", kind: "image", relativePath: "media/source.png", mimeType: "image/png", width: 1001, height: 809, createdAt: initial.createdAt }];
+  const current = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  typePrompt(screen.getByLabelText("Edit prompt"), "Warm up the lighting");
+  fireEvent.change(screen.getByLabelText("Steps"), { target: { value: "32" } });
+  fireEvent.change(screen.getByLabelText("Seed"), { target: { value: "123456" } });
+  choose("Resolution", "672 × 544");
+  expect(current().imageScene).toMatchObject({ steps: 32, seed: 123456, outputSize: { width: 672, height: 544 } });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 672, height: 544 });
+  expect(current().assets[0]).toMatchObject({ width: 1001, height: 809 });
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(reopened.imageScene).toEqual(current().imageScene);
+  fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
+  expect(screen.getByLabelText("Steps")).toHaveValue(32);
+  expect(screen.getByLabelText("Seed")).toHaveValue(123456);
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("672x544");
+  choose("Resolution", "992 × 800");
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 992, height: 800 });
+});
+
 it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.png"])("opens %s for editing after measuring its preview and preserves the original", async (relativePath) => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue("blob:imported");
   vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
@@ -318,7 +343,7 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   // References come from what each prompt cites; there is no list to tick.
   expect(screen.queryByRole("checkbox", { name: "Mood" })).not.toBeInTheDocument();
   typePrompt(screen.getByLabelText("Edit prompt"), "Make the lighting warmer like @[ref:Mood]");
-  expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 1000, height: 800 });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 992, height: 800 });
   const canvas = screen.getByLabelText("Image placement canvas");
   Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
   Object.defineProperty(canvas, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 1000, height: 800 }) });

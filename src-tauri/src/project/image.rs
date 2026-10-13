@@ -69,6 +69,8 @@ pub struct ImageScene {
     pub root_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_image: Option<ImageSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_size: Option<ImageOutputSize>,
     pub nodes: Vec<ImageNode>,
     pub background: String,
     pub style: ImageStyle,
@@ -82,6 +84,12 @@ pub struct ImageScene {
 pub struct ImageSource {
     pub relative_path: String,
     pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageOutputSize {
     pub width: u32,
     pub height: u32,
 }
@@ -133,6 +141,10 @@ impl ImageScene {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.output_size.as_ref().is_some_and(|size| [size.width, size.height].iter().any(|value|
+            !(32..=8192).contains(value) || value % 32 != 0)) {
+            return Err("Image output dimensions must be multiples of 32 between 32 and 8192 pixels.".into());
+        }
         if self.root_type.as_deref().is_some_and(|kind| !matches!(kind, "prompt" | "image")) {
             return Err("Invalid image root type.".into());
         }

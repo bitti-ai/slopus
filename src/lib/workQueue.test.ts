@@ -463,7 +463,7 @@ describe("image generation work", () => {
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     const steps = request.imageEdit!.edits;
     expect(steps).toHaveLength(2);
-    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
+    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64 });
     for (const [index, name] of ["Lighting", "Balloon"].entries()) {
       expect(steps[index].referencePaths).toEqual(["C:/Image/media/generated/source.jpg", `C:/Image/references/${name}.png`]);
       expect(steps[index].refmods).toEqual([{ path: `C:/Image/references/${name}.safetensors`, strength: 0.75, copies: 2 }]);
@@ -501,9 +501,9 @@ describe("image generation work", () => {
     }
     const draftId = session.getSnapshot().config.imageScene!.outputAssetId!;
     expect(session.getSnapshot().config.assets[0]).toMatchObject({ id: draftId, imageDraft: true });
-    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 101, canvasHeight: 77, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
-      { prompt: expect.stringContaining("A red balloon"), x: 25, y: 19, width: 51, height: 39 },
-      { prompt: expect.stringContaining("A blue boat"), x: 25, y: 19, width: 51, height: 39 },
+    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 96, canvasHeight: 64, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
+      { prompt: expect.stringContaining("A red balloon"), x: 24, y: 16, width: 48, height: 32 },
+      { prompt: expect.stringContaining("A blue boat"), x: 24, y: 16, width: 48, height: 32 },
     ] } });
     await finish(queue, request.jobId);
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: record.folderPath, jobId: request.jobId, format: "png" });
@@ -513,9 +513,25 @@ describe("image generation work", () => {
     expect(result.assets[0]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/edited.png" });
     expect(result.imageScene!.outputAssetId).toBe(draftId);
     expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png", width: 101, height: 77 } });
-    expect(result.assets[0]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (25, 19, 51, 39)") } });
+    expect(result.assets[0]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
     expect(restoreGeneratedImage(result, draftId).imageScene!.nodes).toHaveLength(1);
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
+  });
+  it("submits the selected image edit resolution, steps and seed to planning and generation", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.imageScene = createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 1001, height: 809 });
+    Object.assign(record.config.imageScene, { steps: 32, seed: 123456, outputSize: { width: 672, height: 544 } });
+    record.config.imageScene.nodes[0].description = "Warm up the lighting";
+    const session = queue.project(record);
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const expected = { steps: 32, seed: 123456, canvasWidth: 672, canvasHeight: 544,
+      imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ x: 0, y: 0, width: 672, height: 544 })] } };
+    expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject(expected);
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request).toMatchObject(expected);
+    await queue.cancel(request.jobId);
   });
   it.each(["browse", "modify", "cancel"])("keeps editing versions available during generation: %s", async (action) => {
     const { queue } = setup();

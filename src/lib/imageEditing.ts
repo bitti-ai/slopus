@@ -1,5 +1,5 @@
 import { imageSettings } from "./imageSettings";
-import { createImageEditScene, createImageScene, imageSourceSchema, type ImageNode, type ImageSource } from "./imageScene";
+import { createImageEditScene, createImageScene, imageSourceSchema, type ImageNode, type ImageScene, type ImageSource } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import type { ProjectConfig, ProjectReference } from "./project";
 
@@ -17,10 +17,20 @@ export interface ImageEditStep {
   refmods?: Array<{ path: string; strength: number; copies: number }>;
 }
 export const imageEditDebugPrompt = (edits: ImageEditStep[]) => edits.map((edit, index) => `Edit ${index + 1} (${edit.x}, ${edit.y}, ${edit.width}, ${edit.height})\n${edit.prompt}`).join("\n\n");
+/** Imported images default to their own dimensions, rounded down to the model grid. */
+export function imageEditSize(source: Pick<ImageSource, "width" | "height">, shortEdge = Math.min(source.width, source.height)) {
+  const scale = shortEdge / Math.min(source.width, source.height);
+  const align = (value: number) => Math.max(32, Math.floor(value / 32) * 32);
+  return { width: align(source.width * scale), height: align(source.height * scale) };
+}
+export function imageEditOutputSize(scene: ImageScene) {
+  return scene.outputSize ?? imageEditSize(scene.sourceImage!);
+}
 export function compileImageEdits(config: ProjectConfig): { source: ImageSource; edits: (ImageEditStep & { references: ProjectReference[] })[] } {
   const scene = config.imageScene!;
   const source = scene.sourceImage;
   if (!source) throw new Error("Open an image before adding edits.");
+  const size = imageEditOutputSize(scene);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   // The root describes a whole-image edit, followed by the local edits in order.
   const ordered: ImageNode[] = root.description.trim() ? [{ ...root, box: { x: 0, y: 0, width: 1000, height: 1000 } }] : [];
@@ -29,10 +39,10 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
   const edits = ordered.filter((node) => node.kind !== "group" || node.description.trim() || node.text).map((node) => {
     if (!node.box) throw new Error(`Set a placement box for '${node.name}'.`);
     if (!node.description.trim() && !node.text) throw new Error(`Describe the edit for '${node.name}'.`);
-    const x = Math.min(source.width - 1, Math.floor(node.box.x * source.width / 1000));
-    const y = Math.min(source.height - 1, Math.floor(node.box.y * source.height / 1000));
-    const right = Math.min(source.width, Math.ceil((node.box.x + node.box.width) * source.width / 1000));
-    const bottom = Math.min(source.height, Math.ceil((node.box.y + node.box.height) * source.height / 1000));
+    const x = Math.min(size.width - 1, Math.floor(node.box.x * size.width / 1000));
+    const y = Math.min(size.height - 1, Math.floor(node.box.y * size.height / 1000));
+    const right = Math.min(size.width, Math.ceil((node.box.x + node.box.width) * size.width / 1000));
+    const bottom = Math.min(size.height, Math.ceil((node.box.y + node.box.height) * size.height / 1000));
     const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };

@@ -4,7 +4,7 @@ import { imageDescendants, imageNodeSchema, imageSceneSchema, removeImageNode, r
 const id = z.string().min(1);
 const before = id.nullish();
 const editableNode = imageNodeSchema.pick({ name: true, description: true, text: true, box: true, colors: true, referenceIds: true }).partial();
-const authoredScene = imageSceneSchema.innerType().omit({ outputAssetId: true, rootType: true, sourceImage: true });
+const authoredScene = imageSceneSchema.innerType().omit({ outputAssetId: true, rootType: true, sourceImage: true, outputSize: true });
 const configuration = authoredScene.omit({ nodes: true, style: true }).partial().extend({ prompt: z.string().optional(), style: authoredScene.shape.style.partial().strict().optional() });
 export const imageCommandSchema = z.discriminatedUnion("op", [
   authoredScene.extend({ op: z.literal("image.set") }).strict(),

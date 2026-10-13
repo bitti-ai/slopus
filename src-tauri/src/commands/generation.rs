@@ -350,15 +350,62 @@ pub(crate) async fn export_reference_refmod(
 
 fn prepare_image_edit_path(request: &mut slopfab::GenerationRequest, folder_path: Option<&str>) -> Result<(), String> {
     if let Some(edit) = &request.image_edit {
+        if !(1..=8192).contains(&request.canvas_width) || !(1..=8192).contains(&request.canvas_height) {
+            return Err("Image edit dimensions must be between 1 and 8192 pixels.".into());
+        }
         let root = crate::project::paths::ProjectRoot::open(folder_path.ok_or("Image edits require a project folder.")?)?;
-        let path = root.existing(&edit.source_relative_path)?;
+        let mut path = root.existing(&edit.source_relative_path)?;
         let (width, height) = ::image::image_dimensions(&path).map_err(|error| format!("Could not read source image: {error}"))?;
         if width != request.canvas_width as u32 || height != request.canvas_height as u32 {
-            return Err("Image edit dimensions do not match the source file.".into());
+            // Native inpainting takes its canvas dimensions from the source file.
+            // Prepare the selected size before planning or uploading to a LAN worker.
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            (&request.job_id, &path, request.canvas_width, request.canvas_height).hash(&mut hash);
+            let directory = root.directory("cache/image-edits")?;
+            let destination = directory.join(format!("{:016x}.png", hash.finish()));
+            let resized = ::image::open(&path).map_err(|error| format!("Could not read source image: {error}"))?
+                .resize_exact(request.canvas_width as u32, request.canvas_height as u32, ::image::imageops::FilterType::Lanczos3);
+            let mut temporary = tempfile::NamedTempFile::new_in(&directory).map_err(|error| error.to_string())?;
+            resized.write_to(&mut temporary, ::image::ImageFormat::Png).map_err(|error| error.to_string())?;
+            temporary.persist(&destination).map_err(|error| error.to_string())?;
+            path = destination;
         }
         request.image_edit_path = Some(path);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod image_edit_tests {
+    use super::*;
+
+    #[test]
+    fn image_edit_prepares_selected_dimensions_without_changing_the_original() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("slopus.json"), "{}").unwrap();
+        let source = folder.path().join("source.png");
+        ::image::RgbaImage::from_pixel(101, 77, ::image::Rgba([80, 120, 160, 128])).save(&source).unwrap();
+        let original = std::fs::read(&source).unwrap();
+        let mut request: slopfab::GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":"edit-test", "prompt":"Warm up the lighting", "frames":1, "stillImage":true,
+            "steps":32, "seed":123456, "canvasWidth":96, "canvasHeight":64,
+            "imageEdit":{"sourceRelativePath":"source.png", "edits":[{"prompt":"Warm up the lighting", "x":0,"y":0,"width":96,"height":64}]}
+        })).unwrap();
+        for (width, height) in [(96, 64), (192, 128), (192, 128), (101, 77)] {
+            request.canvas_width = width;
+            request.canvas_height = height;
+            prepare_image_edit_path(&mut request, folder.path().to_str()).unwrap();
+            let prepared = ::image::open(request.image_edit_path.as_ref().unwrap()).unwrap().to_rgba8();
+            assert_eq!(prepared.dimensions(), (width as u32, height as u32));
+            assert_eq!(prepared.get_pixel(0, 0).0, [80, 120, 160, 128]);
+            assert_eq!(std::fs::read(&source).unwrap(), original);
+        }
+        request.canvas_width = -1;
+        assert!(prepare_image_edit_path(&mut request, folder.path().to_str()).is_err());
+        request.canvas_width = 8193;
+        assert!(prepare_image_edit_path(&mut request, folder.path().to_str()).is_err());
+    }
 }
 
 #[tauri::command]

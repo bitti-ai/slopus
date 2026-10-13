@@ -2,7 +2,7 @@ import { imageSettings } from "./imageSettings";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
-import { compileImageEdits, imageEditDebugPrompt } from "./imageEditing";
+import { compileImageEdits, imageEditDebugPrompt, imageEditOutputSize } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage, type ExtendOptions } from "./extendImage";
 import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
@@ -282,7 +282,7 @@ export class WorkQueue {
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
-    const { width, height } = edit?.source ?? outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
+    const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
     // Generating again from a finished image makes a new image in its family.

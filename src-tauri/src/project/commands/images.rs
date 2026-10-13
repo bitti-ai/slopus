@@ -25,6 +25,7 @@ pub(super) fn new_scene(prompt: &str) -> ImageScene {
     ImageScene {
         root_type: None,
         source_image: None,
+        output_size: None,
         nodes: vec![ImageNode {
             id: "image-root".into(),
             parent_id: None,
@@ -152,6 +153,7 @@ pub(super) fn apply(
             scene = ImageScene {
                 root_type: scene.root_type,
                 source_image: scene.source_image,
+                output_size: scene.output_size,
                 nodes: nodes.clone(),
                 background: background.clone(),
                 style: style.clone(),

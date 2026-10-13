@@ -1,10 +1,27 @@
 import { expect, it } from "vitest";
 import { parseProjectConfig } from "./project";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { compileImageEdits, editGeneratedImage } from "./imageEditing";
+import { compileImageEdits, editGeneratedImage, imageEditSize } from "./imageEditing";
 import fixture from "../../fixtures/project-v1-image.json";
 
-it("uses hierarchy order, skips empty groups, and converts boxes to original pixels", () => {
+it.each([
+  [1001, 809, 992, 800], [809, 1001, 800, 992], [640, 480, 640, 480], [17, 31, 32, 32],
+])("aligns a %i × %i source to %i × %i", (width, height, expectedWidth, expectedHeight) => {
+  expect(imageEditSize({ width, height })).toEqual({ width: expectedWidth, height: expectedHeight });
+});
+
+it("scales local edits to the selected output size and validates saved dimensions", () => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 1001, height: 809 }), "image-root", "object", { x: 750, y: 750, width: 250, height: 250 });
+  config.imageScene.nodes[1].description = "Add a balloon";
+  config.imageScene.outputSize = { width: 672, height: 544 };
+  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 504, y: 408, width: 168, height: 136 });
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).imageScene).toEqual(config.imageScene);
+  config.imageScene.outputSize.width = 673;
+  expect(() => parseProjectConfig(config)).toThrow();
+});
+
+it("uses hierarchy order, skips empty groups, and converts boxes to the rounded output dimensions", () => {
   const config = parseProjectConfig(fixture);
   let scene = createImageEditScene({ relativePath: "media/imported/source.png", name: "Source", width: 101, height: 77 });
   scene = addImageNode(scene, "image-root", "group");
@@ -18,10 +35,10 @@ it("uses hierarchy order, skips empty groups, and converts boxes to original pix
   config.settings.defaultLook = "watercolor";
   const { edits } = compileImageEdits(config);
   expect(edits).toHaveLength(2);
-  expect(edits[0]).toMatchObject({ x: 90, y: 69, width: 11, height: 8 });
+  expect(edits[0]).toMatchObject({ x: 86, y: 57, width: 10, height: 7 });
   expect(edits[0].prompt).toContain("A red balloon");
   expect(edits[0].prompt).not.toMatch(/Use these colors|#FF0000/);
-  expect(edits[1]).toMatchObject({ x: 25, y: 19, width: 51, height: 39 });
+  expect(edits[1]).toMatchObject({ x: 24, y: 16, width: 48, height: 32 });
   expect(edits[1].prompt).toContain("A blue boat");
   expect(edits[0].prompt).not.toContain("watercolor");
   expect(edits[0].prompt).toContain("[Shot 1]");
@@ -79,7 +96,7 @@ it("applies whole-image actions first and compiles only the references each edit
   config.imageScene = addImageNode(config.imageScene, root.id, "object");
   Object.assign(config.imageScene.nodes[1], { description: "Add a @[ref:Balloon]" });
   let edits = compileImageEdits(config).edits;
-  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77 });
+  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64 });
   expect(edits[0].prompt).toContain("Warm up the entire image like <Subject 1>");
   expect(edits[0].prompt).toContain("<Subject 1> is Lighting, providing appearance from <Picture 2>");
   expect(edits[0].prompt).not.toContain("Balloon");
