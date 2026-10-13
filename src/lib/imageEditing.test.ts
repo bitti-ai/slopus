@@ -96,7 +96,8 @@ it("applies whole-image actions first and compiles only the references each edit
   config.imageScene = addImageNode(config.imageScene, root.id, "object");
   Object.assign(config.imageScene.nodes[1], { description: "Add a @[ref:Balloon]" });
   let edits = compileImageEdits(config).edits;
-  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64 });
+  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64, feather: 0 });
+  expect(edits[1].feather).toBeUndefined();
   expect(edits[0].prompt).toContain("Warm up the entire image like <Subject 1>");
   expect(edits[0].prompt).toContain("<Subject 1> is Lighting, providing appearance from <Picture 2>");
   expect(edits[0].prompt).not.toContain("Balloon");
@@ -109,4 +110,15 @@ it("applies whole-image actions first and compiles only the references each edit
   expect(edits[1].references).toEqual([]);
   config.imageScene.nodes[1].description = "Add a @[ref:missing]";
   expect(() => compileImageEdits(config)).toThrow("The prompt cites a reference that no longer exists.");
+});
+
+it("disables feathering for a full-canvas edit box at the selected resolution", () => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 1001, height: 809 }), "image-root", "object", { x: 0, y: 0, width: 1000, height: 1000 });
+  config.imageScene.outputSize = { width: 672, height: 544 };
+  config.imageScene.nodes[1].description = "Warm up the lighting";
+  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 0, y: 0, width: 672, height: 544, feather: 0 });
+  // A local edit touching the canvas edge still blends with the rest of the image.
+  config.imageScene.nodes[1].box!.width = 500;
+  expect(compileImageEdits(config).edits[0].feather).toBeUndefined();
 });

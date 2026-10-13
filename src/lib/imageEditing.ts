@@ -47,7 +47,10 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
       node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };
     const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: editScene });
-    return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+    // A full-canvas edit has no surrounding source to blend into at its edges.
+    const wholeImage = x === 0 && y === 0 && right === size.width && bottom === size.height;
+    return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y),
+      ...(wholeImage ? { feather: 0 } : {}) };
   });
   if (!edits.length) throw new Error("Enter a whole-image edit prompt or add an Edit node before generating.");
   return { source, edits };

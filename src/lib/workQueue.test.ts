@@ -463,7 +463,8 @@ describe("image generation work", () => {
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     const steps = request.imageEdit!.edits;
     expect(steps).toHaveLength(2);
-    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64 });
+    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64, feather: 0 });
+    expect(steps[1].feather).toBeUndefined();
     for (const [index, name] of ["Lighting", "Balloon"].entries()) {
       expect(steps[index].referencePaths).toEqual(["C:/Image/media/generated/source.jpg", `C:/Image/references/${name}.png`]);
       expect(steps[index].refmods).toEqual([{ path: `C:/Image/references/${name}.safetensors`, strength: 0.75, copies: 2 }]);
@@ -527,7 +528,7 @@ describe("image generation work", () => {
     queue.enqueueImage(session, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const expected = { steps: 32, seed: 123456, canvasWidth: 672, canvasHeight: 544,
-      imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ x: 0, y: 0, width: 672, height: 544 })] } };
+      imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ x: 0, y: 0, width: 672, height: 544, feather: 0 })] } };
     expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject(expected);
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     expect(request).toMatchObject(expected);
