@@ -476,8 +476,9 @@ describe("image generation work", () => {
     await finish(queue, request.jobId);
     const result = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
     expect(result.assets[1].imageGeneration!.references.map((reference) => reference.id)).toEqual(["Lighting", "Balloon"]);
-    expect(result.imageScene!.nodes).toEqual(scene.nodes);
-    expect(result.imageScene!.sourceImage).toEqual(scene.sourceImage);
+    expect(result.imageScene!.nodes).toHaveLength(1);
+    expect(result.imageScene!.nodes[0].description).toBe("");
+    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toEqual(scene.nodes);
   });
   it("submits ordered inpainting as one job, saves a child PNG, and retains its edit recipe", async () => {
     const { queue } = setup();
@@ -509,14 +510,14 @@ describe("image generation work", () => {
     await finish(queue, request.jobId);
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: record.folderPath, jobId: request.jobId, format: "png" });
     const result = session.getSnapshot().config;
-    expect(result.imageScene!.nodes).toEqual(scene.nodes);
+    expect(result.imageScene!.nodes).toHaveLength(1);
     expect(result.assets).toHaveLength(2);
     expect(result.assets[0]).toMatchObject({ relativePath: "media/generated/source.jpg" });
     expect(result.assets[1]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/edited.png", parentAssetId: result.assets[0].id });
     expect(result.imageScene!.outputAssetId).toBe(draftId);
-    expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: scene.sourceImage });
+    expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png" } });
     expect(result.assets[1]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
-    expect(restoreGeneratedImage(result, draftId).imageScene!.nodes).toEqual(scene.nodes);
+    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toEqual(scene.nodes);
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
   });
   it("submits the selected image edit resolution, steps and seed to planning and generation", async () => {
@@ -557,12 +558,15 @@ describe("image generation work", () => {
       await finish(queue, request.jobId);
       const config = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
       expect(config.assets).toHaveLength(index + 2);
-      expect(config.assets.slice(0, previous.length)).toEqual(previous);
+      expect(config.assets.slice(0, previous.length).map(({ imageEditing: _editing, ...asset }) => asset)).toEqual(previous.map(({ imageEditing: _editing, ...asset }) => asset));
       expect(config.assets[0]).toMatchObject({ name: "Original", relativePath: "media/source.png", width: 1001, height: 809 });
       expect(config.assets.slice(1).every((asset) => asset.parentAssetId === config.assets[0].id && !asset.imageDraft)).toBe(true);
-      expect(config.imageScene).toMatchObject({ seed: -1, sourceImage: { relativePath: "media/source.png" }, outputSize: { width: 672, height: 544 } });
-      session.update(() => restoreGeneratedImage(config, config.assets[1].id));
-      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe("Warm up the lighting");
+      expect(config.imageScene!.nodes[0].description).toBe("");
+      expect(config.imageScene!.sourceImage?.relativePath).toBe(`media/edited-${index}.png`);
+      session.update(() => restoreGeneratedImage(config, config.assets[0].id));
+      expect(session.getSnapshot().config.imageScene).toMatchObject({ seed: -1, sourceImage: { relativePath: "media/source.png" }, outputSize: { width: 672, height: 544 } });
+      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe(index === 2 ? "Make it moonlit" : "Warm up the lighting");
+      expect(session.getSnapshot().config.assets).toHaveLength(index + 2);
     }
   });
   it.each(["browse", "modify", "cancel"])("keeps editing versions available during generation: %s", async (action) => {
@@ -595,7 +599,7 @@ describe("image generation work", () => {
       expect(config.imageScene!.outputAssetId).toBe("original");
       expect(config.assets).toHaveLength(2);
       session.update((current) => restoreGeneratedImage(current, draftId));
-      expect(session.getSnapshot().config.imageScene!.nodes[1].description).toBe("A red balloon");
+      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe("");
     } else {
       expect(config.imageScene!.outputAssetId).not.toBe(draftId);
       expect(config.assets.filter((asset) => asset.imageDraft)).toHaveLength(1);

@@ -6,6 +6,29 @@ import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
 import { createImageEditScene, createImageScene } from "./imageScene";
 
 describe("generated image history", () => {
+  it("retains the parent's edit instructions after reopening and deleting its children", () => {
+    const initial = parseProjectConfig(fixture);
+    const source = { name: "Original", relativePath: "media/original.png", width: 640, height: 480 };
+    initial.assets = [{ ...source, id: "original", kind: "image", mimeType: "image/png", createdAt: initial.createdAt }];
+    initial.imageScene = { ...createImageEditScene(source), outputAssetId: "original" };
+    initial.imageScene.nodes[0].description = "Make the sky pink";
+    const drafted = saveImageDraft(initial, "generator");
+    const draft = drafted.assets.find((asset) => asset.imageDraft)!;
+    const completed = completeImageDraft(drafted, draft.id, { ...draft, name: "Edited", relativePath: "media/edited.png" });
+    expect(completed.imageScene!.nodes[0].description).toBe("");
+    expect(completed.imageScene!.sourceImage?.relativePath).toBe("media/edited.png");
+    const reopened = parseProjectConfig(JSON.parse(JSON.stringify(completed)));
+    const parent = restoreGeneratedImage({ ...reopened, assets: removeImageAsset(reopened.assets, draft.id) }, "original");
+    expect(parent.imageScene!.nodes[0].description).toBe("Make the sky pink");
+    expect(parent.imageScene!.sourceImage).toEqual(source);
+    expect(saveImageDraft(parent)).toBe(parent);
+    expect(parent.assets).toHaveLength(1);
+    expect(parent.assets[0].imageGeneration).toBeUndefined();
+    const invalid = structuredClone(parent);
+    invalid.assets[0].imageEditing!.scene.sourceImage!.relativePath = "media/another.png";
+    expect(() => parseProjectConfig(invalid)).toThrow("Image editing instructions must use this image as their source.");
+  });
+
   it("keeps a submitted template intact when editing its pending entry and completing in the background", () => {
     const config = parseProjectConfig(fixture);
     config.imageScene = createImageScene("Forest");

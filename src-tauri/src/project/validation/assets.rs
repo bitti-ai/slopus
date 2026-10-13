@@ -22,7 +22,11 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if asset.image_draft == Some(true) && (asset.kind != "image" || !asset.image_generation.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() != Some("image") || snapshot.scene.source_image.is_some())) {
             return Err("Image drafts require a scene snapshot and image roots require a source.".into());
         }
-        if let Some(snapshot) = &mut asset.image_generation {
+        if asset.image_editing.as_ref().is_some_and(|snapshot| snapshot.scene.root_type.as_deref() != Some("image")
+            || snapshot.scene.source_image.as_ref().map(|source| &source.relative_path) != asset.relative_path.as_ref() || asset.relative_path.is_none()) {
+            return Err("Image editing instructions must use this image as their source.".into());
+        }
+        for snapshot in asset.image_generation.iter_mut().chain(asset.image_editing.iter_mut()) {
             snapshot.scene.validate()?;
             if let Some(template) = &snapshot.template { template.validate()?; }
             if asset.kind != "image"

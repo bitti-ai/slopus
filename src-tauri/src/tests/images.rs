@@ -5,6 +5,26 @@ fn image_fixture() -> ProjectConfig {
 }
 
 #[test]
+fn image_parent_editing_instructions_survive_native_save_and_reopen() {
+    let mut config = image_fixture();
+    let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
+    snapshot["scene"]["rootType"] = serde_json::json!("image");
+    snapshot["scene"]["sourceImage"] = serde_json::json!({"name":"Original", "relativePath":"media/original.png", "width":640, "height":480});
+    snapshot["scene"]["nodes"][0]["description"] = serde_json::json!("Make the sky pink");
+    config.assets.push(serde_json::from_value(serde_json::json!({
+        "id":"original", "kind":"image", "name":"Original", "relativePath":"media/original.png", "mimeType":"image/png",
+        "width":640, "height":480, "createdAt":config.created_at, "imageEditing":snapshot
+    })).unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let created = create_project_in(root.path(), &config).unwrap();
+    let opened = read_project(Path::new(&created.folder_path)).unwrap();
+    assert_eq!(opened.config.assets, config.assets);
+    let mut invalid = opened.config;
+    invalid.assets[0].image_editing.as_mut().unwrap().scene.source_image.as_mut().unwrap().relative_path = "media/another.png".into();
+    assert!(validate_and_normalize_config(invalid).is_err());
+}
+
+#[test]
 fn image_editing_draft_survives_save_and_reopen() {
     let mut config = image_fixture();
     let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();

@@ -208,6 +208,8 @@ export const projectAssetSchema = z.object({
    * Latent paths identify the exact source generations, including branches. */
   sceneSegments: z.array(sceneMediaSegmentSchema).min(1).nullish(),
   imageGeneration: imageGenerationSnapshotSchema.nullish(),
+  /** Editable instructions belonging to this image, separate from how it was generated. */
+  imageEditing: imageGenerationSnapshotSchema.nullish(),
   imageDraft: z.boolean().nullish(),
   /** The family's primary image. Always its first image, never another child,
    *  so a family is one level even after choosing a different primary. */
@@ -232,6 +234,9 @@ export const projectAssetSchema = z.object({
   }
   if (asset.imageGeneration && asset.kind !== "image") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageGeneration"], message: "Only image assets can store image generation history." });
+  }
+  if (asset.imageEditing && (asset.kind !== "image" || asset.imageEditing.scene.rootType !== "image" || !asset.relativePath || asset.imageEditing.scene.sourceImage?.relativePath !== asset.relativePath)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["imageEditing"], message: "Image editing instructions must use this image as their source." });
   }
   /* Generated scenes and blank image drafts can exist before rendering.
    * WorkQueue fills their file paths in when generation ends. */

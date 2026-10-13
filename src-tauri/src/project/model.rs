@@ -119,6 +119,8 @@ pub(crate) struct ProjectAsset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_generation: Option<super::image::ImageGenerationSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) image_editing: Option<super::image::ImageGenerationSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) image_draft: Option<bool>,
     /// The family's primary image; the image bar shows it first, followed by
     /// the other versions. Choosing a primary keeps the family one level deep.

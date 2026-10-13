@@ -108,7 +108,7 @@ it.each(["extend", "character-sheet"] as const)("returns from %s settings to nor
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
 
-it("shows an edited child with its saved prompt and creates another draft on the original when changed", async () => {
+it("keeps the prompt on the parent, opens children without drafts, and edits a child's own pixels", async () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
   vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
   const initial = parseProjectConfig(fixture);
@@ -120,24 +120,29 @@ it("shows an edited child with its saved prompt and creates another draft on the
     imageGeneration: { ...imageGenerationSnapshot(initial, "Compiled edit", defaultGeneratorTemplate().id), usedSeed: 42 } };
   initial.assets = [original, result];
   const current = setup(restoreGeneratedImage(initial, result.id));
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   expect(screen.getByLabelText("Seed")).toHaveValue(-1);
   expect(screen.getByLabelText("Used seed")).toHaveValue("42");
   const preview = () => document.querySelector<HTMLImageElement>(".image-frame img");
   await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/edited.png"));
   expect(preview()!.parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(672 / 544));
   fireEvent.click(screen.getByRole("button", { name: "View Original" }));
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
   expect(current().assets).toEqual([original, result]);
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   typePrompt(screen.getByLabelText("Edit prompt"), "Make it moonlit");
-  expect(current().assets.slice(0, 2)).toEqual([original, result]);
+  expect(current().assets[0]).toEqual(original);
+  expect(current().assets[1].imageGeneration).toEqual(result.imageGeneration);
   expect(current().assets[2]).toMatchObject({ imageDraft: true, parentAssetId: "original", imageGeneration: {
-    scene: { sourceImage: { relativePath: "media/original.png" }, nodes: [{ description: "Make it moonlit" }] } } });
-  await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/original.png"));
+    scene: { sourceImage: { relativePath: "media/edited.png" }, nodes: [{ description: "Make it moonlit" }] } } });
+  await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/edited.png"));
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make it moonlit");
+  fireEvent.click(screen.getByRole("button", { name: "View Original" }));
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(current().assets).toHaveLength(3);
 });
 
 it("edits imported-image generation settings and restores them with the draft", () => {
@@ -156,7 +161,7 @@ it("edits imported-image generation settings and restores them with the draft", 
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.imageScene).toEqual(current().imageScene);
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
-  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("672x544");
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
   expect(screen.getByLabelText("Steps")).toHaveValue(32);
   expect(screen.getByLabelText("Seed")).toHaveValue(123456);
@@ -190,7 +195,8 @@ it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.pn
   const draftId = current().assets[1].id;
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
   expect(current().imageScene?.outputAssetId).toBe("imported");
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the sky pink");
+  expect(current().assets).toHaveLength(2);
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
   expect(current().imageScene?.outputAssetId).toBe(draftId);
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the sky pink");

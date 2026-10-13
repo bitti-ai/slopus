@@ -6,7 +6,7 @@ import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditO
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, imageEditingSnapshot, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
@@ -219,7 +219,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     setImageMenu(output ? { id: output.id, x, y, inFamily: imageFamily(images, output.id).length > 1, source: "canvas" } : null);
   };
   const resetImageEditing = (id: string) => {
-    const snapshot = config.assets.find((asset) => asset.id === id)?.imageGeneration;
+    const asset = config.assets.find((asset) => asset.id === id);
+    const snapshot = asset && (imageEditingSnapshot(config, asset) ?? asset.imageGeneration);
     if (!snapshot) return;
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
     pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
