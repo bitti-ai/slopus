@@ -475,11 +475,11 @@ describe("image generation work", () => {
     expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].imageEdit).toEqual(request.imageEdit);
     await finish(queue, request.jobId);
     const result = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
-    expect(result.assets[0].imageGeneration!.references.map((reference) => reference.id)).toEqual(["Lighting", "Balloon"]);
-    expect(result.imageScene!.nodes).toHaveLength(1);
-    expect(result.imageScene!.nodes[0].description).toBe("");
+    expect(result.assets[1].imageGeneration!.references.map((reference) => reference.id)).toEqual(["Lighting", "Balloon"]);
+    expect(result.imageScene!.nodes).toEqual(scene.nodes);
+    expect(result.imageScene!.sourceImage).toEqual(scene.sourceImage);
   });
-  it("submits ordered inpainting as one job, saves PNG, and leaves a clean edit root", async () => {
+  it("submits ordered inpainting as one job, saves a child PNG, and retains its edit recipe", async () => {
     const { queue } = setup();
     const record = imageProject();
     let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
@@ -501,7 +501,7 @@ describe("image generation work", () => {
       expect(edit.prompt).toContain("<Subject 1> is Balloon, providing appearance from <Picture 2>");
     }
     const draftId = session.getSnapshot().config.imageScene!.outputAssetId!;
-    expect(session.getSnapshot().config.assets[0]).toMatchObject({ id: draftId, imageDraft: true });
+    expect(session.getSnapshot().config.assets[1]).toMatchObject({ id: draftId, imageDraft: true });
     expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 96, canvasHeight: 64, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
       { prompt: expect.stringContaining("A red balloon"), x: 24, y: 16, width: 48, height: 32 },
       { prompt: expect.stringContaining("A blue boat"), x: 24, y: 16, width: 48, height: 32 },
@@ -509,13 +509,14 @@ describe("image generation work", () => {
     await finish(queue, request.jobId);
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: record.folderPath, jobId: request.jobId, format: "png" });
     const result = session.getSnapshot().config;
-    expect(result.imageScene!.nodes).toHaveLength(1);
-    expect(result.assets).toHaveLength(1);
-    expect(result.assets[0]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/edited.png" });
+    expect(result.imageScene!.nodes).toEqual(scene.nodes);
+    expect(result.assets).toHaveLength(2);
+    expect(result.assets[0]).toMatchObject({ relativePath: "media/generated/source.jpg" });
+    expect(result.assets[1]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/edited.png", parentAssetId: result.assets[0].id });
     expect(result.imageScene!.outputAssetId).toBe(draftId);
-    expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png", width: 101, height: 77 } });
-    expect(result.assets[0]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
-    expect(restoreGeneratedImage(result, draftId).imageScene!.nodes).toHaveLength(1);
+    expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: scene.sourceImage });
+    expect(result.assets[1]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
+    expect(restoreGeneratedImage(result, draftId).imageScene!.nodes).toEqual(scene.nodes);
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
   });
   it("submits the selected image edit resolution, steps and seed to planning and generation", async () => {
@@ -533,6 +534,36 @@ describe("image generation work", () => {
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     expect(request).toMatchObject(expected);
     await queue.cancel(request.jobId);
+  });
+  it("reruns an edit with fresh random seeds and changed prompts as children of the original", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.imageScene = createImageEditScene({ name: "Original", relativePath: "media/source.png", width: 1001, height: 809 });
+    record.config.imageScene.outputSize = { width: 672, height: 544 };
+    record.config.imageScene.nodes[0].description = "Warm up the lighting";
+    let seed = 100;
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => { (array as Uint32Array).set([0, ++seed]); return array; });
+    const session = queue.project(record);
+    for (let index = 0; index < 3; index++) {
+      if (index === 2) session.update((config) => ({ ...config, imageScene: { ...config.imageScene!,
+        nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "Make it moonlit" })) } }));
+      const previous = structuredClone(session.getSnapshot().config.assets.filter((asset) => !asset.imageDraft));
+      queue.enqueueImage(session, template);
+      await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+      const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0];
+      expect(request).toMatchObject({ seed: 101 + index, canvasWidth: 672, canvasHeight: 544,
+        imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ prompt: expect.stringContaining(index === 2 ? "Make it moonlit" : "Warm up the lighting") })] } });
+      vi.mocked(invoke).mockResolvedValue({ relativePath: `media/edited-${index}.png`, width: 672, height: 544 });
+      await finish(queue, request.jobId);
+      const config = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+      expect(config.assets).toHaveLength(index + 2);
+      expect(config.assets.slice(0, previous.length)).toEqual(previous);
+      expect(config.assets[0]).toMatchObject({ name: "Original", relativePath: "media/source.png", width: 1001, height: 809 });
+      expect(config.assets.slice(1).every((asset) => asset.parentAssetId === config.assets[0].id && !asset.imageDraft)).toBe(true);
+      expect(config.imageScene).toMatchObject({ seed: -1, sourceImage: { relativePath: "media/source.png" }, outputSize: { width: 672, height: 544 } });
+      session.update(() => restoreGeneratedImage(config, config.assets[1].id));
+      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe("Warm up the lighting");
+    }
   });
   it.each(["browse", "modify", "cancel"])("keeps editing versions available during generation: %s", async (action) => {
     const { queue } = setup();
@@ -564,7 +595,7 @@ describe("image generation work", () => {
       expect(config.imageScene!.outputAssetId).toBe("original");
       expect(config.assets).toHaveLength(2);
       session.update((current) => restoreGeneratedImage(current, draftId));
-      expect(session.getSnapshot().config.imageScene!.nodes).toHaveLength(1);
+      expect(session.getSnapshot().config.imageScene!.nodes[1].description).toBe("A red balloon");
     } else {
       expect(config.imageScene!.outputAssetId).not.toBe(draftId);
       expect(config.assets.filter((asset) => asset.imageDraft)).toHaveLength(1);

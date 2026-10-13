@@ -57,7 +57,7 @@ export function removeImageAsset(assets: readonly ProjectAsset[], id: string): P
 }
 
 /** Keep the editable version in history without creating another image file. */
-export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string): ProjectConfig {
+export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string, regenerate = false): ProjectConfig {
   const scene = config.imageScene;
   if (!scene) return config;
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
@@ -67,13 +67,24 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   if (templateDraft && JSON.stringify({ ...scene, outputAssetId: null }) === JSON.stringify(selected.imageGeneration!.scene)) return config;
   const source = scene.rootType === "image" ? scene.sourceImage : null;
   if (!source && !selected?.imageDraft) return config;
+  const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
+  const saved = selected?.imageGeneration;
+  // Merely viewing a finished edit (including session autosave) must not create
+  // a draft. Generate explicitly forks it, even when its inputs are unchanged.
+  if (!regenerate && selected && !selected.imageDraft && saved && !saved.template
+    && Object.entries(snapshot).every(([key, value]) => key === "prompt" || JSON.stringify(value) === JSON.stringify(saved[key as keyof ImageGenerationSnapshot]))) return config;
+  // Direct imports and older edit drafts may not have a separate source entry.
+  // Retain that file as the original before its draft becomes a generated result.
+  if (source && !config.assets.some((asset) => asset.kind === "image" && !asset.imageDraft && asset.relativePath === source.relativePath)) {
+    config = { ...config, assets: [...config.assets, { id: `image-source-${crypto.randomUUID()}`, kind: "image", ...source,
+      mimeType: /\.png$/i.test(source.relativePath) ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }] };
+  }
   if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
   const existing = selected?.imageDraft && !templateDraft ? selected : undefined;
   const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
   const edited = source && config.assets.find((asset) => asset.kind === "image" && !asset.imageDraft && asset.relativePath === source.relativePath);
-  const parentAssetId = existing ? existing.parentAssetId : imageFamilyRoot(config.assets, templateDraft ? selected.id : edited?.id);
-  const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || existing?.imageGeneration?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
-  if (existing && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
+  const parentAssetId = existing?.parentAssetId ?? imageFamilyRoot(config.assets, templateDraft ? selected.id : edited?.id);
+  if (existing && existing.parentAssetId === parentAssetId && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
   const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? (source ? `Editing ${source.name}` : "New image"),
     imageDraft: true, mimeType: /\.png$/i.test(source?.relativePath ?? "") ? "image/png" : "image/jpeg",
     imageGeneration: snapshot, ...(parentAssetId ? { parentAssetId } : {}), createdAt: existing?.createdAt ?? new Date().toISOString() };
@@ -127,7 +138,7 @@ export function restoreGeneratedImage(config: ProjectConfig, id: string): Projec
   if (!snapshot) return { ...config, thumbnail: asset.relativePath ?? null,
     imageScene: { ...(config.imageScene?.rootType === "image" ? createImageScene() : config.imageScene ?? createImageScene(config.brief.prompt)), outputAssetId: id } };
   const restored = structuredClone(snapshot);
-  const scene = !asset.imageDraft && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
+  const scene = !asset.imageDraft && restored.template && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
     ? createImageEditScene({ relativePath: asset.relativePath, name: asset.name, width: asset.width, height: asset.height }, restored.scene)
     : restored.scene;
   const references = new Map(restored.references.map((reference) => [reference.id, reference]));

@@ -12,6 +12,7 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## Fixes and improvements
 
+- Image edits keep the original as the parent and save results as child versions. Selecting a result restores its edit prompt, source and settings for rerunning or creating another variation.
 - Whole-image edits now reach every edge without feathering.
 - Imported still images now have steps, seed and resolution controls. Resolution defaults to the source dimensions rounded down to multiples of 32, with additional sizes matching the source aspect ratio.
 - Fixed CUDA transformer-loading memory failures with bounded upload buffers, more accurate memory budgeting and automatic retries with more CPU offloading, while preserving precision and output settings.

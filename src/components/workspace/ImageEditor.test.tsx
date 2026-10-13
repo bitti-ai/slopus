@@ -108,6 +108,38 @@ it.each(["extend", "character-sheet"] as const)("returns from %s settings to nor
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
 
+it("shows an edited child with its saved prompt and creates another draft on the original when changed", async () => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
+  vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
+  const initial = parseProjectConfig(fixture);
+  const original = { id: "original", name: "Original", kind: "image" as const, relativePath: "media/original.png", mimeType: "image/png", width: 1001, height: 809, createdAt: initial.createdAt };
+  initial.imageScene = createImageEditScene({ name: original.name, relativePath: original.relativePath, width: original.width, height: original.height });
+  initial.imageScene.nodes[0].description = "Warm up the lighting";
+  initial.imageScene.outputSize = { width: 672, height: 544 };
+  const result = { ...original, id: "edited", name: "Edited", relativePath: "media/edited.png", width: 672, height: 544, parentAssetId: original.id,
+    imageGeneration: { ...imageGenerationSnapshot(initial, "Compiled edit", defaultGeneratorTemplate().id), usedSeed: 42 } };
+  initial.assets = [original, result];
+  const current = setup(restoreGeneratedImage(initial, result.id));
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(screen.getByLabelText("Seed")).toHaveValue(-1);
+  expect(screen.getByLabelText("Used seed")).toHaveValue("42");
+  const preview = () => document.querySelector<HTMLImageElement>(".image-frame img");
+  await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/edited.png"));
+  expect(preview()!.parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(672 / 544));
+  fireEvent.click(screen.getByRole("button", { name: "View Original" }));
+  fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  expect(current().assets).toEqual([original, result]);
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  typePrompt(screen.getByLabelText("Edit prompt"), "Make it moonlit");
+  expect(current().assets.slice(0, 2)).toEqual([original, result]);
+  expect(current().assets[2]).toMatchObject({ imageDraft: true, parentAssetId: "original", imageGeneration: {
+    scene: { sourceImage: { relativePath: "media/original.png" }, nodes: [{ description: "Make it moonlit" }] } } });
+  await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/original.png"));
+  fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+});
+
 it("edits imported-image generation settings and restores them with the draft", () => {
   const initial = parseProjectConfig(fixture);
   initial.assets = [{ id: "imported", name: "Imported", kind: "image", relativePath: "media/source.png", mimeType: "image/png", width: 1001, height: 809, createdAt: initial.createdAt }];
@@ -339,6 +371,9 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   vi.mocked(invoke).mockResolvedValueOnce(source);
   addFile();
   await waitFor(() => expect(current().imageScene?.sourceImage).toEqual(source));
+  const original = current().assets.find((asset) => !asset.imageDraft && asset.relativePath === source.relativePath)!;
+  expect(original).toMatchObject(source);
+  expect(current().assets.find((asset) => asset.imageDraft)?.parentAssetId).toBe(original.id);
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
   // References come from what each prompt cites; there is no list to tick.
   expect(screen.queryByRole("checkbox", { name: "Mood" })).not.toBeInTheDocument();

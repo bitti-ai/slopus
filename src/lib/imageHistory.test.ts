@@ -125,7 +125,11 @@ describe("generated image history", () => {
     expect(parseProjectConfig(JSON.parse(JSON.stringify(done))).assets).toEqual(done.assets);
     // An imported file starts a family of its own.
     config.imageScene = createImageEditScene({ relativePath: "media/imported/photo.png", name: "photo", width: 101, height: 77 });
-    expect(saveImageDraft(config, "test").assets.find((asset) => asset.imageDraft)!.parentAssetId).toBeUndefined();
+    const imported = saveImageDraft(config, "test");
+    const original = imported.assets.find((asset) => asset.relativePath === "media/imported/photo.png" && !asset.imageDraft)!;
+    expect(original).toMatchObject({ name: "photo", width: 101, height: 77 });
+    expect(imported.assets.find((asset) => asset.imageDraft)!.parentAssetId).toBe(original.id);
+    expect(saveImageDraft(imported, "test").assets).toEqual(imported.assets);
   });
 
   it("keeps a family together when its original is removed", () => {

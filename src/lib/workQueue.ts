@@ -268,7 +268,7 @@ export class WorkQueue {
   enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
     if (!isTauri()) throw new Error("Image generation requires the desktop app and MiniMax H3 weights.");
     if (template.mode === "animate") throw new Error("Choose a MiniMax H3 prompt template for images.");
-    session.update((config) => saveImageDraft(config, template.id));
+    session.update((config) => saveImageDraft(config, template.id, true));
     const current = session.getSnapshot().config;
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
     const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
@@ -739,7 +739,7 @@ export class WorkQueue {
           ...saved, mimeType: "image/png", imageGeneration: work.imageGeneration, createdAt: new Date().toISOString() }));
       } else {
         work.session.update(imageResultUpdate({ id: work.id, imageDraftId: work.imageDraftId, imageParentId: work.imageParentId,
-          imageGeneration: work.imageGeneration, snapshot: work.snapshot, outputAssetId: work.config.imageScene?.outputAssetId,
+          imageGeneration: work.imageGeneration, outputAssetId: work.config.imageScene?.outputAssetId,
           imageEdit: Boolean(work.request.imageEdit), saved }));
       }
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
@@ -779,8 +779,8 @@ function videoResultUpdate(sceneId: string, assetId: string, media: Omit<Project
   });
 }
 
-function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, snapshot, outputAssetId, imageEdit, saved }: {
-  id: string; imageDraftId?: string; imageParentId?: string; imageGeneration?: ImageGenerationSnapshot; snapshot: string;
+function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, outputAssetId, imageEdit, saved }: {
+  id: string; imageDraftId?: string; imageParentId?: string; imageGeneration?: ImageGenerationSnapshot;
   outputAssetId?: string | null; imageEdit: boolean; saved: { relativePath: string; width: number; height: number };
 }) {
   const mimeType = imageEdit ? "image/png" : "image/jpeg";
@@ -791,7 +791,7 @@ function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, s
   }) : ({ ...current,
     ...(current.imageScene?.outputAssetId === outputAssetId ? {
       thumbnail: saved.relativePath,
-      imageScene: { ...(imageEdit && JSON.stringify(current.imageScene) === snapshot ? createImageEditScene({ ...saved, name: "Edited image" }, current.imageScene ?? undefined) : current.imageScene ?? createImageScene()), outputAssetId: id },
+      imageScene: { ...(current.imageScene ?? createImageScene()), outputAssetId: id },
     } : {}),
     assets: [...current.assets, { id, kind: "image", name: `Image ${current.assets.filter((asset) => asset.kind === "image").length + 1}`, ...saved, imageGeneration, mimeType, ...(imageParentId ? { parentAssetId: imageFamilyRoot(current.assets, imageParentId) } : {}), createdAt: new Date().toISOString() }],
   });
