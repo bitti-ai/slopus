@@ -73,7 +73,18 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   const templateDraft = selected?.imageDraft && selected.imageGeneration?.template;
   if (templateDraft && JSON.stringify({ ...scene, outputAssetId: null }) === JSON.stringify(selected.imageGeneration!.scene)) return config;
   const source = scene.rootType === "image" ? scene.sourceImage : null;
-  if (!source && !selected?.imageDraft) return config;
+  if (!source && !selected?.imageDraft) {
+    const generation = selected?.imageGeneration;
+    const root = scene.nodes.find((node) => node.kind === "root");
+    const savedRoot = generation?.scene.nodes.find((node) => node.kind === "root");
+    if (!generation || generation.scene.rootType === "image" || !root || !savedRoot || root.name === savedRoot.name) return config;
+    // A root rename is metadata: retain it when reopening the result while
+    // keeping the original generation prompt and settings intact.
+    return { ...config, assets: config.assets.map((asset) => asset.id === selected.id ? { ...asset,
+      imageGeneration: { ...generation, scene: { ...generation.scene,
+        nodes: generation.scene.nodes.map((node) => node.kind === "root" ? { ...node, name: root.name } : node) } },
+    } : asset) };
+  }
   const saved = selected && !selected.imageDraft ? imageEditingSnapshot(config, selected) : selected?.imageGeneration;
   const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || saved?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
   // Merely viewing a finished edit (including session autosave) must not create

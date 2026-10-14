@@ -12,6 +12,7 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## Fixes and improvements
 
+- Renamed image roots on the still image creation page now retain their names when switching images and reopening projects.
 - Image edits keep the original as the parent with its saved prompt and settings. Child results open as normal images ready for further edits; selecting images does not create editing copies.
 - Whole-image edits disable feathering at the native generation boundary, including requests with missing or previously saved feather settings.
 - Imported still images now have steps, seed and resolution controls. Resolution defaults to the source dimensions rounded down to multiples of 32, with additional sizes matching the source aspect ratio.

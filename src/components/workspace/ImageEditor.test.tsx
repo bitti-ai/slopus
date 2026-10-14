@@ -457,6 +457,26 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   expect(current().imageScene!.sourceImage?.name).toBe("Saved");
 });
 
+it.each([false, true])("retains a renamed image root after switching images and reopening (draft: %s)", (imageDraft) => {
+  const initial = parseProjectConfig(fixture);
+  const snapshot = imageGenerationSnapshot(initial, imageDraft ? "" : "Original prompt", defaultGeneratorTemplate().id);
+  initial.assets = ["First", "Second"].map((name) => ({ id: name, name, kind: "image", imageDraft,
+    relativePath: `media/generated/${name}.jpg`, mimeType: "image/jpeg", createdAt: initial.createdAt,
+    imageGeneration: structuredClone(snapshot) }));
+  initial.imageScene!.outputAssetId = "First";
+  const current = setup(initial);
+  fireEvent.change(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Cover image" } });
+  fireEvent.click(screen.getByRole("button", { name: "View Second" }));
+  expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(snapshot.scene.nodes[0].name);
+  fireEvent.click(screen.getByRole("button", { name: "View First" }));
+  expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Cover image");
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
+  expect(restoreGeneratedImage(reopened, "First").imageScene!.nodes[0].name).toBe("Cover image");
+  expect(reopened.assets).toHaveLength(2);
+  expect(reopened.assets[0].imageGeneration).toEqual({ ...snapshot,
+    scene: { ...snapshot.scene, nodes: snapshot.scene.nodes.map((node) => node.kind === "root" ? { ...node, name: "Cover image" } : node) } });
+});
+
 it("restores the hierarchy, prompts, settings and generator when selecting a saved result", () => {
   const initial = parseProjectConfig(fixture);
   const original = imageGenerationSnapshot(initial, "Original prompt", defaultGeneratorTemplate().id);
