@@ -32,6 +32,34 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("generates only the scene open in the inspector", () => {
+  const state = setup();
+  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+  const panel = within(screen.getByRole("complementary", { name: "Scene: Second scene" }));
+  fireEvent.click(panel.getByRole("button", { name: "Generate" }));
+  expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["draft", "queued"]);
+  expect(panel.getByRole("button", { name: "Cancel" })).toBeEnabled();
+});
+
+it.each(["queued", "generating"] as const)("cancels only the %s scene open in the inspector", (status) => {
+  const initial = project();
+  initial.generationJobs.forEach((job) => { job.status = status; });
+  setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+  const panel = within(screen.getByRole("complementary", { name: "Scene: Second scene" }));
+  fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
+  expect(cancelSlopfabGeneration).toHaveBeenCalledExactlyOnceWith("scene-second");
+  expect(panel.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+});
+
+it("disables inspector generation while the scene is being saved", () => {
+  const initial = project();
+  initial.generationJobs[0].status = "ready";
+  setup(initial);
+  const panel = within(screen.getByRole("complementary", { name: "Scene: First scene" }));
+  expect(panel.getByRole("button", { name: "Generate" })).toBeDisabled();
+});
+
 it("defaults to Prompt and switches frame conditioning off and back on without losing selections", () => {
   const initial = project();
   initial.references = [{ id: "still", kind: "image", name: "Still", description: "", intendedUse: [], sourcePath: "C:/still.png", createdAt: initial.createdAt }];

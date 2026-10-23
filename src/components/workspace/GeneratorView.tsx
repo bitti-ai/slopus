@@ -447,6 +447,9 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         || jobs.some((source) => (source.id === continuationSceneId(job, jobs) || longShotDependencies(job, jobs).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
+  const selectedCancellable = selected?.status === "queued" || selected?.status === "generating";
+  const selectedCancelling = Boolean(selected && cancellingJobIds.has(selected.id));
+  const selectedBlocker = selected && !selectedCancellable ? generationBlocker(selected) : null;
 
   /* --- Keyboard ------------------------------------------------------------
      Scoped to the Generator, so the same keys can mean something else on the
@@ -671,15 +674,25 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             />
           </div>
 
-          {debugEnabled && !animate && <div className="debug-prompt">
-            <button
+          <div className="inspector-actions">
+            {debugEnabled && !animate && <button
               type="button"
               className="secondary-button debug-prompt__toggle"
               aria-expanded={showDebugPrompt}
               aria-haspopup="dialog"
               onClick={() => setShowDebugPrompt(true)}
-            >Debug prompt</button>
-          </div>}
+            >Debug prompt</button>}
+            <button
+              type="button"
+              className="primary-button"
+              data-tooltip={selectedCancellable ? `Cancel ${selected.title}` : selectedBlocker ?? `Generate ${selected.title}`}
+              disabled={selectedCancellable ? selectedCancelling : Boolean(selectedBlocker)}
+              onClick={() => generateScene(selected)}
+            >
+              {selectedCancellable ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}
+              {selectedCancellable ? selectedCancelling ? "Cancelling…" : "Cancel" : "Generate"}
+            </button>
+          </div>
         </>}
     </aside>}
 

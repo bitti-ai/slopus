@@ -865,13 +865,20 @@
   gap: var(--space-2);
 }
 
-/* --- The compiled prompt (Debug prompt dialog) ----------------------------- */
+/* --- Inspector actions and compiled prompt -------------------------------- */
 
-.debug-prompt {
+.debug-prompt,
+.inspector-actions {
   flex: 0 0 auto;
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--line);
   background: var(--panel);
+}
+
+.inspector-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .debug-prompt__toggle {

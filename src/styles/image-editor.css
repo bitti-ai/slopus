@@ -12,7 +12,7 @@
 .image-tree > .ui-pane-header, .image-inspector > .ui-item-header { flex-shrink: 0; }
 .image-tree > [role="tree"] { flex: 1; overflow: auto; padding: var(--space-1) 0; }
 .image-inspector { display: flex; flex-direction: column; }
-.image-inspector > .debug-prompt { margin-top: auto; }
+.image-inspector > .inspector-actions { margin-top: auto; }
 .image-pane-button.icon-button { width: var(--control-sm); height: var(--control-sm); }
 
 /* --- Tree rows -----------------------------------------------------------------
