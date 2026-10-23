@@ -43,7 +43,7 @@
 .image-generate-button { flex-shrink: 0; white-space: nowrap; }
 .image-tools__start, .image-tools__center, .image-tools__end { min-width: 0; display: flex; align-items: center; gap: var(--space-1); }
 .image-tools__end { justify-content: flex-end; }
-.image-generator { width: 160px; min-width: 0; flex-shrink: 1; }
+.image-generator { flex-shrink: 1; }
 /* Editable: typed percentages up to "800%" plus the 32px drop-down button. */
 .image-zoom { width: 112px; min-width: 112px; }
 .image-tools__separator { width: 1px; height: 20px; margin: 0 var(--space-1); background: var(--line); }

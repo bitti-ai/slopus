@@ -540,16 +540,19 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {/* The generator leads; canvas tools and view controls share the centered group. */}
       <div className="image-tools__start">
         {templateInspector && active && generateButton}
-        <ComboBox
-          className="image-generator"
-          aria-label="Generator"
-          data-tooltip="Generator"
-          value={template?.id ?? ""}
-          disabled={Boolean(active) || !imageTemplates.length}
-          placeholder="No MiniMax H3 templates"
-          options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item), description: !templateUsable(item) ? "Download in Settings" : undefined }))}
-          onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
-        />
+        <span className="generator-runtime image-generator">
+          <span className="generator-runtime__label" aria-hidden="true">Generator:</span>
+          <ComboBox
+            className="generator-template"
+            aria-label="Generator"
+            data-tooltip={template?.name ?? "Generator"}
+            value={template?.id ?? ""}
+            disabled={Boolean(active) || !imageTemplates.length}
+            placeholder="No MiniMax H3 templates"
+            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item), description: !templateUsable(item) ? "Download in Settings" : undefined }))}
+            onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
+          />
+        </span>
       </div>
       <div className="image-tools__center">
         {extendMode ? <span className="extend-tool-active"><Boxes16Filled aria-hidden="true" /> Zoom box</span> : <>
