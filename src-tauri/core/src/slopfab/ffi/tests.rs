@@ -134,3 +134,22 @@ fn older_runtimes_reject_cfg_and_cross_instance_guidance_is_refused() {
     let other = Api::load(&path).unwrap();
     assert!(other.set_image_guidance(&request, 3.0).unwrap_err().contains("different runtime"));
 }
+
+#[test]
+fn pixel_masks_validate_buffers_and_reject_older_runtimes() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
+    let api = Api::load(&path).unwrap();
+    let request = RequestHandle::new(&api).unwrap();
+    api.set_image_edit_rgb(&request, &vec![100; 64 * 32 * 3], 64, 32, [0, 0, 64, 32], 1.0, 0).unwrap();
+    assert!(api.set_image_edit_mask(&request, &[255; 8], 64, 32).is_err());
+    assert!(api.set_image_edit_mask(&request, &vec![255; 32 * 32], 32, 32).is_err());
+    let mut mask = vec![0; 64 * 32]; mask[100] = 255; mask[101] = 128;
+    api.set_image_edit_mask(&request, &mask, 64, 32).unwrap();
+    mask.fill(0); // The native request owns a snapshot.
+    api.resolve(&request).unwrap();
+    let other = Api::load(&path).unwrap();
+    assert!(other.set_image_edit_mask(&request, &mask, 64, 32).is_err());
+    let mut older = Api::load(&path).unwrap(); older.disable_image_mask_for_test();
+    let old_request = RequestHandle::new(&older).unwrap();
+    assert!(older.set_image_edit_mask(&old_request, &mask, 64, 32).unwrap_err().contains("API 1.32"));
+}

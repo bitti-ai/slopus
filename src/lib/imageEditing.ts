@@ -1,11 +1,13 @@
 import { imageSettings } from "./imageSettings";
-import { createImageEditScene, createImageScene, imageSourceSchema, type ImageNode, type ImageScene, type ImageSource } from "./imageScene";
+import { createImageEditScene, createImageScene, imageLassoPoints, imageSourceSchema, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import type { ProjectConfig, ProjectReference } from "./project";
 
 export interface ImageEditStep {
   prompt: string; x: number; y: number; width: number; height: number;
   feather?: number;
+  /** Pixel-space polygon, rasterized to a source-sized mask by the runtime. */
+  maskPolygon?: ImagePoint[];
   /** Denoising strength; lower values retain more of the source detail. */
   strength?: number;
   /** Preserve this box and generate its surround in a single outpainting pass. */
@@ -50,7 +52,7 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
     // A full-canvas edit has no surrounding source to blend into at its edges.
     const wholeImage = x === 0 && y === 0 && right === size.width && bottom === size.height;
     return { prompt: compiled.prompt, references: compiled.references, x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y),
-      ...(wholeImage ? { feather: 0 } : {}) };
+      ...(node.lasso ? { maskPolygon: imageLassoPoints(node).map(({ x, y }) => ({ x: x * size.width / 1000, y: y * size.height / 1000 })), feather: 0 } : wholeImage ? { feather: 0 } : {}) };
   });
   if (!edits.length) throw new Error("Enter a whole-image edit prompt or add an Edit node before generating.");
   return { source, edits };

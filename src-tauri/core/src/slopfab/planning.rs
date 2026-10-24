@@ -86,6 +86,10 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
         for step in &edit.edits {
+            if let Some(points) = &step.mask_polygon {
+                if step.invert_mask { return Err("Lasso masks cannot be combined with rectangular outpainting.".into()); }
+                crate::image_mask::validate_polygon(points, request.canvas_width, request.canvas_height)?;
+            }
             if (step.outpaint_blend_overlap.is_some() || step.outpaint_langevin_steps.is_some()) && !step.invert_mask
                 || step.outpaint_blend_overlap.is_some_and(|value| !(1..=51).contains(&value) || value % 2 == 0)
                 || step.outpaint_langevin_steps.is_some_and(|value| !(0..=100).contains(&value)) {

@@ -3,11 +3,18 @@ import { z } from "zod";
 
 const boxSchema = z.object({ x: z.number().min(0).max(999), y: z.number().min(0).max(999), width: z.number().positive().max(1000), height: z.number().positive().max(1000) })
   .refine((box) => box.x + box.width <= 1000 && box.y + box.height <= 1000, "Placement must stay inside the image.");
+export const imagePointSchema = z.object({ x: z.number().finite().min(0).max(1000), y: z.number().finite().min(0).max(1000) });
+export type ImagePoint = z.infer<typeof imagePointSchema>;
+export const imageLassoSchema = z.array(imagePointSchema).min(3).max(2048).refine((points) => {
+  const first = points[0], second = points.find((point) => point.x !== first.x || point.y !== first.y);
+  return !!second && points.some((point) => Math.abs((second.x - first.x) * (point.y - first.y) - (second.y - first.y) * (point.x - first.x)) > 1e-9);
+}, "Lasso must enclose an area.");
 export const imageNodeSchema = z.object({
   id: z.string().min(1), parentId: z.string().min(1).nullable(),
   kind: z.enum(["root", "group", "object", "text", "background"]),
   name: z.string().min(1).max(120), description: z.string(), text: z.string(),
   referenceIds: z.array(z.string().min(1)).max(100).optional(),
+  lasso: imageLassoSchema.optional(),
   box: boxSchema.nullable(), colors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(16),
 });
 export const imageSourceSchema = z.object({
@@ -31,6 +38,7 @@ export const imageSceneSchema = z.object({
   const ids = new Map(scene.nodes.map((node) => [node.id, node]));
   const roots = scene.nodes.filter((node) => node.kind === "root");
   const invalid = ids.size !== scene.nodes.length || roots.length !== 1 || roots[0]?.parentId !== null || scene.nodes.some((node) => {
+    if (node.lasso && (!node.box || node.kind !== "object")) return true;
     if (node.kind === "root") return false;
     const seen = new Set([node.id]);
     let parent = node.parentId;
@@ -75,6 +83,26 @@ export function addImageNode(scene: ImageScene, parentId: string, kind: Exclude<
   const node: ImageNode = { id: crypto.randomUUID(), parentId, kind, name: kind[0].toUpperCase() + kind.slice(1), description: "", text: "", colors: [], box: box ?? (kind === "background" ? null : { x: 250, y: 250, width: 500, height: 500 }) };
   return imageSceneSchema.parse({ ...scene, nodes: [...scene.nodes, node] });
 }
+/** Lasso points are local to the placement box on the same 0 to 1000 grid. */
+export function imageLassoPoints(node: Pick<ImageNode, "box" | "lasso">, box = node.box): ImagePoint[] {
+  return box && node.lasso ? node.lasso.map((point) => ({ x: box.x + point.x * box.width / 1000, y: box.y + point.y * box.height / 1000 })) : [];
+}
+
+/** Keep the sampled outline bounded without changing corners of short strokes. */
+export function simplifyImageLasso(points: ImagePoint[], tolerance = 1): ImagePoint[] {
+  if (points.length < 3) return points;
+  const first = points[0], last = points.at(-1)!;
+  const dx = last.x - first.x, dy = last.y - first.y, length = dx * dx + dy * dy;
+  let farthest = tolerance * tolerance, at = -1;
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i];
+    const t = length ? Math.max(0, Math.min(1, ((point.x - first.x) * dx + (point.y - first.y) * dy) / length)) : 0;
+    const distance = (point.x - first.x - t * dx) ** 2 + (point.y - first.y - t * dy) ** 2;
+    if (distance > farthest) { farthest = distance; at = i; }
+  }
+  return at < 0 ? [first, last] : [...simplifyImageLasso(points.slice(0, at + 1), tolerance).slice(0, -1), ...simplifyImageLasso(points.slice(at), tolerance)];
+}
+
 export function removeImageNode(scene: ImageScene, id: string): ImageScene {
   if (scene.nodes.find((node) => node.id === id)?.kind === "root") return scene;
   const ids = imageDescendants(scene, id);

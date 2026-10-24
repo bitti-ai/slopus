@@ -96,6 +96,7 @@ pub struct Api {
     set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
     set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_still_image: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_image_edit_mask: Option<unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize) -> i32>,
     set_image_edit_path: Option<SetImageEditPath>,
     set_image_edit_rgb: Option<SetImageEditRgb>,
     set_image_edit_invert_mask: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -222,6 +223,7 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                set_image_edit_mask: library.get::<unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize) -> i32>(b"slopfab_request_set_image_edit_mask_u8\0").ok().map(|symbol| *symbol),
                 set_image_edit_path: library.get::<SetImageEditPath>(b"slopfab_request_set_image_edit_path\0").ok().map(|symbol| *symbol),
                 set_image_edit_rgb: library.get::<SetImageEditRgb>(b"slopfab_request_set_image_edit_rgb24\0").ok().map(|symbol| *symbol),
                 set_image_edit_invert_mask: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_image_edit_invert_mask\0").ok().map(|symbol| *symbol),
@@ -467,6 +469,15 @@ impl Api {
     pub fn set_still_image(&self, r: *mut Request) -> Result<(), String> {
         let set = self.set_still_image.ok_or("This slopfab.dll does not support still-image generation. Update the runtime to generate images and reference icons.")?;
         self.error(unsafe { set(r, 1) })
+    }
+    #[cfg(test)]
+    pub fn disable_image_mask_for_test(&mut self) { self.set_image_edit_mask = None; }
+    pub fn set_image_edit_mask(&self, r: *mut Request, mask: &[u8], width: i32, height: i32) -> Result<(), String> {
+        let set = self.set_image_edit_mask.ok_or("Lasso editing requires SlopFab API 1.32 or later. Update the generation runtime.")?;
+        if !(1..=8192).contains(&width) || !(1..=8192).contains(&height) || mask.len() != width as usize * height as usize {
+            return Err("The image edit mask must match the source dimensions.".into());
+        }
+        self.error(unsafe { set(r, mask.as_ptr(), mask.len(), width, height, width as usize) })
     }
     pub fn set_image_edit_path(&self, r: *mut Request, path: &Path, bounds: [i32; 4], strength: f32, feather: i32) -> Result<(), String> {
         let set = self.set_image_edit_path.ok_or("This slopfab.dll does not support bounding-box image editing. Update the runtime.")?;

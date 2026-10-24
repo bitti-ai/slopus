@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import imageFixture from "../../fixtures/project-v1-image.json";
 import oldFixture from "../../fixtures/project-v1-created.json";
-import { addImageNode, createImageScene, duplicateImageNode, imageScenePrompt, imageSceneSchema, removeImageNode, resizeImageNode } from "./imageScene";
+import { addImageNode, createImageScene, duplicateImageNode, imageScenePrompt, imageSceneSchema, imageLassoPoints, removeImageNode, resizeImageNode } from "./imageScene";
 import { createProjectConfig, parseProjectConfig } from "./project";
 
 describe("image documents", () => {
@@ -51,4 +51,19 @@ describe("image documents", () => {
     expect(objectScene.style.mode).toBe("none");
     expect(imageScenePrompt(objectScene)).toBe("sunglasses.");
   });
+});
+
+it("keeps lasso outlines through moves and duplication and rejects invalid shapes", () => {
+  const scene = addImageNode(createImageScene(), "image-root", "object", { x: 100, y: 200, width: 300, height: 400 });
+  scene.nodes[1].lasso = [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }];
+  const moved = resizeImageNode(scene, scene.nodes[1].id, { x: 500, y: 300, width: 200, height: 600 });
+  expect(imageLassoPoints(moved.nodes[1])).toEqual([{ x: 500, y: 300 }, { x: 700, y: 300 }, { x: 500, y: 900 }]);
+  const copy = duplicateImageNode(moved, moved.nodes[1].id);
+  expect(copy.nodes[2].lasso).toEqual(scene.nodes[1].lasso);
+  copy.nodes[2].lasso![0].x = 10;
+  expect(copy.nodes[1].lasso![0].x).toBe(0);
+  for (const lasso of [[], [{ x: 0, y: 0 }, { x: 500, y: 500 }, { x: 1000, y: 1000 }], [{ x: -1, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }]]) {
+    scene.nodes[1].lasso = lasso;
+    expect(imageSceneSchema.safeParse(scene).success).toBe(false);
+  }
 });

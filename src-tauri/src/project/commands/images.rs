@@ -29,6 +29,7 @@ pub(super) fn new_scene(prompt: &str) -> ImageScene {
         source_image: None,
         output_size: None,
         nodes: vec![ImageNode {
+            lasso: None,
             id: "image-root".into(),
             parent_id: None,
             kind: "root".into(),
@@ -242,6 +243,7 @@ pub(super) fn apply(
                 return Err("New image nodes must be objects, text, groups or backgrounds.".into());
             }
             let node = ImageNode {
+                lasso: None,
                 id: id.clone(),
                 parent_id: Some(parent.clone()),
                 kind: kind.clone(),

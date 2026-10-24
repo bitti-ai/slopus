@@ -497,7 +497,7 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   expect(screen.queryByLabelText("Prompt (high-level description)")).not.toBeInTheDocument();
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
-  expect(within(screen.getByRole("radiogroup", { name: "Canvas tool" })).getAllByRole("radio").map((tool) => tool.getAttribute("aria-label"))).toEqual(["Select", "Draw edit"]);
+  expect(within(screen.getByRole("radiogroup", { name: "Canvas tool" })).getAllByRole("radio").map((tool) => tool.getAttribute("aria-label"))).toEqual(["Select", "Draw edit", "Lasso"]);
   const draft = screen.getByRole("button", { name: "View Editing Saved" });
   expect(draft).toHaveAttribute("aria-pressed", "true");
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
@@ -1153,4 +1153,42 @@ it("sets a temporary generation count, dismisses its panel and resets after one 
   render(<ImageEditor {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
   expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+});
+
+it("draws a lasso, edits its prompt, moves its outline, and saves it independently", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "source", name: "Source", kind: "image", relativePath: "media/source.png", mimeType: "image/png", width: 1000, height: 800, createdAt: initial.createdAt }];
+  const current = setup(initial);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Source" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  const canvas = screen.getByLabelText("Image placement canvas");
+  Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
+  Object.defineProperty(canvas, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 1000, height: 800 }) });
+  const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number, target: Element = canvas) => {
+    const event = createEvent[type](target);
+    Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y } });
+    fireEvent(target, event);
+  };
+  fireEvent.click(screen.getByRole("radio", { name: "Lasso" }));
+  pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 80); pointer("pointerUp", 100, 320);
+  expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("button", { name: "Lasso" })).toBeInTheDocument();
+  const lasso = current().imageScene!.nodes[1];
+  expect(lasso).toMatchObject({ name: "Lasso", box: { x: 100, y: 100, width: 300, height: 300 }, lasso: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }] });
+  typePrompt(screen.getByLabelText("Edit prompt"), "Add a red flower");
+  fireEvent.click(screen.getByRole("button", { name: "Image" }));
+  const outline = canvas.querySelector("polygon[data-node]")!;
+  pointer("pointerDown", 150, 120, outline); pointer("pointerMove", 250, 200); pointer("pointerUp", 250, 200);
+  expect(current().imageScene!.nodes[1]).toMatchObject({ box: { x: 200, y: 200, width: 300, height: 300 }, lasso: lasso.lasso, description: "Add a red flower" });
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red flower");
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ feather: 0, maskPolygon: [{ x: 198.4, y: 160 }, { x: 496, y: 160 }, { x: 198.4, y: 400 }] });
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+  expect(current().assets.find((asset) => asset.id === "source")?.imageEditing).toBeUndefined();
+  fireEvent.click(screen.getByRole("radio", { name: "Lasso" }));
+  pointer("pointerDown", 10, 10); pointer("pointerMove", 200, 100);
+  Object.defineProperty(canvas.closest(".image-viewport")!, "hasPointerCapture", { value: () => false });
+  fireEvent.pointerCancel(canvas);
+  expect(current().imageScene!.nodes).toHaveLength(2);
+  pointer("pointerDown", 10, 10); pointer("pointerUp", 200, 200);
+  expect(current().imageScene!.nodes).toHaveLength(2);
 });

@@ -109,6 +109,8 @@ pub struct ImageNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_ids: Option<Vec<String>>,
     pub r#box: Option<ImageBox>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lasso: Option<Vec<slopus_core::image_mask::MaskPoint>>,
     pub colors: Vec<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -206,6 +208,10 @@ impl ImageScene {
                 })
             {
                 return Err("Invalid image node.".into());
+            }
+            if let Some(points) = &node.lasso {
+                if node.kind != "object" || node.r#box.is_none() { return Err("Lasso regions require an edit node and placement box.".into()); }
+                slopus_core::image_mask::validate_polygon(points, 1000, 1000)?;
             }
             if let Some(b) = &node.r#box {
                 if ![b.x, b.y, b.width, b.height].iter().all(|v| v.is_finite())

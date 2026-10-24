@@ -125,6 +125,8 @@ pub struct ImageEditRequest {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageEditStep {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_polygon: Option<Vec<crate::image_mask::MaskPoint>>,
     pub prompt: String,
     pub x: i32,
     pub y: i32,

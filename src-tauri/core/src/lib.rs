@@ -4,6 +4,7 @@
 pub mod conditioning;
 pub mod diagnostics;
 pub mod models;
+pub mod image_mask;
 pub mod generation_effects;
 pub mod names;
 pub mod reference_icons;

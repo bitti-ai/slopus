@@ -1,9 +1,9 @@
 import { activeGenerationEffects } from "../../lib/generationEffects";
 import { GenerationEffects } from "./GenerationEffects";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
-import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
+import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Lasso16, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
-import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource } from "../../lib/imageScene";
+import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, imageLassoPoints, imageLassoSchema, simplifyImageLasso, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize } from "../../lib/imageEditing";
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
@@ -122,20 +122,21 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [debugPrompt, setDebugPrompt] = useState<string | null>(null);
   useEffect(() => { if (!debugEnabled) setDebugPrompt(null); }, [debugEnabled]);
   const [boxes, setBoxes] = useState(true);
-  const [drawKind, setDrawKind] = useState<"object" | "text" | "group" | null>(null);
+  const [drawKind, setDrawKind] = useState<"object" | "text" | "group" | "lasso" | null>(null);
   const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
   const viewport = useRef<HTMLDivElement>(null);
   const pan = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [draftBox, setDraftBox] = useState<ImageBox | null>(null);
+  const [draftLasso, setDraftLasso] = useState<ImagePoint[] | null>(null);
   const undo = useRef<ImageScene[]>([]);
   const redo = useRef<ImageScene[]>([]);
   const [, historyChanged] = useState(0);
-  const pointer = useRef<{ x: number; y: number; scene: ImageScene; id?: string; resize: boolean } | null>(null);
+  const pointer = useRef<{ x: number; y: number; scene: ImageScene; id?: string; resize: boolean; box?: ImageBox; lasso?: ImagePoint[] } | null>(null);
   useEffect(() => {
     // Applied edits belong to the old source and must not be resurrected by Undo.
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
-    pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
+    pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setRenaming(null);
     setSelection(root.id); setCollapsed(new Set());
   }, [scene.sourceImage?.relativePath, root.id]);
   useEffect(() => {
@@ -207,11 +208,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const patchNode = (patch: Partial<ImageNode>) => commit({ ...scene, nodes: scene.nodes.map((node) => node.id === selected.id ? { ...node, ...patch } : node) });
   const insertParent = selected.kind === "object" || selected.kind === "text" ? selected.parentId ?? root.id : selected.id;
-  const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
+  const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox, lasso?: ImagePoint[]) => {
     if (imageRoot && editingBlocked) return;
     const parent = imageRoot ? root.id : insertParent;
     const next = addImageNode(scene, parent, imageRoot ? "object" : kind, box);
-    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit" });
+    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: lasso ? "Lasso" : "Edit", ...(lasso ? { lasso } : {}) });
     commit(next); setSelection(next.nodes.at(-1)!.id);
     setCollapsed((current) => { const next = new Set(current); next.delete(parent); return next; });
   };
@@ -234,7 +235,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     const asset = config.assets.find((asset) => asset.id === id);
     const snapshot = asset?.imageGeneration;
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
-    pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
+    pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setRenaming(null);
     setCollapsed(new Set()); setSelection(snapshot?.scene.nodes.find((node) => node.kind === "root")?.id ?? "image-root");
     if (snapshot && imageTemplates.some((candidate) => candidate.id === snapshot.generatorTemplateId)) {
       setTemplateId(snapshot.generatorTemplateId);
@@ -281,7 +282,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const replaceScene = (next: ImageScene) => {
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
-    pointer.current = null; setDraftBox(null); setDrawKind(null); setCollapsed(new Set());
+    pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setCollapsed(new Set());
     setSelection(next.nodes.find((node) => node.kind === "root")!.id);
     onChange((current) => ({ ...current, imageScene: next }));
   };
@@ -323,7 +324,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const removeSelected = () => {
     if (selected.kind === "root") return;
-    pointer.current = null; setDraftBox(null);
+    pointer.current = null; setDraftBox(null); setDraftLasso(null);
     const parent = selected.parentId ?? root.id;
     commit(removeImageNode(scene, selected.id)); setSelection(parent);
     requestAnimationFrame(() => focusNode(parent));
@@ -354,25 +355,47 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     const id = drawKind ? undefined : target.dataset.node;
     if (!id && !drawKind) { setSelection(root.id); return; }
     if (id) setSelection(id);
-    pointer.current = { ...point(event), scene, id, resize: target.dataset.resize === "true" };
+    const at = point(event);
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
+    pointer.current = { ...at, scene, id, resize: target.dataset.resize === "true", ...(drawKind === "lasso" ? { lasso: [at] } : {}) };
+    if (drawKind === "lasso") setDraftLasso([at]);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const pointerMove = (event: PointerEvent<SVGSVGElement>) => {
     const start = pointer.current; if (!start) return;
-    const at = point(event); const original = start.scene.nodes.find((node) => node.id === start.id)?.box;
+    const at = point(event);
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
+    const original = start.scene.nodes.find((node) => node.id === start.id)?.box;
+    if (start.lasso) {
+      if (Math.hypot(at.x - start.lasso.at(-1)!.x, at.y - start.lasso.at(-1)!.y) < 2) return;
+      start.lasso.push(at);
+      if (start.lasso.length > 2048) start.lasso = start.lasso.filter((_, index) => index % 2 === 0);
+      setDraftLasso([...start.lasso]);
+      return;
+    }
     if (original) {
       const x = start.resize ? original.x : Math.max(0, Math.min(1000 - original.width, original.x + at.x - start.x));
       const y = start.resize ? original.y : Math.max(0, Math.min(1000 - original.height, original.y + at.y - start.y));
-      setDraftBox({ x, y, width: start.resize ? Math.max(1, Math.min(1000 - x, original.width + at.x - start.x)) : original.width, height: start.resize ? Math.max(1, Math.min(1000 - y, original.height + at.y - start.y)) : original.height });
-    } else setDraftBox({ x: Math.min(start.x, at.x), y: Math.min(start.y, at.y), width: Math.abs(at.x - start.x), height: Math.abs(at.y - start.y) });
+      start.box = { x, y, width: start.resize ? Math.max(1, Math.min(1000 - x, original.width + at.x - start.x)) : original.width, height: start.resize ? Math.max(1, Math.min(1000 - y, original.height + at.y - start.y)) : original.height };
+    } else start.box = { x: Math.min(start.x, at.x), y: Math.min(start.y, at.y), width: Math.abs(at.x - start.x), height: Math.abs(at.y - start.y) };
+    setDraftBox(start.box);
   };
-  const pointerUp = () => {
+  const pointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    pointerMove(event);
     const start = pointer.current;
-    if (start && draftBox && draftBox.width > 0 && draftBox.height > 0) {
-      if (start.id) commit(resizeImageNode(start.scene, start.id, draftBox));
-      else if (drawKind && draftBox.width >= 5 && draftBox.height >= 5) { add(drawKind, draftBox); setDrawKind(null); }
+    if (start?.lasso) {
+      const points = simplifyImageLasso(start.lasso);
+      const x = Math.min(...points.map((point) => point.x)), y = Math.min(...points.map((point) => point.y));
+      const width = Math.max(...points.map((point) => point.x)) - x, height = Math.max(...points.map((point) => point.y)) - y;
+      if (imageLassoSchema.safeParse(points).success && width >= 5 && height >= 5) {
+        add("object", { x, y, width, height }, points.map((point) => ({ x: Math.max(0, Math.min(1000, (point.x - x) / width * 1000)), y: Math.max(0, Math.min(1000, (point.y - y) / height * 1000)) })));
+        setDrawKind(null);
+      }
+    } else if (start?.box && start.box.width > 0 && start.box.height > 0) {
+      if (start.id) commit(resizeImageNode(start.scene, start.id, start.box));
+      else if (drawKind && drawKind !== "lasso" && start.box.width >= 5 && start.box.height >= 5) { add(drawKind, start.box); setDrawKind(null); }
     }
-    pointer.current = null; setDraftBox(null);
+    pointer.current = null; setDraftBox(null); setDraftLasso(null);
   };
   const dropDestination = (event: DragEvent<HTMLDivElement>, target: ImageNode) => {
     const source = scene.nodes.find((node) => node.id === draggedNode);
@@ -444,15 +467,17 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   /* Canvas tools: a radio group of icon toggles with one-letter keys. */
   const TOOLS = [
     { id: null, label: "Select", key: "V", icon: <Cursor16 />, onIcon: <Cursor16Filled /> },
-    ...(imageRoot ? [{ id: "object", label: "Draw edit", key: "E", icon: <Edit16 />, onIcon: <Edit16 /> }] as const : [
+    ...(imageRoot ? [{ id: "object", label: "Draw edit", key: "E", icon: <Edit16 />, onIcon: <Edit16 /> },
+      { id: "lasso", label: "Lasso", key: "L", icon: <Lasso16 />, onIcon: <Lasso16 /> }] as const : [
       { id: "object", label: "Draw object", key: "O", icon: <Cube16 />, onIcon: <Cube16Filled /> },
       { id: "text", label: "Draw text", key: "T", icon: <Text16 />, onIcon: <Text16Filled /> },
       { id: "group", label: "Draw group", key: "G", icon: <Group16 />, onIcon: <Group16Filled /> },
     ] as const),
   ] as const;
-  const chooseTool = (id: typeof drawKind) => { if (extendMode || (imageRoot && editingBlocked && id)) return; setDrawKind(id); if (id) setBoxes(true); };
+  const chooseTool = (id: typeof drawKind) => { if (extendMode || (imageRoot && editingBlocked && id)) return; pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(id); if (id) setBoxes(true); };
   useShortcut("V", () => chooseTool(null), { scope: editorRoot });
   useShortcut("E", () => chooseTool("object"), { scope: editorRoot, enabled: imageRoot && !editingBlocked });
+  useShortcut("L", () => chooseTool("lasso"), { scope: editorRoot, enabled: imageRoot && !editingBlocked });
   useShortcut("O", () => chooseTool("object"), { scope: editorRoot, enabled: !imageRoot });
   useShortcut("T", () => chooseTool("text"), { scope: editorRoot, enabled: !imageRoot });
   useShortcut("G", () => chooseTool("group"), { scope: editorRoot, enabled: !imageRoot });
@@ -532,7 +557,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           event.stopPropagation();
           if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); finishRename(true); }
           if (event.key === "Escape") { event.preventDefault(); finishRename(false); }
-        }} /> : <button className="image-tree__select" tabIndex={selected.id === node.id ? 0 : -1} data-tooltip={node.name} onFocus={() => setSelection(node.id)} onClick={() => setSelection(node.id)}><span className="image-tree__icon" aria-hidden="true">{node.kind === "root" ? <Image16 /> : imageRoot ? <Edit16 /> : node.kind === "text" ? <Text16 /> : node.kind === "group" ? <Group16 /> : <Cube16 />}</span><span>{node.name}</span></button>}
+        }} /> : <button className="image-tree__select" tabIndex={selected.id === node.id ? 0 : -1} data-tooltip={node.name} onFocus={() => setSelection(node.id)} onClick={() => setSelection(node.id)}><span className="image-tree__icon" aria-hidden="true">{node.kind === "root" ? <Image16 /> : node.lasso ? <Lasso16 /> : imageRoot ? <Edit16 /> : node.kind === "text" ? <Text16 /> : node.kind === "group" ? <Group16 /> : <Cube16 />}</span><span>{node.name}</span></button>}
       </div>
       {open && children.length > 0 && <div role="group">{children.map((child) => tree(child, depth + 1))}</div>}
     </div>;
@@ -660,7 +685,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[
       ...(imageMenu.source === "bar" ? [
         { label: "New empty image", icon: <Add16 />, action: () => attempt(() => {
-          undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
+          undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
           onChange((current) => createEmptyImage(current, template?.id, imageMenu.inFamily ? imageMenu.id ?? current.imageScene?.outputAssetId : undefined));
         }) },
         { label: "Add image file", icon: <FolderOpen16 />, disabled: !isTauri(), action: () => attempt(async () => {
@@ -710,11 +735,12 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
         {active && output?.imageDraft ? <div className="image-empty" role="status"><Image32 aria-hidden="true" /><strong>{work.status === "queued" ? "Queued" : "Generating"}</strong><span>The generated image will appear here.</span></div> : showResult ? <ReferenceImage key={output!.id} folderPath={folderPath} relativePath={output!.relativePath} sourcePath={output!.sourcePath} alt={output!.name} /> : imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{templateSnapshot ? output!.name : imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{templateSnapshot ? active ? "The generated image will appear here." : "No generated image yet." : imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
-        <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
+        <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); setDraftLasso(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
-            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}><rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" />{selected.id === node.id && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
+            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}>{node.lasso ? <polygon data-node={node.id} points={imageLassoPoints(node, box).map(({ x, y }) => `${x},${y}`).join(" ")} fillRule="evenodd" vectorEffect="non-scaling-stroke" /> : <rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" />}{selected.id === node.id && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
           })}
+          {draftLasso && <polygon className="image-box-draft" points={draftLasso.map(({ x, y }) => `${x},${y}`).join(" ")} fillRule="evenodd" vectorEffect="non-scaling-stroke" />}
           {draftBox && !pointer.current?.id && <rect className="image-box-draft" {...{ x: draftBox.x, y: draftBox.y, width: draftBox.width, height: draftBox.height }} />}
         </svg>
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}

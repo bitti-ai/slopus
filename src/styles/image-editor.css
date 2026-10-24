@@ -72,11 +72,11 @@
 .image-empty strong { color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); }
 .image-empty span { max-width: 300px; font-size: var(--text-xs); }
 .image-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
-.image-overlay rect { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
-.image-overlay .selected > rect { stroke-width: 3; }
+.image-overlay rect, .image-overlay polygon { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
+.image-overlay .selected > rect, .image-overlay .selected > polygon { stroke-width: 3; }
 .image-box-label { position: absolute; margin: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel); font-size: var(--text-xs); pointer-events: none; }
 .image-overlay .image-box-handle { fill: var(--accent); cursor: nwse-resize; }
-.image-overlay.drawing, .image-overlay.drawing rect { cursor: crosshair; }
+.image-overlay.drawing, .image-overlay.drawing rect, .image-overlay.drawing polygon { cursor: crosshair; }
 .extend-frame { background: transparent; box-shadow: none; }
 .extend-source { position: absolute; }
 .extend-source img { width: 100%; height: 100%; object-fit: fill; }

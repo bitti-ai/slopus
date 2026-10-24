@@ -138,7 +138,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
+            types::ImageEditStep { mask_polygon: None, prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -150,7 +150,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
             let plan = api.resolve(&handle).unwrap();
             assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (96, 64, 1));
             let description = api.describe(&handle).unwrap();
-            assert!(description.contains("feather 16\n"), "{description}");
+            assert!(description.contains("feather 16;"), "{description}");
         }
     }
     let mut invalid = request;
@@ -200,7 +200,7 @@ fn whole_image_edits_never_feather_at_the_native_boundary() {
                         configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
                         api.resolve(&handle).unwrap();
                         let description = api.describe(&handle).unwrap();
-                        assert!(description.contains("feather 0\n"), "{description}");
+                        assert!(description.contains("feather 0;"), "{description}");
                     }
                 }
             }
@@ -1552,4 +1552,35 @@ fn moss_cfg_reaches_planning_and_generation_and_h3_rejects_it() {
     }
     config.model_type = "minimax-h3".into(); request.guidance_scale = Some(3.0);
     assert!(config.validate_inputs(&request).unwrap_err().contains("CFG"));
+}
+
+#[test]
+fn lasso_masks_survive_worker_serialization_and_reach_native_requests() {
+    let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
+        "jobId":"lasso", "prompt":"A flower", "stillImage":true, "frames":1, "steps":4, "seed":1,
+        "canvasWidth":64, "canvasHeight":32,
+        "imageEdit":{"sourceRelativePath":"source.png", "edits":[{
+            "prompt":"A flower", "x":0, "y":0, "width":32, "height":32, "feather":0,
+            "maskPolygon":[{"x":0,"y":0},{"x":32,"y":0},{"x":0,"y":32}]
+        }]}
+    })).unwrap();
+    let serialized = serde_json::to_value(&request).unwrap();
+    request = serde_json::from_value(serialized.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&request).unwrap(), serialized);
+    validate_generation_controls(&request).unwrap();
+    request.image_edit_pixels = Some(std::sync::Arc::new(vec![100; 64 * 32 * 3]));
+    let configuration = Configuration::from_settings(&BTreeMap::new());
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, purpose, &ReferenceVideos::default()).unwrap();
+        api.resolve(&handle).unwrap();
+        let description = api.describe(&handle).unwrap();
+        assert!(description.contains("mask"), "{description}");
+    }
+    request.image_edit.as_mut().unwrap().edits[0].invert_mask = true;
+    assert!(validate_generation_controls(&request).is_err());
+    request.image_edit.as_mut().unwrap().edits[0].invert_mask = false;
+    request.image_edit.as_mut().unwrap().edits[0].mask_polygon.as_mut().unwrap()[0].x = -1.0;
+    assert!(validate_generation_controls(&request).is_err());
 }

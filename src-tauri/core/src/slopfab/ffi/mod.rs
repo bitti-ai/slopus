@@ -122,6 +122,14 @@ impl Api {
         self.check(r)?;
         self.inner.set_still_image(r.pointer.as_ptr())
     }
+    #[cfg(test)]
+    pub fn disable_image_mask_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner).expect("configure API before creating handles").disable_image_mask_for_test();
+    }
+    pub fn set_image_edit_mask(&self, r: &RequestHandle, mask: &[u8], width: i32, height: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_image_edit_mask(r.pointer.as_ptr(), mask, width, height)
+    }
     pub fn set_image_edit_path(&self, r: &RequestHandle, path: &Path, bounds: [i32; 4], strength: f32, feather: i32) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_image_edit_path(r.pointer.as_ptr(), path, bounds, strength, feather)
